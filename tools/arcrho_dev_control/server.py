@@ -15,6 +15,7 @@ from tools.arcrho_dev_control import runtime
 
 
 HTML_PATH = Path(__file__).with_name("index.html")
+DEV_CONTROL_PORT = 28768
 
 
 class ControlServer(ThreadingHTTPServer):
@@ -113,7 +114,11 @@ class ControlHandler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="ArcRho localhost development control center")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=28767)
+    # 28765 is the app server, 28766 is ArcRho Admin Control, and 28767 is the
+    # Save Gateway (``DEFAULT_GATEWAY_PORT``). Sharing a port with a deployed
+    # ArcRho service means whichever process binds first silently wins and the
+    # other fails to start, so this dev-only page takes the next free port.
+    parser.add_argument("--port", type=int, default=DEV_CONTROL_PORT)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost"}:

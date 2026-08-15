@@ -1,8 +1,12 @@
 # ArcRho Dev Control Center
 
 Run `launch_arcrho_dev_control.bat` from the repository root. It starts a
-loopback-only page at `http://127.0.0.1:28767` and opens it in the default
+loopback-only page at `http://127.0.0.1:28768` and opens it in the default
 browser.
+
+The port deliberately sits above the deployed ArcRho services, which own 28765
+(app server), 28766 (Admin Control), and 28767 (Save Gateway). Pass `--port` to
+override it.
 
 The page can:
 

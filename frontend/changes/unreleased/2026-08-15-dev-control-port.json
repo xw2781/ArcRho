@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "development tools",
+  "audience": "internal",
+  "summary": "Moved the development control center off the Save Gateway's port.",
+  "details": [
+    "The page now serves on 127.0.0.1:28768; sharing 28767 meant whichever of the two started first silently kept the port and the other failed to bind."
+  ]
+}
