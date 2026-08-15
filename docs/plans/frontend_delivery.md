@@ -13,21 +13,17 @@
 ## Method Page - DFM
 - Chart
 - Edit Mode
-- Notes hyperlink (Read-only not working in packed app 1.2.9)
 - User entry value formula
-##  Excel Add-in
 
 
 
 # Phase 2 - 8/17
-- Manage Linked Workbook in ArcRho
-- DFM Sync
+- Manage Linked Workbooks
+- Accounting Cutoff & Growth Adjustment Vectors
+- Sync Reserving Class (Macro)
 
-## Examples
-1. Dataset dependency graph
-2. Input refresh & Propagation
-3. Review workflow
+
 
 # Phase 3 - 8/24
-- AI coding assistant
-- Create Macros
+- In-app assistant ArcBot
+- Arcode editor
