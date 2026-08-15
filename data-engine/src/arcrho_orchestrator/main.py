@@ -28,6 +28,7 @@ os.environ.setdefault("ARCRHO_ROOT", str(get_project_root()))
 engine_instance_path = str(resolve_app_path("engine", "instances"))
 bridge_instance_path = str(resolve_app_path("bridge", "instances"))
 orchestrator_instance_path = str(resolve_app_path("orchestrator", "instances"))
+save_gateway_instance_path = str(resolve_app_path("save_gateway", "instances"))
 
 device_name = os.environ.get("COMPUTERNAME")
 session_user = os.getlogin()
@@ -216,6 +217,7 @@ def main():
             remove_old_instances(engine_instance_path)
             remove_old_instances(bridge_instance_path)
             remove_old_instances(orchestrator_instance_path)
+            remove_old_instances(save_gateway_instance_path, 30)
             remove_old_instances(str(get_project_root() / "requests"), 5*60)
 
             while get_config_value('apps.orchestrator.auto_create_workers') \
@@ -234,6 +236,20 @@ def main():
               and get_config_value('apps.bridge.kill_all', False) == False \
               and user_file_counts(bridge_instance_path, session_user) < bridge_max_instances:
                 if not launch_app("bridge"):
+                    break
+                time.sleep(3)
+
+            # The Save Gateway is machine-wide rather than per session. Every
+            # logged-in user's orchestrator may race to restore it, but only
+            # one process can bind the configured port and publish a heartbeat.
+            gateway_max_instances = max(
+                0,
+                min(int(get_config_value('apps.save_gateway.max_instances', 1)), 1),
+            )
+            while get_config_value('apps.save_gateway.auto_create_instance', True) \
+              and get_config_value('apps.save_gateway.kill_all', False) == False \
+              and file_counts(save_gateway_instance_path) < gateway_max_instances:
+                if not launch_app("save_gateway"):
                     break
                 time.sleep(3)
 

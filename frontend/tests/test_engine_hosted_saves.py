@@ -63,12 +63,19 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             return_value=str(self.latency_log_path),
         )
         self.log_path_patch.start()
+        self.gateway_config_patch = patch.object(
+            engine_hosted_save_service.config,
+            "load_hosted_save_gateway_config",
+            return_value={"enabled": False},
+        )
+        self.gateway_config_patch.start()
 
     def tearDown(self) -> None:
         for thread in threading.enumerate():
             if thread.name.startswith("hosted-save-cleanup-"):
                 thread.join(timeout=5)
         self.log_path_patch.stop()
+        self.gateway_config_patch.stop()
         self.path_patch.stop()
         dependent_propagation_service._clear_protocol_path_validation_cache()
         self.temp_dir.cleanup()
@@ -272,6 +279,157 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         )
         self.assertEqual(round_trip["result_source"], "legacy_result_file")
         self.assertIn("legacy_result_read_ms", round_trip["phase_ms"])
+
+    def test_dataset_save_can_use_the_http_gateway_without_smb_preflight(self) -> None:
+        gateway_config = {
+            "enabled": True,
+            "url": "http://gateway.test:28767",
+            "user": "xwei",
+            "secret": "pilot-secret",
+            "allow_insecure_http": True,
+        }
+        with (
+            patch.object(
+                engine_hosted_save_service.config,
+                "load_hosted_save_gateway_config",
+                return_value=gateway_config,
+            ),
+            patch.object(
+                engine_hosted_save_service.user_identity_service,
+                "get_current_identity",
+                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "submit_hosted_save",
+                return_value=(
+                    {"ok": True, "source_kind": "input"},
+                    {
+                        "gateway_capability_ms": 1.0,
+                        "gateway_round_trip_ms": 25.0,
+                        "gateway_attempts": 1,
+                        "request_bytes": 512,
+                    },
+                ),
+            ) as submit,
+            patch.object(
+                dependent_propagation_service,
+                "require_reserving_class_writable",
+                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
+            ),
+        ):
+            result = engine_hosted_save_service.run_hosted_save(
+                "dataset_sidecar",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", "Paid Input"],
+                kwargs={"values": [[1.0]]},
+            )
+
+        self.assertTrue(result["ok"])
+        request = submit.call_args.args[1]
+        self.assertEqual(request["SaveKind"], "dataset_sidecar")
+        self.assertEqual(request["UserName"], "xwei")
+        self.assertEqual(request["Kwargs"]["values"], [[1.0]])
+        round_trip = self._latency_records()[-1]
+        self.assertEqual(round_trip["transport"], "http_gateway")
+        self.assertEqual(round_trip["result_source"], "http_gateway")
+        self.assertEqual(round_trip["status_poll_count"], 0)
+
+    def test_dfm_plan_and_save_use_the_exact_http_gateway_request(self) -> None:
+        gateway_config = {
+            "enabled": True,
+            "url": "http://gateway.test:28767",
+            "user": "xwei",
+            "secret": "pilot-secret",
+            "allow_insecure_http": True,
+        }
+        method = {
+            "json format": "arcrho-dfm-method-by-tab-v2",
+            "details tab": {
+                "name": "C 22 - CWOP DFM w/ Selected LDFs",
+                "output dataset": "CWOP Ultimate",
+            },
+            "data tab": {"values": [[100.0, 120.0], [90.0]]},
+            "ratios tab": {"selected": [[True], []]},
+        }
+        kwargs = {
+            "notes": "transport parity",
+            "expected_owned_revision": "owned-123",
+            "expected_derived_revision": "derived-123",
+        }
+        responses = [
+            {"ok": True, "plan_fingerprint": "plan-123", "dependents": []},
+            {"ok": True, "method": method, "propagation": {"status": "unchanged"}},
+        ]
+        submitted: list[dict] = []
+
+        def submit(_config, request, **_kwargs):
+            submitted.append(request)
+            return responses[len(submitted) - 1], {
+                "gateway_capability_ms": 1.0,
+                "gateway_round_trip_ms": 25.0,
+                "gateway_attempts": 1,
+                "request_bytes": 1024,
+            }
+
+        with (
+            patch.object(
+                engine_hosted_save_service.config,
+                "load_hosted_save_gateway_config",
+                return_value=gateway_config,
+            ),
+            patch.object(
+                engine_hosted_save_service.user_identity_service,
+                "get_current_identity",
+                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "submit_hosted_save",
+                side_effect=submit,
+            ),
+            patch.object(
+                dependent_propagation_service,
+                "require_reserving_class_writable",
+                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
+            ),
+        ):
+            plan = engine_hosted_save_service.run_hosted_save_plan(
+                "dfm_method",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", method],
+                kwargs=kwargs,
+            )
+            saved = engine_hosted_save_service.run_hosted_save(
+                "dfm_method",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", method],
+                kwargs=kwargs,
+                plan_fingerprint=plan["plan_fingerprint"],
+            )
+
+        self.assertEqual(saved["method"], method)
+        self.assertEqual([request["Mode"] for request in submitted], ["plan", "commit"])
+        for request in submitted:
+            self.assertEqual(request["SaveKind"], "dfm_method")
+            self.assertEqual(request["Args"], ["Demo Project", "HPPREF\\HO+DF\\NJ", method])
+            self.assertEqual(request["Kwargs"], kwargs)
+            self.assertEqual(request["UserName"], "xwei")
+        self.assertEqual(submitted[0]["PlanFingerprint"], "")
+        self.assertEqual(submitted[1]["PlanFingerprint"], "plan-123")
+        round_trips = [
+            record
+            for record in self._latency_records()
+            if record["event"] == "hosted_save_round_trip"
+        ]
+        self.assertEqual([record["transport"] for record in round_trips], [
+            "http_gateway",
+            "http_gateway",
+        ])
+        self.assertTrue(all(record["status_poll_count"] == 0 for record in round_trips))
 
     def test_service_errors_keep_their_status_codes(self) -> None:
         def respond(request):

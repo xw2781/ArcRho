@@ -1,0 +1,520 @@
+"""Machine-local HTTP gateway for Engine-hosted ArcRho dataset saves."""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import sys
+import threading
+import time
+import traceback
+from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path, PureWindowsPath
+from typing import Any, Mapping
+from urllib.parse import urlparse
+
+
+_MODULE_ROOT = Path(__file__).resolve().parent
+_SOURCE_ROOT = _MODULE_ROOT.parent
+_PRODUCT_ROOT = _SOURCE_ROOT.parent
+_BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", _MODULE_ROOT)).resolve()
+for _path in (_PRODUCT_ROOT, _SOURCE_ROOT, _BUNDLE_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+try:
+    from src.utils import get_config_value, get_project_root, resolve_app_path
+except ModuleNotFoundError:
+    from utils import get_config_value, get_project_root, resolve_app_path
+
+os.environ.setdefault("ARCRHO_RUNTIME_SERVER_ROOT", str(get_project_root()))
+
+from arcrho_api.io import persisted_json_text  # noqa: E402
+from arcrho_dependent_propagation_contract import (  # noqa: E402
+    DependentPropagationContractError,
+    EngineUnavailableError,
+    find_reserving_class_propagation_hold,
+    require_live_engine,
+)
+from arcrho_engine_save_contract import (  # noqa: E402
+    SAVE_JOB_MODE_PLAN,
+    SAVE_JOB_PLAN_TIMEOUT_SECONDS,
+    SAVE_JOB_PROCESSING_TIMEOUT_SECONDS,
+    SAVE_JOB_QUEUED_TIMEOUT_SECONDS,
+    SaveJobContractError,
+    discard_save_job_artifacts,
+    read_save_job_result,
+    read_save_job_status,
+    save_job_request_path,
+    save_job_status_is_terminal,
+    save_job_status_response,
+    validate_save_job_request,
+)
+from arcrho_hosted_save_http_contract import (  # noqa: E402
+    AUTH_SIGNATURE_HEADER,
+    AUTH_TIMESTAMP_HEADER,
+    AUTH_USER_HEADER,
+    CAPABILITIES_PATH,
+    HEALTH_PATH,
+    HOSTED_SAVE_PATH,
+    HTTP_CONTRACT_VERSION,
+    MAX_REQUEST_BYTES,
+    HostedSaveHttpContractError,
+    canonical_request_bytes,
+    default_gateway_config,
+    normalize_gateway_config,
+    normalize_user,
+    receipt_path,
+    receipts_root,
+    request_sha256,
+    server_config_path,
+    verify_request_signature,
+)
+HEARTBEAT_SECONDS = 5.0
+STATUS_POLL_SECONDS = 0.05
+GATEWAY_KILL_ALL_KEY = "apps.save_gateway.kill_all"
+_RECEIPT_LOCKS_GUARD = threading.Lock()
+_RECEIPT_LOCKS: dict[str, threading.RLock] = {}
+
+
+class GatewayHttpError(Exception):
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = int(status_code)
+        self.detail = str(detail)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        temporary.write_text(persisted_json_text(dict(payload)), encoding="utf-8")
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GatewayHttpError(500, "A Save Gateway receipt could not be read.") from exc
+    if not isinstance(payload, dict):
+        raise GatewayHttpError(500, "A Save Gateway receipt is invalid.")
+    return payload
+
+
+def _receipt_lock(request_id: str) -> threading.RLock:
+    with _RECEIPT_LOCKS_GUARD:
+        return _RECEIPT_LOCKS.setdefault(request_id, threading.RLock())
+
+
+def _load_gateway_config(root: Path) -> dict[str, Any]:
+    path = server_config_path(root)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        payload = default_gateway_config()
+        _write_json_atomic(path, payload)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HostedSaveHttpContractError(
+            f"Save Gateway configuration could not be read: {path}"
+        ) from exc
+    return normalize_gateway_config(payload)
+
+
+def _prune_terminal_receipts(root: Path, retention_hours: int) -> int:
+    """Remove only terminal receipts older than the configured window."""
+
+    folder = receipts_root(root)
+    if not folder.is_dir():
+        return 0
+    cutoff = time.time() - timedelta(hours=retention_hours).total_seconds()
+    removed = 0
+    for path in folder.glob("*.json"):
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+            receipt = _read_json(path)
+            if receipt is not None and receipt.get("state") in {"success", "error"}:
+                path.unlink()
+                removed += 1
+        except (OSError, GatewayHttpError):
+            continue
+    return removed
+
+
+def _log(root: Path, message: str) -> None:
+    path = root / "runtime" / "logs" / "save_gateway.log"
+    line = f"{_now_iso()} {message}\n"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(line)
+    except OSError:
+        pass
+
+
+def _validate_logical_location(request: Mapping[str, Any]) -> None:
+    project = str(request.get("ProjectName") or "").strip()
+    reserving_class = str(request.get("Path") or "").strip()
+    if (
+        not project
+        or project in {".", ".."}
+        or any(character in project for character in ("/", "\\", ":"))
+    ):
+        raise GatewayHttpError(400, "ProjectName must be one logical project name.")
+    path = PureWindowsPath(reserving_class)
+    if (
+        not reserving_class
+        or path.is_absolute()
+        or path.drive
+        or any(part in ("", ".", "..") for part in path.parts)
+    ):
+        raise GatewayHttpError(400, "Path must be a logical reserving-class path.")
+
+
+def _publish_request(root: Path, request: Mapping[str, Any]) -> None:
+    path = save_job_request_path(root, request["RequestId"])
+    if path.exists() or read_save_job_status(root, request["RequestId"]) is not None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        temporary.write_bytes(canonical_request_bytes(request))
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _new_receipt(request: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "receipt_version": 1,
+        "request_id": request["RequestId"],
+        "request_sha256": request_sha256(request),
+        "request": dict(request),
+        "state": "accepted",
+        "accepted_at": _now_iso(),
+        "updated_at": _now_iso(),
+    }
+
+
+def _terminal_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    status_code: int,
+    response: Mapping[str, Any] | None = None,
+    detail: str = "",
+) -> dict[str, Any]:
+    updated = dict(receipt)
+    updated.update(
+        {
+            "state": "success" if int(status_code) == 200 else "error",
+            "status_code": int(status_code),
+            "updated_at": _now_iso(),
+        }
+    )
+    if response is not None:
+        updated["response"] = dict(response)
+        updated.pop("detail", None)
+    else:
+        updated["detail"] = str(detail or "The hosted save failed.")
+        updated.pop("response", None)
+    return updated
+
+
+def _receipt_result(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    status_code = int(receipt.get("status_code") or 500)
+    if status_code != 200:
+        raise GatewayHttpError(status_code, str(receipt.get("detail") or "Save failed."))
+    response = receipt.get("response")
+    if not isinstance(response, Mapping):
+        raise GatewayHttpError(500, "The Save Gateway receipt has no response payload.")
+    return dict(response)
+
+
+def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[str, Any] | None, str]:
+    request_id = request["RequestId"]
+    timeout = (
+        SAVE_JOB_PLAN_TIMEOUT_SECONDS
+        if request["Mode"] == SAVE_JOB_MODE_PLAN
+        else SAVE_JOB_PROCESSING_TIMEOUT_SECONDS
+    )
+    started = time.monotonic()
+    claim_deadline = started + SAVE_JOB_QUEUED_TIMEOUT_SECONDS
+    deadline = started + timeout
+    claimed = False
+    while True:
+        status = read_save_job_status(root, request_id)
+        current = str((status or {}).get("status") or "queued")
+        if current != "queued":
+            claimed = True
+        if save_job_status_is_terminal(status):
+            if current == "success":
+                response = save_job_status_response(status) or read_save_job_result(
+                    root, request_id
+                )
+                if not isinstance(response, Mapping):
+                    return 500, None, "ArcRho Engine returned no save response."
+                return 200, dict(response), ""
+            return (
+                int(status.get("status_code") or 500),
+                None,
+                str(status.get("message") or "The hosted save failed."),
+            )
+        now = time.monotonic()
+        if not claimed and now >= claim_deadline:
+            request_path = save_job_request_path(root, request_id)
+            if request_path.is_file():
+                discard_save_job_artifacts(root, request_id)
+                return 503, None, "ArcRho Engine did not pick up the save."
+            claimed = True
+        if now >= deadline:
+            return (
+                504,
+                None,
+                "The save is taking longer than expected on ArcRho Engine. "
+                "Reload the dataset before retrying.",
+            )
+        time.sleep(STATUS_POLL_SECONDS)
+
+
+class SaveGateway:
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+
+    def capabilities(self) -> dict[str, Any]:
+        config = _load_gateway_config(self.root)
+        return {
+            "ok": True,
+            "hosted_save_http": bool(config["users"]),
+            "contract_version": HTTP_CONTRACT_VERSION,
+            "allowed_save_kinds": config["allowed_save_kinds"],
+            "insecure_http_pilot": True,
+        }
+
+    def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
+        config = _load_gateway_config(self.root)
+        user = normalize_user(headers.get(AUTH_USER_HEADER))
+        secret = config["users"].get(user)
+        if not secret or not verify_request_signature(
+            secret,
+            headers.get(AUTH_SIGNATURE_HEADER, ""),
+            user=user,
+            timestamp=headers.get(AUTH_TIMESTAMP_HEADER, ""),
+            method="POST",
+            path=HOSTED_SAVE_PATH,
+            body=body,
+        ):
+            raise GatewayHttpError(401, "Save Gateway authentication failed.")
+        return user
+
+    def submit(self, authenticated_user: str, raw_payload: Any) -> dict[str, Any]:
+        try:
+            request = validate_save_job_request(raw_payload)
+        except SaveJobContractError as exc:
+            raise GatewayHttpError(400, str(exc)) from exc
+        config = _load_gateway_config(self.root)
+        if request["SaveKind"] not in config["allowed_save_kinds"]:
+            raise GatewayHttpError(403, "This save kind is not enabled on the gateway.")
+        if normalize_user(request["UserName"]) != normalize_user(authenticated_user):
+            raise GatewayHttpError(403, "Authenticated user does not match the save user.")
+        _validate_logical_location(request)
+
+        request_id = request["RequestId"]
+        path = receipt_path(self.root, request_id)
+        with _receipt_lock(request_id):
+            receipt = _read_json(path)
+            digest = request_sha256(request)
+            if receipt is not None:
+                if receipt.get("request_sha256") != digest:
+                    raise GatewayHttpError(
+                        409, "This request id was already used for different save content."
+                    )
+                if receipt.get("state") in {"success", "error"}:
+                    return _receipt_result(receipt)
+            else:
+                try:
+                    require_live_engine(self.root)
+                    hold = find_reserving_class_propagation_hold(
+                        self.root, request["ProjectName"], request["Path"]
+                    )
+                except EngineUnavailableError as exc:
+                    raise GatewayHttpError(503, str(exc)) from exc
+                except DependentPropagationContractError as exc:
+                    raise GatewayHttpError(400, str(exc)) from exc
+                if hold is not None:
+                    raise GatewayHttpError(
+                        423,
+                        "Dependent updates are currently running for this reserving "
+                        "class. Please wait for them to finish, then save again.",
+                    )
+                receipt = _new_receipt(request)
+                _write_json_atomic(path, receipt)
+
+            try:
+                _publish_request(self.root, request)
+            except Exception as exc:
+                terminal = _terminal_receipt(
+                    receipt,
+                    status_code=500,
+                    detail="The Save Gateway could not publish the Engine request.",
+                )
+                _write_json_atomic(path, terminal)
+                raise GatewayHttpError(500, terminal["detail"]) from exc
+
+            status_code, response, detail = _wait_for_engine(self.root, request)
+            terminal = _terminal_receipt(
+                receipt,
+                status_code=status_code,
+                response=response,
+                detail=detail,
+            )
+            _write_json_atomic(path, terminal)
+            if status_code != 504:
+                discard_save_job_artifacts(self.root, request_id)
+            _log(
+                self.root,
+                f"request={request_id} user={authenticated_user} "
+                f"kind={request['SaveKind']} mode={request['Mode']} status={status_code}",
+            )
+            return _receipt_result(terminal)
+
+
+class GatewayServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], gateway: SaveGateway) -> None:
+        self.gateway = gateway
+        super().__init__(address, GatewayHandler)
+
+
+class GatewayHandler(BaseHTTPRequestHandler):
+    server: GatewayServer
+
+    def log_message(self, _format: str, *_args: Any) -> None:
+        return
+
+    def _send_json(self, status_code: int, payload: Mapping[str, Any]) -> None:
+        body = json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        self.send_response(int(status_code))
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        if path == HEALTH_PATH:
+            self._send_json(200, {"ok": True})
+            return
+        if path == CAPABILITIES_PATH:
+            try:
+                self._send_json(200, self.server.gateway.capabilities())
+            except Exception as exc:
+                self._send_json(503, {"detail": str(exc)})
+            return
+        self._send_json(404, {"detail": "Not found."})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if urlparse(self.path).path != HOSTED_SAVE_PATH:
+            self._send_json(404, {"detail": "Not found."})
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            self._send_json(400, {"detail": "Content-Length is invalid."})
+            return
+        if content_length <= 0 or content_length > MAX_REQUEST_BYTES:
+            self._send_json(413, {"detail": "Hosted-save request is too large."})
+            return
+        body = self.rfile.read(content_length)
+        try:
+            user = self.server.gateway.authenticate(self.headers, body)
+            payload = json.loads(body.decode("utf-8"))
+            response = self.server.gateway.submit(user, payload)
+            self._send_json(200, response)
+        except GatewayHttpError as exc:
+            self._send_json(exc.status_code, {"detail": exc.detail})
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._send_json(400, {"detail": "Hosted-save request is not valid JSON."})
+        except Exception:
+            _log(self.server.gateway.root, traceback.format_exc())
+            self._send_json(500, {"detail": "The Save Gateway failed unexpectedly."})
+
+
+def _heartbeat_path() -> Path:
+    computer = os.environ.get("COMPUTERNAME") or socket.gethostname()
+    user = os.environ.get("USERNAME") or "unknown"
+    token = datetime.now().strftime("%y%m%d-%H%M%S-%f")[:-3]
+    return resolve_app_path(
+        "save_gateway", "instances", f"{computer}@{user}@{token}.json"
+    )
+
+
+def _start_heartbeat(server: GatewayServer, path: Path) -> threading.Thread:
+    started = _now_iso()
+
+    def monitor() -> None:
+        while True:
+            if get_config_value(GATEWAY_KILL_ALL_KEY, False):
+                server.shutdown()
+                return
+            payload = {
+                "Server": path.stem,
+                "Created": started,
+                "Last seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Port": server.server_port,
+            }
+            try:
+                _write_json_atomic(path, payload)
+            except OSError:
+                pass
+            time.sleep(HEARTBEAT_SECONDS)
+
+    thread = threading.Thread(target=monitor, name="save-gateway-heartbeat", daemon=True)
+    thread.start()
+    return thread
+
+
+def main() -> int:
+    root = get_project_root().resolve()
+    try:
+        config = _load_gateway_config(root)
+        pruned = _prune_terminal_receipts(root, config["receipt_retention_hours"])
+        gateway = SaveGateway(root)
+        server = GatewayServer((config["host"], config["port"]), gateway)
+    except Exception as exc:
+        _log(root, f"startup failed: {exc}\n{traceback.format_exc()}")
+        return 1
+    heartbeat = _heartbeat_path()
+    _start_heartbeat(server, heartbeat)
+    _log(
+        root,
+        f"ready host={config['host']} port={server.server_port} "
+        f"pid={os.getpid()} receipts_pruned={pruned}",
+    )
+    try:
+        server.serve_forever(poll_interval=0.25)
+    finally:
+        heartbeat.unlink(missing_ok=True)
+        server.server_close()
+        _log(root, f"stopped pid={os.getpid()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -29,6 +29,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_dataset_types_path`
   - `get_field_mapping_path`
   - `get_general_settings_path`
+  - `get_hosted_save_gateway_config_path`
   - `get_local_project_prefs_path`
   - `get_mssql_connections_path`
   - `get_path`

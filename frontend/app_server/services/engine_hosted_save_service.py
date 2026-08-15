@@ -43,10 +43,16 @@ from arcrho_engine_save_contract import (
     save_job_status_response,
     save_job_status_is_terminal,
 )
+from arcrho_hosted_save_http_contract import (
+    HTTP_PILOT_SAVE_KINDS,
+    HostedSaveHttpContractError,
+)
 
+from app_server import config
 from app_server.services import (
     client_save_latency_log_service,
     dependent_propagation_service,
+    hosted_save_http_client,
     user_identity_service,
 )
 
@@ -360,6 +366,76 @@ def _run_hosted_job_impl(
         trace["poll_sleep_ms"] += _elapsed_ms(sleep_started_ns)
 
 
+def _run_hosted_job_http(
+    mode: str,
+    save_kind: str,
+    project_name: str,
+    reserving_class: str,
+    *,
+    args: Sequence[Any],
+    kwargs: Mapping[str, Any] | None,
+    plan_fingerprint: str,
+    processing_timeout_seconds: float,
+    gateway_config: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Send the canonical logical request to the server-side gateway."""
+
+    trace = _active_latency_trace()
+    _set_failure_stage("identity_lookup")
+    started_ns = time.perf_counter_ns()
+    try:
+        identity = user_identity_service.get_current_identity()
+    finally:
+        _record_phase("identity_lookup_ms", started_ns)
+
+    configured_user = str(gateway_config.get("user") or "").strip()
+    login_name = str(identity.get("login_name") or "").strip()
+    if configured_user.casefold() != login_name.casefold():
+        raise HTTPException(
+            403,
+            "The Save Gateway credential belongs to a different Windows user.",
+        )
+
+    _set_failure_stage("request_encode")
+    started_ns = time.perf_counter_ns()
+    try:
+        request = build_save_job_request(
+            request_id=trace["request_id"],
+            save_kind=save_kind,
+            project_name=project_name,
+            path=reserving_class,
+            args=jsonable_encoder(list(args)),
+            kwargs=jsonable_encoder(dict(kwargs or {})),
+            user_name=login_name,
+            user_display_name=identity["display_name"],
+            mode=mode,
+            plan_fingerprint=plan_fingerprint,
+        )
+    except SaveJobContractError as error:
+        raise HTTPException(400, str(error)) from error
+    finally:
+        _record_phase("request_encode_ms", started_ns)
+
+    _set_failure_stage("gateway_round_trip")
+    trace["remote_round_trip_started_ns"] = time.perf_counter_ns()
+    result, timings = hosted_save_http_client.submit_hosted_save(
+        gateway_config,
+        request,
+        timeout_seconds=processing_timeout_seconds,
+    )
+    trace["request_bytes"] = int(timings["request_bytes"])
+    trace["result_source"] = "http_gateway"
+    trace["phase_ms"].update(
+        {
+            "gateway_capability_ms": timings["gateway_capability_ms"],
+            "gateway_round_trip_ms": timings["gateway_round_trip_ms"],
+            "gateway_attempts": timings["gateway_attempts"],
+        }
+    )
+    _record_phase("remote_round_trip_ms", trace["remote_round_trip_started_ns"])
+    return result
+
+
 def _run_hosted_job(
     mode: str,
     save_kind: str,
@@ -378,9 +454,17 @@ def _run_hosted_job(
     """Run one hosted job and append its client-side latency trace locally."""
 
     request_id = uuid.uuid4().hex
+    gateway_config: Mapping[str, Any] = {"enabled": False}
+    if save_kind in HTTP_PILOT_SAVE_KINDS:
+        try:
+            gateway_config = config.load_hosted_save_gateway_config()
+        except HostedSaveHttpContractError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    transport = "http_gateway" if gateway_config.get("enabled") is True else "smb"
     context = {
         "mode": mode,
         "save_kind": save_kind,
+        "transport": transport,
         "project_name": str(project_name or "").strip(),
         "reserving_class": str(reserving_class or "").strip(),
         "object_name": _save_object_name(args),
@@ -402,20 +486,33 @@ def _run_hosted_job(
     outcome = "error"
     http_status = 500
     try:
-        result = _run_hosted_job_impl(
-            mode,
-            save_kind,
-            project_name,
-            reserving_class,
-            args=args,
-            kwargs=kwargs,
-            plan_fingerprint=plan_fingerprint,
-            processing_timeout_seconds=processing_timeout_seconds,
-            missing_result_message=missing_result_message,
-            unavailable_message=unavailable_message,
-            timeout_message=timeout_message,
-            failure_message=failure_message,
-        )
+        if gateway_config.get("enabled") is True:
+            result = _run_hosted_job_http(
+                mode,
+                save_kind,
+                project_name,
+                reserving_class,
+                args=args,
+                kwargs=kwargs,
+                plan_fingerprint=plan_fingerprint,
+                processing_timeout_seconds=processing_timeout_seconds,
+                gateway_config=gateway_config,
+            )
+        else:
+            result = _run_hosted_job_impl(
+                mode,
+                save_kind,
+                project_name,
+                reserving_class,
+                args=args,
+                kwargs=kwargs,
+                plan_fingerprint=plan_fingerprint,
+                processing_timeout_seconds=processing_timeout_seconds,
+                missing_result_message=missing_result_message,
+                unavailable_message=unavailable_message,
+                timeout_message=timeout_message,
+                failure_message=failure_message,
+            )
         outcome = "success"
         http_status = 200
         trace["failure_stage"] = ""

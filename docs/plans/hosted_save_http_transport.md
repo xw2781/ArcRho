@@ -1,7 +1,7 @@
 # Hosted Save Transport: Current SMB Protocol vs Proposed HTTP Gateway
 
-Status: Proposal — not implemented  
-Last updated: 2026-08-14
+Status: Dataset-sidecar and DFM-method pilot implemented; broader rollout remains proposed
+Last updated: 2026-08-15
 
 ## Summary
 
@@ -9,7 +9,43 @@ ArcRho currently coordinates Engine-hosted saves through small JSON files on the
 
 The proposed design adds one authenticated HTTP Save Gateway on the ArcRho Server. Clients communicate only with that gateway; the gateway translates requests into the existing server-local hosted-save protocol and waits for Engine completion locally. This removes mapped-drive I/O from the client save path without changing canonical save functions, reserving-class leases, dependent propagation, or endpoint response shapes.
 
-The HTTP gateway is an architectural proposal. The current SMB protocol remains the production design until the gateway is implemented, tested, and rolled out.
+The HTTP gateway now has a no-IT dataset-sidecar and DFM-method pilot. SMB remains the default
+production transport and rollback path until the pilot is measured and its
+TLS/authentication deployment is approved for broader use.
+
+## Implemented Dataset-Sidecar and DFM Pilot
+
+The implementation limits the gateway allowlist to `dataset_sidecar` and
+`dfm_method` while keeping `/dataset/sidecar/save`, `/dfm/method/save`, and
+their `/plan` siblings unchanged. The browser still calls its local app
+server; only the app-server-to-Engine transport changes.
+
+- `ArcRho Save Gateway` is a dedicated server executable supervised by every
+  logged-in user's Orchestrator. One process wins the fixed port; another
+  logged-in session restores it after its heartbeat becomes stale.
+- The client sends the existing `ArcRhoHostedSave` payload. The Gateway writes
+  the same Engine request locally and observes completion locally.
+- A receipt is persisted before Engine publication and binds the request ID to
+  the canonical request SHA-256. Same-ID replay returns the stored outcome;
+  different content under the same ID returns `409`.
+- The no-IT pilot uses an HMAC credential per user and plain HTTP on the
+  controlled internal network. HMAC prevents credential disclosure and
+  payload tampering, but plain HTTP does **not** encrypt dataset or DFM content. This
+  is a performance pilot only; production rollout still requires HTTPS.
+- `%APPDATA%\ArcRho\hosted_save_gateway.json` is the local-user feature flag
+  and credential. A missing file keeps SMB behavior. Invalid enabled
+  configuration fails explicitly and never silently falls back.
+- Provision with
+  `py -3.10 data-engine/src/arcrho_save_gateway/configure_pilot.py --user <login>`.
+  The command updates the server registry and installs the current user's
+  local client credential without printing the secret.
+- On each Windows account that may be the only account signed into the server
+  PC, add `--install-current-user-startup`. It registers the deployed gateway
+  under that account's HKCU Run key without elevation. Client-only PCs do not
+  use this flag. The first configured server account that signs in owns the
+  machine-wide listener; later copies exit because the port is already owned.
+- Client latency records identify `transport` as `smb` or `http_gateway` for
+  like-for-like comparison in `client_save_latency.jsonl`.
 
 ## Goals
 

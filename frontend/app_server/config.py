@@ -16,6 +16,11 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
+from arcrho_hosted_save_http_contract import (
+    CLIENT_CONFIG_FILE_NAME as HOSTED_SAVE_GATEWAY_CONFIG_FILE,
+    HostedSaveHttpContractError,
+    normalize_client_config,
+)
 from arcrho_project_duplication_contract import (
     encode_filename_segment as _canonical_encode_filename_segment,
 )
@@ -62,6 +67,7 @@ DEFAULT_PROJECT_SETTINGS_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_pre
 DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
 DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 CLIENT_SAVE_LATENCY_LOG_FILE = "client_save_latency.jsonl"
+HOSTED_SAVE_GATEWAY_CONFIG_ENV = "ARCRHO_HOSTED_SAVE_GATEWAY_CONFIG"
 
 
 def _is_arcode_mode() -> bool:
@@ -94,6 +100,36 @@ def get_client_save_latency_log_path() -> str:
         "logs",
         CLIENT_SAVE_LATENCY_LOG_FILE,
     )
+
+
+def get_hosted_save_gateway_config_path() -> str:
+    """Return the current user's machine-local gateway credential path."""
+
+    configured = str(os.environ.get(HOSTED_SAVE_GATEWAY_CONFIG_ENV) or "").strip()
+    if configured:
+        return configured
+    return os.path.join(_get_user_appdata_dir(), HOSTED_SAVE_GATEWAY_CONFIG_FILE)
+
+
+def load_hosted_save_gateway_config() -> Dict[str, Any]:
+    """Load the optional dataset-save HTTP transport configuration.
+
+    A missing file keeps the existing SMB transport. An enabled but malformed
+    file fails explicitly so ArcRho never silently falls back after an HTTP
+    submission might have been accepted.
+    """
+
+    path = get_hosted_save_gateway_config_path()
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except FileNotFoundError:
+        return {"enabled": False}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HostedSaveHttpContractError(
+            f"Save Gateway configuration could not be read: {path}"
+        ) from exc
+    return normalize_client_config(raw)
 
 
 WORKSPACE_PATHS_PATH = os.path.join(

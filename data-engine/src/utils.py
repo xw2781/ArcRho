@@ -39,6 +39,10 @@ COMPONENTS = {
         "dirs": ("arcrho_bridge_worker",),
         "apps": ("ArcRho Bridge Worker",),
     },
+    "save_gateway": {
+        "dirs": ("arcrho_save_gateway",),
+        "apps": ("ArcRho Save Gateway",),
+    },
 }
 
 COMPONENT_ALIASES = {
@@ -57,6 +61,8 @@ COMPONENT_ALIASES = {
     "rpc_bridge": "bridge",
     "bridge_worker": "bridge_worker",
     "rpc_bridge_worker": "bridge_worker",
+    "save_gateway": "save_gateway",
+    "gateway": "save_gateway",
 }
 
 SERVER_COMPONENT_ROLES = (

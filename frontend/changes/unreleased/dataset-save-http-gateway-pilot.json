@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "hosted saves",
+  "audience": "user",
+  "summary": "Added an optional server-local HTTP gateway pilot for faster dataset and DFM saves.",
+  "details": [
+    "The existing SMB save transport remains the default and rollback path.",
+    "Pilot latency records identify HTTP and SMB transports for direct comparison.",
+    "A server user can register the gateway at login without administrator access."
+  ]
+}

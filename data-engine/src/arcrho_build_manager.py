@@ -82,9 +82,8 @@ def _build_component(role: str) -> Component:
     )
 
 
-COMPONENTS = tuple(
-    _build_component(role) for role in SERVER_COMPONENT_ROLES
-)
+MANAGED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "save_gateway")
+COMPONENTS = tuple(_build_component(role) for role in MANAGED_COMPONENT_ROLES)
 
 
 def instance_folder(role: str) -> Path:

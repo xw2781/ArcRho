@@ -49,12 +49,20 @@ from server_deployment_contract import (  # noqa: E402
 
 
 WORKSPACE_DIRECTORIES = ("apps", "config", "projects", "requests", "runtime")
-SHUTDOWN_ROLES = ("engine", "bridge", "bridge_worker", "orchestrator", "admin")
+SHUTDOWN_ROLES = (
+    "engine",
+    "bridge",
+    "bridge_worker",
+    "save_gateway",
+    "orchestrator",
+    "admin",
+)
 KILL_SWITCH_PATHS = (
     "apps.engine.kill_all",
     "apps.bridge.kill_all",
     "apps.bridge_worker.kill_all",
     "apps.orchestrator.kill_all",
+    "apps.save_gateway.kill_all",
 )
 ADMIN_PORT = 28766
 SHUTDOWN_TIMEOUT_SECONDS = 180.0
