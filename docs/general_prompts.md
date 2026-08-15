@@ -1,3 +1,4 @@
+git pull --ff-only
 
 All datasets and methods are imported using the "Import ResQ Reserving Class" macro.
 
