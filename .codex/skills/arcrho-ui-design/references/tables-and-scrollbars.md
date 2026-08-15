@@ -12,7 +12,9 @@ Prevent scroll bleed-through with paint-only header-cell covers rather than layo
 
 ### T03 - Continuous table frame
 
-Keep one visible outer edge across the table body, sticky header, total row, and scrollbar tray. Treat the scroll wrapper and gutter as part of the frame: retain the wrapper border, reserve stable scrollbar gutter space, add minimal right and bottom breathing room when needed, and preserve the last visible row and column borders, including masked blank cells, at maximum scroll. Keep dense table frames square unless a modal, picker, or established local panel pattern requires rounded corners.
+Keep one visible outer edge across the table body, sticky header, total row, and scrollbar tray. Treat the scroll wrapper and gutter as part of the frame: retain the wrapper border, add minimal right and bottom breathing room when needed, and preserve the last visible row and column borders, including masked blank cells, at maximum scroll. Keep dense table frames square unless a modal, picker, or established local panel pattern requires rounded corners.
+
+Do not reserve a stable scrollbar gutter: use `scrollbar-gutter: auto` (or omit the property) so a table wrapper with no overflow shows no scrollbar-tray placeholder, matching the Data tab and Audit Log tables. A stable gutter also shortens a horizontal scrollbar track without a vertical scrollbar present, making the horizontal thumb look short of the right edge at maximum scroll.
 
 ### T04 - Balanced table insets
 

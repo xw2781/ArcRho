@@ -111,7 +111,6 @@
   overflow: auto;
   border: 1px solid #cfd6df;
   background: #fff;
-  scrollbar-gutter: stable;
 }
 
 .pi-excel-links-table {
