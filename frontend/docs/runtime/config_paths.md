@@ -22,6 +22,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `_sanitize_project_dir_name`
   - `clear_runtime_path_caches`
   - `get_audit_log_path`
+  - `get_client_read_latency_log_path`
   - `get_client_save_latency_log_path`
   - `get_data_processing_rules_path`
   - `get_data_processing_values_path`
@@ -84,8 +85,9 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.
-- `%APPDATA%\ArcRho\hosted_save_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/hosted_save_gateway.json` owns the shared `client_url`, allowlist, and HMAC user registry; lock-protected atomic enrollment prevents concurrent first launches from losing users.
-- `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`.
+- `%APPDATA%\ArcRho\hosted_save_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/hosted_save_gateway.json` owns the shared `client_url` and HMAC user registry, and no save-kind allowlist — the supported kinds are derived from `SAVE_JOB_KINDS`; lock-protected atomic enrollment prevents concurrent first launches from losing users.
+- `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`. The workspace-read client also treats its presence as "this is a server process" and never routes a read to the gateway from such a process.
+- `%LOCALAPPDATA%\ArcRho\logs\client_save_latency.jsonl` and `client_read_latency.jsonl` (`get_client_save_latency_log_path`, `get_client_read_latency_log_path`) hold the per-operation transport diagnostics for hosted saves and Server-hosted workspace reads; both rotate at 5 MB with three backups and never contain project data.
 - If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.
 - Runtime globals in `app_server/config.py` are refreshed from config after `/workspace_paths` updates.
 - The workspace-global `config/dataset_number_formats.json` stores a fallback display format plus reserving-class/Dataset Type Name overrides shared by ResQ migration and frontend dataset generation. Override rows use `reserving_class`, `dataset_type_name`, and `number_format`; they are not keyed by dataset instance Name and are not project-specific.

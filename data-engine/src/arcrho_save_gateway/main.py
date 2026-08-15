@@ -1,4 +1,4 @@
-"""Machine-local HTTP gateway for Engine-hosted ArcRho dataset saves."""
+"""Machine-local HTTP gateway for Engine-hosted saves and Server-hosted workspace reads."""
 
 from __future__ import annotations
 
@@ -60,6 +60,7 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     HEALTH_PATH,
     HOSTED_SAVE_PATH,
     HTTP_CONTRACT_VERSION,
+    HTTP_SAVE_KINDS,
     MAX_REQUEST_BYTES,
     HostedSaveHttpContractError,
     canonical_request_bytes,
@@ -71,6 +72,16 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     request_sha256,
     server_config_path,
     verify_request_signature,
+)
+from arcrho_workspace_read_contract import (  # noqa: E402
+    MAX_WORKSPACE_READ_REQUEST_BYTES,
+    WORKSPACE_READ_PATH,
+    WORKSPACE_ROOT_HEADER,
+)
+from arcrho_save_gateway.workspace_reads import (  # noqa: E402
+    WorkspaceReadExecutor,
+    WorkspaceReadHttpError,
+    WorkspaceReadRefusal,
 )
 HEARTBEAT_SECONDS = 5.0
 STATUS_POLL_SECONDS = 0.05
@@ -292,6 +303,9 @@ def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[
 class SaveGateway:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self.reads = WorkspaceReadExecutor(
+            self.root, load_gateway_config=_load_gateway_config, log=_log
+        )
 
     def capabilities(self) -> dict[str, Any]:
         config = _load_gateway_config(self.root)
@@ -299,8 +313,9 @@ class SaveGateway:
             "ok": True,
             "hosted_save_http": bool(config["users"]),
             "contract_version": HTTP_CONTRACT_VERSION,
-            "allowed_save_kinds": config["allowed_save_kinds"],
+            "allowed_save_kinds": list(HTTP_SAVE_KINDS),
             "insecure_http_pilot": True,
+            **self.reads.capability_fields(),
         }
 
     def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
@@ -324,9 +339,9 @@ class SaveGateway:
             request = validate_save_job_request(raw_payload)
         except SaveJobContractError as exc:
             raise GatewayHttpError(400, str(exc)) from exc
-        config = _load_gateway_config(self.root)
-        if request["SaveKind"] not in config["allowed_save_kinds"]:
-            raise GatewayHttpError(403, "This save kind is not enabled on the gateway.")
+        # ``validate_save_job_request`` already rejects any kind outside the
+        # canonical SAVE_JOB_KINDS registry, so the gateway needs no second
+        # allowlist of its own.
         if normalize_user(request["UserName"]) != normalize_user(authenticated_user):
             raise GatewayHttpError(403, "Authenticated user does not match the save user.")
         _validate_logical_location(request)
@@ -405,7 +420,12 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def log_message(self, _format: str, *_args: Any) -> None:
         return
 
-    def _send_json(self, status_code: int, payload: Mapping[str, Any]) -> None:
+    def _send_json(
+        self,
+        status_code: int,
+        payload: Mapping[str, Any],
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> None:
         body = json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")).encode(
             "utf-8"
         )
@@ -413,6 +433,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -430,7 +452,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"detail": "Not found."})
 
     def do_POST(self) -> None:  # noqa: N802
-        if urlparse(self.path).path != HOSTED_SAVE_PATH:
+        path = urlparse(self.path).path
+        if path == WORKSPACE_READ_PATH:
+            self._handle_workspace_read()
+            return
+        if path != HOSTED_SAVE_PATH:
             self._send_json(404, {"detail": "Not found."})
             return
         try:
@@ -451,6 +477,36 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._send_json(exc.status_code, {"detail": exc.detail})
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._send_json(400, {"detail": "Hosted-save request is not valid JSON."})
+        except Exception:
+            _log(self.server.gateway.root, traceback.format_exc())
+            self._send_json(500, {"detail": "The Save Gateway failed unexpectedly."})
+
+    def _handle_workspace_read(self) -> None:
+        try:
+            content_length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            self._send_json(400, {"detail": "Content-Length is invalid."})
+            return
+        if content_length <= 0 or content_length > MAX_WORKSPACE_READ_REQUEST_BYTES:
+            self._send_json(413, {"detail": "Workspace-read request is too large."})
+            return
+        body = self.rfile.read(content_length)
+        reads = self.server.gateway.reads
+        # The header tells the client which workspace root the payload's paths
+        # belong to; it is present exactly when the hosted read ran, including
+        # a refusal the service raised itself.
+        ran_headers = {WORKSPACE_ROOT_HEADER: str(reads.root)}
+        try:
+            user = reads.authenticate(self.headers, body)
+            payload = json.loads(body.decode("utf-8"))
+            response = reads.execute(user, payload)
+            self._send_json(200, response, ran_headers)
+        except WorkspaceReadRefusal as exc:
+            self._send_json(exc.status_code, {"detail": exc.detail}, ran_headers)
+        except WorkspaceReadHttpError as exc:
+            self._send_json(exc.status_code, {"detail": exc.detail})
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._send_json(400, {"detail": "Workspace-read request is not valid JSON."})
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
             self._send_json(500, {"detail": "The Save Gateway failed unexpectedly."})
@@ -502,6 +558,7 @@ def main() -> int:
         return 1
     heartbeat = _heartbeat_path()
     _start_heartbeat(server, heartbeat)
+    gateway.reads.warm_up()
     _log(
         root,
         f"ready host={config['host']} port={server.server_port} "

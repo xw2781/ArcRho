@@ -9,7 +9,7 @@ Own the self-contained Cape Cod v1 contract, aggregate two-file load (plus the d
 <!-- AUTO-GEN:BEGIN app_server.cape_cod.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/cape-cod/load` | `load_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.load_cape_cod_method` |
+| `POST` | `/cape-cod/load` | `load_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.load_cape_cod_method`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/cape-cod/refresh` | `refresh_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.refresh_cape_cod_method` |
 | `POST` | `/cape-cod/save` | `save_cape_cod` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/cape-cod/save/plan` | `plan_cape_cod_save` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `engine_hosted_save_service.run_hosted_save_plan` |
@@ -35,6 +35,7 @@ Own the self-contained Cape Cod v1 contract, aggregate two-file load (plus the d
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
+- `POST /cape-cod/load` is the `cape_cod_load` Server-hosted workspace read: when the Save Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - The only supported marker is `arcrho-cape-cod-method-by-tab-v1`.
 - Method JSON owns source names and embedded value snapshots (Latest diagonal, Exposure, Prior Ultimate), the owned parameters (trend rate, auto fit, decay, scaling, alternative calculation, trend factor overrides), origin labels, every derived Method-tab column, timestamps, and deterministic owned/derived/publication revisions. When Auto Fit is on the trend rate is derived (refit on every recalculation) and overrides are cleared.
 - All calculations live in `python-api/src/arcrho_api/cape_cod_contract.py`; the service never computes values itself. Derived columns are validated on save to match the embedded snapshots exactly.

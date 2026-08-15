@@ -67,6 +67,7 @@ DEFAULT_PROJECT_SETTINGS_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_pre
 DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
 DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 CLIENT_SAVE_LATENCY_LOG_FILE = "client_save_latency.jsonl"
+CLIENT_READ_LATENCY_LOG_FILE = "client_read_latency.jsonl"
 HOSTED_SAVE_GATEWAY_CONFIG_ENV = "ARCRHO_HOSTED_SAVE_GATEWAY_CONFIG"
 
 
@@ -99,6 +100,16 @@ def get_client_save_latency_log_path() -> str:
         _get_user_local_appdata_dir(),
         "logs",
         CLIENT_SAVE_LATENCY_LOG_FILE,
+    )
+
+
+def get_client_read_latency_log_path() -> str:
+    """Canonical local-PC path for Server-hosted workspace-read diagnostics."""
+
+    return os.path.join(
+        _get_user_local_appdata_dir(),
+        "logs",
+        CLIENT_READ_LATENCY_LOG_FILE,
     )
 
 

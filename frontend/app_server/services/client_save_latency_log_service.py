@@ -1,10 +1,12 @@
-"""Rotating client-local JSONL diagnostics for Engine-hosted saves.
+"""Rotating client-local JSONL diagnostics for Server-hosted transports.
 
 The hosted-save protocol intentionally crosses the ArcRho Server network
-drive several times before and after ArcRho Engine does its work.  Each save
-collects its timings in memory, then appends one compact record here after the
-measured critical path has ended.  The log never contains a method payload or
-project data, and a logging failure must never change the save outcome.
+drive several times before and after ArcRho Engine does its work, and a
+workspace read either does the same or travels through the Save Gateway.
+Each operation collects its timings in memory, then appends one compact
+record here after the measured critical path has ended.  The logs never
+contain a method payload or project data, and a logging failure must never
+change the operation's outcome.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from app_server import config
 
 
 CLIENT_SAVE_LATENCY_LOG_SCHEMA_VERSION = 1
+CLIENT_READ_LATENCY_LOG_SCHEMA_VERSION = 1
 CLIENT_SAVE_LATENCY_LOG_MAX_BYTES = 5 * 1024 * 1024
 CLIENT_SAVE_LATENCY_LOG_BACKUP_COUNT = 3
 
@@ -47,11 +50,9 @@ def _rotate_if_needed(path: Path, incoming_bytes: int) -> None:
     os.replace(path, _rotated_path(path, 1))
 
 
-def append_client_save_latency(record: Mapping[str, Any]) -> bool:
-    """Append one diagnostic record locally; return whether it was written."""
-
+def _append_record(path: Path, schema_version: int, record: Mapping[str, Any]) -> bool:
     payload = {
-        "schema_version": CLIENT_SAVE_LATENCY_LOG_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         **dict(record),
     }
@@ -62,7 +63,6 @@ def append_client_save_latency(record: Mapping[str, Any]) -> bool:
         sort_keys=True,
     ) + "\n"
     encoded_length = len(line.encode("utf-8"))
-    path = Path(config.get_client_save_latency_log_path())
     try:
         with _LOG_LOCK:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,3 +72,23 @@ def append_client_save_latency(record: Mapping[str, Any]) -> bool:
     except Exception:
         return False
     return True
+
+
+def append_client_save_latency(record: Mapping[str, Any]) -> bool:
+    """Append one hosted-save diagnostic record locally; return whether written."""
+
+    return _append_record(
+        Path(config.get_client_save_latency_log_path()),
+        CLIENT_SAVE_LATENCY_LOG_SCHEMA_VERSION,
+        record,
+    )
+
+
+def append_client_read_latency(record: Mapping[str, Any]) -> bool:
+    """Append one workspace-read diagnostic record locally; return whether written."""
+
+    return _append_record(
+        Path(config.get_client_read_latency_log_path()),
+        CLIENT_READ_LATENCY_LOG_SCHEMA_VERSION,
+        record,
+    )

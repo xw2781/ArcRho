@@ -9,7 +9,7 @@ Own the aggregate load, validation, persistence, and eager dependency refresh fl
 <!-- AUTO-GEN:BEGIN app_server.result_selection.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/result-selection/load` | `load_result_selection` | `ResultSelectionLoadRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `result_selection_service.load_result_selection` |
+| `POST` | `/result-selection/load` | `load_result_selection` | `ResultSelectionLoadRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `result_selection_service.load_result_selection`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/result-selection/save` | `save_result_selection` | `ResultSelectionSaveRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/result-selection/save/plan` | `plan_result_selection_save` | `ResultSelectionSaveRequest` | [`app_server/schemas/result_selection.py`](../../../app_server/schemas/result_selection.py) | `engine_hosted_save_service.run_hosted_save_plan` |
 <!-- AUTO-GEN:END -->
@@ -32,6 +32,7 @@ Own the aggregate load, validation, persistence, and eager dependency refresh fl
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
+- `POST /result-selection/load` is the `result_selection_load` Server-hosted workspace read: when the Save Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - Current method marker: `arcrho-result-selection-method-by-tab-v2`. Legacy v1 remains readable only for the one-time upgrade.
 - `method_tab.loaded_datasets[*]` owns source metadata plus one `values` and `weights` entry per `origin_labels` row. `method_tab.ratio_basis_values` is a deterministic configured-order array of `{name, values}` records, including inactive configured bases; every vector has exactly one entry per origin row. `calculated_ultimate`, `selected_ultimate`, and `ultimate_overrides` have the same row count.
 - `details_tab.ratio_basis_datasets` contains at most three case-insensitively deduplicated names, and `active_ratio_basis_dataset` must be one of them or blank. Source and Ratio Basis names form the deterministic union persisted in sidecar `Precedents` and reverse source-sidecar `Dependents`.

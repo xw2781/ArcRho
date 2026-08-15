@@ -8,7 +8,11 @@ from app_server.schemas.cape_cod import (
     CapeCodIdentityRequest,
     CapeCodSaveRequest,
 )
-from app_server.services import cape_cod_service, engine_hosted_save_service
+from app_server.services import (
+    cape_cod_service,
+    engine_hosted_save_service,
+    workspace_read_client,
+)
 
 
 router = APIRouter()
@@ -16,10 +20,18 @@ router = APIRouter()
 
 @router.post("/cape-cod/load")
 def load_cape_cod(req: CapeCodIdentityRequest) -> Dict[str, Any]:
-    return cape_cod_service.load_cape_cod_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
+    return workspace_read_client.run_workspace_read(
+        "cape_cod_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method_name": req.method_name,
+        },
+        local=lambda: cape_cod_service.load_cape_cod_method(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+        ),
     )
 
 

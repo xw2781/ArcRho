@@ -8,7 +8,11 @@ from app_server.schemas.bootstrap import (
     BootstrapIdentityRequest,
     BootstrapSaveRequest,
 )
-from app_server.services import bootstrap_service, engine_hosted_save_service
+from app_server.services import (
+    bootstrap_service,
+    engine_hosted_save_service,
+    workspace_read_client,
+)
 
 
 router = APIRouter()
@@ -16,10 +20,18 @@ router = APIRouter()
 
 @router.post("/bootstrap/load")
 def load_bootstrap(req: BootstrapIdentityRequest) -> Dict[str, Any]:
-    return bootstrap_service.load_bootstrap_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
+    return workspace_read_client.run_workspace_read(
+        "bootstrap_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method_name": req.method_name,
+        },
+        local=lambda: bootstrap_service.load_bootstrap_method(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+        ),
     )
 
 

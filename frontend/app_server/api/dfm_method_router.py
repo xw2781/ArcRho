@@ -10,7 +10,7 @@ from app_server.schemas.dfm_method import (
     DfmMethodPreviewRequest,
     DfmMethodSaveRequest,
 )
-from app_server.services import dfm_service, engine_hosted_save_service
+from app_server.services import dfm_service, engine_hosted_save_service, workspace_read_client
 
 
 router = APIRouter()
@@ -27,11 +27,20 @@ def resolve_dfm_dataset_references(req: DfmDatasetReferencesResolveRequest) -> D
 
 @router.post("/dfm/method/load")
 def load_dfm_method(req: DfmMethodIdentityRequest) -> Dict[str, Any]:
-    return dfm_service.load_dfm_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
-        output_dataset=req.output_dataset,
+    return workspace_read_client.run_workspace_read(
+        "dfm_method_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method_name": req.method_name,
+            "output_dataset": req.output_dataset,
+        },
+        local=lambda: dfm_service.load_dfm_method(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+            output_dataset=req.output_dataset,
+        ),
     )
 
 

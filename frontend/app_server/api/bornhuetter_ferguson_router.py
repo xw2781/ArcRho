@@ -8,7 +8,11 @@ from app_server.schemas.bornhuetter_ferguson import (
     BornhuetterFergusonIdentityRequest,
     BornhuetterFergusonSaveRequest,
 )
-from app_server.services import bornhuetter_ferguson_service, engine_hosted_save_service
+from app_server.services import (
+    bornhuetter_ferguson_service,
+    engine_hosted_save_service,
+    workspace_read_client,
+)
 
 
 router = APIRouter()
@@ -16,10 +20,18 @@ router = APIRouter()
 
 @router.post("/bornhuetter-ferguson/load")
 def load_bornhuetter_ferguson(req: BornhuetterFergusonIdentityRequest) -> Dict[str, Any]:
-    return bornhuetter_ferguson_service.load_bornhuetter_ferguson_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
+    return workspace_read_client.run_workspace_read(
+        "bornhuetter_ferguson_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method_name": req.method_name,
+        },
+        local=lambda: bornhuetter_ferguson_service.load_bornhuetter_ferguson_method(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+        ),
     )
 
 

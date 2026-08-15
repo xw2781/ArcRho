@@ -7,8 +7,11 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
+from fastapi import HTTPException
 
+from arcrho_api.io import persisted_json_text
 from app_server import config
+from app_server.services import field_mapping_service, source_table_service
 
 # Bump whenever the cached summary payload gains or changes fields so stale
 # caches are regenerated instead of served without the newer keys.
@@ -93,6 +96,63 @@ def discard_cached_summary(cache_path: str) -> bool:
         return False
     except OSError:
         return False
+
+
+def resolve_master_table(project_name: str, *, force: bool) -> str:
+    """Project-owned imported table, refreshed from its configured source."""
+    try:
+        status = source_table_service.ensure_master_table(project_name, force=force)
+    except source_table_service.SourceTableNotConfiguredError as error:
+        raise HTTPException(400, str(error))
+    except source_table_service.SourceTableMissingError as error:
+        raise HTTPException(409, str(error))
+    except FileNotFoundError as error:
+        raise HTTPException(404, str(error))
+    master_path = str(status.get("master_table_path") or "")
+    if not master_path or not os.path.isfile(master_path):
+        raise HTTPException(409, f"No imported source table for project: {project_name}")
+    return master_path
+
+
+def write_summary_cache(cache_path: str, summary: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    with open(cache_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(persisted_json_text(summary))
+
+
+def get_table_summary(project_name: str) -> Dict[str, Any]:
+    """Serve the imported table's summary, regenerating it only when stale.
+
+    Reading the whole master table to summarize it is the expensive step, so
+    this is registered as a Server-hosted workspace read
+    (``arcrho_workspace_read_contract``) and may run on the server host.
+    """
+    name = str(project_name or "").strip()
+    if not name:
+        raise HTTPException(400, "Missing project_name parameter")
+
+    try:
+        master_path = resolve_master_table(name, force=False)
+        cache_path = config.get_table_summary_cache_path(name)
+        # Date-role columns are summarized by year, so the mapping is part of
+        # what makes a cached payload current.
+        date_roles = field_mapping_service.load_date_role_fields(name)
+
+        cached_data = load_valid_cache(master_path, cache_path, date_roles)
+        if cached_data is not None:
+            cached_data["from_cache"] = True
+            return cached_data
+
+        summary = generate_table_summary(master_path, date_roles)
+        summary["from_cache"] = False
+        write_summary_cache(cache_path, summary)
+        return summary
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error reading file: {str(e)}")
 
 
 def _date_year_distribution(values: pd.Series) -> Optional[Dict[str, Any]]:

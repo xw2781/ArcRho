@@ -5,14 +5,20 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app_server.schemas.dfm_method_index import DfmMethodIndexRefreshRequest
-from app_server.services import dataset_instance_index_service
+from app_server.services import dataset_instance_index_service, workspace_read_client
 
 router = APIRouter()
 
 
 @router.get("/dfm/method-index")
 def get_dfm_method_index(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
-    return dataset_instance_index_service.get_index(project_name, reserving_class, refresh=refresh)
+    return workspace_read_client.run_workspace_read(
+        "dataset_index",
+        {"project_name": project_name, "reserving_class": reserving_class, "refresh": bool(refresh)},
+        local=lambda: dataset_instance_index_service.get_index(
+            project_name, reserving_class, refresh=refresh
+        ),
+    )
 
 
 @router.get("/dfm/percent-developed-curve")

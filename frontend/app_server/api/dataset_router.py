@@ -18,6 +18,7 @@ from app_server.schemas.dataset import (
 from app_server.services import dataset_service, engine_hosted_save_service
 from app_server.services import calculated_dataset_service
 from app_server.services import dataset_number_format_service
+from app_server.services import workspace_read_client
 
 router = APIRouter()
 
@@ -47,7 +48,13 @@ def list_datasets() -> List[Dict[str, Any]]:
 
 @router.get("/datasets/cached")
 def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
-    return dataset_service.list_cached_dataset_names(project_name, reserving_class, refresh=refresh)
+    return workspace_read_client.run_workspace_read(
+        "dataset_index",
+        {"project_name": project_name, "reserving_class": reserving_class, "refresh": bool(refresh)},
+        local=lambda: dataset_service.list_cached_dataset_names(
+            project_name, reserving_class, refresh=refresh
+        ),
+    )
 
 
 @router.post("/datasets/cached/delete")
@@ -126,15 +133,33 @@ def save_dataset_notes(req: DatasetNotesSaveRequest) -> Dict[str, Any]:
 
 @router.post("/dataset/cache/load")
 def load_dataset_cache(req: DatasetCacheLoadRequest) -> Dict[str, Any]:
-    return dataset_service.load_cached_dataset_values(
-        req.project_name,
-        req.reserving_class,
-        req.dataset_name,
-        csv_file=req.csv_file,
-        origin_length=req.origin_length,
-        development_length=req.development_length,
-        cumulative=req.cumulative,
-        calendar=req.calendar,
+    def _adopt(payload: Dict[str, Any]) -> Dict[str, Any]:
+        dataset_service.register_dataset_handle(payload.get("id"), payload.get("path"))
+        return payload
+
+    return workspace_read_client.run_workspace_read(
+        "dataset_cache_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "dataset_name": req.dataset_name,
+            "csv_file": req.csv_file,
+            "origin_length": req.origin_length,
+            "development_length": req.development_length,
+            "cumulative": req.cumulative,
+            "calendar": req.calendar,
+        },
+        local=lambda: dataset_service.load_cached_dataset_values(
+            req.project_name,
+            req.reserving_class,
+            req.dataset_name,
+            csv_file=req.csv_file,
+            origin_length=req.origin_length,
+            development_length=req.development_length,
+            cumulative=req.cumulative,
+            calendar=req.calendar,
+        ),
+        finalize=_adopt,
     )
 
 

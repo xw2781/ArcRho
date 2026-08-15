@@ -4,7 +4,9 @@
 <!-- MANUAL:BEGIN -->
 Table summary generation/cache and refresh domain.
 
-Both routes are addressed by `project_name` only and always summarize that project's imported master table at `<project>/source/master_table.csv`. There is no caller-supplied path: `_resolve_master_table` calls `source_table_service.ensure_master_table`, so a CSV-sourced project re-copies its external file first (`force=True` on refresh), and a SQL Server project without an imported copy answers `409` instead of reading anything external. See [`source_table`](source_table.md).
+Both routes are addressed by `project_name` only and always summarize that project's imported master table at `<project>/source/master_table.csv`. There is no caller-supplied path: `table_summary_service.resolve_master_table` calls `source_table_service.ensure_master_table`, so a CSV-sourced project re-copies its external file first (`force=True` on refresh), and a SQL Server project without an imported copy answers `409` instead of reading anything external. See [`source_table`](source_table.md).
+
+`GET /table_summary` is served by `table_summary_service.get_table_summary`, which is registered as the `table_summary` Server-hosted workspace read: when the Save Gateway advertises it, the whole cache check and, on a miss, the full master-table read run on the server host and only the summary payload crosses the network. See [`workspace_reads`](workspace_reads.md). The cache file is written through `persisted_json_text` like every other project-data cache.
 
 Each column carries `name`, `dtype`, `type`, `role`, the preformatted `values` string, `distinct_count` (strings and booleans only), `null_count`, `null_ratio`, a `stats` block with raw JSON-safe `min`/`max` (numbers for integer and float columns, strings for datetime, `null` otherwise or when the column is empty), and a `distribution` block: `{kind: "categorical", items[{label, share}], other_share, other_count}` for strings, `{kind: "numeric", bins, edges, clipped_low, clipped_high}` for numeric and datetime columns, and `{kind: "none"}` otherwise.
 
@@ -24,8 +26,8 @@ A free-form (non-date-role) numeric `distribution` is shaped for reading, not fo
 <!-- AUTO-GEN:BEGIN app_server.table_summary.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/table_summary` | `get_table_summary` | `str` | - | `field_mapping_service.load_date_role_fields`, `table_summary_service.generate_table_summary`, `table_summary_service.load_valid_cache` |
-| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `field_mapping_service.load_date_role_fields`, `reserving_class_service.refresh_reserving_class_values`, `table_summary_service.discard_cached_summary`, `table_summary_service.generate_table_summary` |
+| `GET` | `/table_summary` | `get_table_summary` | `str` | - | `table_summary_service.get_table_summary`, `workspace_read_client.run_workspace_read` |
+| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `field_mapping_service.load_date_role_fields`, `reserving_class_service.refresh_reserving_class_values`, `table_summary_service.discard_cached_summary`, `table_summary_service.generate_table_summary`, `table_summary_service.resolve_master_table`, `table_summary_service.write_summary_cache` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

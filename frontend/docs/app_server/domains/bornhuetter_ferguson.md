@@ -9,7 +9,7 @@ Own the self-contained BF v3 contract, aggregate two-file load, revision-aware t
 <!-- AUTO-GEN:BEGIN app_server.bornhuetter_ferguson.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/bornhuetter-ferguson/load` | `load_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method` |
+| `POST` | `/bornhuetter-ferguson/load` | `load_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/bornhuetter-ferguson/refresh` | `refresh_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method` |
 | `POST` | `/bornhuetter-ferguson/save` | `save_bornhuetter_ferguson` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/bornhuetter-ferguson/save/plan` | `plan_bornhuetter_ferguson_save` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `engine_hosted_save_service.run_hosted_save_plan` |
@@ -36,6 +36,7 @@ Own the self-contained BF v3 contract, aggregate two-file load, revision-aware t
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
+- `POST /bornhuetter-ferguson/load` is the `bornhuetter_ferguson_load` Server-hosted workspace read: when the Save Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - The only supported marker is `arcrho-bornhuetter-ferguson-method-by-tab-v3`.
 - Method JSON owns source names and values, prior weights, origin labels, Percentage Developed, Selected Prior, New Ultimate, weight display options, formatting precision, timestamps, and deterministic owned/derived/publication revisions.
 - The output sidecar owns Notes, Audit Log, status, `Precedents`, and `Dependents`. The reserving-class `index.json` remains a minimal scalar inventory and does not copy BF arrays or graph details.

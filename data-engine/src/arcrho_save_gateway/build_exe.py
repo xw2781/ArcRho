@@ -20,8 +20,13 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
 from build_runtime import ensure_python_310_venv
 from utils import component_app_name, get_config_value, resolve_app_path, set_config_value
+
+if str(CANONICAL_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(CANONICAL_SOURCE_ROOT))
+from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS  # noqa: E402
 
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
@@ -113,11 +118,43 @@ def gateway_stopped():
             start_gateway()
 
 
+def validate_canonical_runtime_environment() -> None:
+    """Fail the build if the bundled app_server import graph is incomplete.
+
+    Every registered workspace read is imported the way the running gateway
+    imports it, so a service that gained a dependency the venv lacks stops the
+    build here instead of failing the first read on the server.
+    """
+
+    import_paths = [str(CANONICAL_SOURCE_ROOT), str(REPOSITORY_ROOT / "frontend")]
+    imports = "; ".join(
+        f"from app_server.services import {module}"
+        for module in sorted({spec.module for spec in WORKSPACE_READ_KINDS.values()})
+    )
+    probe = f"import sys; sys.path[:0] = {import_paths!r}; {imports}"
+    print("\n>>> Validating canonical workspace-read dependencies")
+    run([VENV_PYTHON, "-c", probe])
+
+
 def build_exe() -> None:
     for path in (BUILD_DIR, SPEC_DIR, DIST_DIR):
         _remove_tree(path)
+    for bundled in ENGINE_BUNDLED_SOURCES:
+        if not bundled.source.is_dir():
+            raise FileNotFoundError(
+                f"Canonical bundle source was not found: {bundled.source}"
+            )
     ensure_python_310_venv(VENV_PYTHON)
     run([VENV_PYTHON, "-m", "pip", "install", "-r", REQ_FILE])
+    validate_canonical_runtime_environment()
+    # The gateway executes registered app_server reads in-process, so it
+    # freezes the same canonical trees the Engine does and resolves them at
+    # runtime through the Engine's configure_canonical_runtime.
+    service_hidden_imports = [
+        argument
+        for module in sorted({spec.module for spec in WORKSPACE_READ_KINDS.values()})
+        for argument in ("--hidden-import", f"app_server.services.{module}")
+    ]
     run(
         [
             VENV_PYTHON,
@@ -131,6 +168,8 @@ def build_exe() -> None:
             SOURCE_ROOT,
             "--paths",
             CANONICAL_SOURCE_ROOT,
+            "--paths",
+            REPOSITORY_ROOT / "frontend",
             "--hidden-import",
             "utils",
             "--hidden-import",
@@ -141,6 +180,28 @@ def build_exe() -> None:
             "arcrho_hosted_save_http_contract",
             "--hidden-import",
             "arcrho_dependent_propagation_contract",
+            "--hidden-import",
+            "arcrho_workspace_read_contract",
+            "--hidden-import",
+            "arcrho_project_duplication_contract",
+            "--hidden-import",
+            "arcrho_engine_job_lease",
+            "--hidden-import",
+            "arcrho_bridge.bundled_sources",
+            "--hidden-import",
+            "arcrho_engine.bundled_sources",
+            "--hidden-import",
+            "arcrho_engine.project_duplication",
+            "--hidden-import",
+            "arcrho_engine.dependent_propagation",
+            "--hidden-import",
+            "arcrho_save_gateway.workspace_reads",
+            *service_hidden_imports,
+            *[
+                argument
+                for bundled in ENGINE_BUNDLED_SOURCES
+                for argument in ("--add-data", f"{bundled.source};{bundled.target}")
+            ],
             f"--icon={ICON}",
             "--noconsole",
             "--clean",

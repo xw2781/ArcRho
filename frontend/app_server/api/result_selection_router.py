@@ -6,7 +6,11 @@ from app_server.schemas.result_selection import (
     ResultSelectionLoadRequest,
     ResultSelectionSaveRequest,
 )
-from app_server.services import engine_hosted_save_service, result_selection_service
+from app_server.services import (
+    engine_hosted_save_service,
+    result_selection_service,
+    workspace_read_client,
+)
 
 
 router = APIRouter()
@@ -14,11 +18,20 @@ router = APIRouter()
 
 @router.post("/result-selection/load")
 def load_result_selection(req: ResultSelectionLoadRequest) -> Dict[str, Any]:
-    return result_selection_service.load_result_selection(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
-        include_method=req.include_method,
+    return workspace_read_client.run_workspace_read(
+        "result_selection_load",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method_name": req.method_name,
+            "include_method": req.include_method,
+        },
+        local=lambda: result_selection_service.load_result_selection(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+            include_method=req.include_method,
+        ),
     )
 
 

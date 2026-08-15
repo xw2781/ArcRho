@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Reserving-class listings, dataset and method window loads, and the Project Settings table summary can now load through the ArcRho Server instead of the network drive.",
+  "details": [
+    "When the ArcRho Save Gateway advertises the read, the server reads the reserving-class index, cached dataset, method JSON, or master table on its own disk and returns only the result, so a stale index rebuild or a large table summary no longer opens every file over the mapped drive.",
+    "A read the gateway does not advertise, or that cannot reach the gateway, loads locally exactly as before; the transport used is recorded in the local client_read_latency.jsonl diagnostics log."
+  ]
+}

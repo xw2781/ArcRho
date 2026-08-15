@@ -1123,6 +1123,21 @@ def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) 
     return {"id": ds_id, "k": k, "items": items}
 
 
+def register_dataset_handle(dataset_id: str, csv_path: str) -> None:
+    """Bind a dataset id to its cached CSV for the id-addressed grid routes.
+
+    The registry is per process. A cached-dataset load that ran on the ArcRho
+    Server host must register its handle here on the client, using the CSV
+    path already rebased onto this PC's workspace root, or the grid patch and
+    diagonal routes for that id would find nothing.
+    """
+
+    ds_id = str(dataset_id or "").strip()
+    path = str(csv_path or "").strip()
+    if ds_id and path:
+        config.DATASETS[ds_id] = path
+
+
 def _require_dataset_fields(project_name: str, reserving_class: str, dataset_name: str) -> Tuple[str, str, str]:
     p = str(project_name if project_name is not None else "")
     rc = str(reserving_class if reserving_class is not None else "")
@@ -1602,7 +1617,7 @@ def load_cached_dataset_values(
         file_mtime = os.stat(csv_path).st_mtime
     except OSError:
         file_mtime = None
-    config.DATASETS[dataset_id] = csv_path
+    register_dataset_handle(dataset_id, csv_path)
     return {
         "ok": True,
         "id": dataset_id,
