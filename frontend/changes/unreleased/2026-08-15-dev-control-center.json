@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "development tools",
+  "audience": "internal",
+  "summary": "Added a localhost control center for launching, fully relaunching, resetting, and inspecting ArcRho development mode.",
+  "details": [
+    "Project-user preference resets retain a timestamped backup before ArcRho relaunches.",
+    "The folder inventory exposes ArcRho's local preference, cache, log, runtime, and user-file locations."
+  ]
+}
