@@ -142,6 +142,7 @@ def default_gateway_config() -> dict[str, Any]:
         "config_version": GATEWAY_CONFIG_VERSION,
         "host": DEFAULT_GATEWAY_HOST,
         "port": DEFAULT_GATEWAY_PORT,
+        "client_url": "",
         "receipt_retention_hours": DEFAULT_RECEIPT_RETENTION_HOURS,
         "allowed_save_kinds": list(HTTP_PILOT_SAVE_KINDS),
         "users": {},
@@ -156,6 +157,7 @@ def normalize_gateway_config(value: Any) -> dict[str, Any]:
             f"Unsupported Save Gateway config version: {value.get('config_version')!r}."
         )
     host = str(value.get("host") or DEFAULT_GATEWAY_HOST).strip()
+    client_url = normalize_gateway_client_url(value.get("client_url"), allow_empty=True)
     try:
         port = int(value.get("port", DEFAULT_GATEWAY_PORT))
         retention = int(
@@ -186,10 +188,24 @@ def normalize_gateway_config(value: Any) -> dict[str, Any]:
         "config_version": GATEWAY_CONFIG_VERSION,
         "host": host,
         "port": port,
+        "client_url": client_url,
         "receipt_retention_hours": retention,
         "allowed_save_kinds": allowed_kinds,
         "users": users,
     }
+
+
+def normalize_gateway_client_url(value: Any, *, allow_empty: bool = False) -> str:
+    """Normalize the server-owned URL clients use to reach the Gateway."""
+
+    url = str(value or "").strip().rstrip("/")
+    if not url and allow_empty:
+        return ""
+    if not url.lower().startswith(("http://", "https://")):
+        raise HostedSaveHttpContractError(
+            "Save Gateway client URL must use HTTP or HTTPS."
+        )
+    return url
 
 
 def normalize_client_config(value: Any) -> dict[str, Any]:
@@ -210,8 +226,7 @@ def normalize_client_config(value: Any) -> dict[str, Any]:
         raise HostedSaveHttpContractError(
             "Plain HTTP requires allow_insecure_http=true for the pilot."
         )
-    if not url.lower().startswith(("http://", "https://")):
-        raise HostedSaveHttpContractError("Save Gateway URL must use HTTP or HTTPS.")
+    normalize_gateway_client_url(url)
     return {
         "enabled": True,
         "url": url,

@@ -8,13 +8,13 @@ Excluded directories: `.cache`, `__pycache__`, `dist`, `local_workspace_log`, `n
 | Top-Level Segment | File Count |
 | --- | --- |
 | `(root)` | 10 |
-| `app_server` | 126 |
-| `build` | 50 |
-| `changes` | 947 |
+| `app_server` | 128 |
+| `build` | 87 |
+| `changes` | 949 |
 | `docs` | 96 |
 | `electron` | 12 |
-| `icons` | 18 |
-| `tests` | 157 |
+| `icons` | 19 |
+| `tests` | 158 |
 | `tools` | 2 |
 | `ui` | 474 |
 | `user-manual` | 18 |

@@ -75,6 +75,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - App-server modules import `app_server.config` for runtime path resolution.
 - On first-time setup, the Electron shell searches `D:\ArcRho Server` through `Z:\ArcRho Server` and fills the Server Connection root path when found.
 - Saving Server Connection hot-applies the new config by refreshing `app_server.config` runtime globals and notifying open UI frames; app restart is not required for new server requests.
+- ArcRho startup and Server Connection saves attempt first-run Save Gateway enrollment when the local credential is absent. The app reads the server-owned `client_url`, probes it, then atomically adds the current Windows login to the shared pilot registry and writes `%APPDATA%\ArcRho\hosted_save_gateway.json`; a failed pre-enrollment check leaves SMB selected.
 - DFM RPC Bridge writes request files under `<workspace_root>/<requests_dir>/RPC bridge` and expects remote DFM/SyncDFM JSON files under `<workspace_root>/<projects_dir>/<project>/data/<ReservingClassFolder>/methods/tmp_rpc`.
 - Dataset number-format preferences are read from `<workspace_root>/config/dataset_number_formats.json`; `ARCRHO_DATASET_NUMBER_FORMATS_PATH` may override this path for migration tooling or controlled deployments.
 - `ARCRHO_RUNTIME_SERVER_ROOT` is a trusted process-only override for server-owned workers. It takes precedence over the user-local AppData workspace preference, is never persisted, and lets the deployed ResQ Bridge calculate processing provenance against its own shared ArcRho Server root.
@@ -83,6 +84,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.
+- `%APPDATA%\ArcRho\hosted_save_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/hosted_save_gateway.json` owns the shared `client_url`, allowlist, and HMAC user registry; lock-protected atomic enrollment prevents concurrent first launches from losing users.
 - `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`.
 - If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.
 - Runtime globals in `app_server/config.py` are refreshed from config after `/workspace_paths` updates.

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app_server import config
 from app_server.schemas.workspace_paths import WorkspacePathsUpdateRequest
+from app_server.services import hosted_save_enrollment_service
 
 router = APIRouter()
 
@@ -60,4 +61,6 @@ def get_workspace_paths() -> Dict[str, Any]:
 @router.post("/workspace_paths")
 def update_workspace_paths(req: WorkspacePathsUpdateRequest) -> Dict[str, Any]:
     cfg = _with_path_overrides(config.load_workspace_paths(), req)
-    return _persist_workspace_paths(cfg)
+    response = _persist_workspace_paths(cfg)
+    hosted_save_enrollment_service.auto_enroll_current_user()
+    return response

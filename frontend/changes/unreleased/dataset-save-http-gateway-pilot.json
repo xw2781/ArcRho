@@ -6,6 +6,7 @@
   "details": [
     "The existing SMB save transport remains the default and rollback path.",
     "Pilot latency records identify HTTP and SMB transports for direct comparison.",
+    "ArcRho now enrolls each Windows user automatically at startup when the shared pilot gateway is available.",
     "A server user can register the gateway at login without administrator access."
   ]
 }

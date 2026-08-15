@@ -6,13 +6,17 @@ and mounts the static frontend.  All business logic lives in
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 
 from app_server import config
+from app_server.services import hosted_save_enrollment_service
 from app_server.api import (
     workflow_router,
     app_control_router,
@@ -52,7 +56,19 @@ from app_server.api import (
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Triangle Demo API", version="0.1")
+LOGGER = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    enrollment = await asyncio.to_thread(
+        hosted_save_enrollment_service.auto_enroll_current_user
+    )
+    LOGGER.info("Save Gateway startup enrollment status: %s", enrollment["status"])
+    yield
+
+
+app = FastAPI(title="Triangle Demo API", version="0.1", lifespan=lifespan)
 
 # --- Include routers (API routes BEFORE static mount) ---
 app.include_router(workflow_router)

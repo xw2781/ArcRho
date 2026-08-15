@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import socket
 import sys
-import time
 import winreg
 from pathlib import Path
 
@@ -20,15 +18,10 @@ for path in (API_SOURCE,):
         sys.path.insert(0, str(path))
 
 from arcrho_api.config import config_dir, get_server_root  # noqa: E402
-from arcrho_api.io import persisted_json_text  # noqa: E402
+from arcrho_api.hosted_save_enrollment import provision_gateway_user  # noqa: E402
 from arcrho_hosted_save_http_contract import (  # noqa: E402
     CLIENT_CONFIG_FILE_NAME,
-    HTTP_PILOT_SAVE_KINDS,
     default_gateway_config,
-    generate_secret,
-    normalize_gateway_config,
-    normalize_user,
-    server_config_path,
 )
 
 
@@ -36,52 +29,15 @@ STARTUP_VALUE_NAME = "ArcRho Save Gateway"
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"Configuration must be a JSON object: {path}")
-    return payload
-
-
-def _write_json_atomic(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    try:
-        temporary.write_text(persisted_json_text(payload), encoding="utf-8")
-        os.replace(temporary, path)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def configure(
     *, server_root: Path, user: str, url: str, client_output: Path
 ) -> tuple[Path, Path]:
-    normalized_user = normalize_user(user)
-    if not normalized_user:
-        raise ValueError("A Windows login is required.")
-    server_path = server_config_path(server_root)
-    raw = _read_json(server_path) or default_gateway_config()
-    gateway = normalize_gateway_config(raw)
-    gateway["allowed_save_kinds"] = sorted(
-        set(gateway["allowed_save_kinds"]) | set(HTTP_PILOT_SAVE_KINDS)
+    return provision_gateway_user(
+        server_root=server_root,
+        user=user,
+        client_output=client_output,
+        client_url=url,
     )
-    secret = gateway["users"].get(normalized_user) or generate_secret()
-    gateway["users"][normalized_user] = secret
-    _write_json_atomic(server_path, gateway)
-    client = {
-        "config_version": 1,
-        "enabled": True,
-        "url": str(url).strip().rstrip("/"),
-        "user": user,
-        "secret": secret,
-        "allow_insecure_http": str(url).lower().startswith("http://"),
-    }
-    _write_json_atomic(client_output, client)
-    return server_path, client_output
 
 
 def install_current_user_startup(executable: Path) -> None:

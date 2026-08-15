@@ -33,12 +33,21 @@ server; only the app-server-to-Engine transport changes.
   payload tampering, but plain HTTP does **not** encrypt dataset or DFM content. This
   is a performance pilot only; production rollout still requires HTTPS.
 - `%APPDATA%\ArcRho\hosted_save_gateway.json` is the local-user feature flag
-  and credential. A missing file keeps SMB behavior. Invalid enabled
-  configuration fails explicitly and never silently falls back.
-- Provision with
-  `py -3.10 data-engine/src/arcrho_save_gateway/configure_pilot.py --user <login>`.
-  The command updates the server registry and installs the current user's
-  local client credential without printing the secret.
+  and credential. On ArcRho startup, a missing file triggers automatic
+  enrollment when the shared Gateway configuration has a `client_url` and the
+  endpoint is reachable. The same check runs after Server Connection changes.
+  An existing file is authoritative, including `enabled: false`; invalid
+  enabled configuration fails explicitly and never silently falls back.
+- Initial server setup uses
+  `py -3.10 data-engine/src/arcrho_save_gateway/configure_pilot.py --user <login> --url <gateway-url>`.
+  The command records the canonical client URL, updates the server registry,
+  and installs the current user's local credential without printing the
+  secret. Other users are enrolled automatically by ArcRho and do not run the
+  command.
+- Automatic enrollment probes the Gateway before creating a local credential,
+  serializes updates to the shared user registry, and leaves SMB as the default
+  if the pre-enrollment check cannot complete. Once the local HTTP credential
+  exists, uncertain HTTP submissions still never fall back to SMB.
 - On each Windows account that may be the only account signed into the server
   PC, add `--install-current-user-startup`. It registers the deployed gateway
   under that account's HKCU Run key without elevation. Client-only PCs do not
