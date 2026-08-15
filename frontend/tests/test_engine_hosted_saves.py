@@ -20,12 +20,17 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
         sys.path.insert(0, str(path))
 
 from arcrho_engine_save_contract import (
+    read_save_job_status,
     save_job_request_path,
     validate_save_job_request,
     write_save_job_result,
     write_save_job_status,
 )
-from app_server.services import dependent_propagation_service, engine_hosted_save_service
+from app_server.services import (
+    client_save_latency_log_service,
+    dependent_propagation_service,
+    engine_hosted_save_service,
+)
 
 
 class EngineHostedSaveClientTests(unittest.TestCase):
@@ -50,10 +55,31 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             },
         )
         self.path_patch.start()
+        dependent_propagation_service._clear_protocol_path_validation_cache()
+        self.latency_log_path = self.root / "local_appdata" / "client_save_latency.jsonl"
+        self.log_path_patch = patch.object(
+            client_save_latency_log_service.config,
+            "get_client_save_latency_log_path",
+            return_value=str(self.latency_log_path),
+        )
+        self.log_path_patch.start()
 
     def tearDown(self) -> None:
+        for thread in threading.enumerate():
+            if thread.name.startswith("hosted-save-cleanup-"):
+                thread.join(timeout=5)
+        self.log_path_patch.stop()
         self.path_patch.stop()
+        dependent_propagation_service._clear_protocol_path_validation_cache()
         self.temp_dir.cleanup()
+
+    def _latency_records(self) -> list[dict]:
+        if not self.latency_log_path.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in self.latency_log_path.read_text(encoding="utf-8").splitlines()
+        ]
 
     def _engine_stub(self, respond) -> threading.Thread:
         """Wait for the request file, then publish what `respond` returns."""
@@ -85,33 +111,63 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         return thread
 
     def test_a_successful_hosted_save_returns_the_engine_result(self) -> None:
+        statuses_before_engine_response: list[dict | None] = []
+
         def respond(request):
+            statuses_before_engine_response.append(
+                read_save_job_status(self.root, request["RequestId"])
+            )
+            response = {
+                "ok": True,
+                "echo_args": request["Args"],
+                "propagation": {
+                    "ok": True,
+                    "status": "completed",
+                    "refreshed_datasets": ["C 61", "C 91"],
+                },
+            }
             write_save_job_result(
                 self.root,
                 request["RequestId"],
-                {
-                    "ok": True,
-                    "echo_args": request["Args"],
-                    "propagation": {
-                        "ok": True,
-                        "status": "completed",
-                        "refreshed_datasets": ["C 61", "C 91"],
-                    },
-                },
+                response,
             )
-            write_save_job_status(self.root, request["RequestId"], "success")
+            write_save_job_status(
+                self.root,
+                request["RequestId"],
+                "success",
+                response=response,
+            )
 
         thread = self._engine_stub(respond)
-        result = engine_hosted_save_service.run_hosted_save(
-            "dfm_method",
-            "Demo Project",
-            "HPPREF\\HO+DF\\NJ",
-            args=["Demo Project", "HPPREF\\HO+DF\\NJ", {"json format": "dfm"}],
-            kwargs={"notes": None},
-        )
+        with patch.object(
+            engine_hosted_save_service,
+            "read_save_job_result",
+            side_effect=AssertionError("an inline response must avoid the legacy read"),
+        ):
+            result = engine_hosted_save_service.run_hosted_save(
+                "dfm_method",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=[
+                    "Demo Project",
+                    "HPPREF\\HO+DF\\NJ",
+                    {
+                        "json format": "dfm",
+                        "details tab": {
+                            "name": "C 22 - CWOP DFM w/ Selected LDFs"
+                        },
+                    },
+                ],
+                kwargs={"notes": None},
+            )
         thread.join(timeout=5)
+        self.assertEqual(
+            statuses_before_engine_response,
+            [None],
+            "the request file itself must be the queued state",
+        )
         self.assertEqual(result["propagation"]["refreshed_datasets"], ["C 61", "C 91"])
-        self.assertEqual(result["echo_args"][2], {"json format": "dfm"})
+        self.assertEqual(result["echo_args"][2]["json format"], "dfm")
         # Terminal artifacts are consumed so the queue folders stay clean —
         # in the background, off the response's critical path, so wait for it.
         save_jobs = self.root / "requests" / "save_jobs"
@@ -125,6 +181,63 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         while leftovers() and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertEqual(leftovers(), [])
+        records = self._latency_records()
+        while (
+            not any(record["event"] == "hosted_save_cleanup" for record in records)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.05)
+            records = self._latency_records()
+        round_trip = next(
+            record
+            for record in records
+            if record["event"] == "hosted_save_round_trip"
+        )
+        cleanup = next(
+            record for record in records if record["event"] == "hosted_save_cleanup"
+        )
+        self.assertEqual(round_trip["request_id"], cleanup["request_id"])
+        self.assertEqual(round_trip["outcome"], "success")
+        self.assertEqual(round_trip["http_status"], 200)
+        self.assertEqual(round_trip["result_source"], "terminal_status")
+        self.assertEqual(round_trip["project_name"], "Demo Project")
+        self.assertEqual(round_trip["reserving_class"], "HPPREF\\HO+DF\\NJ")
+        self.assertEqual(
+            round_trip["object_name"],
+            "C 22 - CWOP DFM w/ Selected LDFs",
+        )
+        self.assertGreaterEqual(round_trip["total_ms"], 0)
+        self.assertEqual(
+            round_trip["status_poll_count"],
+            len(round_trip["status_reads_ms"]),
+        )
+        self.assertIn("success", round_trip["status_observations"])
+        for phase in (
+            "preflight_workspace_config_load_ms",
+            "preflight_workspace_root_access_ms",
+            "preflight_workspace_protocol_validation_ms",
+            "preflight_engine_heartbeat_ms",
+            "preflight_class_hold_ms",
+            "preflight_total_ms",
+            "identity_lookup_ms",
+            "request_encode_ms",
+            "request_publish_ms",
+            "request_serialize_ms",
+            "request_directory_ms",
+            "request_temp_write_ms",
+            "request_atomic_publish_ms",
+            "initial_poll_delay_ms",
+            "remote_round_trip_ms",
+            "cleanup_schedule_ms",
+            "status_read_total_ms",
+            "poll_sleep_total_ms",
+        ):
+            self.assertGreaterEqual(round_trip["phase_ms"][phase], 0, phase)
+        self.assertGreater(round_trip["request_bytes"], 0)
+        self.assertNotIn("queued_status_publish_ms", round_trip["phase_ms"])
+        self.assertNotIn("submission_workspace_total_ms", round_trip["phase_ms"])
+        self.assertNotIn("legacy_result_read_ms", round_trip["phase_ms"])
+        self.assertGreaterEqual(cleanup["cleanup_ms"], 0)
 
     def test_the_request_carries_the_user_who_is_saving(self) -> None:
         # The Engine instance that claims this runs as its own service
@@ -152,6 +265,13 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         thread.join(timeout=5)
         self.assertEqual(received[0]["UserName"], "xwei")
         self.assertEqual(received[0]["UserDisplayName"], "Wei, Xiao")
+        round_trip = next(
+            record
+            for record in reversed(self._latency_records())
+            if record["event"] == "hosted_save_round_trip"
+        )
+        self.assertEqual(round_trip["result_source"], "legacy_result_file")
+        self.assertIn("legacy_result_read_ms", round_trip["phase_ms"])
 
     def test_service_errors_keep_their_status_codes(self) -> None:
         def respond(request):
@@ -195,6 +315,31 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         ]
         self.assertEqual(leftovers, [], "an unclaimed request must be retracted")
 
+    def test_a_claimed_request_without_a_status_gets_the_processing_timeout(self) -> None:
+        def respond(request):
+            time.sleep(0.7)
+            write_save_job_status(
+                self.root,
+                request["RequestId"],
+                "success",
+                response={"ok": True},
+            )
+
+        thread = self._engine_stub(respond)
+        with patch.object(
+            engine_hosted_save_service,
+            "SAVE_JOB_QUEUED_TIMEOUT_SECONDS",
+            0.2,
+        ):
+            result = engine_hosted_save_service.run_hosted_save(
+                "dfm_method",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+            )
+        thread.join(timeout=5)
+        self.assertTrue(result["ok"])
+
     def test_no_live_engine_refuses_before_writing_anything(self) -> None:
         for item in self.instances_dir.iterdir():
             item.unlink()
@@ -207,6 +352,115 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.status_code, 503)
         self.assertFalse((self.root / "requests").exists())
+        round_trip = self._latency_records()[-1]
+        self.assertEqual(round_trip["event"], "hosted_save_round_trip")
+        self.assertEqual(round_trip["outcome"], "error")
+        self.assertEqual(round_trip["http_status"], 503)
+        self.assertEqual(round_trip["failure_stage"], "preflight")
+        self.assertIn("preflight_engine_heartbeat_ms", round_trip["phase_ms"])
+
+
+class ClientSaveLatencyLogTests(unittest.TestCase):
+    def test_a_log_write_failure_is_best_effort(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            blocked_parent = Path(temp_dir) / "not-a-folder"
+            blocked_parent.write_text("occupied", encoding="utf-8")
+            with patch.object(
+                client_save_latency_log_service.config,
+                "get_client_save_latency_log_path",
+                return_value=str(blocked_parent / "client_save_latency.jsonl"),
+            ):
+                written = client_save_latency_log_service.append_client_save_latency(
+                    {"event": "test"}
+                )
+        self.assertFalse(written)
+
+    def test_log_rotates_locally_and_each_line_is_valid_json(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            log_path = Path(temp_dir) / "logs" / "client_save_latency.jsonl"
+            with (
+                patch.object(
+                    client_save_latency_log_service.config,
+                    "get_client_save_latency_log_path",
+                    return_value=str(log_path),
+                ),
+                patch.object(
+                    client_save_latency_log_service,
+                    "CLIENT_SAVE_LATENCY_LOG_MAX_BYTES",
+                    180,
+                ),
+                patch.object(
+                    client_save_latency_log_service,
+                    "CLIENT_SAVE_LATENCY_LOG_BACKUP_COUNT",
+                    2,
+                ),
+            ):
+                for index in range(6):
+                    self.assertTrue(
+                        client_save_latency_log_service.append_client_save_latency(
+                            {"event": "test", "index": index, "padding": "x" * 80}
+                        )
+                    )
+
+            self.assertTrue(log_path.exists())
+            self.assertTrue(Path(f"{log_path}.1").exists())
+            self.assertLessEqual(
+                len(list(log_path.parent.glob("client_save_latency.jsonl.*"))),
+                2,
+            )
+            for file_path in log_path.parent.iterdir():
+                for line in file_path.read_text(encoding="utf-8").splitlines():
+                    self.assertEqual(json.loads(line)["event"], "test")
+
+
+class ProtocolPathValidationCacheTests(unittest.TestCase):
+    def setUp(self) -> None:
+        dependent_propagation_service._clear_protocol_path_validation_cache()
+
+    def tearDown(self) -> None:
+        dependent_propagation_service._clear_protocol_path_validation_cache()
+
+    def test_successful_protocol_validation_is_reused_for_thirty_seconds(self) -> None:
+        root = FRONTEND_ROOT / "test-workspace"
+        first_timings: dict[str, float] = {}
+        second_timings: dict[str, float] = {}
+        with patch.object(
+            dependent_propagation_service,
+            "_reject_linked_path",
+        ) as reject:
+            dependent_propagation_service._validate_protocol_paths(
+                root,
+                timings=first_timings,
+                timing_prefix="first",
+            )
+            dependent_propagation_service._validate_protocol_paths(
+                root,
+                timings=second_timings,
+                timing_prefix="second",
+            )
+
+        self.assertEqual(reject.call_count, 5)
+        self.assertIn("first_protocol_requests_root_ms", first_timings)
+        self.assertIn("second_protocol_cached_validation_ms", second_timings)
+        self.assertNotIn("second_protocol_requests_root_ms", second_timings)
+
+    def test_expired_protocol_validation_runs_each_path_again(self) -> None:
+        root = FRONTEND_ROOT / "test-workspace"
+        with (
+            patch.object(
+                dependent_propagation_service,
+                "_reject_linked_path",
+            ) as reject,
+            patch.object(
+                dependent_propagation_service.time,
+                "monotonic",
+                side_effect=[0.0, 0.0, 31.0, 31.0],
+            ),
+        ):
+            dependent_propagation_service._validate_protocol_paths(root)
+            dependent_propagation_service._validate_protocol_paths(root)
+
+        self.assertEqual(reject.call_count, 10)
 
 
 class InlineEnginePropagationTests(unittest.TestCase):

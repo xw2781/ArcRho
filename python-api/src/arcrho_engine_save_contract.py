@@ -2,14 +2,14 @@
 
 A save executed from a Client PC pays one SMB round trip per file touched
 (~0.4 s each over the mapped drive), so the app server ships the save to the
-Engine instead: it publishes a ``queued`` status, drops a request file in the
-requests root (the watchdog observer sees root files instantly), and polls the
-status until the Engine reports a terminal state. The Engine claims the
-request with the legacy delete-to-claim rule, holds the reserving-class lease
-while it runs the canonical service save plus the dependent walk inline, and
-writes the service's full response payload to a result file the client
-returns as its own HTTP response — so the save endpoints keep their exact
-shapes while the file I/O happens on the server host's local disk.
+Engine instead: the request file itself represents ``queued`` state, and the
+client polls only after an initial pickup window until the Engine reports a
+terminal state. The Engine claims the request with the legacy delete-to-claim
+rule, holds the reserving-class lease while it runs the canonical service save
+plus the dependent walk inline, and embeds the service's full response in the
+terminal success status. A legacy result file is also published for older
+clients, so mixed client versions keep their exact response shapes while the
+file I/O happens on the server host's local disk.
 
 Engine instances run under their own service profiles, so a request carries
 the submitting user in ``UserName`` (the Windows login) and
@@ -260,6 +260,7 @@ def write_save_job_status(
     *,
     message: str = "",
     status_code: int | None = None,
+    response: Mapping[str, Any] | None = None,
 ) -> Path:
     payload: dict[str, Any] = {
         "request_id": validate_request_id(request_id),
@@ -270,6 +271,8 @@ def write_save_job_status(
         payload["message"] = str(message)
     if status_code is not None:
         payload["status_code"] = int(status_code)
+    if response is not None:
+        payload["response"] = dict(response)
     return _write_json_atomic(save_job_status_path(server_root, request_id), payload)
 
 
@@ -292,6 +295,17 @@ def read_save_job_status(
 
 def save_job_status_is_terminal(status: Mapping[str, Any] | None) -> bool:
     return bool(status) and str(status.get("status") or "") in _TERMINAL_STATUSES
+
+
+def save_job_status_response(
+    status: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return an inline terminal response when a current Engine published one."""
+
+    if not isinstance(status, Mapping):
+        return None
+    response = status.get("response")
+    return dict(response) if isinstance(response, Mapping) else None
 
 
 def write_save_job_result(

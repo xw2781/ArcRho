@@ -131,6 +131,7 @@ class HostedSaveJobTests(unittest.TestCase):
         self.assertEqual(status["status"], "success")
         result = read_save_job_result(self.root, self.REQUEST_ID)
         self.assertEqual(result["propagation"]["status"], "completed")
+        self.assertEqual(status["response"], result)
 
     def test_the_save_runs_as_the_user_who_submitted_it(self) -> None:
         # Instances run under their own service profiles, so without this the
@@ -284,7 +285,9 @@ class HostedSavePlanJobTests(unittest.TestCase):
 
         self.assertTrue(completed)
         self.assertEqual(saves, [], "a plan must never run the save")
-        self.assertEqual(read_save_job_status(self.root, self.REQUEST_ID)["status"], "success")
+        status = read_save_job_status(self.root, self.REQUEST_ID)
+        self.assertEqual(status["status"], "success")
+        self.assertEqual(status["response"], plan)
         self.assertEqual(read_save_job_result(self.root, self.REQUEST_ID), plan)
 
     def test_plan_never_waits_for_the_reserving_class_lease(self) -> None:

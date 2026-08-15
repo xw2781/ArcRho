@@ -61,6 +61,7 @@ PROJECT_SETTINGS_DEFAULT_PREFS_ENV = "ARCRHO_PROJECT_SETTINGS_DEFAULT_PREFS_PATH
 DEFAULT_PROJECT_SETTINGS_PREFS_PATH = PROJECT_ROOT / "app_server" / "default_preferences" / "project_settings_preferences.json"
 DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
 DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
+CLIENT_SAVE_LATENCY_LOG_FILE = "client_save_latency.jsonl"
 
 
 def _is_arcode_mode() -> bool:
@@ -74,6 +75,25 @@ def _get_user_appdata_dir() -> str:
     if not appdata:
         appdata = os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
     return os.path.join(appdata, "Arcode")
+
+
+def _get_user_local_appdata_dir() -> str:
+    """Return the machine-local application-data folder for runtime logs."""
+
+    local_appdata = str(os.environ.get("LOCALAPPDATA") or "").strip()
+    if not local_appdata:
+        local_appdata = os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return os.path.join(local_appdata, "Arcode" if _is_arcode_mode() else "ArcRho")
+
+
+def get_client_save_latency_log_path() -> str:
+    """Canonical local-PC path for hosted-save network latency diagnostics."""
+
+    return os.path.join(
+        _get_user_local_appdata_dir(),
+        "logs",
+        CLIENT_SAVE_LATENCY_LOG_FILE,
+    )
 
 
 WORKSPACE_PATHS_PATH = os.path.join(

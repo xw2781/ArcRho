@@ -17,10 +17,12 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `_get_scripting_dir`
   - `_get_user_appdata_cache_dir`
   - `_get_user_appdata_dir`
+  - `_get_user_local_appdata_dir`
   - `_get_workflow_dir`
   - `_sanitize_project_dir_name`
   - `clear_runtime_path_caches`
   - `get_audit_log_path`
+  - `get_client_save_latency_log_path`
   - `get_data_processing_rules_path`
   - `get_data_processing_values_path`
   - `get_dataset_number_formats_path`

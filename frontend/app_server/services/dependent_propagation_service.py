@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import contextvars
 import json
+import os
+import threading
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -41,33 +44,152 @@ from app_server import config
 from app_server.services import user_identity_service
 
 
-def _workspace_server_root() -> Path:
-    workspace = config.load_workspace_paths()
+_PROTOCOL_PATH_VALIDATION_CACHE_SECONDS = 30.0
+_protocol_path_validation_cache: Dict[str, float] = {}
+_protocol_path_validation_cache_lock = threading.Lock()
+
+
+def _elapsed_ms(started_ns: int) -> float:
+    return round((time.perf_counter_ns() - started_ns) / 1_000_000.0, 3)
+
+
+def _record_latency(
+    timings: Dict[str, float] | None,
+    key: str,
+    started_ns: int,
+) -> None:
+    if timings is not None:
+        timings[key] = _elapsed_ms(started_ns)
+
+
+def _protocol_path_cache_key(server_root: Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(server_root)))
+
+
+def _protocol_paths_are_cached(server_root: Path) -> bool:
+    key = _protocol_path_cache_key(server_root)
+    now = time.monotonic()
+    with _protocol_path_validation_cache_lock:
+        validated_at = _protocol_path_validation_cache.get(key)
+        if validated_at is None:
+            return False
+        if now - validated_at <= _PROTOCOL_PATH_VALIDATION_CACHE_SECONDS:
+            return True
+        _protocol_path_validation_cache.pop(key, None)
+    return False
+
+
+def _cache_protocol_paths(server_root: Path) -> None:
+    with _protocol_path_validation_cache_lock:
+        _protocol_path_validation_cache[_protocol_path_cache_key(server_root)] = (
+            time.monotonic()
+        )
+
+
+def _invalidate_protocol_path_cache(server_root: Path) -> None:
+    with _protocol_path_validation_cache_lock:
+        _protocol_path_validation_cache.pop(
+            _protocol_path_cache_key(server_root),
+            None,
+        )
+
+
+def _clear_protocol_path_validation_cache() -> None:
+    """Clear successful path checks; exposed for deterministic tests."""
+
+    with _protocol_path_validation_cache_lock:
+        _protocol_path_validation_cache.clear()
+
+
+def _workspace_server_root(
+    *,
+    timings: Dict[str, float] | None = None,
+    timing_prefix: str = "workspace",
+) -> Path:
+    started = time.perf_counter_ns()
+    try:
+        workspace = config.load_workspace_paths()
+    finally:
+        _record_latency(timings, f"{timing_prefix}_config_load_ms", started)
     server_root_value = str(workspace.get("workspace_root") or "").strip()
     if not server_root_value:
         raise HTTPException(500, "The ArcRho Server workspace is not configured.")
     server_root = Path(server_root_value).expanduser()
     if not server_root.is_absolute():
         raise HTTPException(500, "The ArcRho Server workspace root must be absolute.")
+    started = time.perf_counter_ns()
     try:
         root_available = server_root.is_dir()
     except OSError as error:
+        _invalidate_protocol_path_cache(server_root)
+        _record_latency(timings, f"{timing_prefix}_root_access_ms", started)
         raise HTTPException(
             500, "The ArcRho Server workspace root is inaccessible."
         ) from error
+    _record_latency(timings, f"{timing_prefix}_root_access_ms", started)
     if not root_available:
+        _invalidate_protocol_path_cache(server_root)
         raise HTTPException(500, "The ArcRho Server workspace root is unavailable.")
-    _validate_protocol_paths(server_root)
+    _validate_protocol_paths(
+        server_root,
+        timings=timings,
+        timing_prefix=timing_prefix,
+    )
     return server_root
 
 
-def _validate_protocol_paths(server_root: Path) -> None:
+def _validate_protocol_paths(
+    server_root: Path,
+    *,
+    timings: Dict[str, float] | None = None,
+    timing_prefix: str = "workspace",
+) -> None:
+    total_started = time.perf_counter_ns()
+    cache_started = time.perf_counter_ns()
+    if _protocol_paths_are_cached(server_root):
+        _record_latency(
+            timings,
+            f"{timing_prefix}_protocol_cached_validation_ms",
+            cache_started,
+        )
+        _record_latency(
+            timings,
+            f"{timing_prefix}_protocol_validation_ms",
+            total_started,
+        )
+        return
+
     current = server_root
-    for part in ("requests", "dependent_propagation"):
+    checks = []
+    for label, part in (
+        ("requests_root", "requests"),
+        ("propagation_root", "dependent_propagation"),
+    ):
         current /= part
-        _reject_linked_path(current)
+        checks.append((label, current))
     for leaf in ("requests", "statuses", "locks"):
-        _reject_linked_path(current / leaf)
+        checks.append((f"propagation_{leaf}", current / leaf))
+    try:
+        for label, path in checks:
+            started = time.perf_counter_ns()
+            try:
+                _reject_linked_path(path)
+            finally:
+                _record_latency(
+                    timings,
+                    f"{timing_prefix}_protocol_{label}_ms",
+                    started,
+                )
+        _cache_protocol_paths(server_root)
+    except Exception:
+        _invalidate_protocol_path_cache(server_root)
+        raise
+    finally:
+        _record_latency(
+            timings,
+            f"{timing_prefix}_protocol_validation_ms",
+            total_started,
+        )
 
 
 def _reject_linked_path(path: Path) -> None:
@@ -126,8 +248,11 @@ def suspended_reserving_class_hold_check() -> Iterator[None]:
 
 
 def require_reserving_class_writable(
-    project_name: str, reserving_class: str
-) -> None:
+    project_name: str,
+    reserving_class: str,
+    *,
+    timings: Dict[str, float] | None = None,
+) -> Path:
     """Refuse a save while a propagation walk or queued job owns the class.
 
     Runs the live-Engine preflight first (503), then the canonical hold probe
@@ -136,24 +261,36 @@ def require_reserving_class_writable(
     inside the same reserving class; other reserving classes are unaffected.
     The probe's freshness windows guarantee a dead worker releases the hold by
     itself, and the Engine's queued-request merge stays the backstop for the
-    saves a non-atomic filesystem check lets through together.
+    saves a non-atomic filesystem check lets through together. Return the
+    validated workspace root so a caller can reuse it without repeating the
+    network-drive path checks.
     """
 
-    server_root = _workspace_server_root()
+    server_root = _workspace_server_root(
+        timings=timings,
+        timing_prefix="preflight_workspace",
+    )
+    started = time.perf_counter_ns()
     try:
         require_live_engine(server_root)
     except EngineUnavailableError as error:
+        _record_latency(timings, "preflight_engine_heartbeat_ms", started)
         raise HTTPException(503, ENGINE_UNAVAILABLE_MESSAGE) from error
+    _record_latency(timings, "preflight_engine_heartbeat_ms", started)
     if _hold_check_suspended.get():
-        return
+        return server_root
+    started = time.perf_counter_ns()
     try:
         hold = find_reserving_class_propagation_hold(
             server_root, project_name, reserving_class
         )
     except DependentPropagationContractError as error:
+        _record_latency(timings, "preflight_class_hold_ms", started)
         raise HTTPException(400, str(error)) from error
+    _record_latency(timings, "preflight_class_hold_ms", started)
     if hold is not None:
         raise HTTPException(423, RESERVING_CLASS_BUSY_MESSAGE)
+    return server_root
 
 
 def get_reserving_class_busy(

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "hosted saves",
+  "audience": "internal",
+  "summary": "Reduced hosted-save network round trips and added rotating local timing diagnostics.",
+  "details": [
+    "The client now reuses preflight validation, treats the request as queued state, waits before its first poll, and reads successful responses from the terminal status.",
+    "Successful protocol-path safety checks are cached for 30 seconds while heartbeat and reserving-class hold checks still run for every save.",
+    "Each save records preflight, request publication, status polling, response source, and total elapsed time without storing method payloads."
+  ]
+}

@@ -6,7 +6,8 @@ app server ships the whole save here instead: this module claims the request
 durable), takes the reserving-class lease so the save and its inline
 dependent walk serialize with propagation jobs, runs the canonical
 ``app_server`` service save on local disk, and publishes the service's full
-response through a result file the client returns as its own HTTP response.
+response in the terminal status the client returns as its own HTTP response.
+A separate result file remains temporarily for older clients during rollout.
 
 A ``plan`` request is the first half of a two-step save: it reads the two
 dependency graphs and answers with the objects the save could reach, so the
@@ -147,7 +148,7 @@ def _process_plan_request(
             return False
 
         write_save_job_result(root, request_id, plan)
-        publish("success")
+        publish("success", response=plan)
         _log(root, f"{request_id} plan reached {plan.get('dependent_count')} dependent(s)")
         return True
     except Exception as exc:
@@ -207,9 +208,20 @@ def process_hosted_save_request(
         f"mode={normalized['Mode']} class={normalized['Path']!r}",
     )
 
-    def publish(status: str, *, message: str = "", status_code: int | None = None) -> None:
+    def publish(
+        status: str,
+        *,
+        message: str = "",
+        status_code: int | None = None,
+        response: Mapping[str, Any] | None = None,
+    ) -> None:
         write_save_job_status(
-            root, request_id, status, message=message, status_code=status_code
+            root,
+            request_id,
+            status,
+            message=message,
+            status_code=status_code,
+            response=response,
         )
 
     def publish_error(message: str, status_code: int) -> None:
@@ -307,8 +319,11 @@ def process_hosted_save_request(
 
         if not isinstance(response, dict):
             response = {"ok": True, "response": response}
+        # Keep the separate result during mixed-client rollout. Current
+        # clients consume the same payload from the terminal status and avoid
+        # one extra SMB read; older clients still read this legacy artifact.
         write_save_job_result(root, request_id, response)
-        publish("success")
+        publish("success", response=response)
         _log(root, f"{request_id} success")
         return True
     except Exception as exc:
