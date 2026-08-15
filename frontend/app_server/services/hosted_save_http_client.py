@@ -63,17 +63,34 @@ def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def gateway_supports_save_kind(
+    capabilities: Mapping[str, Any], save_kind: str
+) -> bool:
+    """Report whether a probed gateway advertises this save kind.
+
+    A gateway deployed before a save kind reached the HTTP transport advertises
+    a narrower list than this client knows about. Posting such a kind would be
+    refused outright, so the caller keeps it on the SMB transport until the
+    gateway is upgraded instead of failing the save.
+    """
+
+    advertised = capabilities.get("allowed_save_kinds")
+    if not isinstance(advertised, (list, tuple)):
+        return False
+    return str(save_kind) in {str(item) for item in advertised}
+
+
 def submit_hosted_save(
     gateway_config: Mapping[str, Any],
     request_payload: Mapping[str, Any],
     *,
     timeout_seconds: float,
 ) -> tuple[dict[str, Any], dict[str, float | int]]:
-    """Submit once logically, retrying uncertain connections with the same ID."""
+    """Submit once logically, retrying uncertain connections with the same ID.
 
-    probe_started = time.perf_counter_ns()
-    probe_gateway(gateway_config)
-    probe_ms = round((time.perf_counter_ns() - probe_started) / 1_000_000.0, 3)
+    The caller probes capabilities before choosing this transport, so this
+    function costs exactly one request.
+    """
 
     body = canonical_request_bytes(request_payload)
     url = f"{gateway_config['url']}{HOSTED_SAVE_PATH}"
@@ -110,7 +127,6 @@ def submit_hosted_save(
             with _DIRECT_HTTP_OPENER.open(request, timeout=remaining) as response:
                 payload = _response_json(response)
             return payload, {
-                "gateway_capability_ms": probe_ms,
                 "gateway_round_trip_ms": round(
                     (time.perf_counter_ns() - transport_started) / 1_000_000.0,
                     3,

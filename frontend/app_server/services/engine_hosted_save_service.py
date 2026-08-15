@@ -44,7 +44,7 @@ from arcrho_engine_save_contract import (
     save_job_status_is_terminal,
 )
 from arcrho_hosted_save_http_contract import (
-    HTTP_PILOT_SAVE_KINDS,
+    HTTP_SAVE_KINDS,
     HostedSaveHttpContractError,
 )
 
@@ -427,7 +427,6 @@ def _run_hosted_job_http(
     trace["result_source"] = "http_gateway"
     trace["phase_ms"].update(
         {
-            "gateway_capability_ms": timings["gateway_capability_ms"],
             "gateway_round_trip_ms": timings["gateway_round_trip_ms"],
             "gateway_attempts": timings["gateway_attempts"],
         }
@@ -455,16 +454,18 @@ def _run_hosted_job(
 
     request_id = uuid.uuid4().hex
     gateway_config: Mapping[str, Any] = {"enabled": False}
-    if save_kind in HTTP_PILOT_SAVE_KINDS:
+    if save_kind in HTTP_SAVE_KINDS:
         try:
             gateway_config = config.load_hosted_save_gateway_config()
         except HostedSaveHttpContractError as exc:
             raise HTTPException(503, str(exc)) from exc
-    transport = "http_gateway" if gateway_config.get("enabled") is True else "smb"
+    # The transport is resolved below, once the gateway has been asked which
+    # kinds it serves. ``context`` is the same dict the latency record spreads,
+    # so it always reports the transport the save actually used.
     context = {
         "mode": mode,
         "save_kind": save_kind,
-        "transport": transport,
+        "transport": "smb",
         "project_name": str(project_name or "").strip(),
         "reserving_class": str(reserving_class or "").strip(),
         "object_name": _save_object_name(args),
@@ -487,6 +488,17 @@ def _run_hosted_job(
     http_status = 500
     try:
         if gateway_config.get("enabled") is True:
+            _set_failure_stage("gateway_capability")
+            capability_started_ns = time.perf_counter_ns()
+            try:
+                capabilities = hosted_save_http_client.probe_gateway(gateway_config)
+            finally:
+                _record_phase("gateway_capability_ms", capability_started_ns)
+            if hosted_save_http_client.gateway_supports_save_kind(
+                capabilities, save_kind
+            ):
+                context["transport"] = "http_gateway"
+        if context["transport"] == "http_gateway":
             result = _run_hosted_job_http(
                 mode,
                 save_kind,

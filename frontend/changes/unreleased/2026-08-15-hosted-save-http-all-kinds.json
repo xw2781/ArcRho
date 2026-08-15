@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "hosted saves",
+  "audience": "user",
+  "summary": "Extended the faster HTTP save transport to every dataset and method save.",
+  "details": [
+    "Bornhuetter Ferguson, Cape Cod, bootstrap, and result-selection saves now take the same server-local HTTP path as dataset and DFM saves.",
+    "A save kind stays on the previous transport while the deployed gateway is older than that kind, so an upgrade in progress never fails a save."
+  ]
+}

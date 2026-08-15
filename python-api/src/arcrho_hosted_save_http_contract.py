@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from arcrho_engine_save_contract import SAVE_JOB_KINDS
+
 
 HTTP_CONTRACT_VERSION = 1
 GATEWAY_CONFIG_VERSION = 1
@@ -27,7 +29,13 @@ HEALTH_PATH = "/api/health"
 DEFAULT_GATEWAY_HOST = "0.0.0.0"
 DEFAULT_GATEWAY_PORT = 28767
 DEFAULT_RECEIPT_RETENTION_HOURS = 24
-HTTP_PILOT_SAVE_KINDS = ("dataset_sidecar", "dfm_method")
+# Every hosted save travels over HTTP. The kinds are derived from the canonical
+# ``SAVE_JOB_KINDS`` registry rather than restated here, so a new dataset or
+# method save procedure reaches the gateway the moment it is registered and can
+# never drift out of a hand-maintained subset. The Engine still resolves the
+# save through that same registry, which remains the only gate on what a
+# request may name.
+HTTP_SAVE_KINDS: tuple[str, ...] = tuple(sorted(SAVE_JOB_KINDS))
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
 AUTH_CLOCK_SKEW_SECONDS = 300
 AUTH_USER_HEADER = "X-ArcRho-User"
@@ -144,7 +152,6 @@ def default_gateway_config() -> dict[str, Any]:
         "port": DEFAULT_GATEWAY_PORT,
         "client_url": "",
         "receipt_retention_hours": DEFAULT_RECEIPT_RETENTION_HOURS,
-        "allowed_save_kinds": list(HTTP_PILOT_SAVE_KINDS),
         "users": {},
     }
 
@@ -169,12 +176,9 @@ def normalize_gateway_config(value: Any) -> dict[str, Any]:
         raise HostedSaveHttpContractError("Gateway host or port is invalid.")
     if retention < 1:
         raise HostedSaveHttpContractError("Gateway receipt retention must be positive.")
-    raw_kinds = value.get("allowed_save_kinds")
-    if not isinstance(raw_kinds, list) or not raw_kinds:
-        raise HostedSaveHttpContractError("Gateway save-kind allowlist is empty.")
-    allowed_kinds = sorted({str(item or "").strip() for item in raw_kinds if str(item or "").strip()})
-    if not allowed_kinds:
-        raise HostedSaveHttpContractError("Gateway save-kind allowlist is empty.")
+    # ``allowed_save_kinds`` was a pilot-era stored subset of SAVE_JOB_KINDS.
+    # The supported kinds are derived now, so a stored copy is ignored here and
+    # dropped from the next write rather than narrowing an upgraded gateway.
     raw_users = value.get("users")
     if not isinstance(raw_users, Mapping):
         raise HostedSaveHttpContractError("Gateway users must be an object.")
@@ -190,7 +194,6 @@ def normalize_gateway_config(value: Any) -> dict[str, Any]:
         "port": port,
         "client_url": client_url,
         "receipt_retention_hours": retention,
-        "allowed_save_kinds": allowed_kinds,
         "users": users,
     }
 

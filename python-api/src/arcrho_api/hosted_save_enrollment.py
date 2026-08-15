@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from arcrho_hosted_save_http_contract import (
-    HTTP_PILOT_SAVE_KINDS,
     HostedSaveHttpContractError,
     default_gateway_config,
     generate_secret,
@@ -133,9 +132,6 @@ def provision_gateway_user(
                     "Save Gateway automatic enrollment has no configured client URL."
                 )
             gateway["client_url"] = effective_url
-            gateway["allowed_save_kinds"] = sorted(
-                set(gateway["allowed_save_kinds"]) | set(HTTP_PILOT_SAVE_KINDS)
-            )
             secret = gateway["users"].get(normalized_user) or generate_secret()
             gateway["users"][normalized_user] = secret
             write_json_atomic(server_path, gateway)

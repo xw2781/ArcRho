@@ -9,16 +9,24 @@ ArcRho currently coordinates Engine-hosted saves through small JSON files on the
 
 The proposed design adds one authenticated HTTP Save Gateway on the ArcRho Server. Clients communicate only with that gateway; the gateway translates requests into the existing server-local hosted-save protocol and waits for Engine completion locally. This removes mapped-drive I/O from the client save path without changing canonical save functions, reserving-class leases, dependent propagation, or endpoint response shapes.
 
-The HTTP gateway now has a no-IT dataset-sidecar and DFM-method pilot. SMB remains the default
-production transport and rollback path until the pilot is measured and its
-TLS/authentication deployment is approved for broader use.
+The HTTP gateway now carries every hosted save. SMB remains the rollback path
+until the transport's TLS/authentication deployment is approved for broader
+use.
 
-## Implemented Dataset-Sidecar and DFM Pilot
+## Implemented Transport
 
-The implementation limits the gateway allowlist to `dataset_sidecar` and
-`dfm_method` while keeping `/dataset/sidecar/save`, `/dfm/method/save`, and
-their `/plan` siblings unchanged. The browser still calls its local app
-server; only the app-server-to-Engine transport changes.
+The transport covers every save kind in the canonical `SAVE_JOB_KINDS`
+registry — dataset sidecars and DFM, Bornhuetter Ferguson, Cape Cod, bootstrap,
+and result-selection methods — while keeping every save route and its `/plan`
+sibling unchanged. The browser still calls its local app server; only the
+app-server-to-Engine transport changes.
+
+The supported kinds are derived from `SAVE_JOB_KINDS` rather than stored in the
+Gateway configuration, so registering a new save procedure puts it on the HTTP
+transport with no configuration change and no second list to update. A client
+still asks `/api/capabilities` which kinds a Gateway serves and keeps any kind
+an older deployed Gateway does not advertise on SMB, so a pending Gateway
+upgrade degrades the transport instead of failing the save.
 
 - `ArcRho Save Gateway` is a dedicated server executable supervised by every
   logged-in user's Orchestrator. One process wins the fixed port; another

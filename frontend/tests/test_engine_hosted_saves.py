@@ -20,12 +20,14 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
         sys.path.insert(0, str(path))
 
 from arcrho_engine_save_contract import (
+    SAVE_JOB_KINDS,
     read_save_job_status,
     save_job_request_path,
     validate_save_job_request,
     write_save_job_result,
     write_save_job_status,
 )
+from arcrho_hosted_save_http_contract import HTTP_SAVE_KINDS
 from app_server.services import (
     client_save_latency_log_service,
     dependent_propagation_service,
@@ -87,6 +89,19 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             json.loads(line)
             for line in self.latency_log_path.read_text(encoding="utf-8").splitlines()
         ]
+
+    def _capabilities(self, save_kinds=None) -> dict:
+        """What ``/api/capabilities`` returns for a reachable gateway."""
+
+        return {
+            "ok": True,
+            "hosted_save_http": True,
+            "contract_version": 1,
+            "allowed_save_kinds": list(
+                HTTP_SAVE_KINDS if save_kinds is None else save_kinds
+            ),
+            "insecure_http_pilot": True,
+        }
 
     def _engine_stub(self, respond) -> threading.Thread:
         """Wait for the request file, then publish what `respond` returns."""
@@ -301,11 +316,15 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             ),
             patch.object(
                 engine_hosted_save_service.hosted_save_http_client,
+                "probe_gateway",
+                return_value=self._capabilities(),
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
                 "submit_hosted_save",
                 return_value=(
                     {"ok": True, "source_kind": "input"},
                     {
-                        "gateway_capability_ms": 1.0,
                         "gateway_round_trip_ms": 25.0,
                         "gateway_attempts": 1,
                         "request_bytes": 512,
@@ -367,7 +386,6 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         def submit(_config, request, **_kwargs):
             submitted.append(request)
             return responses[len(submitted) - 1], {
-                "gateway_capability_ms": 1.0,
                 "gateway_round_trip_ms": 25.0,
                 "gateway_attempts": 1,
                 "request_bytes": 1024,
@@ -383,6 +401,11 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                 engine_hosted_save_service.user_identity_service,
                 "get_current_identity",
                 return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "probe_gateway",
+                return_value=self._capabilities(),
             ),
             patch.object(
                 engine_hosted_save_service.hosted_save_http_client,
@@ -430,6 +453,134 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             "http_gateway",
         ])
         self.assertTrue(all(record["status_poll_count"] == 0 for record in round_trips))
+
+    def test_every_save_kind_uses_the_http_gateway(self) -> None:
+        """Every dataset and method save procedure travels over HTTP."""
+
+        gateway_config = {
+            "enabled": True,
+            "url": "http://gateway.test:28767",
+            "user": "xwei",
+            "secret": "pilot-secret",
+            "allow_insecure_http": True,
+        }
+        submitted: list[dict] = []
+
+        def submit(_config, request, **_kwargs):
+            submitted.append(request)
+            return {"ok": True}, {
+                "gateway_round_trip_ms": 5.0,
+                "gateway_attempts": 1,
+                "request_bytes": 128,
+            }
+
+        with (
+            patch.object(
+                engine_hosted_save_service.config,
+                "load_hosted_save_gateway_config",
+                return_value=gateway_config,
+            ),
+            patch.object(
+                engine_hosted_save_service.user_identity_service,
+                "get_current_identity",
+                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "probe_gateway",
+                return_value=self._capabilities(),
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "submit_hosted_save",
+                side_effect=submit,
+            ),
+            patch.object(
+                dependent_propagation_service,
+                "require_reserving_class_writable",
+                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
+            ),
+        ):
+            for save_kind in sorted(SAVE_JOB_KINDS):
+                engine_hosted_save_service.run_hosted_save(
+                    save_kind,
+                    "Demo Project",
+                    "HPPREF\\HO+DF\\NJ",
+                    args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+                )
+
+        self.assertEqual(
+            [request["SaveKind"] for request in submitted],
+            sorted(SAVE_JOB_KINDS),
+        )
+        round_trips = [
+            record
+            for record in self._latency_records()
+            if record["event"] == "hosted_save_round_trip"
+        ]
+        self.assertEqual(
+            [record["transport"] for record in round_trips],
+            ["http_gateway"] * len(SAVE_JOB_KINDS),
+        )
+
+    def test_a_gateway_without_the_save_kind_stays_on_smb(self) -> None:
+        """A gateway older than a save kind degrades instead of refusing it.
+
+        The kind gate lives on the gateway, so posting a kind it never
+        advertised would be rejected outright and lose the save. Until it is
+        upgraded, that kind keeps the SMB transport.
+        """
+
+        gateway_config = {
+            "enabled": True,
+            "url": "http://gateway.test:28767",
+            "user": "xwei",
+            "secret": "pilot-secret",
+            "allow_insecure_http": True,
+        }
+
+        def respond(request):
+            write_save_job_result(self.root, request["RequestId"], {"ok": True})
+            write_save_job_status(self.root, request["RequestId"], "success")
+
+        thread = self._engine_stub(respond)
+        with (
+            patch.object(
+                engine_hosted_save_service.config,
+                "load_hosted_save_gateway_config",
+                return_value=gateway_config,
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "probe_gateway",
+                return_value=self._capabilities(["dataset_sidecar"]),
+            ),
+            patch.object(
+                engine_hosted_save_service.hosted_save_http_client,
+                "submit_hosted_save",
+                side_effect=AssertionError(
+                    "an unadvertised save kind must never be posted"
+                ),
+            ),
+        ):
+            result = engine_hosted_save_service.run_hosted_save(
+                "cape_cod_method",
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+            )
+        thread.join(timeout=5)
+
+        self.assertTrue(result["ok"])
+        round_trip = next(
+            record
+            for record in reversed(self._latency_records())
+            if record["event"] == "hosted_save_round_trip"
+        )
+        self.assertEqual(round_trip["transport"], "smb")
+        self.assertEqual(round_trip["outcome"], "success")
+        # The probe still happened, and its cost is attributed honestly.
+        self.assertGreaterEqual(round_trip["phase_ms"]["gateway_capability_ms"], 0)
 
     def test_service_errors_keep_their_status_codes(self) -> None:
         def respond(request):

@@ -19,6 +19,7 @@ for path in (ENGINE_SOURCE, API_SOURCE, FRONTEND_ROOT):
         sys.path.insert(0, str(path))
 
 from arcrho_engine_save_contract import (
+    SAVE_JOB_KINDS,
     build_save_job_request,
     validate_save_job_request,
     write_save_job_status,
@@ -28,7 +29,7 @@ from arcrho_hosted_save_http_contract import (
     AUTH_TIMESTAMP_HEADER,
     AUTH_USER_HEADER,
     HOSTED_SAVE_PATH,
-    HTTP_PILOT_SAVE_KINDS,
+    HTTP_SAVE_KINDS,
     canonical_request_bytes,
     default_gateway_config,
     sign_request,
@@ -40,11 +41,13 @@ from app_server.services import hosted_save_http_client
 
 
 class HostedSaveHttpContractTests(unittest.TestCase):
-    def test_default_gateway_enables_dataset_and_dfm_saves(self) -> None:
-        self.assertEqual(
-            default_gateway_config()["allowed_save_kinds"],
-            list(HTTP_PILOT_SAVE_KINDS),
-        )
+    def test_http_transport_covers_every_canonical_save_kind(self) -> None:
+        self.assertEqual(HTTP_SAVE_KINDS, tuple(sorted(SAVE_JOB_KINDS)))
+
+    def test_gateway_configuration_stores_no_save_kind_allowlist(self) -> None:
+        """The supported kinds are derived, so no config may narrow them."""
+
+        self.assertNotIn("allowed_save_kinds", default_gateway_config())
 
     def test_current_user_startup_registration_quotes_the_gateway_path(self) -> None:
         with tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT)) as temporary:
@@ -71,7 +74,9 @@ class HostedSaveHttpContractTests(unittest.TestCase):
                 f'"{executable.resolve()}"',
             )
 
-    def test_provisioning_adds_dfm_to_an_existing_dataset_pilot(self) -> None:
+    def test_provisioning_drops_a_pilot_era_save_kind_allowlist(self) -> None:
+        """An upgraded gateway must not stay narrowed by a stored pilot list."""
+
         with tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT)) as temporary:
             root = Path(temporary)
             server_config = default_gateway_config()
@@ -95,10 +100,7 @@ class HostedSaveHttpContractTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
-            self.assertEqual(
-                updated["allowed_save_kinds"],
-                sorted(HTTP_PILOT_SAVE_KINDS),
-            )
+            self.assertNotIn("allowed_save_kinds", updated)
             self.assertEqual(updated["users"], {"alice": "existing-secret"})
 
     def test_signature_binds_user_path_timestamp_and_body(self) -> None:
@@ -266,6 +268,57 @@ class SaveGatewayTests(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertEqual(seen[0], validate_save_job_request(request))
         self.assertEqual(result["saved"], request["Args"][2])
+
+    def _request_for_kind(self, save_kind: str, request_id: str) -> dict:
+        return build_save_job_request(
+            request_id=request_id,
+            save_kind=save_kind,
+            project_name="Demo Project",
+            path="LOB\\State",
+            args=["Demo Project", "LOB\\State", {"name": f"{save_kind} object"}],
+            kwargs={},
+            user_name="alice",
+            user_display_name="Alice Example",
+        )
+
+    def test_every_canonical_save_kind_reaches_engine_over_http(self) -> None:
+        """No save procedure is left behind on the SMB transport."""
+
+        for index, save_kind in enumerate(sorted(SAVE_JOB_KINDS)):
+            with self.subTest(save_kind=save_kind):
+                seen: list[dict] = []
+                thread = self._engine_stub(seen)
+                request = self._request_for_kind(save_kind, f"kind-request-{index}")
+                result = self.gateway.submit("alice", request)
+                thread.join(timeout=5)
+
+                self.assertTrue(result["ok"])
+                self.assertEqual(len(seen), 1)
+                self.assertEqual(seen[0]["SaveKind"], save_kind)
+                self.assertEqual(seen[0], validate_save_job_request(request))
+
+    def test_capabilities_advertise_every_canonical_save_kind(self) -> None:
+        self.assertEqual(
+            self.gateway.capabilities()["allowed_save_kinds"],
+            list(HTTP_SAVE_KINDS),
+        )
+
+    def test_a_stored_pilot_allowlist_no_longer_narrows_the_gateway(self) -> None:
+        stored = default_gateway_config()
+        stored["allowed_save_kinds"] = ["dataset_sidecar"]
+        stored["users"] = {"alice": "alice-secret"}
+        gateway_main._write_json_atomic(
+            self.root / "config" / "hosted_save_gateway.json", stored
+        )
+
+        seen: list[dict] = []
+        thread = self._engine_stub(seen)
+        request = self._request_for_kind("cape_cod_method", "legacy-config-request")
+        result = self.gateway.submit("alice", request)
+        thread.join(timeout=5)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(seen[0]["SaveKind"], "cape_cod_method")
 
     def test_same_request_id_with_different_content_is_rejected(self) -> None:
         seen: list[dict] = []
