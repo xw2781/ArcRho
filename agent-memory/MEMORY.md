@@ -19,3 +19,4 @@
 - [Macro method-notes persistence](macro-method-notes-persistence.md) — method notes cross payload flows only via the transient `method metadata.method notes` carrier; macro→Notes-tab wiring added 2026-08-12, Save persists to sidecar
 - [Propagation hold and test isolation](propagation-hold-and-test-isolation.md) — saves preflight a 423 reserving-class hold (45s/180s freshness); service tests that save MUST use tests/dependent_propagation_workspace_stub.py or they enqueue real jobs on E:\ and flake
 - [DFM offline recompute repro](dfm-offline-recompute-repro.md) — diagnose propagation-refresh decisions by importing arcrho_api.dfm_contract directly against live method JSON; found the leading-space `= expr` eval bug 2026-08-14
+- [PI path-load SMB cost](pi-path-load-smb-cost.md) — share reads cost ~220ms flat regardless of size; the reserving-class path load spends 21 round trips off-gateway, and a hosted read measured 3.8x faster
