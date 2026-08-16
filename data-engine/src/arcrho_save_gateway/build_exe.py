@@ -21,8 +21,24 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
         sys.path.insert(0, str(path))
 
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
-from build_runtime import ensure_python_310_venv
-from utils import component_app_name, get_config_value, resolve_app_path, set_config_value
+from build_runtime import (
+    align_workspace_root_env,
+    ensure_python_310_venv,
+    is_local_fixed_path,
+)
+
+# Must run before utils is imported: utils resolves the workspace root once at
+# import time, and this build reads the deployed workspace's config, kill
+# switch, and heartbeats.
+align_workspace_root_env()
+
+from utils import (  # noqa: E402
+    component_app_name,
+    get_config_value,
+    get_project_root,
+    resolve_app_path,
+    set_config_value,
+)
 
 if str(CANONICAL_SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(CANONICAL_SOURCE_ROOT))
@@ -31,7 +47,8 @@ from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS  # noqa: E402
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
 BUILD_CACHE_ROOT = BUILD_ROOT / "cache"
-DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
+DEPLOY_ROOT = get_project_root()
+DEPLOY_ROOT_IS_LOCAL = is_local_fixed_path(DEPLOY_ROOT)
 APPS_DIR = DEPLOY_ROOT / "apps"
 VENV_PYTHON = PROJECT_ROOT / "venvs" / BASE_DIR.name / "Scripts" / "python.exe"
 REQ_FILE = BASE_DIR / "requirements.txt"
@@ -115,7 +132,16 @@ def gateway_stopped():
     finally:
         set_config_value(KILL_ALL_KEY, previous)
         if not previous:
-            start_gateway()
+            if DEPLOY_ROOT_IS_LOCAL:
+                start_gateway()
+            else:
+                # Running the deployed executable here would host the server's
+                # Gateway on the build machine. Clearing the kill switch is
+                # enough: the server's own Orchestrator restores it.
+                print(
+                    f"\n>>> {DEPLOY_ROOT} is not a local disk; the server's "
+                    "Orchestrator restarts the Save Gateway."
+                )
 
 
 def validate_canonical_runtime_environment() -> None:
