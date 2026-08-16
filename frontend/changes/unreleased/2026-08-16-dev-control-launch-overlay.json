@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "development tools",
+  "audience": "internal",
+  "summary": "Development Control Center now dismisses its launch overlay after ArcRho starts."
+}

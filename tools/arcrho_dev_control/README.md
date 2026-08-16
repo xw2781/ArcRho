@@ -19,6 +19,10 @@ The page can:
 - show and open ArcRho's local preference, cache, log, runtime, and user-file
   folders.
 
+Launch actions complete as soon as the batch launcher hands off the detached
+ArcRho supervisor. The control page therefore clears its busy overlay without
+waiting for ArcRho to close.
+
 The page follows the system light/dark theme by default. The switch in the
 title bar picks Auto, Light, or Dark and stores that choice in the browser's
 `localStorage`; no theme state is kept on the server. The folder filter box

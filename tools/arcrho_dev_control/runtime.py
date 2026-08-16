@@ -23,6 +23,16 @@ DEV_LAUNCHER = FRONTEND_ROOT / "launch_arcrho_dev_mode.bat"
 _ACTION_LOCK = Lock()
 _PREFERENCE_PATHS: dict[str, Path] = {}
 
+# Preference discovery walks every project and user folder on the workspace
+# share, which costs about a round trip each and measures ~10s here.  The status
+# page polls every few seconds, so an uncached scan never finishes before the
+# next one starts and the share sees a growing pile of concurrent walks.  These
+# files change rarely, so a short cache keeps the page responsive; the clear
+# action rediscovers directly and resets the cache.
+_PREFERENCE_CACHE_SECONDS = 60.0
+_PREFERENCE_CACHE_LOCK = Lock()
+_PREFERENCE_CACHE: tuple[float, list[dict[str, str]], list[str]] | None = None
+
 
 @dataclass(frozen=True)
 class ProcessInfo:
@@ -46,6 +56,32 @@ def _run_process(command: list[str], *, timeout: float = 20) -> subprocess.Compl
         creationflags=_windows_creation_flags(),
         check=False,
     )
+
+
+def _run_launcher(command: list[str], *, timeout: float = 15) -> int:
+    """Run the batch launcher without retaining its supervisor's output handles.
+
+    ``launch_arcrho_dev_mode.bat`` starts ``pythonw`` detached.  Capturing the
+    batch file's stdout/stderr lets that detached process inherit the capture
+    pipes, so ``communicate()`` waits until ArcRho exits even after ``cmd.exe``
+    has finished.  The control-center action must finish when the launcher has
+    handed off the process tree, not when that tree later stops.
+    """
+
+    process = subprocess.Popen(
+        command,
+        cwd=str(REPO_ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=_windows_creation_flags(),
+    )
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        process.kill()
+        process.wait()
+        raise RuntimeError("ArcRho's development launcher did not finish its startup handoff.") from error
 
 
 def _query_windows_processes() -> list[ProcessInfo]:
@@ -296,13 +332,11 @@ def launch_arcrho_dev() -> dict[str, Any]:
         raise RuntimeError(f"Development launcher not found: {DEV_LAUNCHER}")
     if list_arcrho_dev_processes():
         raise RuntimeError("ArcRho development mode is already running. Use Relaunch instead.")
-    result = _run_process(
+    return_code = _run_launcher(
         ["cmd.exe", "/d", "/s", "/c", "call", str(DEV_LAUNCHER)],
-        timeout=45,
     )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "Unknown launcher error."
-        raise RuntimeError(detail)
+    if return_code != 0:
+        raise RuntimeError(f"ArcRho's development launcher failed with exit code {return_code}.")
     time.sleep(0.8)
     return {"launched": True, "processes": len(list_arcrho_dev_processes())}
 
@@ -466,7 +500,10 @@ def list_project_user_preferences() -> list[dict[str, str]]:
                 preference_path = user / config.PROJECT_USER_PREFERENCES_FILE
                 if not preference_path.is_file():
                     continue
-                resolved = preference_path.resolve()
+                try:
+                    resolved = preference_path.resolve()
+                except OSError:
+                    continue
                 preference_id = hashlib.sha256(os.path.normcase(str(resolved)).encode("utf-8")).hexdigest()[:24]
                 preference_paths[preference_id] = resolved
                 discovered.append(
@@ -480,6 +517,41 @@ def list_project_user_preferences() -> list[dict[str, str]]:
     _PREFERENCE_PATHS.clear()
     _PREFERENCE_PATHS.update(preference_paths)
     return discovered
+
+
+def invalidate_preference_cache() -> None:
+    global _PREFERENCE_CACHE
+    with _PREFERENCE_CACHE_LOCK:
+        _PREFERENCE_CACHE = None
+
+
+def _preference_state() -> tuple[list[dict[str, str]], list[str]]:
+    """Discover preference files, degrading to a warning when they are unreachable.
+
+    ``PROJECT_SETTINGS_DIR`` lives on the workspace share, and loading the
+    frontend config resolves that directory eagerly.  A mapped drive that fails
+    to reconnect answers ``WinError 5`` there, and ``Path.resolve`` only
+    swallows a missing path -- so the denial used to escape ``get_state`` and
+    blank the whole page.  The control center is what a developer opens when the
+    environment is already broken, so a share outage may cost this card alone
+    and not the folder catalog, the process tree, and the run state with it.
+
+    The lock is held across the scan so overlapping polls share one walk of the
+    share rather than each starting their own.
+    """
+
+    global _PREFERENCE_CACHE
+    with _PREFERENCE_CACHE_LOCK:
+        cached = _PREFERENCE_CACHE
+        if cached is not None and time.monotonic() - cached[0] < _PREFERENCE_CACHE_SECONDS:
+            return cached[1], cached[2]
+        try:
+            preferences, warnings = list_project_user_preferences(), []
+        except Exception as error:
+            _PREFERENCE_PATHS.clear()
+            preferences, warnings = [], [f"Preference files are unavailable: {error}"]
+        _PREFERENCE_CACHE = (time.monotonic(), preferences, warnings)
+        return preferences, warnings
 
 
 def clear_project_user_preference_and_relaunch(preference_id: str) -> dict[str, Any]:
@@ -497,6 +569,7 @@ def clear_project_user_preference_and_relaunch(preference_id: str) -> dict[str, 
             backup = path.with_name(f"{path.name}.cleared-{stamp}-{suffix}.bak")
             suffix += 1
         os.replace(path, backup)
+        invalidate_preference_cache()
         launched = launch_arcrho_dev()
     return {**stopped, **launched, "cleared": selected, "backup_path": str(backup)}
 
@@ -516,13 +589,15 @@ def _backend_health() -> dict[str, Any]:
 
 def get_state() -> dict[str, Any]:
     processes = list_arcrho_dev_processes()
+    preferences, warnings = _preference_state()
     return {
         "ok": True,
         "running": bool(processes),
         "backend": _backend_health(),
         "processes": [asdict(process) for process in processes],
         "folders": folder_catalog(),
-        "preferences": list_project_user_preferences(),
+        "preferences": preferences,
+        "warnings": warnings,
         "launcher": str(DEV_LAUNCHER),
         "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }

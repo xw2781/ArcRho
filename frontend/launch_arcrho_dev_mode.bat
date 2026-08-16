@@ -24,6 +24,14 @@ pause
 exit /b 1
 :mode_ok
 
+REM VS Code exports ELECTRON_RUN_AS_NODE=1 to its integrated terminals and
+REM extension-host children, and it is inherited all the way down to our own
+REM Electron.  Under that flag electron.exe runs as plain Node, so
+REM require("electron") hands back the executable path instead of the API and
+REM main.js dies on `app.getName` before a window ever opens.  Launching from
+REM Explorer never sees it; launching from an editor terminal always does.
+set "ELECTRON_RUN_AS_NODE="
+
 set "NODE_HOME=%~dp0node-portable"
 set "NPM_CMD=npm.cmd"
 

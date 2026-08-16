@@ -1,16 +1,48 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from tools.arcrho_dev_control import runtime
 
 
 class ArcRhoDevControlRuntimeTests(unittest.TestCase):
+    def test_launcher_handoff_does_not_capture_detached_supervisor_output(self) -> None:
+        process = Mock()
+        process.wait.return_value = 0
+
+        with patch.object(runtime.subprocess, "Popen", return_value=process) as popen:
+            return_code = runtime._run_launcher(["cmd.exe", "/c", "launcher.bat"])
+
+        self.assertEqual(return_code, 0)
+        self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 15})
+        self.assertEqual(
+            popen.call_args.kwargs,
+            {
+                "cwd": str(runtime.REPO_ROOT),
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "creationflags": runtime._windows_creation_flags(),
+            },
+        )
+
+    def test_launcher_handoff_times_out_cleanly(self) -> None:
+        process = Mock()
+        process.wait.side_effect = [subprocess.TimeoutExpired(["cmd.exe"], 15), None]
+
+        with patch.object(runtime.subprocess, "Popen", return_value=process):
+            with self.assertRaisesRegex(RuntimeError, "did not finish"):
+                runtime._run_launcher(["cmd.exe"], timeout=15)
+
+        process.kill.assert_called_once_with()
+        self.assertEqual(process.wait.call_args_list[-1].args, ())
+
     def test_process_selection_includes_descendants(self) -> None:
         frontend = str(runtime.FRONTEND_ROOT)
         processes = [
@@ -67,6 +99,42 @@ class ArcRhoDevControlRuntimeTests(unittest.TestCase):
         self.assertEqual(len(discovered), 1)
         self.assertEqual(discovered[0]["project"], "Sample")
         self.assertEqual(discovered[0]["user"], "alice")
+
+    def setUp(self) -> None:
+        runtime.invalidate_preference_cache()
+        self.addCleanup(runtime.invalidate_preference_cache)
+
+    def test_repeated_status_polls_reuse_one_workspace_scan(self) -> None:
+        with (
+            patch.object(runtime, "list_project_user_preferences", return_value=[]) as discover,
+            patch.object(runtime, "list_arcrho_dev_processes", return_value=[]),
+            patch.object(runtime, "_backend_health", return_value={"reachable": False}),
+        ):
+            runtime.get_state()
+            runtime.get_state()
+            runtime.get_state()
+            self.assertEqual(discover.call_count, 1)
+            runtime.invalidate_preference_cache()
+            runtime.get_state()
+            self.assertEqual(discover.call_count, 2)
+
+    def test_unreachable_workspace_share_warns_without_failing_state(self) -> None:
+        denied = PermissionError(5, "Access is denied", r"E:\ArcRho Server\projects")
+
+        with (
+            patch.object(runtime, "_load_frontend_config", side_effect=denied),
+            patch.object(runtime, "list_arcrho_dev_processes", return_value=[]),
+            patch.object(runtime, "_backend_health", return_value={"reachable": False}),
+        ):
+            runtime._PREFERENCE_PATHS["stale"] = Path("stale.json")
+            state = runtime.get_state()
+
+        self.assertTrue(state["ok"])
+        self.assertEqual(state["preferences"], [])
+        self.assertEqual(runtime._PREFERENCE_PATHS, {})
+        self.assertEqual(len(state["warnings"]), 1)
+        self.assertIn("Access is denied", state["warnings"][0])
+        self.assertTrue(state["folders"])
 
     def test_clear_preference_moves_file_to_backup_before_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=runtime.REPO_ROOT) as temp_dir:

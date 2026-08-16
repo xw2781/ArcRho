@@ -460,7 +460,7 @@
   <script>
     const CONTROL_TOKEN = __CONTROL_TOKEN__;
     const THEME_STORAGE_KEY = "arcrho.dev-control.theme";
-    const state = { data: null, busy: false, pendingConfirm: null, folderFilter: "" };
+    const state = { data: null, busy: false, refreshing: false, pendingConfirm: null, folderFilter: "", lastWarning: "" };
     const $ = (id) => document.getElementById(id);
 
     /* The stylesheet only carries a light palette and a [data-theme="dark"]
@@ -581,11 +581,13 @@
         </tr>`).join("");
     }
 
-    function renderPreferences(preferences) {
+    function renderPreferences(preferences, warnings = []) {
       const select = $("preferenceSelect");
       const previous = select.value;
       if (!preferences.length) {
-        select.innerHTML = '<option value="">No project-user preference files found</option>';
+        select.innerHTML = warnings.length
+          ? '<option value="">Preference files could not be read</option>'
+          : '<option value="">No project-user preference files found</option>';
       } else {
         select.innerHTML = '<option value="">Choose a project and user…</option>' + preferences.map((item) =>
           `<option value="${escapeHtml(item.id)}">${escapeHtml(item.project)} — ${escapeHtml(item.user)}</option>`
@@ -597,25 +599,40 @@
 
     function updatePreferencePath() {
       const selected = state.data?.preferences?.find((item) => item.id === $("preferenceSelect").value);
-      $("preferencePath").textContent = selected?.path || "Select a preference file.";
+      const warning = state.data?.warnings?.[0];
+      $("preferencePath").textContent = selected?.path || warning || "Select a preference file.";
       updateButtons();
     }
 
     async function refreshState({ quiet = false } = {}) {
+      /* A status read walks the workspace share and can outlast the poll
+         interval.  Without this guard each tick starts another one and the
+         backlog grows for as long as the share is slow. */
+      if (state.refreshing) return;
+      state.refreshing = true;
       try {
         const response = await fetch("/api/state", { cache: "no-store" });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || "Status request failed.");
         state.data = data;
+        const warnings = data.warnings || [];
         renderRuntime(data);
         renderFolders(data.folders);
-        renderPreferences(data.preferences);
-        $("statusText").textContent = data.running ? "ArcRho development mode is running." : "ArcRho development mode is stopped.";
+        renderPreferences(data.preferences, warnings);
+        const runText = data.running ? "ArcRho development mode is running." : "ArcRho development mode is stopped.";
+        $("statusText").textContent = warnings.length ? `${runText} ${warnings.join(" ")}` : runText;
+        /* Warnings arrive on every poll while the cause lasts, so only a change
+           of wording is worth an activity entry. */
+        const warningKey = warnings.join("\n");
+        if (warningKey && warningKey !== state.lastWarning) addActivity(warnings[0], "error");
+        state.lastWarning = warningKey;
         $("checkedAt").textContent = `Checked ${new Date(data.checked_at).toLocaleTimeString()}`;
         updateButtons();
       } catch (error) {
         $("statusText").textContent = `Status unavailable: ${error.message}`;
         if (!quiet) addActivity(error.message, "error");
+      } finally {
+        state.refreshing = false;
       }
     }
 

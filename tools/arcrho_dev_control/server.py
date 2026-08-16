@@ -20,6 +20,12 @@ DEV_CONTROL_PORT = 28768
 
 class ControlServer(ThreadingHTTPServer):
     daemon_threads = True
+    # ``TCPServer`` turns on SO_REUSEADDR, which on Windows lets a second
+    # process bind a port another process already listens on.  Both servers then
+    # answer this URL and the browser reaches whichever the stack picks, so
+    # restarting to pick up a code change silently keeps serving the old build.
+    # Refusing the duplicate bind turns that into a startup error instead.
+    allow_reuse_address = False
 
     def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]):
         super().__init__(address, handler)
@@ -124,7 +130,14 @@ def main() -> None:
     if args.host not in {"127.0.0.1", "localhost"}:
         parser.error("The control center may only bind to localhost.")
 
-    server = ControlServer((args.host, args.port), ControlHandler)
+    try:
+        server = ControlServer((args.host, args.port), ControlHandler)
+    except OSError as error:
+        raise SystemExit(
+            f"Port {args.port} is already in use, most likely by another ArcRho Dev Control Center.\n"
+            f"Open http://127.0.0.1:{args.port}/ and press Stop Control Center, or stop that process,\n"
+            f"then start this one again. Detail: {error}"
+        ) from error
     url = f"http://127.0.0.1:{server.server_port}/"
     print(f"ArcRho Dev Control Center: {url}")
     if not args.no_browser:
