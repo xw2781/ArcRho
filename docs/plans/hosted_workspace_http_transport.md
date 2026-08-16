@@ -9,8 +9,8 @@ Related: [hosted_save_http_transport.md](hosted_save_http_transport.md) (the sav
 Phase 1 reads landed as a generic transport rather than one hand-written
 endpoint per read: `python-api/src/arcrho_workspace_read_contract.py` holds
 the `WORKSPACE_READ_KINDS` registry (kind → `app_server.services` function and
-its keyword arguments), the Save Gateway executes a registered kind in-process
-against local disk (`POST /api/workspace-reads`, `data-engine/src/arcrho_save_gateway/workspace_reads.py`,
+its keyword arguments), the Gateway executes a registered kind in-process
+against local disk (`POST /api/workspace-reads`, `data-engine/src/arcrho_gateway/workspace_reads.py`,
 now bundling `frontend/app_server` like the Engine), and the client routes
 select the transport per request through
 `frontend/app_server/services/workspace_read_client.py`, rebasing server paths
@@ -22,6 +22,35 @@ bundle, DFM/RS/BF/CC/bootstrap method loads, and the Project Settings
 and small writes remain as planned below. See
 `frontend/docs/app_server/domains/workspace_reads.md` for the transport rules.
 
+## Completed: the rename
+
+`ArcRho Save Gateway` became **`ArcRho Gateway`** once Phase 1 reads showed the
+old name describing roughly a third of what the component did. The replacement
+is a bare role noun, matching Engine, Bridge, Orchestrator, and Launcher, so
+Phases 2 to 4 cannot make it stale the way naming it after hosted saves did.
+`ArcRho Server API` was considered and rejected: it collides with
+`python-api/src/arcrho_api`, an unrelated public client library.
+
+No legacy name is accepted anywhere. What moved:
+
+| Surface | Now |
+| --- | --- |
+| Role key, `COMPONENT_ALIASES` | `gateway` |
+| Python package | `data-engine/src/arcrho_gateway/` |
+| Deployed app folder | `apps/ArcRho Gateway/` |
+| Heartbeat folder | `runtime/instances/arcrho_gateway/` |
+| Config namespace | `apps.gateway.*` |
+| Server registry | `config/arcrho_gateway.json` |
+| Client credential | `%APPDATA%\ArcRho\arcrho_gateway.json` |
+| Receipt store | `runtime/arcrho_gateway/receipts/` |
+| Gateway log | `runtime/logs/gateway.log` |
+
+One string deliberately keeps the old spelling: `STARTUP_VALUE_NAME` in
+`configure_pilot.py` is the literal `ArcRho Save Gateway` HKCU Run value the
+pilot wrote on provisioned machines. It is a key to an entry that already
+exists rather than a name the component answers to, and renaming it would
+silently stop the cleanup from finding anything to delete.
+
 ## Summary
 
 The hosted-save HTTP gateway removed the Client PC's SMB traffic from the
@@ -32,8 +61,8 @@ calculation requests, change-watch pollers, per-user preferences, audit-log
 appends, and index rebuilds — still goes through the mapped/UNC drive from the
 bundled app server.
 
-This plan grows the existing `ArcRho Save Gateway` into a general
-**ArcRho Server API** and moves those interactions onto it, endpoint by
+This plan grows the **ArcRho Gateway** into the Client PC's single access point
+to the workspace and moves those interactions onto it, endpoint by
 endpoint, using the same additive pattern the save pilot used: the browser
 keeps calling its local app server; only the app-server-to-workspace transport
 changes; each path is capability-probed and keeps SMB as its rollback until
@@ -53,14 +82,14 @@ file-protocol consumers keep working on SMB unchanged.
 | Sequencing | Straight to gateway endpoints; no separate SMB micro-fix phase | The affected SMB paths are being replaced; effort goes into the replacement. Measurement comes from the client latency log added alongside the first endpoints |
 | Authentication / transport | Keep the pilot's per-user HMAC over plain HTTP for the current 5–6 user cohort | Adequate authentication and integrity for a small, hand-managed group on a controlled network with limited IT support. See [Authentication Posture](#authentication-posture) for the triggers that require change |
 | Excel add-in and legacy consumers | Coexist on SMB indefinitely | The Engine keeps watching `requests\` for the legacy contract at negligible cost; migrating VBA is gated on the auth decision and on HTTP reads being proven first |
-| Server shape | Grow the Save Gateway into a threaded general server API | One process, one port, existing Orchestrator supervision and kill switch; read handlers call the same `app_server` services on local disk; heavy mutations still go to Engine workers through the local queue |
+| Server shape | Grow the Gateway into a threaded general server API | One process, one port, existing Orchestrator supervision and kill switch; read handlers call the same `app_server` services on local disk; heavy mutations still go to Engine workers through the local queue |
 | First endpoints | Reserving-class index and cached-dataset load bundle together, each behind its own capability probe | Fixes the two reported symptoms (PI class listing, DSV open) in the first phase |
 | Change notifications | Server-Sent Events from the start | One stream per client replaces every per-window SMB stat poller and the Electron `fs.watch` over SMB |
 
 ## What the Client PC Does Over SMB Today
 
 The pilot gateway's complete route table is `/api/health`, `/api/capabilities`,
-and `POST /api/hosted-saves` (`data-engine/src/arcrho_save_gateway/main.py`).
+and `POST /api/hosted-saves` (`data-engine/src/arcrho_gateway/main.py`).
 Everything below is direct filesystem I/O from the app server on the Client PC.
 
 ### Reserving-class contents (PI page, `GET /datasets/cached`)
@@ -132,7 +161,7 @@ flowchart LR
         UI --> App
     end
     subgraph Server["ArcRho Server host"]
-        GW["ArcRho Server API<br/>(grown from Save Gateway)"]
+        GW["ArcRho Gateway"]
         Q[(Server-local<br/>request queue)]
         Eng[Engine workers]
         FS[(Workspace on<br/>local disk)]
@@ -156,7 +185,7 @@ the workspace on a migrated path. Local-only concerns stay local: Excel COM
 link reads, `%APPDATA%` preferences and credentials, `Documents\ArcRho`
 macros/scripts, file dialogs.
 
-**ArcRho Server API** authenticates every request with the existing HMAC
+**ArcRho Gateway** authenticates every request with the existing HMAC
 contract, resolves the workspace root once per request on local disk, and
 serves reads by calling the same `app_server` service functions the Engine
 already bundles. It performs small writes (preferences, audit log, RC caches,
@@ -169,10 +198,10 @@ client. It contains no calculation or method-specific save logic.
 canonical `app_server` save, inline dependent propagation, legacy calculation
 handlers, heartbeat.
 
-**Orchestrator** continues to supervise the API as the machine-wide singleton
-it already supervises as `save_gateway`.
+**Orchestrator** continues to supervise the Gateway as the machine-wide
+singleton it already supervises as `gateway`.
 
-### Server API changes required before reads
+### Gateway changes required before reads
 
 The pilot is a hand-rolled `BaseHTTPRequestHandler` sized for a synchronous
 save. Carrying reads for the fleet requires, in this order:
@@ -193,9 +222,12 @@ save. Carrying reads for the fleet requires, in this order:
    runs once per request, on local disk.
 5. Structured request metrics (route, user, project, class, elapsed, bytes,
    outcome) without payload logging.
-6. Rename: `ArcRho Save Gateway` → `ArcRho Server API` in the build manager,
-   deployer, Orchestrator role, config keys, and heartbeat folder. Keep the
-   `save_gateway` kill switch name as an alias until every client is upgraded.
+Item 6 of this list — renaming the component away from `ArcRho Save Gateway`,
+which named it after the first workload it carried — is **done**. It is now
+`ArcRho Gateway` (role `gateway`), a bare role noun like Engine, Bridge, and
+Orchestrator, so growing its scope through the phases below cannot make the
+name stale again. No legacy name is accepted anywhere; see
+[Completed: the rename](#completed-the-rename).
 
 ## HTTP Interface
 
@@ -383,8 +415,10 @@ gateway bundle changes, follows the deployment authorizations in `AGENTS.md`.
 - Concurrency limits and payload size caps.
 - Whether the API process should also own the header-cache CSV lifecycle that
   the client currently deletes when stale.
-- Timing of the `Save Gateway` → `Server API` rename relative to the parallel
-  work expanding hosted-save kinds on the client.
+- Whether the `arcrho_hosted_save_http_contract` module should be split, now
+  that it owns the Gateway's configuration, credential, and receipt envelope
+  alongside the hosted-save endpoint. The component name no longer matches the
+  module that defines its config file.
 
 ## Documentation Drift to Reconcile
 

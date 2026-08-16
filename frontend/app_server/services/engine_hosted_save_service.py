@@ -393,7 +393,7 @@ def _run_hosted_job_http(
     if configured_user.casefold() != login_name.casefold():
         raise HTTPException(
             403,
-            "The Save Gateway credential belongs to a different Windows user.",
+            "The Gateway credential belongs to a different Windows user.",
         )
 
     _set_failure_stage("request_encode")
@@ -456,7 +456,7 @@ def _run_hosted_job(
     gateway_config: Mapping[str, Any] = {"enabled": False}
     if save_kind in HTTP_SAVE_KINDS:
         try:
-            gateway_config = config.load_hosted_save_gateway_config()
+            gateway_config = config.load_gateway_config()
         except HostedSaveHttpContractError as exc:
             raise HTTPException(503, str(exc)) from exc
     # The transport is resolved below, once the gateway has been asked which

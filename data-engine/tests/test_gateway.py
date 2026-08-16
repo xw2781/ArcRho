@@ -35,8 +35,8 @@ from arcrho_hosted_save_http_contract import (
     sign_request,
     verify_request_signature,
 )
-from arcrho_save_gateway import main as gateway_main
-from arcrho_save_gateway import configure_pilot
+from arcrho_gateway import main as gateway_main
+from arcrho_gateway import configure_pilot
 from app_server.services import hosted_save_http_client
 
 
@@ -89,10 +89,10 @@ class HostedSaveHttpContractTests(unittest.TestCase):
             server_config["allowed_save_kinds"] = ["dataset_sidecar"]
             server_config["users"] = {"alice": "existing-secret"}
             gateway_main._write_json_atomic(
-                root / "config" / "hosted_save_gateway.json",
+                root / "config" / "arcrho_gateway.json",
                 server_config,
             )
-            client_output = root / "client" / "hosted_save_gateway.json"
+            client_output = root / "client" / "arcrho_gateway.json"
 
             configure_pilot.configure(
                 server_root=root,
@@ -102,7 +102,7 @@ class HostedSaveHttpContractTests(unittest.TestCase):
             )
 
             updated = json.loads(
-                (root / "config" / "hosted_save_gateway.json").read_text(
+                (root / "config" / "arcrho_gateway.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -158,7 +158,7 @@ class HostedSaveHttpContractTests(unittest.TestCase):
         )
 
 
-class SaveGatewayTests(unittest.TestCase):
+class GatewayTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT))
         self.root = Path(self.temp_dir.name)
@@ -168,9 +168,9 @@ class SaveGatewayTests(unittest.TestCase):
         config["port"] = 28767
         config["users"] = {"alice": "alice-secret"}
         gateway_main._write_json_atomic(
-            self.root / "config" / "hosted_save_gateway.json", config
+            self.root / "config" / "arcrho_gateway.json", config
         )
-        self.gateway = gateway_main.SaveGateway(self.root)
+        self.gateway = gateway_main.Gateway(self.root)
         self.preflight = patch.object(gateway_main, "require_live_engine")
         self.hold = patch.object(
             gateway_main, "find_reserving_class_propagation_hold", return_value=None
@@ -256,7 +256,7 @@ class SaveGatewayTests(unittest.TestCase):
         self.assertEqual(seen[0], validate_save_job_request(request))
 
         receipt = json.loads(
-            (self.root / "runtime" / "hosted_save_gateway" / "receipts" / "request-123.json").read_text(
+            (self.root / "runtime" / "arcrho_gateway" / "receipts" / "request-123.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -314,7 +314,7 @@ class SaveGatewayTests(unittest.TestCase):
         stored["allowed_save_kinds"] = ["dataset_sidecar"]
         stored["users"] = {"alice": "alice-secret"}
         gateway_main._write_json_atomic(
-            self.root / "config" / "hosted_save_gateway.json", stored
+            self.root / "config" / "arcrho_gateway.json", stored
         )
 
         seen: list[dict] = []
@@ -345,14 +345,14 @@ class SaveGatewayTests(unittest.TestCase):
         gateway_main._write_json_atomic(
             self.root
             / "runtime"
-            / "hosted_save_gateway"
+            / "arcrho_gateway"
             / "receipts"
             / "recovered-request-123.json",
             receipt,
         )
         seen: list[dict] = []
         thread = self._engine_stub(seen)
-        replacement = gateway_main.SaveGateway(self.root)
+        replacement = gateway_main.Gateway(self.root)
         result = replacement.submit("alice", request)
         thread.join(timeout=5)
         self.assertTrue(result["ok"])
@@ -368,7 +368,7 @@ class SaveGatewayTests(unittest.TestCase):
             (
                 self.root
                 / "runtime"
-                / "hosted_save_gateway"
+                / "arcrho_gateway"
                 / "receipts"
                 / "absolute-path-request.json"
             ).exists()

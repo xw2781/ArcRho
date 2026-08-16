@@ -33,11 +33,11 @@ def _read_object(path: Path, *, missing: dict[str, Any] | None = None) -> dict[s
         return dict(missing or {})
     except (OSError, json.JSONDecodeError) as exc:
         raise HostedSaveHttpContractError(
-            f"Save Gateway configuration could not be read: {path}"
+            f"Gateway configuration could not be read: {path}"
         ) from exc
     if not isinstance(payload, dict):
         raise HostedSaveHttpContractError(
-            f"Save Gateway configuration must be an object: {path}"
+            f"Gateway configuration must be an object: {path}"
         )
     return payload
 
@@ -71,7 +71,7 @@ def _exclusive_file_lock(path: Path) -> Iterator[None]:
             except OSError as exc:
                 if time.monotonic() >= deadline:
                     raise HostedSaveHttpContractError(
-                        "Save Gateway enrollment is busy. Please try again."
+                        "Gateway enrollment is busy. Please try again."
                     ) from exc
                 time.sleep(LOCK_RETRY_SECONDS)
         try:
@@ -95,7 +95,7 @@ def load_server_gateway_config(server_root: str | os.PathLike[str]) -> dict[str,
     raw = _read_object(path)
     if not raw:
         raise HostedSaveHttpContractError(
-            f"Save Gateway is not configured for automatic enrollment: {path}"
+            f"Gateway is not configured for automatic enrollment: {path}"
         )
     return normalize_gateway_config(raw)
 
@@ -129,7 +129,7 @@ def provision_gateway_user(
             effective_url = requested_url or gateway["client_url"]
             if not effective_url:
                 raise HostedSaveHttpContractError(
-                    "Save Gateway automatic enrollment has no configured client URL."
+                    "Gateway automatic enrollment has no configured client URL."
                 )
             gateway["client_url"] = effective_url
             secret = gateway["users"].get(normalized_user) or generate_secret()

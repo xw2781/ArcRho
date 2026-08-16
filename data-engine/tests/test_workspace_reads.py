@@ -41,8 +41,8 @@ from arcrho_workspace_read_contract import (
     build_workspace_read_request,
     validate_workspace_read_request,
 )
-from arcrho_save_gateway import main as gateway_main
-from arcrho_save_gateway import workspace_reads
+from arcrho_gateway import main as gateway_main
+from arcrho_gateway import workspace_reads
 from app_server import config as app_config
 from app_server.services import (
     client_save_latency_log_service,
@@ -143,7 +143,7 @@ class WorkspaceReadExecutorTests(unittest.TestCase):
         config["host"] = "127.0.0.1"
         config["users"] = {"alice": "alice-secret"}
         gateway_main._write_json_atomic(
-            self.root / "config" / "hosted_save_gateway.json", config
+            self.root / "config" / "arcrho_gateway.json", config
         )
         self.logged: list[str] = []
         self.executor = workspace_reads.WorkspaceReadExecutor(
@@ -202,7 +202,7 @@ class WorkspaceReadExecutorTests(unittest.TestCase):
         self.assertEqual(invalid.exception.status_code, 400)
 
     def test_capabilities_advertise_every_registered_kind(self) -> None:
-        payload = gateway_main.SaveGateway(self.root).capabilities()
+        payload = gateway_main.Gateway(self.root).capabilities()
         self.assertEqual(payload["workspace_read_kinds"], list(HTTP_WORKSPACE_READ_KINDS))
 
 
@@ -219,9 +219,9 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
         config["host"] = "127.0.0.1"
         config["users"] = {"alice": "alice-secret"}
         gateway_main._write_json_atomic(
-            self.server_root / "config" / "hosted_save_gateway.json", config
+            self.server_root / "config" / "arcrho_gateway.json", config
         )
-        self.gateway = gateway_main.SaveGateway(self.server_root)
+        self.gateway = gateway_main.Gateway(self.server_root)
         self.gateway.reads._runtime_ready = True
         self.server = gateway_main.GatewayServer(("127.0.0.1", 0), self.gateway)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -236,7 +236,7 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
         }
         self.records: list[dict] = []
         self.patches = [
-            patch.object(app_config, "load_hosted_save_gateway_config", return_value=self.client_config),
+            patch.object(app_config, "load_gateway_config", return_value=self.client_config),
             patch.object(app_config, "get_root_path", return_value=str(self.client_root)),
             patch.object(workspace_read_client, "_is_server_process", return_value=False),
             patch.object(
@@ -347,7 +347,7 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
 
     def test_unreachable_gateway_runs_locally(self) -> None:
         unreachable = dict(self.client_config, url="http://127.0.0.1:9")
-        with patch.object(app_config, "load_hosted_save_gateway_config", return_value=unreachable):
+        with patch.object(app_config, "load_gateway_config", return_value=unreachable):
             response = workspace_read_client.run_workspace_read(
                 "table_summary",
                 {"project_name": "Demo"},
@@ -360,7 +360,7 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
         """A wrong secret is a gateway refusal without the workspace-root header."""
 
         wrong_secret = dict(self.client_config, secret="not-alice")
-        with patch.object(app_config, "load_hosted_save_gateway_config", return_value=wrong_secret):
+        with patch.object(app_config, "load_gateway_config", return_value=wrong_secret):
             response = workspace_read_client.run_workspace_read(
                 "table_summary",
                 {"project_name": "Demo"},

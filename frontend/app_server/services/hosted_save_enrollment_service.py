@@ -26,7 +26,7 @@ def auto_enroll_current_user() -> dict[str, Any]:
     absent, which keeps the existing SMB transport available.
     """
 
-    local_path = Path(config.get_hosted_save_gateway_config_path())
+    local_path = Path(config.get_gateway_config_path())
     if local_path.is_file():
         return {"status": "existing", "path": str(local_path)}
 
@@ -44,10 +44,10 @@ def auto_enroll_current_user() -> dict[str, Any]:
             client_output=local_path,
         )
     except Exception as exc:
-        LOGGER.warning("Save Gateway automatic enrollment skipped: %s", exc)
+        LOGGER.warning("Gateway automatic enrollment skipped: %s", exc)
         return {"status": "unavailable", "reason": str(exc)}
 
-    LOGGER.info("Save Gateway credential installed for the current Windows user.")
+    LOGGER.info("Gateway credential installed for the current Windows user.")
     return {
         "status": "enrolled",
         "path": str(installed_path),

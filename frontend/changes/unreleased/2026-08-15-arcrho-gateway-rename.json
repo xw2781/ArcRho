@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "server components",
+  "audience": "internal",
+  "summary": "Renamed the ArcRho Save Gateway to ArcRho Gateway, now that it carries workspace reads as well as saves.",
+  "details": [
+    "The component was named after the first workload it carried; it now serves reserving-class index, cached dataset, method, and table-summary reads too.",
+    "ArcRho Gateway is a bare role noun like Engine, Bridge, and Orchestrator, so future transports cannot make the name stale again.",
+    "The deployed app folder, heartbeat folder, config keys, server registry, per-user credential, and receipt store all move to the new name, with no legacy name accepted.",
+    "Enrolled users are re-enrolled automatically on next startup because the client credential file moved."
+  ]
+}

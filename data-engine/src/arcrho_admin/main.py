@@ -229,7 +229,7 @@ def instance_sources():
         "orchestrator": ("Orchestrator", resolve_app_path("orchestrator", "instances")),
         "bridge": ("Bridge", resolve_app_path("bridge", "instances")),
         "bridge_worker": ("Bridge Worker", resolve_app_path("bridge_worker", "instances")),
-        "save_gateway": ("Save Gateway", resolve_app_path("save_gateway", "instances")),
+        "gateway": ("Gateway", resolve_app_path("gateway", "instances")),
     }
 
 

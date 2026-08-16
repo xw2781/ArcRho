@@ -2,7 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Run the expensive workspace reads a Client PC performs — the reserving-class dataset/method index, a cached-dataset load, a method-window load, and the Project Settings table summary — on the ArcRho Server host over HTTP instead of over the mapped drive. This is a transport, not a domain of its own: the canonical `app_server` service function still owns each read, and it runs unchanged either locally or inside the machine-wide ArcRho Save Gateway, which freezes the same `frontend/app_server` and `python-api/src` trees the Engine does.
+Run the expensive workspace reads a Client PC performs — the reserving-class dataset/method index, a cached-dataset load, a method-window load, and the Project Settings table summary — on the ArcRho Server host over HTTP instead of over the mapped drive. This is a transport, not a domain of its own: the canonical `app_server` service function still owns each read, and it runs unchanged either locally or inside the machine-wide ArcRho Gateway, which freezes the same `frontend/app_server` and `python-api/src` trees the Engine does.
 <!-- MANUAL:END -->
 
 ## Entry Points
@@ -20,7 +20,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /bootstrap/load` | `bootstrap_load` | `bootstrap_service.load_bootstrap_method` |
 | `GET /table_summary` | `table_summary` | `table_summary_service.get_table_summary` |
 
-Gateway side: `POST /api/workspace-reads` on the Save Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
+Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->
 
 ## Key Files
@@ -28,15 +28,15 @@ Gateway side: `POST /api/workspace-reads` on the Save Gateway (`arcrho_workspace
 - `python-api/src/arcrho_workspace_read_contract.py` - The canonical `WORKSPACE_READ_KINDS` registry (kind → service module, function, required/optional keyword arguments), request validation, route path, timeout, and the `X-ArcRho-Workspace-Root` response header name.
 - `app_server/services/workspace_read_client.py` - Client transport selection, capability probe cache, request signing, server-root path rebasing, local fallback, and the read-latency record.
 - `app_server/services/client_save_latency_log_service.py` - `append_client_read_latency` writes `%LOCALAPPDATA%\ArcRho\logs\client_read_latency.jsonl` (rotated like the save log).
-- `data-engine/src/arcrho_save_gateway/workspace_reads.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
-- `data-engine/src/arcrho_save_gateway/main.py` - Route dispatch and the capability field.
-- `data-engine/src/arcrho_save_gateway/build_exe.py` - Bundles `ENGINE_BUNDLED_SOURCES` and every registered service module into the gateway executable.
+- `data-engine/src/arcrho_gateway/workspace_reads.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
+- `data-engine/src/arcrho_gateway/main.py` - Route dispatch and the capability field.
+- `data-engine/src/arcrho_gateway/build_exe.py` - Bundles `ENGINE_BUNDLED_SOURCES` and every registered service module into the gateway executable.
 - The routers listed above - Each passes only the registry's arguments and supplies its local service call.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Transport selection, per request: a process running with `ARCRHO_RUNTIME_SERVER_ROOT` set (Engine, Bridge, Gateway) always reads locally so the gateway can never route a read back to itself; otherwise the local `%APPDATA%\ArcRho\hosted_save_gateway.json` credential must be enabled, and the gateway's `/api/capabilities` (cached 30 s on success, 10 s on failure) must list the read kind. Any other outcome runs the service locally over the mapped drive exactly as before.
+- Transport selection, per request: a process running with `ARCRHO_RUNTIME_SERVER_ROOT` set (Engine, Bridge, Gateway) always reads locally so the gateway can never route a read back to itself; otherwise the local `%APPDATA%\ArcRho\arcrho_gateway.json` credential must be enabled, and the gateway's `/api/capabilities` (cached 30 s on success, 10 s on failure) must list the read kind. Any other outcome runs the service locally over the mapped drive exactly as before.
 - Fallback rule: reads are pure functions of the workspace, so — unlike hosted saves — a gateway-layer failure (unreachable, authentication refused, an older gateway without the route, an invalid response) falls back to the local path. A refusal raised by the hosted service itself (404 method not found, 409 legacy pair, 423 lock, …) is recognized by the `X-ArcRho-Workspace-Root` header the gateway sets whenever the read ran, and passes through with the same status the local path would have raised. A gateway timeout (`WORKSPACE_READ_TIMEOUT_SECONDS`, 120 s) surfaces as `504` rather than doubling the wait locally.
 - Path rebasing: the gateway answers with the server's workspace root in `X-ArcRho-Workspace-Root`; the client rewrites every string in the payload that starts with that root onto its own `config.get_root_path()`, so `folder_paths`, the cached CSV `path`, `sidecar_path`, and the master table path look exactly as a local read would have produced them. Nothing else in the payload is touched.
 - Per-process state: `POST /dataset/cache/load` registers the returned dataset `id` → rebased CSV path in this process through `dataset_service.register_dataset_handle`, so the id-addressed grid patch/diagonal routes keep working after a remote load. The `id` itself is the server-side hash and is only a handle.

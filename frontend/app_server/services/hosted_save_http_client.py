@@ -29,7 +29,7 @@ _DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
 def _response_json(response: Any) -> dict[str, Any]:
     payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("Save Gateway response must be an object.")
+        raise ValueError("Gateway response must be an object.")
     return payload
 
 
@@ -42,7 +42,7 @@ def _error_detail(error: HTTPError) -> str:
         detail = str(payload.get("detail") or payload.get("message") or "").strip()
         if detail:
             return detail
-    return f"Save Gateway returned HTTP {error.code}."
+    return f"Gateway returned HTTP {error.code}."
 
 
 def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
@@ -56,10 +56,10 @@ def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
     except (OSError, URLError, ValueError) as exc:
         raise HTTPException(
             503,
-            "ArcRho Save Gateway is unavailable. The dataset remains unsaved.",
+            "ArcRho Gateway is unavailable. The dataset remains unsaved.",
         ) from exc
     if payload.get("hosted_save_http") is not True:
-        raise HTTPException(503, "ArcRho Save Gateway is not ready for dataset saves.")
+        raise HTTPException(503, "ArcRho Gateway is not ready for dataset saves.")
     return payload
 
 
@@ -145,6 +145,6 @@ def submit_hosted_save(
 
     raise HTTPException(
         504,
-        "The Save Gateway response was interrupted. ArcRho retained the same "
+        "The Gateway response was interrupted. ArcRho retained the same "
         "request identity while recovering; reload the dataset before saving again.",
     ) from last_error

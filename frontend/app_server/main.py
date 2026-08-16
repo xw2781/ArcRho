@@ -64,7 +64,7 @@ async def lifespan(_app: FastAPI):
     enrollment = await asyncio.to_thread(
         hosted_save_enrollment_service.auto_enroll_current_user
     )
-    LOGGER.info("Save Gateway startup enrollment status: %s", enrollment["status"])
+    LOGGER.info("Gateway startup enrollment status: %s", enrollment["status"])
     yield
 
 

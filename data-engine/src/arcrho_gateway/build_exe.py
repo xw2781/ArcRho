@@ -1,4 +1,4 @@
-"""Build, atomically deploy, and restart ArcRho Save Gateway."""
+"""Build, atomically deploy, and restart ArcRho Gateway."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ APPS_DIR = DEPLOY_ROOT / "apps"
 VENV_PYTHON = PROJECT_ROOT / "venvs" / BASE_DIR.name / "Scripts" / "python.exe"
 REQ_FILE = BASE_DIR / "requirements.txt"
 ENTRY_PY = BASE_DIR / "main.py"
-APP_NAME = component_app_name("save_gateway")
+APP_NAME = component_app_name("gateway")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Orchestrator.ico"
 STAGE_ONLY = os.environ.get("ARCRHO_STAGE_ONLY", "").strip() == "1"
 BUILD_DIR = BUILD_ROOT / "build"
@@ -61,7 +61,7 @@ SPEC_DIR = BUILD_ROOT / "spec"
 DIST_DIR = BUILD_ROOT / "dist"
 STAGED_APP_DIR = DIST_DIR / APP_NAME
 DEPLOY_APP_DIR = APPS_DIR / APP_NAME
-KILL_ALL_KEY = "apps.save_gateway.kill_all"
+KILL_ALL_KEY = "apps.gateway.kill_all"
 SHUTDOWN_TIMEOUT_SECONDS = 30
 
 for name, folder in {
@@ -90,7 +90,7 @@ def live_instance_count() -> int:
     try:
         return sum(
             1
-            for path in resolve_app_path("save_gateway", "instances").iterdir()
+            for path in resolve_app_path("gateway", "instances").iterdir()
             if path.is_file() and path.suffix.lower() == ".json"
         )
     except FileNotFoundError:
@@ -101,7 +101,7 @@ def wait_for_shutdown() -> None:
     deadline = time.monotonic() + SHUTDOWN_TIMEOUT_SECONDS
     while live_instance_count():
         if time.monotonic() >= deadline:
-            raise RuntimeError("The live Save Gateway did not stop; deploy aborted.")
+            raise RuntimeError("The live Gateway did not stop; deploy aborted.")
         time.sleep(0.5)
 
 
@@ -110,7 +110,7 @@ def start_gateway() -> None:
         return
     executable = DEPLOY_APP_DIR / f"{APP_NAME}.exe"
     if not executable.is_file():
-        raise FileNotFoundError(f"Deployed Save Gateway not found: {executable}")
+        raise FileNotFoundError(f"Deployed Gateway not found: {executable}")
     subprocess.Popen(
         [str(executable)],
         cwd=str(executable.parent),
@@ -140,7 +140,7 @@ def gateway_stopped():
                 # enough: the server's own Orchestrator restores it.
                 print(
                     f"\n>>> {DEPLOY_ROOT} is not a local disk; the server's "
-                    "Orchestrator restarts the Save Gateway."
+                    "Orchestrator restarts the Gateway."
                 )
 
 
@@ -221,7 +221,7 @@ def build_exe() -> None:
             "--hidden-import",
             "arcrho_engine.dependent_propagation",
             "--hidden-import",
-            "arcrho_save_gateway.workspace_reads",
+            "arcrho_gateway.workspace_reads",
             *service_hidden_imports,
             *[
                 argument
@@ -244,7 +244,7 @@ def build_exe() -> None:
 
 def deploy_exe() -> None:
     if not STAGED_APP_DIR.is_dir():
-        raise FileNotFoundError(f"Built Save Gateway not found: {STAGED_APP_DIR}")
+        raise FileNotFoundError(f"Built Gateway not found: {STAGED_APP_DIR}")
     APPS_DIR.mkdir(parents=True, exist_ok=True)
     temporary = APPS_DIR / f".{APP_NAME}.new"
     backup = APPS_DIR / f".{APP_NAME}.old"

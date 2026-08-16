@@ -34,7 +34,7 @@ Own the self-contained Bootstrap v1 contract, aggregate two-file load, revision-
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- `POST /bootstrap/load` is the `bootstrap_load` Server-hosted workspace read: when the Save Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
+- `POST /bootstrap/load` is the `bootstrap_load` Server-hosted workspace read: when the Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - The only supported marker is `arcrho-bootstrap-method-by-tab-v1`; the method file is `methods/BST@<Name>.json`.
 - Method JSON owns the DFM name plus an embedded snapshot of everything the bootstrap needs from it (origin and development labels, the observed cumulative triangle, the selected ratios at full precision, which ratios a simulation may re-estimate, and the DFM ultimate vector) with a `dfm_source_revision` hash; the residual grids for all five ResQ residual types; both scale-value blocks; the simulation inputs; the target inputs; timestamps; and deterministic owned/derived/publication revisions.
 - **Simulated reserves are never persisted.** `results_tab` stores the seed, the simulation count, and a compact `simulation_summary` (mean, standard error, minimum, maximum, and the 0/5/.../100 percentile ladder, unscaled and scaled, with index 0 holding the all-origin total). The run is bit-reproducible from the seed, so reopening a method rebuilds identical results without adding megabytes to a network-drive JSON file.

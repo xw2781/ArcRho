@@ -2,7 +2,7 @@
 
 The hosted-save protocol intentionally crosses the ArcRho Server network
 drive several times before and after ArcRho Engine does its work, and a
-workspace read either does the same or travels through the Save Gateway.
+workspace read either does the same or travels through the Gateway.
 Each operation collects its timings in memory, then appends one compact
 record here after the measured critical path has ended.  The logs never
 contain a method payload or project data, and a logging failure must never

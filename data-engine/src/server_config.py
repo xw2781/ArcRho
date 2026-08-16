@@ -43,7 +43,7 @@ _DEFAULT_APPS = {
         "max_workers": 1,
     },
     "bridge_worker": {"kill_all": False},
-    "save_gateway": {
+    "gateway": {
         "kill_all": False,
         "auto_create_instance": True,
         "max_instances": 1,

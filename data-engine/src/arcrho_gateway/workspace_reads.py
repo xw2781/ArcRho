@@ -1,6 +1,6 @@
 """Server-hosted execution of allowlisted ``app_server`` workspace reads.
 
-The Save Gateway freezes the same canonical ``python-api/src`` and
+The Gateway freezes the same canonical ``python-api/src`` and
 ``frontend/app_server`` trees the Engine does (``ENGINE_BUNDLED_SOURCES``), so
 a registered read runs the exact service function a Client PC would have run
 over the mapped drive — here against local disk. The gateway performs no
@@ -111,7 +111,7 @@ class WorkspaceReadExecutor:
             path=WORKSPACE_READ_PATH,
             body=body,
         ):
-            raise WorkspaceReadHttpError(401, "Save Gateway authentication failed.")
+            raise WorkspaceReadHttpError(401, "Gateway authentication failed.")
         return user
 
     def execute(self, authenticated_user: str, raw_payload: Any) -> dict[str, Any]:

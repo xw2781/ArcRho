@@ -29,8 +29,8 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_dataset_number_formats_path`
   - `get_dataset_types_path`
   - `get_field_mapping_path`
+  - `get_gateway_config_path`
   - `get_general_settings_path`
-  - `get_hosted_save_gateway_config_path`
   - `get_local_project_prefs_path`
   - `get_mssql_connections_path`
   - `get_path`
@@ -76,7 +76,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 - App-server modules import `app_server.config` for runtime path resolution.
 - On first-time setup, the Electron shell searches `D:\ArcRho Server` through `Z:\ArcRho Server` and fills the Server Connection root path when found.
 - Saving Server Connection hot-applies the new config by refreshing `app_server.config` runtime globals and notifying open UI frames; app restart is not required for new server requests.
-- ArcRho startup and Server Connection saves attempt first-run Save Gateway enrollment when the local credential is absent. The app reads the server-owned `client_url`, probes it, then atomically adds the current Windows login to the shared pilot registry and writes `%APPDATA%\ArcRho\hosted_save_gateway.json`; a failed pre-enrollment check leaves SMB selected.
+- ArcRho startup and Server Connection saves attempt first-run Gateway enrollment when the local credential is absent. The app reads the server-owned `client_url`, probes it, then atomically adds the current Windows login to the shared pilot registry and writes `%APPDATA%\ArcRho\arcrho_gateway.json`; a failed pre-enrollment check leaves SMB selected.
 - DFM RPC Bridge writes request files under `<workspace_root>/<requests_dir>/RPC bridge` and expects remote DFM/SyncDFM JSON files under `<workspace_root>/<projects_dir>/<project>/data/<ReservingClassFolder>/methods/tmp_rpc`.
 - Dataset number-format preferences are read from `<workspace_root>/config/dataset_number_formats.json`; `ARCRHO_DATASET_NUMBER_FORMATS_PATH` may override this path for migration tooling or controlled deployments.
 - `ARCRHO_RUNTIME_SERVER_ROOT` is a trusted process-only override for server-owned workers. It takes precedence over the user-local AppData workspace preference, is never persisted, and lets the deployed ResQ Bridge calculate processing provenance against its own shared ArcRho Server root.
@@ -85,7 +85,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.
-- `%APPDATA%\ArcRho\hosted_save_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/hosted_save_gateway.json` owns the shared `client_url` and HMAC user registry, and no save-kind allowlist — the supported kinds are derived from `SAVE_JOB_KINDS`; lock-protected atomic enrollment prevents concurrent first launches from losing users.
+- `%APPDATA%\ArcRho\arcrho_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/arcrho_gateway.json` owns the shared `client_url` and HMAC user registry, and no save-kind allowlist — the supported kinds are derived from `SAVE_JOB_KINDS`; lock-protected atomic enrollment prevents concurrent first launches from losing users.
 - `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`. The workspace-read client also treats its presence as "this is a server process" and never routes a read to the gateway from such a process.
 - `%LOCALAPPDATA%\ArcRho\logs\client_save_latency.jsonl` and `client_read_latency.jsonl` (`get_client_save_latency_log_path`, `get_client_read_latency_log_path`) hold the per-operation transport diagnostics for hosted saves and Server-hosted workspace reads; both rotate at 5 MB with three backups and never contain project data.
 - If the AppData workspace path file does not exist yet, the app uses built-in defaults until the Server Connection setting is saved.

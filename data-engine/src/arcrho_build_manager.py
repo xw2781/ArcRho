@@ -82,7 +82,7 @@ def _build_component(role: str) -> Component:
     )
 
 
-MANAGED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "save_gateway")
+MANAGED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "gateway")
 COMPONENTS = tuple(_build_component(role) for role in MANAGED_COMPONENT_ROLES)
 
 

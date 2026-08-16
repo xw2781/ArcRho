@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
 from arcrho_hosted_save_http_contract import (
-    CLIENT_CONFIG_FILE_NAME as HOSTED_SAVE_GATEWAY_CONFIG_FILE,
+    CLIENT_CONFIG_FILE_NAME as GATEWAY_CONFIG_FILE,
     HostedSaveHttpContractError,
     normalize_client_config,
 )
@@ -68,7 +68,7 @@ DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
 DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 CLIENT_SAVE_LATENCY_LOG_FILE = "client_save_latency.jsonl"
 CLIENT_READ_LATENCY_LOG_FILE = "client_read_latency.jsonl"
-HOSTED_SAVE_GATEWAY_CONFIG_ENV = "ARCRHO_HOSTED_SAVE_GATEWAY_CONFIG"
+GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
 
 
 def _is_arcode_mode() -> bool:
@@ -113,16 +113,16 @@ def get_client_read_latency_log_path() -> str:
     )
 
 
-def get_hosted_save_gateway_config_path() -> str:
+def get_gateway_config_path() -> str:
     """Return the current user's machine-local gateway credential path."""
 
-    configured = str(os.environ.get(HOSTED_SAVE_GATEWAY_CONFIG_ENV) or "").strip()
+    configured = str(os.environ.get(GATEWAY_CONFIG_ENV) or "").strip()
     if configured:
         return configured
-    return os.path.join(_get_user_appdata_dir(), HOSTED_SAVE_GATEWAY_CONFIG_FILE)
+    return os.path.join(_get_user_appdata_dir(), GATEWAY_CONFIG_FILE)
 
 
-def load_hosted_save_gateway_config() -> Dict[str, Any]:
+def load_gateway_config() -> Dict[str, Any]:
     """Load the optional dataset-save HTTP transport configuration.
 
     A missing file keeps the existing SMB transport. An enabled but malformed
@@ -130,7 +130,7 @@ def load_hosted_save_gateway_config() -> Dict[str, Any]:
     submission might have been accepted.
     """
 
-    path = get_hosted_save_gateway_config_path()
+    path = get_gateway_config_path()
     try:
         with open(path, "r", encoding="utf-8") as handle:
             raw = json.load(handle)
@@ -138,7 +138,7 @@ def load_hosted_save_gateway_config() -> Dict[str, Any]:
         return {"enabled": False}
     except (OSError, json.JSONDecodeError) as exc:
         raise HostedSaveHttpContractError(
-            f"Save Gateway configuration could not be read: {path}"
+            f"Gateway configuration could not be read: {path}"
         ) from exc
     return normalize_client_config(raw)
 

@@ -78,14 +78,14 @@ from arcrho_workspace_read_contract import (  # noqa: E402
     WORKSPACE_READ_PATH,
     WORKSPACE_ROOT_HEADER,
 )
-from arcrho_save_gateway.workspace_reads import (  # noqa: E402
+from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadExecutor,
     WorkspaceReadHttpError,
     WorkspaceReadRefusal,
 )
 HEARTBEAT_SECONDS = 5.0
 STATUS_POLL_SECONDS = 0.05
-GATEWAY_KILL_ALL_KEY = "apps.save_gateway.kill_all"
+GATEWAY_KILL_ALL_KEY = "apps.gateway.kill_all"
 _RECEIPT_LOCKS_GUARD = threading.Lock()
 _RECEIPT_LOCKS: dict[str, threading.RLock] = {}
 
@@ -118,9 +118,9 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except FileNotFoundError:
         return None
     except (OSError, json.JSONDecodeError) as exc:
-        raise GatewayHttpError(500, "A Save Gateway receipt could not be read.") from exc
+        raise GatewayHttpError(500, "A Gateway receipt could not be read.") from exc
     if not isinstance(payload, dict):
-        raise GatewayHttpError(500, "A Save Gateway receipt is invalid.")
+        raise GatewayHttpError(500, "A Gateway receipt is invalid.")
     return payload
 
 
@@ -138,7 +138,7 @@ def _load_gateway_config(root: Path) -> dict[str, Any]:
         _write_json_atomic(path, payload)
     except (OSError, json.JSONDecodeError) as exc:
         raise HostedSaveHttpContractError(
-            f"Save Gateway configuration could not be read: {path}"
+            f"Gateway configuration could not be read: {path}"
         ) from exc
     return normalize_gateway_config(payload)
 
@@ -165,7 +165,7 @@ def _prune_terminal_receipts(root: Path, retention_hours: int) -> int:
 
 
 def _log(root: Path, message: str) -> None:
-    path = root / "runtime" / "logs" / "save_gateway.log"
+    path = root / "runtime" / "logs" / "gateway.log"
     line = f"{_now_iso()} {message}\n"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,7 +250,7 @@ def _receipt_result(receipt: Mapping[str, Any]) -> dict[str, Any]:
         raise GatewayHttpError(status_code, str(receipt.get("detail") or "Save failed."))
     response = receipt.get("response")
     if not isinstance(response, Mapping):
-        raise GatewayHttpError(500, "The Save Gateway receipt has no response payload.")
+        raise GatewayHttpError(500, "The Gateway receipt has no response payload.")
     return dict(response)
 
 
@@ -300,7 +300,7 @@ def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[
         time.sleep(STATUS_POLL_SECONDS)
 
 
-class SaveGateway:
+class Gateway:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
         self.reads = WorkspaceReadExecutor(
@@ -331,7 +331,7 @@ class SaveGateway:
             path=HOSTED_SAVE_PATH,
             body=body,
         ):
-            raise GatewayHttpError(401, "Save Gateway authentication failed.")
+            raise GatewayHttpError(401, "Gateway authentication failed.")
         return user
 
     def submit(self, authenticated_user: str, raw_payload: Any) -> dict[str, Any]:
@@ -383,7 +383,7 @@ class SaveGateway:
                 terminal = _terminal_receipt(
                     receipt,
                     status_code=500,
-                    detail="The Save Gateway could not publish the Engine request.",
+                    detail="The Gateway could not publish the Engine request.",
                 )
                 _write_json_atomic(path, terminal)
                 raise GatewayHttpError(500, terminal["detail"]) from exc
@@ -414,7 +414,7 @@ class GatewayServer(ThreadingHTTPServer):
     # saves. A second copy has to fail to bind and exit instead.
     allow_reuse_address = False
 
-    def __init__(self, address: tuple[str, int], gateway: SaveGateway) -> None:
+    def __init__(self, address: tuple[str, int], gateway: Gateway) -> None:
         self.gateway = gateway
         super().__init__(address, GatewayHandler)
 
@@ -484,7 +484,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"detail": "Hosted-save request is not valid JSON."})
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
-            self._send_json(500, {"detail": "The Save Gateway failed unexpectedly."})
+            self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
 
     def _handle_workspace_read(self) -> None:
         try:
@@ -514,7 +514,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"detail": "Workspace-read request is not valid JSON."})
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
-            self._send_json(500, {"detail": "The Save Gateway failed unexpectedly."})
+            self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
 
 
 def _heartbeat_path() -> Path:
@@ -522,7 +522,7 @@ def _heartbeat_path() -> Path:
     user = os.environ.get("USERNAME") or "unknown"
     token = datetime.now().strftime("%y%m%d-%H%M%S-%f")[:-3]
     return resolve_app_path(
-        "save_gateway", "instances", f"{computer}@{user}@{token}.json"
+        "gateway", "instances", f"{computer}@{user}@{token}.json"
     )
 
 
@@ -556,7 +556,7 @@ def main() -> int:
     try:
         config = _load_gateway_config(root)
         pruned = _prune_terminal_receipts(root, config["receipt_retention_hours"])
-        gateway = SaveGateway(root)
+        gateway = Gateway(root)
         server = GatewayServer((config["host"], config["port"]), gateway)
     except Exception as exc:
         _log(root, f"startup failed: {exc}\n{traceback.format_exc()}")

@@ -7,7 +7,7 @@ Last updated: 2026-08-15
 
 ArcRho currently coordinates Engine-hosted saves through small JSON files on the ArcRho Server workspace. The design is correct, backward-compatible, and keeps calculation work beside the data, but a Client PC pays substantial SMB latency for every metadata check, write, rename, and status read.
 
-The proposed design adds one authenticated HTTP Save Gateway on the ArcRho Server. Clients communicate only with that gateway; the gateway translates requests into the existing server-local hosted-save protocol and waits for Engine completion locally. This removes mapped-drive I/O from the client save path without changing canonical save functions, reserving-class leases, dependent propagation, or endpoint response shapes.
+The proposed design adds one authenticated HTTP Gateway on the ArcRho Server. Clients communicate only with that gateway; the gateway translates requests into the existing server-local hosted-save protocol and waits for Engine completion locally. This removes mapped-drive I/O from the client save path without changing canonical save functions, reserving-class leases, dependent propagation, or endpoint response shapes.
 
 The HTTP gateway now carries every hosted save. SMB remains the rollback path
 until the transport's TLS/authentication deployment is approved for broader
@@ -28,7 +28,7 @@ still asks `/api/capabilities` which kinds a Gateway serves and keeps any kind
 an older deployed Gateway does not advertise on SMB, so a pending Gateway
 upgrade degrades the transport instead of failing the save.
 
-- `ArcRho Save Gateway` is a dedicated server executable supervised by every
+- `ArcRho Gateway` is a dedicated server executable supervised by every
   logged-in user's Orchestrator. One process wins the fixed port; another
   logged-in session restores it after its heartbeat becomes stale.
 - The client sends the existing `ArcRhoHostedSave` payload. The Gateway writes
@@ -40,14 +40,14 @@ upgrade degrades the transport instead of failing the save.
   controlled internal network. HMAC prevents credential disclosure and
   payload tampering, but plain HTTP does **not** encrypt dataset or DFM content. This
   is a performance pilot only; production rollout still requires HTTPS.
-- `%APPDATA%\ArcRho\hosted_save_gateway.json` is the local-user feature flag
+- `%APPDATA%\ArcRho\arcrho_gateway.json` is the local-user feature flag
   and credential. On ArcRho startup, a missing file triggers automatic
   enrollment when the shared Gateway configuration has a `client_url` and the
   endpoint is reachable. The same check runs after Server Connection changes.
   An existing file is authoritative, including `enabled: false`; invalid
   enabled configuration fails explicitly and never silently falls back.
 - Initial server setup uses
-  `py -3.10 data-engine/src/arcrho_save_gateway/configure_pilot.py --user <login> --url <gateway-url>`.
+  `py -3.10 data-engine/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`.
   The command records the canonical client URL, updates the server registry,
   and installs the current user's local credential without printing the
   secret. Other users are enrolled automatically by ArcRho and do not run the
@@ -57,7 +57,7 @@ upgrade degrades the transport instead of failing the save.
   if the pre-enrollment check cannot complete. Once the local HTTP credential
   exists, uncertain HTTP submissions still never fall back to SMB.
 - The Orchestrator is the only starter. Every signed-in account's Orchestrator
-  restores the Gateway from `apps.save_gateway.auto_create_instance`, so no
+  restores the Gateway from `apps.gateway.auto_create_instance`, so no
   login registration is needed; `configure_pilot.py` removes the pilot-era HKCU
   Run entry when it provisions a user. The first process to bind owns the
   machine-wide listener and later copies exit, which requires the Gateway to
@@ -160,9 +160,9 @@ The local CPU work is negligible. The remaining client latency is primarily:
 - Filesystem errors cannot always distinguish temporary network trouble from a missing status.
 - Consistently reaching sub-two-second saves is unlikely while the client remains on the SMB protocol.
 
-## Proposed Design: HTTP Save Gateway
+## Proposed Design: HTTP Gateway
 
-Deploy one Save Gateway service on the ArcRho Server and supervise it centrally. Clients connect to the gateway, never to an individual Engine worker.
+Deploy one Gateway service on the ArcRho Server and supervise it centrally. Clients connect to the gateway, never to an individual Engine worker.
 
 The lowest-risk first version keeps the existing request/status files internally. The gateway writes and reads those files on server-local disk, where the operations are fast. Engine workers continue using the current hosted-save contract unchanged.
 
@@ -170,7 +170,7 @@ The lowest-risk first version keeps the existing request/status files internally
 sequenceDiagram
     participant UI as ArcRho UI
     participant Client as Client App Server
-    participant Gateway as HTTP Save Gateway
+    participant Gateway as HTTP Gateway
     participant Queue as Server-Local Queue
     participant Engine as Engine Worker
 
@@ -199,7 +199,7 @@ sequenceDiagram
 - Return the gateway's terminal response through the existing ArcRho save endpoint.
 - Never traverse the ArcRho Server workspace during the hosted-save transport.
 
-#### Save Gateway
+#### Gateway
 
 - Authenticate the caller and derive or verify the requesting identity.
 - Validate the allowlisted save kind, logical project name, reserving class, payload size, and request ID.
@@ -367,7 +367,7 @@ Engine execution time remains. Based on the observed saves, an HTTP design could
 ## Rollout Plan
 
 1. Define the canonical HTTP request, receipt, status, error, and idempotency contracts.
-2. Build a single Save Gateway supervised on the ArcRho Server.
+2. Build a single Gateway supervised on the ArcRho Server.
 3. Reuse the existing server-local hosted-save request/status protocol behind the gateway.
 4. Add authentication, authorization, TLS, retention, rate limits, and structured metrics.
 5. Add `/api/capabilities` and same-request-ID recovery.
@@ -395,7 +395,7 @@ Engine execution time remains. Based on the observed saves, an HTTP design could
 
 ## Open Decisions
 
-- Whether the Save Gateway is a dedicated executable or a separately hosted service within the orchestrator process. A dedicated service provides the cleanest security and failure boundary.
+- Whether the Gateway is a dedicated executable or a separately hosted service within the orchestrator process. A dedicated service provides the cleanest security and failure boundary.
 - Whether Windows Integrated Authentication is available across every supported client/server topology.
 - Certificate issuance, hostname, port, and renewal ownership.
 - Server-Sent Events versus HTTP polling as the required baseline.

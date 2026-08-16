@@ -67,7 +67,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         self.log_path_patch.start()
         self.gateway_config_patch = patch.object(
             engine_hosted_save_service.config,
-            "load_hosted_save_gateway_config",
+            "load_gateway_config",
             return_value={"enabled": False},
         )
         self.gateway_config_patch.start()
@@ -306,7 +306,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         with (
             patch.object(
                 engine_hosted_save_service.config,
-                "load_hosted_save_gateway_config",
+                "load_gateway_config",
                 return_value=gateway_config,
             ),
             patch.object(
@@ -394,7 +394,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         with (
             patch.object(
                 engine_hosted_save_service.config,
-                "load_hosted_save_gateway_config",
+                "load_gateway_config",
                 return_value=gateway_config,
             ),
             patch.object(
@@ -477,7 +477,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         with (
             patch.object(
                 engine_hosted_save_service.config,
-                "load_hosted_save_gateway_config",
+                "load_gateway_config",
                 return_value=gateway_config,
             ),
             patch.object(
@@ -547,7 +547,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         with (
             patch.object(
                 engine_hosted_save_service.config,
-                "load_hosted_save_gateway_config",
+                "load_gateway_config",
                 return_value=gateway_config,
             ),
             patch.object(

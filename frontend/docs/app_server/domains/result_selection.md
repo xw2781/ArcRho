@@ -32,7 +32,7 @@ Own the aggregate load, validation, persistence, and eager dependency refresh fl
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- `POST /result-selection/load` is the `result_selection_load` Server-hosted workspace read: when the Save Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
+- `POST /result-selection/load` is the `result_selection_load` Server-hosted workspace read: when the Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - Current method marker: `arcrho-result-selection-method-by-tab-v2`. Legacy v1 remains readable only for the one-time upgrade.
 - `method_tab.loaded_datasets[*]` owns source metadata plus one `values` and `weights` entry per `origin_labels` row. `method_tab.ratio_basis_values` is a deterministic configured-order array of `{name, values}` records, including inactive configured bases; every vector has exactly one entry per origin row. `calculated_ultimate`, `selected_ultimate`, and `ultimate_overrides` have the same row count.
 - `details_tab.ratio_basis_datasets` contains at most three case-insensitively deduplicated names, and `active_ratio_basis_dataset` must be one of them or blank. Source and Ratio Basis names form the deterministic union persisted in sidecar `Precedents` and reverse source-sidecar `Dependents`.

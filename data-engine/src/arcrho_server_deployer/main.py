@@ -53,7 +53,7 @@ SHUTDOWN_ROLES = (
     "engine",
     "bridge",
     "bridge_worker",
-    "save_gateway",
+    "gateway",
     "orchestrator",
     "admin",
 )
@@ -62,7 +62,7 @@ KILL_SWITCH_PATHS = (
     "apps.bridge.kill_all",
     "apps.bridge_worker.kill_all",
     "apps.orchestrator.kill_all",
-    "apps.save_gateway.kill_all",
+    "apps.gateway.kill_all",
 )
 ADMIN_PORT = 28766
 SHUTDOWN_TIMEOUT_SECONDS = 180.0

@@ -24,7 +24,7 @@ Runtime workspace path read/update domain.
 <!-- MANUAL:BEGIN -->
 - Used by shell root-path settings modal.
 - Triggers `config.refresh_runtime_paths()` and clears absolute-path runtime caches on updates.
-- After persisting a Server Connection, retries automatic Save Gateway enrollment for a user who has no local gateway configuration.
+- After persisting a Server Connection, retries automatic Gateway enrollment for a user who has no local gateway configuration.
 - `GET /workspace_paths` reports whether the AppData config file already exists so the shell can detect first-time setup.
 <!-- MANUAL:END -->
 
@@ -36,7 +36,7 @@ Runtime workspace path read/update domain.
 - Resolution order is owned by `arcrho_api/config.py` and shared with the Python API and macros: `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT`, then the config file, then the packaged default root. `app_server/config.py` adds only the Arcode-mode AppData branch and `paths` normalization.
 - `GET /workspace_paths` is also how a macro process outside the app discovers the workspace root when no config file exists.
 - Clears the in-memory dataset registry after updates so stale dataset IDs do not keep writing to the previous workspace root.
-- ArcRho also attempts enrollment during app startup. It creates `%APPDATA%\ArcRho\hosted_save_gateway.json` only after the shared Gateway configuration supplies a canonical `client_url` and the endpoint probe succeeds; existing local files are never overwritten.
+- ArcRho also attempts enrollment during app startup. It creates `%APPDATA%\ArcRho\arcrho_gateway.json` only after the shared Gateway configuration supplies a canonical `client_url` and the endpoint probe succeeds; existing local files are never overwritten.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

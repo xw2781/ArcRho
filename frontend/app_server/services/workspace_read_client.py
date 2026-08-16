@@ -1,7 +1,7 @@
 """Client-PC transport selection for Server-hosted workspace reads.
 
 A registered read (``arcrho_workspace_read_contract``) runs on the ArcRho
-Server host through the Save Gateway when the gateway advertises it, and
+Server host through the Gateway when the gateway advertises it, and
 locally over the mapped drive otherwise. Reads are pure functions of the
 workspace, so — unlike hosted saves — an uncertain HTTP outcome may safely
 fall back to the local path; the transport actually used is recorded in the
@@ -279,7 +279,7 @@ def run_workspace_read(
             context["reason"] = "server_process"
         else:
             try:
-                gateway_config = config.load_hosted_save_gateway_config()
+                gateway_config = config.load_gateway_config()
             except HostedSaveHttpContractError:
                 context["reason"] = "gateway_config_invalid"
             else:

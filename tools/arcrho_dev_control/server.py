@@ -115,7 +115,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="ArcRho localhost development control center")
     parser.add_argument("--host", default="127.0.0.1")
     # 28765 is the app server, 28766 is ArcRho Admin Control, and 28767 is the
-    # Save Gateway (``DEFAULT_GATEWAY_PORT``). Sharing a port with a deployed
+    # Gateway (``DEFAULT_GATEWAY_PORT``). Sharing a port with a deployed
     # ArcRho service means whichever process binds first silently wins and the
     # other fails to start, so this dev-only page takes the next free port.
     parser.add_argument("--port", type=int, default=DEV_CONTROL_PORT)

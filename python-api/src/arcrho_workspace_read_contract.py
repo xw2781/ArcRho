@@ -4,7 +4,7 @@ A Client PC that opens a reserving class, a cached dataset, a method window, or
 the Project Settings table summary pays one SMB round trip per file it touches,
 and a stale reserving-class index makes it open every sidecar and method JSON in
 the class over the mapped drive. The app server can instead ask the machine-wide
-ArcRho Save Gateway to run the very same ``app_server`` service function on the
+ArcRho Gateway to run the very same ``app_server`` service function on the
 server host, where the workspace is local disk, and return the service's
 response verbatim.
 

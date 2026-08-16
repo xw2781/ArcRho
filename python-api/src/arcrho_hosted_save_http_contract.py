@@ -1,4 +1,4 @@
-"""Canonical contract for the pilot HTTP transport for Engine-hosted saves.
+﻿"""Canonical contract for the pilot HTTP transport for Engine-hosted saves.
 
 The logical save payload remains owned by :mod:`arcrho_engine_save_contract`.
 This module owns only the HTTP authentication, request fingerprint, gateway
@@ -41,9 +41,12 @@ AUTH_CLOCK_SKEW_SECONDS = 300
 AUTH_USER_HEADER = "X-ArcRho-User"
 AUTH_TIMESTAMP_HEADER = "X-ArcRho-Timestamp"
 AUTH_SIGNATURE_HEADER = "X-ArcRho-Signature"
-CLIENT_CONFIG_FILE_NAME = "hosted_save_gateway.json"
-SERVER_CONFIG_RELATIVE_PATH = Path("config") / "hosted_save_gateway.json"
-RECEIPTS_RELATIVE_PATH = Path("runtime") / "hosted_save_gateway" / "receipts"
+# These name the ArcRho Gateway component, not the hosted-save workload it
+# started out serving: one credential, one server registry, and one receipt
+# store back every kind of request the Gateway carries.
+CLIENT_CONFIG_FILE_NAME = "arcrho_gateway.json"
+SERVER_CONFIG_RELATIVE_PATH = Path("config") / "arcrho_gateway.json"
+RECEIPTS_RELATIVE_PATH = Path("runtime") / "arcrho_gateway" / "receipts"
 
 
 class HostedSaveHttpContractError(ValueError):
@@ -158,10 +161,10 @@ def default_gateway_config() -> dict[str, Any]:
 
 def normalize_gateway_config(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
-        raise HostedSaveHttpContractError("Save Gateway configuration must be an object.")
+        raise HostedSaveHttpContractError("Gateway configuration must be an object.")
     if value.get("config_version") != GATEWAY_CONFIG_VERSION:
         raise HostedSaveHttpContractError(
-            f"Unsupported Save Gateway config version: {value.get('config_version')!r}."
+            f"Unsupported Gateway config version: {value.get('config_version')!r}."
         )
     host = str(value.get("host") or DEFAULT_GATEWAY_HOST).strip()
     client_url = normalize_gateway_client_url(value.get("client_url"), allow_empty=True)
@@ -206,7 +209,7 @@ def normalize_gateway_client_url(value: Any, *, allow_empty: bool = False) -> st
         return ""
     if not url.lower().startswith(("http://", "https://")):
         raise HostedSaveHttpContractError(
-            "Save Gateway client URL must use HTTP or HTTPS."
+            "Gateway client URL must use HTTP or HTTPS."
         )
     return url
 
@@ -223,7 +226,7 @@ def normalize_client_config(value: Any) -> dict[str, Any]:
         return {"enabled": False}
     if not url or not user or not secret:
         raise HostedSaveHttpContractError(
-            "Enabled Save Gateway configuration requires url, user, and secret."
+            "Enabled Gateway configuration requires url, user, and secret."
         )
     if url.lower().startswith("http://") and not allow_insecure:
         raise HostedSaveHttpContractError(

@@ -1,4 +1,4 @@
-"""Provision one user for the no-IT Save Gateway performance pilot."""
+"""Provision one user for the no-IT Gateway performance pilot."""
 
 from __future__ import annotations
 
@@ -25,6 +25,10 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
 )
 
 
+# The literal value the pilot wrote, under the component's old name. This is
+# the key to a registry entry that already exists on provisioned machines, not
+# a name this component answers to, so renaming it would silently stop the
+# cleanup below from finding anything to delete.
 STARTUP_VALUE_NAME = "ArcRho Save Gateway"
 STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -60,7 +64,7 @@ def remove_current_user_startup() -> bool:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Provision one user for the ArcRho Save Gateway pilot."
+        description="Provision one user for the ArcRho Gateway pilot."
     )
     parser.add_argument("--server-root")
     parser.add_argument("--user", default=os.environ.get("USERNAME", ""))
@@ -88,11 +92,11 @@ def main() -> int:
         url=url,
         client_output=client_output,
     )
-    print(f"Save Gateway server configuration updated: {server_path}")
+    print(f"Gateway server configuration updated: {server_path}")
     print(f"Client credential installed: {local_path}")
     if remove_current_user_startup():
         print(
-            "Removed the pilot-era Save Gateway login entry; the Orchestrator "
+            "Removed the pilot-era Gateway login entry; the Orchestrator "
             "now starts the Gateway."
         )
     return 0
