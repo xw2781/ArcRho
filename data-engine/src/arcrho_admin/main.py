@@ -592,6 +592,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                         "orchestrator": DEFAULT_STALE_AFTER_SECONDS,
                         "bridge": DEFAULT_STALE_AFTER_SECONDS,
                         "bridge_worker": ENGINE_STALE_AFTER_SECONDS,
+                        "gateway": DEFAULT_STALE_AFTER_SECONDS,
                     },
                 }
             )
