@@ -21,3 +21,5 @@ What the failure leaves behind — verify all of it before deciding anything:
 Beware the wrapper exit code: the background task reported "exited with code 0" while the traceback showed the `PermissionError`. Read the output tail, not the exit status, to decide whether a Gateway deploy actually succeeded.
 
 Note that the Gateway bundles `ENGINE_BUNDLED_SOURCES`, which includes `frontend/app_server` — so an app-server service edit makes the Bridge, the Engine **and** the Gateway stale, three rebuilds rather than two. Related: [[bridge-restart-after-deploy]], [[pi-path-load-smb-cost]].
+
+2026-08-16 (later): a Gateway deploy from this Client PC with `ARCRHO_DEPLOY_ROOT="E:\ArcRho Server"` (the mapped letter, not the UNC form) swapped cleanly on the first try — the script still reported the deploy root as `\NE7SASWPN02\E\ArcRho Server` and left the relaunch to the server Orchestrator; heartbeat reappeared ~2 min after `Build finished`.
