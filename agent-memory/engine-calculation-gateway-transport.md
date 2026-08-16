@@ -1,6 +1,6 @@
 ---
 name: engine-calculation-gateway-transport
-description: "Phase 2 of the hosted-transport plan is live (2026-08-16): ArcRhoTri/Vec/Headers publish-and-wait runs on the Gateway; measured ~300 ms vs ~1.2 s per exchange from the Client PC, and how to probe it safely"
+description: "Phase 2 of the hosted-transport plan is live (2026-08-16): ArcRhoTri/Vec/Headers exchange AND the whole /arcrho/tri* run (dataset_run/dataset_precheck) plus GET /dataset/{id} run on the Gateway; the DSV length change went 13.4 s -> ~1 s; profile breakdown and safe probe recipe"
 metadata: 
   node_type: memory
   type: project
@@ -35,6 +35,19 @@ Server-side entries appear in `E:\ArcRho Server\runtime\logs\gateway.log` as `ca
 **Existing test patches moved:** tests that used to patch `arcrho_runtime_service.send_request_like_vba` /
 `wait_for_file` now patch them on `engine_calculation_service` (the runtime service no longer imports them).
 
-Not moved (still SMB from the client): stale-cache removal before the request, and the sidecar write,
-dependent enqueue, and index refresh after it; the DFM/RS RPC-bridge request files (`requests/RPC bridge/`,
+**Second finding, same day:** hosting only the exchange barely moved the DSV origin/dev-length change
+(user saw 7.6 s+). Profiling `/arcrho/tri/refresh` from this PC (per-phase SMB op counts via patched
+`os.stat/open/...` — script pattern: wrap `arcrho_runtime_service` phases and count ops on `E:` paths):
+13.4 s total = resolve_local_triangle_cache 0.8 s, exchange 3.2 s (1.7 s Engine compute + ~1.3 s client
+visibility probe), **_write_dataset_sidecar 6.1 s (15 opens/23 stats)**, dependents enqueue 2.6 s, then
+`GET /dataset/{id}` 1.4 s. So the run's *surrounding* SMB work dominated. Fix shipped the same day:
+`Operation: dataset_run | dataset_precheck` on `/api/engine-calculations` runs the whole
+`run_arcrho_tri` / `arcrho_precheck` on the Gateway (`arcrho_router` → `run_hosted_dataset_operation`,
+client registers the returned `ds_id`), and `GET /dataset/{id}` is the `dataset_grid_load` workspace read
+(falls back locally when the Gateway does not know the handle). Re-measured: `/arcrho/tri/refresh`
+13.4 s → ~1.0 s (Engine warm), route-side SMB ops 1 open + 1 stat.
+
+Not moved (still SMB from the client): direct `run_arcrho_tri` callers outside `/arcrho/*` (RS source
+materialization, calculated-input recursion inside a local run) do their sidecar/dependent work over SMB;
+the DFM/RS RPC-bridge request files (`requests/RPC bridge/`,
 consumed by the Bridge, not the Engine). Related: [[pi-path-load-smb-cost]], [[gateway-deploy-swap-lock]].
