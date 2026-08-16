@@ -1,4 +1,8 @@
 import { shell } from "./shell_context.js?v=20260510a";
+import {
+  TABBED_PAGE_NEXT_MESSAGE,
+  TABBED_PAGE_PREVIOUS_MESSAGE,
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 
 let lastKeyCombo = "";
 let lastKeyTime = 0;
@@ -40,8 +44,8 @@ const hotkeys = {
   "Ctrl+E": "dfm_toggle_ratios_mode",
   "Ctrl+Z": "dfm_undo",
   "Ctrl+Y": "dfm_redo",
-  "Ctrl+PageUp": "dfm_tab_prev",
-  "Ctrl+PageDown": "dfm_tab_next",
+  "Ctrl+PageUp": "tabbed_page_prev",
+  "Ctrl+PageDown": "tabbed_page_next",
   "Ctrl+S": "file_save",
   "Ctrl+Shift+S": "file_save_as",
   "Ctrl+O": "file_import",
@@ -72,6 +76,28 @@ function tryConsumeActiveFrameCloseShortcut() {
   }
 }
 
+const TABBED_PAGE_TYPES = new Set([
+  "dataset",
+  "dfm",
+  "bornhuetter_ferguson",
+  "cape_cod",
+  "result_selection",
+  "berquist_sherman",
+  "project_instance",
+]);
+
+function sendActiveTabbedPageCommand(type) {
+  const active = shell.state.tabs.find((tab) => tab.id === shell.state.activeId);
+  if (!active || !TABBED_PAGE_TYPES.has(active.type)) return false;
+  shell.ensureIframe?.(active);
+  try {
+    active.iframe?.contentWindow?.postMessage({ type }, "*");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function runHotkeyAction(action) {
   if (action === "custom_refresh") return shell.refreshActiveTab?.();
   if (action === "custom_hard_refresh") return shell.customHardRefresh?.();
@@ -83,8 +109,8 @@ export function runHotkeyAction(action) {
   if (action === "dfm_toggle_ratios_mode") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-toggle-ratios-mode"); return; }
   if (action === "dfm_undo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-undo"); return; }
   if (action === "dfm_redo") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-redo"); return; }
-  if (action === "dfm_tab_prev") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-tab-prev"); return; }
-  if (action === "dfm_tab_next") { if (shell.isActiveDFMTab?.()) shell.sendDFMCommand?.("arcrho:dfm-tab-next"); return; }
+  if (action === "tabbed_page_prev") return sendActiveTabbedPageCommand(TABBED_PAGE_PREVIOUS_MESSAGE);
+  if (action === "tabbed_page_next") return sendActiveTabbedPageCommand(TABBED_PAGE_NEXT_MESSAGE);
   if (action === "file_save") {
     if (shell.isActiveWorkflowTab?.()) shell.sendWorkflowCommand?.("arcrho:workflow-save");
     else if (shell.isActiveDatasetTab?.()) shell.sendDatasetCommand?.("arcrho:dataset-save");

@@ -8,6 +8,10 @@ import {
   PROPAGATION_SCOPE_FINISHED_MESSAGE,
   PROPAGATION_SCOPE_STARTED_MESSAGE,
 } from "/ui/shared/services/object_change_watch.js?v=20260807a";
+import {
+  TABBED_PAGE_NEXT_MESSAGE,
+  TABBED_PAGE_PREVIOUS_MESSAGE,
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -977,6 +981,18 @@ function routeActiveWindowSaveCommand(saveAs = false) {
   return routeDatasetWindowCommand("arcrho:dataset-save");
 }
 
+function routeActiveTabbedPageCommand(type) {
+  const frame = getActiveDatasetWindow();
+  const iframe = getWindowIframe(frame);
+  if (!iframe?.contentWindow) return false;
+  try {
+    iframe.contentWindow.postMessage({ type }, "*");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function forwardRequestToActiveDfm(message, resultType, fallbackContext, timeoutMs = 3000) {
   const requestId = toText(message?.requestId) || `pi_dfm_request_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const targetWindowId = toText(message?.targetWindowId);
@@ -1236,6 +1252,22 @@ function initDatasetWindowShortcuts() {
   document.body.dataset.piWindowShortcutsWired = "1";
   window.__arcrho_consume_close_shortcut = consumeCloseShortcutFromShell;
   document.addEventListener("keydown", (event) => {
+    if (
+      event.ctrlKey
+      && !event.altKey
+      && !event.metaKey
+      && (String(event.key || "").toLowerCase() === "pageup"
+        || String(event.key || "").toLowerCase() === "pagedown")
+    ) {
+      const key = String(event.key || "").toLowerCase();
+      if (routeActiveTabbedPageCommand(
+        key === "pagedown" ? TABBED_PAGE_NEXT_MESSAGE : TABBED_PAGE_PREVIOUS_MESSAGE,
+      )) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
     if (routeDfmRatioHotkey(event)) return;
     if (
       event.ctrlKey
@@ -1298,6 +1330,10 @@ window.addEventListener("message", (event) => {
     || msg.type === "arcrho:dfm-save-as"
   ) {
     routeActiveWindowSaveCommand(msg.type === "arcrho:dfm-save-as");
+    return;
+  }
+  if (msg.type === TABBED_PAGE_PREVIOUS_MESSAGE || msg.type === TABBED_PAGE_NEXT_MESSAGE) {
+    routeActiveTabbedPageCommand(msg.type);
     return;
   }
   if (

@@ -7,7 +7,7 @@ Project instance workspace for browsing one project's reserving-class paths and 
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_instance.entry_points -->
-- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260814a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260816a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${endpoint}?project_name=${encodeURIComponent(name)}`
@@ -67,6 +67,7 @@ Detected `arcrho:*` message types in key JS files:
 - Embeds the same lazy reserving-class picker body used by Dataset/DFM/Workflow, so the project instance left panel loads the same hierarchy, filters, hidden-path preferences, Shortcut section, favorites, and user-defined favorite folders.
 - The embedded reserving-class path tree uses tight horizontal padding with a small left inset and does not reserve two-sided scrollbar gutters, so more path text fits in the left panel. Tree rows keep their depth-based left indentation while favorite-star actions in Shortcut and All Paths share one right-edge vertical line. Hovering a tree or Shortcut label shows its full path in a compact app-styled tooltip that wraps within the viewport instead of using the browser-native tooltip.
 - Project instance loading shows one centered page-level loading card with the same blue sweep spinner style used by Dataset loading while the reserving-class path tree and dataset table load.
+- The path-tree load issues its requests concurrently rather than in sequence, because project data may sit on a mapped drive where every serialized request costs a full round trip. The picker starts the saved filter-spec request alongside the combinations and types pair instead of waiting for them, and the shared project-user preference loader joins an already in-flight request so the path panel and the dataset table, which both load preferences as the page opens, share one read instead of making two. A forced reload still issues its own request, and a failed load is not cached.
 - Embeds the existing Dataset Viewer page in draggable in-tab windows.
 - Double-clicking a dataset that already has an open or hidden floating window activates or restores the existing window instead of creating a duplicate for the same selected path and dataset.
 - New floating dataset windows default to about 80% of the project-instance frame and reuse the most recent floating dataset window size for subsequent dataset windows in the same project instance page.
@@ -77,6 +78,7 @@ Detected `arcrho:*` message types in key JS files:
 - Double-clicking a floating dataset window titlebar toggles maximize/restore within the project-instance frame; dragging a maximized titlebar restores the prior size under the pointer before moving.
 - Dataset viewer windows are clamped below the project-instance toolbar; they may be dragged partially off the left, right, or bottom edge as long as a side grab area and the titlebar remain reachable.
 - `Ctrl+W` closes the active floating dataset window, including when keyboard focus is inside the embedded Dataset Viewer iframe or when the shell/Electron close-tab shortcut reaches the parent shell first; the project instance tab closes only when no floating dataset window can consume the shortcut.
+- `Ctrl+PageUp` and `Ctrl+PageDown` are forwarded to the active floating Dataset or method window when Project Instance owns keyboard focus; once focus is inside the child iframe, its shared tab runtime handles the same shortcut directly.
 - The toolbar includes a hidden-tab collection area to the right of the selected path; hidden windows appear as large-radius minimized tabs on the toolbar that show dataset names only plus a styled hover tooltip with the full window title. Each minimized tab uses a centered inline SVG close icon, and hovering or clicking the hidden-tabs button opens a wider content-fitting dropdown that lists full hidden window titles with a one-second hover grace period, per-item close controls, Resume all tabs, Close all tabs, a centered inline SVG close icon that dismisses the dropdown itself, and a matching restore animation that starts from the matching minimized tab. The hidden-tabs button and its dropdown are hidden entirely while no window is hidden, so the toolbar never shows a `0 hidden` control or an empty-state menu.
 - Dataset viewer windows add a transparent parent-page drag shield during move/resize so embedded iframes do not interrupt fast mouse movement.
 - The project instance toolbar is compact, shows only the currently selected reserving-class path, omits the duplicate selected path above the tree, and sizes the path label to its content with a capped width so minimized toolbar tabs get the remaining space.

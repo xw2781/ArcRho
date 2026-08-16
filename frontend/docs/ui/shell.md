@@ -12,7 +12,7 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shell/ui_shell.js?v=20260812b`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shell/ui_shell.js?v=20260816a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
@@ -84,6 +84,7 @@ Detected `arcrho:*` message types in key JS files:
 - Invokes app-server endpoints for workflow import helpers and configuration endpoints.
 - Uses Electron host bridge and explicit shell commands for shutdown/clear-cache actions; ordinary document unloads and reloads do not send app shutdown.
 - The desktop host consumes F5 and Ctrl+F5 as no-op shortcuts so accidental refreshes do not reload the app; Ctrl+R remains the explicit shell refresh shortcut.
+- The shell routes `Ctrl+PageUp` and `Ctrl+PageDown` to the shared tab runtime in the active Dataset, DFM, Bornhuetter Ferguson, Cape Cod, Result Selection, or Project Instance iframe. This makes inner-page tab cycling available before keyboard focus enters the iframe; Project Instance forwards the command again to its active floating Dataset or method window.
 - The desktop window is frameless, so the shell paints its own frame edge through `body::after` and the `--shell-frame-border` custom property. Windows 11 gets right and bottom edges only; Windows 10 gets all four (`body.win10-borders`, applied from the host's `is-windows-11` answer). On Windows 10 an unpackaged launch adds `body.dev-frame` from `app-info`'s `isPackaged`, which retints that same frame to `#528bff` so a development window is unmistakable beside an installed one. It changes only the color - the frame geometry stays owned by the Windows 10 rule, and Windows 11 is untouched because its frame is the operating system's.
 - The desktop shell uses a 10px left/right workspace gutter; the menubar and status bar run flush to the desktop window border, with the status bar showing a decorative resize glyph only. It does not expose custom drag-to-resize behavior, so window resizing is left to the native Electron window frame while in-shell floating tab windows keep their own resize controls.
 - The Macro and Macro Library windows capture their current dimensions when opened and do not resize with the host desktop window; their own resize handles remain the only way to change their dimensions through the shared floating-window frame.

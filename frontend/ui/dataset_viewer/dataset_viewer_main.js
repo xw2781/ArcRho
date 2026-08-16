@@ -14,7 +14,7 @@ import {
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import {
   redrawDatasetChartSafely,

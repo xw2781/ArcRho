@@ -12,7 +12,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";

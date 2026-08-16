@@ -655,6 +655,7 @@ function wireDatasetViewerWindowShortcuts(iframe, frame) {
   doc.addEventListener("mousedown", () => raiseWindow(frame), true);
   doc.addEventListener("focusin", () => raiseWindow(frame), true);
   doc.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) return;
     if (isDfmWindow(frame) && routeDfmRatioHotkey(event)) return;
     if (
       isDfmWindow(frame)

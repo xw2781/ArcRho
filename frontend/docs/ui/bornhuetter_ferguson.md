@@ -5,7 +5,7 @@ Bornhuetter Ferguson method page for producing a final ultimate vector from late
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bornhuetter_ferguson.entry_points -->
-- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260814b`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`: external scripts `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260816a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -30,6 +30,7 @@ Detected `arcrho:*` message types in key JS files:
 <!-- MANUAL:BEGIN -->
 - Opens from Project Instance as a floating iframe method window at `/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html`. Home no longer offers a Bornhuetter Ferguson launch card, but the shell keeps `openBornhuetterFergusonTab` for the standalone restorable tab used by tab restore and UI automation.
 - Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and `ui/shared/tabs/details/`, `ui/shared/tabs/notes/`, and `ui/shared/tabs/audit_log/` for shared tab presentation. BF modules still own method persistence, calculations, dirty state, save/close coordination, and BF-specific behavior; the established BF tab IDs and `arcrho:*` contracts remain unchanged. BF also uses shared dataset origin-label, dataset picker, filename-sanitizer, and save-bar helpers, and its tab labels use the same Arial-first application font stack as Dataset tabs.
+- `Ctrl+PageUp` and `Ctrl+PageDown` cycle through BF tabs with wraparound through the shared tabbed-page runtime, including when the shell or Project Instance host still owns keyboard focus.
 - Details, Method table, Audit Log table, select carets, and save actions follow the compact DFM-style ArcRho controls; single-value BF dataset pickers use the same three-dot button design as DFM Details.
 - Every BF tab uses the shared white `bfPageHost` workspace surface inside the DFM-style gutter and border frame.
 - Closing a dirty BF window from its titlebar, Cancel button, or close shortcut opens the shared page-local confirmation used by Dataset, DFM, and Result Selection. Yes sends the confirmed discard to Project Instance and closes the window in the same action; Cancel, Escape, clicking the backdrop, or closing the box returns to the dirty BF page, which remains inert while the modal is open.

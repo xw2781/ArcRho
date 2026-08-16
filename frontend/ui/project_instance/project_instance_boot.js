@@ -3,7 +3,7 @@ import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/services/project_user_preferences.js";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260715c";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260814a";
@@ -15,10 +15,10 @@ import { installProjectInstanceExcelLinks } from "./project_instance_excel_links
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260814a";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260813b";
-import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260812a";
+import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260816a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260812a";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260813e";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260816a";
 import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";
 
 export async function bootProjectInstance() {

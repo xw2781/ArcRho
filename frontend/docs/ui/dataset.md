@@ -12,7 +12,7 @@ Implementation details should stay in the generated entrypoint/key-file sections
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dataset.entry_points -->
-- `ui/dataset_viewer/dataset_viewer.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`; inline imports `/ui/dataset_viewer/dataset_viewer_main.js?v=20260814b`.
+- `ui/dataset_viewer/dataset_viewer.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`; inline imports `/ui/dataset_viewer/dataset_viewer_main.js?v=20260816a`.
 
 Detected `fetch(...)` targets in key JS files:
 - `${config.API_BASE}/dataset/${dsId}/patch`
@@ -75,6 +75,7 @@ Detected `arcrho:*` message types in key JS files:
 - Publishes `arcrho:calculated-datasets-updated` after a save/run recalculates dependent datasets, and consumes the same shell-broadcast report from Dataset or DFM saves; open Dataset tabs/windows auto-reload when their current project, reserving class, and dataset name match an updated calculated output. Tabs with unsaved grid/settings/Notes edits show a status warning instead of reloading.
 - Publishes `arcrho:dataset-dirty` while saved sidecar settings or Notes have unsaved changes, then uses `arcrho:dataset-close-confirmed` after the user confirms discard in the shared page-local close dialog.
 - Dataset uses `ui/shared/tabbed_page/` for reusable tab chrome and the matching `ui/shared/tabs/data/`, `ui/shared/tabs/details/`, `ui/shared/tabs/notes/`, `ui/shared/tabs/links/`, and `ui/shared/tabs/audit_log/` modules for shared tab presentation/runtime. Dataset Viewer modules still own sidecar persistence, dirty state, save/close coordination, Chart behavior, and Dataset Viewer-specific page composition; the established Dataset tab IDs and `arcrho:*` contracts remain unchanged.
+- `Ctrl+PageUp` and `Ctrl+PageDown` cycle backward and forward through Dataset Viewer tabs with wraparound. The shared tab runtime handles the keys inside the page, while shell and Project Instance hosts forward the same command when focus has not yet entered the Dataset iframe.
 - Dataset loads feature-neutral page/control primitives from `ui/shared/components/`, the app-wide scrollbar treatment from `ui/shared/styles/scrollbars.css`, and spreadsheet primitives from `ui/shared/components/spreadsheet/`. Dataset Viewer-only chart, formula/relationship, save/recalculate, and page-layout styling remains in `ui/dataset_viewer/dataset_viewer.css`; method pages do not import that Dataset Viewer-local stylesheet.
 - The host-neutral Data-tab runtime lives under `ui/shared/tabs/data/`: `data_tab_controller.js` remains the stable public facade while focused sibling modules own dependency bridging, Details, inputs, requests, persistence, and the active dataset session. Dataset API/config/state, header, dependency, formatting, and run services live under `ui/shared/dataset/`; the dataset-name picker lives under `ui/shared/components/pickers/`. Dataset Viewer supplies its page, Chart, Notes, and host adapters from `ui/dataset_viewer/`, while DFM supplies its own adapter from `ui/method_pages/dfm/`.
 - Inactive Dataset tabs use the same pale hover fill as Bornhuetter Ferguson tabs, while active-tab fill and weight remain unchanged.

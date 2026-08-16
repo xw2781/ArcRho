@@ -20,6 +20,8 @@ function toCssLength(value) {
 
 export const TABBED_PAGE_CONTROL_RADIUS = "4px";
 export const TABBED_PAGE_ACTION_FONT_FAMILY = '"Segoe UI", Arial, sans-serif';
+export const TABBED_PAGE_PREVIOUS_MESSAGE = "arcrho:tabbed-page-prev";
+export const TABBED_PAGE_NEXT_MESSAGE = "arcrho:tabbed-page-next";
 
 /**
  * Applies the shared tabbed-page save bar styling to an existing save bar.
@@ -101,6 +103,9 @@ export function requestTabbedPageWindowClose({
  * @param {number|string} [config.tabBarExtraVerticalSpace=0] - Extra vertical space added to the tab bar.
  * @param {number|string} [config.frameGutter=8] - Left/right gutter shared by the tab bar and page frame.
  * @param {string} [config.ariaLabel='Page tabs'] - Accessible label for the tab list.
+ * @param {string} [config.shortcutBlockedSelector="[aria-modal='true']"] - Target selector that blocks tab cycling.
+ * @param {string[]} [config.previousTabMessageTypes=[]] - Backward-compatible host message aliases for previous tab.
+ * @param {string[]} [config.nextTabMessageTypes=[]] - Backward-compatible host message aliases for next tab.
  * @returns {{setActive: Function, getCurrentTab: Function, getPageElement: Function, getAllPageElements: Function, destroy: Function}}
  */
 export function createTabbedPage(container, config) {
@@ -114,6 +119,9 @@ export function createTabbedPage(container, config) {
     tabBarExtraVerticalSpace = 0,
     frameGutter = 8,
     ariaLabel = "Page tabs",
+    shortcutBlockedSelector = "[aria-modal='true']",
+    previousTabMessageTypes = [],
+    nextTabMessageTypes = [],
   } = config;
 
   if (!tabs || tabs.length === 0) {
@@ -254,6 +262,41 @@ export function createTabbedPage(container, config) {
     return { ...pageElements };
   }
 
+  function cycleTab(direction) {
+    const currentIndex = tabs.findIndex((tab) => tab.id === currentTab);
+    if (currentIndex < 0 || tabs.length < 2) return false;
+    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+    setActive(tabs[nextIndex].id);
+    return true;
+  }
+
+  const previousMessages = new Set([
+    TABBED_PAGE_PREVIOUS_MESSAGE,
+    ...(Array.isArray(previousTabMessageTypes) ? previousTabMessageTypes : []),
+  ]);
+  const nextMessages = new Set([
+    TABBED_PAGE_NEXT_MESSAGE,
+    ...(Array.isArray(nextTabMessageTypes) ? nextTabMessageTypes : []),
+  ]);
+  const onWindowMessage = (event) => {
+    if (previousMessages.has(event?.data?.type)) {
+      cycleTab(-1);
+      return;
+    }
+    if (nextMessages.has(event?.data?.type)) cycleTab(1);
+  };
+  const onWindowKeyDown = (event) => {
+    if (event.defaultPrevented || !event.ctrlKey || event.altKey || event.metaKey) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key !== "pageup" && key !== "pagedown") return;
+    if (shortcutBlockedSelector && event.target?.closest?.(shortcutBlockedSelector)) return;
+    if (!cycleTab(key === "pagedown" ? 1 : -1)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  window.addEventListener("message", onWindowMessage);
+  window.addEventListener("keydown", onWindowKeyDown, { capture: true });
+
   const clickHandlers = new Map();
   const keydownHandlers = new Map();
 
@@ -307,6 +350,8 @@ export function createTabbedPage(container, config) {
     });
     clickHandlers.clear();
     keydownHandlers.clear();
+    window.removeEventListener("message", onWindowMessage);
+    window.removeEventListener("keydown", onWindowKeyDown, { capture: true });
   }
 
   return {

@@ -9,7 +9,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
@@ -559,6 +559,9 @@ function initDfmTabs() {
     cssPrefix: "dfm",
     initialTab,
     injectTabBar: false,
+    shortcutBlockedSelector: ".dfmRpcOverlay, [aria-modal='true']",
+    previousTabMessageTypes: ["arcrho:dfm-tab-prev"],
+    nextTabMessageTypes: ["arcrho:dfm-tab-next"],
     onTabChange: (tabId) => {
       setCurrentDfmTab(tabId);
       if (tabId === "ratios") renderRatioTable();
@@ -577,7 +580,6 @@ function initDfmTabs() {
   applyTabbedPageSaveBar(document.getElementById("dfmSaveBar"));
 
   window.dfmTabSystem = tabSystem;
-  wireDfmTabSwitchShortcuts(tabSystem);
   wireDfmTabPopoutWindows({
     onPopoutTab: (tabId) => {
       if (tabId === "ratios") renderRatioTable();
@@ -587,40 +589,6 @@ function initDfmTabs() {
       notifyDfmEditState();
     },
   });
-}
-
-function wireDfmTabSwitchShortcuts(tabSystem) {
-  if (!tabSystem || document.body?.dataset.dfmTabSwitchShortcutsWired === "1") return;
-  if (document.body) document.body.dataset.dfmTabSwitchShortcutsWired = "1";
-  const tabIds = DFM_TAB_DEFS.map((tab) => tab.id);
-  const switchDfmTab = (direction) => {
-    const currentTab = tabSystem.getCurrentTab?.() || getCurrentDfmTab();
-    const currentIndex = tabIds.indexOf(currentTab);
-    if (currentIndex < 0) return false;
-    const nextIndex = (currentIndex + direction + tabIds.length) % tabIds.length;
-    tabSystem.setActive(tabIds[nextIndex]);
-    return true;
-  };
-  window.addEventListener("message", (event) => {
-    if (event?.data?.type === "arcrho:dfm-tab-prev") {
-      switchDfmTab(-1);
-      return;
-    }
-    if (event?.data?.type === "arcrho:dfm-tab-next") {
-      switchDfmTab(1);
-      return;
-    }
-  });
-  window.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented || !event.ctrlKey || event.altKey || event.metaKey) return;
-    const key = String(event.key || "").toLowerCase();
-    if (key !== "pageup" && key !== "pagedown") return;
-    if (event.target?.closest?.(".dfmRpcOverlay, [aria-modal='true']")) return;
-    const direction = key === "pagedown" ? 1 : -1;
-    if (!switchDfmTab(direction)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }, { capture: true });
 }
 
 export function initDfmRatios() {

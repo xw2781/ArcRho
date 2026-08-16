@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset and methods",
+  "audience": "user",
+  "summary": "Expanded Ctrl+PageUp and Ctrl+PageDown tab switching to every Dataset and method page."
+}

@@ -9,7 +9,7 @@ import { buildShellActivityEntry, closeTab, closeTabsExcept, dockTab, floatTab, 
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260808a";
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260723b";
 import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260812a";
-import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260723a";
+import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260816a";
 import { initShellMessages } from "./shell_messages.js?v=20260812a";
 import { initUiAutomation } from "./ui_automation.js?v=20260812b";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";

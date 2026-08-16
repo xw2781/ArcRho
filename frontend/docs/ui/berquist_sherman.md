@@ -5,7 +5,7 @@ Annual MVP page for `B&S Settlement Rate Adjustment` and `B&S Case Reserve Adequ
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.berquist_sherman.entry_points -->
-- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260814b`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/method_pages/berquist_sherman/berquist_sherman.html`: external scripts `/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260816a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -35,6 +35,7 @@ Detected `arcrho:*` message types in key JS files:
 <!-- MANUAL:BEGIN -->
 - Project Instance offers separate Add commands for the two B&S variants when an annual input triangle with Method Type `None` is selected.
 - Both variants use the shared method page and canonical contract module. They participate in the standard save, close, status, tab-state, and live dependency-preview messages. After the first successful save, Project Instance keeps the same floating window open under the saved output Name.
+- `Ctrl+PageUp` and `Ctrl+PageDown` cycle through the outer Berquist Sherman method tabs with wraparound through the shared tabbed-page runtime, including when Project Instance still owns keyboard focus.
 - The migration macro imports the required ResQ source names, annual labels, and calculation selections. It also fills missing annual labels on existing source sidecars without replacing labels that are already present. B&S methods do not use the bidirectional synchronization workflow.
 <!-- MANUAL:END -->
 

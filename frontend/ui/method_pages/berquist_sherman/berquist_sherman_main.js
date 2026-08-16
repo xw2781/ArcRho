@@ -7,7 +7,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
