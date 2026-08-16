@@ -38,25 +38,14 @@ const isUserEntryConfig = (...args) => summaryRuntime.isUserEntryConfig(...args)
 const getSummaryCellRowLabel = (...args) => summaryRuntime.getSummaryCellRowLabel(...args);
 const replaceFormulaReferenceLabel = (...args) => summaryRuntime.replaceFormulaReferenceLabel(...args);
 const updateActiveSummaryFormulaReferenceUi = (...args) => summaryRuntime.updateActiveSummaryFormulaReferenceUi(...args);
-const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserEntryReferenceHighlights(...args);
-const formatUserEntryFormulaEvaluationValue = (...args) => (
-  summaryRuntime.formatUserEntryFormulaEvaluationValue(...args)
-);
-const evaluateSimpleMathExpression = (...args) => summaryRuntime.evaluateSimpleMathExpression(...args);
-const stripFormulaEquals = (...args) => summaryRuntime.stripFormulaEquals(...args);
-const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
 const setModalValidationError = (...args) => summaryRuntime.setModalValidationError(...args);
 const showRenameModal = (...args) => summaryRuntime.showRenameModal(...args);
 const hideAvgModal = (...args) => summaryRuntime.hideAvgModal(...args);
 const showAvgModal = (...args) => summaryRuntime.showAvgModal(...args);
 const scrollSummaryFormulaInputToEnd = (...args) => summaryRuntime.scrollSummaryFormulaInputToEnd(...args);
 const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBarDisplayMode(...args);
-const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
-const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
-const restoreSupersededExcelRange = (...args) => summaryRuntime.restoreSupersededExcelRange(...args);
 const applyExcelRangeHighlights = (...args) => summaryRuntime.applyExcelRangeHighlights(...args);
 const pasteUserEntryClipboardGrid = (...args) => summaryRuntime.pasteUserEntryClipboardGrid(...args);
-const commitUserEntryArrayFormula = (...args) => summaryRuntime.commitUserEntryArrayFormula(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
 const wireSummaryFormulaBarPointer = (...args) => summaryRuntime.wireSummaryFormulaBarPointer(...args);
@@ -65,8 +54,6 @@ const clearSummaryReferenceUi = (...args) => summaryRuntime.clearSummaryReferenc
 const buildSummaryReferenceValues = (...args) => summaryRuntime.buildSummaryReferenceValues(...args);
 const insertAtInputCursor = (...args) => summaryRuntime.insertAtInputCursor(...args);
 const beginSummaryFormulaEditSession = (...args) => summaryRuntime.beginSummaryFormulaEditSession(...args);
-const setUserEntryCellEntry = (...args) => summaryRuntime.setUserEntryCellEntry(...args);
-const persistUserEntryRowsFromState = (...args) => summaryRuntime.persistUserEntryRowsFromState(...args);
 const wireAvgModal = (...args) => summaryRuntime.wireAvgModal(...args);
 const isRatioEditMode = (...args) => summaryRuntime.isRatioEditMode(...args);
 
@@ -374,134 +361,6 @@ export function initDefaultSummarySelection(summaryTable) {
   }
 }
 
-function beginUserEntryCellEdit(cell, summaryTable, selectedTable, options = {}) {
-  if (!cell || cell.querySelector("input.summaryCellEditInput")) return;
-  if (cell.classList.contains("excelRangeSpillCell")) return;
-  const rowId = String(cell.dataset.r || "");
-  const col = Number(cell.dataset.col);
-  if (!rowId || !Number.isFinite(col) || col < 0) return;
-  const cfg = summaryRowMap.get(rowId);
-  if (!isUserEntryConfig(cfg)) return;
-
-  const currentValue = getUserEntryValueForCol(cfg, col);
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "summaryCellEditInput";
-  const initialText = typeof options.initialText === "string" ? options.initialText : null;
-  input.value = initialText ?? formatUserEntryFormulaEvaluationValue(currentValue);
-  clearSummaryFormulaBarValidationError();
-  const original = cell.textContent;
-  cell.textContent = "";
-  cell.appendChild(input);
-  input.focus();
-  if (initialText === null) {
-    input.select();
-  } else {
-    input.setSelectionRange(input.value.length, input.value.length);
-  }
-  beginSummaryFormulaEditSession(summaryTable, cell, input, col);
-
-  let finished = false;
-  const restore = (nextValue) => {
-    cell.textContent = formatUserEntryFormulaEvaluationValue(nextValue);
-    cell.classList.remove("na");
-    cell.classList.remove("ratioPlaceholder");
-    cell.classList.remove("strike");
-    cell.classList.add("userEntryEditable");
-  };
-  const finish = (commit, finishOptions = {}) => {
-    if (finished) return;
-    finished = true;
-    if (!commit) {
-      clearSummaryReferenceUi(summaryTable);
-      summaryRuntime.summaryFormulaEditState = null;
-      clearSummaryFormulaBarValidationError();
-      cell.textContent = original;
-      updateSummaryFormulaBarForCell(cell);
-      return;
-    }
-    const raw = String(input.value || "").trim();
-    const selectionStart = Number.isInteger(input.selectionStart) ? input.selectionStart : raw.length;
-    const selectionEnd = Number.isInteger(input.selectionEnd) ? input.selectionEnd : selectionStart;
-    const rejectEdit = (message) => {
-      finished = false;
-      if (finishOptions.keepEditorOnError) {
-        beginSummaryFormulaEditSession(summaryTable, cell, input, col);
-        if (summaryRuntime.summaryFormulaEditState?.input === input) {
-          summaryRuntime.summaryFormulaEditState.kind = "inline";
-          summaryRuntime.summaryFormulaEditState.phase = "invalid";
-          summaryRuntime.summaryFormulaEditState.cancel = () => finish(false);
-        }
-        showSummaryFormulaBarValidationError(message, input);
-        input.setSelectionRange?.(selectionStart, selectionEnd);
-        return;
-      }
-      clearSummaryReferenceUi(summaryTable);
-      summaryRuntime.summaryFormulaEditState = null;
-      cell.textContent = original;
-      updateSummaryFormulaBarForCell(cell);
-      showSummaryFormulaBarValidationError(message);
-    };
-    const arrayCommit = commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, col, raw);
-    if (arrayCommit.handled) {
-      if (!arrayCommit.ok) {
-        rejectEdit(arrayCommit.error || "Could not apply array formula.");
-      } else {
-        clearSummaryFormulaBarValidationError();
-      }
-      return;
-    }
-    const refValues = buildSummaryReferenceValues(summaryTable, col);
-    const parsed = stripFormulaEquals(raw) ? evaluateSimpleMathExpression(raw, refValues) : 1;
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      rejectEdit("Enter a number > 0, or a formula like =\"Simple - 5\"*2.");
-      return;
-    }
-    clearSummaryReferenceUi(summaryTable);
-    summaryRuntime.summaryFormulaEditState = null;
-    clearSummaryFormulaBarValidationError();
-    const nextValue = roundRatio(parsed, 6);
-    restoreSupersededExcelRange(summaryTable, rowId, col, raw);
-    setUserEntryCellEntry(rowId, col, stripFormulaEquals(raw) ? raw : "1", nextValue);
-    persistUserEntryRowsFromState();
-    restore(nextValue);
-    ensureSelectedRowValues(summaryTable, selectedTable);
-    applyUserEntryReferenceHighlights(summaryTable);
-    applyExcelRangeHighlights(summaryTable);
-    updateSummaryFormulaBarForCell(cell);
-    summaryRuntime._onRatioStateMutated();
-  };
-
-  if (summaryRuntime.summaryFormulaEditState?.input === input) {
-    summaryRuntime.summaryFormulaEditState.kind = "inline";
-    summaryRuntime.summaryFormulaEditState.phase = "editing";
-    summaryRuntime.summaryFormulaEditState.cancel = () => finish(false);
-  }
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      finish(true, { keepEditorOnError: true });
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      finish(false);
-    }
-  });
-  input.addEventListener("input", () => {
-    if (summaryRuntime.summaryFormulaEditState?.input === input) summaryRuntime.summaryFormulaEditState.phase = "editing";
-    clearSummaryFormulaBarValidationError();
-    updateSummaryFormulaBarForCell(cell);
-  });
-  input.addEventListener("paste", (e) => {
-    const text = e.clipboardData?.getData("text/plain");
-    if (!/[\t\r\n]/.test(String(text ?? ""))) return;
-    e.preventDefault();
-    finish(false);
-    pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
-  });
-  input.addEventListener("blur", () => finish(true, { keepEditorOnError: false }));
-}
-
 export function wireSummarySelection(summaryTable, selectedTable) {
   if (!summaryTable || summaryTable.dataset.selectionWired === "1") return;
   summaryRuntime.summarySelectionDestroy?.();
@@ -786,23 +645,13 @@ export function wireSummarySelection(summaryTable, selectedTable) {
   };
 
   listen(summaryTable, "mousedown", (e) => {
-    let formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
+    const formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
     if (!isRatioEditMode() && !formulaEditing) return;
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (tryStartReferenceDrag(e)) return;
     if (tryInsertReferenceFromEvent(e)) return;
-    const activeEdit = summaryRuntime.summaryFormulaEditState;
-    if (
-      activeEdit?.kind === "inline" &&
-      activeEdit.phase === "invalid" &&
-      !activeEdit.cell?.contains?.(e.target)
-    ) {
-      activeEdit.cancel?.();
-      formulaEditing = isSummaryFormulaEditSessionActive(summaryTable);
-    }
     if (!isRatioEditMode()) return;
     if (e.button !== 0) return;
-    if (e.target?.closest?.("input.summaryCellEditInput")) return;
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
     finishSummaryCellDrag();
@@ -839,7 +688,6 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (e.defaultPrevented) return;
     if (dragActive) return;
-    if (e.target?.closest?.("input.summaryCellEditInput")) return;
     const rowHead = e.target?.closest?.("th.summaryDragHandle");
     if (rowHead) {
       e.preventDefault();
@@ -849,26 +697,6 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     const cell = e.target?.closest?.("td.summaryCell");
     if (!cell) return;
     setActiveCell(cell, true);
-  });
-
-  listen(summaryTable, "dblclick", (e) => {
-    if (!isRatioEditMode()) return;
-    const cell = e.target?.closest?.("td.summaryCell");
-    if (!cell) return;
-    setActiveCell(cell, true);
-    if (cell.classList.contains("excelRangeSpillCell")) {
-      const barInput = document.querySelector("#dfmSummaryFormulaBarInput");
-      if (
-        barInput &&
-        !barInput.disabled &&
-        !barInput.readOnly &&
-        !isSummaryFormulaCommitPending(barInput)
-      ) barInput.focus();
-      updateReferenceHoverUi(null);
-      return;
-    }
-    beginUserEntryCellEdit(cell, summaryTable, selectedTable);
-    updateReferenceHoverUi(null);
   });
 
   listen(summaryTable, "mouseleave", () => {
@@ -881,24 +709,6 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     if (!document.body.contains(summaryTable)) return;
     const target = e.target;
     if (target?.closest?.("input, textarea, [contenteditable='true']")) return;
-    const highlightedCell = summaryTable.querySelector("td.summaryCell.dfmTableActive");
-    const isDirectValueKey = (
-      !e.ctrlKey &&
-      !e.altKey &&
-      !e.metaKey &&
-      /^[0-9.]$/.test(String(e.key || ""))
-    );
-    if (isDirectValueKey && highlightedCell) {
-      const cfg = summaryRowMap.get(String(highlightedCell.dataset.r || ""));
-      if (isUserEntryConfig(cfg) && !highlightedCell.classList.contains("excelRangeSpillCell")) {
-        e.preventDefault();
-        setActiveCell(highlightedCell, false);
-        beginUserEntryCellEdit(highlightedCell, summaryTable, selectedTable, {
-          initialText: String(e.key || ""),
-        });
-        return;
-      }
-    }
     if (!isRatioEditMode()) return;
     if (!summaryTable.querySelector("td.summaryCell.summaryActiveCell")) return;
     if (e.key === "ArrowUp") {
@@ -982,6 +792,5 @@ registerSummaryFunctions({
   applySummarySelection,
   selectSummaryCell,
   initDefaultSummarySelection,
-  beginUserEntryCellEdit,
   wireSummarySelection,
 });

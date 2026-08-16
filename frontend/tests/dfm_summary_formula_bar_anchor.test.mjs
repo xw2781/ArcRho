@@ -6,6 +6,10 @@ const anchorSource = await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js", import.meta.url),
   "utf8",
 );
+const interactionsSource = await readFile(
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_interactions.js", import.meta.url),
+  "utf8",
+);
 
 const runtimeStub = `const summaryRuntime = {
   SUMMARY_FORMULA_BAR_FRAME_INSET_PX: 14,
@@ -158,6 +162,11 @@ function buildUserEntryCell(rowId = "r1", col = 0, rangeAnchor = null) {
   }
   return { dataset, getBoundingClientRect: () => rect(300, 200, 60, 20) };
 }
+
+test("User Entry formula cells have no inline editor path", () => {
+  assert.doesNotMatch(interactionsSource, /summaryCellEditInput|beginUserEntryCellEdit/u);
+  assert.doesNotMatch(interactionsSource, /listen\(summaryTable, "dblclick"/u);
+});
 
 test("the formula bar anchors to every cell of a linked dynamic array", () => {
   const rangeCells = buildRangeCells();

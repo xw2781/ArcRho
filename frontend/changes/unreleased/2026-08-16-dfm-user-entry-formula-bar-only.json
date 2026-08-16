@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "User Entry formulas in DFM Ratios now edit only through the formula bar."
+}

@@ -1053,19 +1053,6 @@ body {
 #ratioWrap td.summaryCell.summaryRefCandidate {
   cursor: pointer;
 }
-#ratioWrap td.summaryCell input.summaryCellEditInput {
-  width: 100%;
-  height: var(--cell-h);
-  border: 0;
-  border-radius: 0;
-  box-sizing: border-box;
-  padding: 0 4px;
-  font: inherit;
-  text-align: right;
-  background: transparent;
-  outline: none !important;
-  box-shadow: none;
-}
 /* Visuals come from the shared .arFormulaBar; the Ratios bar owns only where it sits. */
 .dfmSummaryFormulaBar {
   position: absolute;
@@ -1215,10 +1202,6 @@ body {
 }
 .dfmSummaryFormulaBar.isValidating .dfmSummaryFormulaBarInput {
   cursor: progress;
-}
-#ratioWrap td.summaryCell input.summaryCellEditInput[aria-invalid="true"] {
-  background: #fff1f2;
-  box-shadow: inset 0 0 0 1px #be123c;
 }
 #ratioWrap td.summaryCell.excelLinked,
 #ratioWrap td.summaryCell.excelRangeAffected {
