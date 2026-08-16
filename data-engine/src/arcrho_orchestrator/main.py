@@ -5,6 +5,7 @@ import uuid
 import json
 import psutil
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 
@@ -37,6 +38,14 @@ orchestrator_id = f'{device_name}@' + session_user + "@" + ts
 
 id_folder = orchestrator_instance_path
 id_path = str(Path(id_folder) / f"{orchestrator_id}.json")
+
+# A frozen component imports its runtime before it publishes a heartbeat, so on
+# a cold server that gap is longer than any fixed sleep. Wait for the heartbeat
+# instead of guessing, and give a stuck launch lock a ceiling well above it.
+INSTANCE_REGISTRATION_TIMEOUT_SECONDS = 45
+INSTANCE_POLL_SECONDS = 0.5
+LAUNCH_LOCK_STALE_SECONDS = 120
+HEARTBEAT_REFRESH_SECONDS = 10
 
 
 def kill_extra_python_processes():
@@ -149,6 +158,119 @@ def limit_user_instance_files(FOLDER, user, max_count):
             pass
 
 
+def launch_lock_path(name: str):
+    return get_project_root() / "runtime" / "locks" / f"{name}_launch.lock"
+
+
+def clear_stale_launch_lock(path):
+    """Release a lock an Orchestrator died holding."""
+
+    try:
+        age = time.time() - os.path.getmtime(path)
+    except OSError:
+        return
+    if age > LAUNCH_LOCK_STALE_SECONDS:
+        safe_remove(str(path))
+
+
+@contextmanager
+def launch_slot(name: str):
+    """Serialize launches of a component whose cap is machine-wide.
+
+    Every signed-in user runs an Orchestrator, and each one compared the live
+    instance count against the cap on its own. Several read the same deficit in
+    the same second and each launched to fill it, so a five-worker cap produced
+    eight or nine Engines. Only the holder of this lock may launch, and it
+    holds it until the new instance registers, so the next Orchestrator decides
+    against a current count. Acquisition never blocks: an Orchestrator that
+    loses simply retries on its next pass.
+    """
+
+    path = launch_lock_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    clear_stale_launch_lock(path)
+    try:
+        handle = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        yield False
+        return
+    except OSError:
+        # A workspace that cannot hold the lock must not silently lose the cap.
+        yield False
+        return
+
+    try:
+        os.write(handle, json.dumps({'Server': orchestrator_id}).encode('utf-8'))
+    finally:
+        os.close(handle)
+    try:
+        yield True
+    finally:
+        safe_remove(str(path))
+
+
+def touch_heartbeat():
+    """Refresh this Orchestrator's own heartbeat during a long wait.
+
+    Waiting for cold components to register can outlast the staleness window
+    another Orchestrator reaps by, and losing the file makes this process exit.
+    """
+
+    try:
+        payload = read_json(id_path)
+    except OSError:
+        return
+    payload['Last seen'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        write_json(id_path, payload)
+    except OSError:
+        pass
+
+
+def wait_for_new_instance(count_instances, baseline):
+    """Wait for a launched app to publish its heartbeat.
+
+    Returning as soon as the count rises keeps the cap comparison honest; the
+    previous fixed sleep relaunched into the startup gap whenever a cold frozen
+    component took longer than it to register.
+    """
+
+    deadline = time.monotonic() + INSTANCE_REGISTRATION_TIMEOUT_SECONDS
+    next_refresh = time.monotonic() + HEARTBEAT_REFRESH_SECONDS
+    while time.monotonic() < deadline:
+        if count_instances() > baseline:
+            return True
+        if not os.path.exists(id_path):
+            return False
+        if time.monotonic() >= next_refresh:
+            touch_heartbeat()
+            next_refresh = time.monotonic() + HEARTBEAT_REFRESH_SECONDS
+        time.sleep(INSTANCE_POLL_SECONDS)
+    return count_instances() > baseline
+
+
+def replenish_instances(role: str, lock_name: str, count_instances, target: int):
+    """Launch one capped app at a time until the live count reaches target.
+
+    At most one launch per missing instance runs in a pass, so a component that
+    fails during startup is retried on the next pass instead of being spawned
+    without limit.
+    """
+
+    for _ in range(max(0, int(target))):
+        if count_instances() >= target:
+            return
+        with launch_slot(lock_name) as acquired:
+            if not acquired:
+                return
+            baseline = count_instances()
+            if baseline >= target:
+                return
+            if not launch_app(role):
+                return
+            wait_for_new_instance(count_instances, baseline)
+
+
 def launch_app(role: str):
     exe = resolve_app_exe(role)
     if not exe.exists():
@@ -220,24 +342,28 @@ def main():
             remove_old_instances(save_gateway_instance_path, 30)
             remove_old_instances(str(get_project_root() / "requests"), 5*60)
 
-            while get_config_value('apps.orchestrator.auto_create_workers') \
-              and get_config_value('apps.engine.kill_all') == False \
-              and file_counts(engine_instance_path) < get_config_value('apps.orchestrator.max_workers'):
-                if not launch_app("engine"):
-                    break
-                time.sleep(3)
+            if get_config_value('apps.orchestrator.auto_create_workers') \
+              and get_config_value('apps.engine.kill_all') == False:
+                replenish_instances(
+                    "engine",
+                    "engine",
+                    lambda: file_counts(engine_instance_path),
+                    int(get_config_value('apps.orchestrator.max_workers')),
+                )
 
             # Bridges are per user session: every ResQ user contributes one
             # bridge running on their own ResQ GUI/license, so the cap counts
             # only this session's user and never trims other users' bridges.
             bridge_max_instances = max(0, min(int(get_config_value('apps.bridge.max_instances', 1)), 1))
             limit_user_instance_files(bridge_instance_path, session_user, bridge_max_instances)
-            while get_config_value('apps.bridge.auto_create_instance', True) \
-              and get_config_value('apps.bridge.kill_all', False) == False \
-              and user_file_counts(bridge_instance_path, session_user) < bridge_max_instances:
-                if not launch_app("bridge"):
-                    break
-                time.sleep(3)
+            if get_config_value('apps.bridge.auto_create_instance', True) \
+              and get_config_value('apps.bridge.kill_all', False) == False:
+                replenish_instances(
+                    "bridge",
+                    f"bridge@{session_user}",
+                    lambda: user_file_counts(bridge_instance_path, session_user),
+                    bridge_max_instances,
+                )
 
             # The Save Gateway is machine-wide rather than per session. Every
             # logged-in user's orchestrator may race to restore it, but only
@@ -246,12 +372,14 @@ def main():
                 0,
                 min(int(get_config_value('apps.save_gateway.max_instances', 1)), 1),
             )
-            while get_config_value('apps.save_gateway.auto_create_instance', True) \
-              and get_config_value('apps.save_gateway.kill_all', False) == False \
-              and file_counts(save_gateway_instance_path) < gateway_max_instances:
-                if not launch_app("save_gateway"):
-                    break
-                time.sleep(3)
+            if get_config_value('apps.save_gateway.auto_create_instance', True) \
+              and get_config_value('apps.save_gateway.kill_all', False) == False:
+                replenish_instances(
+                    "save_gateway",
+                    "save_gateway",
+                    lambda: file_counts(save_gateway_instance_path),
+                    gateway_max_instances,
+                )
 
         except Exception as e:
             print(e)

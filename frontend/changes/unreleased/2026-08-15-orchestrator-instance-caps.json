@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "server components",
+  "audience": "internal",
+  "summary": "Held ArcRho Engine and Save Gateway to their configured instance caps when several users are signed into the server.",
+  "details": [
+    "Each signed-in user's Orchestrator used to fill the same shortfall at the same time, so a five-worker cap produced eight or nine Engines.",
+    "Replenishment now waits for a launched component to publish its heartbeat instead of assuming a fixed startup time.",
+    "A component that fails during startup is retried on the next pass rather than launched without limit.",
+    "The Save Gateway now refuses to share its port, so a second copy exits instead of serving part of the traffic."
+  ]
+}

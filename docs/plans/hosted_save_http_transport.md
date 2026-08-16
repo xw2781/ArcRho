@@ -56,11 +56,13 @@ upgrade degrades the transport instead of failing the save.
   serializes updates to the shared user registry, and leaves SMB as the default
   if the pre-enrollment check cannot complete. Once the local HTTP credential
   exists, uncertain HTTP submissions still never fall back to SMB.
-- On each Windows account that may be the only account signed into the server
-  PC, add `--install-current-user-startup`. It registers the deployed gateway
-  under that account's HKCU Run key without elevation. Client-only PCs do not
-  use this flag. The first configured server account that signs in owns the
-  machine-wide listener; later copies exit because the port is already owned.
+- The Orchestrator is the only starter. Every signed-in account's Orchestrator
+  restores the Gateway from `apps.save_gateway.auto_create_instance`, so no
+  login registration is needed; `configure_pilot.py` removes the pilot-era HKCU
+  Run entry when it provisions a user. The first process to bind owns the
+  machine-wide listener and later copies exit, which requires the Gateway to
+  refuse address reuse — Python's `HTTPServer` default would otherwise let a
+  second process bind the same port on Windows and serve part of the traffic.
 - Client latency records identify `transport` as `smb` or `http_gateway` for
   like-for-like comparison in `client_save_latency.jsonl`.
 

@@ -49,30 +49,36 @@ class HostedSaveHttpContractTests(unittest.TestCase):
 
         self.assertNotIn("allowed_save_kinds", default_gateway_config())
 
-    def test_current_user_startup_registration_quotes_the_gateway_path(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT)) as temporary:
-            executable = Path(temporary) / "ArcRho Save Gateway.exe"
-            executable.touch()
-            registry_key = MagicMock()
-            context = MagicMock()
-            context.__enter__.return_value = registry_key
-            with (
-                patch.object(configure_pilot.winreg, "CreateKey", return_value=context) as create,
-                patch.object(configure_pilot.winreg, "SetValueEx") as set_value,
-            ):
-                configure_pilot.install_current_user_startup(executable)
+    def test_provisioning_clears_the_pilot_login_startup_entry(self) -> None:
+        """The Orchestrator owns Gateway startup; a login entry races it."""
 
-            create.assert_called_once_with(
-                configure_pilot.winreg.HKEY_CURRENT_USER,
-                configure_pilot.STARTUP_REGISTRY_KEY,
-            )
-            set_value.assert_called_once_with(
-                registry_key,
-                configure_pilot.STARTUP_VALUE_NAME,
-                0,
-                configure_pilot.winreg.REG_SZ,
-                f'"{executable.resolve()}"',
-            )
+        registry_key = MagicMock()
+        context = MagicMock()
+        context.__enter__.return_value = registry_key
+        with (
+            patch.object(configure_pilot.winreg, "OpenKey", return_value=context) as open_key,
+            patch.object(configure_pilot.winreg, "DeleteValue") as delete_value,
+        ):
+            self.assertTrue(configure_pilot.remove_current_user_startup())
+
+        open_key.assert_called_once_with(
+            configure_pilot.winreg.HKEY_CURRENT_USER,
+            configure_pilot.STARTUP_REGISTRY_KEY,
+            0,
+            configure_pilot.winreg.KEY_SET_VALUE,
+        )
+        delete_value.assert_called_once_with(
+            registry_key, configure_pilot.STARTUP_VALUE_NAME
+        )
+
+    def test_clearing_a_missing_login_startup_entry_is_not_an_error(self) -> None:
+        with patch.object(configure_pilot.winreg, "OpenKey", side_effect=FileNotFoundError):
+            self.assertFalse(configure_pilot.remove_current_user_startup())
+
+    def test_the_gateway_refuses_to_share_a_port_with_a_live_gateway(self) -> None:
+        """Two bound Gateways would each serve an arbitrary share of saves."""
+
+        self.assertFalse(gateway_main.GatewayServer.allow_reuse_address)
 
     def test_provisioning_drops_a_pilot_era_save_kind_allowlist(self) -> None:
         """An upgraded gateway must not stay narrowed by a stored pilot list."""

@@ -40,15 +40,22 @@ def configure(
     )
 
 
-def install_current_user_startup(executable: Path) -> None:
-    """Start the machine-wide gateway whenever this Windows user signs in."""
+def remove_current_user_startup() -> bool:
+    """Drop the pilot-era login startup entry for this Windows user.
 
-    resolved = executable.expanduser().resolve()
-    if not resolved.is_file():
-        raise FileNotFoundError(f"Save Gateway executable not found: {resolved}")
-    command = f'"{resolved}"'
-    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY) as key:
-        winreg.SetValueEx(key, STARTUP_VALUE_NAME, 0, winreg.REG_SZ, command)
+    The Orchestrator supervises the Gateway, so a login entry is a second
+    starter racing the first. Both would bind the same port rather than one
+    losing, so the stale entry is cleared whenever this user is provisioned.
+    """
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, STARTUP_REGISTRY_KEY, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            winreg.DeleteValue(key, STARTUP_VALUE_NAME)
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -59,12 +66,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--user", default=os.environ.get("USERNAME", ""))
     parser.add_argument("--url")
     parser.add_argument("--client-output")
-    parser.add_argument(
-        "--install-current-user-startup",
-        action="store_true",
-        help="Register the deployed gateway in this user's login startup (no admin).",
-    )
-    parser.add_argument("--gateway-executable")
     return parser
 
 
@@ -81,15 +82,6 @@ def main() -> int:
         if args.client_output
         else config_dir() / CLIENT_CONFIG_FILE_NAME
     )
-    gateway_executable = (
-        Path(args.gateway_executable).expanduser()
-        if args.gateway_executable
-        else root / "apps" / "ArcRho Save Gateway" / "ArcRho Save Gateway.exe"
-    )
-    if args.install_current_user_startup and not gateway_executable.resolve().is_file():
-        raise FileNotFoundError(
-            f"Save Gateway executable not found: {gateway_executable.resolve()}"
-        )
     server_path, local_path = configure(
         server_root=root,
         user=args.user,
@@ -98,9 +90,11 @@ def main() -> int:
     )
     print(f"Save Gateway server configuration updated: {server_path}")
     print(f"Client credential installed: {local_path}")
-    if args.install_current_user_startup:
-        install_current_user_startup(gateway_executable)
-        print("Save Gateway login startup installed for the current Windows user.")
+    if remove_current_user_startup():
+        print(
+            "Removed the pilot-era Save Gateway login entry; the Orchestrator "
+            "now starts the Gateway."
+        )
     return 0
 
 

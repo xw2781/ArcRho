@@ -408,6 +408,11 @@ class SaveGateway:
 
 class GatewayServer(ThreadingHTTPServer):
     daemon_threads = True
+    # One process must own the port. HTTPServer enables SO_REUSEADDR, which on
+    # Windows lets a second process bind an address a live Gateway already
+    # holds, leaving two Gateways each serving an arbitrary share of hosted
+    # saves. A second copy has to fail to bind and exit instead.
+    allow_reuse_address = False
 
     def __init__(self, address: tuple[str, int], gateway: SaveGateway) -> None:
         self.gateway = gateway
