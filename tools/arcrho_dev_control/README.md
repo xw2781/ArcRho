@@ -19,6 +19,11 @@ The page can:
 - show and open ArcRho's local preference, cache, log, runtime, and user-file
   folders.
 
+The page follows the system light/dark theme by default. The switch in the
+title bar picks Auto, Light, or Dark and stores that choice in the browser's
+`localStorage`; no theme state is kept on the server. The folder filter box
+narrows the folder table by name, path, or purpose and is client-side only.
+
 Mutating requests require a random token embedded in the served page. The
 server refuses non-loopback binds, accepts only allow-listed actions and
 folders, and never accepts a filesystem path from the browser.
