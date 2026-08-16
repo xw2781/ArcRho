@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(frontend/node_modules/**)",
+      "Read(frontend/dist/**)",
+      "Read(data-engine/venvs/**)",
+      "Read(.git/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "statusMessage": "Reading AGENTS.md...",
+            "command": "$r=(git rev-parse --show-toplevel 2>$null); if(-not $r){exit 0}; $a=''; if(Test-Path \"$r/AGENTS.md\"){$a+=Get-Content \"$r/AGENTS.md\" -Raw}; if(Test-Path \"$r/frontend/FRONTEND_AGENT_GUIDELINES.md\"){$a+=[System.Environment]::NewLine+[System.Environment]::NewLine+'--- frontend/FRONTEND_AGENT_GUIDELINES.md ---'+[System.Environment]::NewLine+(Get-Content \"$r/frontend/FRONTEND_AGENT_GUIDELINES.md\" -Raw)}; if($a){$o=@{hookSpecificOutput=@{hookEventName='PreToolUse';additionalContext='AGENTS.md:'+[System.Environment]::NewLine+$a}};$o|ConvertTo-Json -Depth 5}"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Syncing agent memories...",
+            "timeout": 120,
+            "command": "bash \"$(git rev-parse --show-toplevel)/tools/sync_agent_memory.sh\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

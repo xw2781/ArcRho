@@ -76,7 +76,11 @@ data-engine/src/arcrho_engine/instances/
 data-engine/src/arcrho_orchestrator/instances/
 
 # Editor and agent-local state
-.claude/
+# .claude/settings.json is tracked: it carries the shared agent hooks, and a
+# hook that only exists on one machine cannot keep two machines in sync.
+# settings.local.json stays ignored — that is the per-machine override file.
+.claude/*
+!.claude/settings.json
 .idea/
 .vscode/
 *.swp
