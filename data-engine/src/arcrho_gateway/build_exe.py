@@ -25,6 +25,8 @@ from build_runtime import (
     align_workspace_root_env,
     ensure_python_310_venv,
     is_local_fixed_path,
+    stage_deploy,
+    swap_deploy,
 )
 
 # Must run before utils is imported: utils resolves the workspace root once at
@@ -43,6 +45,7 @@ from utils import (  # noqa: E402
 if str(CANONICAL_SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(CANONICAL_SOURCE_ROOT))
 from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS  # noqa: E402
+from arcrho_gateway.engine_calculations import EXECUTOR_MODULES as CALCULATION_EXECUTOR_MODULES  # noqa: E402
 
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
@@ -144,6 +147,14 @@ def gateway_stopped():
                 )
 
 
+def _hosted_service_modules() -> list[str]:
+    """Every ``app_server.services`` module the gateway executes in-process."""
+
+    modules = {spec.module for spec in WORKSPACE_READ_KINDS.values()}
+    modules.update(CALCULATION_EXECUTOR_MODULES)
+    return sorted(modules)
+
+
 def validate_canonical_runtime_environment() -> None:
     """Fail the build if the bundled app_server import graph is incomplete.
 
@@ -154,8 +165,7 @@ def validate_canonical_runtime_environment() -> None:
 
     import_paths = [str(CANONICAL_SOURCE_ROOT), str(REPOSITORY_ROOT / "frontend")]
     imports = "; ".join(
-        f"from app_server.services import {module}"
-        for module in sorted({spec.module for spec in WORKSPACE_READ_KINDS.values()})
+        f"from app_server.services import {module}" for module in _hosted_service_modules()
     )
     probe = f"import sys; sys.path[:0] = {import_paths!r}; {imports}"
     print("\n>>> Validating canonical workspace-read dependencies")
@@ -178,7 +188,7 @@ def build_exe() -> None:
     # runtime through the Engine's configure_canonical_runtime.
     service_hidden_imports = [
         argument
-        for module in sorted({spec.module for spec in WORKSPACE_READ_KINDS.values()})
+        for module in _hosted_service_modules()
         for argument in ("--hidden-import", f"app_server.services.{module}")
     ]
     run(
@@ -209,6 +219,8 @@ def build_exe() -> None:
             "--hidden-import",
             "arcrho_workspace_read_contract",
             "--hidden-import",
+            "arcrho_engine_calculation_contract",
+            "--hidden-import",
             "arcrho_project_duplication_contract",
             "--hidden-import",
             "arcrho_engine_job_lease",
@@ -222,6 +234,8 @@ def build_exe() -> None:
             "arcrho_engine.dependent_propagation",
             "--hidden-import",
             "arcrho_gateway.workspace_reads",
+            "--hidden-import",
+            "arcrho_gateway.engine_calculations",
             *service_hidden_imports,
             *[
                 argument
@@ -242,31 +256,14 @@ def build_exe() -> None:
     )
 
 
-def deploy_exe() -> None:
-    if not STAGED_APP_DIR.is_dir():
-        raise FileNotFoundError(f"Built Gateway not found: {STAGED_APP_DIR}")
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
-    temporary = APPS_DIR / f".{APP_NAME}.new"
-    backup = APPS_DIR / f".{APP_NAME}.old"
-    _remove_tree(temporary)
-    _remove_tree(backup)
-    shutil.copytree(STAGED_APP_DIR, temporary)
-    try:
-        if DEPLOY_APP_DIR.exists():
-            DEPLOY_APP_DIR.rename(backup)
-        temporary.rename(DEPLOY_APP_DIR)
-    except Exception:
-        if backup.exists() and not DEPLOY_APP_DIR.exists():
-            backup.rename(DEPLOY_APP_DIR)
-        raise
-    _remove_tree(backup)
-
-
 def main() -> int:
     build_exe()
     if not STAGE_ONLY:
+        # Staging runs while the Gateway is still serving; only the rename
+        # rotation below needs the stopped window, and that takes seconds.
+        stage_deploy(STAGED_APP_DIR, APPS_DIR, APP_NAME)
         with gateway_stopped():
-            deploy_exe()
+            swap_deploy(APPS_DIR, APP_NAME)
     output = STAGED_APP_DIR if STAGE_ONLY else DEPLOY_APP_DIR
     print(f"\nBuild finished: {output / f'{APP_NAME}.exe'}")
     return 0

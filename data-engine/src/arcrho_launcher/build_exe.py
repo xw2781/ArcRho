@@ -12,7 +12,12 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from build_runtime import ensure_python_310_venv
+from build_runtime import (
+    copy_tree_delta,
+    ensure_python_310_venv,
+    stage_deploy,
+    swap_deploy,
+)
 from utils import component_app_name
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
@@ -91,8 +96,9 @@ def build_exe():
     run(cmd)
 
 
-def replace_folder_contents(source_dir, target_dir):
-    """Replace the files inside target_dir without removing the folder itself.
+def deploy_exe():
+    """Rotate the staged build into place, with a content sync fallback when
+    the folder itself is pinned by another session.
 
     Apps started by pre-2026-08 launchers inherited the launcher folder as
     their working directory, and any live process from another user session
@@ -100,61 +106,17 @@ def replace_folder_contents(source_dir, target_dir):
     inside it can still be replaced because the launcher only runs briefly.
     """
 
-    target_dir.mkdir(parents=True, exist_ok=True)
-    for child in target_dir.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-    for child in source_dir.iterdir():
-        target = target_dir / child.name
-        if child.is_dir():
-            shutil.copytree(child, target)
-        else:
-            shutil.copy2(child, target)
-
-
-def deploy_exe():
-    """Swap the staged build into the deployed app folder, with a content
-    sync fallback when the folder itself is pinned by another session."""
-
-    if not STAGED_APP_DIR.exists():
-        raise FileNotFoundError(f"Built app not found: {STAGED_APP_DIR}")
-
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
-    temp_app_dir = APPS_DIR / f".{APP_NAME}.new"
-    backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
-
-    for path in (temp_app_dir, backup_app_dir):
-        try:
-            shutil.rmtree(path)
-        except FileNotFoundError:
-            pass
-
-    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
-
-    swapped = False
+    slot = stage_deploy(STAGED_APP_DIR, APPS_DIR, APP_NAME)
     try:
-        if DEPLOY_APP_DIR.exists() and any(DEPLOY_APP_DIR.iterdir()):
-            DEPLOY_APP_DIR.rename(backup_app_dir)
-        elif DEPLOY_APP_DIR.exists():
-            DEPLOY_APP_DIR.rmdir()
-        temp_app_dir.rename(DEPLOY_APP_DIR)
-        swapped = True
+        swap_deploy(APPS_DIR, APP_NAME)
     except PermissionError:
-        if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
-            backup_app_dir.rename(DEPLOY_APP_DIR)
-
-    if not swapped:
-        print(f"\n>>> {DEPLOY_APP_DIR} is pinned by a live process; replacing its contents in place.")
-        replace_folder_contents(temp_app_dir, DEPLOY_APP_DIR)
-        shutil.rmtree(temp_app_dir)
-
-    for path in (backup_app_dir,):
-        try:
-            shutil.rmtree(path)
-        except FileNotFoundError:
-            pass
+        # The swap restored the pinned folder, so the new build is still in the
+        # slot. Mirroring it in replaces the files without touching the folder.
+        print(
+            f"\n>>> {DEPLOY_APP_DIR} is pinned by a live process; "
+            "replacing its contents in place."
+        )
+        copy_tree_delta(slot, DEPLOY_APP_DIR)
 
 
 def main():

@@ -22,8 +22,6 @@ CANONICAL_API_SOURCE = REPOSITORY_ROOT / "python-api" / "src"
 if CANONICAL_API_SOURCE.is_dir() and str(CANONICAL_API_SOURCE) not in sys.path:
     sys.path.insert(0, str(CANONICAL_API_SOURCE))
 
-from arcrho_api.io import persisted_json_text  # noqa: E402
-
 
 SERVER_CONFIG_VERSION = "1.0"
 SERVER_CONFIG_RELATIVE_PATH = Path("config") / "config.json"
@@ -107,6 +105,24 @@ def read_server_config(
     return merge_missing_defaults(payload, default_server_config(server_root))
 
 
+def _persisted_json_text(payload: dict[str, Any]) -> str:
+    """Return the canonical on-disk text for this configuration payload.
+
+    ``arcrho_api.io`` owns that text, but it is imported here rather than at
+    module scope because the frozen ArcRho Bridge must load ``arcrho_api`` from
+    its staged ResQ migration bundle instead of its own import graph.  Every
+    Bridge process reads the server configuration through ``utils``, so a
+    module-scope import here loaded a second ``arcrho_api`` into the worker
+    before any ResQ import ran, and ``load_resq_data_migration`` then refused
+    every import.  Only writers pay for the import, and no Bridge process
+    writes this file.
+    """
+
+    from arcrho_api.io import persisted_json_text
+
+    return persisted_json_text(payload)
+
+
 def write_server_config(path: Path, payload: dict[str, Any]) -> None:
     if not isinstance(payload, dict):
         raise TypeError("ArcRho Server configuration must be a mapping.")
@@ -116,7 +132,7 @@ def write_server_config(path: Path, payload: dict[str, Any]) -> None:
     )
     try:
         with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(persisted_json_text(payload))
+            handle.write(_persisted_json_text(payload))
         # Every Engine, Bridge, and Orchestrator polls this file on its
         # heartbeat cycle, and an SMB reader holding it open surfaces as a
         # transient WinError 5 on the atomic replace. Retry briefly rather

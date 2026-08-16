@@ -14,7 +14,7 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from build_runtime import ensure_python_310_venv
+from build_runtime import ensure_python_310_venv, stage_deploy, swap_deploy
 from utils import component_app_name
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
@@ -49,20 +49,6 @@ def remove_tree(path, attempts=5, delay=0.5):
         except PermissionError:
             if attempt == attempts:
                 raise
-            time.sleep(delay * attempt)
-
-
-def rename_path(source, target, attempts=10, delay=0.5):
-    for attempt in range(1, attempts + 1):
-        try:
-            source.rename(target)
-            return
-        except PermissionError as exc:
-            if attempt == attempts:
-                raise PermissionError(
-                    f"Could not replace {source}. Close any running {APP_NAME} instance "
-                    "or window using that folder, then build again."
-                ) from exc
             time.sleep(delay * attempt)
 
 
@@ -118,27 +104,8 @@ def build_exe():
 
 
 def deploy_exe():
-    if not STAGED_APP_DIR.exists():
-        raise FileNotFoundError(f"Built app not found: {STAGED_APP_DIR}")
-
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
-    temp_app_dir = APPS_DIR / f".{APP_NAME}.new"
-    backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
-
-    remove_tree(temp_app_dir)
-    remove_tree(backup_app_dir)
-    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
-
-    try:
-        if DEPLOY_APP_DIR.exists():
-            rename_path(DEPLOY_APP_DIR, backup_app_dir)
-        rename_path(temp_app_dir, DEPLOY_APP_DIR)
-    except Exception:
-        if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
-            rename_path(backup_app_dir, DEPLOY_APP_DIR)
-        raise
-
-    remove_tree(backup_app_dir)
+    stage_deploy(STAGED_APP_DIR, APPS_DIR, APP_NAME)
+    swap_deploy(APPS_DIR, APP_NAME)
 
 
 def main():

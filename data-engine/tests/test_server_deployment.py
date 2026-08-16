@@ -396,6 +396,20 @@ class ServerDeploymentTests(unittest.TestCase):
             all(not deployer._nested_get(restored, key) for key in deployer.KILL_SWITCH_PATHS)
         )
 
+    def test_server_config_keeps_the_canonical_persisted_json_text(self):
+        # ``server_config`` imports the canonical text owner inside its writer
+        # so the frozen Bridge never loads ``arcrho_api`` outside its staged
+        # migration bundle. The written text must still be the canonical one.
+        root = self.base / "Server"
+        config_path = root / "config" / "config.json"
+        payload = default_server_config(root)
+
+        write_server_config(config_path, payload)
+
+        self.assertEqual(
+            config_path.read_text(encoding="utf-8"), persisted_json_text(payload)
+        )
+
     def test_deployment_lock_rejects_a_concurrent_owner(self):
         root = self.base / "Server"
         root.mkdir()

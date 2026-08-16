@@ -20,7 +20,7 @@ from utils import (
     resolve_app_path,
     set_config_value,
 )
-from build_runtime import ensure_python_310_venv
+from build_runtime import ensure_python_310_venv, stage_deploy, swap_deploy
 
 BUILD_ROOT = PROJECT_ROOT / "builds" / BASE_DIR.name
 DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
@@ -170,7 +170,7 @@ def orchestrator_stopped():
 
 
 def deploy_exe():
-    """Swap the staged build into the deployed app folder with rollback.
+    """Sync the staged build into its slot, then rotate it into place.
 
     PyInstaller builds into an isolated dist folder rather than straight into
     the deployed app folder. Building in place would delete the live
@@ -178,34 +178,8 @@ def deploy_exe():
     deployment destroyed with nothing to fall back to.
     """
 
-    if not STAGED_APP_DIR.exists():
-        raise FileNotFoundError(f"Built app not found: {STAGED_APP_DIR}")
-
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
-    temp_app_dir = APPS_DIR / f".{APP_NAME}.new"
-    backup_app_dir = APPS_DIR / f".{APP_NAME}.old"
-
-    for path in (temp_app_dir, backup_app_dir):
-        try:
-            shutil.rmtree(path)
-        except FileNotFoundError:
-            pass
-
-    shutil.copytree(STAGED_APP_DIR, temp_app_dir)
-
-    try:
-        if DEPLOY_APP_DIR.exists():
-            DEPLOY_APP_DIR.rename(backup_app_dir)
-        temp_app_dir.rename(DEPLOY_APP_DIR)
-    except Exception:
-        if backup_app_dir.exists() and not DEPLOY_APP_DIR.exists():
-            backup_app_dir.rename(DEPLOY_APP_DIR)
-        raise
-
-    try:
-        shutil.rmtree(backup_app_dir)
-    except FileNotFoundError:
-        pass
+    stage_deploy(STAGED_APP_DIR, APPS_DIR, APP_NAME)
+    swap_deploy(APPS_DIR, APP_NAME)
 
 
 def main():

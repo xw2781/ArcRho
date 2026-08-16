@@ -1,13 +1,16 @@
-"""Canonical Python runtime checks for ArcRho frozen-component builds."""
+"""Canonical Python runtime checks and deployment for ArcRho frozen components."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Mapping, MutableMapping
+from typing import Any, Mapping, MutableMapping
 
 
 REQUIRED_PYTHON = (3, 10)
@@ -15,6 +18,17 @@ REQUIRED_PYTHON_LABEL = ".".join(map(str, REQUIRED_PYTHON))
 DEPLOY_ROOT_ENV = "ARCRHO_DEPLOY_ROOT"
 WORKSPACE_ROOT_ENVS = ("ARCRHO_ROOT", "ADAS_ROOT")
 DRIVE_FIXED = 3
+
+# A PyInstaller dist is ~1650 files but only ~93 MB, so the deploy is dominated
+# by per-file network round trips rather than bandwidth. Parallel streams are
+# what make it finish in seconds instead of minutes.
+DEPLOY_COPY_THREADS = 32
+SLOT_SUFFIX = ".slot"
+PREVIOUS_SUFFIX = ".prev"
+HASH_CHUNK_BYTES = 1 << 20
+# The manifest lives inside the folder it describes, so it rotates with that
+# folder during a swap and can never drift from the build it records.
+DEPLOY_MANIFEST_NAME = ".arcrho-deploy-manifest.json"
 
 
 def align_workspace_root_env(
@@ -71,6 +85,307 @@ def is_local_fixed_path(path: str | Path) -> bool:
     import ctypes
 
     return int(ctypes.windll.kernel32.GetDriveTypeW(f"{drive}\\")) == DRIVE_FIXED
+
+
+def deploy_manifest_path(app_dir: str | Path) -> Path:
+    """Where a deployed folder records what it currently holds.
+
+    Keeping it inside the folder is what keeps it honest: ``swap_deploy``
+    rotates whole folders, so the record moves with the build it describes
+    instead of having to be renamed in step with it.
+
+    This is build metadata describing a deployed folder, not ArcRho project
+    data, so it is written as plain compact JSON rather than through the
+    persisted-JSON contract.
+    """
+
+    return Path(app_dir) / DEPLOY_MANIFEST_NAME
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(HASH_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_deploy_manifest(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    entries = payload.get("files") if isinstance(payload, dict) else None
+    return entries if isinstance(entries, dict) else {}
+
+
+def align_staged_timestamps(staged_app_dir: str | Path, manifest_path: str | Path) -> int:
+    """Give unchanged files back the timestamp they carry in the slot.
+
+    PyInstaller stamps every file it collects with the moment of the build, so
+    a rebuilt dist looks entirely new to robocopy's size-and-timestamp compare
+    even though the interpreter, site-packages, and DLLs are byte for byte what
+    was deployed last time. Without this, a mirror re-sends all ~1650 files and
+    the delta is worth nothing.
+
+    Comparing content is what makes the difference, and it is done against a
+    manifest so the bytes are read from the local dist rather than pulled back
+    across the network. A file whose path, size, and SHA-256 all match what was
+    deployed gets that deployment's timestamp restored, and robocopy then skips
+    it for the cost of one metadata round trip.
+
+    Returns the number of files that will be skipped.
+    """
+
+    staged = Path(staged_app_dir)
+    recorded = _read_deploy_manifest(Path(manifest_path))
+    if not recorded:
+        return 0
+
+    aligned = 0
+    for path in staged.rglob("*"):
+        if not path.is_file():
+            continue
+        entry = recorded.get(path.relative_to(staged).as_posix())
+        if not isinstance(entry, dict):
+            continue
+        # Size first: it is free and rules out most changed files before the
+        # read that hashing costs.
+        if entry.get("size") != path.stat().st_size:
+            continue
+        if entry.get("sha256") != _file_digest(path):
+            continue
+        mtime = entry.get("mtime")
+        if not isinstance(mtime, (int, float)):
+            continue
+        os.utime(path, (mtime, mtime))
+        aligned += 1
+    return aligned
+
+
+def write_deploy_manifest(staged_app_dir: str | Path, manifest_path: str | Path) -> None:
+    """Record what the slot now holds, so the next build can diff against it."""
+
+    staged = Path(staged_app_dir)
+    files: dict[str, dict[str, Any]] = {}
+    for path in sorted(staged.rglob("*")):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        files[path.relative_to(staged).as_posix()] = {
+            "size": stat.st_size,
+            "mtime": stat.st_mtime,
+            "sha256": _file_digest(path),
+        }
+    payload = {"schema_version": 1, "app": staged.name, "files": files}
+    target = Path(manifest_path)
+    temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, separators=(",", ":"), sort_keys=True)
+        os.replace(temporary, target)
+    except OSError as exc:
+        # A missing manifest only costs the next deploy its delta; it must never
+        # fail a deploy that has already succeeded.
+        print(f">>> Could not record the deploy manifest {target.name}: {exc}")
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+
+
+def deploy_slot_paths(apps_dir: str | Path, app_name: str) -> tuple[Path, Path, Path]:
+    """Return the live, standby-slot, and transient previous folders.
+
+    The standby slot persists between deploys. It is what makes the copy a
+    delta: it already holds a build of this component, so a rebuilt dist
+    differs from it by little more than the executable.
+    """
+
+    apps = Path(apps_dir)
+    return (
+        apps / app_name,
+        apps / f".{app_name}{SLOT_SUFFIX}",
+        apps / f".{app_name}{PREVIOUS_SUFFIX}",
+    )
+
+
+def copy_tree_delta(
+    source: str | Path,
+    destination: str | Path,
+    *,
+    threads: int = DEPLOY_COPY_THREADS,
+) -> None:
+    """Mirror a directory tree, transferring only what differs.
+
+    ``/MIR`` copies files whose size or timestamp differs and removes files the
+    source no longer has, so the destination ends up matching the source
+    exactly. Files that already match cost one metadata round trip instead of a
+    transfer, which is the whole point over an SMB deploy: a rebuilt PyInstaller
+    dist reuses the interpreter, site-packages, and DLLs byte for byte and
+    changes little beyond the executable.
+
+    ``/MIR`` deletes, so callers must pass a destination they own outright.
+    ``stage_deploy`` derives one rather than accepting it from the caller.
+
+    Robocopy exit codes below 8 are success variants.
+    """
+
+    result = subprocess.run(
+        [
+            "robocopy",
+            str(source),
+            str(destination),
+            "/MIR",
+            f"/MT:{threads}",
+            "/NP",
+            "/NFL",
+            "/NDL",
+            "/R:2",
+            "/W:2",
+            # The destination's own manifest is not part of the source tree;
+            # without this /MIR would purge the record of what it holds.
+            "/XF",
+            DEPLOY_MANIFEST_NAME,
+        ]
+    )
+    if result.returncode >= 8:
+        raise RuntimeError(
+            f"robocopy failed copying {source} -> {destination} "
+            f"(exit code {result.returncode})."
+        )
+
+
+def remove_tree_with_retry(
+    path: str | Path, attempts: int = 5, delay_seconds: float = 2.0
+) -> None:
+    """Delete a directory tree, retrying transient SMB failures.
+
+    Deletes over the share complete asynchronously, so ``rmtree`` can lose the
+    race against its own pending file deletes (``WinError 145`` directory not
+    empty) or a scanner briefly holding a file (``WinError 5``).
+    """
+
+    for attempt in range(1, attempts + 1):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Remove busy ({Path(path).name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
+
+
+def rename_with_retry(
+    source: str | Path,
+    target: str | Path,
+    attempts: int = 8,
+    delay_seconds: float = 5.0,
+) -> None:
+    """Rename, retrying transient access-denied failures.
+
+    A directory tree freshly written over the SMB share can be briefly held by
+    server-side antivirus scanning, which surfaces as ``WinError 5`` on the
+    rename even though nothing else uses the folder.
+    """
+
+    source_path, target_path = Path(source), Path(target)
+    for attempt in range(1, attempts + 1):
+        try:
+            source_path.rename(target_path)
+            return
+        except PermissionError:
+            if attempt == attempts:
+                raise
+            print(
+                f">>> Rename busy ({source_path.name} -> {target_path.name}); "
+                f"retrying in {delay_seconds:.0f}s ({attempt}/{attempts})"
+            )
+            time.sleep(delay_seconds)
+
+
+def stage_deploy(
+    staged_app_dir: str | Path, apps_dir: str | Path, app_name: str
+) -> Path:
+    """Sync a freshly built app into its standby slot, and return that slot.
+
+    This runs while the component is still live: the slot is a private folder
+    no process reads, so the copy needs no downtime. Only ``swap_deploy`` has
+    to happen inside the stopped window, and that is three renames.
+    """
+
+    staged = Path(staged_app_dir)
+    if not staged.exists():
+        raise FileNotFoundError(f"Built app not found: {staged}")
+
+    apps = Path(apps_dir)
+    apps.mkdir(parents=True, exist_ok=True)
+    live, slot, previous = deploy_slot_paths(apps, app_name)
+
+    # A swap killed between its renames leaves the last good build parked as
+    # .prev with nothing live. Put it back before reusing the name, so an
+    # interrupted deploy heals instead of compounding.
+    if not live.exists() and previous.is_dir():
+        print(f"\n>>> Restoring {previous.name} left by an interrupted deploy")
+        rename_with_retry(previous, live)
+
+    # A slot left half-written by an interrupted swap is still a valid delta
+    # base: the mirror below reconciles it against the new build either way.
+    remove_tree_with_retry(previous)
+
+    total = sum(1 for path in staged.rglob("*") if path.is_file())
+    unchanged = align_staged_timestamps(staged, deploy_manifest_path(slot))
+    print(
+        f"\n>>> Syncing the new build into {slot.name} "
+        f"({total - unchanged} of {total} files changed)"
+    )
+    copy_tree_delta(staged, slot)
+    # The slot now holds exactly this build, so its manifest describes it and
+    # travels with it through every later rotation.
+    write_deploy_manifest(staged, deploy_manifest_path(slot))
+    return slot
+
+
+def swap_deploy(apps_dir: str | Path, app_name: str) -> None:
+    """Rotate the standby slot into place, keeping the previous build.
+
+    Three renames, each executed by the file server rather than streamed over
+    the wire, so this costs about a second even on a mapped drive. The build
+    that was live lands back in the slot, where it serves as both the rollback
+    copy and the delta base the next deploy compares against.
+    """
+
+    live, slot, previous = deploy_slot_paths(apps_dir, app_name)
+    if not slot.is_dir():
+        raise FileNotFoundError(f"Staged slot not found: {slot}")
+
+    parked = False
+    try:
+        if live.exists():
+            rename_with_retry(live, previous)
+            parked = True
+        rename_with_retry(slot, live)
+    except Exception:
+        # Only the first rename can have landed here, so the previous build is
+        # intact under .prev; put it back rather than leave nothing deployed.
+        if parked and previous.exists() and not live.exists():
+            previous.rename(live)
+        raise
+
+    # The deploy has already succeeded. Failing to park the previous build only
+    # costs the next deploy its delta base, so never turn it into a failure.
+    if previous.exists():
+        try:
+            rename_with_retry(previous, slot)
+        except OSError as exc:
+            print(f">>> Could not park the previous build as {slot.name}: {exc}")
 
 
 def require_python_310() -> None:

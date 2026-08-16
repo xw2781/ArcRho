@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -49,6 +52,32 @@ class BridgeBuildContractTests(unittest.TestCase):
         self.assertIn(str(CANONICAL_MODULE_ROOT), command)
         for module_name in CANONICAL_HIDDEN_IMPORTS:
             self.assertIn(module_name, command)
+
+    def test_bridge_startup_imports_never_load_arcrho_api(self):
+        # ``load_resq_data_migration`` refuses to run when ``arcrho_api`` is
+        # already imported from outside the staged migration bundle, so every
+        # module the Bridge imports at startup has to stay clear of it.  A
+        # module-scope ``arcrho_api`` import in ``server_config`` -- which
+        # ``utils`` imports, and every Bridge process imports ``utils`` --
+        # made each ResQ import fail with "a different [arcrho_api] package is
+        # already loaded".
+        probe = (
+            "import sys; "
+            f"sys.path[:0] = {[str(ENGINE_SRC), str(CANONICAL_MODULE_ROOT)]!r}; "
+            "import utils; "
+            "loaded = sorted(n for n in sys.modules if n.split('.')[0] == 'arcrho_api'); "
+            "assert not loaded, loaded"
+        )
+        with tempfile.TemporaryDirectory() as workspace:
+            environment = dict(os.environ, ARCRHO_ROOT=workspace)
+            result = subprocess.run(
+                [sys.executable, "-c", probe],
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_a_missing_canonical_module_aborts_the_build(self):
         with (
