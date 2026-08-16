@@ -74,9 +74,25 @@ def _project_user_reserving_tree_section(project_name: str) -> Tuple[Dict[str, A
     return (section if isinstance(section, dict) else {}), path
 
 
+# The tree section carries the filter spec and the tree preferences together,
+# so both projections read from one already-loaded section. On a network drive
+# a second read of the same preference file is a full round trip.
+def _tree_preferences_from_section(section: Dict[str, Any]) -> Dict[str, Any]:
+    return _normalize_reserving_filter_preferences(section.get("preferences", {}))
+
+
+def _tree_filter_spec_from_section(section: Dict[str, Any]) -> Dict[str, List[str]]:
+    filter_spec_raw = (
+        section.get("filterSpec")
+        if "filterSpec" in section
+        else section.get("filter_spec", {})
+    )
+    return _normalize_reserving_filter_spec(filter_spec_raw)
+
+
 def _read_reserving_class_tree_preferences(project_name: str) -> Dict[str, Any]:
     section, _path = _project_user_reserving_tree_section(project_name)
-    return _normalize_reserving_filter_preferences(section.get("preferences", {}))
+    return _tree_preferences_from_section(section)
 
 
 def _write_reserving_class_tree_preferences(project_name: str, preferences: Any) -> Dict[str, Any]:
@@ -92,12 +108,7 @@ def _write_reserving_class_tree_preferences(project_name: str, preferences: Any)
 
 def _read_reserving_class_tree_filter_spec(project_name: str) -> Tuple[Dict[str, List[str]], str]:
     section, path = _project_user_reserving_tree_section(project_name)
-    filter_spec_raw = (
-        section.get("filterSpec")
-        if "filterSpec" in section
-        else section.get("filter_spec", {})
-    )
-    return _normalize_reserving_filter_spec(filter_spec_raw), path
+    return _tree_filter_spec_from_section(section), path
 
 
 def _write_reserving_class_tree_filter_spec(project_name: str, filter_spec: Any) -> Tuple[Dict[str, List[str]], str]:
@@ -156,13 +167,12 @@ def get_filter_spec_for_project(project_name: str) -> Dict[str, Any]:
     if not key:
         raise ValueError("project_name is required")
 
-    filter_spec, filepath = _read_reserving_class_tree_filter_spec(project_name)
-    preferences = _read_reserving_class_tree_preferences(project_name)
+    section, filepath = _project_user_reserving_tree_section(project_name)
     return {
         "path": filepath,
         "project_key": key,
-        "filter_spec": filter_spec,
-        "preferences": preferences,
+        "filter_spec": _tree_filter_spec_from_section(section),
+        "preferences": _tree_preferences_from_section(section),
     }
 
 def save_filter_spec_for_project(
@@ -477,37 +487,52 @@ def _to_reserving_class_types_ui_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 rows_out.append(row)
     return {"columns": list(RESERVING_CLASS_TYPES_COLUMNS), "rows": rows_out}
 
-def _load_reserving_class_types_raw_data(project_name: str) -> Dict[str, Any]:
+def _read_reserving_class_types_json(project_name: str) -> Tuple[Dict[str, Any], Any, str]:
+    """Return (normalized data, raw JSON payload or ``None``, JSON path).
+
+    The raw payload and the resolved path come back so a caller that must also
+    compare a merged result against the file on disk can reuse this one read.
+    On a network drive re-reading the same file costs a full round trip, and
+    opening directly rather than probing with ``os.path.exists`` first saves
+    another. ``None`` means the JSON was missing or unreadable, so a caller
+    comparing against it must treat the file as needing a write.
+    """
+
     json_path = get_reserving_class_types_path(project_name)
-    if os.path.exists(json_path):
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                return normalize_reserving_class_types_data(json.load(f))
-        except ValueError:
-            raise
-        except Exception:
-            pass
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        return normalize_reserving_class_types_data(raw), raw, json_path
+    except ValueError:
+        raise
+    except Exception:
+        pass
 
     # One-way migration bootstrap: seed from settings.xlsx sheet if JSON does not exist yet.
     xlsx_path = get_project_settings_workbook_path(project_name)
     if os.path.exists(xlsx_path):
         try:
             xlsx_data = _read_reserving_class_types_sheet(xlsx_path)
-            return normalize_reserving_class_types_data(xlsx_data)
+            return normalize_reserving_class_types_data(xlsx_data), None, json_path
         except ValueError:
             raise
         except Exception:
             pass
 
-    return {"columns": list(RESERVING_CLASS_TYPES_FILE_COLUMNS), "rows": []}
+    return {"columns": list(RESERVING_CLASS_TYPES_FILE_COLUMNS), "rows": []}, None, json_path
+
+
+def _load_reserving_class_types_raw_data(project_name: str) -> Dict[str, Any]:
+    data, _raw, _json_path = _read_reserving_class_types_json(project_name)
+    return data
 
 def _load_reserving_class_value_fields(project_name: str) -> List[Dict[str, Any]]:
     try:
         path = get_reserving_class_values_path(project_name)
     except ValueError:
         return []
-    if not os.path.exists(path):
-        return []
+    # Open directly instead of probing with os.path.exists first; on a network
+    # drive the extra probe is a full round trip for no added information.
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -921,7 +946,9 @@ def refresh_reserving_class_types_json(
 ) -> Dict[str, Any]:
     source_fields = source_fields_override if source_fields_override is not None else _load_reserving_class_value_fields(project_name)
     source_rows, source_names_lower, source_name_level_pairs = _build_reserving_class_source_rows(source_fields)
-    previous_data = _load_reserving_class_types_raw_data(project_name)
+    # This one read serves both the merge base and the unchanged-file
+    # comparison below, so the types JSON is fetched once per refresh.
+    previous_data, existing_raw, output_path = _read_reserving_class_types_json(project_name)
 
     if rows_override is not None:
         rows_override_norm: List[List[str]] = []
@@ -1006,13 +1033,10 @@ def refresh_reserving_class_types_json(
         "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
 
-    output_path = get_reserving_class_types_path(project_name)
     output_xlsx_path = _get_reserving_class_types_xlsx_path(output_path)
     should_write = True
-    if os.path.exists(output_path):
+    if existing_raw is not None:
         try:
-            with open(output_path, "r", encoding="utf-8") as f:
-                existing_raw = json.load(f)
             existing_norm = normalize_reserving_class_types_data(existing_raw)
             if (
                 existing_norm.get("columns", []) == payload.get("columns", [])

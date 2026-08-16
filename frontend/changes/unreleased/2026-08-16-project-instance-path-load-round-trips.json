@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Sped up the reserving class path list when a Project Instance opens against a network drive.",
+  "details": [
+    "The path list and its saved filters now load together instead of one after the other.",
+    "Reserving class types and tree preferences are each read once per load rather than several times."
+  ]
+}

@@ -3173,6 +3173,23 @@ export async function openReservingClassPicker(options = {}) {
   closeFloatingPathTreePicker("reopen");
 
   try {
+    // The filter spec lives in a different file from the combinations and types
+    // pair below, so start its request alongside them instead of after them. On
+    // a network drive each serialized request costs a full round trip, and this
+    // one is on the Project Instance page-load critical path. The promise is
+    // settled into a result object so an early start can never surface as an
+    // unhandled rejection while the pair is still in flight.
+    const filterPrefsCacheKey = getFilterPrefsCacheKey(projectName);
+    const hasCachedSpec = !ignoreSavedFilterSpec && !!(cacheKey && FILTER_SPEC_CACHE.has(cacheKey));
+    const hasCachedPrefs = FILTER_PREFS_CACHE.has(filterPrefsCacheKey);
+    const needsFilterSpec = preserveFilters ? !hasCachedPrefs : (!hasCachedSpec || !hasCachedPrefs);
+    const filterSpecRequest = needsFilterSpec
+      ? fetchReservingClassFilterSpec(projectName).then(
+          (loaded) => ({ ok: true, loaded }),
+          (err) => ({ ok: false, err }),
+        )
+      : null;
+
     let model = (!forceModelReload && cacheKey) ? LOOKUP_MODEL_CACHE.get(cacheKey) : null;
     if (!model) {
       const [combosData, reservingTypesData] = await Promise.all([
@@ -3183,16 +3200,12 @@ export async function openReservingClassPicker(options = {}) {
       if (cacheKey) LOOKUP_MODEL_CACHE.set(cacheKey, model);
     }
 
-    const filterPrefsCacheKey = getFilterPrefsCacheKey(projectName);
     let treeFilterPreferences = normalizeReservingClassFilterPreferences(
       FILTER_PREFS_CACHE.get(filterPrefsCacheKey) || {},
     );
 
     if (!preserveFilters) {
       let initialFilterSpec = {};
-
-      const hasCachedSpec = !ignoreSavedFilterSpec && !!(cacheKey && FILTER_SPEC_CACHE.has(cacheKey));
-      const hasCachedPrefs = FILTER_PREFS_CACHE.has(filterPrefsCacheKey);
 
       if (hasCachedSpec) {
         initialFilterSpec = normalizeReservingClassFilterSpec(FILTER_SPEC_CACHE.get(cacheKey));
@@ -3203,9 +3216,10 @@ export async function openReservingClassPicker(options = {}) {
         );
       }
 
-      if (!hasCachedSpec || !hasCachedPrefs) {
-        try {
-          const loaded = await fetchReservingClassFilterSpec(projectName);
+      if (filterSpecRequest) {
+        const result = await filterSpecRequest;
+        if (result.ok) {
+          const loaded = result.loaded;
           initialFilterSpec = ignoreSavedFilterSpec
             ? {}
             : normalizeReservingClassFilterSpec(loaded?.filterSpec || {});
@@ -3214,9 +3228,9 @@ export async function openReservingClassPicker(options = {}) {
             FILTER_SPEC_CACHE.set(cacheKey, initialFilterSpec);
           }
           FILTER_PREFS_CACHE.set(filterPrefsCacheKey, treeFilterPreferences);
-        } catch (err) {
+        } else {
           // Filter preferences are optional; continue with no filters when unavailable.
-          console.warn("Failed to load reserving-class filter preference:", err);
+          console.warn("Failed to load reserving-class filter preference:", result.err);
           if (!hasCachedSpec) initialFilterSpec = {};
           if (!hasCachedPrefs) {
             treeFilterPreferences = normalizeReservingClassFilterPreferences({});
@@ -3233,9 +3247,10 @@ export async function openReservingClassPicker(options = {}) {
       if (cacheKey && !FILTER_SPEC_CACHE.has(cacheKey) && typeof model.getActiveFilterSpec === "function") {
         FILTER_SPEC_CACHE.set(cacheKey, normalizeReservingClassFilterSpec(model.getActiveFilterSpec()));
       }
-      if (!FILTER_PREFS_CACHE.has(filterPrefsCacheKey)) {
-        try {
-          const loaded = await fetchReservingClassFilterSpec(projectName);
+      if (filterSpecRequest) {
+        const result = await filterSpecRequest;
+        if (result.ok) {
+          const loaded = result.loaded;
           treeFilterPreferences = normalizeReservingClassFilterPreferences(loaded?.preferences || {});
           FILTER_PREFS_CACHE.set(filterPrefsCacheKey, treeFilterPreferences);
           if (!FILTER_SPEC_CACHE.has(cacheKey)) {
@@ -3244,8 +3259,8 @@ export async function openReservingClassPicker(options = {}) {
               normalizeReservingClassFilterSpec(loaded?.filterSpec || {}),
             );
           }
-        } catch (err) {
-          console.warn("Failed to load reserving-class filter preference:", err);
+        } else {
+          console.warn("Failed to load reserving-class filter preference:", result.err);
           FILTER_PREFS_CACHE.set(filterPrefsCacheKey, treeFilterPreferences);
         }
       }

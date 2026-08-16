@@ -1,4 +1,5 @@
 const prefsByProject = new Map();
+const inflightLoadByProject = new Map();
 const pendingSaveByProject = new Map();
 const activeSaveByProject = new Map();
 
@@ -35,14 +36,31 @@ export async function loadProjectUserPreferences(projectName, options = {}) {
   if (!project) return {};
   const key = projectKey(project);
   if (!options?.forceReload && prefsByProject.has(key)) return prefsByProject.get(key);
-  const response = await fetch(`/project-user-preferences?project_name=${encodeURIComponent(project)}`, {
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(await response.text().catch(() => `HTTP ${response.status}`));
-  const payload = await response.json().catch(() => ({}));
-  const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
-  prefsByProject.set(key, data);
-  return data;
+  // Project Instance loads these preferences from its path panel and its
+  // dataset table at the same time. The resolved-value cache above is only
+  // populated once a request finishes, so without sharing the in-flight
+  // request both callers read the same file over the network drive. Join the
+  // pending request instead; a forced reload always issues its own.
+  if (!options?.forceReload) {
+    const inflight = inflightLoadByProject.get(key);
+    if (inflight) return inflight;
+  }
+  const request = (async () => {
+    const response = await fetch(`/project-user-preferences?project_name=${encodeURIComponent(project)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(await response.text().catch(() => `HTTP ${response.status}`));
+    const payload = await response.json().catch(() => ({}));
+    const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
+    prefsByProject.set(key, data);
+    return data;
+  })();
+  inflightLoadByProject.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (inflightLoadByProject.get(key) === request) inflightLoadByProject.delete(key);
+  }
 }
 
 export async function saveProjectUserPreferences(projectName, patch) {
