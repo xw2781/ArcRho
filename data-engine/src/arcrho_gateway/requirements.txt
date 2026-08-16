@@ -1,5 +1,6 @@
 numpy==1.26.4
 pandas==2.2.2
+watchdog==4.0.1
 pyinstaller>=6.15,<7
 openpyxl
 pywin32

@@ -12,18 +12,19 @@ ArcRho calculations/precheck domain.
 | `POST` | `/arcrho/headers` | `arcrho_headers` | `ArcRhoHeadersRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.arcrho_headers` |
 | `POST` | `/arcrho/headers/cache/clear` | `clear_arcrho_headers_cache` | `ArcRhoHeadersCacheClearRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.clear_arcrho_headers_cache` |
 | `GET` | `/arcrho/projects` | `arcrho_projects` | - | - | `arcrho_runtime_service.arcrho_projects` |
-| `POST` | `/arcrho/tri` | `arcrho_tri` | `ArcRhoTriRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.run_arcrho_tri` |
+| `POST` | `/arcrho/tri` | `arcrho_tri` | `ArcRhoTriRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
 | `POST` | `/arcrho/tri/precheck` | `arcrho_tri_precheck` | `ArcRhoTriRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
-| `POST` | `/arcrho/tri/refresh` | `arcrho_tri_refresh` | `ArcRhoTriRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.run_arcrho_tri` |
-| `POST` | `/arcrho/vec` | `arcrho_vec` | `ArcRhoVecRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.run_arcrho_tri` |
+| `POST` | `/arcrho/tri/refresh` | `arcrho_tri_refresh` | `ArcRhoTriRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
+| `POST` | `/arcrho/vec` | `arcrho_vec` | `ArcRhoVecRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
 | `POST` | `/arcrho/vec/precheck` | `arcrho_vec_precheck` | `ArcRhoVecRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
-| `POST` | `/arcrho/vec/refresh` | `arcrho_vec_refresh` | `ArcRhoVecRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | `arcrho_runtime_service.run_arcrho_tri` |
+| `POST` | `/arcrho/vec/refresh` | `arcrho_vec_refresh` | `ArcRhoVecRequest` | [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) | - |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN app_server.arcrho.key_files -->
 - [`app_server/api/arcrho_router.py`](../../../app_server/api/arcrho_router.py) - ArcRho tri/precheck/header endpoints.
 - [`app_server/services/arcrho_runtime_service.py`](../../../app_server/services/arcrho_runtime_service.py) - ArcRho processing and project listing.
+- [`app_server/services/engine_calculation_service.py`](../../../app_server/services/engine_calculation_service.py) - Engine request publish-and-wait exchange and its Gateway transport.
 - [`app_server/schemas/arcrho.py`](../../../app_server/schemas/arcrho.py) - ArcRho request schemas.
 <!-- AUTO-GEN:END -->
 
@@ -32,7 +33,7 @@ ArcRho calculations/precheck domain.
 - Called by dataset/workflow actions requiring ArcRho processing.
 - Result Selection can request engine-generated source triangles or vectors at a selected origin length without updating the source sidecar by passing `WriteSidecar: false`.
 - Project Instance Temporary view reuses a valid canonical cache read-only when possible; otherwise it writes generated or derived CSV output to the selected reserving-class `datasets/.temporary-view/` folder. These retained temporary-view caches persist after the UI closes and never create a sidecar or an `index.json` entry or trigger an index rebuild.
-- ArcRho runtime requests are published as flat JSON `request-*.json` files under the configured requests directory. Temporary `.tmp` files are atomically renamed to `.json`, and data-engine workers process JSON requests only.
+- ArcRho runtime requests are published as flat JSON `request-*.json` files under the configured requests directory. Temporary `.tmp` files are atomically renamed to `.json`, and data-engine workers process JSON requests only. The `/arcrho/tri*` and `/arcrho/vec*` routes are the `dataset_run` / `dataset_precheck` Server-hosted engine-calculation operations: when the output CSV is on a network drive and the Gateway advertises them, the whole `run_arcrho_tri` / `arcrho_precheck` route — cache validation, the Engine exchange, the sidecar write, the dependent enqueue, and the index refresh — runs on the server host over `POST /api/engine-calculations`, the response is returned verbatim with rebased paths, and the dataset handle is registered locally; otherwise the same service function runs here. Every remaining request site goes through `engine_calculation_service.run_engine_calculation`, which hosts only the publish-and-wait exchange under the same rules and then waits for the finished CSV to become visible on this drive. See [`engine_calculations`](engine_calculations.md).
 - The ResQ reserving-class migration uses this same shared request-folder contract for generated datasets. It requires a fresh `runtime/instances/arcrho_engine` heartbeat before connecting to ResQ, publishes generated requests as a batch for the existing worker pool, and never starts or imports a private backend engine. Its optional `RequestId`/`StatusPath` fields let status-aware workers report `processing`, `success`, or `error` atomically; legacy workers remain CSV-compatible, while status-aware failures are never finalized as canonical datasets.
 - When waiting for a request-result file, the app server uses file-event watching for local drives and direct polling for UNC or mapped Windows network drives. This avoids SMB file-notification stalls while preserving the configured request timeout. Network polling starts fast and backs off to a capped interval, and each network poll first writes and removes a uniquely named probe file in the result directory so the Windows SMB redirector's cached "file not found" answer (`FileNotFoundCacheLifetime`) cannot hide a result the engine has already written; a probe write failure silently falls back to plain polling.
 - `config.ENGINE_REQUEST_TIMEOUT_SEC` is the single owner of the engine file-exchange wait budget. The `/arcrho/tri*`, `/arcrho/vec*`, and `/arcrho/headers` schema defaults and server-side header/dependency waits read it, and frontend callers do not send their own `timeout_sec` override.

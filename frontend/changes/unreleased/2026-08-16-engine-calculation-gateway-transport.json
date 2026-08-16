@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset, vector, and header calculations from a Client PC now run through the ArcRho Server instead of writing request files and polling the network drive.",
+  "details": [
+    "When the ArcRho Gateway advertises it, changing origin/development length, running, or refreshing a dataset posts the whole request over HTTP: the server validates the cache, publishes to the data engine, waits on local disk, and writes the sidecar and dependent updates itself, so the Client PC no longer pays dozens of network-drive operations per run.",
+    "Header-cache and other engine exchanges post the request the same way and only wait for the finished CSV to become visible on the mapped drive.",
+    "Requests still fall back to the network-drive exchange when the Gateway is unavailable, and an accepted request is never sent twice.",
+    "Requests published on a user's behalf are stamped with that user, not the server's service account."
+  ]
+}

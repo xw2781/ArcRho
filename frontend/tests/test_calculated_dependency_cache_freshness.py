@@ -20,6 +20,7 @@ from app_server import config
 from app_server.services import (
     arcrho_runtime_service,
     calculated_dataset_service,
+    engine_calculation_service,
     runtime_cache_provenance_service,
 )
 
@@ -183,7 +184,7 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
                 return_value=recalculated,
             ) as recalculate,
             patch.object(
-                arcrho_runtime_service,
+                engine_calculation_service,
                 "send_request_like_vba",
             ) as send_engine_request,
         ):
@@ -475,7 +476,7 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
                 "rebuild_index",
             ) as rebuild_index,
             patch.object(
-                arcrho_runtime_service,
+                engine_calculation_service,
                 "send_request_like_vba",
             ) as send_engine_request,
         ):

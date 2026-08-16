@@ -13,6 +13,8 @@ for path in (FRONTEND_ROOT, API_SOURCE):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from fastapi import HTTPException
+
 from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS
 
 from app_server import config
@@ -144,6 +146,35 @@ class RouteWiringTests(unittest.TestCase):
         self.assertEqual(capture.calls[0][0], "dataset_cache_load")
         self.assertEqual(capture.calls[0][1]["dataset_name"], "Paid")
         self._assert_registered(capture)
+
+    def test_dataset_grid_load_is_hosted_and_unknown_handle_resolves_locally(self) -> None:
+        capture = _CaptureRead({"ok": True, "id": "arcrhotri_x", "values": [[1.0]]}, remote=True)
+        with (
+            patch.object(dataset_router.workspace_read_client, "run_workspace_read", capture),
+            patch.object(dataset_router.dataset_service, "get_dataset", return_value={"id": "arcrhotri_x", "via": "local"}) as service,
+        ):
+            self.assertEqual(dataset_router.get_dataset("arcrhotri_x", "Demo", 6)["values"], [[1.0]])
+        service.assert_not_called()
+        self.assertEqual(capture.calls[0][0], "dataset_grid_load")
+        self.assertEqual(capture.calls[0][1], {"ds_id": "arcrhotri_x", "project_name": "Demo", "origin_length": 6})
+        self._assert_registered(capture)
+
+        # The gateway did not know the handle: an answer without a dataset id
+        # means "resolve here", not 404.
+        unknown = _CaptureRead({"ok": True, "response": None}, remote=True)
+        with (
+            patch.object(dataset_router.workspace_read_client, "run_workspace_read", unknown),
+            patch.object(dataset_router.dataset_service, "get_dataset", return_value={"id": "arcrhotri_x", "via": "local"}) as service,
+        ):
+            self.assertEqual(dataset_router.get_dataset("arcrhotri_x", "Demo", 6)["via"], "local")
+        service.assert_called_once_with("arcrhotri_x", project_name="Demo", origin_length=6)
+        with (
+            patch.object(dataset_router.workspace_read_client, "run_workspace_read", _CaptureRead()),
+            patch.object(dataset_router.dataset_service, "get_dataset", return_value=None),
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                dataset_router.get_dataset("arcrhotri_missing", "Demo", 6)
+        self.assertEqual(caught.exception.status_code, 404)
 
     def test_dataset_cache_load_local_path_is_the_service(self) -> None:
         capture = _CaptureRead()

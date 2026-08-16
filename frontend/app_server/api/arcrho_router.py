@@ -10,8 +10,10 @@ from app_server.schemas.arcrho import (
     ArcRhoHeadersRequest,
     ArcRhoHeadersCacheClearRequest,
 )
+from arcrho_engine_calculation_contract import OPERATION_DATASET_PRECHECK, OPERATION_DATASET_RUN
+
 from app_server.helpers import set_data_path_like_vba
-from app_server.services import arcrho_runtime_service
+from app_server.services import arcrho_runtime_service, engine_calculation_service
 
 router = APIRouter()
 
@@ -60,13 +62,46 @@ def _arcrho_vec_pairs(req: ArcRhoVecRequest) -> list:
 
 def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list) -> Dict[str, Any]:
     data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.arcrho_precheck(
-        data_path,
+    options = {
+        "local_only": bool(req.LocalOnly),
+        "allow_derived": bool(req.AllowDerived),
+        "temporary_session_id": str(req.TemporarySessionId) if req.TemporarySessionId else None,
+        "allow_runtime_cache_provenance": not bool(req.WriteSidecar),
+    }
+    # The precheck and the run below are Server-hosted engine-calculation
+    # operations: the whole route runs on the ArcRho Server host when the
+    # Gateway advertises it, otherwise the same service function runs here.
+    return engine_calculation_service.run_hosted_dataset_operation(
+        OPERATION_DATASET_PRECHECK,
         pairs,
-        local_only=bool(req.LocalOnly),
-        allow_derived=bool(req.AllowDerived),
-        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
-        allow_runtime_cache_provenance=not bool(req.WriteSidecar),
+        data_path,
+        options,
+        timeout_sec=float(req.timeout_sec),
+        local=lambda: arcrho_runtime_service.arcrho_precheck(data_path, pairs, **options),
+    )
+
+
+def _arcrho_run_response(
+    req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list, *, force_refresh: bool
+) -> Dict[str, Any]:
+    data_path = set_data_path_like_vba(pairs)
+    timeout_sec = max(0.1, float(req.timeout_sec))
+    options = {
+        "force_refresh": bool(force_refresh),
+        "local_only": bool(req.LocalOnly),
+        "allow_derived": bool(req.AllowDerived),
+        "write_sidecar": bool(req.WriteSidecar),
+        "temporary_session_id": str(req.TemporarySessionId) if req.TemporarySessionId else None,
+    }
+    return engine_calculation_service.run_hosted_dataset_operation(
+        OPERATION_DATASET_RUN,
+        pairs,
+        data_path,
+        options,
+        timeout_sec=timeout_sec,
+        local=lambda: arcrho_runtime_service.run_arcrho_tri(
+            pairs, data_path, timeout_sec=timeout_sec, **options
+        ),
     )
 
 
@@ -106,34 +141,12 @@ def arcrho_tri_precheck(req: ArcRhoTriRequest) -> Dict[str, Any]:
 
 @router.post("/arcrho/tri")
 def arcrho_tri(req: ArcRhoTriRequest) -> Dict[str, Any]:
-    pairs = _arcrho_tri_pairs(req)
-    data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(
-        pairs,
-        data_path,
-        timeout_sec=max(0.1, float(req.timeout_sec)),
-        force_refresh=False,
-        local_only=bool(req.LocalOnly),
-        allow_derived=bool(req.AllowDerived),
-        write_sidecar=bool(req.WriteSidecar),
-        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
-    )
+    return _arcrho_run_response(req, _arcrho_tri_pairs(req), force_refresh=False)
 
 
 @router.post("/arcrho/tri/refresh")
 def arcrho_tri_refresh(req: ArcRhoTriRequest) -> Dict[str, Any]:
-    pairs = _arcrho_tri_pairs(req)
-    data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(
-        pairs,
-        data_path,
-        timeout_sec=max(0.1, float(req.timeout_sec)),
-        force_refresh=True,
-        local_only=bool(req.LocalOnly),
-        allow_derived=bool(req.AllowDerived),
-        write_sidecar=bool(req.WriteSidecar),
-        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
-    )
+    return _arcrho_run_response(req, _arcrho_tri_pairs(req), force_refresh=True)
 
 
 @router.post("/arcrho/vec/precheck")
@@ -144,31 +157,9 @@ def arcrho_vec_precheck(req: ArcRhoVecRequest) -> Dict[str, Any]:
 
 @router.post("/arcrho/vec")
 def arcrho_vec(req: ArcRhoVecRequest) -> Dict[str, Any]:
-    pairs = _arcrho_vec_pairs(req)
-    data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(
-        pairs,
-        data_path,
-        timeout_sec=max(0.1, float(req.timeout_sec)),
-        force_refresh=False,
-        local_only=bool(req.LocalOnly),
-        allow_derived=bool(req.AllowDerived),
-        write_sidecar=bool(req.WriteSidecar),
-        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
-    )
+    return _arcrho_run_response(req, _arcrho_vec_pairs(req), force_refresh=False)
 
 
 @router.post("/arcrho/vec/refresh")
 def arcrho_vec_refresh(req: ArcRhoVecRequest) -> Dict[str, Any]:
-    pairs = _arcrho_vec_pairs(req)
-    data_path = set_data_path_like_vba(pairs)
-    return arcrho_runtime_service.run_arcrho_tri(
-        pairs,
-        data_path,
-        timeout_sec=max(0.1, float(req.timeout_sec)),
-        force_refresh=True,
-        local_only=bool(req.LocalOnly),
-        allow_derived=bool(req.AllowDerived),
-        write_sidecar=bool(req.WriteSidecar),
-        temporary_session_id=str(req.TemporarySessionId) if req.TemporarySessionId else None,
-    )
+    return _arcrho_run_response(req, _arcrho_vec_pairs(req), force_refresh=True)

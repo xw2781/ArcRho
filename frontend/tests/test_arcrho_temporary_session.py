@@ -15,7 +15,11 @@ from pydantic import ValidationError
 
 from app_server import config
 from app_server.schemas.arcrho import ArcRhoTriRequest
-from app_server.services import arcrho_runtime_service, dataset_instance_index_service
+from app_server.services import (
+    arcrho_runtime_service,
+    dataset_instance_index_service,
+    engine_calculation_service,
+)
 
 
 class ArcRhoTemporaryViewCacheTests(unittest.TestCase):
@@ -85,8 +89,8 @@ class ArcRhoTemporaryViewCacheTests(unittest.TestCase):
             self._temporary_cache_dir_patch(),
             patch.dict(config.DATASETS, {}, clear=True),
             patch.object(arcrho_runtime_service, "resolve_local_triangle_cache", return_value=self._missing_cache()),
-            patch.object(arcrho_runtime_service, "send_request_like_vba", return_value="request.txt") as send_request,
-            patch.object(arcrho_runtime_service, "wait_for_file", side_effect=write_temporary_cache),
+            patch.object(engine_calculation_service, "send_request_like_vba", return_value="request.txt") as send_request,
+            patch.object(engine_calculation_service, "wait_for_file", side_effect=write_temporary_cache),
             patch.object(arcrho_runtime_service, "_write_dataset_sidecar") as write_sidecar,
             patch.object(arcrho_runtime_service, "_refresh_dataset_instance_index_after_cache_write") as refresh_index,
         ):
@@ -131,7 +135,7 @@ class ArcRhoTemporaryViewCacheTests(unittest.TestCase):
             self._temporary_cache_dir_patch(),
             patch.dict(config.DATASETS, {}, clear=True),
             patch.object(arcrho_runtime_service, "resolve_local_triangle_cache", return_value=canonical_cache),
-            patch.object(arcrho_runtime_service, "send_request_like_vba") as send_request,
+            patch.object(engine_calculation_service, "send_request_like_vba") as send_request,
         ):
             result = arcrho_runtime_service.run_arcrho_tri(
                 self._pairs(),

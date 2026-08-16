@@ -82,7 +82,9 @@ def reset_capability_cache() -> None:
         _CAPABILITY_CACHE.clear()
 
 
-def _cached_capabilities(gateway_config: Mapping[str, Any]) -> Dict[str, Any] | None:
+def cached_gateway_capabilities(gateway_config: Mapping[str, Any]) -> Dict[str, Any] | None:
+    """Return the gateway's ``/api/capabilities`` payload, cached; ``None`` when unreachable."""
+
     url = str(gateway_config["url"])
     now = time.monotonic()
     with _CAPABILITY_LOCK:
@@ -160,30 +162,51 @@ def _object_name(kwargs: Mapping[str, Any]) -> str:
     return ""
 
 
-class _GatewayReadFailure(Exception):
-    """The gateway itself, not the read it hosts, could not serve the request."""
+class GatewayTransportFailure(Exception):
+    """The gateway itself, not the operation it hosts, could not serve the request.
 
-    def __init__(self, reason: str, *, timed_out: bool = False) -> None:
+    ``accepted`` is True when the server may already have acted on the request
+    (the answer timed out or the connection dropped after it was sent); a
+    caller whose operation is not safely repeatable must not retry it
+    elsewhere. It is False when the failure came before the server could have
+    acted, so the caller may run the operation locally instead.
+    """
+
+    def __init__(self, reason: str, *, timed_out: bool = False, accepted: bool = False) -> None:
         super().__init__(reason)
         self.reason = reason
         self.timed_out = timed_out
+        self.accepted = accepted or timed_out
 
 
-def _post_read(
+def post_signed_json(
     gateway_config: Mapping[str, Any],
+    path: str,
     request_payload: Mapping[str, Any],
-) -> tuple[Dict[str, Any], str, int, int]:
-    """Run one read on the gateway; return (payload, server_root, status, bytes)."""
+    *,
+    timeout: float,
+) -> tuple[Dict[str, Any], str, int]:
+    """POST one signed request to the gateway; return (payload, server_root, bytes).
+
+    A refusal raised by the hosted operation itself (404 method not found,
+    409 legacy pair, 423 lock, ...) carries the workspace-root header because
+    the operation ran; it is the same status the local path would raise, so it
+    is raised as that ``HTTPException``. A refusal without that header came
+    from the gateway layer (authentication, validation, an older gateway
+    without the route) and the operation has not run. Every other failure is a
+    ``GatewayTransportFailure`` whose ``accepted`` flag says whether the server
+    may already have acted.
+    """
 
     body = canonical_request_bytes(request_payload)
-    url = f"{gateway_config['url']}{WORKSPACE_READ_PATH}"
+    url = f"{gateway_config['url']}{path}"
     timestamp = str(int(time.time()))
     signature = sign_request(
         gateway_config["secret"],
         user=gateway_config["user"],
         timestamp=timestamp,
         method="POST",
-        path=WORKSPACE_READ_PATH,
+        path=path,
         body=body,
     )
     request = Request(
@@ -199,36 +222,36 @@ def _post_read(
         },
     )
     try:
-        with _DIRECT_HTTP_OPENER.open(
-            request, timeout=WORKSPACE_READ_TIMEOUT_SECONDS
-        ) as response:
-            raw = response.read()
-            server_root = str(response.headers.get(WORKSPACE_ROOT_HEADER) or "")
+        response = _DIRECT_HTTP_OPENER.open(request, timeout=timeout)
     except HTTPError as exc:
-        # A refusal raised by the hosted service itself (404 method not found,
-        # 409 legacy pair, 423 lock, ...) carries the workspace-root header
-        # because the read ran; it is the same status the local path would
-        # raise, so it passes through. A refusal without that header came from
-        # the gateway layer (authentication, validation, an older gateway
-        # without this route) and the read has not run.
         if exc.headers.get(WORKSPACE_ROOT_HEADER):
             raise HTTPException(int(exc.code), _error_detail(exc)) from exc
-        raise _GatewayReadFailure(f"gateway_rejected:{exc.code}") from exc
+        raise GatewayTransportFailure(f"gateway_rejected:{exc.code}") from exc
     except socket.timeout as exc:
-        raise _GatewayReadFailure("gateway_timeout", timed_out=True) from exc
+        raise GatewayTransportFailure("gateway_timeout", timed_out=True) from exc
     except URLError as exc:
         if isinstance(getattr(exc, "reason", None), socket.timeout):
-            raise _GatewayReadFailure("gateway_timeout", timed_out=True) from exc
-        raise _GatewayReadFailure("gateway_unreachable") from exc
+            raise GatewayTransportFailure("gateway_timeout", timed_out=True) from exc
+        raise GatewayTransportFailure("gateway_unreachable") from exc
     except OSError as exc:
-        raise _GatewayReadFailure("gateway_unreachable") from exc
+        raise GatewayTransportFailure("gateway_unreachable") from exc
+    # The server has answered with headers, so it has acted; a body that
+    # cannot be read or parsed no longer means the operation did not run.
+    try:
+        with response:
+            raw = response.read()
+            server_root = str(response.headers.get(WORKSPACE_ROOT_HEADER) or "")
+    except socket.timeout as exc:
+        raise GatewayTransportFailure("gateway_timeout", timed_out=True) from exc
+    except OSError as exc:
+        raise GatewayTransportFailure("gateway_connection_lost", accepted=True) from exc
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _GatewayReadFailure("gateway_invalid_response") from exc
+        raise GatewayTransportFailure("gateway_invalid_response", accepted=True) from exc
     if not isinstance(payload, dict):
-        raise _GatewayReadFailure("gateway_invalid_response")
-    return payload, server_root, 200, len(raw)
+        raise GatewayTransportFailure("gateway_invalid_response", accepted=True)
+    return payload, server_root, len(raw)
 
 
 def _is_server_process() -> bool:
@@ -286,7 +309,7 @@ def run_workspace_read(
                 if gateway_config.get("enabled") is not True:
                     context["reason"] = "gateway_disabled"
         if not context["reason"]:
-            capabilities = _cached_capabilities(gateway_config)
+            capabilities = cached_gateway_capabilities(gateway_config)
             if capabilities is None:
                 context["reason"] = "gateway_unreachable"
             elif not gateway_supports_read_kind(capabilities, read_kind):
@@ -303,10 +326,13 @@ def run_workspace_read(
             )
             remote_started_ns = time.perf_counter_ns()
             try:
-                payload, server_root, _status, response_bytes = _post_read(
-                    gateway_config, request_payload
+                payload, server_root, response_bytes = post_signed_json(
+                    gateway_config,
+                    WORKSPACE_READ_PATH,
+                    request_payload,
+                    timeout=WORKSPACE_READ_TIMEOUT_SECONDS,
                 )
-            except _GatewayReadFailure as failure:
+            except GatewayTransportFailure as failure:
                 remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
                 if failure.timed_out:
                     context["transport"] = TRANSPORT_HTTP

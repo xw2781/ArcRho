@@ -13,7 +13,7 @@ if str(FRONTEND_ROOT) not in sys.path:
 
 from fastapi import HTTPException
 
-from app_server.services import arcrho_runtime_service, dataset_service
+from app_server.services import arcrho_runtime_service, dataset_service, engine_calculation_service
 
 
 class DatasetOriginLabelValidationTests(unittest.TestCase):
@@ -224,8 +224,8 @@ class ArcRhoHeaderSettingsTests(unittest.TestCase):
             patch.object(arcrho_runtime_service.os.path, "getmtime", side_effect=lambda path: 1 if path == cache_path else 2),
             patch.object(arcrho_runtime_service.os, "remove", side_effect=remove) as remove_cache,
             patch.object(arcrho_runtime_service.os, "makedirs"),
-            patch.object(arcrho_runtime_service, "send_request_like_vba", return_value="request.txt"),
-            patch.object(arcrho_runtime_service, "wait_for_file", return_value=False),
+            patch.object(engine_calculation_service, "send_request_like_vba", return_value="request.txt"),
+            patch.object(engine_calculation_service, "wait_for_file", return_value=False),
         ):
             result = arcrho_runtime_service.get_project_headers("Example Project", 12, timeout_sec=0.1)
         self.assertEqual(result["status"], "timeout")

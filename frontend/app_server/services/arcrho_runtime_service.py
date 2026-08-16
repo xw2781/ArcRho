@@ -19,19 +19,19 @@ from arcrho_api.dataset_index_contract import (
 )
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_engine_calculation_contract import OUTPUT_VARIANT_TEMPORARY_VIEW
 
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
     sanitize_dataset_file_name,
-    send_request_like_vba,
     set_data_path_like_vba,
-    wait_for_file,
 )
 from app_server.services import (
     dataset_instance_index_service,
     dataset_number_format_service,
     dataset_sidecar_status_service,
+    engine_calculation_service,
     file_read_cache,
     project_settings_service,
     runtime_cache_provenance_service,
@@ -1341,15 +1341,16 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as err:
             raise HTTPException(500, f"Failed to create ArcRho headers data folder: {str(err)}")
-        request_info = "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {data_path}"])
-        request_file = send_request_like_vba(request_info)
-
-        ok = wait_for_file(data_path, timeout_sec=max(0.1, float(timeout_sec)))
-        if not ok:
+        outcome = engine_calculation_service.run_engine_calculation(
+            pairs, data_path, max(0.1, float(timeout_sec))
+        )
+        request_file = outcome.get("request_file")
+        if not outcome["ok"]:
             return {
                 "ok": False,
-                "status": "timeout",
-                "message": "Timed out while loading ArcRho project headers. Verify the data engine is running, then try again.",
+                "status": outcome["status"],
+                "message": outcome.get("message")
+                or "Timed out while loading ArcRho project headers. Verify the data engine is running, then try again.",
                 "request_file": request_file,
                 "data_path": data_path,
             }
@@ -2020,7 +2021,8 @@ def _same_resolved_path(left: str, right: str) -> bool:
     )
 
 
-def _temporary_dataset_path(data_path: str, pairs: list) -> str:
+def temporary_dataset_path(data_path: str, pairs: list) -> str:
+    """Return the Temporary view cache path beside the canonical ``data_path``."""
     project_name = _pair_value(pairs, "ProjectName")
     reserving_class = _pair_value(pairs, "Path")
     if not project_name:
@@ -2082,7 +2084,7 @@ def arcrho_precheck(
     allow_runtime_cache_provenance: bool = False,
 ) -> Dict[str, Any]:
     session_id = _normalize_temporary_session_id(temporary_session_id) if temporary_session_id else None
-    temporary_data_path = _temporary_dataset_path(data_path, pairs) if session_id else None
+    temporary_data_path = temporary_dataset_path(data_path, pairs) if session_id else None
     local_result = resolve_local_triangle_cache(
         data_path,
         pairs,
@@ -2135,7 +2137,7 @@ def _run_temporary_arcrho_tri(
     allow_derived: bool,
 ) -> Dict[str, Any]:
     session_id = _normalize_temporary_session_id(temporary_session_id)
-    temporary_data_path = _temporary_dataset_path(data_path, pairs)
+    temporary_data_path = temporary_dataset_path(data_path, pairs)
     get_processing_hash = _processing_hash_getter(pairs)
 
     local_result = resolve_local_triangle_cache(
@@ -2222,20 +2224,25 @@ def _run_temporary_arcrho_tri(
             os.makedirs(os.path.dirname(temporary_data_path), exist_ok=True)
         except OSError as err:
             raise HTTPException(500, f"Failed to create temporary ArcRho tri data folder: {str(err)}") from err
-        request_info = "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {temporary_data_path}"])
-        request_file = send_request_like_vba(request_info)
-
-        ok = wait_for_file(temporary_data_path, timeout_sec=max(0.1, float(timeout_sec)))
-        if not ok:
+        outcome = engine_calculation_service.run_engine_calculation(
+            pairs,
+            temporary_data_path,
+            max(0.1, float(timeout_sec)),
+            output_variant=OUTPUT_VARIANT_TEMPORARY_VIEW,
+        )
+        request_file = outcome.get("request_file")
+        if not outcome["ok"]:
             timeout_out: Dict[str, Any] = {
                 "ok": False,
-                "status": "timeout",
+                "status": outcome["status"],
                 "need_request": True,
                 "request_file": request_file,
                 "data_path": temporary_data_path,
                 "temporary_cache": True,
                 "temporary_session_id": session_id,
             }
+            if outcome.get("message"):
+                timeout_out["message"] = outcome["message"]
             if force_refresh:
                 timeout_out["cache_cleared"] = cache_cleared
             return timeout_out
@@ -2368,18 +2375,20 @@ def run_arcrho_tri(
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as err:
             raise HTTPException(500, f"Failed to create ArcRho tri data folder: {str(err)}")
-        request_info = "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {data_path}"])
-        request_file = send_request_like_vba(request_info)
-
-        ok = wait_for_file(data_path, timeout_sec=max(0.1, float(timeout_sec)))
-        if not ok:
+        outcome = engine_calculation_service.run_engine_calculation(
+            pairs, data_path, max(0.1, float(timeout_sec))
+        )
+        request_file = outcome.get("request_file")
+        if not outcome["ok"]:
             timeout_out: Dict[str, Any] = {
                 "ok": False,
-                "status": "timeout",
+                "status": outcome["status"],
                 "need_request": True,
                 "request_file": request_file,
                 "data_path": data_path,
             }
+            if outcome.get("message"):
+                timeout_out["message"] = outcome["message"]
             if force_refresh:
                 timeout_out["cache_cleared"] = cache_cleared
             return timeout_out

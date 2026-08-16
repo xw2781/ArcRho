@@ -83,7 +83,21 @@ def create_empty_cached_dataset(req: EmptyDatasetCacheCreateRequest) -> Dict[str
 
 @router.get("/dataset/{ds_id}")
 def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
-    result = dataset_service.get_dataset(ds_id, project_name=project_name, origin_length=origin_length)
+    def load_locally() -> Dict[str, Any] | None:
+        return dataset_service.get_dataset(ds_id, project_name=project_name, origin_length=origin_length)
+
+    # The dataset handle is per process: the Gateway resolves it only when it
+    # registered the id itself (a hosted dataset run or cached load in that
+    # process). An answer without a dataset therefore means "not known
+    # there", not "unknown", and this process — which registered the same id
+    # from the rebased response — resolves it locally.
+    result = workspace_read_client.run_workspace_read(
+        "dataset_grid_load",
+        {"ds_id": ds_id, "project_name": project_name, "origin_length": origin_length},
+        local=load_locally,
+    )
+    if isinstance(result, dict) and result.get("id") is None:
+        result = load_locally()
     if result is None:
         raise HTTPException(404, f"Unknown dataset: {ds_id}")
     return result

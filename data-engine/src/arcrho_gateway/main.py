@@ -1,4 +1,4 @@
-"""Machine-local HTTP gateway for Engine-hosted saves and Server-hosted workspace reads."""
+"""Machine-local HTTP gateway for Engine-hosted saves, Server-hosted workspace reads, and Engine calculations."""
 
 from __future__ import annotations
 
@@ -78,6 +78,11 @@ from arcrho_workspace_read_contract import (  # noqa: E402
     WORKSPACE_READ_PATH,
     WORKSPACE_ROOT_HEADER,
 )
+from arcrho_engine_calculation_contract import (  # noqa: E402
+    ENGINE_CALCULATION_PATH,
+    MAX_ENGINE_CALCULATION_REQUEST_BYTES,
+)
+from arcrho_gateway.engine_calculations import EngineCalculationExecutor  # noqa: E402
 from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadExecutor,
     WorkspaceReadHttpError,
@@ -306,6 +311,12 @@ class Gateway:
         self.reads = WorkspaceReadExecutor(
             self.root, load_gateway_config=_load_gateway_config, log=_log
         )
+        self.calculations = EngineCalculationExecutor(
+            self.root,
+            load_gateway_config=_load_gateway_config,
+            log=_log,
+            ensure_runtime=self.reads.ensure_runtime,
+        )
 
     def capabilities(self) -> dict[str, Any]:
         config = _load_gateway_config(self.root)
@@ -316,6 +327,7 @@ class Gateway:
             "allowed_save_kinds": list(HTTP_SAVE_KINDS),
             "insecure_http_pilot": True,
             **self.reads.capability_fields(),
+            **self.calculations.capability_fields(),
         }
 
     def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
@@ -459,7 +471,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == WORKSPACE_READ_PATH:
-            self._handle_workspace_read()
+            self._handle_hosted_execution(
+                self.server.gateway.reads, MAX_WORKSPACE_READ_REQUEST_BYTES, "Workspace-read"
+            )
+            return
+        if path == ENGINE_CALCULATION_PATH:
+            self._handle_hosted_execution(
+                self.server.gateway.calculations,
+                MAX_ENGINE_CALCULATION_REQUEST_BYTES,
+                "Engine-calculation",
+            )
             return
         if path != HOSTED_SAVE_PATH:
             self._send_json(404, {"detail": "Not found."})
@@ -486,32 +507,35 @@ class GatewayHandler(BaseHTTPRequestHandler):
             _log(self.server.gateway.root, traceback.format_exc())
             self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
 
-    def _handle_workspace_read(self) -> None:
+    def _handle_hosted_execution(
+        self, executor: Any, max_request_bytes: int, label: str
+    ) -> None:
+        """Serve one hosted read or calculation: authenticate, execute, answer."""
+
         try:
             content_length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             self._send_json(400, {"detail": "Content-Length is invalid."})
             return
-        if content_length <= 0 or content_length > MAX_WORKSPACE_READ_REQUEST_BYTES:
-            self._send_json(413, {"detail": "Workspace-read request is too large."})
+        if content_length <= 0 or content_length > max_request_bytes:
+            self._send_json(413, {"detail": f"{label} request is too large."})
             return
         body = self.rfile.read(content_length)
-        reads = self.server.gateway.reads
         # The header tells the client which workspace root the payload's paths
-        # belong to; it is present exactly when the hosted read ran, including
-        # a refusal the service raised itself.
-        ran_headers = {WORKSPACE_ROOT_HEADER: str(reads.root)}
+        # belong to; it is present exactly when the hosted operation ran,
+        # including a refusal the service raised itself.
+        ran_headers = {WORKSPACE_ROOT_HEADER: str(executor.root)}
         try:
-            user = reads.authenticate(self.headers, body)
+            user = executor.authenticate(self.headers, body)
             payload = json.loads(body.decode("utf-8"))
-            response = reads.execute(user, payload)
+            response = executor.execute(user, payload)
             self._send_json(200, response, ran_headers)
         except WorkspaceReadRefusal as exc:
             self._send_json(exc.status_code, {"detail": exc.detail}, ran_headers)
         except WorkspaceReadHttpError as exc:
             self._send_json(exc.status_code, {"detail": exc.detail})
         except (UnicodeDecodeError, json.JSONDecodeError):
-            self._send_json(400, {"detail": "Workspace-read request is not valid JSON."})
+            self._send_json(400, {"detail": f"{label} request is not valid JSON."})
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
             self._send_json(500, {"detail": "The Gateway failed unexpectedly."})

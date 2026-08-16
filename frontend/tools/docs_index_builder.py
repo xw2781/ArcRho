@@ -783,6 +783,7 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("app_server/api/arcrho_router.py", "ArcRho tri/precheck/header endpoints."),
             ("app_server/services/arcrho_runtime_service.py", "ArcRho processing and project listing."),
+            ("app_server/services/engine_calculation_service.py", "Engine request publish-and-wait exchange and its Gateway transport."),
             ("app_server/schemas/arcrho.py", "ArcRho request schemas."),
         ],
     },

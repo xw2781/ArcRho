@@ -14,16 +14,16 @@ from app_server import helpers
 
 
 class NetworkPathDetectionTests(unittest.TestCase):
-    def test_unc_path_is_network_path(self) -> None:
-        self.assertTrue(helpers._is_network_path(r"\\server\ArcRho Server\requests\request.json"))
+    def test_unc_pathis_network_path(self) -> None:
+        self.assertTrue(helpers.is_network_path(r"\\server\ArcRho Server\requests\request.json"))
 
-    def test_mapped_remote_drive_is_network_path(self) -> None:
+    def test_mapped_remote_driveis_network_path(self) -> None:
         with (
             patch.object(helpers.os, "name", "nt"),
             patch.object(helpers.os.path, "splitdrive", return_value=("E:", r"\ArcRho Server\requests\request.json")),
             patch.object(helpers, "_windows_drive_type", return_value=helpers._WINDOWS_DRIVE_REMOTE),
         ):
-            self.assertTrue(helpers._is_network_path(r"E:\ArcRho Server\requests\request.json"))
+            self.assertTrue(helpers.is_network_path(r"E:\ArcRho Server\requests\request.json"))
 
     def test_local_windows_drive_is_not_network_path(self) -> None:
         with (
@@ -31,13 +31,13 @@ class NetworkPathDetectionTests(unittest.TestCase):
             patch.object(helpers.os.path, "splitdrive", return_value=("C:", r"\ArcRho\request.json")),
             patch.object(helpers, "_windows_drive_type", return_value=3),
         ):
-            self.assertFalse(helpers._is_network_path(r"C:\ArcRho\request.json"))
+            self.assertFalse(helpers.is_network_path(r"C:\ArcRho\request.json"))
 
 
 class NetworkWaitTests(unittest.TestCase):
     def test_network_path_polls_without_starting_watchdog(self) -> None:
         with (
-            patch.object(helpers, "_is_network_path", return_value=True),
+            patch.object(helpers, "is_network_path", return_value=True),
             patch.object(helpers, "_bust_network_lookup_cache", return_value=True) as poke,
             patch.object(helpers.os.path, "exists", side_effect=(False, True)),
             patch.object(helpers, "Observer") as observer,
@@ -52,7 +52,7 @@ class NetworkWaitTests(unittest.TestCase):
 
     def test_network_path_stops_at_the_requested_timeout(self) -> None:
         with (
-            patch.object(helpers, "_is_network_path", return_value=True),
+            patch.object(helpers, "is_network_path", return_value=True),
             patch.object(helpers, "_bust_network_lookup_cache", return_value=True),
             patch.object(helpers.os.path, "exists", return_value=False),
             patch.object(helpers, "Observer") as observer,
@@ -67,7 +67,7 @@ class NetworkWaitTests(unittest.TestCase):
 
     def test_failed_lookup_cache_probe_disables_later_probes_but_keeps_polling(self) -> None:
         with (
-            patch.object(helpers, "_is_network_path", return_value=True),
+            patch.object(helpers, "is_network_path", return_value=True),
             patch.object(helpers, "_bust_network_lookup_cache", return_value=False) as poke,
             patch.object(helpers.os.path, "exists", side_effect=(False, False, True)),
             patch.object(helpers.time, "sleep"),
@@ -79,7 +79,7 @@ class NetworkWaitTests(unittest.TestCase):
 
     def test_local_path_poll_fallback_never_probes_the_directory(self) -> None:
         with (
-            patch.object(helpers, "_is_network_path", return_value=False),
+            patch.object(helpers, "is_network_path", return_value=False),
             patch.object(helpers, "Observer", None),
             patch.object(helpers, "FileSystemEventHandler", None),
             patch.object(helpers, "_bust_network_lookup_cache") as poke,
@@ -93,7 +93,7 @@ class NetworkWaitTests(unittest.TestCase):
 
     def test_poll_interval_backs_off_from_fast_to_capped(self) -> None:
         with (
-            patch.object(helpers, "_is_network_path", return_value=True),
+            patch.object(helpers, "is_network_path", return_value=True),
             patch.object(helpers, "_bust_network_lookup_cache", return_value=True),
             patch.object(helpers.os.path, "exists", side_effect=(False, False, False, False, True)),
             patch.object(helpers.time, "sleep") as sleep,

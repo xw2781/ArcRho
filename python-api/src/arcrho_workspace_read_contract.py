@@ -80,6 +80,16 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name", "reserving_class", "dataset_name"),
         ("csv_file", "origin_length", "development_length", "cumulative", "calendar"),
     ),
+    # The id-addressed grid load that follows a dataset run. ``ds_id`` is a
+    # per-process handle; the server resolves it only if it registered the
+    # handle itself (a hosted run or cached load in the same Gateway
+    # process) and otherwise answers with no dataset, which the client treats
+    # as "resolve locally".
+    "dataset_grid_load": WorkspaceReadKind(
+        "dataset_service",
+        "get_dataset",
+        ("ds_id", "project_name", "origin_length"),
+    ),
     "dfm_method_load": WorkspaceReadKind(
         "dfm_service",
         "load_dfm_method",

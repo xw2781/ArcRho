@@ -37,7 +37,7 @@ def _windows_drive_type(root_path: str) -> int:
     return int(ctypes.windll.kernel32.GetDriveTypeW(root_path))
 
 
-def _is_network_path(path: str) -> bool:
+def is_network_path(path: str) -> bool:
     """Whether *path* is a UNC path or resides on a mapped Windows network drive.
 
     Windows file-system notifications are not reliable enough on SMB shares for a
@@ -205,7 +205,23 @@ def set_data_path_like_vba(pairs: list[tuple[str, str]]) -> str:
     return os.path.join(config.PROJECT_SETTINGS_DIR.rstrip("\\/"), config.PROJECT_DATA_DIR, f"{full_name}.csv")
 
 
+def build_engine_request_info(pairs: list, data_path: str) -> str:
+    """Return the legacy ``key = value#...`` request line for one Engine request.
+
+    The Engine reads the request file the app server publishes; ``DataPath``
+    is the output CSV the caller waits for and always comes last so a
+    hosted publisher can supply the pairs and derive the path itself.
+    """
+
+    return "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {data_path}"])
+
+
 def send_request_like_vba(request_info: str) -> str:
+    # ``config.REQUEST_DIR`` is the requests root the Engine watches. When the
+    # publisher is the Gateway acting for a Client PC user, that root is the
+    # server's own local folder and the stamped user is the acting identity.
+    from app_server.services import user_identity_service
+
     os.makedirs(config.REQUEST_DIR, exist_ok=True)
     now = datetime.now()
     ms = int(now.microsecond / 1000)
@@ -215,7 +231,7 @@ def send_request_like_vba(request_info: str) -> str:
     final_path = os.path.join(config.REQUEST_DIR, f"request-{current_time}.json")
 
     payload = _request_info_to_json_payload(request_info)
-    payload["UserName"] = getpass.getuser()
+    payload["UserName"] = user_identity_service.get_windows_login_name() or getpass.getuser()
 
     with open(temp_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
@@ -297,7 +313,7 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
 
     if os.path.exists(path):
         found = True
-    elif not _is_network_path(path):
+    elif not is_network_path(path):
         try:
             if Observer is None or FileSystemEventHandler is None:
                 raise RuntimeError("watchdog not available")
@@ -332,7 +348,7 @@ def wait_for_file(path: str, timeout_sec: float, settle_ms: float = 50.0) -> boo
 
     if not found:
         poke_dir = os.path.dirname(path) or "."
-        poke_enabled = _is_network_path(path)
+        poke_enabled = is_network_path(path)
         interval = _WAIT_POLL_INITIAL_SEC
         while time.monotonic() <= deadline:
             if poke_enabled:

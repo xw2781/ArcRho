@@ -1,7 +1,7 @@
 # Hosted Workspace Transport: Moving All Client PC Workspace I/O to the HTTP Gateway
 
-Status: Decisions confirmed 2026-08-15; Phase 1 reads implemented (pending gateway redeploy)
-Last updated: 2026-08-15
+Status: Decisions confirmed 2026-08-15; Phase 1 reads and Phase 2 engine calculations implemented
+Last updated: 2026-08-16
 Related: [hosted_save_http_transport.md](hosted_save_http_transport.md) (the save-only pilot this plan extends)
 
 ## Implemented So Far
@@ -18,9 +18,32 @@ onto the client's workspace root and logging each read to
 `client_read_latency.jsonl`. Registered today: the reserving-class index
 (`GET /datasets/cached`, `GET /dfm/method-index`), the cached-dataset load
 bundle, DFM/RS/BF/CC/bootstrap method loads, and the Project Settings
-`GET /table_summary`. The bounded-server foundation, engine calculations, SSE,
-and small writes remain as planned below. See
+`GET /table_summary`. See
 `frontend/docs/app_server/domains/workspace_reads.md` for the transport rules.
+
+Phase 2 engine calculations landed 2026-08-16 as the same shape:
+`python-api/src/arcrho_engine_calculation_contract.py` holds the
+`ENGINE_CALCULATION_KINDS` registry (Engine function → exact request-file keys,
+server-owned keys a client may never send, allowed output variants), the
+Gateway serves `POST /api/engine-calculations`
+(`data-engine/src/arcrho_gateway/engine_calculations.py`) by running the
+canonical `app_server` publish-and-wait exchange against the server-local
+`requests` root — the request file and CSV are unchanged, so the Engine handler
+is untouched and Excel/`arcrho_api`/migration keep publishing over SMB — and
+every `arcrho_runtime_service` request site routes through
+`frontend/app_server/services/engine_calculation_service.py`, which uses the
+Gateway only when the output CSV is on a network drive and the function is
+advertised, keeps the local exchange as the fallback before acceptance, never
+publishes twice after acceptance, and logs each request to
+`client_read_latency.jsonl` as `engine_calculation`. The same route also
+carries `dataset_run` / `dataset_precheck` operations: the `/arcrho/tri*` and
+`/arcrho/vec*` routes run the whole `run_arcrho_tri` / `arcrho_precheck`
+service on the server host (cache validation, exchange, sidecar write,
+dependent enqueue, index refresh) and the client registers the returned
+dataset handle — profiling showed the exchange was ~3 s of a ~15 s
+length-change run and the sidecar/dependent SMB work the rest. See
+`frontend/docs/app_server/domains/engine_calculations.md`. The bounded-server
+foundation, SSE, and small writes remain as planned below.
 
 ## Completed: the rename
 
@@ -373,8 +396,9 @@ Consequences for this plan:
 2. **Phase 1 reads** — reserving-class index and cached-dataset bundle first,
    behind separate capabilities; then method load and project/settings reads.
    Compare transports from the read-latency log on `NJ_Annual_Prod_202605_Fake`.
-3. **Phase 2 engine calculations** — HTTP calculation endpoint; client
-   `send_request_like_vba` callers switch when the capability is advertised.
+3. **Phase 2 engine calculations** — done: `POST /api/engine-calculations`;
+   the runtime service's request sites switch when the capability is
+   advertised (see Implemented So Far).
 4. **Phase 3 SSE** — event stream and subscriptions; remove client pollers and
    the Electron `fs.watch` when the capability is advertised.
 5. **Phase 4 small writes** — preferences, audit, RC caches, out-of-band method

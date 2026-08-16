@@ -13,7 +13,11 @@ if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
 from app_server import config
-from app_server.services import arcrho_runtime_service, calculated_dataset_service
+from app_server.services import (
+    arcrho_runtime_service,
+    calculated_dataset_service,
+    engine_calculation_service,
+)
 
 
 class CalculatedDatasetRuntimeTests(unittest.TestCase):
@@ -302,7 +306,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
                 "rebuild_index",
             ),
             patch.object(
-                arcrho_runtime_service,
+                engine_calculation_service,
                 "send_request_like_vba",
                 side_effect=AssertionError("app-calculated datasets must not be sent to the data engine"),
             ),
@@ -343,8 +347,8 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             patch.object(arcrho_runtime_service, "_recalculate_requested_app_dataset", return_value=None),
             patch.object(arcrho_runtime_service, "arcrho_tri_cache_matches", return_value=False),
             patch.object(arcrho_runtime_service.os, "makedirs"),
-            patch.object(arcrho_runtime_service, "send_request_like_vba", return_value="request.txt"),
-            patch.object(arcrho_runtime_service, "wait_for_file", return_value=True),
+            patch.object(engine_calculation_service, "send_request_like_vba", return_value="request.txt"),
+            patch.object(engine_calculation_service, "wait_for_file", return_value=True),
             patch.object(
                 arcrho_runtime_service,
                 "_require_runtime_cache_provenance",

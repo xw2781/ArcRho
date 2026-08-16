@@ -18,6 +18,7 @@ if str(FRONTEND_ROOT) not in sys.path:
 from app_server import config
 from app_server.services import (
     arcrho_runtime_service,
+    engine_calculation_service,
     runtime_cache_provenance_service,
 )
 
@@ -504,8 +505,8 @@ class RuntimeCacheProvenanceTests(unittest.TestCase):
             hash_patch,
             patch.dict(config.DATASETS, {}, clear=True),
             patch.object(arcrho_runtime_service, "_recalculate_requested_app_dataset", return_value=None),
-            patch.object(arcrho_runtime_service, "send_request_like_vba", return_value="request.json") as send_request,
-            patch.object(arcrho_runtime_service, "wait_for_file", side_effect=write_generated_csv),
+            patch.object(engine_calculation_service, "send_request_like_vba", return_value="request.json") as send_request,
+            patch.object(engine_calculation_service, "wait_for_file", side_effect=write_generated_csv),
             patch.object(
                 arcrho_runtime_service,
                 "_refresh_dataset_instance_index_after_cache_write",
