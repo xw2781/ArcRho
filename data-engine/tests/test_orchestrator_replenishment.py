@@ -102,7 +102,7 @@ class ReplenishmentCapTests(unittest.TestCase):
             self.assertTrue(acquired)
 
     def test_a_component_that_never_registers_is_launched_once_per_pass(self):
-        """A crashing component must not be spawned without limit."""
+        """A crashing component must not be spawned once per missing instance."""
 
         with (
             patch.object(orchestrator_main, "launch_app", self._launch_silent),
@@ -111,7 +111,19 @@ class ReplenishmentCapTests(unittest.TestCase):
         ):
             orchestrator_main.replenish_instances("engine", "engine", self._count, 5)
 
-        self.assertEqual(self.launches, 5)
+        self.assertEqual(self.launches, 1)
+
+    def test_a_registering_component_keeps_the_pass_going(self):
+        """Only a failed registration ends the pass early, not a slow one."""
+
+        with (
+            patch.object(orchestrator_main, "launch_app", self._launch_registering),
+            patch.object(orchestrator_main, "INSTANCE_REGISTRATION_TIMEOUT_SECONDS", 0.05),
+            patch.object(orchestrator_main, "INSTANCE_POLL_SECONDS", 0.01),
+        ):
+            orchestrator_main.replenish_instances("engine", "engine", self._count, 3)
+
+        self.assertEqual(self.launches, 3)
 
     def test_waiting_ends_as_soon_as_the_instance_registers(self):
         counts = iter([0, 0, 1])

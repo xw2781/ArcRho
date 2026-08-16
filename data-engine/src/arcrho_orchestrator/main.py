@@ -250,11 +250,15 @@ def wait_for_new_instance(count_instances, baseline):
 
 
 def replenish_instances(role: str, lock_name: str, count_instances, target: int):
-    """Launch one capped app at a time until the live count reaches target.
+    """Launch one capped app at a time, while each one registers, up to target.
 
-    At most one launch per missing instance runs in a pass, so a component that
-    fails during startup is retried on the next pass instead of being spawned
-    without limit.
+    A launch that does not register within the timeout ends the pass. Launching
+    the rest of the deficit on top of it helps in neither failure mode: a
+    component crashing on startup would just leave more dead processes behind
+    and delay the pass by another timeout each, and one merely slower than the
+    timeout would be joined by copies that all register later and overshoot the
+    very cap this serialization exists to hold. The next pass refills whatever
+    is still missing against a current count.
     """
 
     for _ in range(max(0, int(target))):
@@ -268,7 +272,8 @@ def replenish_instances(role: str, lock_name: str, count_instances, target: int)
                 return
             if not launch_app(role):
                 return
-            wait_for_new_instance(count_instances, baseline)
+            if not wait_for_new_instance(count_instances, baseline):
+                return
 
 
 def launch_app(role: str):
