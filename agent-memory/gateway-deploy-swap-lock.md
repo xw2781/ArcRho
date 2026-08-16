@@ -1,6 +1,6 @@
 ---
 name: gateway-deploy-swap-lock
-description: Gateway build from the Client PC can fail at the atomic folder swap with WinError 5; the rollback keeps the old Gateway serving and a stale .ArcRho Gateway.new is left behind
+description: "Component deploys now stage into a persistent .<App>.slot (robocopy delta, manifest-driven) while live and swap with three retried renames; the old .new/.old copy-and-swap could fail with WinError 5 and left orphans — history and what to expect from the new scheme"
 metadata: 
   node_type: memory
   type: project
@@ -23,3 +23,15 @@ Beware the wrapper exit code: the background task reported "exited with code 0" 
 Note that the Gateway bundles `ENGINE_BUNDLED_SOURCES`, which includes `frontend/app_server` — so an app-server service edit makes the Bridge, the Engine **and** the Gateway stale, three rebuilds rather than two. Related: [[bridge-restart-after-deploy]], [[pi-path-load-smb-cost]].
 
 2026-08-16 (later): a Gateway deploy from this Client PC with `ARCRHO_DEPLOY_ROOT="E:\ArcRho Server"` (the mapped letter, not the UNC form) swapped cleanly on the first try — the script still reported the deploy root as `\NE7SASWPN02\E\ArcRho Server` and left the relaunch to the server Orchestrator; heartbeat reappeared ~2 min after `Build finished`.
+
+**Superseded 2026-08-16 (later the same day):** `data-engine/src/build_runtime.py` now owns the deploy for every
+`build_exe.py` (`stage_deploy` + `swap_deploy`; see `data-engine/architectures.md` "Component build deployment").
+The build is robocopy-mirrored (`/MIR /MT:32`) into a persistent `apps\.<App Name>.slot` *while the component is
+still running*, using a `.arcrho-deploy-manifest.json` inside the folder to restore deployed timestamps on
+byte-identical files so only changed files transfer; the stopped window is three renames (live→`.prev`,
+slot→live, `.prev`→slot) each wrapped in `rename_with_retry` (8×5 s on WinError 5) — the durable fix this note
+asked for. Observed from the Client PC: the first Gateway deploy under the new scheme still copied all 1653
+files ("(1653 of 1653 files changed)" — no manifest yet), the swap succeeded, and the Orchestrator relaunched
+the Gateway within a minute; deltas start once a slot with a manifest exists (2 warm-up deploys). Do not delete
+`.slot` folders or their manifest. Legacy `.ArcRho <App>.new` / `.old` orphans from the old scheme are not
+swept by the new code — remove them by hand once (`build_runtime.remove_tree_with_retry`).
