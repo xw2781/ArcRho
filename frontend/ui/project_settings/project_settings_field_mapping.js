@@ -912,6 +912,7 @@ export function createFieldMappingFeature(deps = {}) {
   return {
     setFieldMappingStatus,
     renderFieldMappingEmpty,
+    updateSaveFieldMappingButton,
     ensureFieldMappingLoaded,
     findDatasetTypeOwner,
     getMappedDatasetTypeNames,

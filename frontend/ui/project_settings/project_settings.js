@@ -11,11 +11,11 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260808rctresize1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260816pssel1";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260812dtformat2";
-import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260808rctresize1";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260721dpr12";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260808daterole1";
+import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260816pssel1";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260816pssel1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260816pssel1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,16 +23,16 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260812dtformat2";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260816pssel1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260812dtformat2";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260812dtformat2";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260812dtformat2";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260812dtformat2";
-import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260716psprefs1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260816pssel1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260816pssel1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260816pssel1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260816pssel1";
+import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const DEFAULT_SOURCE = "project_map";
@@ -643,13 +643,51 @@ function restoreSelectedProjectFromSession() {
   return true;
 }
 
+/**
+ * Blank every detail panel for a newly selected project.
+ *
+ * Each ribbon page loads from the project folder on a network drive, so the
+ * first rendered content is seconds away. Until then the previous project's
+ * rows would still be on screen under the new project's title; this replaces
+ * them with the panels' own loading state before the first request is sent.
+ */
+function clearProjectDetailPanels(project) {
+  detailEmpty.style.display = "none";
+  detailView.style.display = "flex";
+  detailTitle.textContent = String(project?.name || "");
+  detailForm.innerHTML = "";
+  detailForm.style.display = "none";
+  currentFieldNames = [];
+
+  datasetTypesFeature?.closeDatasetTypeEditor();
+  sourceDataFeature.resetForProjectChange();
+
+  fieldMappingFeature?.renderFieldMappingEmpty("Loading fields...");
+  fieldMappingFeature?.setFieldMappingStatus("");
+  // The previous project's unsaved edits must not leave Save actionable here.
+  fieldMappingFeature?.updateSaveFieldMappingButton(project?.name);
+  reservingClassTypesFeature?.renderReservingClassTypesEmpty("Loading reserving class types...");
+  reservingClassTypesFeature?.setReservingClassTypesStatus("");
+  datasetTypesFeature?.renderDatasetTypesEmpty("Loading dataset types...");
+  datasetTypesFeature?.setDatasetTypesStatus("");
+  dataProcessingRulesFeature?.renderRulesEmpty("Loading data processing rules...");
+  dataProcessingRulesFeature?.setRulesStatus("");
+  auditLogStore.renderEmpty("Loading audit log...");
+  auditLogStore.setStatus("");
+}
+
 async function selectProject(project) {
   reservingClassTypesFeature?.closeReservingClassTypeEditor();
   dataProcessingRulesFeature?.closeEditor();
+  const selectionKey = normalizeProjectKey(project?.name);
+  // Reselecting the current project refreshes it in place; only a real
+  // selection change has stale content to drop.
+  if (normalizeProjectKey(selectedProject?.name) !== selectionKey) {
+    clearProjectDetailPanels(project);
+  }
   selectedProject = project;
   treeViewFeature.saveSelectedProjectToSession(project);
   treeViewFeature.render(); // Update active state
-  const selectionKey = normalizeProjectKey(project?.name);
   let preferences = {};
   try {
     preferences = await loadProjectUserPreferences(project?.name, { forceReload: true });

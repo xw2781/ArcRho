@@ -2702,6 +2702,7 @@ export function createDataProcessingRulesFeature(deps = {}) {
   return {
     loadRules,
     renderRules,
+    renderRulesEmpty: renderEmpty,
     openEditor,
     closeEditor,
     hideRowContextMenu,

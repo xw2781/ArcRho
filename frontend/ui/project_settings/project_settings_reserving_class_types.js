@@ -2407,6 +2407,7 @@ export function createReservingClassTypesFeature(deps = {}) {
 
   return {
     setReservingClassTypesStatus,
+    renderReservingClassTypesEmpty,
     closeReservingClassTypeEditor,
     openReservingClassTypeEditor,
     applyReservingClassTypeEditor,

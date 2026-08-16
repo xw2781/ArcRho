@@ -1947,6 +1947,35 @@ export function createSourceDataFeature(deps = {}) {
       hidePreview();
       setSummaryLoading(true, message);
     },
+    /**
+     * Drop the previous project's tab content the moment the selection changes.
+     *
+     * Reading a project's import record and table summary costs several network
+     * round trips, so without this the old path, columns, stats, and period
+     * months stay readable for seconds as though they belonged to the newly
+     * selected project. The busy frame takes their place instead.
+     */
+    resetForProjectChange(message = "Loading project...") {
+      closeSourcePanel();
+      closeDetails();
+      hidePreview();
+      sourceState = normalizeSourceState(null);
+      columns = [];
+      if (dom.pathInput) dom.pathInput.value = "";
+      endPathEdit();
+      if (dom.list) dom.list.innerHTML = "";
+      if (dom.count) dom.count.textContent = "";
+      if (dom.stats) dom.stats.innerHTML = "";
+      if (dom.filter) dom.filter.value = "";
+      [dom.originStart, dom.originEnd, dom.developmentEnd].forEach((input) => {
+        if (input) input.value = "";
+      });
+      refreshOriginSpanNote();
+      syncPathDisplay();
+      setSourceStatus("");
+      setBodyVisible(true);
+      setSummaryLoading(true, message);
+    },
     showError(message) {
       setSummaryLoading(false);
       showMessage(message, true);

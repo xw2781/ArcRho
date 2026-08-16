@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Selecting another project in Project Settings clears the previous project's details immediately instead of leaving them on screen while the new one loads.",
+  "details": [
+    "The detail panel switches to the new project's title and each tab's loading state as soon as the selection changes.",
+    "Source Data drops the old source path, column list, table details, and reserving-period months and shows its busy frame until the new summary arrives.",
+    "Field Mapping, Reserving Class Types, Dataset Types, Data Processing Rules, and Audit Log show a loading row rather than the previous project's rows, and Save Field Mapping is no longer left actionable from the project you switched away from."
+  ]
+}
