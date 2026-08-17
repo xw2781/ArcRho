@@ -503,7 +503,19 @@ def _build_active_dfm(active_context: Dict[str, Any]):
     active_json = active_context.get("activeJson")
     if not isinstance(active_json, dict):
         raise ValueError("Active DFM JSON is not available.")
+    # The UI stamps the live Notes tab text onto the transient
+    # `method metadata.method notes` carrier; normalization strips it, so read
+    # it first and seed it as pending notes below.
+    captured_metadata = active_json.get("method metadata")
+    ui_method_notes = (
+        captured_metadata.get("method notes")
+        if isinstance(captured_metadata, dict) and "method notes" in captured_metadata
+        else None
+    )
     active_json = _restamp_active_dfm_revisions(copy.deepcopy(active_json))
+    restamped_metadata = active_json.get("method metadata")
+    if isinstance(restamped_metadata, dict):
+        restamped_metadata.pop("method notes", None)
     fields = active_context.get("fields") if isinstance(active_context.get("fields"), dict) else {}
     details = active_json.get("details tab") if isinstance(active_json.get("details tab"), dict) else {}
     metadata = active_json.get("method metadata") if isinstance(active_json.get("method metadata"), dict) else {}
@@ -528,7 +540,7 @@ def _build_active_dfm(active_context: Dict[str, Any]):
         dfm._ensure_grouped_payload()
         if method_path:
             dfm.file_path = Path(method_path)
-        return dfm
+        return _seed_active_dfm_notes(dfm, ui_method_notes)
 
     temp_path = _runtime_active_dfm_path()
     with open(temp_path, "w", encoding="utf-8") as f:
@@ -542,6 +554,33 @@ def _build_active_dfm(active_context: Dict[str, Any]):
         dfm.name = method_name
     if method_path:
         dfm.file_path = Path(method_path)
+    return _seed_active_dfm_notes(dfm, ui_method_notes)
+
+
+def _macro_pending_method_notes(active_dfm) -> Any:
+    """Notes the macro itself set, or None when it left the seeded notes alone."""
+    if active_dfm is None:
+        return None
+    pending = getattr(active_dfm, "_pending_notes", None)
+    if pending is None:
+        return None
+    seeded = getattr(active_dfm, "_macro_seeded_notes", None)
+    return None if seeded is not None and pending == seeded else pending
+
+
+def _seed_active_dfm_notes(dfm, ui_method_notes):
+    """Seed `dfm.notes` from the UI's live Notes tab text.
+
+    Without this, `DfmMethod.notes` falls back to the persisted output sidecar,
+    so a macro would read (and diff against) stale notes whenever the Notes tab
+    has unsaved edits. `_macro_seeded_notes` records the seed so the apply path
+    can tell an untouched seed from a macro's own `update_notes()`.
+    """
+    if ui_method_notes is None:
+        return dfm
+    seeded = str(ui_method_notes)
+    dfm.update_notes(seeded)
+    dfm._macro_seeded_notes = seeded
     return dfm
 
 
@@ -897,9 +936,7 @@ def _execute_macro_source_body(
                     # Method Notes live in the output sidecar, not the method
                     # payload; carry a macro's update_notes() result separately
                     # so the apply path can deliver it to the DFM Notes tab.
-                    "pending_method_notes": (
-                        getattr(active_dfm, "_pending_notes", None) if active_dfm is not None else None
-                    ),
+                    "pending_method_notes": _macro_pending_method_notes(active_dfm),
                 }
             finally:
                 if inserted_source_directory:

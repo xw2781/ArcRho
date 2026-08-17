@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "scripting",
+  "audience": "user",
+  "summary": "Macros now read the DFM Notes tab as it is on screen, so a Notes preview compares against unsaved notes instead of the last saved copy.",
+  "details": [
+    "The DFM assistant/macro context payload carries the live Notes tab text, and active_dfm.notes is seeded from it instead of falling back to the persisted output sidecar.",
+    "A macro that never calls update_notes() still leaves the Notes tab untouched, and editing Notes while a macro runs invalidates its captured context as before."
+  ]
+}

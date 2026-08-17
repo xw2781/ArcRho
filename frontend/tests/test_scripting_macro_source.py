@@ -213,6 +213,67 @@ def run_macro(active_dfm, active_context=None):
 
         self.assertEqual(dfm.average_formulas["inputs"][0][0], formula)
 
+        # The UI stamps its live Notes tab text on the transient carrier so the
+        # macro reads the dirty notes instead of the persisted sidecar.
+        dirty.setdefault("method metadata", {})["method notes"] = "Unsaved UI note"
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
+            scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
+        ):
+            seeded_dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})
+
+        self.assertEqual(seeded_dfm.notes, "Unsaved UI note")
+        self.assertEqual(seeded_dfm._macro_seeded_notes, "Unsaved UI note")
+        self.assertNotIn("method notes", seeded_dfm.payload.get("method metadata", {}))
+
+    def test_untouched_seeded_notes_are_not_re_emitted_as_a_payload_carrier(self) -> None:
+        class _SeededNotesDfm:
+            def __init__(self) -> None:
+                self.payload = {"details tab": {"name": "Development"}}
+                self._pending_notes = "Unsaved UI note"
+                self._macro_seeded_notes = "Unsaved UI note"
+
+            def to_dict(self):
+                return copy.deepcopy(self.payload)
+
+            def update_notes(self, text):
+                self._pending_notes = str(text or "")
+                return self
+
+        dfm = _SeededNotesDfm()
+        with (
+            patch.object(scripting_macro_service, "_build_active_dfm", return_value=dfm),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+        ):
+            result = scripting_macro_service.run_macro_source(
+                "print('inspection only')",
+                "read_notes.py",
+                {"activeJson": {"details tab": {}}},
+            )
+
+        self.assertTrue(result["success"], result)
+        self.assertNotIn("payload", result)
+
+        dfm = _SeededNotesDfm()
+        source = """
+def run_macro(active_dfm, active_context=None):
+    active_dfm.update_notes("Unsaved UI note\\n\\nGenerated adjustment note")
+    return {'message': 'notes updated'}
+"""
+        with (
+            patch.object(scripting_macro_service, "_build_active_dfm", return_value=dfm),
+            patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),
+        ):
+            result = scripting_macro_service.run_macro_source(
+                source,
+                "notes_macro.py",
+                {"activeJson": {"details tab": {}}},
+            )
+
+        self.assertEqual(
+            result["payload"]["method metadata"]["method notes"],
+            "Unsaved UI note\n\nGenerated adjustment note",
+        )
+
     def test_run_macro_source_times_out_runaway_python(self) -> None:
         with (
             patch.object(scripting_macro_service, "_MacroTaskDesignerProxy", return_value=Mock()),

@@ -43,8 +43,8 @@ import {
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260816a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -53,7 +53,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260807a";
+} from "/ui/shared/services/object_change_watch.js?v=20260816a";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
@@ -962,7 +962,20 @@ export function recordCurrentDfmCleanState() {
 }
 
 export async function buildDfmAssistantContextPayload(options = {}) {
-  return buildDfmMethodPayloadWithPaths(options);
+  const payload = await buildDfmMethodPayloadWithPaths(options);
+  // Method Notes live in the output sidecar, so the method payload never
+  // carries them; stamp the transient `method metadata.method notes` carrier
+  // (same convention as the RPC bridge apply path) so macros and ArcBot read
+  // the live, possibly dirty, Notes tab instead of the persisted sidecar.
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const metadata = payload["method metadata"];
+    if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+      metadata["method notes"] = getDfmNotesText();
+    } else {
+      payload["method metadata"] = { "method notes": getDfmNotesText() };
+    }
+  }
+  return payload;
 }
 
 async function refreshDfmDatasetAfterDetailsApply(options = {}) {
