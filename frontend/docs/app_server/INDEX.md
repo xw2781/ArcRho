@@ -30,6 +30,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 4 | [`snowflake.md`](domains/snowflake.md) |
 | `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 8 | [`source_table.md`](domains/source_table.md) |
 | `sql_formatting` | [`app_server/api/sql_formatting_router.py`](../../app_server/api/sql_formatting_router.py) | 1 | [`sql_formatting.md`](domains/sql_formatting.md) |
+| `sql_server` | [`app_server/api/sql_server_router.py`](../../app_server/api/sql_server_router.py) | 5 | [`sql_server.md`](domains/sql_server.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |
 | `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 6 | [`ui_automation.md`](domains/ui_automation.md) |
 | `workflow` | [`app_server/api/workflow_router.py`](../../app_server/api/workflow_router.py) | 5 | [`workflow.md`](domains/workflow.md) |
