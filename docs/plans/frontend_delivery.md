@@ -20,6 +20,7 @@
 # Phase 2 - 8/17
 - Manage Linked Workbooks
 - Accounting Cutoff & Growth Adjustment Vectors
+- !!! Notes Generation
 - Adjusted Triangle for DFMs
 - Sync Reserving Class (Macro)
 

@@ -256,23 +256,26 @@ ShowUninstDetails show
       Abort
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 0 100% 22u "ArcRho can register the Excel add-in and start existing data engine components during setup."
+    ; The nsDialogs inner page is only ~140u tall, so every control below stays
+    ; inside that box: intro at 0u, the server-root block at 16u-46u, the shared
+    ; delivery note at 56u and the option checkboxes at 76u.
+    ${NSD_CreateLabel} 0 0 100% 10u "ArcRho can register the Excel add-in and start data engine components."
     Pop $1
 
     ${If} $ArcRhoServerRootDetected == "1"
-      ${NSD_CreateLabel} 0 30u 100% 22u "Detected ArcRho Server folder: $ArcRhoServerRoot"
+      ${NSD_CreateLabel} 0 16u 100% 10u "ArcRho Server folder: $ArcRhoServerRoot"
       Pop $1
       ${If} $ArcRhoServerRootIsLocal != "1"
-        ${NSD_CreateLabel} 0 52u 100% 22u "This ArcRho Server folder is on a network drive, so the data engine components run on the computer that hosts it and cannot be launched from here."
+        ${NSD_CreateLabel} 0 28u 100% 18u "This folder is on a network drive, so the data engine runs on the PC that hosts it and cannot be started from here."
         Pop $1
       ${ElseIf} $ArcRhoDataEngineInstalled != "1"
-        ${NSD_CreateLabel} 0 52u 100% 22u "No server components are installed in this workspace. Use ArcRho Server Components Setup on the host PC."
+        ${NSD_CreateLabel} 0 28u 100% 18u "No server components found here. Use ArcRho Server Components Setup on the host PC."
         Pop $1
       ${EndIf}
     ${Else}
-      ${NSD_CreateLabel} 0 30u 100% 22u "Select the drive where ArcRho Server should be located:"
+      ${NSD_CreateLabel} 0 16u 100% 10u "Drive for the ArcRho Server folder:"
       Pop $1
-      ${NSD_CreateDropList} 0 54u 80u 80u ""
+      ${NSD_CreateDropList} 0 28u 60u 80u ""
       Pop $ArcRhoServerDriveDropList
       StrCpy $ArcRhoServerRoot ""
       !insertmacro ArcRho_AddDriveOption "C:"
@@ -299,20 +302,20 @@ ShowUninstDetails show
       !insertmacro ArcRho_AddDriveOption "X:"
       !insertmacro ArcRho_AddDriveOption "Y:"
       !insertmacro ArcRho_AddDriveOption "Z:"
-      ${NSD_CreateLabel} 0 80u 100% 22u "Excel add-in path will use <drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam."
+      ${NSD_CreateLabel} 0 44u 100% 10u "Add-in path: <drive>\ArcRho Server\Excel Add-ins\ArcRho.xlam"
       Pop $1
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 100u 100% 18u "Server binaries are delivered separately and are never installed or removed by ArcRho Desktop Setup."
+    ${NSD_CreateLabel} 0 56u 100% 18u "Server binaries are delivered separately and are never installed or removed by this setup."
     Pop $1
 
-    ${NSD_CreateCheckbox} 0 126u 48% 26u "Install ArcRho Excel add-in"
+    ${NSD_CreateCheckbox} 0 76u 48% 20u "Install ArcRho Excel add-in"
     Pop $ArcRhoInstallExcelAddInCheckbox
     ${If} $ArcRhoInstallExcelAddIn == "1"
       ${NSD_Check} $ArcRhoInstallExcelAddInCheckbox
     ${EndIf}
 
-    ${NSD_CreateCheckbox} 50% 126u 50% 26u "Launch ArcRho data engine at login"
+    ${NSD_CreateCheckbox} 50% 76u 50% 20u "Launch ArcRho data engine at login"
     Pop $ArcRhoLaunchDataEngineCheckbox
     ${If} $ArcRhoServerRootIsLocal == "1"
     ${AndIf} $ArcRhoDataEngineInstalled == "1"

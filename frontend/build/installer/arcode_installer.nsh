@@ -4,14 +4,24 @@
 !include "nsDialogs.nsh"
 
 !ifndef BUILD_UNINSTALLER
+  ; electron-builder expands this hook after common.nsh, whose default is
+  ; "nevershow". Keep the log collapsed while exposing the native Show details
+  ; control on the assisted installer page, matching the ArcRho installer so
+  ; the observer's Show/Hide details button-reuse trick has a real toggle to
+  ; drive (NSIS wires no click behavior for that control once the log is
+  ; forced open with ShowInstDetails show).
+  !macro customHeader
+    ShowInstDetails hide
+  !macroend
+
   !macro Arcode_PrintInstallDetail MSG
-    SetDetailsPrint both
-    SetDetailsView show
+    ; Keep action-level output in the details list so it cannot replace the
+    ; bar-derived percentage and time estimate in the status caption.
+    SetDetailsPrint listonly
     DetailPrint "${MSG}"
   !macroend
 !endif
 
-ShowInstDetails show
 ShowUninstDetails show
 
 !macro preInit
@@ -20,7 +30,6 @@ ShowUninstDetails show
 
 !macro customInit
   SetDetailsPrint both
-  SetDetailsView show
   ${IfNot} ${Silent}
     ; Run progress observation outside the NSIS interpreter so file-copy work
     ; cannot block percentage updates on the installer page.

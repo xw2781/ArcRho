@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "installer",
+  "audience": "user",
+  "summary": "The Setup Options page of ArcRho Desktop Setup no longer cuts off its checkboxes.",
+  "details": [
+    "Every control now fits inside the installer's page area, with the option checkboxes above the bottom edge.",
+    "The explanatory text on the page was shortened so it reads in one or two lines."
+  ]
+}
