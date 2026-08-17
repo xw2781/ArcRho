@@ -519,6 +519,40 @@ def require_python_310() -> None:
         )
 
 
+def build_python_executable() -> str:
+    """The interpreter every component build must be launched with.
+
+    ``require_python_310`` rejects the build outright on any other version, and
+    whatever started the caller — a GUI launched through ``pyw -3``, a listener
+    service, a shell — is not necessarily 3.10. Resolving it through the Windows
+    launcher keeps one answer for every path that spawns a ``build_exe.py``; two
+    answers is how a build ends up failing from one entry point and succeeding
+    from another on the same machine.
+    """
+
+    try:
+        completed = subprocess.run(
+            [
+                "py",
+                f"-{REQUIRED_PYTHON_LABEL}",
+                "-c",
+                "import sys; print(sys.executable)",
+            ],
+            capture_output=True,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if completed.returncode == 0:
+            candidate = (completed.stdout or "").strip()
+            if candidate:
+                return candidate
+    except OSError:
+        pass
+    # Nothing better is available; the build's own require_python_310 reports
+    # the version problem with a clearer message than a missing launcher would.
+    return sys.executable
+
+
 def _interpreter_version(python_exe: Path) -> tuple[int, int] | None:
     try:
         completed = subprocess.run(

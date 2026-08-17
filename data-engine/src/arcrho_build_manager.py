@@ -31,6 +31,7 @@ from arcrho_build_components import (
     stale_components,
 )
 from arcrho_build_listener import BuildListener
+from build_runtime import build_python_executable
 from arcrho_build_request_contract import build_requests_directory
 
 
@@ -267,7 +268,10 @@ class BuildManagerApp(tk.Tk):
     def _run_build(self, component: Component) -> None:
         env = os.environ.copy()
         env.setdefault("ARCRHO_DEPLOY_ROOT", str(DEPLOY_ROOT))
-        cmd = [sys.executable, str(component.build_script)]
+        # Not sys.executable: build_manager.bat falls back to ``pyw -3``, which
+        # picks the newest interpreter on the machine, and a build under anything
+        # but 3.10 is refused by require_python_310.
+        cmd = [build_python_executable(), str(component.build_script)]
         self._log(f"[{component.label}] Starting: {' '.join(cmd)}")
         try:
             proc = subprocess.Popen(

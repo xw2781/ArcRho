@@ -58,6 +58,23 @@ component must not mint a version of its own. `git_dirty` is what keeps
 `git_commit` honest: components are routinely rebuilt from a working tree
 mid-change, and a commit alone would describe such a build as reproducible.
 
+`swap_deploy` renames the live folder aside, which Windows refuses with
+`WinError 32` while any process still holds it, so every component's build must
+account for being deployed while it runs. Bridge, Engine, Gateway, Orchestrator
+and Admin Control each set their own `apps.<role>.kill_all` switch, wait for the
+component's heartbeats to disappear, swap, then clear the switch and restart.
+Admin Control is the exception that proves the rule: nothing supervises it, so
+its build relaunches the local server itself (headless — a deploy restores the
+server, not somebody's browser tab), and an open Admin Control page needs a
+refresh afterwards. The Launcher instead recovers from the failed rename by
+replacing the folder's contents in place, because the process pinning its folder
+is another app that inherited it as a working directory rather than the Launcher
+itself. `data-engine/tests/test_component_deploy_swap_safety.py` pins that every
+deployed role has one of those two answers: without it, a component that cannot
+be swapped while running fails its rename after the retries expire, and because
+the build listener abandons a request at the first component failure, it takes
+every other component in that run down with it.
+
 ```powershell
 py -3.10 data-engine/src/deploy_rollback.py status
 ```
@@ -81,8 +98,8 @@ py -3.10 data-engine/src/deploy_rollback.py rollback [--role gateway] [--yes]
 Rollback defaults to the whole bundle, prints the plan, and asks before it
 touches anything. Each component is stopped through its own build script's
 stopped window, so the kill switch, heartbeat wait, and restart are the ones
-that component already uses to deploy; Admin Control and Launcher deploy without
-a stopped window and roll back without one. A component is skipped when it has
+that component already uses to deploy; the Launcher is the only component that
+deploys and rolls back without one. A component is skipped when it has
 no parked build, or when the parked build is the one already deployed — the
 state the Launcher's in-place fallback leaves behind.
 

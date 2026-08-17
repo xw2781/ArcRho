@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Build Manager's Build Selected now runs component builds with Python 3.10 instead of whichever interpreter launched the window.",
+  "details": [
+    "build_manager.bat falls back to pyw -3, which picks the newest installed Python, so on a machine with 3.14 the GUI build was refused by require_python_310 while the same component built fine through the listener.",
+    "build_runtime.build_python_executable is now the single owner of that choice, and the listener delegates to it."
+  ]
+}

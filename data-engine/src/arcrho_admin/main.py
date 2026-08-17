@@ -49,7 +49,7 @@ try:
         resolve_server_config_path,
         write_server_config,
     )
-    from src.utils import get_project_root, resolve_app_exe, resolve_app_path
+    from src.utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
 except ModuleNotFoundError:
     from server_config import (
         default_server_config,
@@ -58,7 +58,7 @@ except ModuleNotFoundError:
         resolve_server_config_path,
         write_server_config,
     )
-    from utils import get_project_root, resolve_app_exe, resolve_app_path
+    from utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
 
 def env_int(name, default):
     try:
@@ -71,6 +71,9 @@ DEFAULT_PORT = env_int("ARCRHO_ADMIN_PORT", 28766)
 DEFAULT_STALE_AFTER_SECONDS = 60
 ENGINE_STALE_AFTER_SECONDS = 6
 HEARTBEAT_INTERVAL_SECONDS = 2
+# Deploys stop Admin Control through this switch so the live folder can be
+# swapped; nothing else sets it, and the build clears it again afterwards.
+KILL_ALL_KEY = "apps.admin.kill_all"
 HEARTBEAT_WRITE_ATTEMPTS = 5
 PROJECT_ROOT = get_project_root()
 os.environ.setdefault("ARCRHO_ROOT", str(PROJECT_ROOT))
@@ -210,6 +213,15 @@ def start_admin_heartbeat(server, instance_path):
             if getattr(server, "shutdown_requested", False):
                 log_event(f"heartbeat stopped pid={os.getpid()} reason=shutdown_requested")
                 return
+            try:
+                # A deploy cannot rename this app's folder while the server holds
+                # it, so it asks for the same graceful shutdown the UI does and
+                # waits for the heartbeat to disappear.
+                if get_config_value(KILL_ALL_KEY, False):
+                    shutdown_server(server, "kill_all")
+                    return
+            except Exception:
+                log_event(f"kill switch read failed pid={os.getpid()}\n{traceback.format_exc()}")
             try:
                 if not instance_path.exists():
                     log_event(f"heartbeat missing; recreating pid={os.getpid()} instance={instance_path}")

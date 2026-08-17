@@ -41,6 +41,7 @@ from arcrho_build_components import (
     Component,
     component_by_key,
 )
+from build_runtime import build_python_executable
 from arcrho_build_request_contract import (
     BUILD_LEASE_HEARTBEAT_SECONDS,
     BUILD_LEASE_STALE_SECONDS,
@@ -530,24 +531,6 @@ class BuildListener:
 
 
 def _default_python_executable() -> str:
-    """The interpreter used for component builds.
+    """The interpreter used for component builds; owned by ``build_runtime``."""
 
-    The repository standard is Python 3.10, and the listener may itself be
-    started by a different interpreter, so resolve 3.10 through the launcher
-    first and fall back to the running interpreter.
-    """
-
-    try:
-        completed = subprocess.run(
-            ["py", "-3.10", "-c", "import sys; print(sys.executable)"],
-            capture_output=True,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
-        )
-        if completed.returncode == 0:
-            candidate = (completed.stdout or "").strip()
-            if candidate:
-                return candidate
-    except OSError:
-        pass
-    return sys.executable
+    return build_python_executable()

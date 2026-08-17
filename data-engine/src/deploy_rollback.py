@@ -50,10 +50,11 @@ from utils import (  # noqa: E402
 
 # Rolling a component back has to stop it exactly the way deploying it does, so
 # the window comes from that component's own build script rather than a second
-# copy of its kill-switch, heartbeat, and restart handling. Admin Control and
-# Launcher deploy without a stopped window and roll back without one for the
-# same reason.
+# copy of its kill-switch, heartbeat, and restart handling. The Launcher is the
+# one component that deploys without a stopped window and rolls back without one,
+# because the process pinning its folder is another app rather than itself.
 STOP_CONTEXT_BY_ROLE = {
+    "admin": "admin_stopped",
     "bridge": "bridge_stopped",
     "engine": "engines_stopped",
     "gateway": "gateway_stopped",

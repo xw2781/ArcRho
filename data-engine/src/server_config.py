@@ -28,6 +28,10 @@ SERVER_CONFIG_RELATIVE_PATH = Path("config") / "config.json"
 LEGACY_SERVER_CONFIG_RELATIVE_PATH = Path("core") / "config.json"
 
 _DEFAULT_APPS = {
+    # Admin Control is not supervised by the Orchestrator, so this switch exists
+    # only so a deploy can stop the live server long enough to swap its folder;
+    # the build clears it and relaunches afterwards.
+    "admin": {"kill_all": False},
     "engine": {"kill_all": False},
     "orchestrator": {
         "kill_all": False,

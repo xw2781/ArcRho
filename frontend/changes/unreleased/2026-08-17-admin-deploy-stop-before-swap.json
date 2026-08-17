@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Admin Control now stops itself before a deploy swaps its folder, so a running instance no longer fails the build and blocks every other component in the same run.",
+  "details": [
+    "Adds the apps.admin.kill_all switch that Bridge, Engine, Gateway and Orchestrator already have; Admin Control polls it in its heartbeat thread and shuts down through its normal path.",
+    "Nothing supervises Admin Control, so its build clears the switch and relaunches the server headless; an open Admin Control page needs a refresh after a deploy.",
+    "Rollback stops Admin Control through the same window it deploys with.",
+    "The Launcher keeps its in-place fallback instead: the process pinning its folder is another app, so there is nothing it could stop."
+  ]
+}
