@@ -22,6 +22,8 @@ for import_root in (MIGRATION_ROOT, PYTHON_API_SRC, FRONTEND_ROOT):
     if import_path not in sys.path:
         sys.path.insert(0, import_path)
 
+from fastapi import HTTPException
+
 from app_server import config
 from app_server.services import dataset_instance_index_service
 from arcrho_api import ArcRhoClient
@@ -679,12 +681,64 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 list(dataset_names),
             )
 
+    # The fixture's "Paid Loss" sidecar records "Selected Ultimate" as its
+    # dependent, so deleting the triangle alone is refused. Tests about how a
+    # delete resolves and reports its targets take the pair, which is what a
+    # user with the same graph would have to select.
+    PAID_LOSS_WITH_DEPENDENT = ("Paid Loss", "Selected Ultimate")
+
+    def test_delete_refuses_a_dataset_another_object_still_uses(self) -> None:
+        """An input may only be deleted once nothing reads it.
+
+        The refusal names the dependents so the page can offer them as links;
+        it must also leave every file in place, because a half-applied delete
+        would strand the dependent on a source that no longer exists.
+        """
+
+        self._migration_rebuild()
+
+        with self.assertRaises(HTTPException) as raised:
+            self._delete("Paid Loss")
+
+        self.assertEqual(raised.exception.status_code, 409)
+        detail = raised.exception.detail
+        self.assertEqual(
+            detail["error"],
+            dataset_instance_index_service.DELETE_BLOCKED_BY_DEPENDENTS,
+        )
+        self.assertEqual(
+            detail["blocked_datasets"],
+            [
+                {
+                    "dataset_name": "Paid Loss",
+                    "dependents": [
+                        {"dataset_name": "Selected Ultimate", "method_type": "None"},
+                    ],
+                }
+            ],
+        )
+        self.assertTrue((self.datasets_dir / "Paid Loss@12@24@cum@dev.csv").exists())
+        self.assertTrue((self.sidecars_dir / "Paid Loss.json").exists())
+
+    def test_delete_allows_a_dependent_removed_in_the_same_request(self) -> None:
+        """Selecting the chain leaves nothing dangling, so nothing is refused."""
+
+        self._migration_rebuild()
+
+        result = self._delete(*self.PAID_LOSS_WITH_DEPENDENT)
+
+        self.assertTrue(result["ok"])
+        self.assertFalse((self.datasets_dir / "Paid Loss@12@24@cum@dev.csv").exists())
+        self.assertFalse((self.methods_dir / "RS@Selected Ultimate.json").exists())
+
     def test_delete_resolves_targets_without_reading_sidecar_payloads(self) -> None:
         """A cached CSV and a sidecar are named after their dataset.
 
         Opening one payload per file to learn what the directory listing already
         says costs a network round trip per file on a mapped share, which is the
-        whole reason a delete used to take tens of seconds.
+        whole reason a delete used to take tens of seconds. The dependency guard
+        reads sidecars, but only one per *requested* dataset -- a set the user
+        chose and can see -- never one per file in the folder.
         """
 
         self._migration_rebuild()
@@ -700,22 +754,33 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             "_safe_read_json",
             side_effect=counting_read,
         ):
-            result = self._delete("Paid Loss")
+            result = self._delete(*self.PAID_LOSS_WITH_DEPENDENT)
 
-        self.assertEqual(result["deleted_count"], 2)
+        self.assertEqual(result["deleted_count"], 3)
         self.assertFalse((self.datasets_dir / "Paid Loss@12@24@cum@dev.csv").exists())
         self.assertFalse((self.sidecars_dir / "Paid Loss.json").exists())
-        sidecar_reads = [
+        sidecar_reads = {
             path for path in read_paths
             if path.startswith(os.path.normcase(os.path.abspath(self.sidecars_dir)))
+        }
+        # Exactly the two requested datasets, and nothing else in the folder:
+        # target resolution still opens no sidecar payload at all, and the
+        # guard's reads are bounded by the selection rather than by the class.
+        self.assertEqual(
+            sidecar_reads,
+            {
+                os.path.normcase(os.path.abspath(self.sidecars_dir / f"{name}.json"))
+                for name in self.PAID_LOSS_WITH_DEPENDENT
+            },
+        )
+        method_reads = [
+            path for path in read_paths
+            if path.startswith(os.path.normcase(os.path.abspath(self.methods_dir)))
         ]
-        self.assertEqual(sidecar_reads, [])
-        self.assertTrue(read_paths, "method payloads still have to be opened")
-        self.assertTrue(
-            all(
-                path.startswith(os.path.normcase(os.path.abspath(self.methods_dir)))
-                for path in read_paths
-            ),
+        self.assertTrue(method_reads, "method payloads still have to be opened")
+        self.assertEqual(
+            len(read_paths),
+            len(method_reads) + len(sidecar_reads),
             read_paths,
         )
 
@@ -723,7 +788,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         """The table applies this payload instead of paying for a second read."""
 
         self._migration_rebuild()
-        result = self._delete("Paid Loss")
+        result = self._delete(*self.PAID_LOSS_WITH_DEPENDENT)
 
         index = result["index"]
         self.assertTrue(index["ok"])

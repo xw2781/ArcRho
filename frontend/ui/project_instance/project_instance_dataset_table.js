@@ -2791,8 +2791,23 @@ async function deleteSelectedDatasetRows(records) {
       }),
     });
     const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      // Nothing was deleted when dependents block the request, so the table is
+      // still correct; the user gets the dependents window instead of an error
+      // line and works from there.
+      const blocked = api.readDeleteBlockedDetail?.(payload);
+      if (blocked) {
+        finishPageLoading("delete-datasets");
+        setStatus("Delete blocked: the selection is still used as input.", true);
+        await api.showDeleteBlockedByDependents(blocked);
+        return;
+      }
+    }
     if (!resp.ok || payload?.ok === false) {
-      throw new Error(payload?.detail || payload?.message || `Delete failed (${resp.status})`);
+      const detail = payload?.detail;
+      throw new Error(
+        (typeof detail === "string" ? detail : "") || payload?.message || `Delete failed (${resp.status})`
+      );
     }
     datasetTableSelection.selectedKeys.clear();
     datasetTableSelection.anchorKey = "";

@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Deleting a dataset or method is now refused while another object still uses it as an input, and the refusal lists those objects as links.",
+  "details": [
+    "Nothing is removed when the check refuses, so the dataset table is unchanged and the selection stays as it was.",
+    "Each blocking dependent opens in its own method or dataset window from the message, so the input can be cleared there before deleting again.",
+    "Selecting a method together with the input it consumes still deletes both, because nothing is left pointing at a missing object.",
+    "The delete now runs on the ArcRho Server through the Gateway when it is available, so removing files and rebuilding the dataset index no longer costs a network round trip per file."
+  ]
+}

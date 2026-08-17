@@ -44,12 +44,18 @@ class WorkspaceReadHttpError(Exception):
 
 
 class WorkspaceReadRefusal(Exception):
-    """The hosted service itself refused; carries its own status and detail."""
+    """The hosted service itself refused; carries its own status and detail.
 
-    def __init__(self, status_code: int, detail: str) -> None:
+    ``detail`` is normally the refusal text. A hosted operation whose refusal
+    the client acts on rather than merely displays may raise a mapping instead,
+    exactly as its local route would have; that shape is preserved so both
+    transports put the same object under the response's ``detail`` key.
+    """
+
+    def __init__(self, status_code: int, detail: Any) -> None:
         super().__init__(detail)
         self.status_code = int(status_code)
-        self.detail = str(detail)
+        self.detail = detail if isinstance(detail, Mapping) else str(detail)
 
 
 class WorkspaceReadExecutor:

@@ -19,6 +19,9 @@ function ensureStyles(doc) {
  * `showOk: false` drops the OK button so the only way out is one of the
  * `actions`; `dismissible: false` additionally removes the close button and
  * ignores Esc and overlay clicks, for advisories the user must act on.
+ *
+ * `closeOnLinkClick: true` dismisses the box after `onLinkClick`, for links
+ * that open a window inside this same document rather than posting to a parent.
  */
 export function showPageMessageBox({
   title = "Message",
@@ -26,6 +29,7 @@ export function showPageMessageBox({
   tone = "",
   links = [],
   onLinkClick = null,
+  closeOnLinkClick = false,
   actions = [],
   okLabel = "OK",
   showOk = true,
@@ -69,6 +73,7 @@ export function showPageMessageBox({
   titleEl.dataset.tone = String(tone || "");
   messageEl.textContent = String(message || "");
   const linkItems = Array.isArray(links) ? links : [];
+  const linkButtons = [];
   linksEl.hidden = linkItems.length === 0;
   for (const item of linkItems) {
     const label = String(item?.label ?? item ?? "").trim();
@@ -79,7 +84,7 @@ export function showPageMessageBox({
     button.className = "pageMessageBoxLink";
     button.textContent = label;
     button.setAttribute("aria-label", String(item?.ariaLabel || `Open dataset ${label}`));
-    button.addEventListener("click", () => onLinkClick?.(item));
+    linkButtons.push({ button, item });
     row.appendChild(button);
     linksEl.appendChild(row);
   }
@@ -144,6 +149,15 @@ export function showPageMessageBox({
           first.focus();
         }
       }
+    }
+    for (const { button, item } of linkButtons) {
+      button.addEventListener("click", () => {
+        onLinkClick?.(item);
+        // A box whose links open a window in the *same* document must close on
+        // the click: its overlay marks every sibling inert, so staying up would
+        // put a modal in front of the window the user just asked for.
+        if (closeOnLinkClick) finish();
+      });
     }
     okButton.addEventListener("click", finish);
     closeButton.addEventListener("click", finish);

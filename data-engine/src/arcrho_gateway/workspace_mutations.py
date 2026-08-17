@@ -1,0 +1,159 @@
+"""Server-hosted execution of allowlisted ``app_server`` workspace mutations.
+
+The Gateway freezes the same canonical ``python-api/src`` and
+``frontend/app_server`` trees the Engine does, so a registered mutation runs the
+exact service function a Client PC would have run over the mapped drive — here
+against local disk, where a delete plus an index rebuild costs a handful of
+milliseconds rather than one network round trip per file. The gateway performs
+no mutation-specific work of its own: the request names a kind, the contract
+maps the kind to the service, and the service's response goes back verbatim.
+"""
+
+from __future__ import annotations
+
+import importlib
+import traceback
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+from arcrho_engine.project_duplication import _redact_machine_paths
+from arcrho_hosted_save_http_contract import (
+    AUTH_SIGNATURE_HEADER,
+    AUTH_TIMESTAMP_HEADER,
+    AUTH_USER_HEADER,
+    normalize_user,
+    verify_request_signature,
+)
+from arcrho_workspace_mutation_contract import (
+    HTTP_WORKSPACE_MUTATION_KINDS,
+    WORKSPACE_MUTATION_CAPABILITY_FIELD,
+    WORKSPACE_MUTATION_KINDS,
+    WORKSPACE_MUTATION_PATH,
+    WorkspaceMutationContractError,
+    validate_workspace_mutation_request,
+)
+from arcrho_gateway.workspace_reads import (
+    WorkspaceReadHttpError,
+    WorkspaceReadRefusal,
+)
+
+
+class WorkspaceMutationExecutor:
+    """Runs registered mutations in-process against the gateway's server root."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        load_gateway_config: Callable[[Path], Mapping[str, Any]],
+        log: Callable[[Path, str], None],
+        ensure_runtime: Callable[[], None],
+    ) -> None:
+        self.root = root.resolve()
+        self._load_gateway_config = load_gateway_config
+        self._log = log
+        # The workspace-read executor owns the one-time app_server import.
+        self._ensure_runtime = ensure_runtime
+
+    def capability_fields(self) -> dict[str, Any]:
+        return {WORKSPACE_MUTATION_CAPABILITY_FIELD: list(HTTP_WORKSPACE_MUTATION_KINDS)}
+
+    def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
+        config = self._load_gateway_config(self.root)
+        user = normalize_user(headers.get(AUTH_USER_HEADER))
+        secret = config["users"].get(user)
+        if not secret or not verify_request_signature(
+            secret,
+            headers.get(AUTH_SIGNATURE_HEADER, ""),
+            user=user,
+            timestamp=headers.get(AUTH_TIMESTAMP_HEADER, ""),
+            method="POST",
+            path=WORKSPACE_MUTATION_PATH,
+            body=body,
+        ):
+            raise WorkspaceReadHttpError(401, "Gateway authentication failed.")
+        return user
+
+    def execute(self, authenticated_user: str, raw_payload: Any) -> dict[str, Any]:
+        try:
+            request = validate_workspace_mutation_request(raw_payload)
+        except WorkspaceMutationContractError as exc:
+            raise WorkspaceReadHttpError(400, str(exc)) from exc
+        if normalize_user(request["UserName"]) != normalize_user(authenticated_user):
+            raise WorkspaceReadHttpError(
+                403, "Authenticated user does not match the mutation user."
+            )
+
+        try:
+            self._ensure_runtime()
+        except Exception as exc:
+            self._log(self.root, f"workspace mutation runtime unavailable: {exc!r}")
+            raise WorkspaceReadHttpError(
+                503, "The ArcRho Server cannot run workspace mutations right now."
+            ) from exc
+
+        from fastapi import HTTPException
+        from fastapi.encoders import jsonable_encoder
+
+        from app_server.services import user_identity_service
+
+        spec = WORKSPACE_MUTATION_KINDS[request["MutationKind"]]
+        module = importlib.import_module(f"app_server.services.{spec.module}")
+        mutate = getattr(module, spec.function)
+        try:
+            # Whatever the mutation stamps on disk names the user who asked,
+            # not the gateway's service profile.
+            with user_identity_service.acting_identity(
+                request["UserName"], request["UserDisplayName"]
+            ):
+                response = mutate(**request["Kwargs"])
+        except HTTPException as exc:
+            self._log(
+                self.root,
+                f"mutation={request['RequestId']} user={authenticated_user} "
+                f"kind={request['MutationKind']} refusal={exc.status_code}",
+            )
+            raise WorkspaceReadRefusal(
+                int(exc.status_code), _redacted_detail(exc.detail)
+            ) from exc
+        except Exception:
+            self._log(self.root, traceback.format_exc())
+            raise
+        if not isinstance(response, dict):
+            response = {"ok": True, "response": response}
+        # The local route hands the same object to FastAPI's encoder; matching
+        # it here keeps the wire payload identical for both transports.
+        response = jsonable_encoder(response)
+        self._log(
+            self.root,
+            f"mutation={request['RequestId']} user={authenticated_user} "
+            f"kind={request['MutationKind']} ok={response.get('ok')}",
+        )
+        return response
+
+
+def _redact_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return text
+    try:
+        return _redact_machine_paths(text)
+    except Exception:
+        return text
+
+
+def _redacted_detail(detail: Any) -> Any:
+    """Redact server paths without flattening a structured refusal.
+
+    A refusal the client acts on rather than merely displays — the delete that
+    lists the dependents blocking it — carries a mapping, and the local route
+    would have delivered that mapping under ``detail`` unchanged. Only its free
+    text can contain a server path, so only its free text is rewritten.
+    """
+
+    if isinstance(detail, Mapping):
+        return {
+            key: _redact_text(value) if isinstance(value, str) else value
+            for key, value in detail.items()
+        }
+    return _redact_text(detail)

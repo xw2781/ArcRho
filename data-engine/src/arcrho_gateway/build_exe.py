@@ -45,6 +45,7 @@ from utils import (  # noqa: E402
 if str(CANONICAL_SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(CANONICAL_SOURCE_ROOT))
 from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS  # noqa: E402
+from arcrho_workspace_mutation_contract import WORKSPACE_MUTATION_KINDS  # noqa: E402
 from arcrho_gateway.engine_calculations import EXECUTOR_MODULES as CALCULATION_EXECUTOR_MODULES  # noqa: E402
 
 
@@ -151,6 +152,7 @@ def _hosted_service_modules() -> list[str]:
     """Every ``app_server.services`` module the gateway executes in-process."""
 
     modules = {spec.module for spec in WORKSPACE_READ_KINDS.values()}
+    modules.update(spec.module for spec in WORKSPACE_MUTATION_KINDS.values())
     modules.update(CALCULATION_EXECUTOR_MODULES)
     return sorted(modules)
 
@@ -158,9 +160,10 @@ def _hosted_service_modules() -> list[str]:
 def validate_canonical_runtime_environment() -> None:
     """Fail the build if the bundled app_server import graph is incomplete.
 
-    Every registered workspace read is imported the way the running gateway
-    imports it, so a service that gained a dependency the venv lacks stops the
-    build here instead of failing the first read on the server.
+    Every registered workspace read and mutation is imported the way the
+    running gateway imports it, so a service that gained a dependency the venv
+    lacks stops the build here instead of failing the first request on the
+    server.
     """
 
     import_paths = [str(CANONICAL_SOURCE_ROOT), str(REPOSITORY_ROOT / "frontend")]
@@ -168,7 +171,7 @@ def validate_canonical_runtime_environment() -> None:
         f"from app_server.services import {module}" for module in _hosted_service_modules()
     )
     probe = f"import sys; sys.path[:0] = {import_paths!r}; {imports}"
-    print("\n>>> Validating canonical workspace-read dependencies")
+    print("\n>>> Validating canonical hosted-operation dependencies")
     run([VENV_PYTHON, "-c", probe])
 
 
@@ -219,6 +222,8 @@ def build_exe() -> None:
             "--hidden-import",
             "arcrho_workspace_read_contract",
             "--hidden-import",
+            "arcrho_workspace_mutation_contract",
+            "--hidden-import",
             "arcrho_engine_calculation_contract",
             "--hidden-import",
             "arcrho_project_duplication_contract",
@@ -236,6 +241,8 @@ def build_exe() -> None:
             "arcrho_gateway.workspace_reads",
             "--hidden-import",
             "arcrho_gateway.engine_calculations",
+            "--hidden-import",
+            "arcrho_gateway.workspace_mutations",
             *service_hidden_imports,
             *[
                 argument

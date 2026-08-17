@@ -27,7 +27,7 @@ const { installProjectInstanceDatasetTable } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`
 );
 
-function createHarness(deleteResponse) {
+function createHarness(deleteResponse, { status = 200 } = {}) {
   const requests = [];
   const statuses = [];
   const applied = [];
@@ -90,7 +90,7 @@ function createHarness(deleteResponse) {
   globalThis.window = { ADAHost: {}, location: { origin: "http://127.0.0.1:28765" } };
   globalThis.fetch = async (url, options) => {
     requests.push({ url: String(url), method: options?.method || "GET" });
-    return { ok: true, status: 200, async json() { return deleteResponse; } };
+    return { ok: status < 400, status, async json() { return deleteResponse; } };
   };
 
   return {
@@ -212,6 +212,66 @@ test("a delete without a usable index falls back to reloading the table", async 
     ]);
     assert.equal(harness.applied.length, 0);
     assert.equal(harness.statuses.at(-1).message, "Deleted 1 cached file.");
+  } finally {
+    harness.restoreGlobals();
+  }
+});
+
+test("a delete blocked by dependents shows the dependents window and reloads nothing", async () => {
+  const blockedDetail = {
+    error: "dataset_has_dependents",
+    message: "'Paid Loss' is used as input by other objects in this reserving class.",
+    blocked_datasets: [
+      {
+        dataset_name: "Paid Loss",
+        dependents: [{ dataset_name: "Paid DFM", method_type: "DFM" }],
+      },
+    ],
+  };
+  const harness = createHarness({ detail: blockedDetail }, { status: 409 });
+  const shown = [];
+  // The guard module owns both hooks; the table only has to route to them.
+  harness.api.readDeleteBlockedDetail = (payload) =>
+    payload?.detail?.error === "dataset_has_dependents" ? payload.detail : null;
+  harness.api.showDeleteBlockedByDependents = async (detail) => {
+    shown.push(detail);
+  };
+
+  try {
+    await harness.runDelete();
+
+    assert.deepEqual(shown, [blockedDetail], "the refusal opens the dependents window");
+    assert.deepEqual(
+      harness.requests,
+      [{ url: "/datasets/cached/delete", method: "POST" }],
+      "nothing was deleted, so the table must not be re-read",
+    );
+    assert.equal(harness.applied.length, 0);
+    assert.deepEqual(harness.loadingEvents.at(-1), { finished: "delete-datasets" });
+    assert.deepEqual(harness.statuses.at(-1), {
+      message: "Delete blocked: the selection is still used as input.",
+      isError: true,
+    });
+  } finally {
+    harness.restoreGlobals();
+  }
+});
+
+test("a non-blocked HTTP failure keeps its plain error message", async () => {
+  const harness = createHarness({ detail: "Cached dataset folder is locked." }, { status: 423 });
+  harness.api.readDeleteBlockedDetail = () => null;
+  harness.api.showDeleteBlockedByDependents = async () => {
+    throw new Error("a plain failure must not open the dependents window");
+  };
+
+  try {
+    await harness.runDelete();
+
+    assert.deepEqual(harness.statuses.at(-1), {
+      message: "Cached dataset folder is locked.",
+      isError: true,
+    });
+    assert.deepEqual(harness.loadingEvents.at(-1), { finished: "delete-datasets" });
   } finally {
     harness.restoreGlobals();
   }

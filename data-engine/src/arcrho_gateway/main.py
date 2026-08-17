@@ -82,7 +82,12 @@ from arcrho_engine_calculation_contract import (  # noqa: E402
     ENGINE_CALCULATION_PATH,
     MAX_ENGINE_CALCULATION_REQUEST_BYTES,
 )
+from arcrho_workspace_mutation_contract import (  # noqa: E402
+    MAX_WORKSPACE_MUTATION_REQUEST_BYTES,
+    WORKSPACE_MUTATION_PATH,
+)
 from arcrho_gateway.engine_calculations import EngineCalculationExecutor  # noqa: E402
+from arcrho_gateway.workspace_mutations import WorkspaceMutationExecutor  # noqa: E402
 from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadExecutor,
     WorkspaceReadHttpError,
@@ -317,6 +322,12 @@ class Gateway:
             log=_log,
             ensure_runtime=self.reads.ensure_runtime,
         )
+        self.mutations = WorkspaceMutationExecutor(
+            self.root,
+            load_gateway_config=_load_gateway_config,
+            log=_log,
+            ensure_runtime=self.reads.ensure_runtime,
+        )
 
     def capabilities(self) -> dict[str, Any]:
         config = _load_gateway_config(self.root)
@@ -328,6 +339,7 @@ class Gateway:
             "insecure_http_pilot": True,
             **self.reads.capability_fields(),
             **self.calculations.capability_fields(),
+            **self.mutations.capability_fields(),
         }
 
     def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
@@ -480,6 +492,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.server.gateway.calculations,
                 MAX_ENGINE_CALCULATION_REQUEST_BYTES,
                 "Engine-calculation",
+            )
+            return
+        if path == WORKSPACE_MUTATION_PATH:
+            self._handle_hosted_execution(
+                self.server.gateway.mutations,
+                MAX_WORKSPACE_MUTATION_REQUEST_BYTES,
+                "Workspace-mutation",
             )
             return
         if path != HOSTED_SAVE_PATH:

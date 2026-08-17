@@ -6,7 +6,7 @@ import os
 import re
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from arcrho_api.dataset_index_contract import (
     BF_JSON_FORMAT,
@@ -25,11 +25,16 @@ from arcrho_api.dataset_index_contract import (
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name
+from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     runtime_cache_provenance_service,
 )
+
+# Machine-readable reason on the 409 a delete raises when the target is still
+# some other object's input. The Project Instance delete flow switches on this
+# code to show the dependents window instead of a plain error line.
+DELETE_BLOCKED_BY_DEPENDENTS = "dataset_has_dependents"
 
 INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
@@ -783,6 +788,113 @@ def _index_row_names(index: Dict[str, Any]) -> Set[str]:
     }
 
 
+def _read_sidecars_by_name(sidecar_dir: str, dataset_names: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    """Read the named datasets' sidecars concurrently, keyed by canonical name.
+
+    Reads resolve against the folder the caller is already working in rather
+    than re-deriving it from the project name, so a caller that redirected its
+    folders reaches the same files for both passes. The reads share the module's
+    latency-bound pool instead of a per-name awaited loop, because each one is a
+    network round trip on a mapped share.
+    """
+
+    names: Dict[str, str] = {}
+    for raw in dataset_names or []:
+        name = _clean_text(raw)
+        key = _canon_dataset_name(name)
+        if key and key not in names:
+            names[key] = name
+    if not names:
+        return {}
+    futures = {
+        key: _INDEX_SCAN_EXECUTOR.submit(
+            _safe_read_json,
+            os.path.join(sidecar_dir, f"{sanitize_dataset_file_name(name)}.json"),
+        )
+        for key, name in names.items()
+    }
+    return {key: payload for key, future in futures.items() if (payload := future.result())}
+
+
+def _surviving_dependents(
+    folder_paths: Dict[str, str],
+    dataset_names: List[str],
+) -> List[Dict[str, Any]]:
+    """Name the objects that would still read each requested dataset after the delete.
+
+    An upstream object may only be deleted once nothing consumes it, so this
+    reads the requested datasets' own sidecars and reports their direct
+    ``Dependents`` edges. Only direct dependents matter: a deeper descendant
+    reaches this dataset through one of them, so clearing the direct edge is
+    always the user's next step and listing the whole closure would name
+    objects the user cannot act on yet.
+
+    A dependent that is itself being deleted in the same request is not
+    reported. Deleting a method together with the input it consumes leaves no
+    dangling reference behind, and refusing that would make "select the chain,
+    press Delete" fail for no reason the user can act on.
+    """
+
+    sidecar_dir = _clean_text(folder_paths.get("sidecars"))
+    canon_requested = {
+        _canon_dataset_name(name)
+        for name in dataset_names or []
+        if _canon_dataset_name(name)
+    }
+    payloads = _read_sidecars_by_name(sidecar_dir, dataset_names)
+    # The dependents' own sidecars are read only to label each one with its
+    # method type, and only for edges that actually block; a request that is
+    # going through reads nothing beyond the first pass.
+    dependent_payloads = _read_sidecars_by_name(
+        sidecar_dir,
+        [
+            name
+            for payload in payloads.values()
+            for name in dataset_sidecar_status_service.entry_names(payload.get("Dependents"))
+            if _canon_dataset_name(name) not in canon_requested
+        ],
+    )
+
+    blocked: List[Dict[str, Any]] = []
+    for name in dataset_names or []:
+        dataset_name = _clean_text(name)
+        key = _canon_dataset_name(dataset_name)
+        payload = payloads.get(key) if key else None
+        if not payload:
+            continue
+        dependents: List[Dict[str, str]] = []
+        for dependent_name in dataset_sidecar_status_service.entry_names(payload.get("Dependents")):
+            dependent_key = _canon_dataset_name(dependent_name)
+            if not dependent_key or dependent_key in canon_requested:
+                continue
+            dependent_payload = dependent_payloads.get(dependent_key, {})
+            dependents.append({
+                "dataset_name": dependent_name,
+                "method_type": dataset_sidecar_status_service.normalize_method_type(
+                    dependent_payload.get("method_type"),
+                    dependent_payload.get("source_kind"),
+                ),
+            })
+        if dependents:
+            blocked.append({"dataset_name": dataset_name, "dependents": dependents})
+    return blocked
+
+
+def _dependents_refusal_detail(blocked: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if len(blocked) == 1:
+        subject = f"'{blocked[0]['dataset_name']}' is"
+    else:
+        subject = f"{len(blocked)} of the selected datasets are"
+    return {
+        "error": DELETE_BLOCKED_BY_DEPENDENTS,
+        "message": (
+            f"{subject} used as input by other objects in this reserving class. "
+            "Open each dependent listed below and clear this input there, then delete again."
+        ),
+        "blocked_datasets": blocked,
+    }
+
+
 def delete_cached_datasets(project_name: str, reserving_class: str, dataset_names: List[str]) -> Dict[str, Any]:
     project = _clean_text(project_name)
     rc = _clean_text(reserving_class)
@@ -791,6 +903,14 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
 
     requested = _requested_dataset_keys(dataset_names)
     folder_paths = _folder_paths(project, rc)
+
+    # Nothing is removed while another object still names this one as an input.
+    # The check covers the whole request before the first unlink, so a refused
+    # delete leaves the selection exactly as the user found it rather than
+    # half-applied.
+    blocked = _surviving_dependents(folder_paths, list(dataset_names or []))
+    if blocked:
+        raise HTTPException(409, _dependents_refusal_detail(blocked))
 
     def resolve(*, read_sidecar_payloads: bool) -> Tuple[List[Dict[str, str]], Set[str]]:
         try:

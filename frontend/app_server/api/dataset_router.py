@@ -18,6 +18,7 @@ from app_server.schemas.dataset import (
 from app_server.services import dataset_service, engine_hosted_save_service
 from app_server.services import calculated_dataset_service
 from app_server.services import dataset_number_format_service
+from app_server.services import workspace_mutation_client
 from app_server.services import workspace_read_client
 
 router = APIRouter()
@@ -59,10 +60,21 @@ def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: 
 
 @router.post("/datasets/cached/delete")
 def delete_cached_datasets(req: CachedDatasetDeleteRequest) -> Dict[str, Any]:
-    return dataset_service.delete_cached_datasets(
-        req.project_name,
-        req.reserving_class,
-        req.dataset_names,
+    # Hosted on the Server when the Gateway offers it: the dependency check
+    # reads one sidecar per selected dataset, each unlink is its own round trip,
+    # and the index rebuild reads the folder again -- all local disk there.
+    return workspace_mutation_client.run_workspace_mutation(
+        "cached_dataset_delete",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "dataset_names": list(req.dataset_names or []),
+        },
+        local=lambda: dataset_service.delete_cached_datasets(
+            req.project_name,
+            req.reserving_class,
+            req.dataset_names,
+        ),
     )
 
 

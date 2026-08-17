@@ -65,15 +65,26 @@ _CAPABILITY_CACHE: Dict[str, tuple[float, Dict[str, Any] | None]] = {}
 _DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
 
 
-def _error_detail(error: HTTPError) -> str:
+def _error_detail(error: HTTPError) -> Any:
+    """Return the refusal's ``detail`` in the shape the local route would raise.
+
+    Usually that is text. A hosted operation whose refusal the caller acts on
+    rather than merely displays answers with an object instead — the cached
+    dataset delete returns the dependents that blocked it — and flattening that
+    to ``str`` would leave the browser a Python repr to parse.
+    """
+
     try:
         payload = json.loads(error.read().decode("utf-8"))
     except Exception:
         payload = {}
     if isinstance(payload, dict):
-        detail = str(payload.get("detail") or payload.get("message") or "").strip()
-        if detail:
+        detail = payload.get("detail")
+        if isinstance(detail, (dict, list)):
             return detail
+        text = str(detail or payload.get("message") or "").strip()
+        if text:
+            return text
     return f"ArcRho Server returned HTTP {error.code}."
 
 
