@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
+  <title>SQL Server</title>
+  <link rel="stylesheet" href="/ui/arcode/shared/chrome.css?v=20260816b"/>
+  <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
+  <link rel="stylesheet" href="/ui/arcode/shared/sql_console.css?v=20260817a"/>
+  <link rel="stylesheet" href="/ui/arcode/sql-server-console/sql-server-console.css?v=20260817a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
+</head>
+<body>
+  <main class="sqlcApp">
+    <header class="sqlcToolbar">
+      <select id="connectionSelect" class="sqlcSelect" aria-label="SQL Server connection"></select>
+      <button id="manageConnectionsBtn" class="sqlcBtn" type="button">Connections</button>
+      <button id="testConnectionBtn" class="sqlcBtn" type="button">Test</button>
+      <button id="saveBtn" class="sqlcBtn" type="button">Save</button>
+      <button id="formatBtn" class="sqlcBtn" type="button" aria-busy="false">Format</button>
+      <button id="runBtn" class="sqlcBtn primary" type="button">Run</button>
+    </header>
+
+    <section class="sqlcMetaBar" aria-label="Connection details">
+      <span class="sqlcChip" data-profile-field="server" data-label="Server">Server</span>
+      <span class="sqlcChip" data-profile-field="database" data-label="Database">Database</span>
+      <span class="sqlcChip" data-profile-field="authentication" data-label="Authentication">Authentication</span>
+    </section>
+
+    <section id="editorHost" class="sqlcEditorHost" aria-label="SQL editor"></section>
+
+    <section class="sqlcResults" aria-label="Query results">
+      <div class="sqlcResultsHeader">
+        <span id="resultsTitle">Results</span>
+        <span id="queryInfo" class="sqlcQueryInfo"></span>
+      </div>
+      <div id="messageBox" class="sqlcMessage">Run a query to see results.</div>
+      <div id="tableWrap" class="sqlcTableWrap"></div>
+    </section>
+  </main>
+
+  <div id="connectionsBackdrop" class="sqlsBackdrop" hidden>
+    <section class="sqlsDialog" role="dialog" aria-modal="true" aria-labelledby="connectionsDialogTitle">
+      <header class="sqlsDialogHeader">
+        <span id="connectionsDialogTitle" class="sqlsDialogTitle">SQL Server Connections</span>
+        <button id="closeConnectionsBtn" class="sqlsIconBtn" type="button" aria-label="Close connections">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M4 4 L12 12 M12 4 L4 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="sqlsDialogBody">
+        <aside class="sqlsSidebar" aria-label="Saved connections">
+          <div id="connectionList" class="sqlsList" role="listbox" aria-label="Saved connections"></div>
+          <button id="newConnectionBtn" class="sqlcBtn" type="button">New Connection</button>
+        </aside>
+
+        <form id="connectionForm" class="sqlsForm" autocomplete="off">
+          <label class="sqlsField">
+            <span class="sqlsFieldLabel">Connection Name</span>
+            <input id="fieldName" class="sqlsInput" type="text" spellcheck="false"/>
+          </label>
+          <label class="sqlsField">
+            <span class="sqlsFieldLabel">Server</span>
+            <input id="fieldServer" class="sqlsInput" type="text" spellcheck="false" placeholder="host\instance"/>
+          </label>
+          <label class="sqlsField">
+            <span class="sqlsFieldLabel">Database</span>
+            <input id="fieldDatabase" class="sqlsInput" type="text" spellcheck="false"/>
+          </label>
+          <label class="sqlsField">
+            <span class="sqlsFieldLabel">Authentication</span>
+            <select id="fieldAuthentication" class="sqlsInput">
+              <option value="windows">Windows Authentication</option>
+            </select>
+          </label>
+          <label class="sqlsCheckField">
+            <input id="fieldDefault" type="checkbox"/>
+            <span>Open New Tabs With This Connection</span>
+          </label>
+          <p class="sqlsHint">Queries run as your Windows account. No password is stored.</p>
+          <p id="dialogMessage" class="sqlsDialogMessage" role="status"></p>
+        </form>
+      </div>
+
+      <footer class="sqlsDialogFooter">
+        <button id="deleteConnectionBtn" class="sqlcBtn danger" type="button">Delete</button>
+        <span class="sqlsFooterSpacer"></span>
+        <button id="cancelConnectionsBtn" class="sqlcBtn" type="button">Close</button>
+        <button id="saveConnectionBtn" class="sqlcBtn primary" type="button">Save</button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
+  <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
+  <script type="module" src="/ui/arcode/sql-server-console/index.js?v=20260817a"></script>
+</body>
+</html>

@@ -45,6 +45,7 @@ from arcrho_api.source_table_contract import (
 
 from arcrho_api.io import persisted_json_text
 from app_server import config
+from app_server.services import mssql_odbc
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.services.user_identity_service import get_windows_login_name
 
@@ -52,22 +53,6 @@ from app_server.services.user_identity_service import get_windows_login_name
 # Rows streamed from SQL Server per fetch batch. Large enough to keep the
 # round-trip count low on a shared server, small enough to bound memory.
 _MSSQL_FETCH_BATCH = 20000
-
-# ODBC drivers are tried newest first; the first installed one wins.
-_ODBC_DRIVER_CANDIDATES = (
-    "ODBC Driver 18 for SQL Server",
-    "ODBC Driver 17 for SQL Server",
-    "SQL Server Native Client 11.0",
-    "SQL Server",
-)
-
-_DRIVER_IMPORT_ERROR = ""
-
-try:  # pragma: no cover - depends on the packaged runtime.
-    import pyodbc  # type: ignore
-except Exception as exc:  # pragma: no cover - driver is an optional runtime dep.
-    pyodbc = None  # type: ignore
-    _DRIVER_IMPORT_ERROR = str(exc)
 
 
 # One writer per project so a copy and an import can never interleave on the
@@ -237,42 +222,19 @@ def _require_complete_mssql_profile(profile: Dict[str, Any]) -> Dict[str, str]:
 
 
 def _require_driver() -> Any:
-    if pyodbc is None:
-        detail = f" ({_DRIVER_IMPORT_ERROR})" if _DRIVER_IMPORT_ERROR else ""
-        raise HTTPException(
-            503,
-            "SQL Server support is not installed in the ArcRho Python runtime"
-            f"{detail}. Install the Microsoft ODBC Driver for SQL Server and pyodbc.",
-        )
-    return pyodbc
-
-
-def _installed_odbc_driver() -> str:
-    driver = _require_driver()
+    """The canonical ODBC entry point, reported as a service-unavailable error."""
     try:
-        installed = {str(name).strip() for name in driver.drivers()}
-    except Exception:
-        installed = set()
-    for candidate in _ODBC_DRIVER_CANDIDATES:
-        if candidate in installed:
-            return candidate
-    raise HTTPException(
-        503,
-        "No Microsoft ODBC Driver for SQL Server is installed on this PC. "
-        "Install ODBC Driver 17 or 18 for SQL Server.",
-    )
+        return mssql_odbc.get_pyodbc()
+    except mssql_odbc.MssqlDriverUnavailableError as error:
+        raise HTTPException(503, str(error)) from error
 
 
 def _connection_string(profile: Dict[str, str]) -> str:
     """Windows-authenticated connection string. No credentials are ever stored."""
-    parts = [
-        f"DRIVER={{{_installed_odbc_driver()}}}",
-        f"SERVER={profile['server']}",
-        f"DATABASE={profile['database']}",
-        "Trusted_Connection=yes",
-        "Encrypt=no",
-    ]
-    return ";".join(parts) + ";"
+    try:
+        return mssql_odbc.windows_connection_string(profile["server"], profile["database"])
+    except mssql_odbc.MssqlDriverUnavailableError as error:
+        raise HTTPException(503, str(error)) from error
 
 
 def _quote_object_name(table: str) -> str:
@@ -733,7 +695,7 @@ def get_source_table_state(project_name: str) -> Dict[str, Any]:
     master_path = resolve_master_table_path(name)
     state = _master_status(name, master_path, record, refreshed=False)
     state["csv_path"] = _configured_csv_path(name)
-    state["driver_available"] = pyodbc is not None
+    state["driver_available"] = mssql_odbc.driver_available()
     state["supported_authentication"] = list(SUPPORTED_MSSQL_AUTH_MODES)
     return state
 

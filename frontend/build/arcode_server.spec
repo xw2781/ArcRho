@@ -74,6 +74,9 @@ a = Analysis(
         "numpy",
         "openpyxl",
         "matplotlib",
+        # Optional at runtime: without it the SQL Server console reports the
+        # missing driver instead of failing to start.
+        "pyodbc",
         "app_server",
         "app_server.arcode_main",
         "app_server.api.arcode_scripting_router",

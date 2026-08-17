@@ -509,6 +509,7 @@ function inferTabType(pathLike, fallback = "notebook") {
   const filePath = String(pathLike || "").trim();
   if (!filePath) return fallback;
   if (isSnowflakeSqlPath(filePath)) return "snowflake";
+  if (isSqlServerSqlPath(filePath)) return "sqlserver";
   if (isNotebookPath(filePath)) return "notebook";
   if (isCodeEditorPath(filePath)) return "editor";
   return fallback;
@@ -891,7 +892,7 @@ async function createHomeFile(kind) {
   }
   const createdPath = String(result?.path || filePath).trim();
   refreshWorkspaceFolder(folderPath);
-  openCodeTab({ path: createdPath, type: item.kind === "snowflake" ? "snowflake" : inferTabType(createdPath) });
+  openCodeTab({ path: createdPath, type: inferTabType(createdPath) });
   updateStatus(`Created ${createdPath}.`);
 }
 
@@ -985,6 +986,7 @@ function renderExplorerWorkspacePanel() {
   return `
     <aside class="arcodeHomeSidebar" aria-label="Explorer">
       <div class="arcodeExplorerWorkspace">
+        <span class="arcodeExplorerWorkspaceLabel">Workspace</span>
         <button id="arcodeExplorerAddFolderBtn" class="arcodeExplorerHeaderBtn" type="button" title="Add workspace folder" aria-label="Add workspace folder">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 18.5v-13h5l2 2.5h9v10.5H4z"></path>
@@ -1550,12 +1552,29 @@ function isSnowflakeSqlPath(pathLike) {
   return getPathExtension(pathLike) === ".sql" && (name.includes("snowflake") || name.endsWith(".sf.sql"));
 }
 
-function buildSnowflakeUrl(tab) {
+// A `.sql` file names its engine the same way a Snowflake file does, because
+// the extension alone cannot say which server the query belongs to. Other
+// `.sql` files stay in the plain code editor.
+function isSqlServerSqlPath(pathLike) {
+  const name = filenameFromPath(pathLike).toLowerCase();
+  if (getPathExtension(pathLike) !== ".sql" || isSnowflakeSqlPath(pathLike)) return false;
+  return name.includes("sql_server")
+    || name.includes("sqlserver")
+    || name.includes("mssql")
+    || name.endsWith(".ms.sql");
+}
+
+function isSqlConsoleTabType(tabType) {
+  return tabType === "snowflake" || tabType === "sqlserver";
+}
+
+function buildSqlConsoleUrl(tab) {
   const params = new URLSearchParams();
   params.set("inst", tab.scInst);
   if (tab.path) params.set("path", tab.path);
   params.set("v", UI_VERSION_PARAM);
-  return `/ui/arcode/snowflake-console/?${params.toString()}`;
+  const consoleFolder = tab.type === "sqlserver" ? "sql-server-console" : "snowflake-console";
+  return `/ui/arcode/${consoleFolder}/?${params.toString()}`;
 }
 
 function buildCodeEditorUrl(tab) {
@@ -1567,7 +1586,7 @@ function buildCodeEditorUrl(tab) {
 }
 
 function buildFrameUrl(tab) {
-  if (tab.type === "snowflake") return buildSnowflakeUrl(tab);
+  if (isSqlConsoleTabType(tab.type)) return buildSqlConsoleUrl(tab);
   if (tab.type === "editor") return buildCodeEditorUrl(tab);
   return buildNotebookEditorUrl(tab);
 }
@@ -1578,8 +1597,8 @@ function createFrameForTab(tab) {
   iframe.dataset.tabId = tab.id;
   iframe.src = buildFrameUrl(tab);
   iframe.addEventListener("load", () => {
-    if (tab.path && tab.type === "snowflake") {
-      postToTab(tab, { type: "arcode:snowflake-open-path", path: tab.path });
+    if (tab.path && isSqlConsoleTabType(tab.type)) {
+      postToTab(tab, { type: "arcode:sql-console-open-path", path: tab.path });
     } else if (tab.path && tab.type === "notebook") {
       postToTab(tab, { type: "arcode:scripting-open-path", path: tab.path });
     }

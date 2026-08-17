@@ -19,6 +19,7 @@ Runs Arcode Snowflake SQL queries through the app server so connection profiles 
 <!-- AUTO-GEN:BEGIN app_server.snowflake.key_files -->
 - [`app_server/api/snowflake_router.py`](../../../app_server/api/snowflake_router.py) - Snowflake connection, test, and query routes.
 - [`app_server/services/snowflake_service.py`](../../../app_server/services/snowflake_service.py) - Connection profile loading and Snowflake query execution.
+- [`app_server/services/sql_console_results.py`](../../../app_server/services/sql_console_results.py) - Row limit and driver-cell conversion shared by the SQL consoles.
 - [`app_server/schemas/scripting.py`](../../../app_server/schemas/scripting.py) - Snowflake request models shared with scripting schemas.
 - [`ui/arcode/snowflake-console/index.js`](../../../ui/arcode/snowflake-console/index.js) - Arcode Snowflake SQL editor client.
 <!-- AUTO-GEN:END -->
@@ -42,5 +43,5 @@ Runs Arcode Snowflake SQL queries through the app server so connection profiles 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Query execution requires `snowflake-connector-python` in the app-server Python runtime. Missing connector packages return an explicit error instead of failing silently.
-- Large result sets are capped by the service and flagged as truncated.
+- Large result sets are capped by the service and flagged as truncated. The row ceiling and the driver-cell conversion live in `sql_console_results`, shared with the SQL Server console; do not restate either here.
 <!-- MANUAL:END -->

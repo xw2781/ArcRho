@@ -48,6 +48,7 @@ from app_server.api import (
     project_user_preferences_router,
     ui_automation_router,
     snowflake_router,
+    sql_server_router,
     sql_formatting_router,
     data_processing_rules_router,
     user_identity_router,
@@ -102,6 +103,7 @@ app.include_router(dfm_method_index_router)
 app.include_router(project_user_preferences_router)
 app.include_router(ui_automation_router)
 app.include_router(snowflake_router)
+app.include_router(sql_server_router)
 app.include_router(sql_formatting_router)
 app.include_router(data_processing_rules_router)
 app.include_router(user_identity_router)

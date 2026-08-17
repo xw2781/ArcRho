@@ -1,13 +1,17 @@
+/* Shared layout for the Arcode SQL consoles (Snowflake and SQL Server).
+   Both pages are the same working surface - toolbar, connection meta bar,
+   editor, results - so the chrome is defined once here and each console adds
+   only what it alone needs. */
 :root {
-  --sf-bg: var(--ark-canvas);
-  --sf-panel: var(--ark-surface);
-  --sf-chrome: var(--ark-surface-muted);
-  --sf-border: var(--ark-border);
-  --sf-text: var(--ark-text);
-  --sf-muted: var(--ark-text-muted);
-  --sf-blue: var(--ark-accent);
-  --sf-blue-soft: var(--ark-accent-soft);
-  --sf-error: var(--ark-danger);
+  --sqlc-bg: var(--ark-canvas);
+  --sqlc-panel: var(--ark-surface);
+  --sqlc-chrome: var(--ark-surface-muted);
+  --sqlc-border: var(--ark-border);
+  --sqlc-text: var(--ark-text);
+  --sqlc-muted: var(--ark-text-muted);
+  --sqlc-blue: var(--ark-accent);
+  --sqlc-blue-soft: var(--ark-accent-soft);
+  --sqlc-error: var(--ark-danger);
 }
 
 * {
@@ -20,44 +24,44 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--sf-bg);
-  color: var(--sf-text);
+  background: var(--sqlc-bg);
+  color: var(--sqlc-text);
   font-family: Arial, "Segoe UI", Tahoma, sans-serif;
   font-size: 12px;
 }
 
-.sfApp {
+.sqlcApp {
   height: 100%;
   min-width: 0;
   display: grid;
   grid-template-rows: var(--ark-toolbar-height) 30px minmax(180px, 1fr) minmax(150px, 34%);
-  background: var(--sf-bg);
+  background: var(--sqlc-bg);
 }
 
-.sfToolbar,
-.sfMetaBar,
-.sfResultsHeader {
+.sqlcToolbar,
+.sqlcMetaBar,
+.sqlcResultsHeader {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: var(--ark-seam) solid var(--sf-border);
-  background: var(--sf-chrome);
+  border-bottom: var(--ark-seam) solid var(--sqlc-border);
+  background: var(--sqlc-chrome);
 }
 
 /* The shell status bar reports connection and query state, so the toolbar keeps
    actions only. */
-.sfToolbar {
+.sqlcToolbar {
   gap: 1px;
   padding: 0 6px;
 }
 
-.sfMetaBar {
+.sqlcMetaBar {
   padding: 0 10px;
-  color: var(--sf-muted);
+  color: var(--sqlc-muted);
 }
 
-.sfSelect {
+.sqlcSelect {
   height: var(--ark-control-height);
   min-width: 220px;
   padding: 0 8px;
@@ -65,98 +69,104 @@ body {
   border: 1px solid var(--ark-border-strong);
   border-radius: var(--ark-control-radius);
   background: var(--ark-surface);
-  color: var(--sf-text);
+  color: var(--sqlc-text);
   font: inherit;
 }
 
-.sfBtn {
+.sqlcBtn {
   height: var(--ark-control-height);
   padding: 0 9px;
   border: 1px solid transparent;
   border-radius: var(--ark-control-radius);
   background: transparent;
-  color: var(--sf-text);
+  color: var(--sqlc-text);
   font: inherit;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color var(--ark-motion) ease, border-color var(--ark-motion) ease;
 }
 
-.sfBtn:hover {
+.sqlcBtn:hover {
   background: var(--ark-surface-hover);
 }
 
-.sfBtn:active {
+.sqlcBtn:active {
   background: var(--ark-surface-active);
 }
 
-.sfBtn.primary {
+.sqlcBtn.primary {
   border-color: var(--ark-accent-border);
-  background: var(--sf-blue-soft);
+  background: var(--sqlc-blue-soft);
   color: var(--ark-accent-text);
   font-weight: 700;
 }
 
-.sfBtn:disabled {
+.sqlcBtn.danger {
+  border-color: var(--ark-danger-border);
+  background: var(--ark-danger-soft);
+  color: var(--sqlc-error);
+}
+
+.sqlcBtn:disabled {
   opacity: 0.55;
   cursor: default;
 }
 
-.sfChip {
+.sqlcChip {
   min-width: 0;
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 2px 8px;
-  border: 1px solid var(--sf-border);
+  border: 1px solid var(--sqlc-border);
   border-radius: var(--ark-control-radius);
   background: var(--ark-surface);
 }
 
-.sfEditorHost {
+.sqlcEditorHost {
   min-width: 0;
   min-height: 0;
-  border-bottom: var(--ark-seam) solid var(--sf-border);
-  background: var(--sf-panel);
+  border-bottom: var(--ark-seam) solid var(--sqlc-border);
+  background: var(--sqlc-panel);
 }
 
-.sfResults {
+.sqlcResults {
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: var(--ark-panel-header-height) minmax(0, 1fr);
-  background: var(--sf-panel);
+  background: var(--sqlc-panel);
 }
 
-.sfResultsHeader {
+.sqlcResultsHeader {
   padding: 0 10px;
   font-size: 11px;
   font-weight: 700;
 }
 
-.sfQueryInfo {
+.sqlcQueryInfo {
   margin-left: auto;
-  color: var(--sf-muted);
+  color: var(--sqlc-muted);
   font-weight: 400;
 }
 
-.sfMessage {
+.sqlcMessage {
   padding: 12px;
-  color: var(--sf-muted);
+  color: var(--sqlc-muted);
 }
 
-.sfMessage.error {
-  color: var(--sf-error);
+.sqlcMessage.error {
+  color: var(--sqlc-error);
 }
 
-.sfTableWrap {
+.sqlcTableWrap {
   min-width: 0;
   min-height: 0;
   overflow: auto;
 }
 
-.sfTable {
+.sqlcTable {
   width: max-content;
   min-width: 100%;
   border-collapse: separate;
@@ -164,26 +174,26 @@ body {
   font-size: 12px;
 }
 
-.sfTable th,
-.sfTable td {
+.sqlcTable th,
+.sqlcTable td {
   max-width: 360px;
   padding: 6px 8px;
-  border-right: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid var(--sqlc-border);
+  border-bottom: 1px solid var(--sqlc-border);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sfTable th {
+.sqlcTable th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #f8fafc;
-  color: #334155;
+  background: var(--sqlc-chrome);
+  color: var(--sqlc-text);
   text-align: left;
 }
 
-.sfTable tbody tr:hover td {
-  background: #f8fafc;
+.sqlcTable tbody tr:hover td {
+  background: var(--ark-surface-hover);
 }

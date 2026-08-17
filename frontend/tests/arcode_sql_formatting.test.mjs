@@ -221,10 +221,13 @@ test("SQL toolbar currentness rejects edits, navigation, and model replacement a
 test("Arcode SQL toolbar clients verify the current source hash before applying", () => {
   const codeEditor = read("../ui/arcode/code-editor/index.js");
   const codeEditorHtml = read("../ui/arcode/code-editor/index.html");
-  const snowflake = read("../ui/arcode/snowflake-console/index.js");
+  // Both SQL consoles run the shared console core, so its Format flow is the
+  // one every console client is checked against.
+  const sqlConsole = read("../ui/arcode/shared/sql_console.js");
   const snowflakeHtml = read("../ui/arcode/snowflake-console/index.html");
+  const sqlServerHtml = read("../ui/arcode/sql-server-console/index.html");
 
-  for (const source of [codeEditor, snowflake]) {
+  for (const source of [codeEditor, sqlConsole]) {
     assert.match(source, /requestSqlFormatPreview\(\{ sql: sourceText, dialect \}\)/);
     assert.match(source, /await isSqlFormatPreviewCurrent\(preview, sourceText\)/);
     assert.match(source, /isSqlFormatTargetCurrent\(\{[\s\S]*?currentText: editor\?\.getValue\(\)[\s\S]*?currentModel: editor\?\.getModel\(\)/);
@@ -239,5 +242,6 @@ test("Arcode SQL toolbar clients verify the current source hash before applying"
   assert.match(codeEditor, /if \(language\(\) === "sql"\)[\s\S]*?await formatSqlDocument\(\)/);
   assert.match(codeEditorHtml, /<script type="module" src="\/ui\/arcode\/code-editor\/index\.js/);
   assert.match(snowflakeHtml, /id="formatBtn"[^>]*>Format<\/button>/);
-  assert.match(snowflake, /formatBtn"\)\?\.addEventListener\("click", \(\) => void formatSqlDocument\(\)\)/);
+  assert.match(sqlServerHtml, /id="formatBtn"[^>]*>Format<\/button>/);
+  assert.match(sqlConsole, /formatBtn"\)\?\.addEventListener\("click", \(\) => void formatSqlDocument\(\)\)/);
 });

@@ -1,7 +1,7 @@
 /* Arcode chrome tokens.
 
    Single source of truth for the chrome shared by the Arcode shell, the code
-   editor, the notebook editor, and the Snowflake console: seams between panes,
+   editor, the notebook editor, and the SQL consoles: seams between panes,
    toolbars, panel headers, and command buttons. Each document maps its local
    variables onto these tokens instead of repeating the palette, and the dark
    theme overrides the tokens once instead of restyling every surface. */

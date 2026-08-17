@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added a \"Workspace\" title back to the Arcode file explorer header, next to the add-folder and refresh actions.",
+  "details": [
+    "The title is a generic section label; it does not repeat the active folder name, which the workspace root row already shows."
+  ]
+}

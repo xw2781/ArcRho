@@ -34,6 +34,9 @@ __all__ = [
     "project_user_preferences_service",
     "ui_automation_service",
     "snowflake_service",
+    "mssql_odbc",
+    "sql_console_results",
+    "sql_server_service",
     "data_processing_rules_service",
     "user_identity_service",
 ]

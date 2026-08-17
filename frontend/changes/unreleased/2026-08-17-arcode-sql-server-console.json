@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode can now add, edit, and run against SQL Server connection profiles from a new SQL Server console.",
+  "details": [
+    "SQL Server files open in their own console with a connection picker, Test, Run, Format, and a results grid, instead of the plain text editor.",
+    "A Connections dialog adds, edits, renames, removes, and sets the default connection; each profile holds a name, server, and database.",
+    "Queries run as your Windows account, so no password is asked for or stored.",
+    "A `.sql` file opens in the SQL Server console when its name contains sql_server, sqlserver, or mssql, or ends in .ms.sql, the same way Snowflake files are recognized.",
+    "Run and Test stay disabled until a connection is selected, and a missing ODBC driver is reported with what to install."
+  ]
+}

@@ -18,7 +18,7 @@ for import_root in (PYTHON_API_SRC, FRONTEND_ROOT):
         sys.path.insert(0, str(import_root))
 
 from app_server import config
-from app_server.services import source_table_service
+from app_server.services import mssql_odbc, source_table_service
 from arcrho_api import source_table_contract
 
 ENGINE_DATA_PROCESSING = (
@@ -309,9 +309,9 @@ class SourceTableServiceTests(unittest.TestCase):
             columns=["A", "B"],
             rows=[(1, "x"), (2, None), (3, "z,quoted")],
         )
-        with mock.patch.object(source_table_service, "pyodbc", fake_driver), \
+        with mock.patch.object(mssql_odbc, "pyodbc", fake_driver), \
                 mock.patch.object(
-                    source_table_service, "_installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
+                    mssql_odbc, "installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
                 ):
             status = source_table_service.import_from_mssql(self.project_name)
 
@@ -340,9 +340,9 @@ class SourceTableServiceTests(unittest.TestCase):
                 ("staging", "Raw", "BASE TABLE"),
             ],
         )
-        with mock.patch.object(source_table_service, "pyodbc", driver), \
+        with mock.patch.object(mssql_odbc, "pyodbc", driver), \
                 mock.patch.object(
-                    source_table_service, "_installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
+                    mssql_odbc, "installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
                 ):
             result = source_table_service.list_mssql_tables("SQLPRD01", "DW")
 
@@ -366,9 +366,9 @@ class SourceTableServiceTests(unittest.TestCase):
     def test_listing_does_not_need_a_table_to_be_chosen_yet(self) -> None:
         # The picker is what chooses the table, so listing must not require one.
         driver = _FakeOdbcDriver(columns=[], rows=[], listing_rows=[])
-        with mock.patch.object(source_table_service, "pyodbc", driver), \
+        with mock.patch.object(mssql_odbc, "pyodbc", driver), \
                 mock.patch.object(
-                    source_table_service, "_installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
+                    mssql_odbc, "installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
                 ):
             result = source_table_service.list_mssql_tables("SQLPRD01", "DW")
         self.assertTrue(result["ok"])
@@ -380,9 +380,9 @@ class SourceTableServiceTests(unittest.TestCase):
         self._configure_sql_profile()
 
         failing_driver = _FakeOdbcDriver(columns=["A"], rows=[], execute_error=RuntimeError("boom"))
-        with mock.patch.object(source_table_service, "pyodbc", failing_driver), \
+        with mock.patch.object(mssql_odbc, "pyodbc", failing_driver), \
                 mock.patch.object(
-                    source_table_service, "_installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
+                    mssql_odbc, "installed_odbc_driver", return_value="ODBC Driver 18 for SQL Server"
                 ):
             with self.assertRaises(Exception):
                 source_table_service.import_from_mssql(self.project_name)

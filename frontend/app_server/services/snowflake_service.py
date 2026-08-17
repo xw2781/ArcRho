@@ -8,11 +8,11 @@ import threading
 from typing import Any, Dict, List
 
 from app_server import config
+from app_server.services.sql_console_results import clamp_row_limit, json_safe_cell
 
 
 DEFAULT_CONNECTION_NAME = "my_example_connection"
 SNOWFLAKE_CONFIG_IMPORT_PATH = r"E:\XWSpace\Snowflake Config.txt"
-_MAX_QUERY_ROWS = 5000
 _CONNECTOR_IMPORT_ERROR = ""
 _CONNECTION_CACHE: Dict[str, Dict[str, Any]] = {}
 _CONNECTION_CACHE_LOCK = threading.Lock()
@@ -252,7 +252,7 @@ def run_query(sql: str, connection: str = DEFAULT_CONNECTION_NAME, limit: int = 
             "connection": name,
         }
 
-    row_limit = max(1, min(_MAX_QUERY_ROWS, int(limit or 1000)))
+    row_limit = clamp_row_limit(limit)
     conn = None
     cur = None
     try:
@@ -264,7 +264,7 @@ def run_query(sql: str, connection: str = DEFAULT_CONNECTION_NAME, limit: int = 
                 columns = [col[0] for col in (cur.description or [])]
                 rows: List[List[Any]] = []
                 for row in cur.fetchmany(row_limit):
-                    rows.append([_json_safe_cell(cell) for cell in row])
+                    rows.append([json_safe_cell(cell) for cell in row])
                 query_id = getattr(cur, "sfqid", "") or ""
             finally:
                 try:
@@ -290,12 +290,3 @@ def run_query(sql: str, connection: str = DEFAULT_CONNECTION_NAME, limit: int = 
 
 def test_connection(connection: str = DEFAULT_CONNECTION_NAME) -> Dict[str, Any]:
     return run_query("select current_role(), current_warehouse(), current_database(), current_schema()", connection, 1)
-
-
-def _json_safe_cell(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    try:
-        return value.isoformat()
-    except Exception:
-        return str(value)

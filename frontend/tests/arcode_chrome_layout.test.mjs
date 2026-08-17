@@ -9,6 +9,7 @@ const ARCODE_DOCUMENTS = [
   "../ui/arcode/code-editor/index.html",
   "../ui/arcode/notebook-editor/index.html",
   "../ui/arcode/snowflake-console/index.html",
+  "../ui/arcode/sql-server-console/index.html",
 ];
 
 test("every Arcode document loads the shared chrome tokens before its own stylesheet", () => {
@@ -47,8 +48,10 @@ test("Arcode command strips carry actions only, not duplicated file or status la
   const notebook = read("../ui/arcode/notebook-editor/index.html");
   const notebookIo = read("../ui/arcode/notebook-editor/notebook-io.js");
   const snowflake = read("../ui/arcode/snowflake-console/index.html");
+  const sqlServer = read("../ui/arcode/sql-server-console/index.html");
 
-  // The explorer header keeps its actions; the app already names itself.
+  // The explorer header carries a generic "Workspace" title plus its actions;
+  // it must not duplicate the active folder name, which the root row already shows.
   assert.doesNotMatch(shell, /arcodeExplorerWorkspaceName/);
   assert.doesNotMatch(shellCss, /arcodeExplorerWorkspaceName/);
   assert.match(shell, /id="arcodeExplorerAddFolderBtn"/);
@@ -61,6 +64,7 @@ test("Arcode command strips carry actions only, not duplicated file or status la
   assert.doesNotMatch(notebook, /id="statusText"/);
   assert.match(notebookIo, /function setStatus\(text\) \{\s*postShellStatus\(text\);\s*\}/);
   assert.doesNotMatch(snowflake, /id="statusText"/);
+  assert.doesNotMatch(sqlServer, /id="statusText"/);
 });
 
 test("Output panel actions live in the panel header, not the editor command strip", () => {

@@ -41,7 +41,8 @@
         <tbody>
           <tr><td><code>.ipynb</code>, <code>.arcnb</code></td><td>Notebook editor</td><td>Review notebooks and saved outputs.</td></tr>
           <tr><td><code>.py</code>, <code>.r</code>, <code>.json</code>, <code>.md</code>, <code>.txt</code></td><td>Code editor</td><td>Macros, scripts, JSON, docs, text.</td></tr>
-          <tr><td><code>.sql</code>, <code>.sf.sql</code></td><td>SQL or Snowflake SQL editor</td><td>Query work and Snowflake connections.</td></tr>
+          <tr><td><code>.sql</code>, <code>.sf.sql</code></td><td>SQL or Snowflake SQL console</td><td>Query work and Snowflake connections.</td></tr>
+          <tr><td><code>sql_server*.sql</code>, <code>.ms.sql</code></td><td>SQL Server console</td><td>T-SQL queries against a saved SQL Server connection.</td></tr>
           <tr><td>DFM JSON and sidecars</td><td>Code editor</td><td>Open from ArcRho Help menu actions.</td></tr>
         </tbody>
       </table>
@@ -52,7 +53,7 @@
         <article class="task-card"><h3>Review JSON</h3><ul><li>Open DFM JSON or sidecars from ArcRho Help menu.</li><li>Use JSON syntax highlighting.</li><li>Use Format for valid JSON.</li></ul></article>
         <article class="task-card"><h3>Edit macros</h3><ul><li>Open macros from the Macro panel Edit action.</li><li>Save changes in Arcode.</li><li>Refresh the Macro panel before running changed scripts.</li></ul></article>
         <article class="task-card"><h3>Run code</h3><ul><li>Use Run or Ctrl+Enter for the complete Python file.</li><li>Arcode automatically sends files with ArcRho macro metadata or a <code>run_macro(...)</code> entry point to the open ArcRho app; the file does not need to be in the Macro list.</li><li>Other Python and Run Selection stay local. Activate a DFM when the macro needs one, then review status and output in Arcode.</li></ul></article>
-        <article class="task-card"><h3>SQL work</h3><ul><li>Use Format for a parser-checked T-SQL or Snowflake preview; unsafe or stale results leave the editor unchanged.</li><li>Snowflake-style files open in the Snowflake SQL editor, and connection profiles live under Arcode app data.</li><li>ArcBot SQL Format Validation opens the deterministic diff immediately and adds optional structured review findings in chat.</li></ul></article>
+        <article class="task-card"><h3>SQL work</h3><ul><li>Use Format for a parser-checked T-SQL or Snowflake preview; unsafe or stale results leave the editor unchanged.</li><li>Snowflake-style files open in the Snowflake SQL console, and connection profiles live under Arcode app data.</li><li>Files named for SQL Server open in the SQL Server console: pick a connection, Test it, and Run. Use Connections to add, edit, or remove a connection; queries run as your Windows account, so no password is stored.</li><li>ArcBot SQL Format Validation opens the deterministic diff immediately and adds optional structured review findings in chat.</li></ul></article>
       </div>
     </section>
   </main>

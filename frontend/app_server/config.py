@@ -84,6 +84,16 @@ def _get_user_appdata_dir() -> str:
     return os.path.join(appdata, "Arcode")
 
 
+def app_runtime_name() -> str:
+    """Display name of the app whose Python runtime serves this process.
+
+    User-facing messages about a missing optional dependency name the runtime
+    the user has to fix, and only this module knows which app is running.
+    """
+
+    return "Arcode" if _is_arcode_mode() else "ArcRho"
+
+
 def _get_user_local_appdata_dir() -> str:
     """Return the machine-local application-data folder for runtime logs."""
 
@@ -147,6 +157,11 @@ WORKSPACE_PATHS_PATH = os.path.join(
     _get_user_appdata_dir(), api_config.WORKSPACE_PATHS_FILE_NAME
 )
 SNOWFLAKE_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_connections.json")
+# Per-user Arcode SQL Server console profiles. This is not the ArcRho Server's
+# shared server/database history behind `get_mssql_connections_path()`: that one
+# records pairs Project Settings has reached, this one holds the named
+# connections the Arcode SQL Server console runs queries through.
+SQL_SERVER_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "sql_server_connections.json")
 
 
 def workspace_paths_file_exists() -> bool:

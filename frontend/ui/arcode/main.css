@@ -1098,6 +1098,18 @@ body.tab-dragging #arcodeTabs.tabs {
   background: var(--ark-surface-muted);
 }
 
+.arcodeExplorerWorkspaceLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ark-text-muted);
+}
+
 .arcodeExplorerHeaderBtn {
   flex: 0 0 auto;
   width: 22px;

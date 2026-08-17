@@ -28,6 +28,7 @@ from .dfm_method_index_router import router as dfm_method_index_router
 from .project_user_preferences_router import router as project_user_preferences_router
 from .ui_automation_router import router as ui_automation_router
 from .snowflake_router import router as snowflake_router
+from .sql_server_router import router as sql_server_router
 from .sql_formatting_router import router as sql_formatting_router
 from .data_processing_rules_router import router as data_processing_rules_router
 from .user_identity_router import router as user_identity_router
@@ -63,6 +64,7 @@ __all__ = [
     "project_user_preferences_router",
     "ui_automation_router",
     "snowflake_router",
+    "sql_server_router",
     "sql_formatting_router",
     "data_processing_rules_router",
     "user_identity_router",
