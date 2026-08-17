@@ -389,7 +389,6 @@ async function saveNotebookViaApi(filename, { closeDialog = true } = {}) {
   const nextName = String(filename || "").trim();
   if (!nextName) {
     setStatus("Enter a filename");
-    postShellStatus("Enter a filename");
     return false;
   }
 
@@ -403,7 +402,6 @@ async function saveNotebookViaApi(filename, { closeDialog = true } = {}) {
     if (result && result.success === false) {
       const msg = result.message || "Save failed";
       setStatus(msg);
-      postShellStatus(msg);
       return false;
     }
 
@@ -418,12 +416,10 @@ async function saveNotebookViaApi(filename, { closeDialog = true } = {}) {
     markNotebookSavedBaseline(result?.path || savedName, lastNotebookDiskRevision);
     const msg = result?.message || `Saved ${savedName}`;
     setStatus(msg);
-    postShellStatus(msg);
     if (closeDialog) closeSaveNbDialog();
     return true;
   } catch {
     setStatus("Save failed");
-    postShellStatus("Save failed");
     return false;
   }
 }
@@ -433,7 +429,6 @@ async function confirmSaveNb() {
   const filename = input.value.trim();
   if (!filename) {
     setStatus("Enter a filename");
-    postShellStatus("Enter a filename");
     return;
   }
   await saveNotebookByFilename(filename, { closeDialog: true });
@@ -481,7 +476,6 @@ async function renameCurrentNotebook() {
   const normalized = normalizeNotebookRenameInput(proposed);
   if (!normalized.ok) {
     setStatus(normalized.error);
-    postShellStatus(normalized.error);
     return false;
   }
   const nextName = normalized.name;
@@ -491,14 +485,12 @@ async function renameCurrentNotebook() {
     currentNotebookFilename = nextName;
     updateNotebookTitleUI();
     setStatus(`Renamed ${nextName}`);
-    postShellStatus(`Renamed ${nextName}`);
     return true;
   }
 
   if (notebookDiskConflict) {
     const msg = "Resolve the disk conflict before renaming this notebook.";
     setStatus(msg);
-    postShellStatus(msg);
     return false;
   }
 
@@ -506,7 +498,6 @@ async function renameCurrentNotebook() {
   if (typeof hostApi?.renameFile !== "function") {
     const msg = "Rename requires the Arcode desktop app.";
     setStatus(msg);
-    postShellStatus(msg);
     return false;
   }
 
@@ -516,7 +507,6 @@ async function renameCurrentNotebook() {
     if (!result?.ok) {
       const msg = result?.error || "Rename failed";
       setStatus(msg);
-      postShellStatus(msg);
       return false;
     }
     const nextPath = result.path || currentNotebookPath;
@@ -537,7 +527,6 @@ async function renameCurrentNotebook() {
     return true;
   } catch {
     setStatus("Rename failed");
-    postShellStatus("Rename failed");
     return false;
   }
 }
@@ -769,11 +758,9 @@ async function reloadCurrentNotebookFromDisk({ reason = "manual" } = {}) {
       const label = getNotebookFilenameFromPath(currentNotebookPath);
       const msg = reason === "external" ? `Reloaded disk changes for ${label}` : `Reloaded ${label}`;
       setStatus(msg);
-      postShellStatus(msg);
       return true;
     } catch {
       setStatus("Reload failed");
-      postShellStatus("Reload failed");
       return false;
     }
   }
@@ -794,11 +781,9 @@ async function reloadCurrentNotebookFromDisk({ reason = "manual" } = {}) {
     const suffix = unsupportedOutputCells > 0 ? ` (${unsupportedOutputCells} cells include unsupported rich outputs)` : "";
     const msg = reason === "external" ? `Reloaded disk changes for ${label}${suffix}` : `Reloaded ${label}${suffix}`;
     setStatus(msg);
-    postShellStatus(msg);
     return true;
   } catch {
     setStatus("Reload failed");
-    postShellStatus("Reload failed");
     return false;
   }
 }
@@ -820,7 +805,6 @@ async function openNotebookFromAnyFolder() {
     });
   } catch {
     setStatus("Open failed");
-    postShellStatus("Open failed");
     return true;
   }
   if (!filePath) return true;
@@ -835,13 +819,11 @@ async function openNotebookFilePath(filePath, options = {}) {
   const extension = getNotebookExtension(targetPath).toLowerCase();
   if (!targetPath) {
     setStatus("Open failed");
-    postShellStatus("Open failed");
     return false;
   }
   if (extension !== ".ipynb" && extension !== ".arcnb" && extension !== ".py" && extension !== ".sql" && extension !== ".md" && extension !== ".txt" && extension !== ".json") {
     const msg = "Only .ipynb, .arcnb, .py, .sql, .md, .txt, and .json files can be opened in Arcode.";
     setStatus(msg);
-    postShellStatus(msg);
     return false;
   }
   try {
@@ -853,7 +835,6 @@ async function openNotebookFilePath(filePath, options = {}) {
       if (!result?.ok) {
         const msg = result?.error || `File not found: ${targetPath}`;
         setStatus(msg);
-        postShellStatus(msg);
         return false;
       }
       const revision = await readNotebookDiskRevision(targetPath);
@@ -866,7 +847,6 @@ async function openNotebookFilePath(filePath, options = {}) {
       if (isAbsoluteFilePath(targetPath)) {
         const msg = "Opening notebook files from disk requires the Arcode desktop app.";
         setStatus(msg);
-        postShellStatus(msg);
         return false;
       }
       return await loadNotebook(targetPath);
@@ -875,7 +855,6 @@ async function openNotebookFilePath(filePath, options = {}) {
     if (!result || !result.exists) {
       const msg = result?.error || `File not found: ${targetPath}`;
       setStatus(msg);
-      postShellStatus(msg);
       return false;
     }
     const loadedCells = normalizeNotebookData(result.data, targetPath);
@@ -890,7 +869,6 @@ async function openNotebookFilePath(filePath, options = {}) {
     return true;
   } catch {
     setStatus("Load failed");
-    postShellStatus("Load failed");
     return false;
   }
 }
@@ -936,7 +914,6 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
     if (result?.error) {
       const msg = result.error || "Save failed";
       setStatus(msg);
-      postShellStatus(msg);
       return false;
     }
     const savedPath = result?.path || currentNotebookPath;
@@ -956,7 +933,6 @@ async function saveCurrentNotebookFile({ closeDialog = true, ignoreRevisionConfl
     return true;
   } catch {
     setStatus("Save failed");
-    postShellStatus("Save failed");
     return false;
   }
 }
@@ -978,7 +954,6 @@ async function loadNotebook(filename) {
     const result = await resp.json();
     if (!result.success) {
       setStatus(result.message || "Load failed");
-      postShellStatus(result.message || "Load failed");
       return false;
     }
 
@@ -1002,7 +977,6 @@ async function loadNotebook(filename) {
     return true;
   } catch {
     setStatus("Load failed");
-    postShellStatus("Load failed");
     return false;
   }
 }
@@ -1081,9 +1055,8 @@ function escapeHtml(s) {
   return el.innerHTML;
 }
 
+// The Arcode shell status bar is the only status surface, so notebook messages
+// go there instead of a second label inside the toolbar.
 function setStatus(text) {
-  statusText.textContent = text;
-  setTimeout(() => {
-    if (statusText.textContent === text) statusText.textContent = "";
-  }, 4000);
+  postShellStatus(text);
 }

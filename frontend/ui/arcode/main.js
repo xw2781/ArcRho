@@ -461,6 +461,28 @@ function addWorkspaceFolder(pathLike, { replace = false } = {}) {
   updateStatus(replace ? `Selected workspace folder ${folderPath}.` : `Added workspace folder ${folderPath}.`);
 }
 
+function removeWorkspaceFolder(pathLike) {
+  const folderPath = String(pathLike || "").trim();
+  if (!folderPath) return;
+  const folderKey = explorerPathKey(folderPath);
+  const current = normalizeWorkspaceFolders(state.workspaceFolders);
+  const remaining = current.filter((item) => explorerPathKey(item) !== folderKey);
+  if (remaining.length === current.length) return;
+  state.workspaceFolders = remaining;
+  if (explorerPathKey(state.activeWorkspaceFolder) === folderKey) {
+    state.activeWorkspaceFolder = remaining[0] || "";
+  }
+  state.expandedExplorerPaths = normalizeExplorerPaths(state.expandedExplorerPaths)
+    .filter((item) => !explorerPathWithin(folderPath, item));
+  Object.keys(state.folderListings).forEach((listedPath) => {
+    if (explorerPathWithin(folderPath, listedPath)) delete state.folderListings[listedPath];
+  });
+  saveExpandedExplorerPaths();
+  saveWorkspaceFolders();
+  render();
+  updateStatus(`Removed workspace folder ${folderPath}.`);
+}
+
 async function pickWorkspaceFolder({ replace = false } = {}) {
   const host = getHostApi();
   if (typeof host?.pickFolder !== "function") {
@@ -963,8 +985,14 @@ function renderExplorerWorkspacePanel() {
   return `
     <aside class="arcodeHomeSidebar" aria-label="Explorer">
       <div class="arcodeExplorerWorkspace">
-        <div class="arcodeExplorerWorkspaceName">Arcode Workspace</div>
-        <button id="arcodeExplorerRefreshBtn" class="arcodeExplorerRefreshBtn" type="button" title="Refresh file explorer" aria-label="Refresh file explorer">
+        <button id="arcodeExplorerAddFolderBtn" class="arcodeExplorerHeaderBtn" type="button" title="Add workspace folder" aria-label="Add workspace folder">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 18.5v-13h5l2 2.5h9v10.5H4z"></path>
+            <path d="M12 11v6"></path>
+            <path d="M9 14h6"></path>
+          </svg>
+        </button>
+        <button id="arcodeExplorerRefreshBtn" class="arcodeExplorerHeaderBtn" type="button" title="Refresh file explorer" aria-label="Refresh file explorer">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20 6v5h-5"></path>
             <path d="M4 18v-5h5"></path>
@@ -974,16 +1002,27 @@ function renderExplorerWorkspacePanel() {
         </button>
       </div>
       <div class="arcodeExplorerFolders" role="tree" aria-label="Workspace folders">
-        ${folders.length ? folders.map((folderPath) => `
-          ${renderExplorerRow({
-            path: folderPath,
-            name: filenameFromPath(folderPath) || folderPath,
-            kind: "root-folder",
-            depth: 0,
-            active: folderPath === activeFolder,
-          })}
+        ${folders.length ? folders.map((folderPath) => {
+    const folderName = filenameFromPath(folderPath) || folderPath;
+    return `
+          <div class="arcodeExplorerRootRow" role="none">
+            ${renderExplorerRow({
+      path: folderPath,
+      name: folderName,
+      kind: "root-folder",
+      depth: 0,
+      active: folderPath === activeFolder,
+    })}
+            <button class="arcodeExplorerRemoveRootBtn" type="button" data-path="${encodeURIComponent(folderPath)}" title="Remove ${escapeHtml(folderName)} from the workspace" aria-label="Remove ${escapeHtml(folderName)} from the workspace">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 7l10 10"></path>
+                <path d="M17 7 7 17"></path>
+              </svg>
+            </button>
+          </div>
           ${renderExplorerChildren(folderPath)}
-        `).join("") : `
+        `;
+  }).join("") : `
           <div class="arcodeExplorerEmpty">
             <div>No folder selected.</div>
             <button id="arcodeExplorerEmptySelectBtn" class="arcodeHomeBtn primary" type="button">Select Folder</button>
@@ -1010,8 +1049,17 @@ function wireExplorerWorkspace(container) {
   const root = container || document;
   initExplorerResizer();
   root.querySelector("#arcodeExplorerEmptySelectBtn")?.addEventListener("click", () => pickWorkspaceFolder({ replace: true }));
+  root.querySelector("#arcodeExplorerAddFolderBtn")?.addEventListener("click", () => {
+    void pickWorkspaceFolder({ replace: false });
+  });
   root.querySelector("#arcodeExplorerRefreshBtn")?.addEventListener("click", () => {
     void refreshExplorerFromButton();
+  });
+  root.querySelectorAll(".arcodeExplorerRemoveRootBtn").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeWorkspaceFolder(decodeURIComponent(button.getAttribute("data-path") || ""));
+    });
   });
   root.querySelectorAll(".arcodeExplorerEntry").forEach((button) => {
     button.addEventListener("click", (event) => {

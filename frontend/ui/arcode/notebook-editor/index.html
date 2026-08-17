@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Arcode Notebook Editor</title>
+  <link rel="stylesheet" href="/ui/arcode/shared/chrome.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/notebook-editor/notebook-editor.css?v=20260620a"/>
+  <link rel="stylesheet" href="/ui/arcode/notebook-editor/notebook-editor.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260812b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -35,6 +36,7 @@
             <option value="raw">Raw</option>
           </select>
         </div>
+        <div class="sc-sep"></div>
         <button class="sc-btn primary" id="runAllBtn" title="Run all cells">
           <svg width="8" height="10" viewBox="0 0 8 10" fill="currentColor"><polygon points="0,0 8,5 0,10"/></svg>
           Run All
@@ -43,12 +45,10 @@
           <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="0" y="0" width="10" height="10" rx="1"/></svg>
           Stop
         </button>
+        <button class="sc-btn" id="restartBtn" title="Reset session (clear all variables)">Restart</button>
         <div class="sc-sep"></div>
-        <button class="sc-btn danger" id="restartBtn" title="Reset session (clear all variables)">Restart</button>
         <button class="sc-btn" id="clearOutputBtn" title="Clear all outputs">Clear Output</button>
         <button class="sc-btn" id="shortcutsBtn" title="View and customize keyboard shortcuts">Keyboard Shortcuts</button>
-        <span class="sc-spacer"></span>
-        <span class="sc-status" id="statusText"></span>
       </div>
 
       <div class="sc-file-banner" id="notebookFileBanner" role="status" aria-live="polite">
@@ -247,12 +247,12 @@
   <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
   <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
   <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
-  <script src="/ui/arcode/notebook-editor/core.js?v=20260726a"></script>
+  <script src="/ui/arcode/notebook-editor/core.js?v=20260816b"></script>
   <script src="/ui/arcode/notebook-editor/cells.js?v=20260726a"></script>
   <script src="/ui/arcode/notebook-editor/execution.js?v=20260620a"></script>
   <script src="/ui/arcode/notebook-editor/shortcuts.js?v=20260620a"></script>
   <script src="/ui/arcode/notebook-editor/panels.js?v=20260620a"></script>
-  <script src="/ui/arcode/notebook-editor/notebook-io.js?v=20260726a"></script>
+  <script src="/ui/arcode/notebook-editor/notebook-io.js?v=20260816b"></script>
   <script src="/ui/arcode/notebook-editor/index.js?v=20260726a"></script>
 </body>
 </html>

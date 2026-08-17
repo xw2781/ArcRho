@@ -1,12 +1,13 @@
 :root {
-  --ce-border: #d8dde3;
-  --ce-border-strong: #cbd5e1;
-  --ce-bg: #f4f7fa;
-  --ce-surface: #ffffff;
-  --ce-text: #18212f;
-  --ce-muted: #647084;
-  --ce-blue: #2b6df6;
-  --ce-red: #be123c;
+  --ce-border: var(--ark-border);
+  --ce-border-strong: var(--ark-border-strong);
+  --ce-bg: var(--ark-canvas);
+  --ce-surface: var(--ark-surface);
+  --ce-chrome: var(--ark-surface-muted);
+  --ce-text: var(--ark-text);
+  --ce-muted: var(--ark-text-muted);
+  --ce-blue: var(--ark-accent);
+  --ce-red: var(--ark-danger);
   --ce-green: #15803d;
   --app-safe-bottom: 28px;
   --ui-zoom: 1;
@@ -40,10 +41,6 @@ body.ce-resizing-output {
   user-select: none;
 }
 
-body.ce-resizing-output .ce-output-resize-handle {
-  background: rgba(43, 109, 246, 0.18);
-}
-
 .ce-app {
   position: fixed;
   inset: 0;
@@ -55,35 +52,41 @@ body.ce-resizing-output .ce-output-resize-handle {
   background: var(--ce-bg);
 }
 
+/* Command strip: the tab bar names the file and the shell status bar reports
+   state, so the toolbar carries actions only. */
 .ce-toolbar {
-  min-height: 36px;
+  min-height: var(--ark-toolbar-height);
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 1px;
+  padding: 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--ce-border);
-  background: #fbfcfe;
+  border-bottom: var(--ark-seam) solid var(--ce-border);
+  background: var(--ce-chrome);
 }
 
 .ce-btn {
   flex: 0 0 auto;
-  height: 27px;
+  height: var(--ark-control-height);
   min-width: max-content;
-  padding: 0 10px;
-  border: 1px solid var(--ce-border-strong);
-  border-radius: 6px;
-  background: #ffffff;
-  color: #263244;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--ark-control-radius);
+  background: transparent;
+  color: var(--ce-text);
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color var(--ark-motion) ease, border-color var(--ark-motion) ease;
 }
 
 .ce-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #b9c8d8;
+  background: var(--ark-surface-hover);
+}
+
+.ce-btn:active:not(:disabled) {
+  background: var(--ark-surface-active);
 }
 
 .ce-btn:disabled {
@@ -92,48 +95,27 @@ body.ce-resizing-output .ce-output-resize-handle {
 }
 
 .ce-btn.primary {
-  border-color: #9ec0ff;
-  background: #edf4ff;
-  color: #1d4ed8;
+  border-color: var(--ark-accent-border);
+  background: var(--ark-accent-soft);
+  color: var(--ark-accent-text);
   font-weight: 700;
 }
 
 .ce-btn.danger {
-  border-color: #fecaca;
-  background: #fff7f7;
   color: var(--ce-red);
+}
+
+.ce-btn.danger:hover:not(:disabled) {
+  border-color: var(--ark-danger-border);
+  background: var(--ark-danger-soft);
 }
 
 .ce-sep {
   flex: 0 0 1px;
   width: 1px;
-  height: 20px;
-  margin: 0 2px;
+  height: 16px;
+  margin: 0 5px;
   background: var(--ce-border);
-}
-
-.ce-spacer {
-  flex: 1 1 auto;
-  min-width: 8px;
-}
-
-.ce-file,
-.ce-status {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ce-muted);
-}
-
-.ce-file {
-  max-width: 34vw;
-  color: #334155;
-  font-weight: 700;
-}
-
-.ce-status {
-  max-width: 26vw;
 }
 
 .ce-file-banner {
@@ -164,6 +146,24 @@ body.ce-resizing-output .ce-output-resize-handle {
   gap: 6px;
 }
 
+/* Banner choices are decisions, not quiet toolbar actions, so they keep a frame
+   against the amber surface. */
+.ce-file-banner .ce-btn {
+  border-color: #e6c56a;
+  background: #fffdf3;
+  color: #6b4e00;
+}
+
+.ce-file-banner .ce-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.ce-file-banner .ce-btn.primary {
+  border-color: var(--ark-accent-border);
+  background: var(--ark-accent-soft);
+  color: var(--ark-accent-text);
+}
+
 .ce-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -171,7 +171,7 @@ body.ce-resizing-output .ce-output-resize-handle {
   height: 100%;
   overflow: hidden;
   display: flex;
-  background: #ffffff;
+  background: var(--ce-surface);
 }
 
 .ce-main {
@@ -195,14 +195,11 @@ body.ce-resizing-output .ce-output-resize-handle {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 28px minmax(0, 1fr);
-  background: #fbfcfe;
-}
-
-.ce-output-panel {
+  grid-template-rows: var(--ark-panel-header-height) minmax(0, 1fr);
   flex: 0 0 var(--ce-output-height, clamp(120px, 28vh, 190px));
   position: relative;
-  border-top: 1px solid var(--ce-border);
+  border-top: var(--ark-seam) solid var(--ce-border);
+  background: var(--ce-chrome);
 }
 
 .ce-output-panel.hidden {
@@ -232,27 +229,23 @@ body.ce-resizing-output .ce-output-resize-handle {
   transition: background 140ms ease, box-shadow 140ms ease;
 }
 
+/* The seam between the editor and the output panel stays one hairline; hover
+   only recolors it. */
 .ce-output-resize-handle::before {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  top: 4px;
-  height: 2px;
+  top: 5px;
+  height: var(--ark-seam);
   background: transparent;
-  transition: background 140ms ease, box-shadow 140ms ease;
-}
-
-.ce-output-resize-handle:hover,
-.ce-output-resize-handle:focus-visible {
-  background: rgba(43, 109, 246, 0.12);
+  transition: background var(--ark-motion) ease;
 }
 
 .ce-output-resize-handle:hover::before,
 .ce-output-resize-handle:focus-visible::before,
 body.ce-resizing-output .ce-output-resize-handle::before {
   background: var(--ce-blue);
-  box-shadow: 0 0 0 1px rgba(43, 109, 246, 0.14), 0 2px 8px rgba(43, 109, 246, 0.24);
 }
 
 .ce-output-resize-handle:focus-visible {
@@ -262,24 +255,63 @@ body.ce-resizing-output .ce-output-resize-handle::before {
 
 .ce-panel-header {
   min-width: 0;
-  height: 28px;
+  height: var(--ark-panel-header-height);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 9px;
-  border-bottom: 1px solid var(--ce-border);
-  background: #f3f6fa;
-  color: #334155;
-  font-size: 10.5px;
+  padding: 0 4px 0 10px;
+  border-bottom: var(--ark-seam) solid var(--ce-border);
+  background: var(--ce-chrome);
+  color: var(--ce-text);
+}
+
+.ce-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
 }
 
 .ce-run-info {
+  min-width: 0;
   margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ce-muted);
-  font-weight: 500;
-  text-transform: none;
+  font-size: 11px;
+}
+
+.ce-panel-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ark-control-radius);
+  background: transparent;
+  color: var(--ce-muted);
+  cursor: pointer;
+}
+
+.ce-panel-btn:hover {
+  background: var(--ark-surface-hover);
+  color: var(--ark-text-strong);
+}
+
+.ce-panel-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .ce-output-text {
@@ -288,8 +320,8 @@ body.ce-resizing-output .ce-output-resize-handle::before {
   margin: 0;
   padding: 8px 10px;
   overflow: auto;
-  background: #ffffff;
-  color: #172033;
+  background: var(--ce-surface);
+  color: var(--ce-text);
   font: 12px/1.45 "Cascadia Code", Consolas, "Courier New", monospace;
   white-space: pre-wrap;
 }

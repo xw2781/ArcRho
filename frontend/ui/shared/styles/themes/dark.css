@@ -3313,6 +3313,28 @@
   display: none;
 }
 
+/* Arcode chrome tokens. The shell and every editor document map their local
+   variables onto these, so one override themes all Arcode chrome. */
+:root[data-arcrho-theme="dark"] {
+  --ark-canvas: var(--ar-color-canvas);
+  --ark-surface: var(--ar-color-surface);
+  --ark-surface-muted: var(--ar-color-surface-muted);
+  --ark-surface-hover: var(--ar-color-surface-hover);
+  --ark-surface-active: var(--ar-color-surface-raised);
+  --ark-border: var(--ar-color-border);
+  --ark-border-strong: var(--ar-color-border);
+  --ark-text: var(--ar-color-text);
+  --ark-text-strong: var(--ar-color-text-strong);
+  --ark-text-muted: var(--ar-color-text-muted);
+  --ark-accent: var(--ar-color-border-focus);
+  --ark-accent-soft: var(--ar-color-accent-soft);
+  --ark-accent-border: var(--ar-color-border-focus);
+  --ark-accent-text: var(--ar-color-text-strong);
+  --ark-danger: var(--ar-color-danger);
+  --ark-danger-soft: var(--ar-color-danger-soft);
+  --ark-danger-border: var(--ar-color-danger);
+}
+
 /* Arcode shell and explorer. */
 :root[data-arcrho-theme="dark"] :is(#arcodeApp, #arcodeMain, #arcodeHome, #arcodeFrameHost, .arcodeFrameWorkspace) {
   background-color: var(--ar-color-canvas);
@@ -3329,22 +3351,6 @@
   background-color: var(--ar-color-canvas);
 }
 
-:root[data-arcrho-theme="dark"] .arcodeExplorerResizer {
-  background-color: var(--ar-color-surface-muted);
-}
-
-:root[data-arcrho-theme="dark"] .arcodeExplorerResizer::before {
-  background-color: transparent;
-}
-
-:root[data-arcrho-theme="dark"] :is(
-  .arcodeExplorerResizer:hover,
-  .arcodeExplorerResizer:focus-visible,
-  .arcodeExplorerResizing .arcodeExplorerResizer
-)::before {
-  background-color: var(--ar-color-border-focus);
-}
-
 :root[data-arcrho-theme="dark"] .arcodeTab {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
@@ -3356,24 +3362,32 @@
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn, .arcodePlusTab, .arcodeExplorerRefreshBtn) {
+:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn, .arcodePlusTab, .arcodeExplorerHeaderBtn) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn:hover, .arcodePlusTab:hover, .arcodeExplorerRefreshBtn:hover) {
+:root[data-arcrho-theme="dark"] :is(.arcodeHomeBtn:hover, .arcodePlusTab:hover, .arcodeExplorerHeaderBtn:hover) {
   background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeExplorerRemoveRootBtn {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .arcodeExplorerRemoveRootBtn:hover {
+  border-color: var(--ar-color-danger);
+  background-color: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
 }
 
 :root[data-arcrho-theme="dark"] :is(.arcodeExplorerWorkspace, .arcodeExplorerFolders, .arcodeHomeContent) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-canvas-subtle);
   color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] .arcodeExplorerWorkspaceName {
-  color: var(--ar-color-text-muted);
 }
 
 :root[data-arcrho-theme="dark"] .arcodeExplorerEntry {
@@ -3407,11 +3421,6 @@
   box-shadow: var(--ar-shadow-subtle);
 }
 
-:root[data-arcrho-theme="dark"] .arcodeCreateCard:hover::before,
-:root[data-arcrho-theme="dark"] .arcodeCreateCard:focus-visible::before {
-  opacity: 0;
-}
-
 :root[data-arcrho-theme="dark"] .arcodeExplorerEntry:hover {
   background-color: var(--ar-color-surface-hover);
 }
@@ -3438,23 +3447,25 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.ce-toolbar, .ce-panel-header, .ce-file-banner) {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface-muted);
-  color: var(--ar-color-text);
+/* Disk-conflict banners keep their warning tone in Dark instead of falling back
+   to a plain chrome surface. */
+:root[data-arcrho-theme="dark"] :is(.ce-file-banner, .sc-file-banner) {
+  border-color: var(--ar-color-warning);
+  background-color: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
 }
 
-:root[data-arcrho-theme="dark"] :is(.ce-btn, .ce-output-panel, .ce-output-text) {
+:root[data-arcrho-theme="dark"] .ce-file-banner .ce-btn {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .ce-btn:hover:not(:disabled) {
+:root[data-arcrho-theme="dark"] .ce-file-banner .ce-btn:hover:not(:disabled) {
   background-color: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] .ce-btn.primary {
+:root[data-arcrho-theme="dark"] .ce-file-banner .ce-btn.primary {
   border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
   color: var(--ar-color-text-strong);
@@ -3485,17 +3496,13 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .sc-main.sidebar-left .sc-sidebar-content {
-  border-color: var(--ar-color-border);
-}
-
-:root[data-arcrho-theme="dark"] :is(.sc-toolbar, .sc-vars-header, .sc-toc-header, .sc-nb-header, .sc-nb-footer, .sc-shortcuts-header, .sc-shortcuts-footer) {
+:root[data-arcrho-theme="dark"] :is(.sc-nb-header, .sc-nb-footer, .sc-shortcuts-header, .sc-shortcuts-footer) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.sc-sep, .sc-cell-bottom-row) {
+:root[data-arcrho-theme="dark"] .sc-cell-bottom-row {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-canvas-subtle);
 }
@@ -3518,7 +3525,6 @@
 }
 
 :root[data-arcrho-theme="dark"] :is(
-  .sc-btn,
   .sc-select,
   .sc-select-btn,
   .sc-cell-btn,
@@ -3529,6 +3535,32 @@
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
+}
+
+/* Toolbar commands stay flat; only dialog footers and the disk banner keep a
+   frame, matching the light chrome. */
+:root[data-arcrho-theme="dark"] :is(
+  .sc-nb-footer .sc-btn,
+  .sc-shortcuts-footer .sc-btn,
+  .sc-file-banner .sc-btn
+) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.sc-nb-footer .sc-btn:hover, .sc-shortcuts-footer .sc-btn:hover, .sc-file-banner .sc-btn:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .sc-nb-footer .sc-btn.primary,
+  .sc-shortcuts-footer .sc-btn.primary,
+  .sc-file-banner .sc-btn.primary
+) {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-accent-soft);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -3724,19 +3756,10 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.sfToolbar, .sfMetaBar, .sfResultsHeader) {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface-muted);
-}
-
-:root[data-arcrho-theme="dark"] :is(.sfBtn, .sfSelect, .sfChip) {
+:root[data-arcrho-theme="dark"] :is(.sfSelect, .sfChip) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] .sfBtn:hover {
-  background-color: var(--ar-color-surface-hover);
 }
 
 :root[data-arcrho-theme="dark"] .sfTable {

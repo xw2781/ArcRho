@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Added workspace folder add and remove controls to the Arcode file explorer sidebar.",
+  "details": [
+    "The explorer header now has an add-folder button next to Refresh that opens the same folder picker as File > Add Workspace Folder.",
+    "Hovering a workspace root shows a remove control that takes that root out of the explorer without deleting anything on disk."
+  ]
+}

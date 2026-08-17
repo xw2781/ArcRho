@@ -1,9 +1,9 @@
 ﻿:root {
   --arcode-titlebar-h: 48px;
   --arcode-status-h: 28px;
-  --arcode-border: #d7dde6;
-  --arcode-text: #18212f;
-  --arcode-muted: #647084;
+  --arcode-border: var(--ark-border);
+  --arcode-text: var(--ark-text);
+  --arcode-muted: var(--ark-text-muted);
   --arcode-accent: #1f7a68;
   --arcode-accent-strong: #135f51;
   --border: #ddd;
@@ -301,19 +301,6 @@ body.win10-borders::after {
   display: block;
 }
 
-.arcodeHomeLayout {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 28px;
-  min-height: 100%;
-  padding: 28px;
-}
-
-.arcodeHomeSidebar {
-  border-right: 1px solid var(--arcode-border);
-  padding-right: 20px;
-}
-
 .arcodeHomeActions {
   display: flex;
   flex-wrap: wrap;
@@ -366,7 +353,7 @@ body.win10-borders::after {
 }
 
 .arcodeFrameWorkspace.withExplorer {
-  grid-template-columns: var(--arcode-explorer-width, 286px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--arcode-explorer-width, 286px) var(--ark-seam) minmax(0, 1fr);
 }
 
 #arcodeFrameExplorerHost {
@@ -407,8 +394,8 @@ body.win10-borders::after {
   min-width: 0;
   gap: 8px;
   padding: 0 4px 0 10px;
-  border-top: 1px solid var(--arcode-border);
-  background: #e6e6e681;
+  border-top: var(--ark-seam) solid var(--ark-border);
+  background: var(--ark-surface-muted);
   color: var(--arcode-muted);
   font-size: 12px;
   margin: 0 -10px;
@@ -424,17 +411,6 @@ body.win10-borders::after {
 @media (max-width: 860px) {
   #arcodeTitlebar {
     grid-template-columns: 160px minmax(0, 1fr) auto;
-  }
-
-  .arcodeHomeLayout {
-    grid-template-columns: 1fr;
-    padding: 20px;
-  }
-
-  .arcodeHomeSidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--arcode-border);
-    padding: 0 0 18px;
   }
 }
 
@@ -1044,7 +1020,7 @@ body.tab-dragging #arcodeTabs.tabs {
 }
 
 #arcodeHome {
-  background: #f4f7fa;
+  background: var(--ark-canvas);
   overflow: hidden;
 }
 
@@ -1054,13 +1030,13 @@ body.tab-dragging #arcodeTabs.tabs {
 
 .arcodeHomeLayout,
 .arcodeWorkspaceLayout {
-  grid-template-columns: var(--arcode-explorer-width, 286px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--arcode-explorer-width, 286px) var(--ark-seam) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   height: 100%;
   min-height: 0;
   padding: 0;
-  background: #ffffff;
+  background: var(--ark-surface);
 }
 
 .arcodeHomeSidebar {
@@ -1068,38 +1044,43 @@ body.tab-dragging #arcodeTabs.tabs {
   min-height: 0;
   height: 100%;
   padding: 0;
-  border-right: 1px solid #d8dde3;
-  background: #f7f9fc;
+  background: var(--ark-surface-muted);
   display: flex;
   flex-direction: column;
 }
 
+/* The seam itself is the separator between the explorer and the editor, so the
+   two panes stay visually joined instead of being pushed apart by a gutter. */
 .arcodeExplorerResizer {
   position: relative;
-  min-width: 6px;
+  min-width: var(--ark-seam);
+  width: var(--ark-seam);
   height: 100%;
-  background: #ffffff;
+  background: var(--ark-border);
   cursor: col-resize;
   touch-action: none;
+  transition: background var(--ark-motion) ease;
 }
 
+/* Invisible grab lane that overhangs both panes, so a hairline seam still has a
+   comfortable pointer target. */
 .arcodeExplorerResizer::before {
   content: "";
   position: absolute;
-  inset: 0 2px;
+  inset: 0 calc(-1 * var(--ark-seam-grab));
+  z-index: 4;
   background: transparent;
-  transition: background 0.12s ease;
 }
 
-.arcodeExplorerResizer:hover::before,
-.arcodeExplorerResizer:focus-visible::before,
-.arcodeExplorerResizing .arcodeExplorerResizer::before {
-  background: #2f7ed8;
+.arcodeExplorerResizer:hover,
+.arcodeExplorerResizer:focus-visible,
+.arcodeExplorerResizing .arcodeExplorerResizer {
+  background: var(--ark-accent);
 }
 
 .arcodeExplorerResizer:focus-visible {
-  outline: 2px solid rgba(47, 126, 216, 0.35);
-  outline-offset: -2px;
+  outline: 2px solid rgba(43, 109, 246, 0.35);
+  outline-offset: 0;
 }
 
 .arcodeExplorerResizing {
@@ -1108,28 +1089,16 @@ body.tab-dragging #arcodeTabs.tabs {
 }
 
 .arcodeExplorerWorkspace {
-  flex: 0 0 26px;
+  flex: 0 0 var(--ark-panel-header-height);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f3f6fa;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 4px;
+  background: var(--ark-surface-muted);
 }
 
-.arcodeExplorerWorkspaceName {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #334155;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.arcodeExplorerRefreshBtn {
+.arcodeExplorerHeaderBtn {
   flex: 0 0 auto;
   width: 22px;
   height: 22px;
@@ -1138,19 +1107,18 @@ body.tab-dragging #arcodeTabs.tabs {
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--ark-control-radius);
   background: transparent;
-  color: #64748b;
+  color: var(--ark-text-muted);
   cursor: pointer;
 }
 
-.arcodeExplorerRefreshBtn:hover {
-  border-color: #cbd5e1;
-  background: #ffffff;
-  color: #1f2937;
+.arcodeExplorerHeaderBtn:hover {
+  background: var(--ark-surface-hover);
+  color: var(--ark-text-strong);
 }
 
-.arcodeExplorerRefreshBtn svg {
+.arcodeExplorerHeaderBtn svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -1180,7 +1148,7 @@ body.tab-dragging #arcodeTabs.tabs {
   display: grid;
   gap: 10px;
   padding: 18px 10px;
-  color: #64748b;
+  color: var(--ark-text-muted);
   font-size: 12px;
 }
 
@@ -1190,7 +1158,7 @@ body.tab-dragging #arcodeTabs.tabs {
   height: 100%;
   padding: 18px 20px;
   overflow: auto;
-  background: #ffffff;
+  background: var(--ark-surface);
 }
 
 .arcodeCreateGroups {
@@ -1256,7 +1224,6 @@ body.tab-dragging #arcodeTabs.tabs {
 
 .arcodeCreateCard {
   position: relative;
-  isolation: isolate;
   overflow: hidden;
   width: 132px;
   height: 132px;
@@ -1267,7 +1234,7 @@ body.tab-dragging #arcodeTabs.tabs {
   justify-items: center;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #d8dde3;
+  border: 1px solid var(--ark-border);
   border-radius: 8px;
   background: #fbfcfe;
   color: #1f2937;
@@ -1277,41 +1244,16 @@ body.tab-dragging #arcodeTabs.tabs {
   transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.arcodeCreateCard::before {
-  content: "";
-  position: absolute;
-  inset: -42px -28px auto;
-  z-index: 0;
-  height: 94px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 50% 35%, rgba(43, 109, 246, 0.32), rgba(96, 165, 250, 0.13) 44%, rgba(96, 165, 250, 0) 72%);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(14px) scale(0.9);
-  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.arcodeCreateCard > * {
-  position: relative;
-  z-index: 1;
-}
-
 .arcodeCreateCard:hover,
 .arcodeCreateCard:focus-visible {
-  border-color: #7da7e8;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(43, 109, 246, 0.16), 0 4px 12px rgba(15, 23, 42, 0.09);
+  border-color: var(--ark-accent-border);
+  background: var(--ark-surface);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
   transform: translateY(-3px);
 }
 
-.arcodeCreateCard:hover::before,
-.arcodeCreateCard:focus-visible::before {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-
 .arcodeCreateCard:active {
-  box-shadow: 0 5px 14px rgba(43, 109, 246, 0.13), 0 2px 6px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
   transform: translateY(-1px) scale(0.99);
 }
 
@@ -1328,15 +1270,10 @@ body.tab-dragging #arcodeTabs.tabs {
 .arcodeCreateCard.disabled:hover,
 .arcodeCreateCard.disabled:focus-visible,
 .arcodeCreateCard.disabled:active {
-  border-color: #d8dde3;
+  border-color: var(--ark-border);
   background: #fbfcfe;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transform: none;
-}
-
-.arcodeCreateCard.disabled::before {
-  opacity: 0;
-  transform: translateY(14px) scale(0.9);
 }
 
 .arcodeCreateCardIcon {
@@ -1353,13 +1290,11 @@ body.tab-dragging #arcodeTabs.tabs {
 
 .arcodeCreateCard:hover .arcodeCreateCardIcon,
 .arcodeCreateCard:focus-visible .arcodeCreateCardIcon {
-  filter: saturate(1.12) drop-shadow(0 5px 10px rgba(43, 109, 246, 0.18));
   transform: translateY(-2px) scale(1.05);
 }
 
 .arcodeCreateCard.disabled:hover .arcodeCreateCardIcon,
 .arcodeCreateCard.disabled:focus-visible .arcodeCreateCardIcon {
-  filter: none;
   transform: none;
 }
 
@@ -1395,7 +1330,6 @@ body.tab-dragging #arcodeTabs.tabs {
 
 @media (prefers-reduced-motion: reduce) {
   .arcodeCreateCard,
-  .arcodeCreateCard::before,
   .arcodeCreateCardIcon,
   .arcodeCreateCardTitle {
     transition: none;
@@ -1404,8 +1338,6 @@ body.tab-dragging #arcodeTabs.tabs {
   .arcodeCreateCard:hover,
   .arcodeCreateCard:focus-visible,
   .arcodeCreateCard:active,
-  .arcodeCreateCard:hover::before,
-  .arcodeCreateCard:focus-visible::before,
   .arcodeCreateCard:hover .arcodeCreateCardIcon,
   .arcodeCreateCard:focus-visible .arcodeCreateCardIcon,
   .arcodeCreateCard:hover .arcodeCreateCardTitle,
@@ -1425,19 +1357,18 @@ body.tab-dragging #arcodeTabs.tabs {
 }
 
 @media (max-width: 640px) {
+  /* Stacked fallback: the hidden resizer leaves the sidebar and the canvas as
+     the only two grid children, and the sidebar carries the seam. */
   .arcodeHomeLayout,
+  .arcodeWorkspaceLayout,
   .arcodeFrameWorkspace.withExplorer {
-    grid-template-columns: 1fr;
-  }
-
-  .arcodeFrameWorkspace.withExplorer {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(120px, 34%) minmax(0, 1fr);
   }
 
-  .arcodeFrameWorkspace.withExplorer .arcodeHomeSidebar {
+  .arcodeHomeSidebar {
     height: auto;
-    border-right: 0;
-    border-bottom: 1px solid #d8dde3;
+    border-bottom: var(--ark-seam) solid var(--ark-border);
   }
 
   .arcodeExplorerResizer {
@@ -1481,11 +1412,12 @@ body.tab-dragging #arcodeTabs.tabs {
 }
 
 .arcodeExplorerEntry:hover {
-  background: #edf2f7;
+  background: var(--ark-surface-hover);
 }
 
 .arcodeExplorerEntry.active {
-  background: #dbeafe;
+  background: var(--ark-accent-soft);
+  box-shadow: inset 2px 0 0 var(--ark-accent);
   color: #0f172a;
 }
 
@@ -1544,7 +1476,54 @@ body.tab-dragging #arcodeTabs.tabs {
 
 .arcodeExplorerEntry.root .arcodeExplorerEntryName {
   font-weight: 700;
-  text-transform: uppercase;
+}
+
+.arcodeExplorerRootRow {
+  position: relative;
+}
+
+.arcodeExplorerRootRow .arcodeExplorerEntry {
+  padding-right: 26px;
+}
+
+.arcodeExplorerRemoveRootBtn {
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  width: 20px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.arcodeExplorerRootRow:hover .arcodeExplorerRemoveRootBtn,
+.arcodeExplorerRemoveRootBtn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.arcodeExplorerRemoveRootBtn:hover {
+  background: var(--ark-surface-hover);
+  color: var(--ark-danger);
+}
+
+.arcodeExplorerRemoveRootBtn svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .arcodeExplorerChildren {

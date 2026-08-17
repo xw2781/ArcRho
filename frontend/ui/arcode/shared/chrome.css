@@ -1,0 +1,36 @@
+/* Arcode chrome tokens.
+
+   Single source of truth for the chrome shared by the Arcode shell, the code
+   editor, the notebook editor, and the Snowflake console: seams between panes,
+   toolbars, panel headers, and command buttons. Each document maps its local
+   variables onto these tokens instead of repeating the palette, and the dark
+   theme overrides the tokens once instead of restyling every surface. */
+:root {
+  --ark-canvas: #f4f7fa;
+  --ark-surface: #ffffff;
+  --ark-surface-muted: #f7f9fc;
+  --ark-surface-hover: #eef2f7;
+  --ark-surface-active: #e3e9f1;
+  --ark-border: #d8dde3;
+  --ark-border-strong: #cbd5e1;
+  --ark-text: #18212f;
+  --ark-text-strong: #111827;
+  --ark-text-muted: #647084;
+  --ark-accent: #2b6df6;
+  --ark-accent-soft: #edf4ff;
+  --ark-accent-border: #9ec0ff;
+  --ark-accent-text: #1d4ed8;
+  --ark-danger: #be123c;
+  --ark-danger-soft: #fff5f5;
+  --ark-danger-border: #fecaca;
+
+  /* One hairline owns every seam between panes, so a resizer never opens a
+     gutter between the surfaces it separates. */
+  --ark-seam: 1px;
+  --ark-seam-grab: 3px;
+  --ark-control-radius: 4px;
+  --ark-control-height: 26px;
+  --ark-toolbar-height: 34px;
+  --ark-panel-header-height: 28px;
+  --ark-motion: 140ms;
+}

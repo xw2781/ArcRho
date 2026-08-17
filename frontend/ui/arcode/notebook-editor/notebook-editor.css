@@ -22,45 +22,68 @@
       background: #f8f9fa;
     }
 
-    /* ===== Toolbar ===== */
+    /* ===== Toolbar =====
+       Actions only: the Arcode shell status bar reports notebook state. */
     .sc-toolbar {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      background: #fff;
-      border-bottom: 1px solid #e0e0e0;
+      gap: 1px;
+      padding: 0 6px;
+      height: var(--ark-toolbar-height);
+      background: var(--ark-surface-muted);
+      border-bottom: var(--ark-seam) solid var(--ark-border);
       flex-shrink: 0;
     }
     .sc-btn {
-      height: 26px;
-      padding: 0 10px;
-      border: 1px solid #c8c8c8;
-      border-radius: 5px;
-      background: #fff;
+      height: var(--ark-control-height);
+      padding: 0 9px;
+      border: 1px solid transparent;
+      border-radius: var(--ark-control-radius);
+      background: transparent;
       font-size: 11.5px;
-      color: #333;
+      color: var(--ark-text);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
+      white-space: nowrap;
       user-select: none;
-      transition: background 80ms ease;
+      transition: background-color var(--ark-motion) ease, border-color var(--ark-motion) ease;
     }
-    .sc-btn:hover { background: #f0f0f0; }
-    .sc-btn:active { background: #e4e4e4; }
-    .sc-btn.primary { background: #2563eb; border-color: #1d4ed8; color: #fff; }
-    .sc-btn.primary:hover { background: #1d4ed8; }
-    .sc-btn.primary:disabled { background: #93c5fd; border-color: #93c5fd; cursor: not-allowed; }
-    .sc-btn.danger { color: #dc2626; }
-    .sc-btn.danger:hover { background: #fef2f2; border-color: #fca5a5; }
+    .sc-btn:hover { background: var(--ark-surface-hover); }
+    .sc-btn:active { background: var(--ark-surface-active); }
+    .sc-btn.primary {
+      border-color: var(--ark-accent-border);
+      background: var(--ark-accent-soft);
+      color: var(--ark-accent-text);
+      font-weight: 700;
+    }
+    .sc-btn.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .sc-btn.danger { color: var(--ark-danger); }
+    .sc-btn.danger:hover { background: var(--ark-danger-soft); border-color: var(--ark-danger-border); }
+    /* Dialog footers commit or cancel work, so those buttons stay framed. */
+    .sc-nb-footer .sc-btn,
+    .sc-shortcuts-footer .sc-btn {
+      height: 28px;
+      border-color: var(--ark-border-strong);
+      background: var(--ark-surface);
+    }
+    .sc-nb-footer .sc-btn:hover,
+    .sc-shortcuts-footer .sc-btn:hover {
+      background: var(--ark-surface-hover);
+    }
+    .sc-nb-footer .sc-btn.primary,
+    .sc-shortcuts-footer .sc-btn.primary {
+      border-color: var(--ark-accent-border);
+      background: var(--ark-accent-soft);
+    }
     .sc-select {
-      height: 26px;
-      border: 1px solid #c8c8c8;
-      border-radius: 3px;
-      background: #fff;
+      height: var(--ark-control-height);
+      border: 1px solid var(--ark-border-strong);
+      border-radius: var(--ark-control-radius);
+      background: var(--ark-surface);
       font-size: 11.5px;
-      color: #333;
+      color: var(--ark-text);
       padding: 0 24px 0 8px;
       min-width: 106px;
     }
@@ -73,6 +96,8 @@
       position: relative;
       display: inline-flex;
       align-items: center;
+      /* Framed control between flat commands needs its own breathing room. */
+      margin: 0 4px;
     }
     .sc-select-btn {
       display: flex;
@@ -151,9 +176,8 @@
       border-color: #93c5fd;
       box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
     }
-    .sc-sep { width: 1px; height: 18px; background: #e0e0e0; margin: 0 2px; }
+    .sc-sep { flex: 0 0 1px; width: 1px; height: 16px; background: var(--ark-border); margin: 0 5px; }
     .sc-spacer { flex: 1; }
-    .sc-status { font-size: 11px; color: #888; }
     .sc-file-banner {
       display: none;
       align-items: center;
@@ -183,13 +207,21 @@
       gap: 6px;
       flex: 0 0 auto;
     }
+    /* Banner choices are decisions, not quiet toolbar actions, so they keep a
+       frame against the amber surface. */
     .sc-file-banner .sc-btn {
       height: 24px;
-      background: #fffdf5;
+      border-color: #e6c56a;
+      background: #fffdf3;
+      color: #4f3b00;
+    }
+    .sc-file-banner .sc-btn:hover {
+      background: #ffffff;
     }
     .sc-file-banner .sc-btn.primary {
-      background: #2563eb;
-      color: #fff;
+      border-color: var(--ark-accent-border);
+      background: var(--ark-accent-soft);
+      color: var(--ark-accent-text);
     }
 
     /* ===== Main layout ===== */
@@ -787,30 +819,30 @@
     }
     .sc-add-cell:hover { background: #f0f7ff; border-color: #93c5fd; color: #2563eb; }
 
-    /* ===== Resize handle ===== */
+    /* ===== Resize handle =====
+       The handle is the seam between the cells canvas and the side panels, with
+       an invisible grab lane so a hairline stays easy to hit. */
     .sc-resize-handle {
-      width: 12px;
-      margin-left: -4px;
-      margin-right: -4px;
+      width: var(--ark-seam);
+      background: var(--ark-border);
       cursor: col-resize;
       flex-shrink: 0;
       position: relative;
       touch-action: none;
+      transition: background var(--ark-motion) ease;
     }
     .sc-resize-handle::before {
       content: "";
       position: absolute;
       top: 0;
       bottom: 0;
-      left: 4px;
-      width: 4px;
+      left: calc(-1 * var(--ark-seam-grab));
+      right: calc(-1 * var(--ark-seam-grab));
+      z-index: 4;
       background: transparent;
-      transition: background 120ms ease;
     }
     .sc-resize-handle:hover,
-    .sc-resize-handle.active { background: transparent; }
-    .sc-resize-handle:hover::before,
-    .sc-resize-handle.active::before { background: #2563eb; }
+    .sc-resize-handle.active { background: var(--ark-accent); }
 
     /* ===== Sidebar (icon strip + split panel) ===== */
     .sc-sidebar {
@@ -826,7 +858,6 @@
     .sc-sidebar-content {
       width: 290px;
       min-width: 210px;
-      border-left: 1px solid #e0e0e0;
       background: #fff;
       display: flex;
       flex-direction: column;
@@ -899,11 +930,13 @@
     .sc-vars-header {
       display: flex;
       align-items: center;
-      padding: 6px 10px;
-      border-bottom: 1px solid #f0f0f0;
-      font-size: 12px;
-      font-weight: 600;
-      color: #555;
+      height: var(--ark-panel-header-height);
+      padding: 0 4px 0 10px;
+      border-bottom: var(--ark-seam) solid var(--ark-border);
+      background: var(--ark-surface-muted);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ark-text);
       user-select: none;
       flex-shrink: 0;
       cursor: pointer;
@@ -953,11 +986,13 @@
     .sc-toc-header {
       display: flex;
       align-items: center;
-      padding: 6px 10px;
-      border-bottom: 1px solid #f0f0f0;
-      font-size: 12px;
-      font-weight: 600;
-      color: #555;
+      height: var(--ark-panel-header-height);
+      padding: 0 4px 0 10px;
+      border-bottom: var(--ark-seam) solid var(--ark-border);
+      background: var(--ark-surface-muted);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ark-text);
       user-select: none;
       flex-shrink: 0;
       cursor: pointer;
@@ -1288,7 +1323,6 @@
 
     /* Sidebar left-side adjustments */
     .sc-main.sidebar-left { flex-direction: row-reverse; }
-    .sc-main.sidebar-left .sc-sidebar-content { border-left: none; border-right: 1px solid #e0e0e0; }
 
     /* Keyboard shortcuts modal */
     .sc-shortcuts-overlay {

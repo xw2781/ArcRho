@@ -5,28 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Arcode Code Editor</title>
+  <link rel="stylesheet" href="/ui/arcode/shared/chrome.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/code-editor/code-editor.css?v=20260721b"/>
+  <link rel="stylesheet" href="/ui/arcode/code-editor/code-editor.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260812b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
   <main class="ce-app">
     <header class="ce-toolbar">
-      <button class="ce-btn" id="saveBtn" type="button">Save</button>
-      <button class="ce-btn" id="saveAsBtn" type="button">Save As</button>
-      <span class="ce-sep"></span>
       <button class="ce-btn primary" id="runBtn" type="button">Run</button>
       <button class="ce-btn" id="runSelectionBtn" type="button">Run Selection</button>
       <button class="ce-btn danger" id="stopBtn" type="button" hidden>Stop</button>
-      <button class="ce-btn danger" id="restartBtn" type="button">Restart</button>
+      <button class="ce-btn" id="restartBtn" type="button">Restart</button>
       <span class="ce-sep"></span>
       <button class="ce-btn" id="formatBtn" type="button">Format</button>
-      <button class="ce-btn" id="clearOutputBtn" type="button">Clear Output</button>
-      <span class="ce-spacer"></span>
-      <span class="ce-file" id="fileLabel">Untitled</span>
-      <span class="ce-status" id="statusText">Ready</span>
     </header>
 
     <div class="ce-file-banner" id="fileBanner" role="status" aria-live="polite">
@@ -51,8 +45,15 @@
             tabindex="0"
           ></div>
           <div class="ce-panel-header">
-            <span>Output</span>
+            <span class="ce-panel-title">Output</span>
             <span id="runInfo" class="ce-run-info"></span>
+            <button class="ce-panel-btn" id="clearOutputBtn" type="button" title="Clear Output" aria-label="Clear Output">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 7h14"></path>
+                <path d="M9 7V5h6v2"></path>
+                <path d="M7 7l1 12h8l1-12"></path>
+              </svg>
+            </button>
           </div>
           <pre id="outputText" class="ce-output-text"></pre>
         </section>
@@ -63,6 +64,6 @@
   <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
   <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
   <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
-  <script type="module" src="/ui/arcode/code-editor/index.js?v=20260726b"></script>
+  <script type="module" src="/ui/arcode/code-editor/index.js?v=20260816c"></script>
 </body>
 </html>

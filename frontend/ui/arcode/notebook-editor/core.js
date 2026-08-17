@@ -46,7 +46,6 @@ const tocHeadingNumbersBtn = document.getElementById("tocHeadingNumbersBtn");
 const varsView = document.getElementById("varsView");
 const varsHeader = document.querySelector(".sc-vars-header");
 const varsBody = document.getElementById("varsBody");
-const statusText = document.getElementById("statusText");
 const resizeHandle = document.getElementById("resizeHandle");
 const shortcutsOverlay = document.getElementById("shortcutsOverlay");
 const shortcutsCloseBtn = document.getElementById("shortcutsCloseBtn");

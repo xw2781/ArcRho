@@ -45,13 +45,10 @@ function isPythonFile() {
 
 function setStatus(text) {
   const value = String(text || "").trim() || "Ready";
-  const el = $("statusText");
-  if (el) el.textContent = value;
   shared.postStatus(value);
 }
 
 function updateTitle() {
-  $("fileLabel").textContent = filename();
   shared.postTabTitle({ title: filename(), inst: tabInstanceId, path: currentPath });
 }
 
@@ -621,8 +618,6 @@ function initEditor() {
 }
 
 function initEvents() {
-  $("saveBtn")?.addEventListener("click", () => void saveCurrentFile());
-  $("saveAsBtn")?.addEventListener("click", () => void saveCurrentFile({ saveAs: true }));
   $("runBtn")?.addEventListener("click", () => void runCurrentPython(editor?.getValue() || ""));
   $("runSelectionBtn")?.addEventListener("click", () => void runPython(selectedTextOrAll()));
   $("stopBtn")?.addEventListener("click", () => void interruptExecution());

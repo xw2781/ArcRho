@@ -1,12 +1,13 @@
 :root {
-  --sf-bg: #f4f7fa;
-  --sf-panel: #ffffff;
-  --sf-border: #d8dde3;
-  --sf-text: #1f2937;
-  --sf-muted: #64748b;
-  --sf-blue: #2b6df6;
-  --sf-blue-soft: #eaf1ff;
-  --sf-error: #be123c;
+  --sf-bg: var(--ark-canvas);
+  --sf-panel: var(--ark-surface);
+  --sf-chrome: var(--ark-surface-muted);
+  --sf-border: var(--ark-border);
+  --sf-text: var(--ark-text);
+  --sf-muted: var(--ark-text-muted);
+  --sf-blue: var(--ark-accent);
+  --sf-blue-soft: var(--ark-accent-soft);
+  --sf-error: var(--ark-danger);
 }
 
 * {
@@ -29,7 +30,7 @@ body {
   height: 100%;
   min-width: 0;
   display: grid;
-  grid-template-rows: 38px 32px minmax(180px, 1fr) minmax(150px, 34%);
+  grid-template-rows: var(--ark-toolbar-height) 30px minmax(180px, 1fr) minmax(150px, 34%);
   background: var(--sf-bg);
 }
 
@@ -40,62 +41,65 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--sf-border);
-  background: #fbfcfe;
+  border-bottom: var(--ark-seam) solid var(--sf-border);
+  background: var(--sf-chrome);
 }
 
+/* The shell status bar reports connection and query state, so the toolbar keeps
+   actions only. */
 .sfToolbar {
-  padding: 5px 10px;
+  gap: 1px;
+  padding: 0 6px;
 }
 
 .sfMetaBar {
-  padding: 5px 10px;
+  padding: 0 10px;
   color: var(--sf-muted);
 }
 
-.sfSelect,
-.sfBtn {
-  height: 28px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #ffffff;
+.sfSelect {
+  height: var(--ark-control-height);
+  min-width: 220px;
+  padding: 0 8px;
+  margin-right: 5px;
+  border: 1px solid var(--ark-border-strong);
+  border-radius: var(--ark-control-radius);
+  background: var(--ark-surface);
   color: var(--sf-text);
   font: inherit;
 }
 
-.sfSelect {
-  min-width: 220px;
-  padding: 0 8px;
-}
-
 .sfBtn {
-  padding: 0 12px;
+  height: var(--ark-control-height);
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--ark-control-radius);
+  background: transparent;
+  color: var(--sf-text);
+  font: inherit;
   cursor: pointer;
-  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color var(--ark-motion) ease, border-color var(--ark-motion) ease;
 }
 
 .sfBtn:hover {
-  background: #f8fafc;
+  background: var(--ark-surface-hover);
+}
+
+.sfBtn:active {
+  background: var(--ark-surface-active);
 }
 
 .sfBtn.primary {
-  border-color: #9db8ff;
+  border-color: var(--ark-accent-border);
   background: var(--sf-blue-soft);
-  color: #1d4ed8;
+  color: var(--ark-accent-text);
+  font-weight: 700;
 }
 
 .sfBtn:disabled {
   opacity: 0.55;
   cursor: default;
-}
-
-.sfStatus {
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--sf-muted);
 }
 
 .sfChip {
@@ -104,29 +108,30 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 3px 8px;
-  border: 1px solid #d8dde3;
-  border-radius: 6px;
-  background: #ffffff;
+  padding: 2px 8px;
+  border: 1px solid var(--sf-border);
+  border-radius: var(--ark-control-radius);
+  background: var(--ark-surface);
 }
 
 .sfEditorHost {
   min-width: 0;
   min-height: 0;
-  border-bottom: 1px solid var(--sf-border);
-  background: #ffffff;
+  border-bottom: var(--ark-seam) solid var(--sf-border);
+  background: var(--sf-panel);
 }
 
 .sfResults {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 31px minmax(0, 1fr);
+  grid-template-rows: var(--ark-panel-header-height) minmax(0, 1fr);
   background: var(--sf-panel);
 }
 
 .sfResultsHeader {
   padding: 0 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 

@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Refreshed the Arcode workspace layout so panes meet at a single hairline seam and toolbars show actions instead of repeated labels.",
+  "details": [
+    "The file explorer and the open editor are now separated by one thin line instead of a blank gutter, so the editor toolbar, Output panel, and its header all have a visible left edge.",
+    "Removed the Arcode Workspace title from the explorer header and the file name and status labels from the code editor, notebook, and Snowflake toolbars; the tab names the file and the status bar reports state.",
+    "Clear Output moved from the code editor toolbar to an icon action in the Output panel header, next to the run timing.",
+    "Save and Save As left the code editor toolbar; they stay on the File menu and on Ctrl+S and Ctrl+Shift+S.",
+    "Toolbar commands are flat until hovered, with the tinted highlight kept for Run, Run All, and dialog confirmations, and Restart no longer painted as a destructive action.",
+    "Home create cards now lift on hover without the blue glow, and folder and panel titles read in normal case instead of all capitals."
+  ]
+}

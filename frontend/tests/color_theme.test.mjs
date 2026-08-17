@@ -234,19 +234,29 @@ test("Arcode code surfaces use the shared Atom One Dark editor tokens", () => {
 
 test("Arcode Dark explorer uses quiet themed surfaces and a visible resize state", () => {
   const dark = read("../ui/shared/styles/themes/dark.css");
+  const chrome = read("../ui/arcode/shared/chrome.css");
+  const shellCss = read("../ui/arcode/main.css");
   const sidebar = declarationsFor(dark, ".arcodeHomeSidebar");
-  const resizer = declarationsFor(dark, ".arcodeExplorerResizer");
-  const resizerState = declarationsFor(dark, ".arcodeExplorerResizer:hover");
   const entry = declarationsFor(dark, ".arcodeExplorerEntry");
   const supportedEntry = declarationsFor(dark, ".arcodeExplorerEntry.file.supported");
 
   assert.match(sidebar, /background-color:\s*var\(--ar-color-surface-muted\)/);
-  assert.match(resizer, /background-color:\s*var\(--ar-color-surface-muted\)/);
-  assert.match(resizerState, /background-color:\s*var\(--ar-color-border-focus\)/);
   assert.match(entry, /background-color:\s*transparent/);
   assert.match(entry, /border-color:\s*transparent/);
   assert.match(entry, /color:\s*var\(--ar-color-text\)/);
   assert.match(supportedEntry, /color:\s*var\(--ar-color-text\)/);
+
+  // The seam and its resize state are token-driven, so Dark themes the shared
+  // Arcode chrome tokens once instead of restyling the resizer per surface.
+  assert.match(chrome, /--ark-seam:\s*1px/);
+  assert.match(shellCss, /\.arcodeExplorerResizer\s*\{[^}]*background:\s*var\(--ark-border\)/);
+  assert.match(
+    shellCss,
+    /\.arcodeExplorerResizer:hover,[\s\S]{0,160}\{[^}]*background:\s*var\(--ark-accent\)/,
+  );
+  assert.match(dark, /--ark-border:\s*var\(--ar-color-border\)/);
+  assert.match(dark, /--ark-accent:\s*var\(--ar-color-border-focus\)/);
+  assert.doesNotMatch(dark, /\.arcodeExplorerResizer/);
 });
 
 test("Arcode Dark notebook keeps its canvas, TOC, split panel, and code cells visually distinct", () => {
@@ -619,7 +629,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260811a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260812b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260816b/);
   assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
@@ -642,23 +652,23 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260812b/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260816b/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260814b"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260816a"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260811c"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260805a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260814b"],
-    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260814b"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260814b"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260814b"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260816a"],
+    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260816a"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260816a"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260816b"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260816pssel1"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260812dtformat2"],
-    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260726b"],
-    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260726a"],
+    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260816c"],
+    ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],
     ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260726a"],
   ];
   for (const [path, reference] of expectedReferences) {
