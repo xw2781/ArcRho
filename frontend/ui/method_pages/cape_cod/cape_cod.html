@@ -6,12 +6,12 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Cape Cod</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
   <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260804a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -23,8 +23,8 @@
             <section class="ccPanel arDetailsGroup">
               <div class="ccPanelBody">
                 <div class="ccFieldGrid arDetailsGrid">
-                  <label class="ccLabel arDetailsLabel" for="ccProjectInput">Project : </label>
-                  <div class="ccFieldControl arDetailsField">
+                  <label class="ccLabel arDetailsLabel" data-details-field="project" for="ccProjectInput">Project : </label>
+                  <div class="ccFieldControl arDetailsField" data-details-field="project">
                     <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
                   </div>
                   <label class="ccLabel arDetailsLabel" for="ccClassInput">Reserving Class : </label>
@@ -210,6 +210,6 @@
     <button type="button" role="menuitem" data-cc-cell-action="remove-highlights">Remove Highlights</button>
   </div>
 
-  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260816a"></script>
+  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260817a"></script>
 </body>
 </html>

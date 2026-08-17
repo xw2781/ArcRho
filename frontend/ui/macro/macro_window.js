@@ -1,6 +1,6 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
 import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
-import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260808b";
+import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260817a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
 
 const API_BASE = window.location.origin;
@@ -101,6 +101,7 @@ function setMacroStatus(text, tone = "", options = {}) {
   const message = String(text || "");
   if (macroStatus) {
     macroStatus.textContent = message;
+    macroStatus.title = message;
     macroStatus.dataset.tone = tone || "";
   }
   if (options.statusBar && message) {

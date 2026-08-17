@@ -1,4 +1,5 @@
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 export function mountDatasetViewer(container) {
@@ -17,11 +18,11 @@ export function mountDatasetViewer(container) {
 
   <!-- Details tab page -->
   <div id="dsDetailsPage" class="arDetailsRoot" style="display:none;">
-    <div class="panel dsDetailsFrame arDetailsGroup" id="topFrame">
+    <div class="arDetailsGroup" id="topFrame">
       <div class="topFrameGrid">
         <div class="topField arDetailsGrid">
-          <label class="small arDetailsLabel" for="projectSelect">Project Name : </label>
-          <div class="projectSelectWrap arDetailsField">
+          <label class="arDetailsLabel" data-details-field="project" for="projectSelect">Project Name : </label>
+          <div class="projectSelectWrap arDetailsField" data-details-field="project">
             <input id="projectSelect" class="arDetailsControl" autocomplete="off" />
             <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
               ...
@@ -31,7 +32,7 @@ export function mountDatasetViewer(container) {
         </div>
 
         <div class="topField arDetailsGrid">
-          <label class="small arDetailsLabel" for="pathInput">Reserving Class : </label>
+          <label class="arDetailsLabel" for="pathInput">Reserving Class : </label>
           <div class="reservingClassWrap arDetailsField">
             <input id="pathInput" class="arDetailsControl" />
             <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
@@ -44,7 +45,7 @@ export function mountDatasetViewer(container) {
     <div class="dsDetailsPanel arDetailsGroup">
       <div class="dsDetailsGrid arDetailsGrid">
         <div class="dsDetailLabel arDetailsLabel">
-          <label class="small" for="dsDetailName">Name : </label>
+          <label for="dsDetailName">Name : </label>
         </div>
         <div class="dsDetailInput arDetailsField">
           <div class="dsDetailNameWrap">
@@ -54,7 +55,7 @@ export function mountDatasetViewer(container) {
         </div>
 
         <div class="dsDetailLabel arDetailsLabel">
-          <label class="small" for="triInput">Dataset Type : </label>
+          <label for="triInput">Dataset Type : </label>
         </div>
         <div class="dsDetailInput arDetailsField">
           <div class="datasetSelectWrap">
@@ -65,7 +66,7 @@ export function mountDatasetViewer(container) {
         </div>
 
         <div class="dsDetailLabel arDetailsLabel">
-          <label class="small" id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
+          <label id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
         </div>
         <div class="dsDetailInput arDetailsField">
           <div id="dsDetailFormulaBox" class="dsDetailFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
@@ -77,7 +78,7 @@ export function mountDatasetViewer(container) {
     <div class="dsRelationshipsPanel arDetailsGroup">
       <div class="dsRelationshipsGrid arDetailsGrid">
         <div class="dsDetailLabel arDetailsLabel">
-          <label class="small" id="dsPrecedentsTitle">Precedents : </label>
+          <label id="dsPrecedentsTitle">Precedents : </label>
         </div>
         <div class="dsDetailInput arDetailsField">
           <div class="dsDatasetChipBox">
@@ -86,7 +87,7 @@ export function mountDatasetViewer(container) {
         </div>
 
         <div class="dsDetailLabel arDetailsLabel">
-          <label class="small" id="dsDependentsTitle">Dependents : </label>
+          <label id="dsDependentsTitle">Dependents : </label>
         </div>
         <div class="dsDetailInput arDetailsField">
           <div class="dsDatasetChipBox">
@@ -172,12 +173,12 @@ export function mountDatasetViewer(container) {
           <!-- Col 5: Number formatting inputs -->
           <div class="topbar-format-input-stack" style="grid-column: 5; grid-row: 1 / span 2;">
             <div class="topbar-input">
-              <div id="numberFormatWrap" class="numberFormatWrap">
+              <div id="numberFormatWrap" class="arNumberFormatField">
                 <input id="numberFormatSelect" type="text" value="0,000" aria-label="Number Format" aria-controls="numberFormatDropdown" aria-expanded="false" autocomplete="off" />
-                <button id="numberFormatDropdownBtn" class="numberFormatDropdownBtn" type="button" aria-label="Show Number Format presets" aria-controls="numberFormatDropdown" aria-expanded="false">
-                  <span class="lenSelectCaret" aria-hidden="true"></span>
+                <button id="numberFormatDropdownBtn" class="arNumberFormatToggle" type="button" aria-label="Show Number Format presets" aria-controls="numberFormatDropdown" aria-expanded="false">
+                  <span class="arNumberFormatCaret" aria-hidden="true"></span>
                 </button>
-                <div id="numberFormatDropdown" class="datasetDropdown numberFormatDropdown" role="listbox" aria-label="Number Format presets"></div>
+                <div id="numberFormatDropdown" class="datasetDropdown arNumberFormatMenu" role="listbox" aria-label="Number Format presets"></div>
               </div>
             </div>
             <div class="topbar-input">
@@ -320,6 +321,7 @@ export function mountDatasetViewer(container) {
 
 function syncDatasetDetailsLabelWidth(container) {
   const detailsPage = container?.querySelector?.("#dsDetailsPage");
+  applyHostFixedDetailsFields({ root: detailsPage });
   syncDetailsLabelWidth({
     root: detailsPage,
     labelSelector: ".arDetailsLabel",

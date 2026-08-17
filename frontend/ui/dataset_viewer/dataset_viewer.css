@@ -27,45 +27,16 @@ body {
   overflow: auto;
 }
 
-#topFrame {
-  width: 100%;
-  margin: 0;
-  border: none;
-  background: transparent;
-  padding: 12px 14px;
-  box-sizing: border-box;
-}
-
+/* One row per field, so each `.topField` is its own single-row Details grid. */
 .topFrameGrid {
   display: grid;
   grid-template-columns: 1fr;
-  row-gap: 10px;
+  row-gap: var(--ar-details-row-gap);
   align-items: center;
 }
 
 .topField {
   row-gap: 0;
-}
-
-.topField input,
-.topField select {
-  width: 100%;
-  height: 30px;
-  line-height: 30px;
-  padding: 0 10px;
-  box-sizing: border-box;
-  border: 1px solid #cfcfcf;
-  border-radius: var(--tabbed-page-control-radius, 4px);
-  background: #fff;
-  color: var(--ar-details-control-color, #000);
-  font-size: var(--ar-details-control-font-size, 12px);
-}
-
-.topField input:focus,
-.topField select:focus {
-  outline: none;
-  border-color: #8aa8ff;
-  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
 }
 
 .dsDetailNameWrap {
@@ -333,60 +304,21 @@ body {
 }
 
 #datasetTopBar .lenSelectDisplay:hover .lenSelectCaret,
-#datasetTopBar .lenSelectDisplay:focus .lenSelectCaret,
-#datasetTopBar .numberFormatDropdownBtn:hover .lenSelectCaret,
-#datasetTopBar .numberFormatDropdownBtn:focus .lenSelectCaret {
+#datasetTopBar .lenSelectDisplay:focus .lenSelectCaret {
   opacity: 1;
 }
 
-#datasetTopBar .numberFormatWrap {
-  position: relative;
+/* The Number Format control itself is the shared `arNumberFormat*` field; only
+   its top-bar footprint is set here. The caret inset has to be restated because
+   the top bar's own `#datasetTopBar input[type="text"]` padding outranks the
+   shared rule. */
+#datasetTopBar .arNumberFormatField {
   width: 69px;
   height: var(--topbar-control-height);
 }
 
-#numberFormatSelect {
-  width: 100%;
-  padding-right: 24px !important;
-}
-
-#datasetTopBar .numberFormatDropdownBtn {
-  position: absolute;
-  right: 1px;
-  top: 1px;
-  width: 24px;
-  height: calc(var(--topbar-control-height) - 2px);
-  padding: 0;
-  border: 0;
-  border-left: 1px solid transparent;
-  border-radius: 0 5px 5px 0;
-  background: transparent;
-  color: #555;
-  cursor: pointer;
-}
-
-#datasetTopBar .numberFormatDropdownBtn .lenSelectCaret {
-  right: 8px;
-  pointer-events: none;
-}
-
-#datasetTopBar .numberFormatWrap.open .numberFormatDropdownBtn .lenSelectCaret {
-  transform: translateY(-50%) rotate(180deg);
-  color: #2f5fd3;
-  opacity: 1;
-}
-
-#datasetTopBar .numberFormatDropdown {
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 160px;
-  z-index: 70;
-}
-
-#datasetTopBar .numberFormatOption {
-  text-align: left;
-  padding-left: 10px;
+#datasetTopBar .arNumberFormatField > input {
+  padding-right: 24px;
 }
 
 #datasetTopBar .lenSelectNative {
@@ -900,35 +832,10 @@ body {
 /* =========================
   Details Tab Fields
 ========================= */
+/* Every control in these cells carries `.arDetailsControl`, which owns their
+   size, border, colour, and focus ring. */
 .dsDetailInput {
   text-align: left;
-}
-.dsDetailInput input,
-.dsDetailInput select,
-.dsDetailInput textarea {
-  width: 100%;
-  height: 30px;
-  line-height: 30px;
-  padding: 0 10px;
-  box-sizing: border-box;
-  border: 1px solid #cfcfcf;
-  border-radius: var(--tabbed-page-control-radius, 4px);
-  background: #fff;
-  color: var(--ar-details-control-color, #000);
-  font-size: var(--ar-details-control-font-size, 12px);
-  font-family: var(--app-font);
-}
-#dsDetailsPage input[readonly],
-#dsDetailsPage textarea[readonly],
-#dsDetailsPage select:disabled {
-  color: var(--ar-details-readonly-color, #000);
-}
-.dsDetailInput input:focus,
-.dsDetailInput select:focus,
-.dsDetailInput textarea:focus {
-  outline: none;
-  border-color: #8aa8ff;
-  box-shadow: 0 0 0 2px rgba(138, 168, 255, 0.2);
 }
 #dsDetailFormula {
   display: none;

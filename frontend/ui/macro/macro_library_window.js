@@ -71,6 +71,7 @@ function setLibraryStatus(text, tone = "", options = {}) {
   const message = String(text || "");
   if (libraryStatus) {
     libraryStatus.textContent = message;
+    libraryStatus.title = message;
     libraryStatus.dataset.tone = tone || "";
   }
   if (options.statusBar && message) {

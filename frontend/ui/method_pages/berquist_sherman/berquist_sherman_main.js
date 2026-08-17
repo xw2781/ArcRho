@@ -9,7 +9,8 @@ import {
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
   formatSidecarAuditEventDate,
@@ -17,6 +18,7 @@ import {
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
+import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
@@ -25,7 +27,6 @@ import {
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
 import {
-  DATASET_NUMBER_FORMAT_PRESETS,
   DEFAULT_DATASET_NUMBER_FORMAT,
   applyDecimalPlacesToDatasetNumberFormat,
   clampDatasetDecimalPlaces,
@@ -238,7 +239,9 @@ const els = {
   originLengthInput: document.getElementById("bsOriginLengthInput"),
   developmentLengthInput: document.getElementById("bsDevelopmentLengthInput"),
   numberFormatInput: document.getElementById("bsNumberFormatInput"),
+  numberFormatField: document.getElementById("bsNumberFormatField"),
   numberFormatBtn: document.getElementById("bsNumberFormatBtn"),
+  numberFormatMenu: document.getElementById("bsNumberFormatMenu"),
   decimalPlacesInput: document.getElementById("bsDecimalPlacesInput"),
   decimalPlacesUp: document.getElementById("bsDecimalPlacesUp"),
   decimalPlacesDown: document.getElementById("bsDecimalPlacesDown"),
@@ -852,40 +855,6 @@ function applyDerivedNumberFormat(entry, { fromDecimalPlaces = false } = {}) {
   syncNumberFormatControls();
   renderMethodTable();
   markDirty();
-}
-
-function openNumberFormatPresetMenu(anchor) {
-  const menu = document.createElement("div");
-  menu.className = "ctx-menu";
-  const inner = document.createElement("div");
-  inner.className = "ctx-menu-inner";
-  for (const preset of DATASET_NUMBER_FORMAT_PRESETS) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "ctx-item";
-    item.textContent = preset;
-    item.addEventListener("click", () => {
-      menu.remove();
-      applyDerivedNumberFormat({ number_format: preset });
-    });
-    inner.appendChild(item);
-  }
-  menu.appendChild(inner);
-  document.body.appendChild(menu);
-  const dismiss = (event) => {
-    if (event.type === "keydown" && event.key !== "Escape") return;
-    if (event.type === "pointerdown" && event.target instanceof Element && menu.contains(event.target)) return;
-    menu.remove();
-    document.removeEventListener("pointerdown", dismiss);
-    document.removeEventListener("keydown", dismiss);
-  };
-  document.addEventListener("pointerdown", dismiss);
-  document.addEventListener("keydown", dismiss);
-  const rect = anchor?.getBoundingClientRect?.();
-  openContextMenu(menu, {
-    clientX: rect ? rect.left : 0,
-    clientY: rect ? rect.bottom : 0,
-  });
 }
 
 function syncLoessSpanControls() {
@@ -2457,7 +2426,13 @@ function wireNumberFormatControls() {
   els.numberFormatInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") els.numberFormatInput.blur();
   });
-  els.numberFormatBtn?.addEventListener("click", () => openNumberFormatPresetMenu(els.numberFormatBtn));
+  wireNumberFormatField({
+    input: els.numberFormatInput,
+    field: els.numberFormatField,
+    toggle: els.numberFormatBtn,
+    menu: els.numberFormatMenu,
+    onApply: (preset) => applyDerivedNumberFormat({ number_format: preset }),
+  });
   const stepDecimalPlaces = (step) => applyDerivedNumberFormat(
     { decimal_places: derivedNumberFormat().decimal_places + step },
     { fromDecimalPlaces: true },
@@ -2580,6 +2555,7 @@ function wireMessages() {
 }
 
 async function init() {
+  applyHostFixedDetailsFields({ root: "#bsDetailsPage" });
   syncDetailsLabelWidth({
     root: "#bsDetailsPage",
     labelSelector: ".arDetailsLabel",

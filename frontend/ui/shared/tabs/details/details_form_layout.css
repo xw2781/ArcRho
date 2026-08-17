@@ -71,6 +71,12 @@
   content: none;
 }
 
+/* A host-fixed row hides both of its grid cells. Page layouts give field cells
+   their own `display`, which would otherwise outrank the `hidden` attribute. */
+.arDetailsRoot [hidden][data-details-field] {
+  display: none;
+}
+
 .arDetailsField {
   width: 100%;
   min-width: 0;

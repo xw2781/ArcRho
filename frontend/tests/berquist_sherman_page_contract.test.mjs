@@ -230,7 +230,14 @@ test("input views keep their dataset instance's number format", () => {
 test("the Details format governs the calculated triangles and syncs silently", () => {
   assert.match(html, /id="bsNumberFormatInput"/u);
   assert.match(html, /id="bsDecimalPlacesInput"/u);
-  assert.match(main, /DATASET_NUMBER_FORMAT_PRESETS/u);
+  // Number Format is the shared caret field the Dataset Viewer uses, so the
+  // canonical preset list is reached through that component rather than a
+  // page-local menu.
+  assert.match(html, /class="arNumberFormatField"/u);
+  assert.match(html, /class="arNumberFormatToggle"/u);
+  assert.match(html, /class="datasetDropdown arNumberFormatMenu"/u);
+  assert.match(main, /wireNumberFormatField\(\{[\s\S]*?menu: els\.numberFormatMenu/u);
+  assert.doesNotMatch(main, /DATASET_NUMBER_FORMAT_PRESETS/u);
   // Editing the Details pair is a real edit; a source restyle is not.
   assert.match(main, /function applyDerivedNumberFormat\([\s\S]*?markDirty\(\);/u);
   assert.match(main, /derivedNumberFormat: derivedNumberFormat\(\)/u);
@@ -239,8 +246,13 @@ test("the Details format governs the calculated triangles and syncs silently", (
   // method's last-modified stamp and the output's review status.
   const rewriteStart = main.indexOf("async function rewriteRecordedNumberFormats()");
   assert.ok(rewriteStart >= 0, "rewriteRecordedNumberFormats not found");
+  // The file is checked out with CRLF, so the closing brace has to be matched
+  // without assuming a bare LF; a missed match silently widens the slice to the
+  // rest of the file and turns every `doesNotMatch` below into a pass-through.
+  const rewriteEnd = /\r?\n\}\r?\n/u.exec(main.slice(rewriteStart));
+  assert.ok(rewriteEnd, "rewriteRecordedNumberFormats has no closing brace");
   const rewriteBody = main
-    .slice(rewriteStart, main.indexOf("\n}\n", rewriteStart))
+    .slice(rewriteStart, rewriteStart + rewriteEnd.index)
     .replace(/^\s*\/\/.*$/gmu, "");
   assert.match(
     rewriteBody,

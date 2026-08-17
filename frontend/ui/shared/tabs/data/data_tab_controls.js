@@ -1,10 +1,10 @@
 import {
   applyDecimalPlacesToDatasetNumberFormat,
   clampDatasetDecimalPlaces,
-  DATASET_NUMBER_FORMAT_PRESETS,
   getDatasetNumberFormatDecimalPlaces,
   normalizeDatasetNumberFormat,
 } from "/ui/shared/dataset/dataset_number_format.js";
+import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
 
 function wireChartPanelResize(redrawChartSafely) {
   const panel = document.getElementById("chartPanel");
@@ -235,39 +235,19 @@ export function wireDatasetInputController(deps) {
     dec.focus();
   }
 
-  function closeNumberFormatDropdown() {
-    numberFormatWrap?.classList.remove("open");
-    if (numberFormatDropdown) numberFormatDropdown.classList.remove("open");
-    numberFormatSelect?.setAttribute("aria-expanded", "false");
-    numberFormatDropdownBtn?.setAttribute("aria-expanded", "false");
-  }
-
-  function openNumberFormatDropdown() {
-    if (!numberFormatWrap || !numberFormatDropdown) return;
-    numberFormatDropdown.innerHTML = "";
-    for (const preset of DATASET_NUMBER_FORMAT_PRESETS) {
-      const option = document.createElement("div");
-      option.className = "datasetOption numberFormatOption";
-      option.setAttribute("role", "option");
-      option.dataset.value = preset;
-      option.textContent = preset;
-      option.title = preset;
-      if (preset === numberFormatSelect?.value) option.classList.add("active");
-      numberFormatDropdown.appendChild(option);
-    }
-    numberFormatWrap.classList.add("open");
-    numberFormatDropdown.classList.add("open");
-    numberFormatSelect?.setAttribute("aria-expanded", "true");
-    numberFormatDropdownBtn?.setAttribute("aria-expanded", "true");
-  }
-
-  function toggleNumberFormatDropdown() {
-    if (numberFormatDropdown?.classList.contains("open")) {
-      closeNumberFormatDropdown();
-    } else {
-      openNumberFormatDropdown();
-    }
-  }
+  const numberFormatField = wireNumberFormatField({
+    input: numberFormatSelect,
+    field: numberFormatWrap,
+    toggle: numberFormatDropdownBtn,
+    menu: numberFormatDropdown,
+    onApply: (preset) => {
+      if (!numberFormatSelect) return;
+      numberFormatSelect.value = preset;
+      syncDecimalPlacesFromNumberFormat();
+      refreshNumberDisplaySettings();
+    },
+  });
+  const closeNumberFormatDropdown = () => numberFormatField?.close();
 
   if (dec && numberFormatSelect) {
     dec.addEventListener("change", () => {
@@ -298,35 +278,6 @@ export function wireDatasetInputController(deps) {
       refreshNumberDisplaySettings();
     });
   }
-  if (numberFormatDropdownBtn) {
-    numberFormatDropdownBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleNumberFormatDropdown();
-      numberFormatSelect?.focus();
-    });
-  }
-  if (numberFormatDropdown) {
-    numberFormatDropdown.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-    });
-    numberFormatDropdown.addEventListener("click", (e) => {
-      const option = e.target.closest(".numberFormatOption");
-      if (!option || !numberFormatDropdown.contains(option) || !numberFormatSelect) return;
-      numberFormatSelect.value = option.dataset.value || option.textContent || "";
-      syncDecimalPlacesFromNumberFormat();
-      refreshNumberDisplaySettings();
-      closeNumberFormatDropdown();
-      numberFormatSelect.focus();
-    });
-  }
-  document.addEventListener("mousedown", (e) => {
-    if (!numberFormatWrap || numberFormatWrap.contains(e.target)) return;
-    closeNumberFormatDropdown();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeNumberFormatDropdown();
-  });
   syncNumberFormatFromDecimalPlaces();
 
   // Chart mode toggle

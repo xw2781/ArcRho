@@ -12,7 +12,8 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
   formatSidecarAuditEventDate,
@@ -21,7 +22,7 @@ import {
 import { createCapeCodRatiosChart } from "/ui/method_pages/cape_cod/cape_cod_ratios_chart.js?v=20260804a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260816a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import {
   isEngineUnavailableSaveError,
@@ -2101,6 +2102,7 @@ function wireMessages() {
 }
 
 async function init() {
+  applyHostFixedDetailsFields({ root: "#ccDetailsPage" });
   syncDetailsLabelWidth({
     root: "#ccDetailsPage",
     labelSelector: ".arDetailsLabel",

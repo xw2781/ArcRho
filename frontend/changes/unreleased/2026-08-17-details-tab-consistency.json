@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Details tabs drop the Project and Method Type boxes the host already fixes, and every Details label and field now shares one look across the Dataset Viewer and all method pages.",
+  "details": [
+    "The read-only Project row, and the Method Type row on Berquist Sherman, no longer take up a form row wherever the host supplies them; a Workflow step still shows Project because it is the one host where you choose it inside the page.",
+    "Details labels are one size and one solid black on every page, so the Dataset Viewer no longer renders them a step larger and greyer than the method pages.",
+    "Berquist Sherman Details fields now use the shared field height, padding, border, and focus ring instead of their own slightly different palette.",
+    "Berquist Sherman Number Format replaces its three-dot picker and floating menu with the same in-field caret and preset dropdown the Dataset Viewer uses; both pages now drive one shared control."
+  ]
+}

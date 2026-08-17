@@ -10,7 +10,8 @@ import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
@@ -528,6 +529,7 @@ function initDfmTabs() {
   const auditPage = document.getElementById("dfmAuditPage");
   if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage || !linksPage || !auditPage) return;
 
+  applyHostFixedDetailsFields({ root: detailsPage });
   syncDetailsLabelWidth({
     root: detailsPage,
     labelSelector: ".arDetailsLabel",

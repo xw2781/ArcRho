@@ -6,12 +6,12 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Bornhuetter Ferguson</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
   <link rel="stylesheet" href="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.css?v=20260722a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -23,8 +23,8 @@
             <section class="bfPanel arDetailsGroup">
               <div class="bfPanelBody">
                 <div class="bfFieldGrid arDetailsGrid">
-                  <label class="bfLabel arDetailsLabel" for="bfProjectInput">Project : </label>
-                  <div class="bfFieldControl arDetailsField">
+                  <label class="bfLabel arDetailsLabel" data-details-field="project" for="bfProjectInput">Project : </label>
+                  <div class="bfFieldControl arDetailsField" data-details-field="project">
                     <input class="bfInput arDetailsControl" id="bfProjectInput" type="text" readonly>
                   </div>
                   <label class="bfLabel arDetailsLabel" for="bfClassInput">Reserving Class : </label>
@@ -173,6 +173,6 @@
     <button type="button" role="menuitem" data-bf-prior-action="delete">Delete</button>
   </div>
 
-  <script type="module" src="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260816a"></script>
+  <script type="module" src="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260817a"></script>
 </body>
 </html>

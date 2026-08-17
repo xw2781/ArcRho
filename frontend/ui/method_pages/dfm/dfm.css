@@ -193,7 +193,7 @@ body {
   display: grid;
   grid-template-columns: var(--ar-details-label-width) 560px minmax(0, 1fr);
   column-gap: var(--ar-details-label-control-gap);
-  row-gap: 10px;
+  row-gap: var(--ar-details-row-gap);
   align-items: center;
 }
 .dfmFormField {

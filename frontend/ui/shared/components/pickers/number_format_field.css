@@ -1,0 +1,72 @@
+/* Shared Number Format field: a text input with an in-field caret that opens the
+   canonical preset list. The menu itself is the shared `.datasetDropdown`
+   primitive in picker_fields.css, so a page using this control loads both. */
+/* Flex, not a plain block: the input then sets the wrap's height exactly, so the
+   caret button can size itself from the field instead of an inline line box. */
+.arNumberFormatField {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Keeps the typed pattern clear of the caret. */
+.arNumberFormatField > input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.arNumberFormatToggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 24px;
+  height: calc(100% - 2px);
+  padding: 0;
+  border: 0;
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
+
+.arNumberFormatCaret {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  color: #555;
+  opacity: 0.32;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transform-origin: center;
+  transition: opacity 120ms ease, transform 120ms ease, color 120ms ease;
+}
+
+.arNumberFormatToggle:hover .arNumberFormatCaret,
+.arNumberFormatToggle:focus .arNumberFormatCaret {
+  opacity: 1;
+}
+
+.arNumberFormatField.open .arNumberFormatCaret {
+  color: #2f5fd3;
+  opacity: 1;
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.arNumberFormatMenu {
+  top: calc(100% + 4px);
+  max-height: 160px;
+  z-index: 70;
+}
+
+.arNumberFormatOption {
+  padding-left: 10px;
+  text-align: left;
+}

@@ -14,6 +14,7 @@ This contract applies when changing shell/tab orchestration, iframe pages, keybo
 3. Keep user-facing save, close, restart, import/export, and error flows explicit. Do not silently swallow failures for actions users can observe or depend on.
 4. Avoid lifecycle and performance regressions such as duplicate listeners, accidental full reloads, infinite refresh loops, lost tab state, or iframe recreation unless the task intentionally changes that behavior.
 5. Keep Project Instance disk-backed dataset inventory refreshes tied to durable saves or explicit user refreshes. Unsaved Dataset grid edits, including pasted Excel references, may publish in-memory dependency previews but must not trigger an inventory refresh.
+6. Keep one owner for the Details tab. `ui/shared/tabs/details/details_form_layout.css` owns label and field typography, colour, size, and focus for every `.arDetailsRoot` page; a page stylesheet may add layout a field genuinely needs, such as a picker inset, but must not restate the shared look. `ui/shared/tabs/details/details_host_fields.js` owns which rows a host suppresses: a row whose value the host fixes is tagged `data-details-field` on both of its grid cells and is hidden everywhere except a Workflow step, the one host that still lets the user choose the project inside the embedded page. Hide such a row rather than removing its control, because page controllers read and write those inputs whether or not the host shows them.
 
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."

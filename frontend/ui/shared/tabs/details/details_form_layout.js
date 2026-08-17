@@ -23,6 +23,13 @@ export const DETAILS_FORM_CLASS_NAMES = Object.freeze({
 
 export const DETAILS_FORM_DEFAULT_LABEL_SELECTOR = `.${DETAILS_FORM_CLASS_NAMES.label}`;
 
+/**
+ * Marks both grid cells of one Details row so a host can hide the pair. A row is
+ * a label cell and a field cell that are siblings of the same grid, so there is
+ * no single element to toggle without it.
+ */
+export const DETAILS_FIELD_ATTRIBUTE = "data-details-field";
+
 function resolveDetailsRoot(root, documentRef) {
   if (typeof root !== "string") return root || null;
   return documentRef?.querySelector?.(root) || null;
@@ -69,6 +76,29 @@ export function applyDetailsFormTokens(root, {
 }
 
 /**
+ * Hides or restores every grid cell tagged with one of `fieldKeys`. The element
+ * stays in the DOM because page controllers read and write those inputs whether
+ * or not the host shows them.
+ */
+export function setDetailsFieldsHidden(root, fieldKeys, hidden = true, {
+  documentRef = globalThis.document,
+} = {}) {
+  const container = resolveDetailsRoot(root, documentRef);
+  const keys = Array.from(fieldKeys || []).map((key) => String(key || "").trim()).filter(Boolean);
+  if (!container?.querySelectorAll || !keys.length) return null;
+
+  const cells = [];
+  for (const key of keys) {
+    const selector = `[${DETAILS_FIELD_ATTRIBUTE}="${key}"]`;
+    for (const cell of Array.from(container.querySelectorAll(selector))) {
+      cell.hidden = !!hidden;
+      cells.push(cell);
+    }
+  }
+  return { root: container, cells, hidden: !!hidden };
+}
+
+/**
  * Returns the literal authored label text used for width measurement.
  * Punctuation is never generated or appended by this helper.
  */
@@ -112,7 +142,9 @@ export function measureDetailsLabelWidth(labels, {
   getComputedStyle = windowRef?.getComputedStyle?.bind(windowRef),
   measureText = null,
 } = {}) {
-  const labelList = Array.from(labels || []);
+  // A hidden row renders nothing, so letting its label set the shared column
+  // width would indent every visible row behind a label the user cannot see.
+  const labelList = Array.from(labels || []).filter((label) => label?.hidden !== true);
   if (!labelList.length || typeof getComputedStyle !== "function") return 0;
 
   const textMeasurer = typeof measureText === "function"

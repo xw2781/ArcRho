@@ -6,15 +6,17 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Berquist Sherman</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/tabs/audit_log/audit_log.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260802a">
+  <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a">
+  <link rel="stylesheet" href="/ui/shared/components/pickers/number_format_field.css?v=20260817a">
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
-  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260816b">
+  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260817a">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -26,8 +28,8 @@
             <section class="bsPanel arDetailsGroup">
               <div class="bsPanelBody">
                 <div class="bsFieldGrid arDetailsGrid">
-                  <label class="bsLabel arDetailsLabel" for="bsProjectInput">Project : </label>
-                  <div class="bsFieldControl arDetailsField">
+                  <label class="bsLabel arDetailsLabel" data-details-field="project" for="bsProjectInput">Project : </label>
+                  <div class="bsFieldControl arDetailsField" data-details-field="project">
                     <input class="bsInput arDetailsControl" id="bsProjectInput" type="text" readonly>
                   </div>
                   <label class="bsLabel arDetailsLabel" for="bsClassInput">Reserving Class : </label>
@@ -38,8 +40,8 @@
                   <div class="bsFieldControl arDetailsField">
                     <input class="bsInput arDetailsControl" id="bsNameInput" type="text">
                   </div>
-                  <label class="bsLabel arDetailsLabel" for="bsMethodTypeInput">Method Type : </label>
-                  <div class="bsFieldControl arDetailsField">
+                  <label class="bsLabel arDetailsLabel" data-details-field="method_type" for="bsMethodTypeInput">Method Type : </label>
+                  <div class="bsFieldControl arDetailsField" data-details-field="method_type">
                     <input class="bsInput arDetailsControl" id="bsMethodTypeInput" type="text" readonly>
                   </div>
                   <label class="bsLabel arDetailsLabel" for="bsOutputTypeInput">Output Type : </label>
@@ -58,9 +60,14 @@
                   <!-- Governs the calculated triangles only. Each input triangle
                        keeps the number format of its own dataset instance. -->
                   <label class="bsLabel arDetailsLabel" for="bsNumberFormatInput">Number Format : </label>
-                  <div class="bsFieldControl arDetailsField withPicker">
-                    <input class="bsInput arDetailsControl" id="bsNumberFormatInput" type="text">
-                    <button class="bsIconButton" id="bsNumberFormatBtn" type="button" aria-label="Select a number format preset">...</button>
+                  <div class="bsFieldControl arDetailsField">
+                    <div class="arNumberFormatField" id="bsNumberFormatField">
+                      <input class="bsInput arDetailsControl" id="bsNumberFormatInput" type="text" autocomplete="off" aria-controls="bsNumberFormatMenu" aria-expanded="false">
+                      <button class="arNumberFormatToggle" id="bsNumberFormatBtn" type="button" aria-label="Show Number Format presets" aria-controls="bsNumberFormatMenu" aria-expanded="false">
+                        <span class="arNumberFormatCaret" aria-hidden="true"></span>
+                      </button>
+                      <div class="datasetDropdown arNumberFormatMenu" id="bsNumberFormatMenu" role="listbox" aria-label="Number Format presets"></div>
+                    </div>
                   </div>
                   <label class="bsLabel arDetailsLabel" for="bsDecimalPlacesInput">Decimal Places : </label>
                   <div class="bsFieldControl arDetailsField">
@@ -197,6 +204,6 @@
     </footer>
   </main>
 
-  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260816b"></script>
+  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260817c"></script>
 </body>
 </html>

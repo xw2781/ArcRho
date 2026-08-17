@@ -39,6 +39,7 @@ const THEMED_DOCUMENTS = [
   "../ui/method_pages/result_selection/result_selection.html",
   "../ui/workflow/workflow.html",
   "../ui/project_instance/project_instance.html",
+  "../ui/project_instance/excel_links_window.html",
   "../ui/project_settings/project_settings.html",
   "../ui/shell/browsing_history.html",
   "../ui/agent_guide/agent_guide.html",
@@ -48,6 +49,7 @@ const THEMED_DOCUMENTS = [
   "../ui/arcode/code-editor/index.html",
   "../ui/arcode/notebook-editor/index.html",
   "../ui/arcode/snowflake-console/index.html",
+  "../ui/arcode/sql-server-console/index.html",
 ];
 
 test("every runtime frontend document bootstraps the shared theme before loading separated theme sheets", () => {
@@ -583,13 +585,14 @@ test("shell submenu indicators use the shared SVG chevron instead of text glyphs
 test("all Monaco owners choose the shared initial theme and Electron accepts computed theme paint", () => {
   const codeEditor = read("../ui/arcode/code-editor/index.js");
   const notebookEditor = read("../ui/arcode/notebook-editor/core.js");
-  const snowflakeEditor = read("../ui/arcode/snowflake-console/index.js");
-  const editorOwners = [codeEditor, notebookEditor, snowflakeEditor];
+  // Both SQL consoles create their Monaco editor through the shared console core.
+  const sqlConsole = read("../ui/arcode/shared/sql_console.js");
+  const editorOwners = [codeEditor, notebookEditor, sqlConsole];
   for (const owner of editorOwners) {
     assert.match(owner, /ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs"/);
     assert.doesNotMatch(owner, /theme:\s*"vs"/);
   }
-  for (const owner of [codeEditor, snowflakeEditor]) {
+  for (const owner of [codeEditor, sqlConsole]) {
     assert.match(owner, /const monacoTheme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";[\s\S]*theme:\s*monacoTheme/);
   }
   assert.match(notebookEditor, /monacoReady = true;[\s\S]*EDITOR_OPTIONS\.theme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";/);
@@ -629,7 +632,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260811a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260816b/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260817c/);
   assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
@@ -652,24 +655,27 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260816b/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260817c/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260816a"],
-    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260811c"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260817c"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260817c"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260805a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260816a"],
-    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260816a"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260816a"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260816b"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260817a"],
+    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260817a"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260817a"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260817a"],
     ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260816pssel1"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260812dtformat2"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260816c"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],
-    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260726a"],
+    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260817a"],
+    ["../ui/arcode/snowflake-console/index.js", "shared/sql_console.js?v=20260817a"],
+    ["../ui/arcode/sql-server-console/index.html", "sql-server-console/index.js?v=20260817a"],
+    ["../ui/arcode/sql-server-console/index.js", "shared/sql_console.js?v=20260817a"],
   ];
   for (const [path, reference] of expectedReferences) {
     assert.ok(read(path).includes(reference), `${path} loads ${reference}`);

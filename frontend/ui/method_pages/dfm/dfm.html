@@ -6,7 +6,7 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Development Factor Method</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260720b"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260807a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
@@ -17,9 +17,9 @@
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260812a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260812d"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260817a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
@@ -36,8 +36,8 @@
   <div id="dfmDetailsPage" class="arDetailsRoot">
     <div class="dfmDetailsBlock arDetailsGroup" id="dfmObjectPathPanel">
       <div class="dfmFormGrid arDetailsGrid">
-        <label class="arDetailsLabel" for="projectSelect">Project : </label>
-        <div class="dfmFormField arDetailsField">
+        <label class="arDetailsLabel" data-details-field="project" for="projectSelect">Project : </label>
+        <div class="dfmFormField arDetailsField" data-details-field="project">
           <div class="projectSelectWrap">
             <input id="projectSelect" autocomplete="off" />
             <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">...</button>
@@ -359,13 +359,13 @@
 
   <script type="module">
     (async () => {
-      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260814b");
+      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260817c");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/method_pages/dfm/dfm_main.js?v=20260816b");
+      await import("/ui/method_pages/dfm/dfm_main.js?v=20260817a");
     })();
   </script>
 </body>

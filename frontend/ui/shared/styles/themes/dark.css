@@ -947,6 +947,8 @@
   color: var(--ar-color-text);
 }
 
+/* Details labels carry full text weight beside their values on every page,
+   including the Dataset Viewer, which used to mute them on its own. */
 :root[data-arcrho-theme="dark"] .arDetailsLabel {
   color: var(--ar-color-text);
 }
@@ -1306,7 +1308,7 @@
   .topField select,
   #datasetTopBar input,
   #datasetTopBar .lenSelectDisplay,
-  #datasetTopBar .numberFormatDropdownBtn,
+  .arNumberFormatToggle,
   .dsDetailInput textarea,
   .dsDetailFormulaBox
 ) {
@@ -1317,7 +1319,6 @@
 
 :root[data-arcrho-theme="dark"] :is(
   #datasetTopBar .lenDropdown,
-  #datasetTopBar .numberFormatDropdown,
   .dsDependentFormulaTooltip
 ) {
   border-color: var(--ar-color-border-strong);
@@ -1326,7 +1327,7 @@
   box-shadow: var(--ar-shadow-floating);
 }
 
-:root[data-arcrho-theme="dark"] :is(#datasetTopBar .lenOption:hover, #datasetTopBar .numberFormatOption:hover) {
+:root[data-arcrho-theme="dark"] #datasetTopBar .lenOption:hover {
   background-color: var(--ar-color-surface-hover);
 }
 
@@ -1365,10 +1366,6 @@
 }
 
 /* Dataset Viewer Details keeps dense groups unframed while making fields and formula tokens readable. */
-:root[data-arcrho-theme="dark"] #dsDetailsPage .arDetailsLabel {
-  color: var(--ar-color-text-muted);
-}
-
 :root[data-arcrho-theme="dark"] #dsDetailsPage .arDetailsControl {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-input);

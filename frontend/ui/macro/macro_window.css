@@ -3,7 +3,7 @@
   right: 18px;
   top: 72px;
   width: min(430px, calc(100vw - 24px));
-  height: min(520px, calc(100vh - var(--statusbar-h) - 88px));
+  height: min(598px, calc(100vh - var(--statusbar-h) - 88px));
   min-width: 360px;
   min-height: 320px;
   display: flex;
@@ -535,9 +535,14 @@ body.macroSplitResizeActive * {
 .macroStatus {
   flex: 1 1 auto;
   min-height: 18px;
+  max-height: 54px;
   color: #64748b;
   font-size: 12px;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .macroStatus[data-tone="error"] { color: #b91c1c; }

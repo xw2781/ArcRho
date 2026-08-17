@@ -42,7 +42,7 @@ import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_por
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260813e";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
-import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260811c";
+import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260817c";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 import {
   applyDecimalPlacesToDatasetNumberFormat,
