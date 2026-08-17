@@ -482,7 +482,6 @@ function setSelectedPath(path, options = {}) {
   renderSelectedPathDisplay();
   markPathTreeActive(state.selectedPath);
   syncDatasetWindowChrome();
-  api.syncExcelLinkManagerPath?.();
   api.refreshReservingClassBusyNow?.();
   void loadCachedDatasetFilterForSelectedPath();
   renderDatasetTable();

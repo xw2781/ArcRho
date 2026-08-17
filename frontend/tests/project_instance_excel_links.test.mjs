@@ -5,23 +5,44 @@ import test from "node:test";
 const tooltipStub = "export function attachArcrhoTooltip() {}";
 const tooltipStubUrl = `data:text/javascript;base64,${Buffer.from(tooltipStub).toString("base64")}`;
 let moduleSource = await readFile(
-  new URL("../ui/project_instance/project_instance_excel_links.js", import.meta.url),
+  new URL("../ui/project_instance/excel_links_window.js", import.meta.url),
   "utf8",
 );
 moduleSource = moduleSource.replace(
   '"/ui/shared/components/tooltip/tooltip.js?v=20260812a"',
   JSON.stringify(tooltipStubUrl),
 );
+// The page module reads the DOM and starts a load as soon as it is imported;
+// only its exported pure helpers are exercised here.
+const importableSource = moduleSource
+  .replace(/^import "\/ui\/shared\/integrations\/zoom_bridge\.js[^"]*";$/m, "")
+  .replace(/^const params = new URLSearchParams[\s\S]*$/m, "");
 const excelLinks = await import(
-  `data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`
+  `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
 );
 
 const htmlSource = await readFile(
   new URL("../ui/project_instance/project_instance.html", import.meta.url),
   "utf8",
 );
+const windowHtmlSource = await readFile(
+  new URL("../ui/project_instance/excel_links_window.html", import.meta.url),
+  "utf8",
+);
+const hostSource = await readFile(
+  new URL("../ui/project_instance/project_instance_excel_links.js", import.meta.url),
+  "utf8",
+);
 const bootSource = await readFile(
   new URL("../ui/project_instance/project_instance_boot.js", import.meta.url),
+  "utf8",
+);
+const messagesSource = await readFile(
+  new URL("../ui/project_instance/project_instance_messages.js", import.meta.url),
+  "utf8",
+);
+const windowsSource = await readFile(
+  new URL("../ui/project_instance/project_instance_windows.js", import.meta.url),
   "utf8",
 );
 const pathPanelSource = await readFile(
@@ -151,45 +172,75 @@ test("excelLinkRetargetSummary reports recalculation outcomes", () => {
   assert.match(failedCells.message, /2 linked cells could not be recalculated/);
 });
 
-test("project instance wires the toolbar button, window, and path sync", () => {
+test("the manager is a nested window page, not inline Project Instance markup", () => {
   assert.match(htmlSource, /id="excelLinksBtn"/);
   assert.ok(
     htmlSource.indexOf('id="excelLinksBtn"') < htmlSource.indexOf('id="datasetRefreshBtn"'),
     "Excel links button should sit before the refresh button",
   );
-  for (const id of [
-    "excelLinksWindow",
-    "excelLinksHeader",
-    "excelLinksPath",
-    "excelLinksRefresh",
-    "excelLinksRefreshValues",
-    "excelLinksClose",
-    "excelLinksBody",
-    "excelLinksState",
-    "excelLinksStatus",
+  // The manager's own markup and stylesheet moved out of the host page so the
+  // frame can be closed and removed like any other nested window.
+  for (const gone of [
+    'id="excelLinksWindow"',
+    'id="excelLinksRefresh"',
+    'id="excelLinksBody"',
+    'id="excelLinksStatus"',
+    "project_instance_excel_links.css",
   ]) {
-    assert.match(htmlSource, new RegExp(`id="${id}"`), `missing #${id}`);
+    assert.ok(!htmlSource.includes(gone), `${gone} should no longer be in project_instance.html`);
   }
-  assert.match(htmlSource, /project_instance_excel_links\.css\?v=\d{8}[a-z]/);
+  for (const id of ["excelLinksRefresh", "excelLinksRefreshValues", "excelLinksBody", "excelLinksState", "excelLinksStatus"]) {
+    assert.match(windowHtmlSource, new RegExp(`id="${id}"`), `missing #${id} in the window page`);
+  }
+  assert.match(windowHtmlSource, /excel_links_window\.css\?v=\d{8}[a-z]/);
+  assert.match(windowHtmlSource, /excel_links_window\.js\?v=\d{8}[a-z]/);
   assert.match(bootSource, /installProjectInstanceExcelLinks\(ctx\)/);
   assert.match(bootSource, /api\.initExcelLinkManager\(\)/);
-  assert.match(pathPanelSource, /api\.syncExcelLinkManagerPath\?\.\(\)/);
+});
+
+test("opening the manager creates a standard pi-window pinned to its class", () => {
+  assert.match(hostSource, /createFloatingContentWindow\(\{/, "the manager uses the canonical window factory");
+  assert.match(hostSource, /kind: "excel_links"/);
+  assert.match(hostSource, /excel_links_window\.html\?/);
+  assert.match(hostSource, /title: `\$\{path\}\\\\Excel Links`/, "the titlebar names the reserving class");
+  // Pinned, like every other nested window: the path panel no longer reloads it.
+  assert.ok(
+    !pathPanelSource.includes("syncExcelLinkManagerPath"),
+    "selecting another reserving class must not reload the window",
+  );
+  assert.ok(
+    !hostSource.includes("syncExcelLinkManagerPath"),
+    "the pinned window exposes no path-follow hook",
+  );
+  // A tool window is not part of the saved/restored Project Instance state.
+  assert.match(windowsSource, /windowKind === "excel_links"\) return null/);
+});
+
+test("the retarget tells the host to quiet its index watch and reload the table", () => {
+  assert.match(moduleSource, /arcrho:excel-links-retarget-begin/);
+  assert.match(moduleSource, /arcrho:excel-links-retarget-end/);
+  assert.match(messagesSource, /arcrho:excel-links-retarget-begin/);
+  assert.match(messagesSource, /api\.handleExcelLinksWindowMessage\(msg, event\.source\)/);
+  assert.match(hostSource, /suppressIndexWatch\(RETARGET_INDEX_WATCH_SUPPRESS_MS\)/);
+  assert.match(hostSource, /refreshCachedDatasetTableFromDisk/);
+  const changeBody = moduleSource.slice(moduleSource.indexOf("async function changeWorkbook"));
+  assert.match(
+    changeBody,
+    /finally \{[\s\S]*arcrho:excel-links-retarget-end/,
+    "the host is always told the retarget finished",
+  );
 });
 
 test("the recalculation checkbox always defaults back to No", () => {
-  const checkboxSource = moduleSource;
-  assert.match(checkboxSource, /refresh_values: refreshValues/, "request carries the checkbox state");
-  const resetCalls = (checkboxSource.match(/resetRefreshValuesChoice\(\)/g) || []).length;
-  assert.ok(resetCalls >= 3, "checkbox resets on open and after every change");
-  const openBody = checkboxSource.slice(
-    checkboxSource.indexOf("function openExcelLinkManager"),
-    checkboxSource.indexOf("function closeExcelLinkManager"),
-  );
-  assert.match(openBody, /resetRefreshValuesChoice\(\)/, "opening the window resets the choice");
-  const changeBody = checkboxSource.slice(
-    checkboxSource.indexOf("async function changeWorkbook"),
-    checkboxSource.indexOf("function openExcelLinkManager"),
+  assert.match(moduleSource, /refresh_values: refreshValues/, "request carries the checkbox state");
+  const resetCalls = (moduleSource.match(/resetRefreshValuesChoice\(\)/g) || []).length;
+  assert.ok(resetCalls >= 3, "checkbox resets on load and after every change");
+  const boot = moduleSource.slice(moduleSource.indexOf("els.refresh?.addEventListener"));
+  assert.match(boot, /resetRefreshValuesChoice\(\)/, "opening the window resets the choice");
+  const changeBody = moduleSource.slice(
+    moduleSource.indexOf("async function changeWorkbook"),
+    moduleSource.indexOf("els.refresh?.addEventListener"),
   );
   assert.match(changeBody, /finally[\s\S]*resetRefreshValuesChoice\(\)/, "every change resets the choice");
-  assert.doesNotMatch(checkboxSource, /excelLinksRefreshValues\.checked = true/, "nothing pre-checks the box");
+  assert.doesNotMatch(moduleSource, /refreshValues\.checked = true/, "nothing pre-checks the box");
 });

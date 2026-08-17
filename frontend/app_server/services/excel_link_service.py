@@ -360,23 +360,55 @@ def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
         workbook["mtime"] = result.get("mtime") if ok else None
 
 
-def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
+def scan_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    """Inventory workbook references without resolving the workbooks themselves.
+
+    This is the half of the listing that reads the workspace: every dataset
+    sidecar and v2 DFM method JSON in the class, which is local disk on the
+    ArcRho Server host and one round trip per file from a Client PC. It is the
+    registered ``excel_link_scan`` workspace read for exactly that reason.
+
+    Whether each workbook currently exists is deliberately left out. Linked
+    workbooks live on other file servers reached through drive letters the
+    calling PC maps and the server host may not, so only the caller can answer
+    that; ``resolve_workbook_stats`` does it there.
+    """
+
     sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
     sidecar_paths = _list_json_files(sidecar_dir, _SIDECAR_FILE_RE)
     method_paths = _list_json_files(method_dir, _DFM_METHOD_FILE_RE)
     dataset_usages, dataset_errors = _dataset_usages(_read_json_files(sidecar_paths))
     dfm_usages, dfm_errors = _dfm_usages(_read_json_files(method_paths))
-    workbooks = _group_workbooks(dataset_usages + dfm_usages)
-    _apply_workbook_stats(workbooks)
     return {
         "ok": True,
         "project_name": _clean(project_name),
         "reserving_class": _clean(reserving_class),
-        "workbooks": workbooks,
+        "workbooks": _group_workbooks(dataset_usages + dfm_usages),
         "dataset_scan_count": len(sidecar_paths),
         "method_scan_count": len(method_paths),
         "errors": dataset_errors + dfm_errors,
     }
+
+
+def resolve_workbook_stats(listing: Dict[str, Any]) -> Dict[str, Any]:
+    """Stamp ``exists``/``mtime`` on a scan using this machine's drive mappings.
+
+    Runs in the process the user is sitting at, whether the scan itself came
+    from the gateway or from the mapped drive, so a workbook on a share only
+    the Client PC maps is still reported as found.
+    """
+
+    workbooks = listing.get("workbooks")
+    _apply_workbook_stats(workbooks if isinstance(workbooks, list) else [])
+    return listing
+
+
+def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    """Scan one reserving class and resolve its workbooks, both in this process."""
+
+    return resolve_workbook_stats(
+        scan_reserving_class_excel_links(project_name, reserving_class)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1098,7 +1130,18 @@ def retarget_reserving_class_workbook(
     old_workbook_path: str,
     new_workbook_path: str,
     refresh_values: bool = False,
+    listing: Callable[[str, str], Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
+    """Repoint every reference from one workbook to another across the class.
+
+    The response carries the refreshed inventory so the client pays one round
+    trip. ``listing`` supplies it; the route passes the transport-selecting
+    loader so that re-scan is hosted like the plain listing, while the rewrite
+    itself always runs here — it writes, and a value refresh opens the picked
+    workbook through the caller's own drive mappings.
+    """
+
+    load_listing = listing or list_reserving_class_excel_links
     sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
     project = _clean(project_name)
     reserving = _clean(reserving_class)
@@ -1108,9 +1151,8 @@ def retarget_reserving_class_workbook(
         raise HTTPException(400, "old_workbook_path and new_workbook_path are required.")
     old_key = workbook_key(old_path)
     if old_key == workbook_key(new_path):
-        listing = list_reserving_class_excel_links(project, reserving)
         return {
-            **listing,
+            **load_listing(project, reserving),
             "results": [],
             "changed_file_count": 0,
             "changed_link_count": 0,
@@ -1183,9 +1225,8 @@ def retarget_reserving_class_workbook(
         except Exception as err:  # A stale index self-heals on the next read.
             index_error = str(err)
 
-    listing = list_reserving_class_excel_links(project, reserving)
     return {
-        **listing,
+        **load_listing(project, reserving),
         "ok": all(item.get("ok") for item in results),
         "results": results,
         "changed_file_count": len(changed_files),

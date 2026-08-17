@@ -125,6 +125,15 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_berquist_sherman_method",
         ("project_name", "reserving_class", "method_type", "method_name"),
     ),
+    # Only the reserving-class scan is hosted. The workbooks it finds live on
+    # other file servers reached through drive letters the calling PC maps and
+    # the ArcRho Server host may not, so resolving each workbook's existence
+    # stays with the caller and never travels through this transport.
+    "excel_link_scan": WorkspaceReadKind(
+        "excel_link_service",
+        "scan_reserving_class_excel_links",
+        ("project_name", "reserving_class"),
+    ),
     "table_summary": WorkspaceReadKind(
         "table_summary_service",
         "get_table_summary",

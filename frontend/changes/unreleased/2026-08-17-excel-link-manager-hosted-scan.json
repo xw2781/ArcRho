@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project_instance",
+  "audience": "user",
+  "summary": "The Excel Link Manager loads much faster by scanning the reserving class on the ArcRho Server instead of over the network drive.",
+  "details": [
+    "Listing a reserving class's Excel links opened every dataset sidecar and DFM method file across the network drive, which cost about three seconds for a class with roughly 140 files.",
+    "That scan now runs on the ArcRho Server machine when the Gateway is available, where those files are local disk; it falls back to the previous behavior unchanged when the Gateway is off or unreachable.",
+    "Whether each linked workbook still exists is checked on your own PC, so workbooks on shares only your PC maps keep showing as Found.",
+    "Retargeting a workbook returns its refreshed inventory the same faster way."
+  ]
+}

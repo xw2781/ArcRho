@@ -76,16 +76,9 @@ export function createProjectInstanceContext(deps = {}) {
     datasetNumberFormatsStatus: document.getElementById("datasetNumberFormatsStatus"),
     datasetNumberFormatsCancel: document.getElementById("datasetNumberFormatsCancel"),
     datasetNumberFormatsSave: document.getElementById("datasetNumberFormatsSave"),
+    // The Excel Link Manager itself lives in its own nested-window page; the
+    // Project Instance page owns only the toolbar button that opens it.
     excelLinksBtn: document.getElementById("excelLinksBtn"),
-    excelLinksWindow: document.getElementById("excelLinksWindow"),
-    excelLinksHeader: document.getElementById("excelLinksHeader"),
-    excelLinksPath: document.getElementById("excelLinksPath"),
-    excelLinksRefresh: document.getElementById("excelLinksRefresh"),
-    excelLinksRefreshValues: document.getElementById("excelLinksRefreshValues"),
-    excelLinksClose: document.getElementById("excelLinksClose"),
-    excelLinksBody: document.getElementById("excelLinksBody"),
-    excelLinksState: document.getElementById("excelLinksState"),
-    excelLinksStatus: document.getElementById("excelLinksStatus"),
     datasetTempViewBtn: document.getElementById("datasetTempViewBtn"),
     datasetTempViewTooltipTitle: document.getElementById("datasetTempViewTooltipTitle"),
     datasetTempViewTooltipDescription: document.getElementById("datasetTempViewTooltipDescription"),

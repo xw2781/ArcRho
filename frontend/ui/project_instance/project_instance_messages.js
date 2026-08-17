@@ -895,6 +895,23 @@ function handleOpenDependentDataset(message, sourceWindow) {
   return true;
 }
 
+/**
+ * Opens a dependent by name from Project Instance itself.
+ *
+ * Same routing as the child-window request above -- method type resolved from
+ * the cached index, so a dependent the table filters out of view still opens
+ * as the method window it is -- without inventing a second implementation for
+ * page-local callers such as the delete dependents window.
+ */
+function openDependentDatasetByName(datasetName, options = {}) {
+  return handleOpenDependentDataset({
+    datasetName,
+    reservingClass: toText(options.reservingClass) || state.selectedPath,
+    methodType: toText(options.methodType),
+    openMethod: options.openMethod !== false,
+  }, null);
+}
+
 function handleAutomationWindowCommand(message, sourceWindow) {
   const requestId = toText(message?.requestId);
   const args = message?.args && typeof message.args === "object" ? message.args : {};
@@ -1410,6 +1427,10 @@ window.addEventListener("message", (event) => {
     api.handleReviewTableWindowMessage(msg, event.source);
     return;
   }
+  if (msg.type === "arcrho:excel-links-retarget-begin" || msg.type === "arcrho:excel-links-retarget-end") {
+    api.handleExcelLinksWindowMessage(msg, event.source);
+    return;
+  }
   if (msg.type === "arcrho:dfm-edit-state") {
     const frame = findWindowByMessageSource(event.source);
     if (frame && isDfmWindow(frame)) {
@@ -1600,6 +1621,7 @@ window.addEventListener("message", (event) => {
     forwardOpenPathRequestToShell,
     initDatasetWindowShortcuts,
     isCloseActiveWindowShortcut,
+    openDependentDatasetByName,
     requestActiveNestedWindowAssistantContext,
     requestShellOpenPath,
     revealSelectedReservingClassFolder,

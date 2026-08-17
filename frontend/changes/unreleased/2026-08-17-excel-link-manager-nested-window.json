@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project_instance",
+  "audience": "user",
+  "summary": "The Excel Link Manager is now a normal Project Instance window you can resize, maximize, and minimize to the toolbar.",
+  "details": [
+    "It has the standard minimize, maximize, and close buttons in the top-right corner, and can be resized from any edge or corner; the workbook table grows with the window instead of being capped.",
+    "Minimizing sends it to the same minimized tabs area as Dataset and DFM windows, so you can park it, check a dataset, and restore it.",
+    "The window is now tied to the reserving class it was opened on and its title shows that path, matching every other nested window. It no longer follows the tree selection; open the button again on another class to get a second window for it.",
+    "The manager is a tool window, so it is not reopened when a Project Instance tab is restored after a reload."
+  ]
+}

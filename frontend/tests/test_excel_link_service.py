@@ -210,6 +210,30 @@ class ExcelLinkServiceTests(ExcelLinkFixture):
             ["Broken.json"],
         )
 
+    def test_scan_leaves_workbook_existence_to_the_caller(self) -> None:
+        # The hosted half must not answer "does this workbook exist" — it runs
+        # on the ArcRho Server host, which need not map the caller's drives.
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+
+        with mock.patch.object(
+            excel_link_service.excel_service, "excel_file_mtimes_batch"
+        ) as stats:
+            scan = excel_link_service.scan_reserving_class_excel_links("Project", "Class")
+        stats.assert_not_called()
+
+        workbook = scan["workbooks"][0]
+        self.assertEqual(workbook["workbook_name"], "Book.xlsx")
+        self.assertNotIn("exists", workbook)
+        self.assertNotIn("mtime", workbook)
+
+        # The same scan, resolved in this process, is the full listing.
+        resolved = excel_link_service.resolve_workbook_stats(scan)
+        self.assertIs(resolved, scan)
+        self.assertTrue(scan["workbooks"][0]["exists"])
+        self.assertEqual(
+            scan, excel_link_service.list_reserving_class_excel_links("Project", "Class")
+        )
+
     def test_list_marks_missing_workbooks(self) -> None:
         sidecar = self.linked_sidecar()
         sidecar["external_links"][0]["reference"] = "='C:\\Gone\\[Missing.xlsx]S1'!A1:B1"
@@ -288,6 +312,35 @@ class ExcelLinkServiceTests(ExcelLinkFixture):
 
         # The refreshed inventory in the same response reflects the new workbook.
         self.assertEqual(response["workbooks"][0]["workbook_name"], "Book 2026.xlsx")
+
+    def test_retarget_takes_its_refreshed_inventory_from_the_injected_loader(self) -> None:
+        # The route injects the transport-selecting loader so the re-scan the
+        # response carries is hosted too, while the rewrite stays local.
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        calls: list[tuple[str, str]] = []
+
+        def loader(project_name: str, reserving_class: str) -> dict:
+            calls.append((project_name, reserving_class))
+            return {"ok": True, "workbooks": [], "via": "injected"}
+
+        with mock.patch(
+            "app_server.services.dataset_instance_index_service.rebuild_index"
+        ):
+            response = excel_link_service.retarget_reserving_class_workbook(
+                "Project", "Class", str(self.old_book), str(self.new_book), listing=loader
+            )
+        self.assertEqual(calls, [("Project", "Class")])
+        self.assertEqual(response["via"], "injected")
+        self.assertEqual(response["changed_file_count"], 1)
+
+        # The no-op branch answers from the same loader.
+        calls.clear()
+        no_op = excel_link_service.retarget_reserving_class_workbook(
+            "Project", "Class", str(self.new_book), str(self.new_book), listing=loader
+        )
+        self.assertEqual(calls, [("Project", "Class")])
+        self.assertEqual(no_op["via"], "injected")
+        self.assertIn("already the current link", no_op["message"])
 
     def test_retarget_requires_an_existing_new_workbook(self) -> None:
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())

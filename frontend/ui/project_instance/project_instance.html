@@ -7,10 +7,9 @@
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance_excel_links.css?v=20260814a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260814a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260816b"/>
+    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c"/>
     <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -67,7 +66,7 @@
               <span id="datasetTempViewTooltipDescription">Normal view shows saved datasets only. Click to enable Temporary view.</span>
             </div>
           </div>
-          <button class="dataset-toolbar-btn" id="excelLinksBtn" type="button" aria-label="Manage Excel links" aria-controls="excelLinksWindow" aria-pressed="false">
+          <button class="dataset-toolbar-btn" id="excelLinksBtn" type="button" aria-label="Manage Excel links">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M9.5 14.5 14.5 9.5"></path>
               <path d="M12.75 7.25 14.5 5.5a3.54 3.54 0 0 1 5 5l-1.75 1.75"></path>
@@ -227,43 +226,6 @@
         </div>
       </div>
     </div>
-    <section class="pi-excel-links-window" id="excelLinksWindow" role="dialog" aria-labelledby="excelLinksTitle" hidden>
-      <header class="pi-excel-links-header" id="excelLinksHeader">
-        <div>
-          <div class="pi-excel-links-title" id="excelLinksTitle">Excel Links</div>
-          <div class="pi-excel-links-path" id="excelLinksPath"></div>
-        </div>
-        <div class="pi-excel-links-header-actions">
-          <button class="pi-excel-links-icon-btn" id="excelLinksRefresh" type="button" aria-label="Refresh Excel links">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M13.5 4v3.5H10"></path>
-              <path d="M2.5 12V8.5H6"></path>
-              <path d="M12.4 6A4.7 4.7 0 0 0 4.1 4.4L2.5 6.1"></path>
-              <path d="M3.6 10a4.7 4.7 0 0 0 8.3 1.6l1.6-1.7"></path>
-            </svg>
-          </button>
-          <button class="pi-excel-links-icon-btn" id="excelLinksClose" type="button" aria-label="Close Excel links">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8M12 4l-8 8"></path></svg>
-          </button>
-        </div>
-      </header>
-      <div class="pi-excel-links-body">
-        <div class="pi-excel-links-hint">Changing a workbook relinks every dataset and DFM method in this reserving class. Unless recalculation is selected below, stored values are kept until links are refreshed from a Dataset or DFM Links tab.</div>
-        <label class="pi-excel-links-refresh-option">
-          <input type="checkbox" id="excelLinksRefreshValues">
-          <span>Recalculate all affected datasets and DFM methods from the new workbook</span>
-        </label>
-        <div class="pi-excel-links-table-wrap">
-          <table class="pi-excel-links-table">
-            <colgroup><col class="workbook"><col class="folder"><col class="status"><col class="usage"><col class="action"></colgroup>
-            <thead><tr><th>Workbook</th><th>Folder</th><th>Status</th><th>Used By</th><th aria-label="Actions"></th></tr></thead>
-            <tbody id="excelLinksBody"></tbody>
-          </table>
-          <div class="pi-excel-links-state" id="excelLinksState" hidden></div>
-        </div>
-        <div class="pi-excel-links-status" id="excelLinksStatus" aria-live="polite"></div>
-      </div>
-    </section>
     <div class="pi-number-formats-overlay" id="datasetNumberFormatsOverlay" hidden>
       <section class="pi-number-formats-window" id="datasetNumberFormatsWindow" role="dialog" aria-modal="true" aria-labelledby="datasetNumberFormatsTitle">
         <header class="pi-number-formats-header" id="datasetNumberFormatsHeader">
@@ -305,6 +267,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260816a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260817b"></script>
 </body>
 </html>
