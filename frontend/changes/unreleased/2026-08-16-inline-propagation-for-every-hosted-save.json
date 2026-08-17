@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dependent propagation",
+  "audience": "user",
+  "summary": "Saving a Berquist Sherman method no longer waits about 15 seconds after its dependent updates have already finished.",
+  "details": [
+    "Dataset sidecar saves now run their dependent walk on ArcRho Engine like every other method save, instead of queueing a job the client had to poll for.",
+    "The poll read the job status over the network share, where Windows caches the file for up to 10 seconds and hid a result that was already written."
+  ]
+}

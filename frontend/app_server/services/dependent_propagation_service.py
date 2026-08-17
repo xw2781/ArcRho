@@ -398,7 +398,19 @@ def enqueue_save_propagation(
     A save that already committed must never turn into an HTTP error because
     the queue write failed afterwards, so submission problems are reported in
     the returned payload instead of raised.
+
+    Inside an Engine-hosted save the walk runs synchronously here instead. The
+    decision belongs at this level, not at each call site: a queued job forces
+    the client to poll a status file it reaches over SMB, where the Windows
+    redirector caches the file for its default 10 s and hides a terminal status
+    that has already been written. Every save that reaches an Engine holding
+    the reserving-class lease should therefore answer with the finished walk.
     """
+
+    if _inline_engine_propagation.get():
+        return _run_inline_save_propagation(
+            project_name, reserving_class, changed_roots
+        )
 
     try:
         submitted = submit_dependent_propagation_job(
@@ -536,29 +548,24 @@ def enqueue_marked_save_propagation(
     and the next save or refresh re-enqueues the walk that restores the
     deeper tiers.
 
-    Inside an Engine-hosted save (`inline_engine_propagation`) the walk runs
-    synchronously instead — the walk itself finalizes every status, so the
-    upfront marking is skipped entirely.
+    Inside an Engine-hosted save the marking is skipped entirely: the walk runs
+    synchronously and finalizes every status itself. Whether to run inline is
+    decided once, by `enqueue_save_propagation`; this function only declines to
+    pay for marking that the inline walk would immediately redo.
     """
 
-    if _inline_engine_propagation.get():
-        return _run_inline_save_propagation(
-            project_name,
-            reserving_class,
-            [changed_root(dataset_name, dataset_type)],
-        )
+    if not _inline_engine_propagation.get():
+        try:
+            from app_server.services import dataset_sidecar_status_service
 
-    try:
-        from app_server.services import dataset_sidecar_status_service
-
-        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-            project_name,
-            reserving_class,
-            [dataset_name, dataset_type],
-            direct_only=True,
-        )
-    except Exception as exc:
-        return {"ok": False, "status": "error", "message": str(exc)}
+            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                project_name,
+                reserving_class,
+                [dataset_name, dataset_type],
+                direct_only=True,
+            )
+        except Exception as exc:
+            return {"ok": False, "status": "error", "message": str(exc)}
     return enqueue_save_propagation(
         project_name,
         reserving_class,

@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -46,6 +47,64 @@ from arcrho_engine_job_lease import EngineJobLease, engine_job_lease_is_owned
 # module; propagation reuses it rather than growing a second redactor.
 from arcrho_engine.project_duplication import _redact_machine_paths
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES, BUNDLE_DIR_NAME
+from arcrho_engine.runtime_log import append_runtime_log
+
+# Wall-clock diary of every walk this instance runs. A propagation that takes
+# far longer than its work should is otherwise invisible: the status file keeps
+# only the latest progress snapshot, so a phase that stalls leaves nothing
+# behind but file timestamps. Each stage transition is stamped with the time
+# the previous stage took, which is what localizes a stall to one phase.
+DEPENDENT_PROPAGATION_LOG_FILENAME = "dependent_propagation.log"
+
+
+def _log(server_root: Any, message: str, *, exc: BaseException | None = None) -> None:
+    append_runtime_log(
+        server_root, DEPENDENT_PROPAGATION_LOG_FILENAME, message, exc=exc
+    )
+
+
+def _walk_outcome_summary(result: Mapping[str, Any]) -> str:
+    """Name what the walk touched, per bucket, for the log line.
+
+    The status message a client sees is deliberately redacted and truncated;
+    this is the server-local record that keeps the dataset names and the
+    unshortened reason for each failure.
+    """
+
+    parts: list[str] = []
+    updated = [
+        str(item.get("dataset_name") or item.get("dataset_type_name") or "").strip()
+        for item in result.get("updated") or []
+        if isinstance(item, Mapping)
+    ]
+    skipped = [
+        f"{str(item.get('dataset_name') or '').strip()}"
+        f"({str(item.get('reason') or '').strip()})"
+        for item in result.get("skipped") or []
+        if isinstance(item, Mapping)
+    ]
+    if updated:
+        parts.append(f"updated=[{', '.join(name for name in updated if name)}]")
+    if skipped:
+        parts.append(f"skipped=[{', '.join(skipped)}]")
+    for bucket in _METHOD_UPDATE_BUCKETS:
+        updates = result.get(bucket)
+        if not isinstance(updates, Mapping):
+            continue
+        refreshed = [str(name).strip() for name in updates.get("refreshed") or []]
+        if refreshed:
+            parts.append(f"{bucket}=[{', '.join(refreshed)}]")
+        for error in updates.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            name = str(
+                error.get("dataset_name") or error.get("method_name") or ""
+            ).strip()
+            parts.append(f"{bucket} FAILED {name}: {error.get('reason')}")
+    index_error = str(result.get("index_error") or "").strip()
+    if index_error:
+        parts.append(f"index_error={index_error}")
+    return " ".join(parts) if parts else "(nothing to refresh)"
 
 
 Progress = dict[str, Any]
@@ -241,7 +300,30 @@ def execute_dependent_propagation(
         )
     first, *rest = [root for root in roots if root.get("dataset_name")]
 
+    request_id = normalized["RequestId"]
+    root_names = ", ".join(
+        str(root.get("dataset_name") or "") for root in roots if root.get("dataset_name")
+    )
+    _log(
+        server_root,
+        f"{request_id} walk start class={normalized['Path']!r} roots=[{root_names}]",
+    )
+    # Each transition reports how long the stage that just ended took, so a
+    # phase that stalls names itself instead of hiding inside one total.
+    stage_started = time.monotonic()
+    walk_started = stage_started
+    previous_stage = "starting"
+
     def on_tier(stage: str, completed: int, total: int, label: str) -> None:
+        nonlocal stage_started, previous_stage
+        now = time.monotonic()
+        _log(
+            server_root,
+            f"{request_id} stage {previous_stage} took {now - stage_started:.2f}s"
+            f" -> {stage} ({completed}/{total})",
+        )
+        stage_started = now
+        previous_stage = stage
         if progress_callback is not None:
             progress_callback(_progress(stage, completed, total, label))
 
@@ -272,12 +354,13 @@ def execute_dependent_propagation(
                 ],
             )
         except Exception as exc:
-            print(
-                "(dependent propagation closure marking failed: "
-                f"{_redact_machine_paths(exc)})"
+            _log(
+                server_root,
+                f"{request_id} closure marking failed: {_redact_machine_paths(exc)}",
+                exc=exc,
             )
 
-        return calculated_dataset_service.recalculate_dependents(
+        result = calculated_dataset_service.recalculate_dependents(
             normalized["ProjectName"],
             normalized["Path"],
             first["dataset_name"],
@@ -288,6 +371,17 @@ def execute_dependent_propagation(
             progress_callback=on_tier,
             rebuild_index=True,
         )
+        _log(
+            server_root,
+            f"{request_id} stage {previous_stage} took"
+            f" {time.monotonic() - stage_started:.2f}s (final)",
+        )
+        _log(
+            server_root,
+            f"{request_id} walk done in {time.monotonic() - walk_started:.2f}s"
+            f" {_walk_outcome_summary(result)}",
+        )
+        return result
 
 
 _METHOD_UPDATE_BUCKETS = (
@@ -402,11 +496,26 @@ def process_durable_dependent_propagation_request(
         _remove_request_file(request_path)
         return False
 
+    # How long a request waited before an instance could claim it. A failed
+    # claim is silent otherwise, and the queue file is only re-driven by the
+    # 5 s rescan, so a contended class shows up here as repeated claim misses
+    # rather than as unexplained wall-clock time in the client.
+    try:
+        queued_seconds = max(0.0, time.time() - request_path.stat().st_mtime)
+    except OSError:
+        queued_seconds = float("nan")
+
     lease = acquire_reserving_class_lease(
         root, normalized["ProjectName"], normalized["Path"]
     )
     if lease is None:
+        _log(
+            root,
+            f"{request_id} claim missed (class busy) after {queued_seconds:.2f}s queued",
+        )
         return False
+    _log(root, f"{request_id} claimed after {queued_seconds:.2f}s queued")
+    claimed_at = time.monotonic()
     heartbeat_stop, heartbeat_thread = start_reserving_class_lease_heartbeat(lease)
     try:
         drained = _drain_coalescible_requests(root, request_path, normalized)
@@ -506,20 +615,30 @@ def process_durable_dependent_propagation_request(
                 terminal_message = _summarize_walk_failure(result)
                 terminal_progress = current_progress
         except DependentPropagationLeaseLost:
-            print("(dependent propagation reserving-class ownership was lost)")
+            _log(root, f"{request_id} reserving-class ownership was lost")
             return False
         except Exception as exc:
             terminal_state = "error"
             terminal_message = _safe_status_message(exc)
             terminal_progress = current_progress
-            print(f"(dependent propagation error: {terminal_message})")
+            # The status message is redacted for the client; the log keeps the
+            # real exception and its traceback.
+            _log(root, f"{request_id} walk raised: {terminal_message}", exc=exc)
 
+        _log(
+            root,
+            f"{request_id} {terminal_state} after {time.monotonic() - claimed_at:.2f}s"
+            f" held (merged={len(drained)})"
+            + (f": {terminal_message}" if terminal_message else ""),
+        )
         try:
             publish(request_id, terminal_state, terminal_progress, message=terminal_message)
         except Exception as status_exc:
-            print(
-                "(error: could not publish dependent propagation status: "
-                f"{_redact_machine_paths(status_exc)})"
+            _log(
+                root,
+                "could not publish dependent propagation status: "
+                f"{_redact_machine_paths(status_exc)}",
+                exc=status_exc,
             )
             return False
         if _terminal_status_or_none(root, request_id) is not None:

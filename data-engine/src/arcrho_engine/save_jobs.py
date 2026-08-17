@@ -57,6 +57,7 @@ from arcrho_engine_save_contract import (
 from arcrho_engine.dependent_propagation import configure_canonical_runtime
 from arcrho_engine.general_utils import safe_remove
 from arcrho_engine.project_duplication import _redact_machine_paths
+from arcrho_engine.runtime_log import append_runtime_log
 
 # How long a claimed save waits for the reserving-class lease when a
 # propagation walk is still running for the same class. Walks finish in
@@ -68,6 +69,9 @@ SAVE_JOB_LEASE_POLL_SECONDS = 0.25
 _last_prune_at = 0.0
 
 
+HOSTED_SAVE_LOG_FILENAME = "hosted_saves.log"
+
+
 def _log(root: Path, message: str) -> None:
     """Append one line to the hosted-save log on the server host.
 
@@ -75,14 +79,7 @@ def _log(root: Path, message: str) -> None:
     this file is the only place a hosted save can explain a failure.
     """
 
-    try:
-        log_path = root / "runtime" / "logs" / "hosted_saves.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{stamp} {message}\n")
-    except Exception:
-        pass
+    append_runtime_log(root, HOSTED_SAVE_LOG_FILENAME, message)
 
 
 def _acquire_lease_with_wait(root: Path, project: str, reserving: str):

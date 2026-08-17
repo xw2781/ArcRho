@@ -42,6 +42,8 @@ from arcrho_project_duplication_contract import (
     write_project_duplication_status_for_request_id,
 )
 
+from arcrho_engine.runtime_log import append_runtime_log
+
 
 Progress = dict[str, Any]
 ProgressCallback = Callable[[Progress], None]
@@ -64,9 +66,9 @@ PROJECT_DUPLICATION_COPY_ATTEMPTS = 4
 PROJECT_DUPLICATION_COPY_RETRY_SECONDS = (0.5, 1.5, 3.0)
 
 # The shared status message is deliberately location-independent, so the real
-# OSError is only recoverable from this server-local log.
+# OSError is only recoverable from this server-local log. Its rotation and
+# append semantics belong to `arcrho_engine.runtime_log`.
 PROJECT_DUPLICATION_LOG_RELATIVE_PATH = ("runtime", "logs", "project_duplication.log")
-PROJECT_DUPLICATION_LOG_MAX_BYTES = 1024 * 1024
 
 
 class ProjectDuplicationError(RuntimeError):
@@ -140,24 +142,9 @@ def log_duplication_event(
     error here is swallowed.
     """
 
-    try:
-        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        line = f"{stamp} {message}\n"
-        if exc is not None:
-            line += "".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            )
-        path = _duplication_log_path(server_root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if path.stat().st_size > PROJECT_DUPLICATION_LOG_MAX_BYTES:
-                os.replace(path, path.with_name(f"{path.name}.1"))
-        except OSError:
-            pass
-        with open(path, mode="a", encoding="utf-8") as stream:
-            stream.write(line)
-    except Exception:
-        pass
+    append_runtime_log(
+        server_root, PROJECT_DUPLICATION_LOG_RELATIVE_PATH[-1], message, exc=exc
+    )
 
 
 def _discard_failed_copy(destination: Path) -> None:

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dependent propagation",
+  "audience": "internal",
+  "summary": "ArcRho Engine now writes a dependent-propagation log so a slow or failed dependent update can be diagnosed from the server.",
+  "details": [
+    "runtime/logs/dependent_propagation.log records each job's queue wait, claim, per-stage elapsed time, and terminal outcome.",
+    "Failure lines keep the dataset names and full reason that the client-facing status message truncates.",
+    "The Engine's three runtime logs now share one appender with common rotation."
+  ]
+}

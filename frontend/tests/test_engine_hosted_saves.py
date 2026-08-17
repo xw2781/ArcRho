@@ -813,6 +813,90 @@ class InlineEnginePropagationTests(unittest.TestCase):
             ],
         )
 
+    def test_every_save_path_runs_the_walk_inline_not_only_the_marked_one(self) -> None:
+        """The dataset-sidecar save must not queue a job inside a hosted save.
+
+        A queued job forces the client to poll a status file it reaches over
+        SMB, where the Windows redirector caches the file for its default 10 s
+        and hides a terminal status the Engine already wrote. Berquist Sherman
+        saves through this path, which is why its saves waited ~15 s after the
+        walk itself had finished in under a second.
+        """
+
+        walk_result = {"ok": True, "updated": [{"dataset_name": "D 91"}]}
+        with (
+            patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value=walk_result,
+            ) as walk,
+            patch.object(
+                dependent_propagation_service, "submit_dependent_propagation_job"
+            ) as submit,
+        ):
+            with dependent_propagation_service.inline_engine_propagation():
+                payload = dependent_propagation_service.enqueue_save_propagation(
+                    "Demo Project",
+                    "HPPREF\\HO+DF\\NJ",
+                    [dependent_propagation_service.changed_root("Paid Output", "Gross Loss")],
+                )
+        walk.assert_called_once()
+        submit.assert_not_called()
+        # "completed" is what lets the client skip polling entirely.
+        self.assertEqual(payload["status"], "completed")
+        self.assertTrue(payload["ok"])
+
+    def test_outside_a_hosted_save_the_walk_is_still_queued(self) -> None:
+        # A Client PC has no lease and no local workspace: it must keep
+        # enqueueing the durable job.
+        with (
+            patch.object(
+                dependent_propagation_service,
+                "submit_dependent_propagation_job",
+                return_value={"job_id": "abc", "status": "queued"},
+            ) as submit,
+            patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents"
+            ) as walk,
+        ):
+            payload = dependent_propagation_service.enqueue_save_propagation(
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                [dependent_propagation_service.changed_root("Paid Output", "Gross Loss")],
+            )
+        submit.assert_called_once()
+        walk.assert_not_called()
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["job_id"], "abc")
+
+    def test_the_marked_variant_skips_marking_only_when_inline(self) -> None:
+        # The inline decision lives in enqueue_save_propagation; this function
+        # only declines to pay for marking the inline walk would redo.
+        with (
+            patch(
+                "app_server.services.dataset_sidecar_status_service"
+                ".refresh_method_statuses_for_dependents"
+            ) as marking,
+            patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value={"ok": True},
+            ),
+        ):
+            with dependent_propagation_service.inline_engine_propagation():
+                dependent_propagation_service.enqueue_marked_save_propagation(
+                    "Demo Project", "HPPREF\\HO+DF\\NJ", "Paid Output"
+                )
+            marking.assert_not_called()
+
+            with patch.object(
+                dependent_propagation_service,
+                "submit_dependent_propagation_job",
+                return_value={"job_id": "abc", "status": "queued"},
+            ):
+                dependent_propagation_service.enqueue_marked_save_propagation(
+                    "Demo Project", "HPPREF\\HO+DF\\NJ", "Paid Output"
+                )
+            marking.assert_called_once()
+
     def test_a_failed_inline_walk_reports_in_the_payload_not_an_error(self) -> None:
         with patch(
             "app_server.services.calculated_dataset_service.recalculate_dependents",

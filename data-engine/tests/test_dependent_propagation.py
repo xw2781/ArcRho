@@ -214,6 +214,125 @@ class DependentPropagationEngineTests(unittest.TestCase):
         )
         self.assertEqual(bound, [], "the binding must not outlive the walk")
 
+    def _propagation_log(self) -> str:
+        path = (
+            self.root
+            / "runtime"
+            / "logs"
+            / dependent_propagation.DEPENDENT_PROPAGATION_LOG_FILENAME
+        )
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def test_a_stalled_stage_is_attributable_from_the_log(self) -> None:
+        """The log must localize a stall to one stage.
+
+        A walk whose wall-clock far exceeds its work is otherwise invisible:
+        the status file keeps only the newest progress snapshot, so a phase
+        that hangs leaves nothing behind. Each transition therefore reports
+        how long the stage that just ended took.
+        """
+
+        # start, ->marking, ->dfm, ->result_selection, final, total
+        clock = iter([0.0, 0.0, 1.0, 16.0, 16.5, 17.0])
+
+        def walk(*args, **kwargs):
+            progress = kwargs["progress_callback"]
+            progress("dfm", 0, 0, "Refreshing DFM methods")
+            progress("result_selection", 0, 0, "Refreshing Result Selection methods")
+            return {"ok": True}
+
+        _path, request = self._publish_request()
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules,
+                _fake_app_server(walk=walk, marking=lambda *a, **k: []),
+            ),
+            patch.object(dependent_propagation.time, "monotonic", lambda: next(clock)),
+        ):
+            dependent_propagation.execute_dependent_propagation(self.root, request)
+
+        log = self._propagation_log()
+        self.assertIn("walk start", log)
+        # The 15 s belongs to the stage that ended at the second transition,
+        # not to the walk as an undifferentiated total.
+        self.assertIn("stage dfm took 15.00s -> result_selection", log)
+        self.assertIn("walk done in", log)
+
+    def test_the_log_keeps_failure_detail_the_client_status_redacts(self) -> None:
+        def walk(*args, **kwargs):
+            return {
+                "ok": False,
+                "skipped": [],
+                "result_selection_updates": {
+                    "ok": False,
+                    "refreshed": [],
+                    "errors": [
+                        {
+                            "dataset_name": "D 92 - Current Qtr Selected",
+                            "reason": "[WinError 5] Access is denied",
+                        }
+                    ],
+                },
+            }
+
+        path, request = self._publish_request()
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules, _fake_app_server(walk=walk, marking=lambda *a, **k: [])
+            ),
+        ):
+            dependent_propagation.process_durable_dependent_propagation_request(
+                self.root, path, request
+            )
+
+        log = self._propagation_log()
+        self.assertIn("claimed after", log)
+        self.assertIn("D 92 - Current Qtr Selected", log)
+        self.assertIn("WinError 5", log)
+        self.assertIn("error after", log)
+
+    def test_a_missed_claim_says_the_class_was_busy(self) -> None:
+        path, request = self._publish_request()
+        with (
+            patch.object(
+                dependent_propagation, "acquire_reserving_class_lease", return_value=None
+            ),
+            patch.object(dependent_propagation, "execute_dependent_propagation") as walk,
+        ):
+            completed = dependent_propagation.process_durable_dependent_propagation_request(
+                self.root, path, request
+            )
+        self.assertFalse(completed)
+        walk.assert_not_called()
+        # Without this line a contended class is indistinguishable from a slow
+        # walk: both show up only as wall-clock time in the client.
+        self.assertIn("claim missed (class busy)", self._propagation_log())
+
+    def test_logging_failure_never_breaks_a_walk(self) -> None:
+        # A log is a diary, never a dependency: an unwritable log directory
+        # must not turn a healthy propagation into a failed one.
+        blocker = self.root / "runtime"
+        blocker.parent.mkdir(parents=True, exist_ok=True)
+        blocker.write_text("not a directory", encoding="utf-8")
+
+        _path, request = self._publish_request()
+        with (
+            patch.object(dependent_propagation, "configure_canonical_runtime"),
+            patch.dict(
+                sys.modules,
+                _fake_app_server(
+                    walk=lambda *a, **k: {"ok": True}, marking=lambda *a, **k: []
+                ),
+            ),
+        ):
+            result = dependent_propagation.execute_dependent_propagation(
+                self.root, request
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._propagation_log(), "")
+
     def test_request_filename_must_match_request_id(self) -> None:
         path, request = self._publish_request()
         renamed = path.with_name("other-name.json")
