@@ -37,6 +37,14 @@ Components are also deployed straight from the repository by their own
 installer ships only the five receipted components. Either path stamps the
 folder it writes.
 
+That repository path normally runs on the server rather than on the client that
+wants the deploy: `data-engine/deploy.py` queues a build request and the
+ArcRho Build Listener runs the same `build_exe.py` locally, which is what keeps
+the frozen build off the network (see "Remote build requests" in
+[architectures.md](../architectures.md)). The stamp is unchanged either way —
+`git_dirty` still reports a working-tree build, because a request carries the
+requester's uncommitted source as a patch.
+
 `stage_deploy` records the build in the same `.arcrho-deploy-manifest.json` that
 carries the copy delta, so the record rotates with the folder it describes and a
 parked build keeps saying which release it is. Schema version 2 adds

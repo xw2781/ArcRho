@@ -1,179 +1,40 @@
+"""Desktop control surface for building, deploying, and running components.
+
+Run it on the machine that owns the ArcRho Server workspace and turn on
+"Listen for build requests" to service remote build requests from client
+machines; see ``arcrho_build_listener`` for why a client asks instead of
+deploying across the share itself.
+
+The component table, freshness rule, and instance helpers live in
+``arcrho_build_components`` so this GUI and the client CLI cannot disagree
+about which components a change makes stale.
+"""
+
 from __future__ import annotations
 
-import json
 import os
 import queue
 import subprocess
 import sys
 import threading
-import time
 import tkinter as tk
-from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-# The Bridge owns the list of repository trees it freezes; read it rather than
-# restating it, so a change to what the Bridge bundles cannot silently stop
-# being reported as stale here.
-from arcrho_bridge.bundled_sources import BUNDLED_SOURCE_ROOTS
-from utils import DEPLOYED_COMPONENT_ROLES, component_app_name
+from arcrho_build_components import (
+    COMPONENTS,
+    DEPLOY_ROOT,
+    Component,
+    build_freshness,
+    list_instance_files,
+    remove_instance_file,
+    stale_components,
+)
+from arcrho_build_listener import BuildListener
+from arcrho_build_request_contract import build_requests_directory
 
-
-BASE_DIR = Path(__file__).resolve().parent
-DATA_ENGINE_ROOT = BASE_DIR.parent
-DEPLOY_ROOT = Path(os.environ.get("ARCRHO_DEPLOY_ROOT", r"E:\ArcRho Server"))
-APPS_DIR = DEPLOY_ROOT / "apps"
-INSTANCES_DIR = DEPLOY_ROOT / "runtime" / "instances"
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-SOURCE_EXTENSIONS = {".html", ".ico", ".json", ".py", ".txt"}
-# "logs" holds run output, not source; counting it reports a component as stale
-# every time it runs.
-SOURCE_SKIP_DIRS = {"__pycache__", "build", "dist", "logs", "spec"}
-
-
-@dataclass(frozen=True)
-class Component:
-    key: str
-    label: str
-    source_dir: Path
-    exe_name: str
-    instance_roles: tuple[str, ...]
-    # Repository trees outside source_dir that the component freezes into its
-    # executable. Editing one of these leaves the deployed app stale even though
-    # source_dir is untouched, so freshness has to consider them too.
-    bundled_source_roots: tuple[Path, ...] = ()
-
-    @property
-    def build_script(self) -> Path:
-        return self.source_dir / "build_exe.py"
-
-    @property
-    def deploy_exe(self) -> Path:
-        return APPS_DIR / Path(self.exe_name).stem / self.exe_name
-
-    @property
-    def freshness_source_dirs(self) -> tuple[Path, ...]:
-        return (self.source_dir, *self.bundled_source_roots)
-
-
-SHARED_COMPONENT_SOURCES = (
-    BASE_DIR / "utils.py",
-    BASE_DIR / "server_config.py",
-    BASE_DIR / "build_runtime.py",
-)
-
-
-def _build_component(role: str) -> Component:
-    if role == "launcher":
-        instance_roles = ()
-    elif role == "bridge":
-        instance_roles = ("arcrho_bridge", "arcrho_bridge_worker")
-    else:
-        instance_roles = (f"arcrho_{role}",)
-    role_sources = BUNDLED_SOURCE_ROOTS if role == "bridge" else ()
-    return Component(
-        role,
-        "Admin Control" if role == "admin" else role.title(),
-        BASE_DIR / f"arcrho_{role}",
-        f"{component_app_name(role)}.exe",
-        instance_roles,
-        bundled_source_roots=(*role_sources, *SHARED_COMPONENT_SOURCES),
-    )
-
-
-COMPONENTS = tuple(_build_component(role) for role in DEPLOYED_COMPONENT_ROLES)
-
-
-def instance_folder(role: str) -> Path:
-    return INSTANCES_DIR / role
-
-
-def read_json(path: Path) -> dict[str, object]:
-    try:
-        with open(path, mode="r", encoding="utf-8") as file:
-            payload = json.load(file)
-            return payload if isinstance(payload, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def list_instance_files(component: Component) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for role in component.instance_roles:
-        folder = instance_folder(role)
-        if not folder.exists():
-            continue
-        for path in sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
-            payload = read_json(path)
-            rows.append(
-                {
-                    "role": role,
-                    "path": path,
-                    "name": path.name,
-                    "server": payload.get("Server") or path.stem,
-                    "user": payload.get("User") or "",
-                    "last_seen": payload.get("Last seen") or "",
-                    "age": max(0, int(time.time() - path.stat().st_mtime)),
-                }
-            )
-    return rows
-
-
-def latest_source_timestamp(component: Component) -> float | None:
-    latest: float | None = None
-    for root in component.freshness_source_dirs:
-        if not root.exists():
-            continue
-        candidates = (root,) if root.is_file() else root.rglob("*")
-        for path in candidates:
-            if not path.is_file():
-                continue
-            if any(part in SOURCE_SKIP_DIRS for part in path.relative_to(root).parts[:-1]):
-                continue
-            if path.suffix.lower() not in SOURCE_EXTENSIONS:
-                continue
-            try:
-                timestamp = path.stat().st_mtime
-            except OSError:
-                continue
-            latest = timestamp if latest is None else max(latest, timestamp)
-    return latest
-
-
-def build_freshness(component: Component) -> str:
-    exe_path = component.deploy_exe
-    if not exe_path.exists():
-        return "Missing EXE"
-
-    latest_source = latest_source_timestamp(component)
-    if latest_source is None:
-        return "No source"
-
-    try:
-        exe_timestamp = exe_path.stat().st_mtime
-    except OSError:
-        return "EXE inaccessible"
-
-    return "Updated" if exe_timestamp >= latest_source else "Source newer"
-
-
-def remove_instance_file(path: Path, attempts: int = 5, delay: float = 0.1) -> bool:
-    resolved = path.resolve()
-    instances_root = INSTANCES_DIR.resolve()
-    if instances_root not in resolved.parents:
-        raise ValueError(f"Refusing to remove file outside instances folder: {path}")
-
-    for _ in range(attempts):
-        try:
-            path.unlink()
-            return True
-        except FileNotFoundError:
-            return False
-        except PermissionError:
-            time.sleep(delay)
-    path.unlink()
-    return True
 
 
 class BuildManagerApp(tk.Tk):
@@ -188,8 +49,10 @@ class BuildManagerApp(tk.Tk):
         self.component_rows: dict[str, str] = {}
         self.instance_rows: dict[str, list[dict[str, object]]] = {}
         self.refresh_running = False
+        self.listener = BuildListener(DEPLOY_ROOT, log=self._log)
 
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.refresh_status()
         self.after(3000, self.auto_refresh_status)
         self.after(150, self._drain_log_queue)
@@ -200,16 +63,25 @@ class BuildManagerApp(tk.Tk):
 
         toolbar = ttk.Frame(self, padding=(10, 10, 10, 6))
         toolbar.grid(row=0, column=0, sticky="ew")
-        toolbar.columnconfigure(6, weight=1)
+        toolbar.columnconfigure(7, weight=1)
 
         ttk.Button(toolbar, text="Refresh", command=self.refresh_status).grid(row=0, column=0, padx=(0, 6))
         ttk.Button(toolbar, text="Run Selected", command=self.run_selected).grid(row=0, column=1, padx=6)
         ttk.Button(toolbar, text="Build Selected", command=self.build_selected).grid(row=0, column=2, padx=6)
-        ttk.Button(toolbar, text="Stop Selected", command=self.kill_selected).grid(row=0, column=3, padx=6)
-        ttk.Button(toolbar, text="Stop Builds", command=self.stop_builds).grid(row=0, column=4, padx=6)
+        ttk.Button(toolbar, text="Build Stale", command=self.build_stale).grid(row=0, column=3, padx=6)
+        ttk.Button(toolbar, text="Stop Selected", command=self.kill_selected).grid(row=0, column=4, padx=6)
+        ttk.Button(toolbar, text="Stop Builds", command=self.stop_builds).grid(row=0, column=5, padx=6)
+
+        self.listen_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            toolbar,
+            text="Listen for build requests",
+            variable=self.listen_var,
+            command=self.toggle_listener,
+        ).grid(row=0, column=6, padx=(18, 6))
 
         self.deploy_label = ttk.Label(toolbar, text=f"Deploy: {DEPLOY_ROOT}")
-        self.deploy_label.grid(row=0, column=6, sticky="e")
+        self.deploy_label.grid(row=0, column=7, sticky="e")
 
         main = ttk.PanedWindow(self, orient=tk.VERTICAL)
         main.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -258,6 +130,31 @@ class BuildManagerApp(tk.Tk):
     def selected_components(self) -> list[Component]:
         selected = set(self.tree.selection())
         return [component for component in COMPONENTS if self.component_rows.get(component.key) in selected]
+
+    def toggle_listener(self) -> None:
+        """Start or stop servicing remote build requests.
+
+        This is the one action a client cannot perform for itself, which is why
+        the client CLI's only human-facing instruction is to come here and turn
+        it on.
+        """
+
+        if self.listen_var.get():
+            try:
+                self.listener.start()
+            except Exception as exc:  # noqa: BLE001 - surface the reason in the UI
+                self.listen_var.set(False)
+                messagebox.showerror("Listen for build requests", str(exc))
+                self._log(f"Could not start the build listener: {exc}")
+                return
+            self.status_var.set(f"Listening: {build_requests_directory(DEPLOY_ROOT)}")
+        else:
+            self.listener.stop()
+            self.status_var.set("Not listening for build requests")
+
+    def _on_close(self) -> None:
+        self.listener.stop()
+        self.destroy()
 
     def refresh_status(self) -> None:
         if self.refresh_running:
@@ -317,6 +214,13 @@ class BuildManagerApp(tk.Tk):
         components = self.selected_components()
         if not components:
             messagebox.showinfo("Build Selected", "Select one or more components first.")
+            return
+        self.start_builds(components)
+
+    def build_stale(self) -> None:
+        components = stale_components()
+        if not components:
+            messagebox.showinfo("Build Stale", "Every deployed component is up to date.")
             return
         self.start_builds(components)
 

@@ -54,6 +54,50 @@ Practical consequences:
 - A deploy interrupted between the renames leaves the last good build in
   `.<App Name>.prev`; the next staging restores it before reusing the name.
 
+## Remote build requests
+
+The delta staging above removes most of a deploy's bytes but not its direction.
+Measured from a client machine on 2026-08-17, the workspace share read at
+50 MB/s while a deploy's writes ran at 0.18 MB/s, so the ~5 minutes a deploy
+took was almost entirely the client pushing its build across the network.
+Building on the machine that owns the disk removes that transfer, and
+`arcrho_build_listener.py` is what lets a client ask for it.
+
+The queue is a folder protocol under `requests\builds`, the same shape as
+dependent propagation and project duplication, because the share is the one
+channel every client already has and it survives the Gateway being down.
+`arcrho_build_request_contract.py` owns the layout, the request and status
+shapes, and the listener heartbeat; `arcrho_build_components.py` owns the
+component table and the freshness rule that decides which components a change
+made stale, so the Build Manager GUI and the `deploy.py` CLI cannot disagree.
+
+A request carries source rather than a version. In the default `working-tree`
+mode the client sends a patch of the affected trees against the newest commit
+the server can already resolve, plus any untracked files, so a change that is
+still uncommitted deploys normally — which matters because AGENTS.md asks for a
+rebuild *before* a change is committed. `ref` mode builds a pushed ref instead
+and is the reproducible form.
+
+Consequences worth knowing:
+
+- **The listener owns its clone.** Every claimed request resets that working
+  tree, so nobody may edit in it. That includes the listener's own source: a
+  sync rewrites it, the running process keeps the code it already imported, and
+  the listener should be restarted after a change to its own modules. Its
+  heartbeat reports the commit it started from so the mismatch is visible.
+- **Anyone who can write the queue can run repository code on the server.** The
+  protection is the share's ACLs plus the listener's optional user allowlist.
+- **A working-tree deploy carries the whole clone's state** under the affected
+  roots, so concurrent edits by another person or agent in the same checkout
+  travel with it. The CLI prints the changed and new files it is sending so that
+  is visible rather than implied; `--ref` is the way to deploy without local
+  state.
+- The listener builds one request at a time and stops a request at its first
+  failed component, so a broken source tree cannot half-deploy across
+  components.
+- A client cannot start the listener; that is the only step in the flow that
+  needs a human at the server.
+
 ## `data-engine/src/arcrho_bridge`
 
 - ResQ import/export only; a separate module from permanent ArcRho processing.
