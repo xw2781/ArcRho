@@ -41,6 +41,10 @@ export function showObjectUpdatedAlert({
     message: OBJECT_UPDATED_MESSAGE,
     tone: "warn",
     actions: [{ id: OBJECT_UPDATED_REFRESH_ACTION, label: OBJECT_UPDATED_REFRESH_LABEL }],
+    // The window is showing stale values, so refreshing is the only sane exit:
+    // no OK button, no close button, no Esc/overlay dismissal.
+    showOk: false,
+    dismissible: false,
   }).then((action) => {
     if (action !== OBJECT_UPDATED_REFRESH_ACTION) return;
     if (isDirty()) {

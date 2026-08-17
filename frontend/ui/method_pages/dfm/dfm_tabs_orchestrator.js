@@ -12,7 +12,7 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260720c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
+import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -53,7 +53,7 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260816a";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -67,10 +67,10 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260816a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260814b";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260814b";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260814b";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260816a";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260816a";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
   clearRatioHistoryTempSession,

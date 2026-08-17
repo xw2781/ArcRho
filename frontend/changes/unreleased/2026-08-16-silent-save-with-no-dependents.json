@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "frontend",
+  "audience": "user",
+  "summary": "Reworked the post-save dependents notice: it is silent when nothing was refreshed, and lists each refreshed dataset as a link that opens its page.",
+  "details": [
+    "A save that refreshed no dependent datasets no longer shows the \"No dependent datasets required updates.\" popup.",
+    "When dependents were refreshed, the Saved notice shows one dataset name per row and stays open until you close it or click elsewhere in the window, instead of disappearing after two seconds.",
+    "Clicking a name opens that dependent's method page, or its dataset page when it is not a method output."
+  ]
+}

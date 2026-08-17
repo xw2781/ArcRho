@@ -11,13 +11,27 @@ const frontendRoot = new URL("../", import.meta.url);
 // rewritten to the file it serves.
 async function importSaveProgress() {
   const popupUrl = new URL("ui/shared/components/progress_popup/progress_popup.js", frontendRoot).href;
+  // The stub records every dialog the module opens so a test can assert that a
+  // save with nothing to report opens none at all.
   const messageBoxUrl = `data:text/javascript,${encodeURIComponent(
-    "export async function showPageMessageBox(){ return undefined; }",
+    "export async function showPageMessageBox(options){"
+    + " (globalThis.__arcrhoNoticeDialogs = globalThis.__arcrhoNoticeDialogs || []).push(options);"
+    + " }",
   )}`;
+  // The notice opens a clicked dataset through the real review-warning helper,
+  // so that one keeps its own source rather than being stubbed out.
+  const reviewWarningUrl = new URL(
+    "ui/shared/components/message_box/method_save_review_warning.js",
+    frontendRoot,
+  ).href;
   const text = (await source("ui/shared/components/progress_popup/save_progress.js"))
     .replace(
       /"\/ui\/shared\/components\/progress_popup\/progress_popup\.js\?v=[0-9a-z]+"/u,
       JSON.stringify(popupUrl),
+    )
+    .replace(
+      /"\/ui\/shared\/components\/message_box\/method_save_review_warning\.js\?v=[0-9a-z]+"/u,
+      JSON.stringify(reviewWarningUrl),
     )
     .replace(
       /"\/ui\/shared\/components\/message_box\/message_box\.js\?v=[0-9a-z]+"/u,
@@ -320,6 +334,54 @@ test("a Result Selection save shows the spinner and clears it before the review 
   }
 });
 
+test("the saved-dependents notice only appears when a dependent was refreshed", async () => {
+  const { showSavedDependentsNotice } = await importSaveProgress();
+  globalThis.__arcrhoNoticeDialogs = [];
+
+  // A save that refreshed nothing has nothing to tell the user, so it must not
+  // interrupt them with a dialog they have to dismiss.
+  await showSavedDependentsNotice([]);
+  await showSavedDependentsNotice(undefined);
+  await showSavedDependentsNotice(["", "   "]);
+  assert.deepEqual(globalThis.__arcrhoNoticeDialogs, []);
+
+  // Node has no `document`, so the caller supplies the one the notice uses.
+  await showSavedDependentsNotice(["Paid Loss", " Reported Loss "], { documentRef: {} });
+  assert.equal(globalThis.__arcrhoNoticeDialogs.length, 1);
+  const notice = globalThis.__arcrhoNoticeDialogs[0];
+  assert.equal(notice.title, "Saved");
+  assert.equal(notice.message, "2 dependent datasets were updated:");
+  // The names are links, one per row, instead of one comma-joined sentence.
+  assert.deepEqual(notice.links.map((link) => link.label), ["Paid Loss", "Reported Loss"]);
+  // A save that touched one dependent still reads as a sentence.
+  await showSavedDependentsNotice(["Paid Loss"], { documentRef: {} });
+  assert.equal(globalThis.__arcrhoNoticeDialogs.at(-1).message, "1 dependent dataset was updated:");
+  delete globalThis.__arcrhoNoticeDialogs;
+});
+
+test("a clicked dependent name asks Project Instance to open its page", async () => {
+  const { showSavedDependentsNotice } = await importSaveProgress();
+  globalThis.__arcrhoNoticeDialogs = [];
+  const posted = [];
+  const windowRef = { parent: { postMessage: (message) => posted.push(message) } };
+
+  await showSavedDependentsNotice(["Ultimate Loss"], { documentRef: {}, windowRef });
+  globalThis.__arcrhoNoticeDialogs[0].onLinkClick({ label: "Ultimate Loss" });
+
+  // `openMethod` is what makes Project Instance land on the owning method page
+  // when the refreshed dataset is a method output, and on the dataset page
+  // otherwise; the name is the only thing Project Instance needs to resolve it.
+  assert.deepEqual(posted, [{
+    type: "arcrho:project-instance-open-dependent-dataset",
+    inst: "",
+    datasetName: "Ultimate Loss",
+    openMethod: true,
+    project: "",
+    reservingClass: "",
+  }]);
+  delete globalThis.__arcrhoNoticeDialogs;
+});
+
 test("every method and dataset window saves behind the shared save progress", async () => {
   const sources = await Promise.all(SAVE_SURFACES.map((surface) => source(surface.path)));
 
@@ -332,7 +394,7 @@ test("every method and dataset window saves behind the shared save progress", as
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260814b/u,
+      /save_progress\.js\?v=20260816a/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.

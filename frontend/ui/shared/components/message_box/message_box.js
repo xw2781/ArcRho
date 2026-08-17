@@ -15,6 +15,10 @@ function ensureStyles(doc) {
  *
  * Resolves with the clicked action's `id` when `actions` are provided
  * ([{id, label}] rendered before OK), or `undefined` for OK/Esc/close.
+ *
+ * `showOk: false` drops the OK button so the only way out is one of the
+ * `actions`; `dismissible: false` additionally removes the close button and
+ * ignores Esc and overlay clicks, for advisories the user must act on.
  */
 export function showPageMessageBox({
   title = "Message",
@@ -24,6 +28,8 @@ export function showPageMessageBox({
   onLinkClick = null,
   actions = [],
   okLabel = "OK",
+  showOk = true,
+  dismissible = true,
   balancedActions = false,
   autoCloseMs = 0,
   documentRef = document,
@@ -58,6 +64,8 @@ export function showPageMessageBox({
   const closeButton = overlay.querySelector(".pageMessageBoxClose");
   titleEl.textContent = String(title || "Message");
   okButton.textContent = String(okLabel || "OK");
+  if (!showOk) okButton.remove();
+  if (!dismissible) closeButton.remove();
   titleEl.dataset.tone = String(tone || "");
   messageEl.textContent = String(message || "");
   const linkItems = Array.isArray(links) ? links : [];
@@ -113,13 +121,13 @@ export function showPageMessageBox({
       button.className = "pageMessageBoxButton pageMessageBoxActionButton";
       button.textContent = String(item.label).trim();
       button.addEventListener("click", () => finish(String(item.id).trim()));
-      actionsEl.insertBefore(button, okButton);
+      actionsEl.insertBefore(button, okButton.isConnected ? okButton : null);
     }
     function handleKeydown(event) {
       event.stopImmediatePropagation();
       if (event.key === "Escape") {
         event.preventDefault();
-        finish();
+        if (dismissible) finish();
       } else if (event.key === "Tab") {
         const focusable = focusableElements();
         if (!focusable.length) {
@@ -140,7 +148,7 @@ export function showPageMessageBox({
     okButton.addEventListener("click", finish);
     closeButton.addEventListener("click", finish);
     overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) finish();
+      if (event.target === overlay && dismissible) finish();
     });
     // Transient notices (post-save confirmations) dismiss themselves; the
     // user can still close sooner through any normal path above.
@@ -149,6 +157,9 @@ export function showPageMessageBox({
     }
     overlay.addEventListener("wheel", (event) => event.preventDefault(), { passive: false });
     doc.addEventListener("keydown", handleKeydown, true);
-    requestAnimationFrame(() => okButton.focus());
+    requestAnimationFrame(() => {
+      const initial = okButton.isConnected ? okButton : focusableElements()[0];
+      initial?.focus();
+    });
   });
 }

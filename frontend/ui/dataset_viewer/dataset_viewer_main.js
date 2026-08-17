@@ -28,8 +28,8 @@ import {
   createObjectChangeWatch,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260807a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260813e";
+} from "/ui/shared/services/object_change_watch.js?v=20260816a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260816a";
 import { state as sharedDatasetState } from "/ui/shared/dataset/dataset_state.js";
 
 const DATASET_VIEWER_TABS = [
