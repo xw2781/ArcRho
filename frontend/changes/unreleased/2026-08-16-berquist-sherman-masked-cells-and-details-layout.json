@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Fixed both B&S methods to mask the unavailable area of every Method triangle and aligned the Details tab with the other method pages.",
+  "details": [
+    "Cells outside the annual triangle no longer print 0: they show no value and no grid line, matching the Dataset Viewer.",
+    "A cell with no calculated value inside the triangle is blank instead of 0.",
+    "Details pickers moved inside their field, the Decimal Places spinner no longer stretches the full width, and the source groups use the standard spacing."
+  ]
+}

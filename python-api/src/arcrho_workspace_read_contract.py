@@ -117,6 +117,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_bootstrap_method",
         ("project_name", "reserving_class", "method_name"),
     ),
+    # B&S keeps its method JSON on the host API rather than an app-server save
+    # path, so this read exists to pair that file with the output sidecar in one
+    # visit. ``method_type`` picks the variant's filename prefix.
+    "berquist_sherman_load": WorkspaceReadKind(
+        "berquist_sherman_service",
+        "load_berquist_sherman_method",
+        ("project_name", "reserving_class", "method_type", "method_name"),
+    ),
     "table_summary": WorkspaceReadKind(
         "table_summary_service",
         "get_table_summary",

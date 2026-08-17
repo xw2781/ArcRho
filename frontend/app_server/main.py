@@ -41,6 +41,7 @@ from app_server.api import (
     result_selection_rpc_bridge_router,
     result_selection_router,
     bornhuetter_ferguson_router,
+    berquist_sherman_router,
     cape_cod_router,
     bootstrap_router,
     dfm_method_index_router,
@@ -94,6 +95,7 @@ app.include_router(dfm_method_router)
 app.include_router(result_selection_rpc_bridge_router)
 app.include_router(result_selection_router)
 app.include_router(bornhuetter_ferguson_router)
+app.include_router(berquist_sherman_router)
 app.include_router(cape_cod_router)
 app.include_router(bootstrap_router)
 app.include_router(dfm_method_index_router)

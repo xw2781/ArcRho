@@ -18,7 +18,7 @@ import {
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260814b";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
@@ -799,9 +799,14 @@ function viewNumberFormat(viewKey = state.currentView) {
   return roleKey ? roleNumberFormat(roleKey) : derivedNumberFormat();
 }
 
+// A blank is not a zero. `formatDatasetNumberValue` coerces its argument with
+// `Number(...)`, which turns a missing cell into 0, so an absent value has to be
+// resolved to an empty string here instead of being handed to the formatter.
 function formatCellValue(value, format) {
+  const number = numberOrNull(value);
+  if (number === null) return "";
   return formatDatasetNumberValue(
-    numberOrNull(value),
+    number,
     format.number_format,
     format.decimal_places,
   );
@@ -962,6 +967,21 @@ function buildMethodHeaderRow(cornerLabel, developmentCount) {
   return headerRow;
 }
 
+// Ingestion applies the Dataset Viewer mask and the annual staircase, so a
+// triangle row is exactly as long as the cells it owns. Everything past that
+// length is the unavailable lower-right area: it carries no value and no grid,
+// the way the Dataset Viewer blanks the same region.
+function populatedRowLength(matrix, rowIndex) {
+  const row = matrix?.[rowIndex];
+  return Array.isArray(row) ? row.length : 0;
+}
+
+function maskedCell() {
+  const cell = document.createElement("td");
+  cell.className = "bsMaskedCell";
+  return cell;
+}
+
 function adjustmentGridRows() {
   const span = state.result?.loessSpan ?? state.loessSpan;
   return [
@@ -990,7 +1010,7 @@ function renderAdjustedPaidGrid() {
   const body = document.createDocumentFragment();
   const gridRows = adjustmentGridRows();
   for (let rowIndex = 0; rowIndex < paid.length; rowIndex += 1) {
-    const populatedCount = Array.isArray(paid[rowIndex]) ? paid[rowIndex].length : 0;
+    const populatedCount = populatedRowLength(paid, rowIndex);
     const yearRow = document.createElement("tr");
     yearRow.className = "bsAdjYearRow";
     const yearLabel = document.createElement("td");
@@ -1016,12 +1036,11 @@ function renderAdjustedPaidGrid() {
       }
       rowElement.appendChild(label);
       for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
-        const cell = document.createElement("td");
         if (devIndex >= populatedCount) {
-          cell.className = "bsAdjBlankCell";
-          rowElement.appendChild(cell);
+          rowElement.appendChild(maskedCell());
           continue;
         }
+        const cell = document.createElement("td");
         const rawValue = gridRow.matrix[rowIndex]?.[devIndex];
         cell.textContent = formatCellValue(rawValue, format);
         cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
@@ -1120,7 +1139,12 @@ function renderProportionSettledGrid() {
     const origin = document.createElement("td");
     origin.textContent = getOriginLabel(rowIndex);
     rowElement.appendChild(origin);
+    const populatedCount = populatedRowLength(proportionMatrix, rowIndex);
     for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+      if (devIndex >= populatedCount) {
+        rowElement.appendChild(maskedCell());
+        continue;
+      }
       const cell = document.createElement("td");
       const rawValue = numberOrNull(proportionMatrix[rowIndex]?.[devIndex]);
       if (rawValue === null) {
@@ -1475,11 +1499,15 @@ function renderMethodTable() {
     const origin = document.createElement("td");
     origin.textContent = getOriginLabel(rowIndex);
     rowElement.appendChild(origin);
+    const populatedCount = populatedRowLength(matrix, rowIndex);
     for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
+      if (devIndex >= populatedCount) {
+        rowElement.appendChild(maskedCell());
+        continue;
+      }
       const cell = document.createElement("td");
       const rawValue = matrix[rowIndex]?.[devIndex];
-      const display = formatCellValue(rawValue, format);
-      cell.textContent = display;
+      cell.textContent = formatCellValue(rawValue, format);
       cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
       rowElement.appendChild(cell);
     }
@@ -2084,13 +2112,60 @@ function applyMethodPayload(payload) {
   syncNumberFormatControls();
 }
 
-async function tryLoadExistingMethod() {
-  if (params.get("fresh") === "1") return false;
-  const hostApi = getHostApi();
-  if (!hostApi?.readJsonFile) return false;
-  const result = await hostApi.readJsonFile({ path: await getMethodPath() });
-  if (!result?.exists || !result.data) return false;
-  applyMethodPayload(result.data);
+// The page open is one registered workspace read. `/berquist-sherman/load`
+// returns the method JSON and the output sidecar together, so a Client PC pays
+// a single workspace visit — served by the ArcRho Gateway when it is available
+// — instead of reading the sidecar and then the method file one after the
+// other. Reading the method through the host API could never use that
+// transport, because a host-API file read does not enter the app server.
+async function requestMethodAndSidecar(methodName) {
+  const response = await fetch("/berquist-sherman/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: state.project,
+      reserving_class: state.reservingClass,
+      method_type: contract.methodType,
+      method_name: methodName,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(
+      payload?.detail || payload?.error || `${contract.displayLabel} load failed (${response.status}).`,
+    );
+  }
+  return payload;
+}
+
+// Both halves are optional: a method that has never been saved has neither, and
+// the page then opens fresh from its Project Instance arguments. The sidecar is
+// applied first and the method second, so a saved Details number format still
+// wins over the output dataset's own.
+async function openMethodPage() {
+  const details = getDetails();
+  if (!state.project || !state.reservingClass || !details.name) {
+    auditLogView.clear();
+    return false;
+  }
+  const requestSequence = ++sidecarLoadSequence;
+  auditLogView.setLoading();
+  let payload = null;
+  try {
+    payload = await requestMethodAndSidecar(details.name);
+  } catch (error) {
+    if (requestSequence !== sidecarLoadSequence) return false;
+    auditLogView.setError(`Could not load the audit log. ${text(error?.message || error)}`);
+    postStatus(
+      `Could not load ${contract.displayLabel}: ${text(error?.message || error)}`,
+      "warn",
+    );
+    return false;
+  }
+  if (requestSequence !== sidecarLoadSequence) return false;
+  applySidecarPayload(payload?.sidecar);
+  if (params.get("fresh") === "1" || !payload?.method) return false;
+  applyMethodPayload(payload.method);
   postStatus(`Loaded ${contract.displayLabel}: ${getDetails().name}`);
   return true;
 }
@@ -2106,6 +2181,25 @@ function getPrecedentNames() {
     names.push(name);
   }
   return names;
+}
+
+// One place applies a loaded sidecar, whether it arrived with the page open or
+// from a later Audit-tab refresh.
+function applySidecarPayload(sidecar) {
+  state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels)
+    ? sidecar.origin_labels.map(String)
+    : [];
+  // The output dataset's own format seeds the Details controls once; after
+  // that the method JSON and the user's edits own it, so reloading the
+  // sidecar for the Audit tab cannot revert an unsaved format change.
+  if (!derivedNumberFormatSeeded && text(sidecar?.number_format)) {
+    derivedNumberFormatSeeded = true;
+    state.numberFormats.derived = normalizeNumberFormatEntry(sidecar);
+    syncNumberFormatControls();
+  }
+  notesController.setValue(text(sidecar?.notes), { markClean: true });
+  auditLogView.render(sidecar?.audit_log);
+  return sidecar || null;
 }
 
 async function loadSidecar() {
@@ -2131,21 +2225,7 @@ async function loadSidecar() {
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.detail || payload?.error || `Sidecar load failed (${response.status}).`);
     }
-    const sidecar = payload?.sidecar || payload?.data || payload;
-    state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels)
-      ? sidecar.origin_labels.map(String)
-      : [];
-    // The output dataset's own format seeds the Details controls once; after
-    // that the method JSON and the user's edits own it, so reloading the
-    // sidecar for the Audit tab cannot revert an unsaved format change.
-    if (!derivedNumberFormatSeeded && text(sidecar?.number_format)) {
-      derivedNumberFormatSeeded = true;
-      state.numberFormats.derived = normalizeNumberFormatEntry(sidecar);
-      syncNumberFormatControls();
-    }
-    notesController.setValue(text(sidecar?.notes), { markClean: true });
-    auditLogView.render(sidecar?.audit_log);
-    return sidecar;
+    return applySidecarPayload(payload?.sidecar || payload?.data || payload);
   } catch (error) {
     if (requestSequence !== sidecarLoadSequence) return null;
     auditLogView.setError(`Could not load the audit log. ${text(error?.message || error)}`);
@@ -2526,16 +2606,15 @@ async function init() {
   wireInputs();
   wireMessages();
 
-  try {
-    await loadCachedRows();
-  } catch (error) {
-    postStatus(`Dataset cache unavailable: ${text(error?.message || error)}`, "warn");
-  }
-  await loadSidecar().catch(() => null);
-  const loaded = await tryLoadExistingMethod().catch((error) => {
-    postStatus(`Could not load existing ${contract.displayLabel}: ${text(error?.message || error)}`, "warn");
-    return false;
-  });
+  // The dataset index and the page open are independent workspace reads, and
+  // both must land before the sources can load, so they travel together rather
+  // than one after the other.
+  const [, loaded] = await Promise.all([
+    loadCachedRows().catch((error) => {
+      postStatus(`Dataset cache unavailable: ${text(error?.message || error)}`, "warn");
+    }),
+    openMethodPage(),
+  ]);
   try {
     await refreshSourceRoles();
   } catch (error) {

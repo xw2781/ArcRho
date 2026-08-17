@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Opening a B&S method now takes one Server-hosted read instead of several mapped-drive reads, so the page appears faster on a Client PC.",
+  "details": [
+    "The method JSON and the output sidecar are fetched together and served by the ArcRho Gateway, like the other method pages.",
+    "The dataset index and the page open no longer wait for each other."
+  ]
+}

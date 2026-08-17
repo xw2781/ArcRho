@@ -88,12 +88,15 @@ input {
   padding: 3px;
 }
 
+/* Details follows the DFM/BF/CC/RS form: the stack supplies the page inset and
+   the scroll, and the shared `.arDetailsGroup` padding plus
+   `--ar-details-group-separation` are the only spacing between groups. */
 .bsDetailsStack {
   display: grid;
   align-content: start;
-  gap: 1px;
+  gap: 0;
   height: 100%;
-  padding: 12px 10px 10px;
+  padding: 10px;
   overflow: auto;
 }
 
@@ -102,7 +105,7 @@ input {
 }
 
 .bsPanelBody {
-  padding: 8px 0;
+  padding: 0;
 }
 
 .bsFieldGrid {
@@ -118,10 +121,14 @@ input {
   min-width: 0;
 }
 
+/* The picker sits inside its field, as it does on BF, CC, and RS, so the Details
+   controls keep one right edge down the column. */
 .bsFieldControl.withPicker {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 4px;
+  position: relative;
+}
+
+.bsFieldControl.withPicker .bsInput {
+  padding-right: 36px;
 }
 
 .bsInput {
@@ -150,26 +157,17 @@ input {
 }
 
 /* The Details decimal-places spinner matches the read-only length fields, so
-   the short numeric controls line up down the column. */
+   the short numeric controls line up down the column. The shared stepper sizes
+   itself from `--topbar-control-height`, and the wrap must be a block-level box
+   for its own width to apply at all. */
 .bsDecimalPlacesWrap {
+  --topbar-control-height: 30px;
+  display: inline-flex;
   width: 70px;
 }
 
 .bsDecimalPlacesInput {
-  width: 100%;
-  height: 30px;
-  padding-right: 28px;
-  padding-left: 8px;
   color: var(--bs-text);
-  text-align: left;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.bsDecimalPlacesInput::-webkit-outer-spin-button,
-.bsDecimalPlacesInput::-webkit-inner-spin-button {
-  margin: 0;
-  -webkit-appearance: none;
 }
 
 .bsIconButton,
@@ -194,9 +192,21 @@ input {
   outline-offset: 1px;
 }
 
+/* Every icon button on the page is a Details field picker, so it takes the
+   in-field 22px square the other method pages use. */
 .bsIconButton {
-  width: 30px;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
+  transform: translateY(-50%);
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* The Method tab is the nested tab strip plus its own framed client area, so
@@ -463,11 +473,26 @@ input {
   z-index: 5;
 }
 
+/* The annual staircase leaves the lower-right of every triangle unavailable.
+   Those cells carry no value and no grid, so the masked area reads the way the
+   Dataset Viewer blanks the same region. */
+.bsMethodTable td.bsMaskedCell {
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: transparent;
+}
+
+/* The grid still needs its right wall, so the last cell of a row keeps that one
+   edge even when it is masked, exactly as the Dataset Viewer does. */
+.bsMethodTable tr > td.bsMaskedCell:last-child {
+  border-right-color: var(--ar-spreadsheet-grid-border);
+}
+
 /* Row hover must never repaint a fill that carries meaning: a selected
    estimator, proportion, or inflation source, the Proportion Settled and User
-   Value bands, or the rows that group or separate them. */
+   Value bands, the rows that group or separate them, or the masked area. */
 .bsMethodTable tbody tr:not(:is(.bsAdjYearRow, .bsPropSelectedRow, .bsPropSpacerRow, .bsSelGroupRow)):hover
-  td:not(:first-child):not(:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource, .bsSelUserCell)) {
+  td:not(:first-child):not(:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource, .bsSelUserCell, .bsMaskedCell)) {
   background: var(--bs-row-hover);
 }
 

@@ -53,6 +53,54 @@ test("B&S applies the annual triangle mask to disk loads and live previews", () 
   assert.doesNotMatch(main, /normalizeMaskedMatrix/u);
 });
 
+test("the unavailable lower-right area is masked instead of printed as zero", () => {
+  // `formatDatasetNumberValue` coerces with `Number(...)`, so a missing cell
+  // must never reach it: the page resolves a blank before formatting.
+  assert.match(
+    main,
+    /function formatCellValue\(value, format\) \{\s*\n\s*const number = numberOrNull\(value\);\s*\n\s*if \(number === null\) return "";/u,
+  );
+  // Every triangle grid stops at its own row length and masks the rest.
+  const masked = Array.from(main.matchAll(/rowElement\.appendChild\(maskedCell\(\)\)/gu));
+  assert.equal(masked.length, 3, "the three triangle grids must all mask");
+  assert.match(main, /if \(devIndex >= populatedCount\) \{\s*\n\s*rowElement\.appendChild\(maskedCell\(\)\)/u);
+  assert.match(main, /cell\.className = "bsMaskedCell"/u);
+  assert.doesNotMatch(main, /bsAdjBlankCell/u);
+  // A masked cell shows neither a fill nor a grid line.
+  assert.match(
+    css,
+    /\.bsMethodTable td\.bsMaskedCell \{[^}]*border-right-color: transparent;[^}]*background: transparent;/u,
+  );
+});
+
+test("the page opens on one Server-hosted read", () => {
+  // The method JSON and the output sidecar arrive together, so a Client PC pays
+  // one workspace visit instead of one per file. Reading the method through the
+  // host API could never reach the Gateway at all.
+  assert.match(main, /fetch\("\/berquist-sherman\/load"/u);
+  assert.match(main, /method_type: contract\.methodType/u);
+  assert.doesNotMatch(main, /tryLoadExistingMethod/u);
+  const openBody = main.slice(
+    main.indexOf("async function openMethodPage()"),
+    main.indexOf("function getPrecedentNames()"),
+  );
+  assert.doesNotMatch(openBody, /readJsonFile/u, "the page open must not read the method file directly");
+  // The sidecar is applied before the method, so a saved Details number format
+  // still wins over the output dataset's own.
+  assert.match(openBody, /applySidecarPayload\(payload\?\.sidecar\)[\s\S]*applyMethodPayload\(payload\.method\)/u);
+  // One place applies a sidecar, whether it came from the open or a refresh.
+  assert.equal(
+    Array.from(main.matchAll(/applySidecarPayload\(/gu)).length,
+    3,
+    "one definition and the two callers",
+  );
+  // The index and the page open are independent reads and must not serialize.
+  assert.match(
+    main,
+    /await Promise\.all\(\[\s*\n\s*loadCachedRows\(\)[\s\S]{0,220}openMethodPage\(\),\s*\n\s*\]\)/u,
+  );
+});
+
 test("B&S publishes and clears full-triangle dependency previews", () => {
   assert.match(main, /message\.matrixValues = cloneMatrix\(output\)/u);
   assert.match(main, /message\.mask = output\.map/u);
@@ -241,9 +289,27 @@ test("row hover never repaints a meaningful cell fill", () => {
     ".bsPropSelectedSource",
     ".bsSelSelectedSource",
     ".bsSelUserCell",
+    ".bsMaskedCell",
   ]) {
     assert.ok(excluded.has(selector), `row hover must leave ${selector} alone`);
   }
+});
+
+test("the Details form matches the other method pages", () => {
+  // Group spacing comes from the shared Details primitive alone, so the panels
+  // are not padded twice the way BF, CC, and RS avoid.
+  assert.match(css, /\.bsDetailsStack \{[^}]*gap: 0;/u);
+  assert.match(css, /\.bsPanelBody \{\s*\n\s*padding: 0;\s*\n\}/u);
+  // The picker sits inside its field instead of beside it.
+  assert.match(css, /\.bsFieldControl\.withPicker \{\s*\n\s*position: relative;\s*\n\}/u);
+  assert.doesNotMatch(css, /\.bsFieldControl\.withPicker \{[^}]*grid-template-columns/u);
+  assert.match(css, /\.bsFieldControl\.withPicker \.bsInput \{[^}]*padding-right: 36px;/u);
+  assert.match(css, /\.bsIconButton \{[^}]*position: absolute;[^}]*width: 22px;[^}]*height: 22px;/u);
+  // An inline wrap cannot take a width, which stretched the spinner full width.
+  assert.match(css, /\.bsDecimalPlacesWrap \{[^}]*display: inline-flex;[^}]*width: 70px;/u);
+  // The shared stepper owns the control geometry; only the token is set here.
+  assert.match(css, /\.bsDecimalPlacesWrap \{[^}]*--topbar-control-height: 30px;/u);
+  assert.doesNotMatch(css, /\.bsDecimalPlacesInput \{[^}]*(?:padding|text-align|height)/u);
 });
 
 test("the nested calculation strip encloses its client area like ResQ", () => {

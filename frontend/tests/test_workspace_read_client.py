@@ -24,6 +24,7 @@ from app_server import config
 import app_server.api  # noqa: F401  (registers the submodules)
 bootstrap_router = sys.modules["app_server.api.bootstrap_router"]
 bornhuetter_ferguson_router = sys.modules["app_server.api.bornhuetter_ferguson_router"]
+berquist_sherman_router = sys.modules["app_server.api.berquist_sherman_router"]
 cape_cod_router = sys.modules["app_server.api.cape_cod_router"]
 dataset_router = sys.modules["app_server.api.dataset_router"]
 dfm_method_index_router = sys.modules["app_server.api.dfm_method_index_router"]
@@ -31,6 +32,7 @@ dfm_method_router = sys.modules["app_server.api.dfm_method_router"]
 result_selection_router = sys.modules["app_server.api.result_selection_router"]
 table_summary_router = sys.modules["app_server.api.table_summary_router"]
 from app_server.schemas.bootstrap import BootstrapIdentityRequest
+from app_server.schemas.berquist_sherman import BerquistShermanLoadRequest
 from app_server.schemas.bornhuetter_ferguson import BornhuetterFergusonIdentityRequest
 from app_server.schemas.cape_cod import CapeCodIdentityRequest
 from app_server.schemas.dataset import DatasetCacheLoadRequest
@@ -197,12 +199,14 @@ class RouteWiringTests(unittest.TestCase):
             patch.object(result_selection_router.workspace_read_client, "run_workspace_read", capture),
             patch.object(bornhuetter_ferguson_router.workspace_read_client, "run_workspace_read", capture),
             patch.object(cape_cod_router.workspace_read_client, "run_workspace_read", capture),
+            patch.object(berquist_sherman_router.workspace_read_client, "run_workspace_read", capture),
             patch.object(bootstrap_router.workspace_read_client, "run_workspace_read", capture),
             patch.object(dfm_method_router.dfm_service, "load_dfm_method", return_value={"ok": True}) as dfm,
             patch.object(result_selection_router.result_selection_service, "load_result_selection", return_value={"ok": True}) as rs,
             patch.object(bornhuetter_ferguson_router.bornhuetter_ferguson_service, "load_bornhuetter_ferguson_method", return_value={"ok": True}) as bf,
             patch.object(cape_cod_router.cape_cod_service, "load_cape_cod_method", return_value={"ok": True}) as cc,
             patch.object(bootstrap_router.bootstrap_service, "load_bootstrap_method", return_value={"ok": True}) as bst,
+            patch.object(berquist_sherman_router.berquist_sherman_service, "load_berquist_sherman_method", return_value={"ok": True}) as bs,
         ):
             dfm_method_router.load_dfm_method(
                 DfmMethodIdentityRequest(project_name="Demo", reserving_class="COL", method_name="M", output_dataset="Out")
@@ -219,14 +223,30 @@ class RouteWiringTests(unittest.TestCase):
             bootstrap_router.load_bootstrap(
                 BootstrapIdentityRequest(project_name="Demo", reserving_class="COL", method_name="M")
             )
+            berquist_sherman_router.load_berquist_sherman(
+                BerquistShermanLoadRequest(
+                    project_name="Demo",
+                    reserving_class="COL",
+                    method_type="B&S Case Reserve Adequacy Adjustment",
+                    method_name="M",
+                )
+            )
         dfm.assert_called_once_with("Demo", "COL", "M", output_dataset="Out")
         rs.assert_called_once_with("Demo", "COL", "M", include_method=False)
         bf.assert_called_once_with("Demo", "COL", "M")
         cc.assert_called_once_with("Demo", "COL", "M")
         bst.assert_called_once_with("Demo", "COL", "M")
+        bs.assert_called_once_with("Demo", "COL", "B&S Case Reserve Adequacy Adjustment", "M")
         self.assertEqual(
             [kind for kind, _ in capture.calls],
-            ["dfm_method_load", "result_selection_load", "bornhuetter_ferguson_load", "cape_cod_load", "bootstrap_load"],
+            [
+                "dfm_method_load",
+                "result_selection_load",
+                "bornhuetter_ferguson_load",
+                "cape_cod_load",
+                "bootstrap_load",
+                "berquist_sherman_load",
+            ],
         )
         self._assert_registered(capture)
 
