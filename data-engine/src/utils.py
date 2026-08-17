@@ -72,6 +72,12 @@ SERVER_COMPONENT_ROLES = (
     "orchestrator",
 )
 
+# Every role that owns an app folder under ``<workspace>/apps``. The offline
+# installer ships SERVER_COMPONENT_ROLES; Gateway is deployed straight from the
+# repository, so it belongs to the deployed set without being part of the
+# installed payload.
+DEPLOYED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "gateway")
+
 
 def _configured_root() -> Path | None:
     configured_root = os.environ.get("ARCRHO_ROOT") or os.environ.get("ADAS_ROOT")

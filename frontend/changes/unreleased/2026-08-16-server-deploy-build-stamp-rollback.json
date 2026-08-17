@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "server deployment",
+  "audience": "internal",
+  "summary": "Deployed server components now record the bundle version they hold, and the previous build can be rolled back from one command.",
+  "details": [
+    "Every deploy stamps the app folder's manifest with the bundle version from frontend/package.json, the build time, the machine, and the commit plus whether the working tree was dirty.",
+    "deploy_rollback.py status reports the deployed and parked build of each component and flags a split bundle or a server running behind the repository.",
+    "deploy_rollback.py rollback restores the parked previous build through each component's own deploy-time stopped window."
+  ]
+}

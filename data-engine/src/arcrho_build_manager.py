@@ -16,7 +16,7 @@ from tkinter import messagebox, ttk
 # restating it, so a change to what the Bridge bundles cannot silently stop
 # being reported as stale here.
 from arcrho_bridge.bundled_sources import BUNDLED_SOURCE_ROOTS
-from utils import SERVER_COMPONENT_ROLES, component_app_name
+from utils import DEPLOYED_COMPONENT_ROLES, component_app_name
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -82,8 +82,7 @@ def _build_component(role: str) -> Component:
     )
 
 
-MANAGED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "gateway")
-COMPONENTS = tuple(_build_component(role) for role in MANAGED_COMPONENT_ROLES)
+COMPONENTS = tuple(_build_component(role) for role in DEPLOYED_COMPONENT_ROLES)
 
 
 def instance_folder(role: str) -> Path:

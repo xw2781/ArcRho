@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
@@ -18,6 +20,14 @@ REQUIRED_PYTHON_LABEL = ".".join(map(str, REQUIRED_PYTHON))
 DEPLOY_ROOT_ENV = "ARCRHO_DEPLOY_ROOT"
 WORKSPACE_ROOT_ENVS = ("ARCRHO_ROOT", "ADAS_ROOT")
 DRIVE_FIXED = 3
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+# Every ArcRho component in this repository ships under one bundle version.
+# ``server-installer/build_release.py`` already refuses a server payload whose
+# ``product_version`` differs from the desktop app's, so this file is the
+# version, and a directly deployed component must read it rather than mint a
+# second one that could disagree with what the installed bundle reports.
+PRODUCT_VERSION_PATH = REPOSITORY_ROOT / "frontend" / "package.json"
 
 # A PyInstaller dist is ~1650 files but only ~93 MB, so the deploy is dominated
 # by per-file network round trips rather than bandwidth. Parallel streams are
@@ -29,6 +39,11 @@ HASH_CHUNK_BYTES = 1 << 20
 # The manifest lives inside the folder it describes, so it rotates with that
 # folder during a swap and can never drift from the build it records.
 DEPLOY_MANIFEST_NAME = ".arcrho-deploy-manifest.json"
+# 1 recorded files only; 2 added the build stamp that identifies the release a
+# deployed folder holds. A version 1 manifest is still a usable delta base, so
+# the reader never rejects one.
+DEPLOY_MANIFEST_SCHEMA_VERSION = 2
+STAMP_FIELDS = ("bundle_version", "built_at", "built_by", "git_commit", "git_dirty")
 
 
 def align_workspace_root_env(
@@ -102,6 +117,66 @@ def deploy_manifest_path(app_dir: str | Path) -> Path:
     return Path(app_dir) / DEPLOY_MANIFEST_NAME
 
 
+def bundle_version() -> str:
+    """The single version every ArcRho component in this repository ships under.
+
+    Read from the canonical source at build time so a component deployed
+    straight from the repository carries the same version the offline installer
+    would have stamped on it.
+    """
+
+    try:
+        payload = json.loads(PRODUCT_VERSION_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Could not read the bundle version from {PRODUCT_VERSION_PATH}: {exc}"
+        ) from exc
+    version = str(payload.get("version") or "").strip()
+    if not version:
+        raise RuntimeError(f"{PRODUCT_VERSION_PATH} does not declare a version.")
+    return version
+
+
+def _git_output(*arguments: str) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(REPOSITORY_ROOT), *arguments],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return completed.stdout.strip()
+
+
+def source_revision() -> dict[str, Any]:
+    """The commit a build came from, and whether the tree still had edits.
+
+    ``git_dirty`` is what makes the commit honest. Components are routinely
+    rebuilt from a working tree mid-change, and recording a commit alone would
+    describe such a build as reproducible when nothing in the repository
+    reconstructs it.
+    """
+
+    commit = _git_output("rev-parse", "--short", "HEAD")
+    if commit is None:
+        return {"git_commit": "", "git_dirty": False}
+    return {"git_commit": commit, "git_dirty": bool(_git_output("status", "--porcelain"))}
+
+
+def build_stamp() -> dict[str, Any]:
+    """Identify the build being deployed: version, time, machine, and source."""
+
+    user = str(os.environ.get("USERNAME") or os.environ.get("USER") or "").strip()
+    return {
+        "bundle_version": bundle_version(),
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "built_by": f"{user}@{platform.node()}".strip("@"),
+        **source_revision(),
+    }
+
+
 def _file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -110,14 +185,46 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_deploy_manifest(path: Path) -> dict[str, Any]:
+def _read_deploy_payload(path: Path) -> dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
     except (OSError, json.JSONDecodeError):
         return {}
-    entries = payload.get("files") if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_deploy_manifest(path: Path) -> dict[str, Any]:
+    entries = _read_deploy_payload(path).get("files")
     return entries if isinstance(entries, dict) else {}
+
+
+def read_deploy_stamp(app_dir: str | Path) -> dict[str, Any]:
+    """What a deployed or parked folder says it holds.
+
+    Every field defaults to empty rather than raising, because a folder
+    deployed before the stamp existed is still a folder someone has to be able
+    to ask about.
+    """
+
+    payload = _read_deploy_payload(deploy_manifest_path(app_dir))
+    stamp = {field: payload.get(field, "") for field in STAMP_FIELDS}
+    stamp["git_dirty"] = bool(payload.get("git_dirty"))
+    stamp["app"] = str(payload.get("app") or Path(app_dir).name)
+    return stamp
+
+
+def describe_stamp(stamp: Mapping[str, Any]) -> str:
+    """One line naming a build, for a deploy log or a rollback prompt."""
+
+    version = str(stamp.get("bundle_version") or "").strip()
+    if not version:
+        return "(unstamped build)"
+    commit = str(stamp.get("git_commit") or "").strip()
+    source = f"{commit}+edits" if stamp.get("git_dirty") else commit
+    built_at = str(stamp.get("built_at") or "").strip()
+    details = " ".join(part for part in (source, built_at) if part)
+    return f"{version} ({details})" if details else version
 
 
 def align_staged_timestamps(staged_app_dir: str | Path, manifest_path: str | Path) -> int:
@@ -164,8 +271,17 @@ def align_staged_timestamps(staged_app_dir: str | Path, manifest_path: str | Pat
     return aligned
 
 
-def write_deploy_manifest(staged_app_dir: str | Path, manifest_path: str | Path) -> None:
-    """Record what the slot now holds, so the next build can diff against it."""
+def write_deploy_manifest(
+    staged_app_dir: str | Path,
+    manifest_path: str | Path,
+    stamp: Mapping[str, Any] | None = None,
+) -> None:
+    """Record what the slot now holds, so the next build can diff against it.
+
+    The same record identifies the build. Because it rotates with its folder,
+    the parked previous build keeps saying which release it is, which is what
+    makes a rollback something you can inspect before you run it.
+    """
 
     staged = Path(staged_app_dir)
     files: dict[str, dict[str, Any]] = {}
@@ -178,7 +294,12 @@ def write_deploy_manifest(staged_app_dir: str | Path, manifest_path: str | Path)
             "mtime": stat.st_mtime,
             "sha256": _file_digest(path),
         }
-    payload = {"schema_version": 1, "app": staged.name, "files": files}
+    payload = {
+        "schema_version": DEPLOY_MANIFEST_SCHEMA_VERSION,
+        "app": staged.name,
+        **(build_stamp() if stamp is None else dict(stamp)),
+        "files": files,
+    }
     target = Path(manifest_path)
     temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
     try:
@@ -340,16 +461,18 @@ def stage_deploy(
     # base: the mirror below reconciles it against the new build either way.
     remove_tree_with_retry(previous)
 
+    stamp = build_stamp()
     total = sum(1 for path in staged.rglob("*") if path.is_file())
     unchanged = align_staged_timestamps(staged, deploy_manifest_path(slot))
     print(
         f"\n>>> Syncing the new build into {slot.name} "
         f"({total - unchanged} of {total} files changed)"
     )
+    print(f">>> Deploying {app_name} {describe_stamp(stamp)}")
     copy_tree_delta(staged, slot)
     # The slot now holds exactly this build, so its manifest describes it and
     # travels with it through every later rotation.
-    write_deploy_manifest(staged, deploy_manifest_path(slot))
+    write_deploy_manifest(staged, deploy_manifest_path(slot), stamp)
     return slot
 
 

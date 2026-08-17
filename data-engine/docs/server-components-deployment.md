@@ -30,6 +30,62 @@ For an already validated local component/helper build, use
 `--reuse-component-builds --reuse-deployer-build`. `--stage-only` validates the
 payload without invoking NSIS.
 
+## Deployed build identity
+
+Components are also deployed straight from the repository by their own
+`build_exe.py`, which is how Gateway reaches a workspace at all: the offline
+installer ships only the five receipted components. Either path stamps the
+folder it writes.
+
+`stage_deploy` records the build in the same `.arcrho-deploy-manifest.json` that
+carries the copy delta, so the record rotates with the folder it describes and a
+parked build keeps saying which release it is. Schema version 2 adds
+`bundle_version`, `built_at`, `built_by`, `git_commit`, and `git_dirty`; a
+version 1 manifest still works as a delta base and reports as unstamped.
+
+`bundle_version` is read from `frontend/package.json`. The whole product ships
+under one version — `build_release.py` already refuses a server payload whose
+`product_version` differs from the desktop app's — so a directly deployed
+component must not mint a version of its own. `git_dirty` is what keeps
+`git_commit` honest: components are routinely rebuilt from a working tree
+mid-change, and a commit alone would describe such a build as reproducible.
+
+```powershell
+py -3.10 data-engine/src/deploy_rollback.py status
+```
+
+`status` prints the deployed and parked build of every component in
+`utils.DEPLOYED_COMPONENT_ROLES`, and names the discrepancies that matter for a
+single-version bundle: components that disagree on the version, and a server
+running behind the repository.
+
+## Rollback
+
+A deploy rotates the live folder into its standby slot, so the build it replaced
+stays on the server complete. `swap_deploy` rotates live and slot in both
+directions, which makes a rollback the same three renames run backwards rather
+than a second transaction with its own failure modes.
+
+```powershell
+py -3.10 data-engine/src/deploy_rollback.py rollback [--role gateway] [--yes]
+```
+
+Rollback defaults to the whole bundle, prints the plan, and asks before it
+touches anything. Each component is stopped through its own build script's
+stopped window, so the kill switch, heartbeat wait, and restart are the ones
+that component already uses to deploy; Admin Control and Launcher deploy without
+a stopped window and roll back without one. A component is skipped when it has
+no parked build, or when the parked build is the one already deployed — the
+state the Launcher's in-place fallback leaves behind.
+
+Only the immediately previous build is recoverable. The slot is also the delta
+base the next deploy compares against, so a second deploy overwrites it. Older
+releases come back by rebuilding them from the repository, not from the server.
+Roll back the bundle rather than a single component when
+`HTTP_CONTRACT_VERSION` in `arcrho_hosted_save_http_contract` moved between the
+two versions, because a mixed pair can fail to agree with the installed desktop
+app.
+
 ## Workspace and ownership
 
 Setup accepts any writable absolute folder on a local fixed Windows disk. UNC
