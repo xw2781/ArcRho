@@ -754,7 +754,6 @@ body {
   background: #dbeafe;
   outline: 2px solid #2563eb;
   outline-offset: -2px;
-  cursor: grab;
   z-index: 5;
 }
 #ratioWrap td.summaryCell.summaryFormulaRefDragTarget,
@@ -764,7 +763,6 @@ body {
   background: #dbeafe;
   outline: 2px solid #f59e0b;
   outline-offset: -2px;
-  cursor: grabbing;
   z-index: 6;
 }
 #ratioWrap td.dfmCellNote {
@@ -1053,12 +1051,34 @@ body {
 #ratioWrap td.summaryCell.summaryRefCandidate {
   cursor: pointer;
 }
+/* Clicking a candidate picks the reference, but the active one is also dragged
+   from its border the way a spreadsheet moves a range, so the cursor has to say
+   which of the two is under the pointer. Kept beside the Edit-mode pen cursor it
+   has to outrank, which it does on source order at equal specificity. */
+#ratioWrap td.summaryCell.summaryFormulaActiveRefCell.summaryFormulaRefDragReady,
+#ratioWrap table.ratioSummaryTable.summaryFormulaRefDragging td.summaryCell {
+  cursor: move;
+}
 /* Visuals come from the shared .arFormulaBar; the Ratios bar owns only where it sits. */
 .dfmSummaryFormulaBar {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 9;
+}
+/* The `fx` badge drags the bar off its anchor; while it is hand-placed the bar
+   leaves the grid's scroll frame for the page, staying above the tables and
+   below its own validation tooltip and dataset list. */
+.dfmSummaryFormulaBar .arFormulaBarFxIcon {
+  cursor: grab;
+  touch-action: none;
+}
+.dfmSummaryFormulaBar.isDragging .arFormulaBarFxIcon {
+  cursor: grabbing;
+}
+.dfmSummaryFormulaBar.isDragPlaced {
+  position: fixed;
+  z-index: 1600;
 }
 .dfmSummaryFormulaBarLabel {
   color: #6b7280;

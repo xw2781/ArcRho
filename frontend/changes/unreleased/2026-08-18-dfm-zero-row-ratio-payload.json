@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed macros and ArcBot failing on a DFM whose triangle contains zero rows, with \"DFM exclusion rows must match the corresponding ratio-value rows\".",
+  "details": [
+    "An origin period with a zero value has no ratio, but the live method payload recorded it as a ratio of 0, so the ratio triangle and the exclusion pattern no longer had the same shape and strict validation rejected the method.",
+    "The saved method file was never affected; only the in-memory payload handed to macros, ArcBot, and the RPC bridge."
+  ]
+}

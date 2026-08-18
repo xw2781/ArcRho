@@ -11,6 +11,7 @@ import {
 import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260812d";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260814b";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260812f";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260818a";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260814b";
 import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260814b";
 import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260812f";

@@ -98,3 +98,24 @@ export function computeFormulaBarLayout({
     placement: fitsAbove ? "above" : "below",
   };
 }
+
+/**
+ * Keep a bar the user placed by hand inside the frame it may live in. Where
+ * `computeFormulaBarLayout` derives a position from an anchor, this one only
+ * corrects a position the caller already owns, so a dragged bar cannot be
+ * dropped — or left by a later resize — outside the page that holds it.
+ */
+export function clampFormulaBarWithinFrame({ left, top, width, height, frame }) {
+  const frameLeft = Number(frame?.left || 0);
+  const frameTop = Number(frame?.top || 0);
+  const frameRight = Number(frame?.right ?? frameLeft);
+  const frameBottom = Number(frame?.bottom ?? frameTop);
+  // A frame narrower than the bar pins it to the frame's own edge rather than
+  // pushing it off the opposite side.
+  const maxLeft = Math.max(frameLeft, frameRight - Math.max(0, Number(width) || 0));
+  const maxTop = Math.max(frameTop, frameBottom - Math.max(0, Number(height) || 0));
+  return {
+    left: Math.round(Math.min(Math.max(Number(left) || 0, frameLeft), maxLeft)),
+    top: Math.round(Math.min(Math.max(Number(top) || 0, frameTop), maxTop)),
+  };
+}

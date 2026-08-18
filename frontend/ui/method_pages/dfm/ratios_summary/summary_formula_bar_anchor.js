@@ -113,6 +113,9 @@ function summaryFormulaBarContentKey(barEl) {
  */
 function positionSummaryFormulaBar(barEl, summaryTable, targetCell) {
   if (!barEl || !summaryTable) return;
+  // A bar the user dragged away keeps the place they put it until it changes
+  // target, so the anchor no longer decides where it sits.
+  if (summaryRuntime.applySummaryFormulaBarDragPlacement?.(barEl)) return;
   const host = summaryTable.closest("#ratioWrapHost") || document.getElementById("ratioWrapHost");
   if (!host) return;
   const rects = getSummaryFormulaBarAnchorCells(summaryTable, targetCell)
@@ -164,6 +167,8 @@ function positionSummaryFormulaBar(barEl, summaryTable, targetCell) {
 function repositionSummaryFormulaBar(barEl = null) {
   const bar = barEl || document.getElementById("dfmSummaryFormulaBar");
   if (!bar?.isConnected || !bar.classList?.contains?.("isOpen")) return;
+  // A dragged bar re-measures where it stands, without needing its anchor cell.
+  if (summaryRuntime.applySummaryFormulaBarDragPlacement?.(bar)) return;
   const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
   if (!summaryTable) return;
   const input = bar.querySelector("#dfmSummaryFormulaBarInput");
@@ -231,6 +236,7 @@ function wireSummaryFormulaBarPointer(summaryTable, listen) {
 
 registerSummaryFunctions({
   getSummaryFormulaBarAnchorCells,
+  summaryFormulaBarContentKey,
   summaryFormulaBarTargetKey,
   toggleSummaryFormulaBarForCell,
   invalidateSummaryFormulaBarWidthCache: invalidateFormulaBarWidthCache,

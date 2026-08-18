@@ -568,6 +568,23 @@ function updateActiveSummaryFormulaReferenceUi(summaryTable) {
   });
 }
 
+/**
+ * The one cell being edited is read from the formula bar rather than from the
+ * saved formula: while a reference is retyped or dragged onto another row, the
+ * saved formula still names the row it came from, and reading it would leave
+ * the fill behind on a row the formula no longer uses.
+ */
+function getLiveUserEntryFormulaEdit(summaryTable) {
+  const state = summaryRuntime.summaryFormulaEditState;
+  if (!state || state.summaryTable !== summaryTable) return null;
+  const input = state.input;
+  if (!input || !document.body.contains(input)) return null;
+  const rowId = String(state.rowId || "");
+  const col = Number(state.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) return null;
+  return { rowId, col, input };
+}
+
 function applyUserEntryReferenceHighlights(summaryTable) {
   if (!summaryTable) return;
   summaryTable.querySelectorAll("td.summaryCell.summaryFormulaReferencedCell")
@@ -576,13 +593,16 @@ function applyUserEntryReferenceHighlights(summaryTable) {
   const labelToId = getSummaryLabelToIdMap();
   if (!labelToId.size) return;
   const labels = Array.from(labelToId.keys());
+  const liveEdit = getLiveUserEntryFormulaEdit(summaryTable);
 
   summaryRowConfigs.forEach((cfg) => {
     if (!isUserEntryConfig(cfg)) return;
     const sourceRowId = String(cfg?.id || "");
     const colCount = getCurrentRatioColumnCount();
     for (let col = 0; col < colCount; col++) {
-      const inputRaw = String(getUserEntryInputForCol(cfg, col) || "").trim();
+      const inputRaw = liveEdit && liveEdit.rowId === sourceRowId && liveEdit.col === col
+        ? String(liveEdit.input.value || "").trim()
+        : String(getUserEntryInputForCol(cfg, col) || "").trim();
       if (!inputRaw) continue;
       const referencedLabels = findReferencedLabels(inputRaw, labels);
       referencedLabels.forEach((label) => {

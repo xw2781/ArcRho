@@ -38,6 +38,7 @@ import {
   getEffectiveDevLabelsForModel,
   getRatioHeaderLabels,
   calcRatio,
+  ratioNumberOrNull,
   roundRatio,
   computeAverageForColumn,
   buildExcludedSetForColumn,
@@ -69,7 +70,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260818a";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -728,12 +729,15 @@ function buildRatioDisplayHeaderLabels(devs) {
   });
 }
 
+// A cell with no ratio must stay null here: the exclusion pattern writes its 2
+// sentinel for the same cell, and a ratio of 0 in its place leaves the two rows
+// trimming to different lengths, which strict validation rejects.
 function roundAnalysisValue(value) {
-  return Number.isFinite(Number(value)) ? roundRatio(Number(value), DFM_ANALYSIS_DECIMALS) : null;
+  return roundRatio(ratioNumberOrNull(value), DFM_ANALYSIS_DECIMALS);
 }
 
 function roundAverageFormulaValue(value) {
-  return Number.isFinite(Number(value)) ? roundRatio(Number(value), DFM_AVERAGE_FORMULA_DECIMALS) : null;
+  return roundRatio(ratioNumberOrNull(value), DFM_AVERAGE_FORMULA_DECIMALS);
 }
 
 function trimTrailingNulls(row) {

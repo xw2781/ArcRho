@@ -420,6 +420,21 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     return Math.min(left, right, top, bottom) <= tolerance;
   };
 
+  /**
+   * A reference cell is dragged from its border, the way a spreadsheet moves a
+   * range, while its middle stays a click target that picks the reference. The
+   * cursor has to say which of the two is under the pointer, so the hot zone is
+   * marked from the same border test that starts the drag.
+   */
+  const updateReferenceDragReadyUi = (e) => {
+    summaryTable.querySelectorAll("td.summaryCell.summaryFormulaRefDragReady")
+      .forEach((cell) => cell.classList.remove("summaryFormulaRefDragReady"));
+    if (!e || !isFormulaReferenceMode()) return;
+    const cell = e.target?.closest?.("td.summaryCell.summaryFormulaActiveRefCell");
+    if (!cell || !summaryTable.contains(cell) || !isNearCellBorder(e, cell)) return;
+    cell.classList.add("summaryFormulaRefDragReady");
+  };
+
   const getReferenceDragTarget = (e) => {
     const target = document.elementFromPoint(e.clientX, e.clientY);
     const cell = target?.closest?.("td.summaryCell");
@@ -458,6 +473,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     const input = summaryRuntime.summaryReferenceDragState.input;
     summaryRuntime.summaryReferenceDragState = null;
     clearReferenceDragTargetUi();
+    summaryTable.classList.remove("summaryFormulaRefDragging");
     updateActiveSummaryFormulaReferenceUi(summaryTable);
     input?.focus?.();
     window.removeEventListener("mousemove", onReferenceDragMove, true);
@@ -501,6 +517,9 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       currentLabel,
     };
     cell.classList.add("summaryFormulaRefDragTarget");
+    // The pointer leaves the cell it started on, so the gesture's cursor belongs
+    // to the table rather than to any one cell.
+    summaryTable.classList.add("summaryFormulaRefDragging");
     window.addEventListener("mousemove", onReferenceDragMove, true);
     window.addEventListener("mouseup", onReferenceDragUp, true);
     window.addEventListener("blur", finishReferenceDrag, true);
@@ -668,6 +687,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     if (summaryRuntime.summaryReferenceDragState) return;
     const hoverCell = e.target?.closest?.("td.summaryCell");
     updateReferenceHoverUi(hoverCell || null);
+    updateReferenceDragReadyUi(e);
     if (!isRatioEditMode()) return;
     if (!dragActive) return;
     const cell = e.target?.closest?.("td.summaryCell");

@@ -75,6 +75,8 @@ export const summaryRuntime = {
   summaryFormulaBarVisibleKey: "",
   summaryFormulaBarSuppressedKey: "",
   summaryFormulaBarState: { mode: "display", input: null, generation: 0 },
+  summaryFormulaBarDragPlacement: null,
+  summaryFormulaBarDragSession: null,
   summaryFormulaBarDisplayRaf: 0,
   summaryFormulaBarFocusRestoreHandler: null,
   summaryFormulaCommitGeneration: 0,

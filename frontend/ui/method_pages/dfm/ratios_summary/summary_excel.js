@@ -662,6 +662,7 @@ function hideSummaryFormulaBar({ keepHoverTarget = false } = {}) {
   }
   const el = document.getElementById("dfmSummaryFormulaBar");
   if (el) {
+    summaryRuntime.clearSummaryFormulaBarDragPlacement?.(el);
     clearSummaryFormulaBarValidationError();
     setSummaryFormulaBarMode("display", el.querySelector("#dfmSummaryFormulaBarInput"));
     el.classList.remove("isOpen");

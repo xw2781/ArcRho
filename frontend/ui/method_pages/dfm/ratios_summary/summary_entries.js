@@ -446,6 +446,9 @@ function updateSummaryFormulaBarForCell(cell) {
     return;
   }
   summaryRuntime.summaryFormulaBarVisibleKey = targetKey;
+  // Showing the bar for any other target ends a hand-placed position, so moving
+  // to another cell and coming back both restore the anchored one.
+  summaryRuntime.syncSummaryFormulaBarDragPlacementTarget?.(el, targetKey);
 
   el.classList.add("isOpen");
   const isEditing = isSummaryFormulaBarInputEditing(inputEl);
@@ -494,6 +497,8 @@ function clearSummaryReferenceUi(summaryTable) {
     .forEach((el) => el.classList.remove("summaryFormulaActiveRefCell"));
   summaryTable.querySelectorAll("td.summaryCell.summaryFormulaRefDragTarget")
     .forEach((el) => el.classList.remove("summaryFormulaRefDragTarget"));
+  summaryTable.querySelectorAll("td.summaryCell.summaryFormulaRefDragReady")
+    .forEach((el) => el.classList.remove("summaryFormulaRefDragReady"));
 }
 
 // Reference values must come from the same canonical six-decimal engine that
@@ -556,6 +561,9 @@ function beginSummaryFormulaEditSession(summaryTable, cell, input, col) {
     originalInput: keepOriginal,
   };
   updateActiveSummaryFormulaReferenceUi(summaryTable);
+  // The draft decides which cells read as referenced, so the fill follows the
+  // formula as it is typed or dragged rather than waiting for the commit.
+  applyUserEntryReferenceHighlights(summaryTable);
 }
 
 function cancelSummaryFormulaEditSession() {
@@ -567,6 +575,7 @@ function cancelSummaryFormulaEditSession() {
   }
   clearSummaryReferenceUi(summaryTable);
   summaryRuntime.summaryFormulaEditState = null;
+  applyUserEntryReferenceHighlights(summaryTable);
   updateSummaryFormulaBarForCell(cell);
 }
 

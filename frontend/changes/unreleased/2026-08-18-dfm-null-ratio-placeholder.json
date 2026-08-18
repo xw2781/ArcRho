@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM Ratios cell with no ratio now shows the grey 1.0000 placeholder after loading a saved method, instead of a false 0.0000.",
+  "details": [
+    "An origin period whose value is zero has no link ratio, but reopening the method drew that cell as a calculated 0.0000 that no column average reflected.",
+    "Reading a stored or calculated ratio now goes through one shared helper, so an empty cell can no longer be read as a ratio of zero."
+  ]
+}

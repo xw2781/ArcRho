@@ -438,7 +438,6 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const fxIcon = document.createElement("span");
     fxIcon.className = "arFormulaBarFxIcon";
     fxIcon.textContent = "fx";
-    attachArcrhoTooltip(fxIcon, "Formula Bar");
     const label = document.createElement("span");
     label.id = "dfmSummaryFormulaBarLabelText";
     label.className = "dfmSummaryFormulaBarLabel";
@@ -466,6 +465,9 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
     installDfmDatasetAutocomplete(input);
+    // The badge is the bar's drag handle; it carries no tooltip of its own so a
+    // bubble cannot sit under the pointer that is about to move the bar.
+    summaryRuntime.wireSummaryFormulaBarDragHandle?.(el, el.querySelector(".arFormulaBarFxIcon"));
     const FORMULA_PREFIX = "= ";
     const PREFIX_LEN = FORMULA_PREFIX.length; // 2
     input?.addEventListener("focus", () => {

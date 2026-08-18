@@ -45,6 +45,8 @@ The persisted file does not store `input data triangle mask`. A cell is inside t
 
 `ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display inputs`. A `display inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`, and display metadata never creates a graph edge. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
 
+Each `excluded` row must be exactly as long as the `ratio values` row beside it; a payload that breaks that alignment is rejected wherever the method is validated as complete, which includes the macro and ArcBot handoffs. Both rows drop their trailing empty cells, so they stay aligned only while they agree on which cells are empty: a cell whose ratio cannot be calculated -- a zero or missing left value, most often a zero origin row -- is null in `ratio values` and 2 in `excluded`, never a calculated ratio of 0.
+
 `results tab` stores:
 
 - `ratio basis dataset`

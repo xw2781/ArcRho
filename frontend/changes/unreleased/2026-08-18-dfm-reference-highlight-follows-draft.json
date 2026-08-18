@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Dragging a Ratios formula reference onto another row now clears the blue fill from the row it came from."
+}

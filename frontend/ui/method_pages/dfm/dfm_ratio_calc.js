@@ -6,6 +6,15 @@ export function calcRatio(a, b) {
   return Number.isFinite(v) ? v : null;
 }
 
+// A cell with no ratio holds null, and Number(null) is 0, so a bare
+// Number()/Number.isFinite() pair silently turns "no ratio" into a ratio of zero.
+// Every read of a stored or calculated ratio goes through here instead.
+export function ratioNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function roundRatio(value, decimals = 6) {
   if (!Number.isFinite(value)) return null;
   const f = 10 ** decimals;

@@ -6,7 +6,7 @@ drag reorder, column activation, strike toggling
 */
 import {
   state,
-  calcRatio, roundRatio, formatRatio,
+  calcRatio, ratioNumberOrNull, roundRatio, formatRatio,
   ratioStrikeSet, activeRatioCols, selectedSummaryByCol, summaryRowConfigs,
   getRatioColAllActive, setRatioColAllActive,
   getShowNaBorders, setShowNaBorders,
@@ -80,7 +80,7 @@ export function applyPersistedRatioDerivedSnapshot(ratioTriangle = {}) {
   persistedRatioTriangleValues = Array.isArray(values)
     ? values.map((row) => (
       Array.isArray(row)
-        ? row.map((value) => (Number.isFinite(Number(value)) ? Number(value) : null))
+        ? row.map((value) => ratioNumberOrNull(value))
         : []
     ))
     : null;

@@ -76,9 +76,12 @@ test("rebuilt DFM summary rows remain live through the extracted runtime", async
         JSON.stringify(dependencyStubUrl),
       )
       .replace(
-        /const __ratioParams[\s\S]*?export \{ calcRatio, roundRatio, formatRatio, computeAverageForColumn \};/u,
+        /const __ratioParams[\s\S]*?export \{ calcRatio, ratioNumberOrNull, roundRatio, formatRatio, computeAverageForColumn \};/u,
         `
           const calcRatio = (left, right) => Number(right) / Number(left);
+          const ratioNumberOrNull = (value) => (
+            value === null || value === undefined || value === "" ? null : Number(value)
+          );
           const roundRatio = (value) => Number(value);
           const formatRatio = (value) => String(value);
           const computeAverageForColumn = () => ({
@@ -87,7 +90,7 @@ test("rebuilt DFM summary rows remain live through the extracted runtime", async
             totalIncluded: 0,
             sumA: 0,
           });
-          export { calcRatio, roundRatio, formatRatio, computeAverageForColumn };
+          export { calcRatio, ratioNumberOrNull, roundRatio, formatRatio, computeAverageForColumn };
         `,
       );
     const stateUrl = moduleUrl(stateSource);

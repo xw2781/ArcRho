@@ -22,12 +22,13 @@ const __ratioCalcUrl = new URL("/ui/method_pages/dfm/dfm_ratio_calc.js", import.
 __ratioCalcUrl.search = __ratioParams;
 const {
   calcRatio,
+  ratioNumberOrNull,
   roundRatio,
   formatRatio,
   computeAverageForColumn,
 } = await import(__ratioCalcUrl.toString());
 
-export { calcRatio, roundRatio, formatRatio, computeAverageForColumn };
+export { calcRatio, ratioNumberOrNull, roundRatio, formatRatio, computeAverageForColumn };
 export { state };
 
 // =============================================================================

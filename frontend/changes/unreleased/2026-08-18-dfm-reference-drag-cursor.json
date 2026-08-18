@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The referenced Ratios cell now shows a move cursor exactly where its border can be dragged to another row."
+}

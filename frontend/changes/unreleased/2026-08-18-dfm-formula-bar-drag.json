@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM Ratios formula bar can be dragged by its fx badge to any spot on the page while you stay on the same cell.",
+  "details": [
+    "Drag the fx badge to move the bar off a cell it covers; it stays there until you select another cell or come back to this one, then it returns above the cell it edits.",
+    "The fx badge no longer shows a Formula Bar tooltip."
+  ]
+}
