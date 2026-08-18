@@ -9,7 +9,7 @@
 - [Local release build](arcrho-local-release-build.md) — build_app_from_local_repo.bat releases from this PC by building in place, so the version bump and release notes land in the working tree; codex.cmd is missing here and blocks the build
 - [Shared macro library deploy rule](shared-macro-library-deploy.md) — after editing any active macro, publish all active macros to E:\ArcRho Server\shared\macros via publish_macro_library.py
 - [Bridge restart after deploy](bridge-restart-after-deploy.md) — after build_exe.py check apps.bridge.auto_create_instance (flips over time); if false, Start-Process the exe manually; bridges are per user session since 2026-08-07
-- [ResQ COM probe](resq-com-probe.md) — read-only ResQ COM debugging via arcrho_bridge venv python + ResQ3Automation.ResQApplication
+- [ResQ COM probe](resq-com-probe.md) — ResQ COM works only on the Dev PC (arcrho_bridge venv python + ResQ3Automation.ResQApplication); the Client PC has no ResQ install, so in-process COM macros fail there with 'Invalid class string'
 - [Dev UI cache and restart](arcrho-dev-ui-cache-restart.md) — in-app restart can't pick up frontend/ui edits; ARCRHO_UI_VERSION is pinned per supervisor, and ?v= must be bumped in every importer
 - [Theme CSS version pins](theme-css-version-pins.md) — bumping dark/high_contrast ?v= requires updating the pinned stamps in color_theme.test.mjs (splash, dfm, shared high-contrast stamp)
 - [Launching ArcRho detached](arcrho-launch-electron-detached.md) — use Win32_Process.Create + start_electron.bat; poll app_ui_ready.json (written once); crash logs in %APPDATA%\arcrho-electron\logs
