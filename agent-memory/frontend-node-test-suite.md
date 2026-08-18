@@ -21,6 +21,8 @@ patcher, the B&S "app-server and migration adapters retain every canonical front
 value" test, shell add-tab SVG, Data-tab split/facade, Details-format sync, DSV/DFM Data
 validation runtime, Result Selection apply, and bundled Codex runtime. Some are flaky
 run-to-run, so always diff against a same-commit worktree baseline rather than this list.
+On 2026-08-18 at HEAD b7af91d the same run reported 770 tests with 13 failures, the same
+set minus installer progress patcher, Details-format sync, and bundled Codex runtime.
 
 Separately, "changed theme and chart owners are reached through current cache-version chains"
 (tests/color_theme.test.mjs) is a **flake in full-suite runs only** — it passes in isolation
