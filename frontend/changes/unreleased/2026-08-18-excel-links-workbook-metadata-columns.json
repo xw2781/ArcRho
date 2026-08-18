@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links now shows Last Modified, Created, and User for each linked workbook, the same three columns the dataset table shows for a dataset.",
+  "details": [
+    "The values are the workbook's own document properties, so they follow the workbook when it is copied or moved instead of resetting like a file's creation date, and User names whoever last saved the workbook.",
+    "Each column filters and resizes like the existing ones, and the two dates read in the same format as the dataset table's.",
+    "A workbook with no readable properties - a legacy .xls or an encrypted file - leaves the three columns blank and is still listed and still relinkable.",
+    "ArcRho Server reads the properties in the same pass it already uses to check each workbook, so a listing costs no extra trip across the network drive."
+  ]
+}

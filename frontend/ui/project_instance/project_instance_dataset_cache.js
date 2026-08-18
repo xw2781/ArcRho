@@ -1,5 +1,6 @@
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { publishProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
+import { arcrhoTimestampSeconds, formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a";
 
 export function installProjectInstanceDatasetCache(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -268,37 +269,10 @@ function getCachedFileDatasetNames(item) {
   });
 }
 
-function getTimestampNumber(value) {
-  const text = toText(value);
-  if (!text) return 0;
-  const numeric = Number(text);
-  if (Number.isFinite(numeric) && numeric > 0) {
-    return numeric > 1000000000000 ? numeric / 1000 : numeric;
-  }
-  const parsed = Date.parse(text);
-  return Number.isFinite(parsed) ? parsed / 1000 : 0;
-}
-
-function formatCachedTimestamp(value) {
-  const text = toText(value);
-  if (!text) return "";
-  const numeric = Number(text);
-  const date = Number.isFinite(numeric) && numeric > 0
-    ? new Date(numeric > 1000000000000 ? numeric : numeric * 1000)
-    : new Date(text);
-  if (!Number.isNaN(date.getTime())) {
-    const pad = (part) => String(part).padStart(2, "0");
-    const hours = date.getHours();
-    const hour12 = hours % 12 || 12;
-    const suffix = hours >= 12 ? "PM" : "AM";
-    return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} ${hour12}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${suffix}`;
-  }
-  return text
-    .replace("T", " ")
-    .replace(/\.\d+(?=Z?$)/u, "")
-    .replace(/Z$/u, "")
-    .slice(0, 16);
-}
+// The timestamp rule this table established now lives in a shared module, so
+// the Excel Link Manager's Created and Last Modified read identically to these.
+const getTimestampNumber = arcrhoTimestampSeconds;
+const formatCachedTimestamp = formatArcrhoTimestamp;
 
 function mergeCachedDatasetMetadata(existing, item) {
   const meta = existing || {

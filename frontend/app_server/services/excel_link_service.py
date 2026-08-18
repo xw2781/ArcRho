@@ -369,9 +369,18 @@ def _group_workbooks(usages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
+    """Stamp each workbook with this host's view of the file and its properties.
+
+    ``created``/``modified``/``last_modified_by`` are the workbook's own
+    document properties, the workbook-side answer to the dataset table's
+    Created, Last Modified, and User columns. A workbook that carries none -
+    a legacy ``.xls``, an encrypted package - keeps them blank; only a file
+    this host cannot stat at all is reported as missing.
+    """
+
     if not workbooks:
         return
-    stats = excel_service.excel_file_mtimes_batch(
+    stats = excel_service.excel_workbook_properties_batch(
         [item["workbook_path"] for item in workbooks]
     )
     results = stats.get("results") if isinstance(stats, dict) else None
@@ -380,14 +389,17 @@ def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
         ok = bool(isinstance(result, dict) and result.get("ok"))
         workbook["exists"] = ok
         workbook["mtime"] = result.get("mtime") if ok else None
+        for field in ("created", "modified", "last_modified_by"):
+            workbook[field] = _clean(result.get(field)) if ok else ""
 
 
 def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
     """Inventory workbook references and whether this host can reach them.
 
     Reads every dataset sidecar and v2 DFM method JSON in the class, groups
-    the references by workbook, and stamps ``exists``/``mtime`` from this
-    machine's view of each workbook path. It is the registered
+    the references by workbook, and stamps ``exists``/``mtime`` plus each
+    workbook's own document properties from this machine's view of the
+    workbook path. It is the registered
     ``excel_link_listing`` workspace read so both halves run on the ArcRho
     Server host: the scan because it is local disk there and one round trip
     per file from a Client PC, and the workbook stats because the server is

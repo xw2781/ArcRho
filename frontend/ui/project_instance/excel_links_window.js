@@ -31,7 +31,7 @@
 //                                        the cached dataset table when files changed
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
-import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260817a";
+import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260818b";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
@@ -65,6 +65,13 @@ export function normalizeExcelLinkWorkbooks(value) {
       workbookName: text(item?.workbook_name) || text(item?.workbook_path),
       folder: text(item?.folder),
       exists: item?.exists === true,
+      // The workbook's own Created/Modified/Last saved by, the workbook-side
+      // answer to the dataset table's Created, Last Modified, and User. A
+      // workbook that carries none - a legacy .xls, an encrypted package -
+      // leaves them blank.
+      created: text(item?.created),
+      modified: text(item?.modified),
+      lastModifiedBy: text(item?.last_modified_by),
       datasetCount: count(item?.dataset_count),
       methodCount: count(item?.method_count),
       linkCount: count(item?.link_count),

@@ -2,9 +2,16 @@
 //
 // The manager lists one row per *usage*, not one per workbook: a workbook read
 // by two datasets shows two rows, so the reader sees which datasets and DFM
-// methods depend on it without hovering a summary cell. Workbook and folder
-// repeat on every row of the same workbook, which is what makes the per-column
-// filters meaningful.
+// methods depend on it without hovering a summary cell. Everything that
+// describes the workbook - folder, Last Modified, Created, User - repeats on
+// every row of the same workbook, which is what makes the per-column filters
+// meaningful.
+//
+// Last Modified, Created, and User answer the same questions the Project
+// Instance dataset table's columns of those names answer, about the workbook
+// instead of the dataset: they are the workbook's own document properties,
+// read server-side where the workbook lives, so they survive a copy or a move
+// that would reset the file's creation time.
 //
 // The table follows the pi-table column model used by the Project Instance
 // dataset table: every column carries an explicit width, a colgroup sets those
@@ -14,21 +21,41 @@
 // local to this page because the dataset table's copy is wired into that
 // page's preferences, sorting, and grouping state.
 //
+// Widths start from the content: when a listing loads, every column the user
+// has not dragged is sized to fit its header and cells, capped by that
+// column's `maxAutoWidth` so one long folder path cannot crowd out the
+// columns the reader acts on. Text past the cap wraps onto a second line
+// instead of being cut, which is why a cell's text lives in its own element.
+//
 // The page module owns the data, the row context menu, and every action; this
 // module owns only the view: widths, filters, rendering, and the two callbacks
 // a row can raise (open the used-by object, open the row's context menu).
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
+import { formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a";
 
+// `width` is the fallback the column starts at before any rows arrive;
+// `maxAutoWidth` caps what auto-fit may grow it to, so a deep folder path
+// cannot push the acting columns off screen. Anything longer than the cap
+// wraps to a second line rather than being cut short (see the two-line clamp
+// in excel_links_window.css).
 export const EXCEL_LINK_COLUMNS = [
-  { key: "workbook", label: "Workbook", width: 190, minWidth: 90, filterable: true },
-  { key: "folder", label: "Folder", width: 280, minWidth: 90, filterable: true },
-  { key: "methodType", label: "Method Type", width: 132, minWidth: 70, filterable: true },
-  { key: "name", label: "Dataset Name", width: 200, minWidth: 90, filterable: true },
+  { key: "workbook", label: "Workbook", width: 190, minWidth: 90, maxAutoWidth: 300, filterable: true },
+  { key: "folder", label: "Folder", width: 280, minWidth: 90, maxAutoWidth: 420, filterable: true },
+  { key: "methodType", label: "Method Type", width: 132, minWidth: 70, maxAutoWidth: 180, filterable: true },
+  { key: "name", label: "Dataset Name", width: 200, minWidth: 90, maxAutoWidth: 300, filterable: true },
+  { key: "lastModified", label: "Last Modified", width: 151, minWidth: 110, maxAutoWidth: 200, filterable: true },
+  { key: "created", label: "Created", width: 142, minWidth: 110, maxAutoWidth: 200, filterable: true },
+  { key: "user", label: "User", width: 129, minWidth: 90, maxAutoWidth: 220, filterable: true },
 ];
 
 const COLUMN_BY_KEY = new Map(EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
 const BLANK_LABEL = "(blank)";
+// What a column needs beyond its text: cell padding for a body cell, and for a
+// header also the gap and the filter button that sit beside the label.
+const AUTOFIT_CELL_EXTRA_WIDTH = 20;
+const AUTOFIT_HEADER_EXTRA_WIDTH = 46;
+const AUTOFIT_FALLBACK_CHAR_WIDTH = 7;
 
 function text(value) {
   return String(value ?? "").trim();
@@ -44,6 +71,9 @@ export function excelLinkDetailRows(workbooks) {
       workbookName: text(workbook?.workbookName),
       folder: text(workbook?.folder),
       exists: workbook?.exists === true,
+      created: text(workbook?.created),
+      modified: text(workbook?.modified),
+      lastModifiedBy: text(workbook?.lastModifiedBy),
     };
     if (!usages.length) {
       rows.push({ ...base, kind: "", name: "", datasetType: "", methodType: "" });
@@ -74,6 +104,13 @@ export function excelLinkCellText(row, key) {
     return row?.kind === "dataset" ? "None" : "";
   }
   if (key === "name") return text(row?.name);
+  // Last Modified, Created, and User describe the workbook, not the dataset in
+  // the row: they are the workbook's own document properties, read server-side
+  // where the workbook lives. They repeat on every row of the same workbook,
+  // exactly as Workbook and Folder do.
+  if (key === "lastModified") return formatArcrhoTimestamp(row?.modified);
+  if (key === "created") return formatArcrhoTimestamp(row?.created);
+  if (key === "user") return text(row?.lastModifiedBy);
   return "";
 }
 
@@ -129,6 +166,25 @@ function clampWidth(key, width) {
   return Math.max(minWidth, Math.min(1200, Math.round(value)));
 }
 
+let measureCanvas = null;
+
+/**
+ * Width the given text needs in `sample`'s font.
+ *
+ * The font is read off the rendered element rather than repeated here, so the
+ * stylesheet stays the only place the table's typography is declared.
+ */
+function measureTextWidth(value, sample) {
+  const source = String(value ?? "");
+  if (!source) return 0;
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  const ctx = measureCanvas.getContext?.("2d");
+  const style = sample ? window.getComputedStyle?.(sample) : null;
+  if (!ctx || !style) return source.length * AUTOFIT_FALLBACK_CHAR_WIDTH;
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  return ctx.measureText(source).width;
+}
+
 function filterIconSvg() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 16 16");
@@ -158,9 +214,13 @@ export function createExcelLinksTable(options = {}) {
   const onViewChange = typeof options.onViewChange === "function" ? options.onViewChange : () => {};
 
   const widths = new Map(EXCEL_LINK_COLUMNS.map((col) => [col.key, col.width]));
+  // A column the user dragged keeps that width; auto-fit only touches the rest,
+  // so a refresh never undoes a deliberate resize.
+  const manualWidths = new Set();
   const filters = new Map();
   let rows = [];
   let visibleRows = [];
+  let autoFitPending = false;
   let filterColumn = "";
   let filterAnchor = null;
   let filterSearch = "";
@@ -187,6 +247,36 @@ export function createExcelLinksTable(options = {}) {
     syncTableWidth();
   }
 
+  /**
+   * Width that fits the column's header and its rendered cells, capped by the
+   * column's `maxAutoWidth`. A value longer than the cap is not cut off: the
+   * cell wraps onto a second line instead.
+   */
+  function autoFitColumnWidth(col, headCell, bodyCell) {
+    const maxWidth = col.maxAutoWidth || col.width;
+    let width = measureTextWidth(col.label, headCell) + AUTOFIT_HEADER_EXTRA_WIDTH;
+    for (const row of visibleRows) {
+      const value = excelLinkCellText(row, col.key);
+      if (!value) continue;
+      width = Math.max(width, measureTextWidth(value, bodyCell) + AUTOFIT_CELL_EXTRA_WIDTH);
+      if (width >= maxWidth) return clampWidth(col.key, maxWidth);
+    }
+    return clampWidth(col.key, Math.min(maxWidth, Math.ceil(width)));
+  }
+
+  /** Sizes every column the user has not resized to its own content. */
+  function autoFitColumns() {
+    if (!table) return;
+    for (const col of EXCEL_LINK_COLUMNS) {
+      if (manualWidths.has(col.key)) continue;
+      widths.set(col.key, autoFitColumnWidth(
+        col,
+        table.querySelector(`th[data-col-key="${col.key}"] .pi-excel-links-col-label`),
+        table.querySelector(`td[data-col-key="${col.key}"]`),
+      ));
+    }
+  }
+
   function startColumnResize(event, key) {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -194,6 +284,7 @@ export function createExcelLinksTable(options = {}) {
     closeFilterPopover();
     const startX = event.clientX;
     const startWidth = widths.get(key) || COLUMN_BY_KEY.get(key)?.width || 120;
+    manualWidths.add(key);
     document.body.classList.add("pi-excel-links-resizing-column");
     const onMove = (moveEvent) => setColumnWidth(key, startWidth + moveEvent.clientX - startX);
     const onUp = () => {
@@ -238,15 +329,31 @@ export function createExcelLinksTable(options = {}) {
     resizer.className = "pi-excel-links-col-resizer";
     resizer.title = "Resize column";
     resizer.addEventListener("mousedown", (event) => startColumnResize(event, col.key));
+    // Double-click hands the column back to auto-fit, the same sizing it opened
+    // with, rather than to a fixed default the content may not match.
     resizer.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setColumnWidth(col.key, COLUMN_BY_KEY.get(col.key)?.width || 120);
+      manualWidths.delete(col.key);
+      autoFitColumns();
+      syncTableWidth();
     });
     inner.appendChild(resizer);
 
     th.appendChild(inner);
     return th;
+  }
+
+  /**
+   * Cell text lives in its own element because the two-line clamp that keeps a
+   * wrapped row under twice the base row height needs a block of its own; a
+   * `td` cannot carry it without leaving table layout.
+   */
+  function cellText(value) {
+    const span = document.createElement("span");
+    span.className = "pi-excel-links-cell-text";
+    span.textContent = value;
+    return span;
   }
 
   function buildBodyCell(row, col) {
@@ -261,7 +368,7 @@ export function createExcelLinksTable(options = {}) {
       const open = document.createElement("button");
       open.type = "button";
       open.className = "pi-excel-links-open";
-      open.textContent = value;
+      open.appendChild(cellText(value));
       const target = row.kind === "dfm" ? "DFM method" : "dataset";
       attachArcrhoTooltip(open, `Open ${target} ${value}`);
       open.addEventListener("click", (event) => {
@@ -273,7 +380,7 @@ export function createExcelLinksTable(options = {}) {
       return td;
     }
 
-    td.textContent = value;
+    td.appendChild(cellText(value));
     if (col.key === "workbook") {
       // The listing's Found/Missing verdict has no column of its own; a
       // workbook ArcRho Server cannot open is called out on its name instead.
@@ -319,6 +426,13 @@ export function createExcelLinksTable(options = {}) {
     }
     table.appendChild(tbody);
 
+    // Auto-fit runs against the rendered head and body cells, so it can read
+    // the fonts the stylesheet gave them; it is a load-time sizing, not a
+    // re-layout on every filter change.
+    if (autoFitPending) {
+      autoFitPending = false;
+      autoFitColumns();
+    }
     syncTableWidth();
     onViewChange({ visible: visibleRows.length, total: rows.length, filtered: filters.size > 0 });
   }
@@ -476,6 +590,7 @@ export function createExcelLinksTable(options = {}) {
     setRows(nextRows) {
       rows = Array.isArray(nextRows) ? nextRows : [];
       pruneExcelLinkFilters(filters, rows);
+      autoFitPending = true;
       render();
     },
     closeFilterPopover,

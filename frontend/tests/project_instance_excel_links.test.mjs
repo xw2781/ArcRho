@@ -13,6 +13,11 @@ const tableStubUrl = stubUrl(
 
 const TOOLTIP_IMPORT = /"\/ui\/shared\/components\/tooltip\/tooltip\.js\?v=\d{8}[a-z]"/;
 const MENU_IMPORT = /"\/ui\/shared\/components\/context_menu\/context_menu\.js\?v=\d{8}[a-z]"/;
+const TIMESTAMP_IMPORT = /"\/ui\/shared\/utils\/timestamp\.js\?v=\d{8}[a-z]"/;
+// Not a stub: the table's Created and Last Modified must read exactly as the
+// dataset table's do, so the real shared formatter is what runs here.
+const timestampUrl = new URL("../ui/shared/utils/timestamp.js", import.meta.url).href;
+const { formatArcrhoTimestamp } = await import(timestampUrl);
 
 const rawModuleSource = await readFile(
   new URL("../ui/project_instance/excel_links_window.js", import.meta.url),
@@ -38,7 +43,8 @@ const excelLinks = await import(stubUrl(importableSource));
 const excelLinksTable = await import(stubUrl(
   rawTableSource
     .replace(TOOLTIP_IMPORT, JSON.stringify(tooltipStubUrl))
-    .replace(MENU_IMPORT, JSON.stringify(menuStubUrl)),
+    .replace(MENU_IMPORT, JSON.stringify(menuStubUrl))
+    .replace(TIMESTAMP_IMPORT, JSON.stringify(timestampUrl)),
 ));
 
 const htmlSource = await readFile(
@@ -80,6 +86,9 @@ const LISTING = [
     workbook_name: "Book.xlsx",
     folder: "C:\\Data\\",
     exists: true,
+    created: "2024-03-02T09:15:41Z",
+    modified: "2026-08-14T16:22:07Z",
+    last_modified_by: "j.tanaka",
     dataset_count: 2,
     method_count: 1,
     link_count: 4,
@@ -156,12 +165,17 @@ test("excelLinkDetailRows gives every usage its own row", () => {
 test("the table columns name the detail row and carry explicit widths", () => {
   assert.deepEqual(
     excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => col.key),
-    ["workbook", "folder", "methodType", "name"],
+    ["workbook", "folder", "methodType", "name", "lastModified", "created", "user"],
     "Status and Links are gone; the used-by column became one row per object",
   );
   const byKey = new Map(excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
   assert.equal(byKey.get("name").label, "Dataset Name");
   assert.equal(byKey.get("methodType").label, "Method Type");
+  // The three workbook-metadata columns are named exactly as the dataset
+  // table's, because they answer the same question about a different object.
+  assert.equal(byKey.get("lastModified").label, "Last Modified");
+  assert.equal(byKey.get("created").label, "Created");
+  assert.equal(byKey.get("user").label, "User");
   for (const col of excelLinksTable.EXCEL_LINK_COLUMNS) {
     assert.ok(Number.isFinite(col.width) && col.width >= col.minWidth, `${col.key} needs an explicit width`);
     assert.ok(col.filterable, `${col.key} should be filterable`);
@@ -442,6 +456,75 @@ test("columns resize on the pi-table model and filter from the header", () => {
   assert.match(rawTableSource, /className = "pi-excel-links-filter-btn"/);
   assert.match(rawTableSource, /function openFilterPopover/);
   assert.match(windowCssSource, /\.pi-excel-links-filter-popover \{[\s\S]*display: none;/);
+});
+
+test("Last Modified, Created, and User describe the workbook, not the dataset", () => {
+  const rows = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  // The workbook's own document properties, so they repeat on every row of the
+  // same workbook exactly as Workbook and Folder do.
+  const bookRows = rows.filter((row) => row.workbookName === "Book.xlsx");
+  assert.equal(bookRows.length, 3);
+  for (const row of bookRows) {
+    assert.equal(excelLinksTable.excelLinkCellText(row, "user"), "j.tanaka");
+    // The dates carry the shared ArcRho timestamp text, the same rule the
+    // dataset table's Created and Last Modified use. Asserted against the
+    // shared formatter and its shape, because the text is local-time.
+    const created = excelLinksTable.excelLinkCellText(row, "created");
+    const modified = excelLinksTable.excelLinkCellText(row, "lastModified");
+    assert.equal(created, formatArcrhoTimestamp("2024-03-02T09:15:41Z"));
+    assert.equal(modified, formatArcrhoTimestamp("2026-08-14T16:22:07Z"));
+    assert.match(created, /^\d{1,2}\/\d{1,2}\/2024 \d{1,2}:\d{2}:\d{2} [AP]M$/);
+    assert.match(modified, /^\d{1,2}\/\d{1,2}\/2026 \d{1,2}:\d{2}:\d{2} [AP]M$/);
+  }
+  // A workbook the listing carries no properties for - a legacy .xls, an
+  // encrypted package, a server that predates the fields - shows blank rather
+  // than a placeholder date.
+  const bare = excelLinksTable.excelLinkDetailRows([{ workbookName: "Tail.xlsx", usages: [] }])[0];
+  assert.equal(excelLinksTable.excelLinkCellText(bare, "lastModified"), "");
+  assert.equal(excelLinksTable.excelLinkCellText(bare, "created"), "");
+  assert.equal(excelLinksTable.excelLinkCellText(bare, "user"), "");
+  // Each is filterable on the value the cell shows, like every other column.
+  assert.deepEqual(
+    excelLinksTable.excelLinkColumnOptions(rows, "user").map((option) => option.label),
+    ["(blank)", "j.tanaka"],
+  );
+});
+
+test("columns auto-fit on load, cap their width, and wrap long text to two lines", () => {
+  const cssRule = (selector) => {
+    const start = windowCssSource.indexOf(`${selector} {`);
+    return start < 0 ? "" : windowCssSource.slice(start, windowCssSource.indexOf("}", start) + 1);
+  };
+
+  // Every column caps how far auto-fit may grow it, so one long folder path
+  // cannot crowd out the columns the reader acts on.
+  for (const col of excelLinksTable.EXCEL_LINK_COLUMNS) {
+    assert.ok(
+      Number.isFinite(col.maxAutoWidth) && col.maxAutoWidth >= col.minWidth,
+      `${col.key} needs an auto-fit cap at or above its minimum width`,
+    );
+  }
+  // Auto-fit is a load-time sizing that runs against the rendered cells, and a
+  // column the user dragged keeps the width they gave it.
+  assert.match(rawTableSource, /autoFitPending = true;\s*render\(\);/);
+  assert.match(rawTableSource, /if \(autoFitPending\) \{\s*autoFitPending = false;\s*autoFitColumns\(\);/);
+  assert.match(rawTableSource, /if \(manualWidths\.has\(col\.key\)\) continue;/);
+  assert.match(rawTableSource, /manualWidths\.add\(key\);/);
+  // The measured font is read off the rendered cell, so the stylesheet stays
+  // the only place this table's typography is declared.
+  assert.match(rawTableSource, /ctx\.font = `\$\{style\.fontStyle\}/);
+
+  // Text past the cap wraps rather than being cut, and the two-line clamp keeps
+  // the tallest row inside twice the 31px base row height (T01).
+  const cellText = cssRule(".pi-excel-links-cell-text");
+  assert.match(cellText, /-webkit-line-clamp: 2;/);
+  assert.match(cellText, /line-height: 16px;/);
+  assert.match(cellText, /max-height: 32px;/);
+  assert.doesNotMatch(cellText, /white-space: nowrap;/);
+  assert.match(rawTableSource, /className = "pi-excel-links-cell-text"/);
+  // The name cell is a button around that same wrappable element; clipping it
+  // on the button would defeat the clamp.
+  assert.doesNotMatch(cssRule(".pi-excel-links-open"), /white-space: nowrap;/);
 });
 
 test("the refresh icon matches the Project Instance dataset toolbar buttons", () => {

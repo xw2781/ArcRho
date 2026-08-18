@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -238,13 +239,52 @@ class ExcelLinkListingTests(ExcelLinkFixture):
         # them for any retarget. Existence never comes from a Client PC.
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
         with mock.patch.object(
-            excel_link_service.excel_service, "excel_file_mtimes_batch",
-            wraps=excel_link_service.excel_service.excel_file_mtimes_batch,
+            excel_link_service.excel_service, "excel_workbook_properties_batch",
+            wraps=excel_link_service.excel_service.excel_workbook_properties_batch,
         ) as stats:
             listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
         stats.assert_called_once_with([str(self.old_book)])
         self.assertTrue(listing["workbooks"][0]["exists"])
         self.assertIsNotNone(listing["workbooks"][0]["mtime"])
+
+    def test_listing_carries_each_workbook_document_properties(self) -> None:
+        # Created, Last Modified, and User are the workbook's own properties -
+        # the workbook-side answer to the dataset table's three columns - read
+        # on the host that holds the workbook.
+        sidecar = self.linked_sidecar()
+        sidecar["external_links"][0]["reference"] = (
+            f"='{self.books}\\[Described.xlsx]Sheet 1'!$A$1"
+        )
+        self.write_json(self.sidecars / "Manual Paid.json", sidecar)
+        described = self.books / "Described.xlsx"
+        self.write_workbook(described, {("Sheet 1", "A1"): 1})
+        workbook = openpyxl.load_workbook(str(described))
+        workbook.properties.lastModifiedBy = "j.tanaka"
+        workbook.properties.created = datetime(2024, 3, 2, 9, 15, 41)
+        workbook.save(str(described))
+
+        listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
+
+        entry = listing["workbooks"][0]
+        self.assertEqual(entry["workbook_name"], "Described.xlsx")
+        self.assertEqual(entry["last_modified_by"], "j.tanaka")
+        self.assertTrue(entry["created"].startswith("2024-03-02T09:15:41"))
+        self.assertTrue(entry["modified"])
+
+    def test_listing_leaves_properties_blank_for_a_non_package_workbook(self) -> None:
+        # A legacy .xls or an encrypted package carries no readable properties.
+        # It is still found and still relinkable, so the three columns are
+        # blank rather than the workbook being reported missing.
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+
+        listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
+
+        entry = listing["workbooks"][0]
+        self.assertTrue(entry["exists"])
+        self.assertEqual(
+            [entry["created"], entry["modified"], entry["last_modified_by"]],
+            ["", "", ""],
+        )
 
     def test_list_marks_missing_workbooks(self) -> None:
         sidecar = self.linked_sidecar()

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links sizes its columns to what they contain when it opens, and a value too long for its column now wraps onto a second line instead of being cut off.",
+  "details": [
+    "Each column has its own width cap, so a deep folder path can no longer push the Workbook and Dataset Name columns off screen.",
+    "A wrapped cell is held to two lines, keeping the tallest row inside twice the normal row height.",
+    "Dragging a column edge still pins that column to the width you gave it; double-clicking the edge hands it back to automatic sizing."
+  ]
+}

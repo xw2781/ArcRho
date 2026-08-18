@@ -273,7 +273,7 @@ class RouteWiringTests(unittest.TestCase):
         )
         with (
             patch.object(excel_link_router.workspace_read_client, "run_workspace_read", remote),
-            patch.object(excel_link_router.excel_link_service.excel_service, "excel_file_mtimes_batch") as stats,
+            patch.object(excel_link_router.excel_link_service.excel_service, "excel_workbook_properties_batch") as stats,
         ):
             response = excel_link_router.excel_links_list(
                 ExcelLinkListRequest(project_name="Demo", reserving_class="COL")

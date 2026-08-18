@@ -111,15 +111,31 @@
   font-weight: 700;
 }
 
+/* 31px is the base row height a single-line cell keeps: 4px of padding either
+   side of one 16px line still fits inside it. */
 .pi-excel-links-table td {
   height: 31px;
   box-sizing: border-box;
   border-right: 1px solid #e2e7ed;
   border-bottom: 1px solid #e2e7ed;
-  padding: 2px 8px;
+  padding: 4px 8px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* Text longer than the column's auto-fit cap wraps instead of being cut at one
+   line, and the two-line clamp holds the tallest row to 40px - inside twice the
+   31px base - so a long folder path cannot stretch the table into a list of
+   paragraphs. Breaking anywhere matters here because a path or a workbook name
+   often has no space to break at. */
+.pi-excel-links-cell-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: 32px;
+  line-height: 16px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .pi-excel-links-table tbody tr:hover { background: #f6f9ff; }
@@ -197,10 +213,14 @@ body.pi-excel-links-resizing-column * {
   user-select: none !important;
 }
 
-/* One row per usage, so the folder and the method type stay quiet next to the
-   two cells the reader acts on: the workbook and the object name. */
+/* One row per usage, so the folder, the method type, and the workbook's own
+   Created/Last Modified/User stay quiet next to the two cells the reader acts
+   on: the workbook and the object name. */
 .pi-excel-links-table tbody td.pi-excel-links-cell.folder,
-.pi-excel-links-table tbody td.pi-excel-links-cell.methodType {
+.pi-excel-links-table tbody td.pi-excel-links-cell.methodType,
+.pi-excel-links-table tbody td.pi-excel-links-cell.lastModified,
+.pi-excel-links-table tbody td.pi-excel-links-cell.created,
+.pi-excel-links-table tbody td.pi-excel-links-cell.user {
   color: var(--ar-color-text-muted);
 }
 
@@ -210,6 +230,8 @@ body.pi-excel-links-resizing-column * {
   color: var(--ar-color-danger);
 }
 
+/* No nowrap here: the name carries the same wrappable text element as every
+   other cell, and clipping it on the button would defeat that element's clamp. */
 .pi-excel-links-open {
   max-width: 100%;
   padding: 0;
@@ -219,8 +241,6 @@ body.pi-excel-links-resizing-column * {
   font: inherit;
   text-align: left;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: pointer;
 }
 

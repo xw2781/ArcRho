@@ -16,6 +16,12 @@ const testableSource = cacheSource
   .replace(
     /^import \{ publishProjectInstanceDatasetSnapshot \} from .*;\s*/mu,
     "const publishProjectInstanceDatasetSnapshot = () => true;\n",
+  )
+  // Not stubbed: the cached metadata's timestamp text is the shared rule, so
+  // the real module is loaded from its own file URL.
+  .replace(
+    /"\/ui\/shared\/utils\/timestamp\.js\?v=\d{8}[a-z]"/u,
+    JSON.stringify(new URL("../ui/shared/utils/timestamp.js", import.meta.url).href),
   );
 const { installProjectInstanceDatasetCache } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`

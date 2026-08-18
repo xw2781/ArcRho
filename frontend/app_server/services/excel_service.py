@@ -8,14 +8,26 @@ from __future__ import annotations
 
 import os
 import stat
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
+from xml.etree import ElementTree
 
 import openpyxl
 
 
 EXCEL_BATCH_MAX_WORKERS = 4
+# The OOXML package part that carries a workbook's own Created, Modified, and
+# Last saved by properties, and the namespaces its elements are written in.
+_CORE_PROPERTIES_ENTRY = "docProps/core.xml"
+_CORE_PROPERTIES_NS = {
+    "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
+    "dcterms": "http://purl.org/dc/terms/",
+}
+# The part holds a handful of short strings; a larger one is a malformed or
+# hostile package rather than something worth parsing.
+_CORE_PROPERTIES_MAX_BYTES = 64 * 1024
 
 
 def _item_field(item: Any, name: str) -> Any:
@@ -130,7 +142,20 @@ def excel_read_cells_batch(items: list) -> Dict[str, Any]:
     return {"ok": True, "results": results}
 
 
-def excel_file_mtimes_batch(book_paths: list[str]) -> Dict[str, Any]:
+def _run_workbook_path_batch(
+    book_paths: list[str],
+    read_one: Any,
+    thread_name_prefix: str,
+) -> Dict[str, Any]:
+    """Run ``read_one`` once per distinct workbook path on a bounded pool.
+
+    Callers pass the same path more than once - two datasets reading one
+    workbook, a workbook listed under two aliases - so the paths are resolved
+    and deduplicated before any I/O and the shared answer is copied back into
+    every caller's slot. The pool keeps a listing off a network drive from
+    paying one awaited round trip per file.
+    """
+
     resolved_by_key: Dict[str, str] = {}
     result_keys: List[str] = []
     for index, raw_path in enumerate(book_paths):
@@ -144,29 +169,91 @@ def excel_file_mtimes_batch(book_paths: list[str]) -> Dict[str, Any]:
         result_keys.append(key)
         resolved_by_key.setdefault(key, resolved)
 
-    def stat_workbook(item: tuple[str, str]) -> tuple[str, Dict[str, Any]]:
+    def read_item(item: tuple[str, str]) -> tuple[str, Dict[str, Any]]:
         key, resolved = item
         if not resolved:
             return key, {"ok": False, "path": resolved, "error": "Workbook path is empty."}
-        try:
-            stat_result = os.stat(resolved)
-            if not stat.S_ISREG(stat_result.st_mode):
-                return key, {"ok": False, "path": resolved, "error": f"File not found: {resolved}"}
-            return key, {"ok": True, "path": resolved, "mtime": stat_result.st_mtime}
-        except OSError as exc:
-            return key, {"ok": False, "path": resolved, "error": str(exc)}
+        return key, read_one(resolved)
 
     by_key: Dict[str, Dict[str, Any]] = {}
     if resolved_by_key:
         with ThreadPoolExecutor(
             max_workers=min(EXCEL_BATCH_MAX_WORKERS, len(resolved_by_key)),
-            thread_name_prefix="arcrho-excel-stat",
+            thread_name_prefix=thread_name_prefix,
         ) as executor:
-            futures = [executor.submit(stat_workbook, item) for item in resolved_by_key.items()]
+            futures = [executor.submit(read_item, item) for item in resolved_by_key.items()]
             for future in futures:
                 key, result = future.result()
                 by_key[key] = result
     return {"ok": True, "results": [dict(by_key[key]) for key in result_keys]}
+
+
+def _stat_workbook(resolved: str) -> Dict[str, Any]:
+    try:
+        stat_result = os.stat(resolved)
+        if not stat.S_ISREG(stat_result.st_mode):
+            return {"ok": False, "path": resolved, "error": f"File not found: {resolved}"}
+        return {"ok": True, "path": resolved, "mtime": stat_result.st_mtime}
+    except OSError as exc:
+        return {"ok": False, "path": resolved, "error": str(exc)}
+
+
+def _workbook_document_properties(resolved: str) -> Dict[str, str]:
+    """Read the workbook's own Created/Modified/Last saved by properties.
+
+    These are the document's record of itself - the same kind of answer a
+    dataset sidecar gives about a dataset - rather than the file system's,
+    so they survive a copy or a move that resets a file's creation time.
+    They live in ``docProps/core.xml`` of the OOXML package, so a legacy
+    ``.xls``, an encrypted workbook, and anything else that is not a readable
+    zip simply have none; that is reported as blank, never as an error, because
+    the workbook is still a perfectly good link target.
+    """
+
+    try:
+        with zipfile.ZipFile(resolved) as package:
+            with package.open(_CORE_PROPERTIES_ENTRY) as entry:
+                raw = entry.read(_CORE_PROPERTIES_MAX_BYTES)
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile):
+        return {}
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError:
+        return {}
+
+    def value(tag: str) -> str:
+        found = root.find(tag, _CORE_PROPERTIES_NS)
+        return str(found.text or "").strip() if found is not None else ""
+
+    return {
+        "created": value("dcterms:created"),
+        "modified": value("dcterms:modified"),
+        "last_modified_by": value("cp:lastModifiedBy"),
+    }
+
+
+def _stat_and_describe_workbook(resolved: str) -> Dict[str, Any]:
+    result = _stat_workbook(resolved)
+    if result.get("ok"):
+        result.update(_workbook_document_properties(resolved))
+    return result
+
+
+def excel_file_mtimes_batch(book_paths: list[str]) -> Dict[str, Any]:
+    return _run_workbook_path_batch(book_paths, _stat_workbook, "arcrho-excel-stat")
+
+
+def excel_workbook_properties_batch(book_paths: list[str]) -> Dict[str, Any]:
+    """``excel_file_mtimes_batch`` plus each workbook's document properties.
+
+    One pass, not two: the stat and the small ``docProps`` read for a path
+    happen in the same worker, so a listing over a network drive does not walk
+    the same file list twice.
+    """
+
+    return _run_workbook_path_batch(
+        book_paths, _stat_and_describe_workbook, "arcrho-excel-props"
+    )
 
 
 def excel_open_workbook(book_path: str, sheet: str = "", cell: str = "") -> Dict[str, Any]:
