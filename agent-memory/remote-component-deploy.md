@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec5d33a-1179-4b13-9b77-8a931ebeb128
-  modified: 2026-08-17T20:35:10.903Z
+  modified: 2026-08-18T02:15:00.545Z
 ---
 
 Since 2026-08-17, component rebuilds go through `python data-engine/deploy.py` (no arguments = every stale component). It queues a request under `E:\ArcRho Server\requests\builds` and the **ArcRho Build Listener** — the "Listen for build requests" toggle in `data-engine\build_manager.bat` on the server — runs the same `build_exe.py` locally, streaming its log back. Exit codes: `0` ok, `1` build failed, `2` usage/precondition, `3` no listener running (relay the CLI's message asking a human to start it; nothing else in the flow needs a person).
@@ -21,6 +21,8 @@ Gotchas: the listener **resets its own clone** on every request, so nothing may 
 **Starting `build_manager.bat` is not enough** — the "Listen for build requests" checkbox is `tk.BooleanVar(value=False)`, so it publishes nothing until ticked. And the listener feature cannot deploy itself: a server clone predating it shows a manager window with no such checkbox at all, so the first hop is manual (push, then `git pull` in the server clone, then restart the manager).
 
 **One component's failure kills the whole request.** `_run_components` stops at the first non-zero exit ("a failure usually means the sources are broken"), and components run in the CLI's order, so a single failure on an early component silently skips every later one. On 2026-08-17 a swap lock on `admin` cost bridge/engine/launcher/orchestrator/gateway their build in a no-argument deploy. If a run reports one error, assume nothing after it was built and re-check `--stale`.
+
+**"The working-tree patch did not apply to the base commit" with only some hunks failing is a listener bug, not your patch.** Until 2026-08-17 `arcrho_build_listener._apply_patch` piped the patch to `git apply` through a text-mode `subprocess.run(text=True)`, which on Windows rewrites every `\n` as `\r\n`; against the server clone's LF files git then rejects hunks anchored at a file's start or end (a docstring rewrite on line 1, removing a file's last line) while the rest apply. The fix (send `patch_text.encode()` in binary mode; regression test `test_the_patch_reaches_git_byte_for_byte_on_an_lf_clone`) is in the working tree/main, but the running listener keeps its old code until someone pushes, pulls in `E:\XWSpace\Repos\ArcRho`, and restarts `build_manager.bat` on the server — check the heartbeat's `Commit` before assuming it is fixed. Until then the fallback is each component's `build_exe.py` from the client (slow, works).
 
 **A working-tree deploy ships everyone's edits**, not just yours: this clone is worked in by more than one session at a time (seen 2026-08-17, an in-flight SQL Server/Arcode feature under `frontend/app_server` while an unrelated task was finishing). The CLI prints the changed and new files for that reason — read the list, and if it contains work that is not yours, stop rather than deploying it. `--stale` reads the same shared tree, so it can report components stale because of somebody else's work in progress.
 
