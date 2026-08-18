@@ -151,13 +151,16 @@ test("the menu suppresses mousedown so a host blur commit cannot race the choice
 });
 
 test("the Dataset Viewer and Berquist Sherman drive one Number Format component", async () => {
-  const [datasetView, dataControls, bsHtml, bsMain, sharedCss, datasetCss] = await Promise.all([
+  const [datasetView, datasetHtml, dataControls, bsHtml, bsMain, sharedCss, datasetCss, bsCss, stepperCss] = await Promise.all([
     read("ui/dataset_viewer/dataset_viewer_view.js"),
+    read("ui/dataset_viewer/dataset_viewer.html"),
     read("ui/shared/tabs/data/data_tab_controls.js"),
     read("ui/method_pages/berquist_sherman/berquist_sherman.html"),
     read("ui/method_pages/berquist_sherman/berquist_sherman_main.js"),
     read("ui/shared/components/pickers/number_format_field.css"),
     read("ui/dataset_viewer/dataset_viewer.css"),
+    read("ui/method_pages/berquist_sherman/berquist_sherman.css"),
+    read("ui/shared/components/spreadsheet/numeric_stepper.css"),
   ]);
 
   for (const markup of [datasetView, bsHtml]) {
@@ -175,6 +178,10 @@ test("the Dataset Viewer and Berquist Sherman drive one Number Format component"
   // footprint, so the control cannot drift between the two pages.
   assert.match(sharedCss, /\.arNumberFormatToggle \{/u);
   assert.match(sharedCss, /\.arNumberFormatField\.open \.arNumberFormatCaret \{/u);
+  assert.match(datasetHtml, /pickers\/number_format_field\.css/u);
+  assert.match(datasetCss, /#datasetTopBar \.arNumberFormatField \{\s*width: 69px;/u);
+  assert.match(bsCss, /#bsNumberFormatField \{\s*width: 70px;/u);
+  assert.match(stepperCss, /\.decimalPlacesWrap \{\s*position: relative;\s*width: 69px;/u);
   assert.doesNotMatch(datasetCss, /\.arNumberFormatToggle \{/u);
   assert.doesNotMatch(datasetCss, /numberFormatDropdownBtn/u);
 });

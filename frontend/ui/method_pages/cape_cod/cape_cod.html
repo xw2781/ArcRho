@@ -6,12 +6,12 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Cape Cod</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
   <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260804a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -20,17 +20,11 @@
       <div class="ccPageHost">
         <section class="ccPage arDetailsRoot" id="ccDetailsPage" role="tabpanel">
           <div class="ccDetailsStack">
+            <!-- One ungrouped, evenly spaced field list: Name first, Output Type
+                 second, then the remaining Details fields. -->
             <section class="ccPanel arDetailsGroup">
               <div class="ccPanelBody">
                 <div class="ccFieldGrid arDetailsGrid">
-                  <label class="ccLabel arDetailsLabel" data-details-field="project" for="ccProjectInput">Project : </label>
-                  <div class="ccFieldControl arDetailsField" data-details-field="project">
-                    <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
-                  </div>
-                  <label class="ccLabel arDetailsLabel" for="ccClassInput">Reserving Class : </label>
-                  <div class="ccFieldControl arDetailsField">
-                    <input class="ccInput arDetailsControl" id="ccClassInput" type="text" readonly>
-                  </div>
                   <label class="ccLabel arDetailsLabel" for="ccNameInput">Name : </label>
                   <div class="ccFieldControl arDetailsField">
                     <input class="ccInput arDetailsControl" id="ccNameInput" type="text">
@@ -38,7 +32,15 @@
                   <label class="ccLabel arDetailsLabel" for="ccOutputTypeInput">Output Type : </label>
                   <div class="ccFieldControl arDetailsField withPicker">
                     <input class="ccInput arDetailsControl" id="ccOutputTypeInput" type="text">
-                    <button class="ccIconButton" id="ccOutputTypeBtn" type="button" title="Select output vector" aria-label="Select output vector">...</button>
+                    <button class="ccIconButton" id="ccOutputTypeBtn" type="button" title="Select output type" aria-label="Select output type">...</button>
+                  </div>
+                  <label class="ccLabel arDetailsLabel" data-details-field="project" for="ccProjectInput">Project : </label>
+                  <div class="ccFieldControl arDetailsField" data-details-field="project">
+                    <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
+                  </div>
+                  <label class="ccLabel arDetailsLabel" for="ccClassInput">Segment : </label>
+                  <div class="ccFieldControl arDetailsField">
+                    <input class="ccInput arDetailsControl" id="ccClassInput" type="text" readonly>
                   </div>
                   <label class="ccLabel arDetailsLabel" for="ccOriginLengthButton">Origin Length : </label>
                   <div class="ccFieldControl arDetailsField">

@@ -6,7 +6,7 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Berquist Sherman</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/tabs/audit_log/audit_log.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a">
@@ -14,9 +14,9 @@
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a">
   <link rel="stylesheet" href="/ui/shared/components/pickers/number_format_field.css?v=20260817a">
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
-  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260817a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c">
+  <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260817b">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -28,26 +28,26 @@
             <section class="bsPanel arDetailsGroup">
               <div class="bsPanelBody">
                 <div class="bsFieldGrid arDetailsGrid">
-                  <label class="bsLabel arDetailsLabel" data-details-field="project" for="bsProjectInput">Project : </label>
-                  <div class="bsFieldControl arDetailsField" data-details-field="project">
-                    <input class="bsInput arDetailsControl" id="bsProjectInput" type="text" readonly>
-                  </div>
-                  <label class="bsLabel arDetailsLabel" for="bsClassInput">Reserving Class : </label>
-                  <div class="bsFieldControl arDetailsField">
-                    <input class="bsInput arDetailsControl" id="bsClassInput" type="text" readonly>
-                  </div>
                   <label class="bsLabel arDetailsLabel" for="bsNameInput">Name : </label>
                   <div class="bsFieldControl arDetailsField">
                     <input class="bsInput arDetailsControl" id="bsNameInput" type="text">
-                  </div>
-                  <label class="bsLabel arDetailsLabel" data-details-field="method_type" for="bsMethodTypeInput">Method Type : </label>
-                  <div class="bsFieldControl arDetailsField" data-details-field="method_type">
-                    <input class="bsInput arDetailsControl" id="bsMethodTypeInput" type="text" readonly>
                   </div>
                   <label class="bsLabel arDetailsLabel" for="bsOutputTypeInput">Output Type : </label>
                   <div class="bsFieldControl arDetailsField withPicker">
                     <input class="bsInput arDetailsControl" id="bsOutputTypeInput" type="text">
                     <button class="bsIconButton" id="bsOutputTypeBtn" type="button" aria-label="Select output type">...</button>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" data-details-field="project" for="bsProjectInput">Project : </label>
+                  <div class="bsFieldControl arDetailsField" data-details-field="project">
+                    <input class="bsInput arDetailsControl" id="bsProjectInput" type="text" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" for="bsClassInput">Segment : </label>
+                  <div class="bsFieldControl arDetailsField">
+                    <input class="bsInput arDetailsControl" id="bsClassInput" type="text" readonly>
+                  </div>
+                  <label class="bsLabel arDetailsLabel" data-details-field="method_type" for="bsMethodTypeInput">Method Type : </label>
+                  <div class="bsFieldControl arDetailsField" data-details-field="method_type">
+                    <input class="bsInput arDetailsControl" id="bsMethodTypeInput" type="text" readonly>
                   </div>
                   <label class="bsLabel arDetailsLabel" for="bsOriginLengthInput">Origin Length : </label>
                   <div class="bsFieldControl arDetailsField">

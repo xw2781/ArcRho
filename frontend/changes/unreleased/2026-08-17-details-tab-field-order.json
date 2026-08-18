@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Every Details tab now opens on Name, puts the output identity second, calls the reserving-class row Segment, and lists its fields as one evenly spaced group.",
+  "details": [
+    "Name is the first Details row and Dataset Type (Output Type on the method pages) is the second on the Dataset Viewer, DFM, Bornhuetter Ferguson, Cape Cod, Berquist Sherman, and Result Selection.",
+    "DFM calls its output row Output Type instead of Output Vector, matching the other method pages; the saved method JSON is unchanged.",
+    "The reserving-class row is labelled Segment on every Details tab.",
+    "Details fields are one evenly spaced list: the extra padding and gaps that split them into panels are gone."
+  ]
+}

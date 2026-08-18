@@ -704,10 +704,10 @@ function wireOutputTypePicker() {
         projectName,
         initialName: input.value,
         anchorElement: input,
-        title: "Select Output Vector",
+        title: "Select Output Type",
         allowedDataFormats: ["Vector"],
         forceReload: !!options?.forceReload,
-        emptyMessage: "No output vectors found (Vector).",
+        emptyMessage: "No output types found (Vector).",
         setStatus: (message) => {
           const text = toText(message);
           if (text) postDfmStatus(text, { tone: "warn" });

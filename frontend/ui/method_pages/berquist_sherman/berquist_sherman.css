@@ -89,8 +89,9 @@ input {
 }
 
 /* Details follows the DFM/BF/CC/RS form: the stack supplies the page inset and
-   the scroll, and the shared `.arDetailsGroup` padding plus
-   `--ar-details-group-separation` are the only spacing between groups. */
+   the scroll. B&S keeps the source sections only because it shows one of them
+   at a time; `--ar-details-group-separation` equals the row gap, so the fields
+   still read as one evenly spaced list. */
 .bsDetailsStack {
   display: grid;
   align-content: start;
@@ -140,6 +141,12 @@ input {
 }
 
 .bsLengthInput {
+  width: 70px;
+}
+
+/* Keep the calculated-triangle Number Format picker aligned with the compact
+   Decimal Places stepper without narrowing the other Details fields. */
+#bsNumberFormatField {
   width: 70px;
 }
 

@@ -1,8 +1,11 @@
 .arDetailsRoot {
   --ar-details-label-width: max-content;
   --ar-details-label-control-gap: 5px;
-  --ar-details-group-separation: 1px;
   --ar-details-row-gap: 10px;
+  /* A Details tab is one evenly spaced list of fields. Where a page still needs
+     a wrapper element - to show or hide a set of rows together - the gap it
+     leaves must be the row gap, so no wrapper reads as a visual group. */
+  --ar-details-group-separation: var(--ar-details-row-gap);
   --ar-details-control-height: 30px;
   --ar-details-font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
   --ar-details-label-font-size: 12px;
@@ -30,7 +33,7 @@
 .arDetailsGroup {
   width: 100%;
   margin: 0;
-  padding: 12px 14px;
+  padding: 0;
   border: 0;
   border-radius: 0;
   box-sizing: border-box;

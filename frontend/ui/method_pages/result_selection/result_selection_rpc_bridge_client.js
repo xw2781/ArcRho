@@ -48,7 +48,7 @@ function buildRequestPayload(context) {
 function validatePayload(payload) {
   const missing = [];
   if (!payload.project_name) missing.push("Project");
-  if (!payload.reserving_class) missing.push("Reserving Class");
+  if (!payload.reserving_class) missing.push("Segment");
   if (!payload.method_name) missing.push("Name");
   if (!payload.origin_length) missing.push("Origin Length");
   return missing;

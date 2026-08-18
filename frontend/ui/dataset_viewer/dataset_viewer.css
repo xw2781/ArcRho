@@ -27,18 +27,6 @@ body {
   overflow: auto;
 }
 
-/* One row per field, so each `.topField` is its own single-row Details grid. */
-.topFrameGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  row-gap: var(--ar-details-row-gap);
-  align-items: center;
-}
-
-.topField {
-  row-gap: 0;
-}
-
 .dsDetailNameWrap {
   position: relative;
   width: 100%;

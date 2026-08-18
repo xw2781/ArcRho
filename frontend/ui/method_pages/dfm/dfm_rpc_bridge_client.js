@@ -45,9 +45,9 @@ function buildRequestPayload() {
 function validatePayload(payload) {
   const missing = [];
   if (!payload.project_name) missing.push("Project");
-  if (!payload.reserving_class) missing.push("Reserving Class");
+  if (!payload.reserving_class) missing.push("Segment");
   if (!payload.method_name) missing.push("Name");
-  if (!payload.output_vector) missing.push("Output Vector");
+  if (!payload.output_vector) missing.push("Output Type");
   if (!payload.input_triangle) missing.push("Input Triangle");
   if (!payload.origin_length) missing.push("Origin Length");
   if (!payload.development_length) missing.push("Development Length");

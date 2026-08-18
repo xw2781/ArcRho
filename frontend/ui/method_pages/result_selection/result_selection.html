@@ -6,16 +6,16 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Result Selection</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817b"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260713a"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/chart_legend/chart_legend.css?v=20260724b"/>
-  <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260722a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c"/>
+  <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260817e"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -32,6 +32,8 @@
   </div>
   <div class="rsPageHost">
     <section id="rsDetailsPage" class="rsPage arDetailsRoot active">
+      <!-- One ungrouped, evenly spaced field list: Name first, Output Type
+           second, then the remaining Details fields. -->
       <div class="rsDetailsBlock arDetailsGroup">
         <div class="rsDetailsGrid arDetailsGrid">
           <label class="arDetailsLabel" for="rsNameInput">Name : </label>
@@ -42,7 +44,7 @@
           <div class="rsFieldRow arDetailsField">
             <div class="rsInputPicker">
               <input id="rsOutputTypeInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
-              <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output vector">...</button>
+              <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output type">...</button>
             </div>
           </div>
           <label class="arDetailsLabel" for="rsOriginLengthButton">Origin Length : </label>
@@ -66,10 +68,6 @@
               </div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="rsDetailsBlock arDetailsGroup">
-        <div class="rsBasisPanel arDetailsGrid">
           <label class="rsBasisLabel arDetailsLabel" for="rsRatioBasisAddBtn">Ratio Basis : </label>
           <div class="rsFieldRow arDetailsField">
             <div class="rsRatioBasisPicker">

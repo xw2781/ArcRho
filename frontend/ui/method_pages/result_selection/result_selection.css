@@ -241,11 +241,9 @@ body {
 }
 .rsButton:hover:not(:disabled) { background: #e2e8f0; }
 .rsButton:disabled { opacity: 0.55; cursor: default; }
-.rsBasisPanel {
-  grid-template-columns: var(--ar-details-label-width) minmax(260px, 1fr);
-  max-width: 100%;
-}
-.rsBasisPanel .rsBasisLabel {
+/* Ratio Basis is a tall multi-line field, so only its label opts out of the
+   grid's centred alignment. */
+.rsDetailsGrid .rsBasisLabel {
   align-self: start;
   padding-top: 8px;
 }

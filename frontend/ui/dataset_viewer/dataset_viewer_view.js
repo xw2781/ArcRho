@@ -16,33 +16,10 @@ export function mountDatasetViewer(container) {
     <button class="dsTab tabbedPageTab" data-page="auditLog" type="button">Audit Log</button>
   </div>
 
-  <!-- Details tab page -->
+  <!-- Details tab page: one ungrouped field list, Name first and Dataset Type
+       second, so every Details tab in the app opens the same way. -->
   <div id="dsDetailsPage" class="arDetailsRoot" style="display:none;">
-    <div class="arDetailsGroup" id="topFrame">
-      <div class="topFrameGrid">
-        <div class="topField arDetailsGrid">
-          <label class="arDetailsLabel" data-details-field="project" for="projectSelect">Project Name : </label>
-          <div class="projectSelectWrap arDetailsField" data-details-field="project">
-            <input id="projectSelect" class="arDetailsControl" autocomplete="off" />
-            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
-              ...
-            </button>
-            <div id="projectDropdown" class="projectDropdown"></div>
-          </div>
-        </div>
-
-        <div class="topField arDetailsGrid">
-          <label class="arDetailsLabel" for="pathInput">Reserving Class : </label>
-          <div class="reservingClassWrap arDetailsField">
-            <input id="pathInput" class="arDetailsControl" />
-            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse reserving classes" aria-label="Browse reserving classes">...</button>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <div class="dsDetailsPanel arDetailsGroup">
+    <div class="dsDetailsPanel arDetailsGroup" id="topFrame">
       <div class="dsDetailsGrid arDetailsGrid">
         <div class="dsDetailLabel arDetailsLabel">
           <label for="dsDetailName">Name : </label>
@@ -65,6 +42,29 @@ export function mountDatasetViewer(container) {
           </div>
         </div>
 
+        <div class="dsDetailLabel arDetailsLabel" data-details-field="project">
+          <label for="projectSelect">Project Name : </label>
+        </div>
+        <div class="dsDetailInput arDetailsField" data-details-field="project">
+          <div class="projectSelectWrap">
+            <input id="projectSelect" class="arDetailsControl" autocomplete="off" />
+            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
+              ...
+            </button>
+            <div id="projectDropdown" class="projectDropdown"></div>
+          </div>
+        </div>
+
+        <div class="dsDetailLabel arDetailsLabel">
+          <label for="pathInput">Segment : </label>
+        </div>
+        <div class="dsDetailInput arDetailsField">
+          <div class="reservingClassWrap">
+            <input id="pathInput" class="arDetailsControl" />
+            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse segments" aria-label="Browse segments">...</button>
+          </div>
+        </div>
+
         <div class="dsDetailLabel arDetailsLabel">
           <label id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
         </div>
@@ -72,11 +72,7 @@ export function mountDatasetViewer(container) {
           <div id="dsDetailFormulaBox" class="dsDetailFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
           <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1" tabindex="-1" aria-hidden="true"></textarea>
         </div>
-      </div>
-    </div>
 
-    <div class="dsRelationshipsPanel arDetailsGroup">
-      <div class="dsRelationshipsGrid arDetailsGrid">
         <div class="dsDetailLabel arDetailsLabel">
           <label id="dsPrecedentsTitle">Precedents : </label>
         </div>
