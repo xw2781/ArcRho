@@ -30,7 +30,7 @@ Excel integration domain (workbook value reads, lightweight file metadata checks
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Workbook value/open operations depend on local Excel automation availability; timestamp checks use filesystem metadata only.
+- Cell reads and the readability probe (`excel_workbook_readable`) are plain openpyxl file reads that need no Excel installation, so they run wherever the workbook is reachable — on ArcRho Server for the Excel Link Manager; only opening a workbook in Excel needs local automation. Timestamp checks use filesystem metadata only.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks

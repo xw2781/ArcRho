@@ -19,7 +19,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /bornhuetter-ferguson/load` | `bornhuetter_ferguson_load` | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method` |
 | `POST /cape-cod/load` | `cape_cod_load` | `cape_cod_service.load_cape_cod_method` |
 | `POST /bootstrap/load` | `bootstrap_load` | `bootstrap_service.load_bootstrap_method` |
-| `POST /excel_links/list`, `POST /excel_links/retarget` | `excel_link_scan` | `excel_link_service.scan_reserving_class_excel_links` |
+| `POST /excel_links/list` | `excel_link_listing` | `excel_link_service.list_reserving_class_excel_links` |
 | `GET /table_summary` | `table_summary` | `table_summary_service.get_table_summary` |
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
@@ -51,7 +51,7 @@ Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read
 <!-- MANUAL:BEGIN -->
 1. Move another read to the server: add one `WorkspaceReadKind` entry naming the service function and its keyword arguments, then wrap the route's service call in `workspace_read_client.run_workspace_read(...)`. `test_workspace_reads.py` fails if the registry names an argument the function lacks or omits one it requires; the gateway build validates the import graph and bundles the module automatically. Rebuild and redeploy the gateway.
 2. A read that registers process-local state (like the dataset handle registry) must supply a `finalize` hook so the client process adopts that state from a remote payload.
-3. Machine-local values that are not paths (a driver-availability flag, the process account) must not be exposed through this transport; keep such reads local or split the machine-local part out. `excel_link_scan` is the worked example: the reserving-class scan is hosted, but resolving each linked workbook's existence is not, because those workbooks sit on other file servers reached through drive letters the calling PC maps and the server host may not. The service exposes the two halves separately (`scan_reserving_class_excel_links` / `resolve_workbook_stats`) and the route composes them, so a hosted scan and an SMB-fallback scan are resolved by the same client-side code.
+3. Machine-local values that are not paths (a driver-availability flag, the process account) must not be exposed through this transport; keep such reads local or split the machine-local part out. A machine-local *answer* is different from a machine-local value: `excel_link_listing` deliberately reports whether the server host can open each linked workbook, because that host is the one every retarget and refresh reads workbooks on, so the server's view is the truth the user needs and a Client PC's would mislead.
 <!-- MANUAL:END -->
 
 ## Known Risks
