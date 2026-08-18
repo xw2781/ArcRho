@@ -11,11 +11,12 @@ PROJECT_ROOT = BASE_DIR.parent.parent
 REPOSITORY_ROOT = PROJECT_ROOT.parent
 SOURCE_ROOT = BASE_DIR.parent
 CANONICAL_SOURCE_ROOT = REPOSITORY_ROOT / "python-api" / "src"
-for path in (SOURCE_ROOT,):
+for path in (SOURCE_ROOT, CANONICAL_SOURCE_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
+from arcrho_engine_save_contract import SAVE_JOB_KINDS
 from build_runtime import ensure_python_310_venv, stage_deploy, swap_deploy
 from utils import (
     component_app_name,
@@ -81,6 +82,19 @@ def install_requirements():
     run([VENV_PYTHON, "-m", "pip", "install", "-r", REQ_FILE])
 
 
+def _hosted_service_modules():
+    """Every ``app_server.services`` module the frozen Engine must import.
+
+    The hosted-save kinds come from the canonical ``SAVE_JOB_KINDS`` registry,
+    so registering a new kind is enough for its module to be probed and
+    bundled; the rest are the walk and legacy calculation executors.
+    """
+
+    modules = {module for module, _function in SAVE_JOB_KINDS.values()}
+    modules.update({"calculated_dataset_service", "arcrho_runtime_service"})
+    return sorted(modules)
+
+
 def validate_canonical_runtime_environment():
     """Fail the build if the bundled app_server import graph is incomplete."""
 
@@ -88,13 +102,11 @@ def validate_canonical_runtime_environment():
     probe = (
         "import sys; "
         f"sys.path[:0] = {import_paths!r}; "
-        "from app_server.services import calculated_dataset_service; "
-        "from app_server.services import dfm_service, result_selection_service; "
-        "from app_server.services import bornhuetter_ferguson_service; "
-        "from app_server.services import cape_cod_service, bootstrap_service; "
-        "from app_server.services import arcrho_runtime_service; "
-        "from app_server.services import dataset_service; "
-        "import arcrho_dependent_propagation_contract; "
+        + "".join(
+            f"from app_server.services import {module}; "
+            for module in _hosted_service_modules()
+        )
+        + "import arcrho_dependent_propagation_contract; "
         "import arcrho_engine_save_contract; "
         "import arcrho_engine_job_lease"
     )
@@ -135,14 +147,11 @@ def build_exe():
         "--hidden-import", "arcrho_dependent_propagation_contract",
         "--hidden-import", "arcrho_engine_save_contract",
         "--hidden-import", "arcrho_engine_job_lease",
-        "--hidden-import", "app_server.services.dataset_service",
-        "--hidden-import", "app_server.services.calculated_dataset_service",
-        "--hidden-import", "app_server.services.dfm_service",
-        "--hidden-import", "app_server.services.result_selection_service",
-        "--hidden-import", "app_server.services.bornhuetter_ferguson_service",
-        "--hidden-import", "app_server.services.cape_cod_service",
-        "--hidden-import", "app_server.services.bootstrap_service",
-        "--hidden-import", "app_server.services.arcrho_runtime_service",
+        *[
+            argument
+            for module in _hosted_service_modules()
+            for argument in ("--hidden-import", f"app_server.services.{module}")
+        ],
         f"--icon={ICON}",
         "--add-data", f"{ICON};.",
         *[

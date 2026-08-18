@@ -422,20 +422,21 @@ class BuildListener:
                 self._append_log(log_path, f"restored {written} untracked file(s)")
 
     def _apply_patch(self, patch_text: str, log_path: Path) -> None:
+        # The patch goes to git as bytes: a text-mode pipe on Windows turns
+        # every "\n" into "\r\n", and git then fails to match some hunks
+        # against the LF files it just checked out.
         completed = subprocess.run(
             ["git", "apply", "--binary", "--whitespace=nowarn", "-"],
             cwd=str(self.repository_root),
-            input=patch_text,
+            input=patch_text.encode("utf-8"),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             creationflags=CREATE_NO_WINDOW,
         )
         if completed.returncode != 0:
+            output = completed.stderr or completed.stdout or b""
             raise BuildListenerError(
                 "The working-tree patch did not apply to the base commit: "
-                f"{(completed.stderr or completed.stdout or '').strip()}"
+                f"{output.decode('utf-8', errors='replace').strip()}"
             )
         self._append_log(log_path, "applied the requester's working-tree changes")
 

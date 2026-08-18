@@ -421,6 +421,62 @@ class WorkingTreePayloadRoundTripTests(unittest.TestCase):
                 (server_clone / "src" / "added.py").read_text(encoding="utf-8"), "NEW = True\n"
             )
 
+    def test_the_patch_reaches_git_byte_for_byte_on_an_lf_clone(self) -> None:
+        # The server clone checks files out with LF endings. A patch pushed
+        # through a text-mode pipe on Windows arrives with CRLF line endings,
+        # and git then refuses hunks anchored at the start or end of a file
+        # (seen 2026-08-17: "patch does not apply" on a docstring rewrite and
+        # a trailing-line removal). The listener must hand git the bytes.
+        with _temp_root() as workspace, _temp_root() as server:
+            root = Path(workspace)
+            client = root / "client"
+            client.mkdir(parents=True, exist_ok=True)
+            self._git(client, "init", "--quiet")
+            self._git(client, "config", "user.email", "tests@arcrho.local")
+            self._git(client, "config", "user.name", "ArcRho Tests")
+            source = client / "src"
+            source.mkdir(parents=True, exist_ok=True)
+            original = "\n".join(f"LINE_{index} = {index}" for index in range(1, 25)) + "\n"
+            (source / "module.py").write_bytes(original.encode("utf-8"))
+            self._git(client, "add", "-A")
+            self._git(client, "commit", "--quiet", "-m", "base")
+            base_commit = self._git(client, "rev-parse", "HEAD")
+            server_clone = root / "server-clone"
+            self._git(root, "-c", "core.autocrlf=false", "clone", "--quiet", str(client), str(server_clone))
+            self._git(server_clone, "config", "core.autocrlf", "false")
+            self.assertNotIn(b"\r", (server_clone / "src" / "module.py").read_bytes())
+
+            # First line rewritten, last line dropped: one hunk anchored at
+            # each end of the file.
+            edited = original.replace("LINE_1 = 1", "FIRST = 'x'", 1)
+            edited = edited[: edited.rfind("LINE_24 = 24")]
+            (source / "module.py").write_bytes(edited.encode("utf-8"))
+
+            server_root = Path(server)
+            contract.ensure_build_protocol_directories(server_root)
+            request_id = contract.new_request_id("xwei")
+            payload = deploy._build_payload(
+                ["src"],
+                base_commit,
+                contract.build_payload_path(server_root, request_id),
+                repository=client,
+            )
+            request = contract.build_build_request(
+                request_id=request_id,
+                components=["bridge"],
+                base_commit=base_commit,
+                payload_name=payload["archive"].name,
+                user_name="xwei",
+                known_roles=KNOWN_ROLES,
+            )
+            listener = BuildListener(
+                server_root, repository_root=server_clone, python_executable=sys.executable
+            )
+            listener._prepare_sources(request, contract.build_log_path(server_root, request_id))
+            self.assertEqual(
+                (server_clone / "src" / "module.py").read_bytes(), edited.encode("utf-8")
+            )
+
     def test_a_base_commit_the_server_cannot_resolve_is_refused(self) -> None:
         with _temp_root() as workspace, _temp_root() as server:
             root = Path(workspace)
