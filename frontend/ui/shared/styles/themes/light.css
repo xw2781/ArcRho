@@ -114,10 +114,6 @@
   --ar-native-window-background: #f7f8fa;
 }
 
-[data-color-theme-menu].arcrhoThemeMenuOpen > [data-color-theme-options] {
-  display: block;
-}
-
 [data-color-theme-trigger]:focus-visible,
 [data-color-theme-menu]:focus-visible,
 [data-color-theme-value]:focus-visible {

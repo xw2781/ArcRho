@@ -505,10 +505,8 @@ body.win10-borders::after {
   display: block;
 }
 
+/* Cascade placement and hover reach live in /ui/shared/styles/cascade_menu.css. */
 .menuSubmenu {
-  position: absolute;
-  top: -6px;
-  left: calc(100% - 1px);
   z-index: 30001;
   display: none;
   min-width: 320px;

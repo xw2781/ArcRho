@@ -7,7 +7,8 @@
   const CHANGE_EVENT = "arcrho:color-theme-changed";
   const DEFAULT_THEME = "light";
   const THEMES = Object.freeze(["light", "dark", "high-contrast"]);
-  const THEME_MENU_OPEN_CLASS = "arcrhoThemeMenuOpen";
+  // Shared with the cascade controller so pointer and keyboard hold one open state.
+  const THEME_MENU_OPEN_CLASS = "menuSubmenuOpen";
   const MONACO_ATOM_ONE_DARK_THEME = "arcrho-atom-one-dark";
   let hostPreferenceRevision = 0;
 
@@ -219,6 +220,9 @@
     if (!submenu || getItems().length === 0) return null;
 
     const setExpanded = (expanded) => {
+      const cascade = global.ArcRhoCascadeMenu;
+      if (expanded) cascade?.open?.(menu);
+      else cascade?.closeAll?.();
       menu.classList?.toggle(THEME_MENU_OPEN_CLASS, expanded);
       menu.setAttribute?.("aria-expanded", expanded ? "true" : "false");
     };
@@ -280,12 +284,8 @@
       }
     });
 
-    menu.addEventListener("pointerenter", () => menu.setAttribute?.("aria-expanded", "true"));
-    menu.addEventListener("pointerleave", () => {
-      if (!menu.classList?.contains(THEME_MENU_OPEN_CLASS) && !menu.contains?.(global.document?.activeElement)) {
-        menu.setAttribute?.("aria-expanded", "false");
-      }
-    });
+    // Pointer open/close and aria-expanded during hover belong to the shared
+    // cascade controller; this menu only owns its keyboard and selection paths.
     menu.addEventListener("focusout", () => {
       global.setTimeout?.(() => {
         if (!menu.contains?.(global.document?.activeElement)) closeOptions();

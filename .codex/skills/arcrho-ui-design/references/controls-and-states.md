@@ -52,6 +52,19 @@ Use a dashed neutral border for drag/drop at rest, a blue-tinted surface on hove
 
 Use the shared ArcRho tooltip surface for application tooltips instead of browser-native title bubbles or page-local tooltip styling. Tooltips should be compact, pale, bordered, and shadowed, open after a short hover delay or immediately on keyboard focus, and remain within the viewport.
 
+### C17 - Reachable cascading submenus
+
+A menu item that opens a submenu must stay open along the whole path the pointer takes to reach it, not only while the pointer rests on the parent row. Hover may open the submenu, but hover alone must never be what keeps it open.
+
+- Never leave a dead gap. Any visual separation between the parent menu and its submenu belongs to the submenu's own hit area, so crossing it is still "inside" the open submenu.
+- Leaving the parent row should start a short grace period, roughly a quarter second, rather than closing at once.
+- While the pointer is still travelling toward the open submenu, keep extending that grace period, so a diagonal reach across the rows below the parent lands instead of dropping the submenu halfway.
+- A pointer that settles on another row, or heads away, should close the submenu when the grace period runs out; a press outside the open branch closes it immediately.
+- An opened submenu must stay inside the window: flip it to the other side of its parent rather than let it run off the edge, and lift it rather than let it run past the bottom.
+- Pointer and keyboard opening must share one open state, so the two paths cannot leave a submenu marked open after the other closed it.
+
+Own this behavior once for the application rather than per menu, and keep submenu placement in one stylesheet so a page cannot re-introduce a gap by restyling its own menus.
+
 ## Interaction Expectations
 
 ### C12 - Working demos

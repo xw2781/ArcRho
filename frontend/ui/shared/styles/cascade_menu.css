@@ -1,0 +1,67 @@
+/*
+ * Shared cascade (second-level) menu behavior.
+ *
+ * This file is the single owner of how a `.menuSubmenu` is placed next to its
+ * `.menuItem.hasSubmenu` parent and of the pointer-reach affordances that keep
+ * it open while the pointer travels toward it. Page stylesheets own only the
+ * submenu surface (background, border, shadow, width, padding); they must not
+ * redeclare position, offsets, or the hover bridge here.
+ */
+
+:root {
+  /* Visible separation between the parent dropdown and the submenu panel. */
+  --ar-menu-cascade-gap: 6px;
+  /* Aligns the submenu's first row with the parent row it belongs to. */
+  --ar-menu-cascade-top: -6px;
+  /* Runtime-only viewport correction applied by the cascade controller. */
+  --ar-menu-cascade-shift: 0px;
+}
+
+.menuItem.hasSubmenu {
+  position: relative;
+}
+
+.menuSubmenu {
+  position: absolute;
+  top: calc(var(--ar-menu-cascade-top) + var(--ar-menu-cascade-shift));
+  left: 100%;
+  right: auto;
+  margin-left: var(--ar-menu-cascade-gap);
+  margin-right: 0;
+}
+
+/*
+ * Hover bridge. The gap between the parent row and the submenu is visual only:
+ * this pseudo-element belongs to the submenu, so a pointer crossing the gap is
+ * still inside the submenu's hit area and the cascade never drops.
+ */
+.menuSubmenu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  width: calc(var(--ar-menu-cascade-gap) + 2px);
+}
+
+/* Applied by the controller when the submenu would leave the viewport. */
+.menuSubmenu.menuSubmenuFlip {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: var(--ar-menu-cascade-gap);
+}
+
+.menuSubmenu.menuSubmenuFlip::before {
+  right: auto;
+  left: 100%;
+}
+
+/*
+ * Pointer-held open state. Hover still opens the submenu; this class keeps it
+ * open through the grace period and the diagonal approach corridor, so leaving
+ * the parent row does not close a submenu the user is on the way to.
+ */
+.menuItem.hasSubmenu.menuSubmenuOpen:not(.disabled) > .menuSubmenu {
+  display: block;
+}

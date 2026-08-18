@@ -5,6 +5,7 @@ import {
   toggleAiAssistantLauncherVisible,
 } from "/ui/ai-assistant/arcode.js?v=20260721a";
 import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
+import { closeAllCascadeSubmenus, initCascadeMenus } from "/ui/shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const initialOpenPath = new URLSearchParams(window.location.search).get("path") || "";
@@ -1803,6 +1804,7 @@ function initWindowControls() {
 }
 
 function closeAllShellMenus() {
+  closeAllCascadeSubmenus();
   document.querySelectorAll(".menuDropdown.open").forEach((el) => el.classList.remove("open"));
   document.querySelectorAll(".menu.open").forEach((el) => el.classList.remove("open"));
   document.querySelectorAll('.menu[aria-expanded="true"]').forEach((el) => el.setAttribute("aria-expanded", "false"));
@@ -2084,6 +2086,7 @@ async function runShellAction(action, detail = {}) {
 }
 
 function initShellMenus() {
+  initCascadeMenus();
   window.ArcRhoColorTheme?.wireThemeMenus?.();
   document.querySelectorAll(".menu[data-menu]").forEach((button) => {
     button.addEventListener("click", (event) => {

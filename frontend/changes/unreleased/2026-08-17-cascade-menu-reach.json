@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Submenus such as Settings > Color Theme stay open while you move the pointer toward them.",
+  "details": [
+    "The gap between a menu and its submenu is no longer a dead zone that closes the submenu.",
+    "Leaving the parent row starts a short grace period instead of closing immediately.",
+    "Reaching diagonally across the rows below keeps the submenu open until you arrive.",
+    "A submenu near the window edge flips to the other side of its menu instead of being clipped."
+  ]
+}

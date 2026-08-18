@@ -2,6 +2,7 @@ import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
 import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260817a";
 import { initUpdateProgressBridge } from "./update_progress.js?v=20260817a";
+import { closeAllCascadeSubmenus, initCascadeMenus } from "../shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 
 const fileMenuBtn = document.querySelector('.menu[data-menu="file"]');
 const fileMenuDropdown = document.getElementById("fileMenuDropdown");
@@ -66,6 +67,7 @@ function openShellMenu(type, forceOpen) {
 }
 
 export function closeAllShellMenus() {
+  closeAllCascadeSubmenus();
   toggleFileMenu(false);
   toggleEditMenu(false);
   toggleViewMenu(false);
@@ -390,6 +392,7 @@ export async function openDevPanel() {
 export function initShellMenus() {
   if (shellMenusWired) return;
   shellMenusWired = true;
+  initCascadeMenus();
   window.ArcRhoColorTheme?.wireThemeMenus?.();
   void refreshAboutVersion();
   window.addEventListener("adaHostReady", () => {

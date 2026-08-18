@@ -33,7 +33,7 @@ Read [layout-and-shell.md](references/layout-and-shell.md) for page composition,
 
 ### R03 - Controls and states
 
-Read [controls-and-states.md](references/controls-and-states.md) for buttons, inputs, dropdowns, steppers, switches, chips, pickers, dialogs, drag/drop, focus, hover, disabled, empty, loading, or error states.
+Read [controls-and-states.md](references/controls-and-states.md) for buttons, inputs, dropdowns, menus and cascading submenus, steppers, switches, chips, pickers, dialogs, drag/drop, focus, hover, disabled, empty, loading, or error states.
 
 ### R04 - Tables and scrollbars
 

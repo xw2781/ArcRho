@@ -1572,13 +1572,8 @@ select { padding: 6px 10px; }
 
 .menuItem:hover { background: rgba(0,0,0,0.06); }
 
-.menuItem.hasSubmenu {
-  position: relative;
-}
+/* Cascade placement and hover reach live in /ui/shared/styles/cascade_menu.css. */
 .menuSubmenu {
-  position: absolute;
-  top: -6px;
-  left: calc(100% + 6px);
   min-width: 280px;
   max-width: 420px;
   background: #fff;
