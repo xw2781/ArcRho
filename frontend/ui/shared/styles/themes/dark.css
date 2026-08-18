@@ -1950,7 +1950,7 @@
   box-shadow: var(--ar-shadow-dialog);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions, .pi-excel-links-header) {
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
 }
@@ -1973,20 +1973,12 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .pi-excel-links-table tbody tr:hover td {
+:root[data-arcrho-theme="dark"] .pi-excel-links-table tbody :is(tr:hover, tr.context-target) td {
   background-color: var(--ar-color-table-row-hover);
 }
 
 :root[data-arcrho-theme="dark"] .pi-excel-links-state {
   color: var(--ar-color-text-muted);
-}
-
-:root[data-arcrho-theme="dark"] .pi-excel-links-chip.found {
-  color: var(--ar-color-success);
-}
-
-:root[data-arcrho-theme="dark"] .pi-excel-links-chip.missing {
-  color: var(--ar-color-danger);
 }
 
 :root[data-arcrho-theme="dark"] .pi-left-resizer {
@@ -2428,12 +2420,8 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status, .pi-excel-links-path, .pi-excel-links-hint, .pi-excel-links-status, .pi-excel-links-folder, .pi-excel-links-usage) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status, .pi-excel-links-path, .pi-excel-links-cue, .pi-excel-links-status) {
   color: var(--ar-color-text-muted);
-}
-
-:root[data-arcrho-theme="dark"] .pi-excel-links-refresh-option {
-  color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] :is(.pi-number-formats-table-wrap, .pi-excel-links-table-wrap) {
@@ -2450,13 +2438,13 @@
   background: var(--ar-color-input);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button, .pi-excel-links-action button) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button) {
   border-color: var(--ar-color-border-strong);
   background: var(--ar-color-input);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover, .pi-excel-links-action button:hover) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
 }

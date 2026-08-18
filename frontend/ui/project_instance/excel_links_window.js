@@ -2,17 +2,36 @@
 //
 // This runs inside a Project Instance nested window (pi-window). The host frame
 // in project_instance_windows.js owns the titlebar, dragging, resizing,
-// minimize/maximize/close and the dock; this page owns only the inventory and
-// the retarget action. The window is pinned to the reserving class it was
-// opened on, which arrives in the query string, so selecting another class in
-// the tree leaves it alone exactly like a Dataset or DFM window.
+// minimize/maximize/close and the dock; this page owns the inventory and the
+// row actions reached from a right-click menu: open the workbook, open it
+// read-only, change what it points at, and - on a Folder cell - open the
+// containing folder. The window is pinned to the
+// reserving class it was opened on, which arrives in the query string, so
+// selecting another class in the tree leaves it alone exactly like a Dataset or
+// DFM window.
+//
+// The table shows one row per usage - a workbook read by two datasets is two
+// rows - and lives in excel_links_table.js, which owns the column widths,
+// filters, and rendering. Clicking a Dataset Name cell asks the Project
+// Instance page to open that dataset in DSV or that method in DFM, through the
+// same arcrho:project-instance-open-dependent-dataset message a method page
+// uses for a precedent.
+//
+// Everything about a workbook is answered by ArcRho Server: the listing's
+// found/missing verdict is whether the server can open the file, and a change
+// is an Engine-hosted job that opens the picked workbook there, refreshes every
+// affected dataset and DFM, and flags them and their dependents Needs Review.
+// Opening a workbook is the exception and runs on the client machine, through
+// the desktop host, because that is where Excel is.
 //
 // Two messages go back to the Project Instance page, because the retarget
 // writes files the host is watching:
 //   arcrho:excel-links-retarget-begin  - suppress the host's index-change prompt
 //   arcrho:excel-links-retarget-end    - restore it, report status, and reload
-//                                        the cached dataset table when values moved
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+//                                        the cached dataset table when files changed
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
+import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
+import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260817a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
@@ -54,29 +73,28 @@ export function normalizeExcelLinkWorkbooks(value) {
         .map((usage) => ({
           kind: usage?.kind === "dfm" ? "dfm" : "dataset",
           name: text(usage?.name),
+          datasetType: text(usage?.dataset_type),
+          methodType: text(usage?.method_type),
           linkCount: count(usage?.link_count),
+          cellCount: count(usage?.cell_count),
         }))
         .filter((usage) => usage.name),
     }))
     .filter((item) => item.workbookPath);
 }
 
-export function excelLinkUsageSummary(workbook) {
-  const parts = [];
-  if (workbook?.datasetCount) {
-    parts.push(`${workbook.datasetCount} dataset${workbook.datasetCount === 1 ? "" : "s"}`);
-  }
-  if (workbook?.methodCount) {
-    parts.push(`${workbook.methodCount} DFM method${workbook.methodCount === 1 ? "" : "s"}`);
-  }
-  return parts.join(", ") || "Unused";
-}
-
-export function excelLinkUsageTooltip(workbook) {
-  const lines = (workbook?.usages || []).map((usage) => (
-    `${usage.kind === "dfm" ? "DFM" : "Dataset"}: ${usage.name}`
-  ));
-  return lines.join("\n");
+export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRows, scanErrorCount }) {
+  const books = count(workbookCount);
+  const total = count(totalRows);
+  const visible = count(visibleRows);
+  if (!books) return "";
+  const workbooks = `${books} linked workbook${books === 1 ? "" : "s"}`;
+  const references = visible === total
+    ? `${total} reference${total === 1 ? "" : "s"}`
+    : `${visible} of ${total} references shown`;
+  const errors = count(scanErrorCount);
+  const skipped = errors ? ` ${errors} file${errors === 1 ? "" : "s"} could not be read.` : "";
+  return `${workbooks}, ${references}.${skipped}`;
 }
 
 export function excelLinkRetargetSummary(payload) {
@@ -97,34 +115,26 @@ export function excelLinkRetargetSummary(payload) {
   if (!changedFiles) {
     return { ok: true, message: text(payload?.message) || "No saved links needed a change." };
   }
-  const relinked = `Updated ${changedLinks} link${changedLinks === 1 ? "" : "s"} in ${changedFiles} file${changedFiles === 1 ? "" : "s"}.`;
-  if (!payload?.refresh_requested) {
-    return {
-      ok: true,
-      message: `${relinked} Values keep their stored snapshots until refreshed.`,
-    };
-  }
-  const failedRefresh = count(payload?.failed_refresh_count);
-  if (failedRefresh) {
-    return {
-      ok: false,
-      message: `${relinked} ${failedRefresh} linked cell${failedRefresh === 1 ? "" : "s"} could not be recalculated; refresh them from the Dataset or DFM Links tab.`,
-    };
-  }
+  const relinked = `Updated ${changedLinks} link${changedLinks === 1 ? "" : "s"} in ${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
   const refreshedCells = count(payload?.refreshed_cell_count);
   const changedValueFiles = count(payload?.value_changed_file_count);
-  if (!changedValueFiles) {
-    return {
-      ok: true,
-      message: `${relinked} The new workbook matches the stored values.`,
-    };
+  const values = changedValueFiles
+    ? `values changed in ${changedValueFiles} file${changedValueFiles === 1 ? "" : "s"}`
+    : "stored values already matched";
+  const refreshed = `recalculated ${refreshedCells} linked cell${refreshedCells === 1 ? "" : "s"} (${values}).`;
+  const failedRefresh = count(payload?.failed_refresh_count);
+  const failed = failedRefresh
+    ? ` ${failedRefresh} linked cell${failedRefresh === 1 ? "" : "s"} could not be recalculated and kept the stored values.`
+    : "";
+  let propagation = " Affected objects and their dependents are marked Needs Review.";
+  if (payload?.propagation_ok === false) {
+    propagation = " Dependent recalculation reported a problem; check the affected pages.";
+  } else if (text(payload?.propagation?.status) === "queued") {
+    propagation = " Dependent recalculation has started; affected objects are marked Needs Review.";
   }
-  const propagationNote = payload?.propagation_ok === false
-    ? " Dependent recalculation reported a problem; check the affected pages."
-    : " Dependent recalculation has started.";
   return {
-    ok: payload?.propagation_ok !== false,
-    message: `${relinked} Recalculated ${refreshedCells} linked cell${refreshedCells === 1 ? "" : "s"} in ${changedValueFiles} file${changedValueFiles === 1 ? "" : "s"}.${propagationNote}`,
+    ok: !failedRefresh && payload?.propagation_ok !== false,
+    message: `${relinked}; ${refreshed}${failed}${propagation}`,
   };
 }
 
@@ -135,18 +145,25 @@ const reservingClass = text(params.get("class"));
 
 const els = {
   refresh: document.getElementById("excelLinksRefresh"),
-  refreshValues: document.getElementById("excelLinksRefreshValues"),
-  body: document.getElementById("excelLinksBody"),
+  table: document.getElementById("excelLinksTable"),
+  wrap: document.getElementById("excelLinksTableWrap"),
   state: document.getElementById("excelLinksState"),
   status: document.getElementById("excelLinksStatus"),
+  menu: document.getElementById("excelLinksMenu"),
+  filterPopover: document.getElementById("excelLinksFilterPopover"),
 };
 
 const manager = {
   loading: false,
   busy: false,
   workbooks: [],
+  rows: [],
+  visibleRows: 0,
   requestSeq: 0,
   scanErrorCount: 0,
+  // The detail row the context menu is open for, and its <tr>.
+  menuRow: null,
+  menuRowEl: null,
 };
 
 function postToParent(type, payload = {}) {
@@ -172,10 +189,10 @@ function setManagerStatus(message, tone = "") {
 function syncControls() {
   const blocked = manager.busy || manager.loading;
   if (els.refresh) els.refresh.disabled = blocked;
-  if (els.refreshValues) els.refreshValues.disabled = manager.busy;
-  els.body?.querySelectorAll("button").forEach((button) => {
-    button.disabled = blocked;
-  });
+  if (blocked) {
+    closeMenu();
+    table?.closeFilterPopover();
+  }
   document.body.setAttribute("aria-busy", blocked ? "true" : "false");
 }
 
@@ -190,78 +207,41 @@ function showState(message) {
   els.state.hidden = !els.state.textContent;
 }
 
-function renderRows() {
-  const body = els.body;
-  if (!body) return;
-  body.replaceChildren();
-  manager.workbooks.forEach((workbook) => {
-    const row = document.createElement("tr");
-
-    const nameCell = document.createElement("td");
-    nameCell.className = "pi-excel-links-workbook";
-    nameCell.textContent = workbook.workbookName;
-    attachArcrhoTooltip(nameCell, workbook.workbookPath);
-    row.appendChild(nameCell);
-
-    const folderCell = document.createElement("td");
-    folderCell.className = "pi-excel-links-folder";
-    folderCell.textContent = workbook.folder;
-    attachArcrhoTooltip(folderCell, workbook.folder);
-    row.appendChild(folderCell);
-
-    const statusCell = document.createElement("td");
-    const chip = document.createElement("span");
-    chip.className = `pi-excel-links-chip ${workbook.exists ? "found" : "missing"}`;
-    chip.textContent = workbook.exists ? "Found" : "Missing";
-    statusCell.appendChild(chip);
-    row.appendChild(statusCell);
-
-    const usageCell = document.createElement("td");
-    usageCell.className = "pi-excel-links-usage";
-    usageCell.textContent = excelLinkUsageSummary(workbook);
-    const usageTooltip = excelLinkUsageTooltip(workbook);
-    if (usageTooltip) attachArcrhoTooltip(usageCell, usageTooltip);
-    row.appendChild(usageCell);
-
-    const actionCell = document.createElement("td");
-    actionCell.className = "pi-excel-links-action";
-    const change = document.createElement("button");
-    change.type = "button";
-    change.textContent = "Change...";
-    change.setAttribute("aria-label", `Change linked workbook ${workbook.workbookName}`);
-    change.addEventListener("click", () => void changeWorkbook(workbook));
-    actionCell.appendChild(change);
-    row.appendChild(actionCell);
-
-    body.appendChild(row);
-  });
-  if (manager.workbooks.length) {
-    showState("");
-  }
-  syncControls();
+function syncInventoryStatus() {
+  setManagerStatus(excelLinkInventorySummary({
+    workbookCount: manager.workbooks.length,
+    visibleRows: manager.visibleRows,
+    totalRows: manager.rows.length,
+    scanErrorCount: manager.scanErrorCount,
+  }), manager.scanErrorCount ? "error" : "");
 }
 
-function applyListing(payload) {
-  manager.workbooks = normalizeExcelLinkWorkbooks(payload?.workbooks);
-  manager.scanErrorCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
-  renderRows();
-  if (!manager.workbooks.length) {
-    showState("No Excel links are saved in this reserving class.");
-  }
-  const scanned = `${count(payload?.dataset_scan_count)} dataset${count(payload?.dataset_scan_count) === 1 ? "" : "s"}`;
-  const summary = manager.workbooks.length
-    ? `${manager.workbooks.length} linked workbook${manager.workbooks.length === 1 ? "" : "s"} found.`
-    : "";
-  const skipped = manager.scanErrorCount
-    ? ` ${manager.scanErrorCount} file${manager.scanErrorCount === 1 ? "" : "s"} could not be read.`
-    : "";
-  setManagerStatus(`${summary}${skipped}`.trim() || `Scanned ${scanned}.`, manager.scanErrorCount ? "error" : "");
+const table = createExcelLinksTable({
+  table: els.table,
+  wrap: els.wrap,
+  popover: els.filterPopover,
+  onOpenUsage: (row) => openUsage(row),
+  onRowMenu: (row, rowEl, event, columnKey) => openMenu(row, rowEl, event, columnKey),
+  onViewChange: ({ visible, total, filtered }) => {
+    manager.visibleRows = visible;
+    if (manager.loading) return;
+    if (!total) showState(manager.workbooks.length ? "" : "No Excel links are saved in this reserving class.");
+    else showState(visible ? "" : "No rows match the current column filters.");
+    if (filtered || total) syncInventoryStatus();
+  },
+});
+
+function setRows(workbooks) {
+  manager.workbooks = workbooks;
+  manager.rows = excelLinkDetailRows(workbooks);
+  closeMenu();
+  table.setRows(manager.rows);
+  syncControls();
 }
 
 async function loadExcelLinks() {
   const seq = ++manager.requestSeq;
-  manager.workbooks = [];
-  renderRows();
+  setRows([]);
   if (!projectName || !reservingClass) {
     manager.loading = false;
     showState("This window is missing its project or reserving class.");
@@ -285,7 +265,12 @@ async function loadExcelLinks() {
       throw new Error(detailMessage(payload, `HTTP ${response.status}`));
     }
     manager.loading = false;
-    applyListing(payload);
+    manager.scanErrorCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
+    setRows(normalizeExcelLinkWorkbooks(payload?.workbooks));
+    if (!manager.workbooks.length) {
+      showState("No Excel links are saved in this reserving class.");
+      setManagerStatus("");
+    }
   } catch (error) {
     if (seq !== manager.requestSeq) return;
     manager.loading = false;
@@ -296,12 +281,145 @@ async function loadExcelLinks() {
   }
 }
 
-function resetRefreshValuesChoice() {
-  // Recalculation is a per-change decision that always defaults back to No.
-  if (els.refreshValues) els.refreshValues.checked = false;
+// ---------------------------------------------------------------------------
+// Open the dataset or DFM method a row names
+// ---------------------------------------------------------------------------
+
+// The Project Instance page owns every dataset and method window, so the same
+// message a method page sends for a precedent opens the row's object here: a
+// dataset row lands in DSV, a DFM row in the DFM page, both pinned to this
+// window's reserving class.
+function openUsage(row) {
+  const name = text(row?.name);
+  if (!name || manager.busy || manager.loading) return;
+  const isDfm = row?.kind === "dfm";
+  postToParent("arcrho:project-instance-open-dependent-dataset", {
+    datasetName: name,
+    reservingClass,
+    projectName,
+    openMethod: isDfm,
+    ...(isDfm
+      ? { methodType: "DFM", methodName: name }
+      // The listing names the instance's Dataset Type and Method Type, so an
+      // instance whose name differs from its type opens without the host
+      // guessing from the reserving class the tree happens to be showing.
+      : {
+        datasetTypeName: text(row?.datasetType) || name,
+        ...(text(row?.methodType) ? { methodType: text(row.methodType) } : {}),
+      }),
+  });
+  setManagerStatus(isDfm ? `Opening DFM method ${name}...` : `Opening dataset ${name}...`);
 }
 
-async function changeWorkbook(workbook) {
+// ---------------------------------------------------------------------------
+// Row context menu
+// ---------------------------------------------------------------------------
+
+function closeMenu() {
+  if (!manager.menuRow || !els.menu) return;
+  // openContextMenu shows the menu with an inline display; clearing it hands
+  // the menu back to the stylesheet's hidden default.
+  els.menu.style.display = "";
+  manager.menuRowEl?.classList.remove("context-target");
+  manager.menuRow = null;
+  manager.menuRowEl = null;
+}
+
+function openMenu(row, rowEl, event, columnKey = "") {
+  closeMenu();
+  if (manager.busy || manager.loading || !els.menu) return;
+  table.closeFilterPopover();
+  manager.menuRow = row;
+  manager.menuRowEl = rowEl;
+  rowEl.classList.add("context-target");
+  // Opening the folder belongs to the Folder cell, so it appears only there
+  // rather than adding a fourth item to every row's menu.
+  const folderItem = els.menu.querySelector('[data-action="open-folder"]');
+  if (folderItem) folderItem.hidden = columnKey !== "folder" || !text(row?.folder);
+  openContextMenu(els.menu, {
+    anchorEl: rowEl,
+    clientX: Number(event?.clientX),
+    clientY: Number(event?.clientY),
+    offset: 8,
+    align: "top-left",
+  });
+  els.menu.querySelector(".ctx-item")?.focus();
+}
+
+function wireMenu() {
+  if (!els.menu) return;
+  els.menu.addEventListener("click", (event) => {
+    const item = event.target.closest?.(".ctx-item");
+    if (!item) return;
+    const row = manager.menuRow;
+    closeMenu();
+    if (!row) return;
+    const action = item.dataset.action;
+    if (action === "open-workbook") void openWorkbook(row, false);
+    else if (action === "open-workbook-read-only") void openWorkbook(row, true);
+    else if (action === "open-folder") void openFolder(row);
+    else if (action === "change-link") void changeWorkbook(row);
+  });
+  document.addEventListener("mousedown", (event) => {
+    if (!els.menu.contains(event.target)) closeMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeMenu();
+  }, true);
+  els.wrap?.addEventListener("scroll", closeMenu);
+  window.addEventListener("resize", closeMenu);
+  window.addEventListener("blur", closeMenu);
+}
+
+// ---------------------------------------------------------------------------
+// Open workbook and folder
+// ---------------------------------------------------------------------------
+
+// Opening runs on the client machine through the desktop host, not on ArcRho
+// Server: the workbook opens for this user in their own Excel, so a workbook
+// the server cannot reach can still open here and the reverse. The same route
+// hands a folder to File Explorer.
+async function openThroughDesktopHost(path, messages, readOnly = false) {
+  if (!path || manager.busy || manager.loading) return;
+  setBusy(true);
+  setManagerStatus(messages.opening);
+  try {
+    const result = await openPathThroughDesktopHost(path, { readOnly: !!readOnly });
+    if (result?.ok) {
+      setManagerStatus(messages.opened, "success");
+    } else {
+      setManagerStatus(`Could not open ${path}: ${text(result?.error) || messages.failed}`, "error");
+    }
+  } catch (error) {
+    setManagerStatus(`Could not open ${path}: ${error.message}`, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function openWorkbook(row, readOnly) {
+  const name = text(row?.workbookName) || text(row?.workbookPath);
+  return openThroughDesktopHost(text(row?.workbookPath), {
+    opening: readOnly ? `Opening ${name} read-only...` : `Opening ${name}...`,
+    opened: readOnly ? "Workbook opened read-only." : "Workbook opened.",
+    failed: readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
+  }, readOnly);
+}
+
+function openFolder(row) {
+  const folder = text(row?.folder);
+  return openThroughDesktopHost(folder, {
+    opening: `Opening ${folder}...`,
+    opened: "Folder opened in File Explorer.",
+    failed: "The folder could not be opened.",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Change link
+// ---------------------------------------------------------------------------
+
+async function changeWorkbook(row) {
   if (manager.busy || manager.loading) return;
   if (!reservingClass) return;
   const host = hostApi();
@@ -312,7 +430,7 @@ async function changeWorkbook(workbook) {
   let picked = "";
   try {
     picked = text(await host.pickOpenFile({
-      startDir: workbook.folder,
+      startDir: row.folder,
       filters: EXCEL_FILE_FILTERS,
     }));
   } catch {
@@ -320,14 +438,11 @@ async function changeWorkbook(workbook) {
   }
   if (!picked) return;
 
-  const refreshValues = els.refreshValues?.checked === true;
   const seq = ++manager.requestSeq;
   setBusy(true);
-  setManagerStatus(refreshValues
-    ? `Relinking ${workbook.workbookName} and recalculating affected datasets and DFM methods...`
-    : `Relinking ${workbook.workbookName} for every dataset and DFM method...`);
-  // The retarget rebuilds index.json server-side; the host suppresses its own
-  // disk-watch prompt for this window's write.
+  setManagerStatus(`Relinking ${row.workbookName} to ${picked} on ArcRho Server and recalculating affected datasets and DFM methods...`);
+  // The retarget rewrites files and rebuilds index.json on the server; the
+  // host suppresses its own disk-watch prompt for this window's change.
   postToParent("arcrho:excel-links-retarget-begin");
   let summary = { ok: false, message: "" };
   let payload = null;
@@ -338,30 +453,29 @@ async function changeWorkbook(workbook) {
       body: JSON.stringify({
         project_name: projectName,
         reserving_class: reservingClass,
-        old_workbook_path: workbook.workbookPath,
+        old_workbook_path: row.workbookPath,
         new_workbook_path: picked,
-        refresh_values: refreshValues,
       }),
     });
     payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(detailMessage(payload, `HTTP ${response.status}`));
     summary = excelLinkRetargetSummary(payload);
     if (seq === manager.requestSeq) {
-      manager.workbooks = normalizeExcelLinkWorkbooks(payload?.workbooks);
-      renderRows();
+      setRows(normalizeExcelLinkWorkbooks(payload?.workbooks));
       if (!manager.workbooks.length) showState("No Excel links are saved in this reserving class.");
     }
     setManagerStatus(summary.message, summary.ok ? "success" : "error");
   } catch (error) {
-    setManagerStatus(`Could not change the link: ${error.message}`, "error");
+    // A refused workbook arrives as the server's own verdict ("ArcRho Server
+    // cannot open the selected workbook: ..."); the picked path is named here
+    // because the server redacts paths from its messages.
+    setManagerStatus(`Could not change the link to ${picked}: ${error.message}`, "error");
   } finally {
     postToParent("arcrho:excel-links-retarget-end", {
       ok: !!summary.ok,
       workbookPath: picked,
       changedFileCount: count(payload?.changed_file_count),
-      valueChangedFileCount: refreshValues ? count(payload?.value_changed_file_count) : 0,
     });
-    resetRefreshValuesChoice();
     setBusy(false);
   }
 }
@@ -371,5 +485,5 @@ async function changeWorkbook(workbook) {
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 
 els.refresh?.addEventListener("click", () => void loadExcelLinks());
-resetRefreshValuesChoice();
+wireMenu();
 void loadExcelLinks();

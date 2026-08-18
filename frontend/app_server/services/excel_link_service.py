@@ -5,19 +5,19 @@ by saved dataset sidecars (``external_links``) and saved DFM methods (Ratios
 User Entry ``inputs``) in one reserving class, and can repoint every reference
 from one workbook file to another.
 
-By default retargeting rewrites reference text only. Stored values keep their
-current snapshots, so dataset CSVs, DFM publications, output sidecars, audit
-logs, and dependent review statuses are untouched; refreshing values from the
-new workbook stays an explicit action in the Dataset/DFM Links tabs.
-
-With ``refresh_values`` the retarget also reads the mapped cells from the new
-workbook in one batch and commits the changed values through the canonical
-save flows (``save_dataset_sidecar`` / ``save_dfm_method``), so audit entries,
-review statuses, and Engine dependent propagation behave exactly like a normal
-save. Value rules mirror the client Links-tab refresh: dataset links accept
-any finite number and store blank cells as null with per-link atomicity, while
-DFM cells require a finite result greater than zero rounded to six decimals,
-with standalone ranges spilling literal values into their non-anchor cells.
+Both halves run on the ArcRho Server host, never against a Client PC's mapped
+drives: the listing is a hosted workspace read (so "found" means the server
+can open the workbook) and the retarget is an Engine-hosted save. A retarget
+opens the new workbook where it runs and refuses when it cannot; otherwise it
+reads every mapped cell in one batch, rewrites and refreshes every affected
+dataset and DFM through the canonical save flows (``save_dataset_sidecar`` /
+``save_dfm_method``), and walks the class once so every dependent is refreshed
+and flagged Needs Review — a link that changed is a change to review even when
+the new workbook holds the same numbers. Value rules mirror the client
+Links-tab refresh: dataset links accept any finite number and store blank
+cells as null with per-link atomicity, while DFM cells require a finite result
+greater than zero rounded to six decimals, with standalone ranges spilling
+literal values into their non-anchor cells.
 
 Reference syntax mirrors the canonical frontend parser
 ``ui/shared/integrations/excel_reference.js``: a quoted source
@@ -29,7 +29,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Tuple
 
@@ -243,6 +242,15 @@ def _dataset_usages(
         if not isinstance(links, list) or not links:
             continue
         name = _clean(payload.get("dataset_name")) or os.path.splitext(os.path.basename(path))[0]
+        # The Dataset Type Name travels with the usage so the manager can open
+        # the exact instance: an instance whose name differs from its type is
+        # addressed by both, and the client must not guess one from the other.
+        dataset_type = _clean(payload.get("dataset_type")) or name
+        # Method Type is the same value the dataset table shows, resolved by its
+        # canonical owner rather than restated here.
+        method_type = dataset_sidecar_status_service.normalize_method_type(
+            payload.get("method_type"), payload.get("source_kind")
+        )
         by_book: Dict[str, Dict[str, Any]] = {}
         for link in links:
             if not isinstance(link, dict):
@@ -256,7 +264,13 @@ def _dataset_usages(
                 entry["link_count"] += 1
                 entry["cell_count"] += _dataset_link_cells(link)
         for entry in by_book.values():
-            usages.append({"kind": "dataset", "name": name, **entry})
+            usages.append({
+                "kind": "dataset",
+                "name": name,
+                "dataset_type": dataset_type,
+                "method_type": method_type,
+                **entry,
+            })
     return usages, errors
 
 
@@ -306,7 +320,12 @@ def _dfm_usages(
                     entry["link_count"] += 1
                     entry["cell_count"] += 1
         for entry in by_book.values():
-            usages.append({"kind": "dfm", "name": name, **entry})
+            usages.append({
+                "kind": "dfm",
+                "name": name,
+                "method_type": dataset_sidecar_status_service.METHOD_TYPE_DFM,
+                **entry,
+            })
     return usages, errors
 
 
@@ -321,6 +340,9 @@ def _group_workbooks(usages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         group["usages"].append({
             "kind": usage["kind"],
             "name": usage["name"],
+            # Datasets only: a DFM method is opened by its own name.
+            "dataset_type": usage.get("dataset_type", ""),
+            "method_type": usage.get("method_type", ""),
             "link_count": usage["link_count"],
             "cell_count": usage["cell_count"],
         })
@@ -360,18 +382,17 @@ def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
         workbook["mtime"] = result.get("mtime") if ok else None
 
 
-def scan_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
-    """Inventory workbook references without resolving the workbooks themselves.
+def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    """Inventory workbook references and whether this host can reach them.
 
-    This is the half of the listing that reads the workspace: every dataset
-    sidecar and v2 DFM method JSON in the class, which is local disk on the
-    ArcRho Server host and one round trip per file from a Client PC. It is the
-    registered ``excel_link_scan`` workspace read for exactly that reason.
-
-    Whether each workbook currently exists is deliberately left out. Linked
-    workbooks live on other file servers reached through drive letters the
-    calling PC maps and the server host may not, so only the caller can answer
-    that; ``resolve_workbook_stats`` does it there.
+    Reads every dataset sidecar and v2 DFM method JSON in the class, groups
+    the references by workbook, and stamps ``exists``/``mtime`` from this
+    machine's view of each workbook path. It is the registered
+    ``excel_link_listing`` workspace read so both halves run on the ArcRho
+    Server host: the scan because it is local disk there and one round trip
+    per file from a Client PC, and the workbook stats because the server is
+    the machine that must be able to open a workbook for any retarget or
+    refresh — a Client PC's own drive mappings say nothing about that.
     """
 
     sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
@@ -379,45 +400,22 @@ def scan_reserving_class_excel_links(project_name: str, reserving_class: str) ->
     method_paths = _list_json_files(method_dir, _DFM_METHOD_FILE_RE)
     dataset_usages, dataset_errors = _dataset_usages(_read_json_files(sidecar_paths))
     dfm_usages, dfm_errors = _dfm_usages(_read_json_files(method_paths))
+    workbooks = _group_workbooks(dataset_usages + dfm_usages)
+    _apply_workbook_stats(workbooks)
     return {
         "ok": True,
         "project_name": _clean(project_name),
         "reserving_class": _clean(reserving_class),
-        "workbooks": _group_workbooks(dataset_usages + dfm_usages),
+        "workbooks": workbooks,
         "dataset_scan_count": len(sidecar_paths),
         "method_scan_count": len(method_paths),
         "errors": dataset_errors + dfm_errors,
     }
 
 
-def resolve_workbook_stats(listing: Dict[str, Any]) -> Dict[str, Any]:
-    """Stamp ``exists``/``mtime`` on a scan using this machine's drive mappings.
-
-    Runs in the process the user is sitting at, whether the scan itself came
-    from the gateway or from the mapped drive, so a workbook on a share only
-    the Client PC maps is still reported as found.
-    """
-
-    workbooks = listing.get("workbooks")
-    _apply_workbook_stats(workbooks if isinstance(workbooks, list) else [])
-    return listing
-
-
-def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
-    """Scan one reserving class and resolve its workbooks, both in this process."""
-
-    return resolve_workbook_stats(
-        scan_reserving_class_excel_links(project_name, reserving_class)
-    )
-
-
 # ---------------------------------------------------------------------------
 # Retarget
 # ---------------------------------------------------------------------------
-
-
-def _reserving_class_lock(project_name: str, reserving_class: str) -> threading.RLock:
-    return dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class)
 
 
 _CELL_ADDRESS_RE = re.compile(r"^([A-Z]+)([1-9][0-9]*)$")
@@ -522,11 +520,6 @@ def _js_number_text(value: Any) -> str:
 # ---------------------------------------------------------------------------
 # Value refresh
 # ---------------------------------------------------------------------------
-
-
-def _dataset_link_sheet(link: Mapping[str, Any]) -> str:
-    references = find_workbook_references(link.get("reference"))
-    return references[0]["sheet"] if references else ""
 
 
 def _dfm_user_entry_rows(formulas: Mapping[str, Any]) -> List[bool]:
@@ -847,71 +840,6 @@ def _apply_dfm_refresh(
     return refreshed, changed, failed, errors
 
 
-def _rewrite_dataset_sidecar(path: str, old_key: str, new_book_path: str) -> Dict[str, Any] | None:
-    """Rewrite one sidecar's matching references; return its result row.
-
-    Values, timestamps, audit history, and dependency status are deliberately
-    untouched: the retarget changes where a later refresh reads from, not what
-    is currently stored.
-    """
-
-    from app_server.services.dataset_service import _write_dataset_sidecar_payload
-
-    payload = _read_json_file(path)
-    links = payload.get("external_links")
-    if not isinstance(links, list) or not links:
-        return None
-    name = _clean(payload.get("dataset_name")) or os.path.splitext(os.path.basename(path))[0]
-    changed = _rewrite_link_references(links, old_key, new_book_path)
-    if not changed:
-        return None
-    _write_dataset_sidecar_payload(path, payload)
-    return {"kind": "dataset", "name": name, "ok": True, "changed_link_count": changed}
-
-
-def _rewrite_dfm_method(path: str, old_key: str, new_book_path: str) -> Dict[str, Any] | None:
-    """Rewrite one DFM method's matching references; return its result row.
-
-    The patched payload goes through the canonical owned-patch merge so the
-    method revisions stay consistent, Excel-linked values stay frozen, and the
-    publication revision is asserted unchanged before only the method JSON is
-    replaced. Output CSVs and the output sidecar are not rewritten.
-    """
-
-    from app_server.services.dfm_service import _commit_text_files, _method_json_text
-
-    payload = _read_json_file(path)
-    if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
-        return None
-    details = payload.get("details tab")
-    name = _clean(details.get("name")) if isinstance(details, Mapping) else ""
-    name = name or os.path.splitext(os.path.basename(path))[0]
-    try:
-        current = normalize_dfm_method(payload, require_complete=True)
-    except DfmContractError as err:
-        raise ValueError(f"DFM method could not be normalized: {err}")
-    changed = 0
-    patched = json.loads(json.dumps(current))
-    for matrix in _dfm_input_matrices(patched):
-        for row in matrix:
-            if not isinstance(row, list):
-                continue
-            for column, cell in enumerate(row):
-                rewritten, count = rewrite_workbook_references(cell, old_key, new_book_path)
-                if count:
-                    row[column] = rewritten
-                    changed += count
-    if not changed:
-        return None
-    merged = apply_owned_patch(current, patched)
-    if method_revisions(merged)["publication revision"] != method_revisions(current)["publication revision"]:
-        raise ValueError(
-            "Retargeting would change the DFM publication; open the DFM to review it instead."
-        )
-    _commit_text_files({path: _method_json_text(merged)})
-    return {"kind": "dfm", "name": name, "ok": True, "changed_link_count": changed}
-
-
 def _rewrite_link_references(links: List[Any], old_key: str, new_book_path: str) -> int:
     changed = 0
     for link in links:
@@ -930,32 +858,70 @@ def _rewrite_link_references(links: List[Any], old_key: str, new_book_path: str)
     return changed
 
 
-def _retarget_dataset_with_refresh(
+def _dataset_name(path: str, payload: Mapping[str, Any]) -> str:
+    return _clean(payload.get("dataset_name")) or os.path.splitext(os.path.basename(path))[0]
+
+
+def _dfm_name(path: str, payload: Mapping[str, Any]) -> str:
+    details = payload.get("details tab")
+    name = _clean(details.get("name")) if isinstance(details, Mapping) else ""
+    return name or os.path.splitext(os.path.basename(path))[0]
+
+
+def _dataset_links_workbook(payload: Mapping[str, Any], key: str) -> bool:
+    links = payload.get("external_links")
+    return isinstance(links, list) and any(
+        isinstance(link, dict)
+        and any(
+            workbook_key(ref["book_path"]) == key
+            for ref in find_workbook_references(link.get("reference"))
+        )
+        for link in links
+    )
+
+
+def _dfm_inputs_reference_workbook(payload: Mapping[str, Any], key: str) -> bool:
+    if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
+        return False
+    matrices = _dfm_input_matrices(payload)
+    inputs = matrices[0] if matrices else []
+    return any(
+        workbook_key(ref["book_path"]) == key
+        for row in inputs if isinstance(row, list)
+        for cell in row
+        for ref in find_workbook_references(cell)
+    )
+
+
+def _retarget_dataset(
     path: str,
+    payload: Dict[str, Any],
     project: str,
     reserving: str,
     old_key: str,
     new_book_path: str,
     read_map: Mapping[Tuple[str, str, str], Mapping[str, Any]],
 ) -> Dict[str, Any] | None:
-    """Rewrite one sidecar's references and commit refreshed values.
+    """Rewrite one sidecar's references, refresh its linked cells, and save.
 
-    Changed values go through ``save_dataset_sidecar`` so the CSV, audit log,
-    review statuses, and Engine propagation behave exactly like a normal save.
-    When no value changes (or every read fails), only the reference text is
-    replaced, exactly like the metadata-only retarget.
+    Always commits through ``save_dataset_sidecar``, even when every refreshed
+    value equals its stored snapshot: the dataset now reads from a different
+    file, which is an audited change, and the save's dependent marking plus the
+    operation's one walk are what flag everything downstream Needs Review. When
+    the CSV cannot be loaded, the sidecar alone is saved and the cells that
+    could not be refreshed are reported.
     """
 
     from app_server.services import dataset_service
 
-    payload = _read_json_file(path)
     links = payload.get("external_links")
     if not isinstance(links, list) or not links:
         return None
-    name = _clean(payload.get("dataset_name")) or os.path.splitext(os.path.basename(path))[0]
+    name = _dataset_name(path, payload)
     changed_links = _rewrite_link_references(links, old_key, new_book_path)
     if not changed_links:
         return None
+    new_key = workbook_key(new_book_path)
 
     refreshed = changed = failed = 0
     errors: List[str] = []
@@ -969,16 +935,49 @@ def _retarget_dataset_with_refresh(
             for link in links
             if isinstance(link, dict)
             and any(
-                workbook_key(ref["book_path"]) == workbook_key(new_book_path)
+                workbook_key(ref["book_path"]) == new_key
                 for ref in find_workbook_references(link.get("reference"))
             )
         )
         errors.append(_clean(err.detail) or "The dataset CSV could not be loaded.")
     if values is not None:
         refreshed, changed, failed, errors = _apply_dataset_link_values(
-            links, values, workbook_key(new_book_path), read_map, new_book_path
+            links, values, new_key, read_map, new_book_path
         )
 
+    is_vector = _clean(payload.get("data_format")).casefold() == "vector"
+    period_length = payload.get("period_length") if is_vector else None
+    origin_length = int(
+        period_length or payload.get("origin_length") or (len(values) if values else 0) or 1
+    )
+    development_length = int(
+        period_length
+        or payload.get("development_length")
+        or max((len(row) for row in values or []), default=0)
+        or 1
+    )
+    dataset_service.save_dataset_sidecar(
+        project,
+        reserving,
+        name,
+        dataset_type=payload.get("dataset_type") or name,
+        source_kind=payload.get("source_kind") or "input",
+        data_format=payload.get("data_format") or "Triangle",
+        origin_length=origin_length,
+        development_length=development_length,
+        cumulative=bool(payload.get("cumulative", True)),
+        transposed=bool(payload.get("transposed")),
+        calendar=bool(payload.get("calendar")),
+        show_subtotal=payload.get("show_subtotal"),
+        number_format=payload.get("number_format") or "",
+        decimal_places=(
+            payload.get("decimal_places")
+            if payload.get("decimal_places") is not None
+            else 1
+        ),
+        external_links=links,
+        values=values,
+    )
     result = {
         "kind": "dataset",
         "name": name,
@@ -990,71 +989,36 @@ def _retarget_dataset_with_refresh(
     }
     if errors:
         result["refresh_errors"] = errors
-    if changed > 0 and values is not None:
-        is_vector = _clean(payload.get("data_format")).casefold() == "vector"
-        period_length = payload.get("period_length") if is_vector else None
-        origin_length = int(period_length or payload.get("origin_length") or len(values) or 1)
-        development_length = int(
-            period_length
-            or payload.get("development_length")
-            or max((len(row) for row in values), default=1)
-        )
-        save = dataset_service.save_dataset_sidecar(
-            project,
-            reserving,
-            name,
-            dataset_type=payload.get("dataset_type") or name,
-            source_kind=payload.get("source_kind") or "input",
-            data_format=payload.get("data_format") or "Triangle",
-            origin_length=origin_length,
-            development_length=development_length,
-            cumulative=bool(payload.get("cumulative", True)),
-            transposed=bool(payload.get("transposed")),
-            calendar=bool(payload.get("calendar")),
-            show_subtotal=payload.get("show_subtotal"),
-            number_format=payload.get("number_format") or "",
-            decimal_places=(
-                payload.get("decimal_places")
-                if payload.get("decimal_places") is not None
-                else 1
-            ),
-            external_links=links,
-            values=values,
-        )
-        result["propagation"] = save.get("calculated_updates")
-        result["propagation_ok"] = bool(save.get("propagation_ok"))
-    else:
-        from app_server.services.dataset_service import _write_dataset_sidecar_payload
-
-        _write_dataset_sidecar_payload(path, payload)
-        result["surgical_write"] = True
     return result
 
 
-def _retarget_dfm_with_refresh(
+def _retarget_dfm(
     path: str,
+    payload: Dict[str, Any],
     project: str,
     reserving: str,
     old_key: str,
     new_book_path: str,
     read_map: Mapping[Tuple[str, str, str], Mapping[str, Any]],
+    propagation: dependent_propagation_service.DeferredSavePropagation,
 ) -> Dict[str, Any] | None:
-    """Rewrite one DFM's references, refresh linked values, and save.
+    """Rewrite one DFM's references, refresh its linked values, save, and flag it.
 
     The combined payload goes through ``save_dfm_method`` so revisions,
-    publication, output CSVs, the output sidecar, review statuses, and Engine
-    propagation follow the normal save rules. Cells whose refresh fails keep
-    their stored values while the reference rewrite still persists.
+    publication, output CSVs, and the output sidecar follow the normal save
+    rules; cells whose refresh fails keep their stored values while the
+    reference rewrite still persists. An explicit Save resets the output's
+    review status, but this method's inputs moved to another workbook without
+    its owner looking, so the output is marked Needs Review afterwards and
+    joins the operation's walk as a root even when its publication is
+    unchanged, so its own dependents are flagged too.
     """
 
     from app_server.services import dfm_service
 
-    payload = _read_json_file(path)
     if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
         return None
-    details = payload.get("details tab")
-    name = _clean(details.get("name")) if isinstance(details, Mapping) else ""
-    name = name or os.path.splitext(os.path.basename(path))[0]
+    name = _dfm_name(path, payload)
     try:
         current = normalize_dfm_method(payload, require_complete=True)
     except DfmContractError as err:
@@ -1076,22 +1040,24 @@ def _retarget_dfm_with_refresh(
     refreshed, changed, failed, errors = _apply_dfm_refresh(
         merged, workbook_key(new_book_path), read_map, new_book_path
     )
-    save = dfm_service.save_dfm_method(
+    dfm_service.save_dfm_method(
         project,
         reserving,
         merged,
         expected_owned_revision=method_revisions(current)["owned revision"],
     )
+    output_dataset, output_type = dfm_service.save_propagation_roots(project, reserving, merged)[0]
+    dfm_service._mark_review_needed(project, reserving, output_dataset)
+    propagation.add_roots([dependent_propagation_service.changed_root(output_dataset, output_type)])
     result = {
         "kind": "dfm",
         "name": name,
+        "output_dataset": output_dataset,
         "ok": True,
         "changed_link_count": changed_links,
         "refreshed_cell_count": refreshed,
         "failed_refresh_count": failed,
         "value_changed": changed > 0,
-        "propagation": save.get("propagation"),
-        "propagation_ok": bool(save.get("propagation_ok")),
     }
     if errors:
         result["refresh_errors"] = errors
@@ -1100,20 +1066,30 @@ def _retarget_dfm_with_refresh(
 
 def _collect_file_results(
     kind: str,
-    paths: Iterable[str],
-    rewrite: Callable[[str], Dict[str, Any] | None],
+    payloads: Iterable[Tuple[str, Dict[str, Any] | None, str]],
+    name_of: Callable[[str, Mapping[str, Any]], str],
+    rewrite: Callable[[str, Dict[str, Any]], Dict[str, Any] | None],
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
-    for path in paths:
+    for path, payload, error in payloads:
+        if payload is None:
+            results.append({
+                "kind": kind,
+                "name": os.path.splitext(os.path.basename(path))[0],
+                "ok": False,
+                "changed_link_count": 0,
+                "error": error,
+            })
+            continue
         try:
-            result = rewrite(path)
+            result = rewrite(path, payload)
         except FileNotFoundError:
             continue
         except (OSError, ValueError, json.JSONDecodeError, DfmContractError, HTTPException) as err:
             detail = getattr(err, "detail", None)
             results.append({
                 "kind": kind,
-                "name": os.path.splitext(os.path.basename(path))[0],
+                "name": name_of(path, payload),
                 "ok": False,
                 "changed_link_count": 0,
                 "error": _clean(detail) or str(err),
@@ -1124,24 +1100,29 @@ def _collect_file_results(
     return results
 
 
+WORKBOOK_UNREADABLE_PREFIX = "ArcRho Server cannot open the selected workbook"
+
+
 def retarget_reserving_class_workbook(
     project_name: str,
     reserving_class: str,
     old_workbook_path: str,
     new_workbook_path: str,
-    refresh_values: bool = False,
-    listing: Callable[[str, str], Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
-    """Repoint every reference from one workbook to another across the class.
+    """Repoint every reference from one workbook to another and refresh the class.
 
+    Registered as the ``excel_link_retarget`` hosted-save kind, so it runs on
+    ArcRho Engine under the reserving-class lease. The new workbook is opened
+    on that host and refused with 400 when it cannot be — a Client PC's view of
+    the path is never consulted. Every affected dataset and DFM is then
+    rewritten, refreshed from the new workbook in one deduplicated batch, and
+    committed through its canonical save; the nested saves' propagation roots
+    are collected and walked once at the end, so every dependent is refreshed
+    and flagged Needs Review whether or not the new workbook changed a value.
     The response carries the refreshed inventory so the client pays one round
-    trip. ``listing`` supplies it; the route passes the transport-selecting
-    loader so that re-scan is hosted like the plain listing, while the rewrite
-    itself always runs here — it writes, and a value refresh opens the picked
-    workbook through the caller's own drive mappings.
+    trip.
     """
 
-    load_listing = listing or list_reserving_class_excel_links
     sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
     project = _clean(project_name)
     reserving = _clean(reserving_class)
@@ -1152,92 +1133,106 @@ def retarget_reserving_class_workbook(
     old_key = workbook_key(old_path)
     if old_key == workbook_key(new_path):
         return {
-            **load_listing(project, reserving),
+            **list_reserving_class_excel_links(project, reserving),
             "results": [],
             "changed_file_count": 0,
             "changed_link_count": 0,
-            "refresh_requested": bool(refresh_values),
             "message": "The selected workbook is already the current link.",
         }
-    if not os.path.isfile(new_path):
-        raise HTTPException(400, f"The selected workbook was not found: {new_path}")
+    readable = excel_service.excel_workbook_readable(new_path)
+    if not readable.get("ok"):
+        raise HTTPException(400, f"{WORKBOOK_UNREADABLE_PREFIX}: {readable.get('error')}")
 
-    if refresh_values:
-        # Refreshing commits real value changes, so fail fast before any write
-        # when no Engine could run the resulting propagation walks or another
-        # walk is still rewriting this reserving class.
-        dependent_propagation_service.require_reserving_class_writable(
-            project, reserving
+    # Fail fast before any write when no Engine could run the walk or another
+    # walk is still rewriting this reserving class. The hosted-save transport
+    # preflights this too; a direct caller gets the same refusal here.
+    dependent_propagation_service.require_reserving_class_writable(project, reserving)
+    sidecar_payloads = _read_json_files(_list_json_files(sidecar_dir, _SIDECAR_FILE_RE))
+    method_payloads = _read_json_files(_list_json_files(method_dir, _DFM_METHOD_FILE_RE))
+    read_map = _read_refresh_cells(_collect_refresh_read_items(
+        sidecar_payloads, method_payloads, old_key, new_path
+    ))
+    # The canonical saves take the reserving-class lock per file, so the
+    # batched Excel read above never blocks other writers. The hold was
+    # preflighted once above; without the suspension the first save's own
+    # propagation would make the class read as busy and 423 every following
+    # save. Their roots are collected and walked once below.
+    with (
+        dependent_propagation_service.suspended_reserving_class_hold_check(),
+        dependent_propagation_service.deferred_save_propagation(project, reserving) as propagation,
+    ):
+        results = _collect_file_results(
+            "dataset",
+            sidecar_payloads,
+            _dataset_name,
+            lambda path, payload: _retarget_dataset(
+                path, payload, project, reserving, old_key, new_path, read_map
+            ),
         )
-        sidecar_paths = _list_json_files(sidecar_dir, _SIDECAR_FILE_RE)
-        method_paths = _list_json_files(method_dir, _DFM_METHOD_FILE_RE)
-        read_map = _read_refresh_cells(_collect_refresh_read_items(
-            _read_json_files(sidecar_paths),
-            _read_json_files(method_paths),
-            old_key,
-            new_path,
-        ))
-        # The canonical save functions take the reserving-class lock per file,
-        # so the slow batched Excel read above never blocks other writers.
-        # The hold was preflighted once above; without the suspension the first
-        # file's enqueued propagation job would make the class read as busy and
-        # 423 every following file's save. The nested jobs coalesce into one
-        # walk through the Engine's queued-request merge.
-        with dependent_propagation_service.suspended_reserving_class_hold_check():
-            results = _collect_file_results(
-                "dataset",
-                sidecar_paths,
-                lambda path: _retarget_dataset_with_refresh(
-                    path, project, reserving, old_key, new_path, read_map
-                ),
-            )
-            results += _collect_file_results(
-                "dfm",
-                method_paths,
-                lambda path: _retarget_dfm_with_refresh(
-                    path, project, reserving, old_key, new_path, read_map
-                ),
-            )
-        surgical_writes = [item for item in results if item.get("surgical_write")]
-    else:
-        with _reserving_class_lock(project, reserving):
-            results = _collect_file_results(
-                "dataset",
-                _list_json_files(sidecar_dir, _SIDECAR_FILE_RE),
-                lambda path: _rewrite_dataset_sidecar(path, old_key, new_path),
-            )
-            results += _collect_file_results(
-                "dfm",
-                _list_json_files(method_dir, _DFM_METHOD_FILE_RE),
-                lambda path: _rewrite_dfm_method(path, old_key, new_path),
-            )
-        surgical_writes = results
+        results += _collect_file_results(
+            "dfm",
+            method_payloads,
+            _dfm_name,
+            lambda path, payload: _retarget_dfm(
+                path, payload, project, reserving, old_key, new_path, read_map, propagation
+            ),
+        )
+    propagation_result = propagation.flush()
+
+    from app_server.services import dataset_instance_index_service
+
+    index_error = ""
+    try:
+        # The saves and an inline walk rebuild the index themselves; this pass
+        # covers the review flags stamped after the DFM saves and a queued walk.
+        dataset_instance_index_service.rebuild_index(project, reserving)
+    except Exception as err:  # A stale index self-heals on the next read.
+        index_error = str(err)
 
     changed_files = [item for item in results if item.get("ok")]
-    index_error = ""
-    if any(item.get("ok") for item in surgical_writes):
-        # Value-refresh saves rebuild the index themselves; reference-only
-        # rewrites still need one rebuild so the next read stays fast.
-        from app_server.services import dataset_instance_index_service
-
-        try:
-            dataset_instance_index_service.rebuild_index(project, reserving)
-        except Exception as err:  # A stale index self-heals on the next read.
-            index_error = str(err)
-
     return {
-        **load_listing(project, reserving),
+        **list_reserving_class_excel_links(project, reserving),
         "ok": all(item.get("ok") for item in results),
         "results": results,
         "changed_file_count": len(changed_files),
         "changed_link_count": sum(int(item.get("changed_link_count") or 0) for item in changed_files),
-        "refresh_requested": bool(refresh_values),
         "refreshed_cell_count": sum(int(item.get("refreshed_cell_count") or 0) for item in results),
         "failed_refresh_count": sum(int(item.get("failed_refresh_count") or 0) for item in results),
         "value_changed_file_count": sum(1 for item in results if item.get("value_changed")),
-        "propagation_ok": all(
-            item.get("propagation_ok", True) for item in results if item.get("ok")
-        ),
+        "propagation": propagation_result,
+        "propagation_ok": bool(propagation_result.get("ok")),
         "index_ok": not index_error,
         "index_error": index_error,
     }
+
+
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    old_workbook_path: str,
+    new_workbook_path: str,
+    **_ignored: Any,
+) -> List[Tuple[str, str]]:
+    """Return the roots the retarget's one walk starts from.
+
+    Mirrors what the retarget collects: every dataset whose links name the old
+    workbook (the root ``save_dataset_sidecar`` submits) and the output dataset
+    of every DFM whose Ratios User Entry inputs do (added explicitly, because a
+    DFM save whose publication did not change submits none).
+    """
+
+    from app_server.services import dfm_service
+
+    sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
+    old_key = workbook_key(old_workbook_path)
+    if not old_key or old_key == workbook_key(new_workbook_path):
+        return []
+    roots: List[Tuple[str, str]] = []
+    for path, payload, _error in _read_json_files(_list_json_files(sidecar_dir, _SIDECAR_FILE_RE)):
+        if payload and _dataset_links_workbook(payload, old_key):
+            name = _dataset_name(path, payload)
+            roots.append((name, _clean(payload.get("dataset_type")) or name))
+    for _path, payload, _error in _read_json_files(_list_json_files(method_dir, _DFM_METHOD_FILE_RE)):
+        if payload and _dfm_inputs_reference_workbook(payload, old_key):
+            roots.extend(dfm_service.save_propagation_roots(project_name, reserving_class, payload))
+    return roots

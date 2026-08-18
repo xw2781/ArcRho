@@ -4,42 +4,45 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
-  <title>Excel Links</title>
+  <title>Manage Excel Links</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/project_instance/excel_links_window.css?v=20260817a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260811a"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817c"/>
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
+  <link rel="stylesheet" href="/ui/project_instance/excel_links_window.css?v=20260817c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body class="pi-excel-links-page">
   <div class="pi-excel-links-body">
-    <header class="pi-excel-links-header">
-      <div class="pi-excel-links-hint">Changing a workbook relinks every dataset and DFM method in this reserving class. Unless recalculation is selected below, stored values are kept until links are refreshed from a Dataset or DFM Links tab.</div>
-      <button class="pi-excel-links-icon-btn" id="excelLinksRefresh" type="button" title="Refresh Excel links" aria-label="Refresh Excel links">
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <path d="M13.5 4v3.5H10"></path>
-          <path d="M2.5 12V8.5H6"></path>
-          <path d="M12.4 6A4.7 4.7 0 0 0 4.1 4.4L2.5 6.1"></path>
-          <path d="M3.6 10a4.7 4.7 0 0 0 8.3 1.6l1.6-1.7"></path>
-        </svg>
-      </button>
-    </header>
     <div class="pi-excel-links-content">
-      <label class="pi-excel-links-refresh-option">
-        <input type="checkbox" id="excelLinksRefreshValues">
-        <span>Recalculate all affected datasets and DFM methods from the new workbook</span>
-      </label>
-      <div class="pi-excel-links-table-wrap">
-        <table class="pi-excel-links-table">
-          <colgroup><col class="workbook"><col class="folder"><col class="status"><col class="usage"><col class="action"></colgroup>
-          <thead><tr><th>Workbook</th><th>Folder</th><th>Status</th><th>Used By</th><th aria-label="Actions"></th></tr></thead>
-          <tbody id="excelLinksBody"></tbody>
-        </table>
+      <div class="pi-excel-links-toolbar">
+        <span class="pi-excel-links-cue">Right-click a row for workbook actions. Click a name to open it.</span>
+        <button class="pi-excel-links-icon-btn" id="excelLinksRefresh" type="button" title="Refresh Excel links" aria-label="Refresh Excel links">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 6v5h-5"></path>
+            <path d="M4 18v-5h5"></path>
+            <path d="M18.6 9A7 7 0 0 0 6.3 6.4L4 8.8"></path>
+            <path d="M5.4 15A7 7 0 0 0 17.7 17.6L20 15.2"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="pi-excel-links-table-wrap" id="excelLinksTableWrap">
+        <table class="pi-excel-links-table" id="excelLinksTable"></table>
         <div class="pi-excel-links-state" id="excelLinksState" hidden></div>
       </div>
       <div class="pi-excel-links-status" id="excelLinksStatus" aria-live="polite"></div>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/excel_links_window.js?v=20260817a"></script>
+  <div class="ctx-menu pi-excel-links-menu" id="excelLinksMenu" role="menu" aria-label="Excel link actions">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" type="button" role="menuitem" data-action="open-workbook">Open workbook</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="open-workbook-read-only">Open workbook as Read-Only</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="open-folder" hidden>Open folder in File Explorer</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" type="button" role="menuitem" data-action="change-link">Change Link...</button>
+    </div>
+  </div>
+  <div class="pi-excel-links-filter-popover" id="excelLinksFilterPopover" role="dialog" aria-label="Column filter"></div>
+  <script type="module" src="/ui/project_instance/excel_links_window.js?v=20260817c"></script>
 </body>
 </html>

@@ -61,6 +61,12 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     "cape_cod_method": ("cape_cod_service", "save_cape_cod_method"),
     "bootstrap_method": ("bootstrap_service", "save_bootstrap_method"),
     "dataset_sidecar": ("dataset_service", "save_dataset_sidecar"),
+    # Not a single object's save: repoints every Excel reference in one
+    # reserving class and refreshes every affected dataset and DFM from the
+    # new workbook. It is hosted for the same reason as the saves above plus
+    # one more — the workbook itself must be opened where ArcRho Server can
+    # reach it, never over a Client PC's mapped drive.
+    "excel_link_retarget": ("excel_link_service", "retarget_reserving_class_workbook"),
 }
 
 # Every kind's propagation roots are resolved by this function in the same

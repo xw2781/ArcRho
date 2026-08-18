@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links now lists one row per dataset or DFM method, with resizable, filterable columns and more row actions.",
+  "details": [
+    "A workbook used by two datasets shows two rows naming them, replacing the \"2 datasets\" summary cell.",
+    "Clicking a name opens that dataset in Dataset Viewer or that method in the DFM page.",
+    "The row menu adds Open workbook, Open workbook as Read-Only, and - on a Folder cell - Open folder in File Explorer.",
+    "Columns resize by dragging a header edge (double-click restores the default width) and filter from the header, like the dataset table.",
+    "Method Type shows the same value as the dataset table's column.",
+    "The Status column is gone; a workbook ArcRho Server cannot open is marked on its name instead."
+  ]
+}

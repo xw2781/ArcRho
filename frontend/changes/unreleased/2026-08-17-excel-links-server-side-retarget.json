@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Excel Links now changes a workbook link from a row's right-click menu and refreshes everything on ArcRho Server.",
+  "details": [
+    "The Change button, header text, and recalculation checkbox are gone: right-click a workbook and choose Change Link.",
+    "Changing a link always re-reads the new workbook on ArcRho Server, re-saves every affected dataset and DFM method, and marks them and their dependents Needs Review even when the numbers did not change.",
+    "Found/Missing now reports whether ArcRho Server can open the workbook, and a workbook the server cannot open is refused with the reason instead of being linked."
+  ]
+}

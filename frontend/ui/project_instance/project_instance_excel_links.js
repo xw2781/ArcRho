@@ -11,8 +11,10 @@
 // opens a second window for that class instead.
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
-// Long enough to cover a retarget that also recalculates dependents.
-const RETARGET_INDEX_WATCH_SUPPRESS_MS = 30000;
+// A retarget is an Engine-hosted job that rewrites and refreshes every
+// affected object and rebuilds the index as it goes; the client gives it the
+// hosted-save processing timeout, and the end message shortens this again.
+const RETARGET_INDEX_WATCH_SUPPRESS_MS = 180000;
 const SETTLED_INDEX_WATCH_SUPPRESS_MS = 1500;
 
 export function installProjectInstanceExcelLinks(ctx) {
@@ -51,9 +53,9 @@ export function installProjectInstanceExcelLinks(ctx) {
     // An already-open window for this class is re-activated rather than duplicated.
     return api.createFloatingContentWindow({
       kind: "excel_links",
-      name: "Excel Links",
-      itemName: "Excel Links",
-      title: `${path}\\Excel Links`,
+      name: "Manage Excel Links",
+      itemName: "Manage Excel Links",
+      title: `${path}\\Manage Excel Links`,
       windowKey: getExcelLinksWindowKey(path),
       inst,
       iframeSrc: buildExcelLinksWindowUrl(inst, path),
@@ -84,8 +86,9 @@ export function installProjectInstanceExcelLinks(ctx) {
     if (message.ok && Number(message.changedFileCount) > 0 && workbookPath) {
       setStatus(`Excel links now read from ${workbookPath}.`);
     }
-    if (Number(message.valueChangedFileCount) > 0) {
-      // Values and review statuses changed on disk; reload the dataset table.
+    if (Number(message.changedFileCount) > 0) {
+      // Every changed file was re-saved and its dependents flagged Needs
+      // Review, whether or not a value moved; reload the dataset table.
       void api.refreshCachedDatasetTableFromDisk?.();
     }
     return true;

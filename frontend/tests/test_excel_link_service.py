@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import openpyxl
 from fastapi import HTTPException
 
 
@@ -119,10 +120,12 @@ class ExcelLinkFixture(unittest.TestCase):
         self.books = root / "books"
         for folder in (self.sidecars, self.methods, self.datasets, self.books):
             folder.mkdir()
+        # The old workbook may be gone or unreadable; only its path matters.
         self.old_book = self.books / "Book.xlsx"
         self.old_book.write_bytes(b"old")
+        # The new workbook is a real file: the retarget opens it where it runs.
         self.new_book = self.books / "Book 2026.xlsx"
-        self.new_book.write_bytes(b"new")
+        self.write_workbook(self.new_book, {("Sheet 1", "A1"): 100, ("Sheet 1", "B1"): 150})
         self.old_reference = (
             f"='{self.books}\\[Book.xlsx]Sheet 1'!$A$1:$B$1"
         )
@@ -146,6 +149,15 @@ class ExcelLinkFixture(unittest.TestCase):
         for patcher in reversed(self.patchers):
             patcher.stop()
         self.temp.cleanup()
+
+    def write_workbook(self, path: Path, cells: dict) -> None:
+        workbook = openpyxl.Workbook()
+        workbook.remove(workbook.active)
+        for (sheet, cell), value in cells.items():
+            if sheet not in workbook.sheetnames:
+                workbook.create_sheet(sheet)
+            workbook[sheet][cell] = value
+        workbook.save(str(path))
 
     def write_json(self, path: Path, payload: dict) -> None:
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -182,9 +194,13 @@ class ExcelLinkFixture(unittest.TestCase):
         return payload
 
 
-class ExcelLinkServiceTests(ExcelLinkFixture):
+class ExcelLinkListingTests(ExcelLinkFixture):
     def test_list_groups_workbooks_across_datasets_and_dfm_methods(self) -> None:
-        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        sidecar = self.linked_sidecar()
+        # An instance whose name differs from its Dataset Type: the listing
+        # carries both so the manager can open the exact instance.
+        sidecar["dataset_type"] = "Paid Loss"
+        self.write_json(self.sidecars / "Manual Paid.json", sidecar)
         self.write_json(self.sidecars / "No Links.json", {"dataset_name": "No Links"})
         (self.sidecars / "Broken.json").write_text("{not json", encoding="utf-8")
         self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
@@ -202,37 +218,33 @@ class ExcelLinkServiceTests(ExcelLinkFixture):
         self.assertEqual(workbook["link_count"], 2)
         self.assertEqual(workbook["cell_count"], 3)
         self.assertEqual(
-            [(item["kind"], item["name"]) for item in workbook["usages"]],
-            [("dataset", "Manual Paid"), ("dfm", "Development")],
+            [
+                (item["kind"], item["name"], item["dataset_type"], item["method_type"])
+                for item in workbook["usages"]
+            ],
+            # Method Type comes from the sidecar through its canonical
+            # normalizer, so a manual input reads "None" exactly as the dataset
+            # table shows it; a DFM usage is the method itself.
+            [("dataset", "Manual Paid", "Paid Loss", "None"), ("dfm", "Development", "", "DFM")],
         )
         self.assertEqual(
             [item["file"] for item in listing["errors"]],
             ["Broken.json"],
         )
 
-    def test_scan_leaves_workbook_existence_to_the_caller(self) -> None:
-        # The hosted half must not answer "does this workbook exist" — it runs
-        # on the ArcRho Server host, which need not map the caller's drives.
+    def test_listing_answers_workbook_existence_from_this_host(self) -> None:
+        # The listing is one hosted read: the host that scans the class is the
+        # host that stats the workbooks, because it is the host that must open
+        # them for any retarget. Existence never comes from a Client PC.
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-
         with mock.patch.object(
-            excel_link_service.excel_service, "excel_file_mtimes_batch"
+            excel_link_service.excel_service, "excel_file_mtimes_batch",
+            wraps=excel_link_service.excel_service.excel_file_mtimes_batch,
         ) as stats:
-            scan = excel_link_service.scan_reserving_class_excel_links("Project", "Class")
-        stats.assert_not_called()
-
-        workbook = scan["workbooks"][0]
-        self.assertEqual(workbook["workbook_name"], "Book.xlsx")
-        self.assertNotIn("exists", workbook)
-        self.assertNotIn("mtime", workbook)
-
-        # The same scan, resolved in this process, is the full listing.
-        resolved = excel_link_service.resolve_workbook_stats(scan)
-        self.assertIs(resolved, scan)
-        self.assertTrue(scan["workbooks"][0]["exists"])
-        self.assertEqual(
-            scan, excel_link_service.list_reserving_class_excel_links("Project", "Class")
-        )
+            listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
+        stats.assert_called_once_with([str(self.old_book)])
+        self.assertTrue(listing["workbooks"][0]["exists"])
+        self.assertIsNotNone(listing["workbooks"][0]["mtime"])
 
     def test_list_marks_missing_workbooks(self) -> None:
         sidecar = self.linked_sidecar()
@@ -244,111 +256,90 @@ class ExcelLinkServiceTests(ExcelLinkFixture):
         self.assertEqual(listing["workbooks"][0]["workbook_name"], "Missing.xlsx")
         self.assertFalse(listing["workbooks"][0]["exists"])
 
-    def test_retarget_rewrites_datasets_and_dfm_methods_without_touching_values(self) -> None:
-        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        untouched = {"dataset_name": "Other", "external_links": []}
-        self.write_json(self.sidecars / "Other.json", untouched)
-        untouched_bytes = (self.sidecars / "Other.json").read_bytes()
-        method = self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
-        output_csv = self.datasets / "Development Output@12.csv"
-        output_csv.write_text("150\n300\n", encoding="utf-8")
-        csv_bytes = output_csv.read_bytes()
 
-        with mock.patch(
-            "app_server.services.dataset_instance_index_service.rebuild_index"
-        ) as rebuild:
+class ExcelLinkRetargetTests(ExcelLinkFixture):
+    """A retarget refreshes and re-saves every affected object from the new workbook."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Every canonical save enqueues its roots exactly like the real one, so
+        # the deferred collector is exercised; the writes themselves are faked.
+        def fake_dataset_save(project, reserving, name, **kwargs):
+            # The real save persists the rewritten links; mimic that so the
+            # inventory the response carries reflects the retarget.
+            sidecar_path = self.sidecars / f"{name}.json"
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            sidecar["external_links"] = kwargs.get("external_links")
+            self.write_json(sidecar_path, sidecar)
+            propagation = excel_link_service.dependent_propagation_service.enqueue_save_propagation(
+                project, reserving,
+                [excel_link_service.dependent_propagation_service.changed_root(
+                    name, kwargs.get("dataset_type") or name,
+                )],
+            )
+            return {"ok": True, "calculated_updates": propagation, "propagation_ok": True}
+
+        self.dataset_values = [[100, 150], [200, None]]
+        self.retarget_patchers = [
+            mock.patch.object(
+                excel_link_service.dependent_propagation_service,
+                "require_reserving_class_writable",
+            ),
+            mock.patch(
+                "app_server.services.dataset_service.load_cached_dataset_values",
+                side_effect=lambda *_a, **_k: {"values": self.dataset_values},
+            ),
+            mock.patch(
+                "app_server.services.dataset_service.save_dataset_sidecar",
+                side_effect=fake_dataset_save,
+            ),
+            mock.patch(
+                "app_server.services.dfm_service.save_dfm_method",
+                return_value={"ok": True, "propagation": {"ok": True, "status": "unchanged"}, "propagation_ok": True},
+            ),
+            mock.patch("app_server.services.dfm_service._mark_review_needed"),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ]
+        (
+            self.engine, self.load_values, self.dataset_save, self.dfm_save,
+            self.mark_review, self.rebuild,
+        ) = [patcher.start() for patcher in self.retarget_patchers]
+
+    def tearDown(self) -> None:
+        for patcher in reversed(self.retarget_patchers):
+            patcher.stop()
+        super().tearDown()
+
+    def run_retarget(self, new_book: Path | None = None) -> dict:
+        submit = excel_link_service.dependent_propagation_service.submit_dependent_propagation_job
+        with mock.patch.object(
+            excel_link_service.dependent_propagation_service,
+            "submit_dependent_propagation_job",
+            side_effect=submit,
+        ) as submitted:
             response = excel_link_service.retarget_reserving_class_workbook(
-                "Project", "Class", str(self.old_book), str(self.new_book)
+                "Project", "Class", str(self.old_book), str(new_book or self.new_book)
             )
+        self.submitted = submitted
+        return response
 
-        self.assertTrue(response["ok"])
-        self.assertEqual(response["changed_file_count"], 2)
-        self.assertEqual(response["changed_link_count"], 3)
-        self.assertEqual(
-            sorted((item["kind"], item["name"]) for item in response["results"]),
-            [("dataset", "Manual Paid"), ("dfm", "Development")],
-        )
-        rebuild.assert_called_once_with("Project", "Class")
-
-        sidecar = json.loads((self.sidecars / "Manual Paid.json").read_text(encoding="utf-8"))
-        self.assertEqual(
-            sidecar["external_links"][0]["reference"],
-            f"='{self.books}\\[Book 2026.xlsx]Sheet 1'!$A$1:$B$1",
-        )
-        self.assertEqual(
-            sidecar["external_links"][0]["target_cells"],
-            [
-                {"row": 0, "column": 0, "source_cell": "A1"},
-                {"row": 0, "column": 1, "source_cell": "B1"},
-            ],
-        )
-        self.assertEqual(sidecar["updated_at"], "2026-01-05T00:00:00Z")
-        self.assertEqual(len(sidecar["audit_log"]), 1)
-        self.assertEqual((self.sidecars / "Other.json").read_bytes(), untouched_bytes)
-
-        saved_method = json.loads(
-            (self.methods / "DFM@Development.json").read_text(encoding="utf-8")
-        )
-        formulas = saved_method["ratios tab"]["average formulas"]
-        self.assertEqual(
-            formulas["inputs"][0][0],
-            f"'{self.books}\\[Book 2026.xlsx]Sheet 1'!$A$1 * 2",
-        )
-        self.assertEqual(formulas["display inputs"][0][0], formulas["inputs"][0][0])
-        self.assertEqual(formulas["values"], method["ratios tab"]["average formulas"]["values"])
-        before = method_revisions(method)
-        after = method_revisions(saved_method)
-        self.assertEqual(after["publication revision"], before["publication revision"])
-        self.assertNotEqual(after["owned revision"], before["owned revision"])
-        self.assertNotEqual(
-            saved_method["method metadata"]["last modified"],
-            method["method metadata"]["last modified"],
-        )
-        self.assertEqual(
-            saved_method["method metadata"]["data refreshed"],
-            method["method metadata"]["data refreshed"],
-        )
-        self.assertEqual(output_csv.read_bytes(), csv_bytes)
-
-        # The refreshed inventory in the same response reflects the new workbook.
-        self.assertEqual(response["workbooks"][0]["workbook_name"], "Book 2026.xlsx")
-
-    def test_retarget_takes_its_refreshed_inventory_from_the_injected_loader(self) -> None:
-        # The route injects the transport-selecting loader so the re-scan the
-        # response carries is hosted too, while the rewrite stays local.
+    def test_retarget_refuses_a_workbook_this_host_cannot_open(self) -> None:
+        # The server's own view is the only one that counts; a path it cannot
+        # open is refused before anything is written, with the reason.
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        calls: list[tuple[str, str]] = []
-
-        def loader(project_name: str, reserving_class: str) -> dict:
-            calls.append((project_name, reserving_class))
-            return {"ok": True, "workbooks": [], "via": "injected"}
-
-        with mock.patch(
-            "app_server.services.dataset_instance_index_service.rebuild_index"
-        ):
-            response = excel_link_service.retarget_reserving_class_workbook(
-                "Project", "Class", str(self.old_book), str(self.new_book), listing=loader
-            )
-        self.assertEqual(calls, [("Project", "Class")])
-        self.assertEqual(response["via"], "injected")
-        self.assertEqual(response["changed_file_count"], 1)
-
-        # The no-op branch answers from the same loader.
-        calls.clear()
-        no_op = excel_link_service.retarget_reserving_class_workbook(
-            "Project", "Class", str(self.new_book), str(self.new_book), listing=loader
-        )
-        self.assertEqual(calls, [("Project", "Class")])
-        self.assertEqual(no_op["via"], "injected")
-        self.assertIn("already the current link", no_op["message"])
-
-    def test_retarget_requires_an_existing_new_workbook(self) -> None:
-        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        with self.assertRaises(HTTPException) as ctx:
-            excel_link_service.retarget_reserving_class_workbook(
-                "Project", "Class", str(self.old_book), str(self.books / "Nope.xlsx")
-            )
-        self.assertEqual(ctx.exception.status_code, 400)
+        before = (self.sidecars / "Manual Paid.json").read_bytes()
+        for candidate in (self.books / "Nope.xlsx", self.old_book):
+            with self.subTest(candidate=candidate.name):
+                with self.assertRaises(HTTPException) as ctx:
+                    excel_link_service.retarget_reserving_class_workbook(
+                        "Project", "Class", str(self.books / "Other.xlsx"), str(candidate)
+                    )
+                self.assertEqual(ctx.exception.status_code, 400)
+                self.assertTrue(
+                    str(ctx.exception.detail).startswith(excel_link_service.WORKBOOK_UNREADABLE_PREFIX)
+                )
+        self.assertEqual((self.sidecars / "Manual Paid.json").read_bytes(), before)
+        self.dataset_save.assert_not_called()
 
     def test_retarget_to_same_workbook_is_a_no_op(self) -> None:
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
@@ -360,90 +351,64 @@ class ExcelLinkServiceTests(ExcelLinkFixture):
         self.assertEqual(response["changed_file_count"], 0)
         self.assertIn("already the current link", response["message"])
         self.assertEqual((self.sidecars / "Manual Paid.json").read_bytes(), before)
+        self.dataset_save.assert_not_called()
 
-
-class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
-    """Retarget with refresh_values commits refreshed values through the saves."""
-
-    def refresh_mocks(self, cell_values: dict, *, dataset_values=None):
-        def read_cells_batch(items):
-            results = []
-            for item in items:
-                key = (item["sheet"], item["cell"].replace("$", "").upper())
-                if key in cell_values:
-                    value = cell_values[key]
-                    results.append({"ok": True, "value": value})
-                else:
-                    results.append({"ok": False, "error": f"Cell {item['cell']} not found."})
-            return {"ok": True, "results": results}
-
-        return (
-            mock.patch.object(
-                excel_link_service.excel_service, "excel_read_cells_batch",
-                side_effect=read_cells_batch,
-            ),
-            mock.patch.object(
-                excel_link_service.dependent_propagation_service,
-                "require_reserving_class_writable",
-            ),
-            mock.patch(
-                "app_server.services.dataset_service.load_cached_dataset_values",
-                return_value={"values": dataset_values if dataset_values is not None else [[100, 150], [200, None]]},
-            ),
-            mock.patch(
-                "app_server.services.dataset_service.save_dataset_sidecar",
-                return_value={"ok": True, "calculated_updates": {"ok": True, "status": "queued"}, "propagation_ok": True},
-            ),
-            mock.patch(
-                "app_server.services.dfm_service.save_dfm_method",
-                return_value={"ok": True, "propagation": {"ok": True, "status": "queued"}, "propagation_ok": True},
-            ),
-            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
-        )
-
-    def run_retarget(self, cell_values: dict, *, dataset_values=None):
-        patches = self.refresh_mocks(cell_values, dataset_values=dataset_values)
-        with patches[0] as read_batch, patches[1] as engine, patches[2], \
-                patches[3] as dataset_save, patches[4] as dfm_save, patches[5] as rebuild:
-            response = excel_link_service.retarget_reserving_class_workbook(
-                "Project", "Class", str(self.old_book), str(self.new_book),
-                refresh_values=True,
-            )
-        return response, read_batch, engine, dataset_save, dfm_save, rebuild
-
-    def test_refresh_applies_dataset_values_through_the_canonical_save(self) -> None:
+    def test_retarget_requires_a_live_engine_before_any_write(self) -> None:
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        response, read_batch, engine, dataset_save, _dfm_save, rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 111.5, ("Sheet 1", "B1"): None},
-        )
+        before = (self.sidecars / "Manual Paid.json").read_bytes()
+        self.engine.side_effect = HTTPException(503, "No ArcRho Engine instance is available.")
+        with self.assertRaises(HTTPException) as ctx:
+            self.run_retarget()
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual((self.sidecars / "Manual Paid.json").read_bytes(), before)
+        self.dataset_save.assert_not_called()
+
+    def test_retarget_saves_every_affected_dataset_even_when_values_match(self) -> None:
+        # The new workbook holds exactly the stored numbers. The dataset is
+        # still saved through the canonical flow: its link changed, that is an
+        # audited change, and its dependents must be flagged for review.
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        untouched = {"dataset_name": "Other", "external_links": []}
+        self.write_json(self.sidecars / "Other.json", untouched)
+        untouched_bytes = (self.sidecars / "Other.json").read_bytes()
+
+        response = self.run_retarget()
 
         self.assertTrue(response["ok"])
-        self.assertTrue(response["refresh_requested"])
+        self.assertEqual(response["changed_file_count"], 1)
+        self.assertEqual(response["changed_link_count"], 1)
         self.assertEqual(response["refreshed_cell_count"], 2)
         self.assertEqual(response["failed_refresh_count"], 0)
+        self.assertEqual(response["value_changed_file_count"], 0)
+        self.engine.assert_called_once_with("Project", "Class")
+        self.dataset_save.assert_called_once()
+        kwargs = self.dataset_save.call_args.kwargs
+        self.assertEqual(kwargs["values"], [[100, 150], [200, None]])
+        self.assertIn("Book 2026.xlsx", kwargs["external_links"][0]["reference"])
+        self.assertEqual(kwargs["origin_length"], 12)
+        self.assertEqual((self.sidecars / "Other.json").read_bytes(), untouched_bytes)
+        # The response carries the refreshed inventory, resolved on this host.
+        self.assertEqual(response["workbooks"][0]["workbook_name"], "Book 2026.xlsx")
+        self.assertTrue(response["workbooks"][0]["exists"])
+
+    def test_retarget_reads_the_new_workbook_and_applies_changed_values(self) -> None:
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        self.write_workbook(self.new_book, {("Sheet 1", "A1"): 111.5, ("Sheet 1", "B1"): None})
+
+        response = self.run_retarget()
+
         self.assertEqual(response["value_changed_file_count"], 1)
-        self.assertTrue(response["propagation_ok"])
-        engine.assert_called_once_with("Project", "Class")
-        read_batch.assert_called_once()
-        for item in read_batch.call_args[0][0]:
-            self.assertEqual(item["book_path"], str(self.new_book))
-        dataset_save.assert_called_once()
-        kwargs = dataset_save.call_args.kwargs
+        kwargs = self.dataset_save.call_args.kwargs
         self.assertEqual(kwargs["values"][0][0], 111.5)
         self.assertIsNone(kwargs["values"][0][1])
         self.assertEqual(kwargs["values"][1], [200, None])
-        self.assertIn("Book 2026.xlsx", kwargs["external_links"][0]["reference"])
-        self.assertEqual(kwargs["origin_length"], 12)
-        rebuild.assert_not_called()
 
-    def test_refresh_save_preserves_zero_decimal_places(self) -> None:
+    def test_retarget_save_preserves_zero_decimal_places(self) -> None:
         sidecar = self.linked_sidecar()
         sidecar["decimal_places"] = 0
         self.write_json(self.sidecars / "Manual Paid.json", sidecar)
-        _response, _read, _engine, dataset_save, _dfm_save, _rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 111.5, ("Sheet 1", "B1"): 152},
-        )
-        self.assertEqual(dataset_save.call_args.kwargs["decimal_places"], 0)
+        self.run_retarget()
+        self.assertEqual(self.dataset_save.call_args.kwargs["decimal_places"], 0)
 
     def test_refresh_is_per_link_atomic_and_still_retargets_failed_links(self) -> None:
         sidecar = self.linked_sidecar()
@@ -452,9 +417,11 @@ class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
             "target_cells": [{"row": 1, "column": 0, "source_cell": "C3"}],
         })
         self.write_json(self.sidecars / "Manual Paid.json", sidecar)
-        response, _read, _engine, dataset_save, _dfm_save, _rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 111.5, ("Sheet 1", "B1"): 152},
-        )
+        self.write_workbook(self.new_book, {
+            ("Sheet 1", "A1"): 111.5, ("Sheet 1", "B1"): 152, ("Sheet 1", "C3"): "text",
+        })
+
+        response = self.run_retarget()
 
         result = response["results"][0]
         self.assertTrue(result["ok"])
@@ -462,90 +429,153 @@ class ExcelLinkRefreshValuesTests(ExcelLinkFixture):
         self.assertEqual(result["refreshed_cell_count"], 2)
         self.assertEqual(result["failed_refresh_count"], 1)
         self.assertIn("C3", result["refresh_errors"][0])
-        kwargs = dataset_save.call_args.kwargs
+        kwargs = self.dataset_save.call_args.kwargs
         self.assertEqual(kwargs["values"][0], [111.5, 152])
         self.assertEqual(kwargs["values"][1], [200, None])
         self.assertIn("Book 2026.xlsx", kwargs["external_links"][1]["reference"])
 
-    def test_refresh_with_unchanged_values_keeps_the_metadata_only_write(self) -> None:
+    def test_retarget_saves_the_sidecar_alone_when_the_csv_cannot_be_loaded(self) -> None:
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        response, _read, _engine, dataset_save, _dfm_save, rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 100, ("Sheet 1", "B1"): 150},
-        )
+        self.load_values.side_effect = HTTPException(404, "Dataset CSV not found.")
+
+        response = self.run_retarget()
 
         result = response["results"][0]
-        self.assertFalse(result["value_changed"])
-        dataset_save.assert_not_called()
-        rebuild.assert_called_once()
-        sidecar = json.loads((self.sidecars / "Manual Paid.json").read_text(encoding="utf-8"))
-        self.assertIn("Book 2026.xlsx", sidecar["external_links"][0]["reference"])
-        self.assertEqual(len(sidecar["audit_log"]), 1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["failed_refresh_count"], 2)
+        self.assertIn("Dataset CSV not found.", result["refresh_errors"][0])
+        kwargs = self.dataset_save.call_args.kwargs
+        self.assertIsNone(kwargs["values"])
+        self.assertIn("Book 2026.xlsx", kwargs["external_links"][0]["reference"])
+        self.assertEqual(kwargs["origin_length"], 12)
 
-    def test_refresh_evaluates_dfm_inline_formulas_and_saves_the_method(self) -> None:
-        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
-        response, _read, _engine, _dataset_save, dfm_save, _rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 2},
-        )
+    def test_retarget_saves_and_flags_a_dfm_and_walks_from_its_output(self) -> None:
+        method = self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+        self.write_workbook(self.new_book, {("Sheet 1", "A1"): 2})
+
+        response = self.run_retarget()
 
         result = response["results"][0]
         self.assertEqual(result["kind"], "dfm")
         self.assertTrue(result["value_changed"])
         self.assertEqual(result["refreshed_cell_count"], 1)
-        dfm_save.assert_called_once()
-        merged = dfm_save.call_args.args[2]
+        self.assertEqual(result["output_dataset"], "Development Output")
+        self.dfm_save.assert_called_once()
+        merged = self.dfm_save.call_args.args[2]
         formulas = merged["ratios tab"]["average formulas"]
         self.assertEqual(formulas["values"][0][0], 4)
         self.assertIn("Book 2026.xlsx", formulas["inputs"][0][0])
         self.assertEqual(
-            dfm_save.call_args.kwargs["expected_owned_revision"],
-            method_revisions(dfm_method_payload(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2"))["owned revision"],
+            self.dfm_save.call_args.kwargs["expected_owned_revision"],
+            method_revisions(method)["owned revision"],
         )
+        # An explicit save resets the output to current; the retarget then
+        # flags it, and the output is a walk root even though the mocked save
+        # reported an unchanged publication.
+        self.mark_review.assert_called_once_with("Project", "Class", "Development Output")
+        self.submitted.assert_called_once()
+        self.assertEqual(
+            self.submitted.call_args.args[2],
+            [{"dataset_name": "Development Output", "dataset_type": "Selected Ultimate"}],
+        )
+        self.assertEqual(response["propagation"]["status"], "queued")
+        self.assertTrue(response["propagation_ok"])
 
     def test_refresh_rejects_nonpositive_dfm_results_and_keeps_stored_values(self) -> None:
         self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
-        response, _read, _engine, _dataset_save, dfm_save, _rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): -3},
-        )
+        self.write_workbook(self.new_book, {("Sheet 1", "A1"): -3})
+
+        response = self.run_retarget()
 
         result = response["results"][0]
         self.assertFalse(result["value_changed"])
         self.assertEqual(result["failed_refresh_count"], 1)
         self.assertIn("greater than 0", result["refresh_errors"][0])
-        merged = dfm_save.call_args.args[2]
+        merged = self.dfm_save.call_args.args[2]
         self.assertEqual(merged["ratios tab"]["average formulas"]["values"][0][0], 1.5)
         self.assertIn("Book 2026.xlsx", merged["ratios tab"]["average formulas"]["inputs"][0][0])
+        self.mark_review.assert_called_once()
 
     def test_refresh_spills_dfm_ranges_into_literal_non_anchor_cells(self) -> None:
         self.write_dfm_method(f"='{self.books}\\[Book.xlsx]Sheet 1'!$A$1:$B$1")
-        response, _read, _engine, _dataset_save, dfm_save, _rebuild = self.run_retarget(
-            {("Sheet 1", "A1"): 1.1, ("Sheet 1", "B1"): 1.2},
-        )
+        self.write_workbook(self.new_book, {("Sheet 1", "A1"): 1.1, ("Sheet 1", "B1"): 1.2})
+
+        response = self.run_retarget()
 
         result = response["results"][0]
         self.assertTrue(result["value_changed"])
         self.assertEqual(result["refreshed_cell_count"], 2)
-        merged = dfm_save.call_args.args[2]
+        merged = self.dfm_save.call_args.args[2]
         formulas = merged["ratios tab"]["average formulas"]
         self.assertEqual(formulas["values"][0], [1.1, 1.2])
         self.assertIn("Book 2026.xlsx", formulas["inputs"][0][0])
         self.assertEqual(formulas["inputs"][0][1], "1.2")
         self.assertEqual(formulas["display inputs"][0][1], "1.2")
 
-    def test_refresh_requires_a_live_engine_before_any_write(self) -> None:
+    def test_nested_saves_share_one_walk_and_the_index_is_rebuilt_once_after_it(self) -> None:
+        # Two datasets and one DFM: three canonical saves, one propagation
+        # submission carrying every root, then one index rebuild.
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
-        before = (self.sidecars / "Manual Paid.json").read_bytes()
-        with mock.patch.object(
-            excel_link_service.dependent_propagation_service,
-            "require_reserving_class_writable",
-            side_effect=HTTPException(503, "No ArcRho Engine instance is available."),
-        ):
-            with self.assertRaises(HTTPException) as ctx:
-                excel_link_service.retarget_reserving_class_workbook(
-                    "Project", "Class", str(self.old_book), str(self.new_book),
-                    refresh_values=True,
-                )
-        self.assertEqual(ctx.exception.status_code, 503)
-        self.assertEqual((self.sidecars / "Manual Paid.json").read_bytes(), before)
+        self.write_json(self.sidecars / "Manual Incurred.json", self.linked_sidecar("Manual Incurred"))
+        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+
+        response = self.run_retarget()
+
+        self.assertEqual(response["changed_file_count"], 3)
+        self.assertEqual(self.dataset_save.call_count, 2)
+        self.submitted.assert_called_once()
+        self.assertEqual(
+            [root["dataset_name"] for root in self.submitted.call_args.args[2]],
+            ["Manual Incurred", "Manual Paid", "Development Output"],
+        )
+        self.rebuild.assert_called_once_with("Project", "Class")
+        self.assertEqual(
+            sorted((item["kind"], item["name"]) for item in response["results"]),
+            [("dataset", "Manual Incurred"), ("dataset", "Manual Paid"), ("dfm", "Development")],
+        )
+
+    def test_a_dfm_that_fails_to_save_is_reported_and_the_rest_still_land(self) -> None:
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+        self.dfm_save.side_effect = HTTPException(409, "DFM changed on disk.")
+
+        response = self.run_retarget()
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["changed_file_count"], 1)
+        failed = [item for item in response["results"] if not item["ok"]]
+        self.assertEqual(failed[0]["name"], "Development")
+        self.assertEqual(failed[0]["error"], "DFM changed on disk.")
+        self.mark_review.assert_not_called()
+
+    def test_save_propagation_roots_mirror_the_retarget(self) -> None:
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+        self.write_json(self.sidecars / "Other.json", {"dataset_name": "Other", "external_links": []})
+        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+
+        roots = excel_link_service.save_propagation_roots(
+            "Project", "Class", str(self.old_book), str(self.new_book)
+        )
+        self.assertEqual(
+            roots,
+            [("Manual Paid", "Manual Paid"), ("Development Output", "Selected Ultimate")],
+        )
+        self.assertEqual(
+            excel_link_service.save_propagation_roots(
+                "Project", "Class", str(self.old_book), str(self.old_book)
+            ),
+            [],
+        )
+
+
+class ExcelLinkHostedSaveRegistrationTests(unittest.TestCase):
+    def test_the_retarget_is_a_hosted_save_kind_owned_by_this_service(self) -> None:
+        from arcrho_engine_save_contract import SAVE_JOB_KINDS
+
+        self.assertEqual(
+            SAVE_JOB_KINDS["excel_link_retarget"],
+            ("excel_link_service", "retarget_reserving_class_workbook"),
+        )
 
 
 if __name__ == "__main__":

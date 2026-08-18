@@ -404,6 +404,59 @@ class DependentPropagationJobTests(unittest.TestCase):
             {"ok": True, "status": "unchanged"},
         )
 
+    def test_deferred_save_propagation_collects_nested_roots_into_one_walk(self) -> None:
+        # An operation saving several objects in one class (the Excel workbook
+        # retarget) collects their roots and walks once; a save for another
+        # class inside the same operation is not intercepted.
+        with patch.object(
+            dependent_propagation_service,
+            "submit_dependent_propagation_job",
+            return_value={"ok": True, "job_id": self.REQUEST_ID, "status": "queued"},
+        ) as submit:
+            with dependent_propagation_service.deferred_save_propagation(
+                "Demo Project", "HPPREF\\HO+DF\\NJ"
+            ) as propagation:
+                first = dependent_propagation_service.enqueue_save_propagation(
+                    "Demo Project", "HPPREF\\HO+DF\\NJ",
+                    [{"dataset_name": "Paid", "dataset_type": "Paid"}],
+                )
+                second = dependent_propagation_service.enqueue_save_propagation(
+                    "demo project", "hppref\\ho+df\\nj",
+                    [{"dataset_name": "paid", "dataset_type": ""}, {"dataset_name": "Incurred", "dataset_type": ""}],
+                )
+                other = dependent_propagation_service.enqueue_save_propagation(
+                    "Demo Project", "HPPREF\\HO+DF\\NY",
+                    [{"dataset_name": "Elsewhere", "dataset_type": ""}],
+                )
+                propagation.add_roots([{"dataset_name": "DFM Output", "dataset_type": "Selected Ultimate"}])
+                self.assertEqual(submit.call_count, 1, "only the other class was submitted")
+            self.assertEqual(first, {"ok": True, "status": "deferred"})
+            self.assertEqual(second, {"ok": True, "status": "deferred"})
+            self.assertEqual(other["status"], "queued")
+            self.assertEqual(
+                [root["dataset_name"] for root in propagation.roots],
+                ["Paid", "Incurred", "DFM Output"],
+            )
+            flushed = propagation.flush()
+        self.assertEqual(flushed["status"], "queued")
+        self.assertEqual(submit.call_count, 2)
+        self.assertEqual(
+            submit.call_args.args,
+            (
+                "Demo Project",
+                "HPPREF\\HO+DF\\NJ",
+                [
+                    {"dataset_name": "Paid", "dataset_type": "Paid"},
+                    {"dataset_name": "Incurred", "dataset_type": ""},
+                    {"dataset_name": "DFM Output", "dataset_type": "Selected Ultimate"},
+                ],
+            ),
+        )
+        # Nothing collected: the flush is the canonical no-op payload.
+        with dependent_propagation_service.deferred_save_propagation("Demo Project", "X") as empty:
+            pass
+        self.assertEqual(empty.flush(), {"ok": True, "status": "unchanged"})
+
     def test_a_fresh_walk_lease_holds_the_class_against_new_writes(self) -> None:
         self._write_heartbeat()
         project, reserving = "Demo Project", "HPPREF\\HO+DF\\NJ"

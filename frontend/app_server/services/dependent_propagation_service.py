@@ -224,8 +224,8 @@ def require_engine_available() -> None:
 # canonical saves for one reserving class inside a single request; its first
 # save's enqueued job would make the class read as busy and refuse the rest.
 # Such an operation preflights the hold once at its entry and suspends the
-# refusal for its nested saves; their jobs coalesce into one walk through the
-# Engine's queued-request merge.
+# refusal for its nested saves, and collects their propagation roots through
+# ``deferred_save_propagation`` so the class is walked once at the end.
 _hold_check_suspended: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "arcrho_reserving_class_hold_check_suspended", default=False
 )
@@ -245,6 +245,78 @@ def suspended_reserving_class_hold_check() -> Iterator[None]:
         yield
     finally:
         _hold_check_suspended.reset(token)
+
+
+class DeferredSavePropagation:
+    """Roots collected from one operation's nested saves, walked once at the end.
+
+    Inside :func:`deferred_save_propagation`, every ``enqueue_save_propagation``
+    call for this reserving class adds its roots here instead of running or
+    queueing a walk. The orchestrator calls :meth:`flush` after leaving the
+    context, and that single call runs the walk inline on the Engine or queues
+    one job from a client, exactly as one save would.
+    """
+
+    def __init__(self, project_name: str, reserving_class: str) -> None:
+        self.project_name = str(project_name or "").strip()
+        self.reserving_class = str(reserving_class or "").strip()
+        self._roots: List[Dict[str, str]] = []
+        self._seen: set[str] = set()
+
+    def covers(self, project_name: str, reserving_class: str) -> bool:
+        return (
+            str(project_name or "").strip().casefold() == self.project_name.casefold()
+            and str(reserving_class or "").strip().casefold() == self.reserving_class.casefold()
+        )
+
+    def add_roots(self, changed_roots: Sequence[Mapping[str, Any]]) -> None:
+        for root in changed_roots:
+            name = str(root.get("dataset_name") or "").strip()
+            key = name.casefold()
+            if not name or key in self._seen:
+                continue
+            self._seen.add(key)
+            self._roots.append(changed_root(name, str(root.get("dataset_type") or "")))
+
+    @property
+    def roots(self) -> List[Dict[str, str]]:
+        return list(self._roots)
+
+    def flush(self) -> Dict[str, Any]:
+        """Run or queue the one walk for every collected root.
+
+        Must be called after the ``deferred_save_propagation`` context has
+        exited; inside it the call would only collect the roots again.
+        """
+
+        if not self._roots:
+            return unchanged_propagation()
+        return enqueue_save_propagation(self.project_name, self.reserving_class, self._roots)
+
+
+_deferred_save_propagation: contextvars.ContextVar[DeferredSavePropagation | None] = (
+    contextvars.ContextVar("arcrho_deferred_save_propagation", default=None)
+)
+
+
+@contextmanager
+def deferred_save_propagation(
+    project_name: str, reserving_class: str
+) -> Iterator[DeferredSavePropagation]:
+    """Collect nested saves' propagation roots for one class into one walk.
+
+    Without this, an operation saving N objects inside an Engine-hosted save
+    would run N inline walks of the same class; from a client it would queue N
+    jobs the Engine merges anyway. Saves for another reserving class are not
+    intercepted.
+    """
+
+    collector = DeferredSavePropagation(project_name, reserving_class)
+    token = _deferred_save_propagation.set(collector)
+    try:
+        yield collector
+    finally:
+        _deferred_save_propagation.reset(token)
 
 
 def require_reserving_class_writable(
@@ -405,7 +477,15 @@ def enqueue_save_propagation(
     redirector caches the file for its default 10 s and hides a terminal status
     that has already been written. Every save that reaches an Engine holding
     the reserving-class lease should therefore answer with the finished walk.
+
+    Inside :func:`deferred_save_propagation` for this class the roots are only
+    collected; the operation's one flush runs or queues the walk.
     """
+
+    deferred = _deferred_save_propagation.get()
+    if deferred is not None and deferred.covers(project_name, reserving_class):
+        deferred.add_roots(changed_roots)
+        return {"ok": True, "status": "deferred"}
 
     if _inline_engine_propagation.get():
         return _run_inline_save_propagation(

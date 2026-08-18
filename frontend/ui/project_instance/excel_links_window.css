@@ -6,6 +6,13 @@
    project_instance_windows.js. Everything here sizes from the frame, so the
    table grows and shrinks as the user resizes the window.
 
+   The table follows the pi-table column model: excel_links_table.js writes an
+   explicit width onto every col and sizes the table to their sum, so only the
+   rules that cannot depend on runtime state live here. Rules added for the
+   detail-row table read their colors from the shared --ar-color-* tokens, so
+   the Dark theme needs no companion rule; the older rules keep their Light
+   values with Dark deviations in themes/dark.css.
+
    The pi-excel-links-* class names are shared with the dark theme sheet. */
 
 .pi-excel-links-page {
@@ -25,21 +32,6 @@
   overflow: hidden;
 }
 
-.pi-excel-links-header {
-  min-height: 34px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 8px 5px 10px;
-  border-bottom: 1px solid #d4dbe7;
-  background: #f2f5f9;
-  user-select: none;
-}
-
-.pi-excel-links-hint { color: #667085; line-height: 15px; }
-
 .pi-excel-links-icon-btn {
   width: 24px;
   height: 24px;
@@ -56,7 +48,8 @@
 
 .pi-excel-links-icon-btn:hover { border-color: #cbd5e1; background: #fff; color: #1e293b; }
 .pi-excel-links-icon-btn:disabled { opacity: .55; cursor: default; }
-.pi-excel-links-icon-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* Same glyph size as the Project Instance dataset toolbar buttons. */
+.pi-excel-links-icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .pi-excel-links-content {
   min-height: 0;
@@ -67,25 +60,23 @@
   padding: 10px;
 }
 
-.pi-excel-links-refresh-option {
+/* One compact command row above the table: a muted cue on the left (every
+   action lives in the row context menu) and the refresh icon on the right, so
+   nothing sits above the table but what the user acts on. */
+.pi-excel-links-toolbar {
+  min-height: 24px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #334155;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: 12px;
   user-select: none;
 }
 
-.pi-excel-links-refresh-option input {
-  width: 13px;
-  height: 13px;
-  margin: 0;
-  accent-color: #2b6df6;
-  cursor: pointer;
-}
+.pi-excel-links-cue { color: #7c8798; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* No max-height: the wrapper takes whatever height the resized frame leaves. */
+/* No max-height: the wrapper takes whatever height the resized frame leaves,
+   and scrolls sideways once the resized columns are wider than the frame. */
 .pi-excel-links-table-wrap {
   min-height: 96px;
   flex: 1 1 auto;
@@ -95,19 +86,14 @@
   background: #fff;
 }
 
+/* Every cell keeps its right border, including the last column: the table is
+   only as wide as its columns, so a frame wider than the table would otherwise
+   leave every row open on the right instead of closing the frame. */
 .pi-excel-links-table {
-  width: 100%;
-  min-width: 560px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
-
-.pi-excel-links-table col.workbook { width: 26%; }
-.pi-excel-links-table col.folder { width: 34%; }
-.pi-excel-links-table col.status { width: 74px; }
-.pi-excel-links-table col.usage { width: 24%; }
-.pi-excel-links-table col.action { width: 84px; }
 
 .pi-excel-links-table th {
   position: sticky;
@@ -125,8 +111,6 @@
   font-weight: 700;
 }
 
-.pi-excel-links-table th:last-child { border-right: 0; }
-
 .pi-excel-links-table td {
   height: 31px;
   box-sizing: border-box;
@@ -138,31 +122,183 @@
   white-space: nowrap;
 }
 
-.pi-excel-links-table td:last-child { border-right: 0; }
 .pi-excel-links-table tbody tr:hover { background: #f6f9ff; }
-.pi-excel-links-folder, .pi-excel-links-usage { color: #667085; }
 
-.pi-excel-links-chip { font-weight: 700; }
-.pi-excel-links-chip.found { color: #15803d; }
-.pi-excel-links-chip.missing { color: #be123c; }
+/* Header cell: label, optional filter button, and the drag handle that sits
+   outside layout flow so resizing never moves the label. */
+.pi-excel-links-th {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 
-.pi-excel-links-action { text-align: center; }
-.pi-excel-links-action button {
-  height: 24px;
+.pi-excel-links-col-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-excel-links-filter-btn {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #cbd5e1;
+  padding: 0;
+  border: 1px solid var(--ar-color-border-strong);
   border-radius: 4px;
-  background: #fff;
-  color: #334155;
-  padding: 0 9px;
-  font: inherit;
+  background: var(--ar-color-surface);
+  color: var(--ar-color-text-muted);
   cursor: pointer;
 }
 
-.pi-excel-links-action button:hover { background: #f1f5f9; border-color: #aeb8ca; }
-.pi-excel-links-action button:disabled { opacity: .55; cursor: default; }
+.pi-excel-links-filter-btn:hover {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-text);
+}
+
+.pi-excel-links-filter-btn.active {
+  border-color: var(--ar-color-accent);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-accent);
+}
+
+.pi-excel-links-filter-btn svg { width: 11px; height: 11px; fill: currentColor; pointer-events: none; }
+
+/* Centered on the column border, out of layout flow. */
+.pi-excel-links-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -14px;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 4;
+}
+
+.pi-excel-links-col-resizer:hover::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 5px;
+  border-left: 1px solid var(--ar-color-accent);
+}
+
+body.pi-excel-links-resizing-column,
+body.pi-excel-links-resizing-column * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* One row per usage, so the folder and the method type stay quiet next to the
+   two cells the reader acts on: the workbook and the object name. */
+.pi-excel-links-table tbody td.pi-excel-links-cell.folder,
+.pi-excel-links-table tbody td.pi-excel-links-cell.methodType {
+  color: var(--ar-color-text-muted);
+}
+
+/* The listing's Found/Missing verdict has no column of its own; a workbook
+   ArcRho Server cannot open is called out on its name. */
+.pi-excel-links-table tbody td.pi-excel-links-cell.workbook.missing {
+  color: var(--ar-color-danger);
+}
+
+.pi-excel-links-open {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ar-color-accent);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pi-excel-links-open:hover { text-decoration: underline; }
+.pi-excel-links-open:focus-visible { outline: 1px solid var(--ar-color-accent); outline-offset: 1px; }
+
+/* The row a context menu is open for stays highlighted while it is open. */
+.pi-excel-links-table tbody tr.context-target td { background: #eaf2ff; }
+/* Hidden until openContextMenu shows it; closeMenu clears that inline display. */
+.pi-excel-links-menu { display: none; width: 232px; max-width: min(232px, calc(100vw - 16px)); }
+
+/* Column filter popover: the dataset table's value-checkbox pattern, sized for
+   this window and positioned by openContextMenu. */
+.pi-excel-links-filter-popover {
+  position: fixed;
+  z-index: 10080;
+  display: none;
+  min-width: 210px;
+  max-width: 320px;
+  max-height: 360px;
+  padding: 8px;
+  border: 1px solid var(--ar-color-border-strong);
+  border-radius: 8px;
+  background: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
+}
+
+.pi-excel-links-filter-title {
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ar-color-border);
+  font-weight: 700;
+}
+
+.pi-excel-links-filter-search {
+  width: 100%;
+  height: 26px;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border: 1px solid var(--ar-color-border-strong);
+  border-radius: 4px;
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+  font: inherit;
+}
+
+.pi-excel-links-filter-search:focus {
+  outline: 2px solid var(--ar-color-focus-ring);
+  border-color: var(--ar-color-border-focus);
+}
+
+.pi-excel-links-filter-list {
+  max-height: 244px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.pi-excel-links-filter-option {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pi-excel-links-filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-excel-links-filter-option input[type="checkbox"] { width: 13px; height: 13px; flex: 0 0 auto; }
+.pi-excel-links-filter-empty { color: var(--ar-color-text-muted); padding: 4px 2px; }
 
 .pi-excel-links-state {
   position: absolute;

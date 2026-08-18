@@ -125,13 +125,13 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_berquist_sherman_method",
         ("project_name", "reserving_class", "method_type", "method_name"),
     ),
-    # Only the reserving-class scan is hosted. The workbooks it finds live on
-    # other file servers reached through drive letters the calling PC maps and
-    # the ArcRho Server host may not, so resolving each workbook's existence
-    # stays with the caller and never travels through this transport.
-    "excel_link_scan": WorkspaceReadKind(
+    # The whole listing is hosted, including whether each linked workbook can
+    # be opened. That answer is deliberately the server host's: a workbook a
+    # Client PC can see but ArcRho Server cannot is one no retarget or refresh
+    # can read, so reporting it as found would be a lie.
+    "excel_link_listing": WorkspaceReadKind(
         "excel_link_service",
-        "scan_reserving_class_excel_links",
+        "list_reserving_class_excel_links",
         ("project_name", "reserving_class"),
     ),
     "table_summary": WorkspaceReadKind(

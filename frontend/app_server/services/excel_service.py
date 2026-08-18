@@ -1,16 +1,54 @@
-"""Excel COM interop operations (win32com)."""
+"""Workbook reads (openpyxl) and the one COM interop action (open in Excel).
+
+Cell values and file stats are plain file reads of the workbook — no Excel
+installation is involved — so they run wherever the workbook is reachable.
+Only ``excel_open_workbook`` drives a desktop Excel through win32com.
+"""
 from __future__ import annotations
 
 import os
 import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 import openpyxl
 
 
 EXCEL_BATCH_MAX_WORKERS = 4
+
+
+def _item_field(item: Any, name: str) -> Any:
+    """Read one field of a batch item, which is a router model or a plain dict."""
+
+    if isinstance(item, Mapping):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
+def excel_workbook_readable(book_path: str) -> Dict[str, Any]:
+    """Report whether this process can open the workbook as an Excel file.
+
+    Answers for the machine it runs on: on ArcRho Server this is the truth
+    the Excel Link Manager reports and the retarget requires, and a path the
+    server cannot reach is refused rather than guessed at.
+    """
+
+    book = Path(str(book_path or "").strip())
+    if not str(book):
+        return {"ok": False, "error": "Workbook path is empty."}
+    try:
+        if not book.is_file():
+            return {"ok": False, "error": "The workbook was not found."}
+        wb = openpyxl.load_workbook(str(book), data_only=True, read_only=True)
+        wb.close()
+    except PermissionError:
+        return {"ok": False, "error": "The workbook is not readable (permission denied)."}
+    except OSError as exc:
+        return {"ok": False, "error": f"The workbook could not be opened: {exc.strerror or exc}"}
+    except Exception as exc:  # openpyxl raises its own zip/format errors
+        return {"ok": False, "error": f"The workbook could not be opened as an Excel file: {exc}"}
+    return {"ok": True}
 
 
 def excel_read_cell(book_path: str, sheet: str, cell: str) -> Dict[str, Any]:
@@ -40,12 +78,14 @@ def excel_read_cells_batch(items: list) -> Dict[str, Any]:
     groups: Dict[str, Dict[str, Any]] = {}
     result_keys: List[tuple[str, str, str]] = []
     for item in items:
-        resolved = str(Path(item.book_path).resolve())
+        resolved = str(Path(str(_item_field(item, "book_path") or "")).resolve())
         book_key = os.path.normcase(resolved)
-        cell_key = (book_key, str(item.sheet), str(item.cell).upper())
+        sheet = str(_item_field(item, "sheet") or "")
+        cell = str(_item_field(item, "cell") or "").upper()
+        cell_key = (book_key, sheet, cell)
         result_keys.append(cell_key)
         group = groups.setdefault(book_key, {"path": resolved, "items": {}})
-        group["items"].setdefault(cell_key, item)
+        group["items"].setdefault(cell_key, {"sheet": sheet, "cell": cell})
 
     def read_workbook(group: Dict[str, Any]) -> Dict[tuple[str, str, str], Dict[str, Any]]:
         book_path = str(group["path"])
@@ -61,10 +101,10 @@ def excel_read_cells_batch(items: list) -> Dict[str, Any]:
             wb = openpyxl.load_workbook(str(p), data_only=True, read_only=True)
             try:
                 for key, item in unique_items.items():
-                    if item.sheet not in wb.sheetnames:
-                        workbook_results[key] = {"ok": False, "error": f"Sheet not found: {item.sheet}"}
+                    if item["sheet"] not in wb.sheetnames:
+                        workbook_results[key] = {"ok": False, "error": f"Sheet not found: {item['sheet']}"}
                         continue
-                    val = wb[item.sheet][item.cell].value
+                    val = wb[item["sheet"]][item["cell"]].value
                     try:
                         numeric = float(val) if val is not None else None
                         workbook_results[key] = {"ok": True, "value": numeric}

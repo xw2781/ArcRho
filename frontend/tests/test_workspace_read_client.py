@@ -263,38 +263,38 @@ class RouteWiringTests(unittest.TestCase):
         self.assertEqual(capture.calls, [("table_summary", {"project_name": "Demo"})])
         self._assert_registered(capture)
 
-    def test_excel_link_scan_is_hosted_but_workbooks_resolve_on_this_pc(self) -> None:
-        # A remote scan carries no workbook existence; the linked workbooks sit
-        # on shares only the Client PC maps, so this process stats them.
+    def test_excel_link_listing_is_hosted_whole_including_workbook_existence(self) -> None:
+        # The listing is one hosted read: whether a workbook exists is answered
+        # by the server host, the machine that must open it for any retarget.
+        # This process never stats a workbook when the gateway answered.
         remote = _CaptureRead(
-            {"ok": True, "workbooks": [{"workbook_path": "Z:\\Actuarial\\Book.xlsx"}]},
+            {"ok": True, "workbooks": [{"workbook_path": "Z:\\Actuarial\\Book.xlsx", "exists": False}]},
             remote=True,
         )
         with (
             patch.object(excel_link_router.workspace_read_client, "run_workspace_read", remote),
-            patch.object(excel_link_router.excel_link_service.excel_service, "excel_file_mtimes_batch", return_value={"ok": True, "results": [{"ok": True, "mtime": 7.0}]}) as stats,
+            patch.object(excel_link_router.excel_link_service.excel_service, "excel_file_mtimes_batch") as stats,
         ):
             response = excel_link_router.excel_links_list(
                 ExcelLinkListRequest(project_name="Demo", reserving_class="COL")
             )
-        stats.assert_called_once_with(["Z:\\Actuarial\\Book.xlsx"])
-        self.assertTrue(response["workbooks"][0]["exists"])
-        self.assertEqual(response["workbooks"][0]["mtime"], 7.0)
+        stats.assert_not_called()
+        self.assertFalse(response["workbooks"][0]["exists"])
         self.assertEqual(
-            remote.calls, [("excel_link_scan", {"project_name": "Demo", "reserving_class": "COL"})]
+            remote.calls, [("excel_link_listing", {"project_name": "Demo", "reserving_class": "COL"})]
         )
         self._assert_registered(remote)
 
-        # Locally the route runs the same scan-only service function.
+        # Locally the route runs the same whole-listing service function.
         capture = _CaptureRead()
         with (
             patch.object(excel_link_router.workspace_read_client, "run_workspace_read", capture),
-            patch.object(excel_link_router.excel_link_service, "scan_reserving_class_excel_links", return_value={"ok": True, "workbooks": []}) as scan,
+            patch.object(excel_link_router.excel_link_service, "list_reserving_class_excel_links", return_value={"ok": True, "workbooks": []}) as listing,
         ):
             excel_link_router.excel_links_list(
                 ExcelLinkListRequest(project_name="Demo", reserving_class="COL")
             )
-        scan.assert_called_once_with("Demo", "COL")
+        listing.assert_called_once_with("Demo", "COL")
 
         # A blank identifier keeps the service's 400 instead of a contract error.
         hosted = _CaptureRead()
@@ -310,20 +310,31 @@ class RouteWiringTests(unittest.TestCase):
         local.assert_called_once()
         self.assertEqual(hosted.calls, [])
 
-    def test_excel_link_retarget_reuses_the_hosted_listing(self) -> None:
-        with patch.object(
-            excel_link_router.excel_link_service, "retarget_reserving_class_workbook",
-            return_value={"ok": True},
-        ) as retarget:
-            excel_link_router.excel_links_retarget(
-                ExcelLinkRetargetRequest(
-                    project_name="Demo",
-                    reserving_class="COL",
-                    old_workbook_path="Z:\\A\\Old.xlsx",
-                    new_workbook_path="Z:\\A\\New.xlsx",
-                )
-            )
-        self.assertIs(retarget.call_args.kwargs["listing"], excel_link_router._load_listing)
+    def test_excel_link_retarget_is_an_engine_hosted_save(self) -> None:
+        # The retarget never runs in this process: it is shipped to ArcRho
+        # Engine like every save, so the workbook is opened on the server host.
+        request = ExcelLinkRetargetRequest(
+            project_name="Demo",
+            reserving_class="COL",
+            old_workbook_path="Z:\\A\\Old.xlsx",
+            new_workbook_path="Z:\\A\\New.xlsx",
+        )
+        with (
+            patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save", return_value={"ok": True}) as hosted,
+            patch.object(excel_link_router.excel_link_service, "retarget_reserving_class_workbook") as local,
+        ):
+            self.assertTrue(excel_link_router.excel_links_retarget(request)["ok"])
+        local.assert_not_called()
+        hosted.assert_called_once_with(
+            "excel_link_retarget",
+            "Demo",
+            "COL",
+            args=["Demo", "COL", "Z:\\A\\Old.xlsx", "Z:\\A\\New.xlsx"],
+            kwargs={},
+        )
+        with patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save_plan", return_value={"ok": True}) as plan:
+            excel_link_router.plan_excel_links_retarget(request)
+        self.assertEqual(plan.call_args.kwargs["args"], hosted.call_args.kwargs["args"])
 
 
 if __name__ == "__main__":
