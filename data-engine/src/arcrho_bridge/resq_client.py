@@ -129,6 +129,25 @@ class ResQClient:
             progress_callback=progress_callback,
         )
 
+    def write_resq_reserving_class_sync(self, request, *, progress_callback=None):
+        """Run one canonical ArcRho/ResQ synchronization phase from this worker.
+
+        The session owns its own full-reserving-class COM connection and the
+        canonical JSON writers, exactly as the importer does, so this stays a
+        delegation rather than a second producer of persisted data.
+        """
+
+        # The canonical session creates its own COM objects, so initialize COM
+        # on this worker-owned thread before delegating to it.
+        self._ensure_com_initialized()
+
+        from arcrho_bridge.resq_sync_runner import run_reserving_class_sync
+
+        return run_reserving_class_sync(
+            request,
+            progress_callback=progress_callback,
+        )
+
     def write_dfm_payload(self, request):
         self._connect()
         try:

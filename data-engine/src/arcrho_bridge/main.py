@@ -41,6 +41,9 @@ try:
     from src.arcrho_bridge.resq_import_contract import (
         load_resq_reserving_class_import_contract,
     )
+    from src.arcrho_bridge.resq_sync_contract import (
+        load_resq_reserving_class_sync_contract,
+    )
     from src.arcrho_bridge.resq_client import ResQClient
     from src.utils import get_config_value, get_project_root, normalize_function_name, resolve_app_path
 except ModuleNotFoundError:
@@ -57,6 +60,9 @@ except ModuleNotFoundError:
     )
     from arcrho_bridge.resq_import_contract import (
         load_resq_reserving_class_import_contract,
+    )
+    from arcrho_bridge.resq_sync_contract import (
+        load_resq_reserving_class_sync_contract,
     )
     from arcrho_bridge.resq_client import ResQClient
     from utils import get_config_value, get_project_root, normalize_function_name, resolve_app_path
@@ -103,6 +109,22 @@ _RESQ_IMPORT_ALLOWED_EXPORT_MODES = frozenset(
 _RESQ_IMPORT_STATUS_VALUES = frozenset(RESQ_IMPORT_CONTRACT["status_values"])
 _RESQ_IMPORT_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _RESQ_IMPORT_INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
+
+# The synchronization queue is a sibling of the import queue served by this same
+# ResQ-connected worker. Its contract restates none of the worker's identity or
+# the queue's status vocabulary; it reads both from the import contract.
+RESQ_SYNC_CONTRACT = load_resq_reserving_class_sync_contract()
+_RESQ_SYNC_REQUEST_RELATIVE_DIR = RESQ_SYNC_CONTRACT["request_relative_dir"]
+_RESQ_SYNC_STATUS_RELATIVE_DIR = RESQ_SYNC_CONTRACT["status_relative_dir"]
+RESQ_SYNC_FUNCTION = RESQ_SYNC_CONTRACT["function"]
+RESQ_SYNC_CONTRACT_VERSION = RESQ_SYNC_CONTRACT["contract_version"]
+_RESQ_SYNC_REQUIRED_FIELDS = RESQ_SYNC_CONTRACT["required_request_fields"]
+_RESQ_SYNC_ALLOWED_PHASES = frozenset(RESQ_SYNC_CONTRACT["allowed_phases"])
+_RESQ_SYNC_SELECTION_FIELD = RESQ_SYNC_CONTRACT["selection_field"]
+RESQ_SYNC_ORPHANED_STATUS_MESSAGE = (
+    "The ArcRho Bridge stopped before this synchronization finished. Compare the "
+    "reserving class again to see what was applied."
+)
 
 
 def normalize_method_name(method_name):
@@ -156,6 +178,27 @@ def resq_import_status_path(request_id, server_root=None):
 
     normalized_id = _validate_resq_import_request_id(request_id)
     return resq_import_status_dir(server_root) / f"{normalized_id}.json"
+
+
+def resq_sync_request_dir(server_root=None):
+    root = Path(server_root) if server_root is not None else get_project_root()
+    path = root.joinpath(*_RESQ_SYNC_REQUEST_RELATIVE_DIR)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def resq_sync_status_dir(server_root=None):
+    root = Path(server_root) if server_root is not None else get_project_root()
+    path = root.joinpath(*_RESQ_SYNC_STATUS_RELATIVE_DIR)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def resq_sync_status_path(request_id, server_root=None):
+    """Return the deterministic status path for one accepted sync request."""
+
+    normalized_id = _validate_resq_import_request_id(request_id)
+    return resq_sync_status_dir(server_root) / f"{normalized_id}.json"
 
 
 def worker_instance_folder():
@@ -419,12 +462,38 @@ def _json_safe_status_value(value):
 def _write_resq_import_status(request, status, *, message="", progress=None, result=None):
     """Atomically publish the deterministic import status for ``request``."""
 
+    return _write_queue_status(
+        request,
+        status,
+        publish=_publish_resq_import_status,
+        label="import",
+        message=message,
+        progress=progress,
+        result=result,
+    )
+
+
+def _write_resq_sync_status(request, status, *, message="", progress=None, result=None):
+    """Atomically publish the deterministic sync status for ``request``."""
+
+    return _write_queue_status(
+        request,
+        status,
+        publish=_publish_resq_sync_status,
+        label="sync",
+        message=message,
+        progress=progress,
+        result=result,
+    )
+
+
+def _write_queue_status(request, status, *, publish, label, message="", progress=None, result=None):
     try:
         request_id = _validate_resq_import_request_id(request.get("RequestId"))
     except Exception as exc:
-        print(f"(error: could not resolve ResQ import status path: {exc})")
+        print(f"(error: could not resolve ResQ {label} status path: {exc})")
         return False
-    return _publish_resq_import_status(
+    return publish(
         request_id,
         status,
         message=message,
@@ -442,19 +511,74 @@ def _publish_resq_import_status(
     result=None,
     server_root=None,
 ):
-    """Atomically publish one status document for an accepted request id."""
+    """Atomically publish one status document for an accepted import request id."""
+
+    return _publish_queue_status(
+        request_id,
+        status,
+        status_path_of=resq_import_status_path,
+        contract_version=RESQ_IMPORT_CONTRACT_VERSION,
+        label="import",
+        message=message,
+        progress=progress,
+        result=result,
+        server_root=server_root,
+    )
+
+
+def _publish_resq_sync_status(
+    request_id,
+    status,
+    *,
+    message="",
+    progress=None,
+    result=None,
+    server_root=None,
+):
+    """Atomically publish one status document for an accepted sync request id."""
+
+    return _publish_queue_status(
+        request_id,
+        status,
+        status_path_of=resq_sync_status_path,
+        contract_version=RESQ_SYNC_CONTRACT_VERSION,
+        label="sync",
+        message=message,
+        progress=progress,
+        result=result,
+        server_root=server_root,
+    )
+
+
+def _publish_queue_status(
+    request_id,
+    status,
+    *,
+    status_path_of,
+    contract_version,
+    label,
+    message="",
+    progress=None,
+    result=None,
+    server_root=None,
+):
+    """Atomically publish one status document for an accepted request id.
+
+    Both ResQ queues report through the same document shape, so a client that
+    can poll an import can poll a synchronization with no second reader.
+    """
 
     if status not in _RESQ_IMPORT_STATUS_VALUES:
-        raise ValueError(f"Invalid ResQ import status: {status!r}")
+        raise ValueError(f"Invalid ResQ {label} status: {status!r}")
 
     try:
-        status_path = resq_import_status_path(request_id, server_root)
+        status_path = status_path_of(request_id, server_root)
     except Exception as exc:
-        print(f"(error: could not resolve ResQ import status path: {exc})")
+        print(f"(error: could not resolve ResQ {label} status path: {exc})")
         return False
 
     payload = {
-        "contract_version": RESQ_IMPORT_CONTRACT_VERSION,
+        "contract_version": contract_version,
         "status": status,
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "request_id": request_id,
@@ -474,9 +598,9 @@ def _publish_resq_import_status(
     try:
         if write_json(status_path, payload):
             return True
-        print(f"(error: could not write ResQ import status to {status_path})")
+        print(f"(error: could not write ResQ {label} status to {status_path})")
     except Exception as exc:
-        print(f"(error: could not write ResQ import status to {status_path}: {exc})")
+        print(f"(error: could not write ResQ {label} status to {status_path}: {exc})")
     return False
 
 
@@ -508,13 +632,61 @@ def reconcile_orphaned_resq_import_statuses(
     Returns the request ids this call reported as failed.
     """
 
+    return _reconcile_orphaned_statuses(
+        server_root,
+        status_dir_of=resq_import_status_dir,
+        publish=_publish_resq_import_status,
+        message=RESQ_IMPORT_ORPHANED_STATUS_MESSAGE,
+        label="import",
+        on_reconciled=_discard_abandoned_import_job,
+        max_age_seconds=max_age_seconds,
+        now=now,
+    )
+
+
+def reconcile_orphaned_resq_sync_statuses(
+    server_root=None,
+    *,
+    max_age_seconds=RESQ_IMPORT_STATUS_STALE_SECONDS,
+    now=None,
+):
+    """Close out ``processing`` synchronizations no live worker is renewing.
+
+    A synchronization owns no staging folder, so nothing has to be reclaimed
+    here: the apply phase's own lease expires on its own, and every write it
+    completed before the worker died is already reported by its results.
+    """
+
+    return _reconcile_orphaned_statuses(
+        server_root,
+        status_dir_of=resq_sync_status_dir,
+        publish=_publish_resq_sync_status,
+        message=RESQ_SYNC_ORPHANED_STATUS_MESSAGE,
+        label="synchronization",
+        on_reconciled=None,
+        max_age_seconds=max_age_seconds,
+        now=now,
+    )
+
+
+def _reconcile_orphaned_statuses(
+    server_root,
+    *,
+    status_dir_of,
+    publish,
+    message,
+    label,
+    on_reconciled=None,
+    max_age_seconds=RESQ_IMPORT_STATUS_STALE_SECONDS,
+    now=None,
+):
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be non-negative.")
 
     try:
-        folder = resq_import_status_dir(server_root)
+        folder = status_dir_of(server_root)
     except Exception as exc:
-        print(f"(error: could not open the ResQ import status folder: {exc})")
+        print(f"(error: could not open the ResQ {label} status folder: {exc})")
         return ()
 
     observed_at = time.time() if now is None else float(now)
@@ -527,7 +699,7 @@ def reconcile_orphaned_resq_import_statuses(
         except OSError:
             continue
         except Exception:
-            # An unreadable status is not evidence of an abandoned import.
+            # An unreadable status is not evidence of abandoned work.
             continue
         if not isinstance(payload, dict) or payload.get("status") != "processing":
             continue
@@ -536,17 +708,18 @@ def reconcile_orphaned_resq_import_statuses(
             request_id = _validate_resq_import_request_id(request_id)
         except Exception:
             continue
-        if _publish_resq_import_status(
+        if publish(
             request_id,
             "error",
-            message=RESQ_IMPORT_ORPHANED_STATUS_MESSAGE,
+            message=message,
             server_root=server_root,
         ):
             reconciled.append(request_id)
-            _discard_abandoned_import_job(request_id, server_root)
+            if on_reconciled is not None:
+                on_reconciled(request_id, server_root)
     if reconciled:
         print(
-            f"Closed {len(reconciled)} interrupted ResQ import(s): "
+            f"Closed {len(reconciled)} interrupted ResQ {label}(s): "
             + ", ".join(reconciled)
         )
     return tuple(reconciled)
@@ -648,6 +821,9 @@ class BridgeRequestHandler(FileSystemEventHandler):
         if function_name == RESQ_IMPORT_FUNCTION:
             self._process_resq_import_request(request)
             return True
+        if function_name == RESQ_SYNC_FUNCTION:
+            self._process_resq_sync_request(request)
+            return True
 
         try:
             if function_name == "DFM":
@@ -719,11 +895,64 @@ class BridgeRequestHandler(FileSystemEventHandler):
 
         _write_resq_import_status(request, "success", result=result)
 
-    def _start_import_heartbeat(self, request):
-        """Keep the worker and its import status alive during ResQ COM work."""
+    def _process_resq_sync_request(self, request):
+        """Run one queued ArcRho/ResQ synchronization phase for a client macro.
+
+        The claim, status, and heartbeat protocol is the import queue's, so a
+        macro that already knows how to wait for a Bridge import needs no
+        second reader to wait for a synchronization.
+        """
 
         try:
-            status_path = resq_import_status_path(request.get("RequestId"))
+            _validate_resq_import_request_id(request.get("RequestId"))
+        except Exception:
+            return
+
+        if not _write_resq_sync_status(request, "processing"):
+            return
+
+        try:
+            self._validate_resq_sync_request(request)
+        except Exception as exc:
+            _write_resq_sync_status(request, "error", message=exc)
+            return
+
+        def publish_progress(progress):
+            _write_resq_sync_status(request, "processing", progress=progress)
+
+        heartbeat_stop, heartbeat_thread = self._start_import_heartbeat(
+            request,
+            status_path_of=resq_sync_status_path,
+        )
+        try:
+            try:
+                result = self.client.write_resq_reserving_class_sync(
+                    request,
+                    progress_callback=publish_progress,
+                )
+            except Exception as exc:
+                status_result = getattr(exc, "status_result", None)
+                _write_resq_sync_status(
+                    request,
+                    "error",
+                    message=exc,
+                    result=status_result if isinstance(status_result, dict) else None,
+                )
+                return
+        finally:
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(timeout=IMPORT_HEARTBEAT_INTERVAL_SECONDS)
+
+        _write_resq_sync_status(request, "success", result=result)
+
+    def _start_import_heartbeat(self, request, *, status_path_of=None):
+        """Keep the worker and its queued status alive during ResQ COM work."""
+
+        resolve = status_path_of or resq_import_status_path
+        try:
+            status_path = resolve(request.get("RequestId"))
         except Exception:
             status_path = None
         if not callable(self._worker_heartbeat) and status_path is None:
@@ -812,6 +1041,67 @@ class BridgeRequestHandler(FileSystemEventHandler):
                 + ", ".join(supplied_paths)
             )
 
+    def _validate_resq_sync_request(self, request):
+        if str(request.get("Function") or "").strip() != RESQ_SYNC_FUNCTION:
+            raise ValueError(f"Function must be {RESQ_SYNC_FUNCTION}.")
+
+        version = request.get("ContractVersion")
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError(
+                f"ContractVersion must be the integer {RESQ_SYNC_CONTRACT_VERSION}."
+            )
+        if version != RESQ_SYNC_CONTRACT_VERSION:
+            raise ValueError(
+                f"Unsupported ContractVersion {version!r}; expected "
+                f"{RESQ_SYNC_CONTRACT_VERSION}."
+            )
+
+        _validate_resq_import_request_id(request.get("RequestId"))
+        missing = []
+        for key in _RESQ_SYNC_REQUIRED_FIELDS:
+            if key in {"Function", "ContractVersion", "RequestId"}:
+                continue
+            value = request.get(key)
+            if not isinstance(value, str) or not value.strip():
+                missing.append(key)
+            else:
+                request[key] = value.strip()
+        if missing:
+            raise ValueError("Missing request field(s): " + ", ".join(missing))
+
+        request["ProjectName"] = _validate_resq_import_project_name(
+            request["ProjectName"]
+        )
+        request["Path"] = _validate_resq_import_rc_path(request["Path"])
+        request["Phase"] = request["Phase"].casefold()
+        if request["Phase"] not in _RESQ_SYNC_ALLOWED_PHASES:
+            raise ValueError(
+                "Phase must be one of: "
+                + ", ".join(sorted(_RESQ_SYNC_ALLOWED_PHASES))
+                + "."
+            )
+        # Only the apply phase carries a selection, and it must carry one: a
+        # writing request with no reviewed rows is a client bug, not a no-op.
+        selection = request.get(_RESQ_SYNC_SELECTION_FIELD)
+        if request["Phase"] == "apply":
+            if not isinstance(selection, list) or not selection:
+                raise ValueError(
+                    f"{_RESQ_SYNC_SELECTION_FIELD} must list the accepted review rows."
+                )
+        elif selection is not None:
+            raise ValueError(
+                f"A preview request must not supply {_RESQ_SYNC_SELECTION_FIELD}."
+            )
+
+        supplied_paths = [
+            key for key in _RESQ_IMPORT_FORBIDDEN_PATH_FIELDS if request.get(key)
+        ]
+        if supplied_paths:
+            raise ValueError(
+                "ResQ synchronization request must not supply path field(s): "
+                + ", ".join(supplied_paths)
+            )
+
     def _validate_request(self, request):
         missing = [
             key
@@ -871,15 +1161,19 @@ def run_bridge_worker():
     observer = Observer()
     legacy_request_folder = request_dir()
     import_request_folder = resq_import_request_dir()
+    sync_request_folder = resq_sync_request_dir()
     observer.schedule(handler, str(legacy_request_folder), recursive=False)
     observer.schedule(handler, str(import_request_folder), recursive=False)
+    observer.schedule(handler, str(sync_request_folder), recursive=False)
     observer.start()
     # A worker that was terminated mid-import left its status claiming
     # ``processing`` forever. Close those out before claiming new work, so the
     # UI stops waiting on an import that no process is running.
     reconcile_orphaned_resq_import_statuses()
+    reconcile_orphaned_resq_sync_statuses()
     handler.process_pending(legacy_request_folder)
     handler.process_pending(import_request_folder)
+    handler.process_pending(sync_request_folder)
     last_request_scan = time.monotonic()
 
     try:
@@ -898,14 +1192,15 @@ def run_bridge_worker():
             client.disconnect_if_idle()
             publish_worker_heartbeat()
             # Watchdog events are opportunistic on a mapped/UNC share. Poll the
-            # two request folders as well; atomic claim still guarantees that
-            # only one bridge worker handles any request.
+            # request folders as well; atomic claim still guarantees that only
+            # one bridge worker handles any request.
             if (
                 handler.consume_scan_request()
                 or time.monotonic() - last_request_scan >= REQUEST_POLL_INTERVAL_SECONDS
             ):
                 handler.process_pending(legacy_request_folder)
                 handler.process_pending(import_request_folder)
+                handler.process_pending(sync_request_folder)
                 last_request_scan = time.monotonic()
             time.sleep(1)
     except KeyboardInterrupt:

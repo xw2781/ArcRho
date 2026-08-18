@@ -110,21 +110,42 @@ claim that unsupported method fields are byte-for-byte equivalent.
 
 ## Runtime constraints
 
-The macro uses `ResQ3Automation.ResQApplication` directly from the ArcRho
-app-server process, using the configured ResQ connection and credentials. ResQ
-and its COM automation runtime must therefore be installed and usable on the
-machine running ArcRho, and that account must have permission to read and save
-the selected ResQ project. This is not a Bridge-hosted operation for client PCs
-without ResQ. The active ArcRho window must also have no unsaved dataset or
-method changes before the interactive macro will proceed.
+ResQ automation exists only where ResQ itself is installed, which is usually not
+the machine ArcRho runs on. The macro therefore owns no ResQ session: it
+publishes logical requests to the shared Bridge queue under
+`requests\RPC bridgeesq_reserving_class_sync\`, and a ResQ-connected ArcRho
+Bridge worker runs the canonical session
+(`python-api/migration/resq_migration/sync_session.py`) on its behalf. Any
+Client PC can therefore synchronize, provided some machine is running ResQ with
+ArcRho open; the macro refuses before publishing anything when no ResQ-connected
+worker heartbeat is live, and says so rather than failing on a COM error.
 
-The shared macro publisher also copies the canonical migration Python runtime
-to an immutable release under `E:\ArcRho Server\shared\python-api\releases`
-and atomically switches `shared\python-api\current.json`. A Client PC loads
-this read-only support bundle through its ArcRho Server mapping, so it does not
-need the development repository. Publishing only the macro file without that
-support bundle is incomplete.
+The queue carries logical identifiers only. The server root, queue folders, and
+status path are derived by each side from its own ArcRho Server root, so no
+producer-local mapped-drive path is ever accepted. Progress and the terminal
+result are published to `statuses\<RequestId>.json`, which the macro polls.
 
-For read-only automation, call `sync_reserving_class_with_resq(...)` without a
-selection; it returns `review_required` and a serializable preview. Supplying
-row IDs or a selection callback authorizes only those reviewed, enabled rows.
+The session runs in two phases, one request each:
+
+- `preview` is read-only. It returns the review rows together with the
+  `signature` of each observation.
+- `apply` receives the accepted rows *with those signatures*, takes the same
+  reserving-class job lease a ResQ import takes -- so a synchronization and an
+  import can never write one reserving class at the same time -- and writes only
+  when every reviewed signature still matches a freshly observed plan. Because
+  the reviewed signature travels with the request, a change made while the
+  review table was open is caught; the old single-process macro could only
+  compare two observations taken seconds apart inside one call.
+
+The Bridge runs its frozen copy of the session and of the ResQ exporter
+(`arcrho_bridge/bundled_sources.py` owns that list), so an edit to either has no
+effect on a synchronization until the Bridge is rebuilt and redeployed. The
+worker refuses a bundle whose `SYNC_SESSION_API_VERSION` it was not built
+against rather than driving it.
+
+The active ArcRho window must have no unsaved dataset or method changes before
+the interactive macro will proceed.
+
+For read-only automation, call `resq_migration.sync_session.preview_sync(...)`;
+`apply_sync(...)` authorizes only the reviewed rows handed to it, each with the
+signature the preview reported.

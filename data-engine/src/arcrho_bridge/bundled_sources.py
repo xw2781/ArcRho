@@ -53,6 +53,8 @@ class BundledSource:
     @property
     def import_root(self) -> Path:
         """The repository directory to put on ``sys.path`` for this tree."""
+        if self.source.is_file():
+            return self.source.parent
         return self.source.parent if self.is_package else self.source
 
 
@@ -63,6 +65,14 @@ BUNDLED_SOURCES: tuple[BundledSource, ...] = (
         REPO_ROOT / "frontend" / "app_server",
         Path("frontend") / "app_server",
         is_package=True,
+    ),
+    # The reserving-class synchronization session drives ResQ through the same
+    # exporter the Export macro uses. Only that one macro file is frozen, and
+    # it lands beside the migration folder so the bundle reproduces the layout
+    # the shared support release publishes for Client PCs.
+    BundledSource(
+        REPO_ROOT / "python-api" / "macros" / "export_reserving_class_to_resq.py",
+        Path("python-api") / "macros",
     ),
 )
 

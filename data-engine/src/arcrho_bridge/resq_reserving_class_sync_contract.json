@@ -1,0 +1,34 @@
+{
+  "contract_version": 1,
+  "function": "SyncResQReservingClass",
+  "request_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_sync",
+    "requests"
+  ],
+  "status_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_sync",
+    "statuses"
+  ],
+  "required_request_fields": [
+    "Function",
+    "ContractVersion",
+    "RequestId",
+    "ProjectName",
+    "Path",
+    "UserName",
+    "Phase"
+  ],
+  "allowed_phases": [
+    "preview",
+    "apply"
+  ],
+  "selection_field": "SelectedRows",
+  "selection_row_fields": [
+    "Id",
+    "Signature"
+  ]
+}

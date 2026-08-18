@@ -38,7 +38,9 @@ ENTRY_PY = BASE_DIR / "main.py"
 APP_NAME = component_app_name("bridge")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Engine.ico"
 RESQ_IMPORT_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_import_contract.json"
-RESQ_IMPORT_CONTRACT_BUNDLE_TARGET = "arcrho_bridge"
+RESQ_SYNC_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_sync_contract.json"
+RESQ_CONTRACT_BUNDLE_TARGET = "arcrho_bridge"
+RESQ_CONTRACT_FILES = (RESQ_IMPORT_CONTRACT_FILE, RESQ_SYNC_CONTRACT_FILE)
 
 BUILD_DIR = BUILD_ROOT / "build"
 SPEC_DIR = BUILD_ROOT / "spec"
@@ -99,6 +101,7 @@ def validate_resq_import_environment():
         "import sys; "
         f"sys.path[:0] = {repr([str(path) for path in import_paths])}; "
         "from resq_migration.engine import get_engine_processing_provenance; "
+        "from resq_migration.sync_session import build_runtime; "
         "from app_server.services.data_processing_rules_service import "
         "get_processing_provenance; "
         + "; ".join(f"import {name}" for name in CANONICAL_HIDDEN_IMPORTS)
@@ -109,14 +112,15 @@ def validate_resq_import_environment():
 
 def build_exe():
     for bundled in BUNDLED_SOURCES:
-        if not bundled.source.is_dir():
+        if not bundled.source.exists():
             raise FileNotFoundError(
                 f"Canonical ResQ import bundle source was not found: {bundled.source}"
             )
-    if not RESQ_IMPORT_CONTRACT_FILE.is_file():
-        raise FileNotFoundError(
-            f"ResQ reserving-class import contract was not found: {RESQ_IMPORT_CONTRACT_FILE}"
-        )
+    for contract_file in RESQ_CONTRACT_FILES:
+        if not contract_file.is_file():
+            raise FileNotFoundError(
+                f"ResQ reserving-class queue contract was not found: {contract_file}"
+            )
     for module_name in CANONICAL_HIDDEN_IMPORTS:
         canonical_module = CANONICAL_MODULE_ROOT / f"{module_name}.py"
         if not canonical_module.is_file():
@@ -156,6 +160,8 @@ def build_exe():
         "app_server.services.audit_service",
         "--hidden-import",
         "arcrho_bridge.resq_import_runner",
+        "--hidden-import",
+        "arcrho_bridge.resq_sync_runner",
         f"--icon={ICON}",
         "--add-data",
         f"{ICON};.",
@@ -164,8 +170,11 @@ def build_exe():
             for bundled in BUNDLED_SOURCES
             for argument in ("--add-data", f"{bundled.source};{bundled.target}")
         ],
-        "--add-data",
-        f"{RESQ_IMPORT_CONTRACT_FILE};{RESQ_IMPORT_CONTRACT_BUNDLE_TARGET}",
+        *[
+            argument
+            for contract_file in RESQ_CONTRACT_FILES
+            for argument in ("--add-data", f"{contract_file};{RESQ_CONTRACT_BUNDLE_TARGET}")
+        ],
         "--noconsole",
         "--clean",
         "--name",

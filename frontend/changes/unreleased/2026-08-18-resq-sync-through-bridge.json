@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "workflow",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ now runs its ResQ session on a ResQ-connected ArcRho Bridge worker, so it works from a computer that does not have ResQ installed.",
+  "details": [
+    "The macro publishes logical requests to a shared Bridge queue and shows what the worker reports; it no longer opens a ResQ COM session of its own, which used to fail with 'Invalid class string' on any machine without ResQ.",
+    "When no ResQ-connected Bridge worker is live, the macro says so before publishing anything instead of failing part way with a COM traceback.",
+    "The review table is unchanged, and an accepted row is now rechecked against the exact observation it was reviewed under, so a change made while the review window was open is caught rather than written over.",
+    "A synchronization takes the same reserving-class claim a ResQ import takes, so the two can no longer write one reserving class at the same time."
+  ]
+}
