@@ -24,6 +24,7 @@ from watchdog.observers import Observer
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
 from arcrho_engine_save_contract import SAVE_JOB_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
+from arcrho_source_refresh_contract import SOURCE_REFRESH_FUNCTION
 from utils import get_config_value, get_project_root, normalize_function_name
 
 os.environ.setdefault("ARCRHO_ROOT", str(get_project_root()))
@@ -60,6 +61,9 @@ from arcrho_engine.dependent_propagation import (
 )
 from arcrho_engine.project_duplication import (
     process_durable_project_duplication_request,
+)
+from arcrho_engine.source_table_refresh import (
+    process_durable_source_refresh_request,
 )
 from arcrho_engine.save_jobs import process_hosted_save_request
 
@@ -148,6 +152,7 @@ class RequestHandler(FileSystemEventHandler):
         duplication_queue_capacity: int = 1,
         propagation_queue_capacity: int = 1,
         hosted_save_queue_capacity: int = 4,
+        source_refresh_queue_capacity: int = 1,
     ):
         super().__init__()
         self._processing_lock = Lock()
@@ -167,6 +172,14 @@ class RequestHandler(FileSystemEventHandler):
             thread_name="arcrho-hosted-save-worker",
             execute=self._execute_hosted_save,
             queue_capacity=hosted_save_queue_capacity,
+        )
+        # A source refresh regenerates every engine dataset in a project and
+        # then walks each class's dependents. It gets its own worker so that
+        # long job never occupies the propagation slot a user's save needs.
+        self._source_refresh = _DurableJobDispatcher(
+            thread_name="arcrho-source-refresh-worker",
+            execute=self._execute_source_refresh,
+            queue_capacity=source_refresh_queue_capacity,
         )
 
     @property
@@ -234,13 +247,36 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as exc:
             print(f"(hosted save request error: {exc})")
 
+    def _schedule_source_refresh(self, file_path, arg) -> bool:
+        return self._source_refresh.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
+
+    def _execute_source_refresh(self, file_path, arg) -> None:
+        try:
+            process_durable_source_refresh_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(source refresh request error: {exc})")
+
     def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
         """Stop accepting durable jobs and optionally wait for active work."""
 
         duplication_stopped = self._duplication.shutdown(wait=wait, timeout=timeout)
         propagation_stopped = self._propagation.shutdown(wait=wait, timeout=timeout)
         hosted_save_stopped = self._hosted_save.shutdown(wait=wait, timeout=timeout)
-        return duplication_stopped and propagation_stopped and hosted_save_stopped
+        source_refresh_stopped = self._source_refresh.shutdown(
+            wait=wait, timeout=timeout
+        )
+        return (
+            duplication_stopped
+            and propagation_stopped
+            and hosted_save_stopped
+            and source_refresh_stopped
+        )
 
     def _process_event_path(self, event, file_path):
         if event.is_directory:
@@ -293,6 +329,12 @@ class RequestHandler(FileSystemEventHandler):
                 self._schedule_dependent_propagation(file_path, arg)
             else:
                 self._execute_dependent_propagation(file_path, arg)
+            return
+        if function_name_raw == SOURCE_REFRESH_FUNCTION:
+            if dispatch_duplication:
+                self._schedule_source_refresh(file_path, arg)
+            else:
+                self._execute_source_refresh(file_path, arg)
             return
         if function_name_raw == SAVE_JOB_FUNCTION:
             # Hosted saves claim by delete inside the executor; scheduling
@@ -450,9 +492,9 @@ def process_existing_requests(
 ) -> None:
     """Process requests that were queued while this Engine was offline.
 
-    The dependent-propagation queue lives in a subfolder (so the
-    orchestrator's loose-file garbage collection cannot touch it) that the
-    non-recursive watchdog observer never reports; this rescan is its only
+    The dependent-propagation and source-refresh queues live in subfolders (so
+    the orchestrator's loose-file garbage collection cannot touch them) that the
+    non-recursive watchdog observer never reports; this rescan is their only
     intake, on the same 5 s cycle that re-drives retained duplication files.
     """
 
@@ -460,6 +502,9 @@ def process_existing_requests(
     queued_paths = _queued_request_files(request_dir)
     queued_paths.extend(
         _queued_request_files(request_dir / "dependent_propagation" / "requests")
+    )
+    queued_paths.extend(
+        _queued_request_files(request_dir / "source_table_refresh" / "requests")
     )
     for queued_path in queued_paths:
         if queued_path.suffix.casefold() == ".json":

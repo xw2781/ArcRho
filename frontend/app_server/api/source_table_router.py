@@ -10,10 +10,16 @@ from app_server.schemas.source_table import (
     MssqlConnectionTestRequest,
     MssqlTableListRequest,
     SourceProfileSaveRequest,
+    SourceRefreshJobSubmitRequest,
     SourceTableImportRequest,
     SourceTableRefreshRequest,
 )
-from app_server.services import source_table_service
+from app_server.services import (
+    source_refresh_service,
+    source_table_service,
+    workspace_mutation_client,
+    workspace_read_client,
+)
 
 router = APIRouter()
 
@@ -127,3 +133,45 @@ def refresh_source_table(req: SourceTableRefreshRequest) -> Dict[str, Any]:
         raise
     except Exception as error:
         raise HTTPException(500, f"Failed to refresh the imported source table: {str(error)}")
+
+
+@router.get("/source_table/refresh_job/plan")
+def get_source_refresh_plan(project_name: str) -> Dict[str, Any]:
+    """Who imports this project's table, and whether a refresh is already running.
+
+    Deliberately not a hosted read: it may rewrite a CSV path saved in this
+    machine's drive letters into the share it stands for, and only this session
+    has the mapping that makes that translation possible.
+    """
+    try:
+        return source_refresh_service.describe_source_refresh_plan(project_name)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, f"Failed to inspect the source refresh: {str(error)}")
+
+
+@router.post("/source_table/refresh_job")
+def submit_source_refresh_job(req: SourceRefreshJobSubmitRequest) -> Dict[str, Any]:
+    kwargs = {
+        "project_name": req.project_name,
+        "request_id": req.request_id,
+        "import_source": bool(req.import_source),
+        "force": bool(req.force),
+        "refresh_dependents": bool(req.refresh_dependents),
+    }
+    return workspace_mutation_client.run_workspace_mutation(
+        "source_table_refresh_submit",
+        kwargs,
+        local=lambda: source_refresh_service.submit_source_table_refresh_job(**kwargs),
+    )
+
+
+@router.get("/source_table/refresh_job/status")
+def get_source_refresh_job_status(project_name: str, job_id: str = "") -> Dict[str, Any]:
+    kwargs = {"project_name": project_name, "job_id": job_id}
+    return workspace_read_client.run_workspace_read(
+        "source_refresh_status",
+        kwargs,
+        local=lambda: source_refresh_service.get_source_table_refresh_status(**kwargs),
+    )

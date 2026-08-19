@@ -37,6 +37,9 @@ Server/database pairs that connect successfully are recorded in a **server-share
 | `POST` | `/source_table/import` | `import_source_table` | `SourceTableImportRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.import_from_mssql` |
 | `POST` | `/source_table/profile` | `save_source_table_profile` | `SourceProfileSaveRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.get_source_table_state`, `source_table_service.save_source_profile` |
 | `POST` | `/source_table/refresh` | `refresh_source_table` | `SourceTableRefreshRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.ensure_master_table` |
+| `POST` | `/source_table/refresh_job` | `submit_source_refresh_job` | `SourceRefreshJobSubmitRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_refresh_service.submit_source_table_refresh_job`, `workspace_mutation_client.run_workspace_mutation` |
+| `GET` | `/source_table/refresh_job/plan` | `get_source_refresh_plan` | `str` | - | `source_refresh_service.describe_source_refresh_plan` |
+| `GET` | `/source_table/refresh_job/status` | `get_source_refresh_job_status` | `str` | - | `source_refresh_service.get_source_table_refresh_status`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/source_table/tables` | `list_source_table_candidates` | `MssqlTableListRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.list_mssql_tables` |
 | `POST` | `/source_table/test_connection` | `test_source_table_connection` | `MssqlConnectionTestRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.test_mssql_connection` |
 <!-- AUTO-GEN:END -->

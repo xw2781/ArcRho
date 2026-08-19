@@ -27,7 +27,7 @@ A free-form (non-date-role) numeric `distribution` is shaped for reading, not fo
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/table_summary` | `get_table_summary` | `str` | - | `table_summary_service.get_table_summary`, `workspace_read_client.run_workspace_read` |
-| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `field_mapping_service.load_date_role_fields`, `reserving_class_service.refresh_reserving_class_values`, `table_summary_service.discard_cached_summary`, `table_summary_service.generate_table_summary`, `table_summary_service.resolve_master_table`, `table_summary_service.write_summary_cache` |
+| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `table_summary_service.refresh_table_summary` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

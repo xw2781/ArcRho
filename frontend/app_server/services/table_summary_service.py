@@ -155,6 +155,63 @@ def get_table_summary(project_name: str) -> Dict[str, Any]:
         raise HTTPException(500, f"Error reading file: {str(e)}")
 
 
+def refresh_table_summary(
+    project_name: str,
+    *,
+    refresh_reserving: bool = False,
+    import_source: bool = True,
+) -> Dict[str, Any]:
+    """Re-import the source table, then rebuild everything summarized from it.
+
+    This is the whole "the raw data changed" step, in one place, because both
+    the Client PC route and the Engine-hosted refresh job must produce exactly
+    the same caches. ``import_source=False`` skips the re-import for a job whose
+    master copy was already replaced, and still rebuilds the derived caches.
+    """
+
+    name = str(project_name or "").strip()
+    if not name:
+        raise HTTPException(400, "project_name is required")
+
+    # A refresh re-imports a CSV-sourced project so the master copy matches the
+    # external file before the summary is regenerated.
+    master_path = (
+        resolve_master_table(name, force=True)
+        if import_source
+        else resolve_master_table(name, force=False)
+    )
+    cache_path = config.get_table_summary_cache_path(name)
+    # The re-import advanced the imported table's modification time, so the
+    # cached payload is stale now.
+    cache_cleared = discard_cached_summary(cache_path)
+
+    summary = generate_table_summary(
+        master_path, field_mapping_service.load_date_role_fields(name)
+    )
+    summary["from_cache"] = False
+    summary["cache_cleared"] = cache_cleared
+    write_summary_cache(cache_path, summary)
+
+    if refresh_reserving:
+        # Imported on use: reserving_class_service pulls in pandas/openpyxl and
+        # the dataset-type services, none of which a plain summary read needs.
+        from app_server.services import reserving_class_service
+
+        refresh_out = reserving_class_service.refresh_reserving_class_values(
+            project_name=name,
+            mapping_rows_override=None,
+            force=True,
+        )
+        summary["reserving_refreshed"] = True
+        summary["reserving_class_values_path"] = refresh_out.get("path", "")
+        summary["reserving_class_types_path"] = refresh_out.get("reserving_class_types_path", "")
+        summary["reserving_class_types_count"] = refresh_out.get("reserving_class_types_count", 0)
+        summary["missing_columns"] = refresh_out.get("missing_columns", [])
+    else:
+        summary["reserving_refreshed"] = False
+    return summary
+
+
 def _date_year_distribution(values: pd.Series) -> Optional[Dict[str, Any]]:
     """One linear bar per calendar year for a YYYYMM date-role column.
 

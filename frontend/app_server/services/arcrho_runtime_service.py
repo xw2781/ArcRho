@@ -2268,6 +2268,13 @@ def run_arcrho_tri(
     write_sidecar: bool = True,
     temporary_session_id: str | None = None,
     recalculate_dependents_on_cache_write: bool = True,
+    # A batch that regenerates every dataset in one reserving class rebuilds
+    # the class index once at the end instead of after each dataset: the
+    # rebuild reads every sidecar and method payload in the folder, so paying
+    # it per dataset is quadratic in the size of the class. A reader that
+    # arrives in between still gets a current index, because the persisted one
+    # is checked against the folder signature before it is served.
+    refresh_index: bool = True,
     calculation_stack: set[str] | None = None,
 ) -> Dict[str, Any]:
     calculation_key = _calculation_dataset_key(pairs)
@@ -2304,7 +2311,7 @@ def run_arcrho_tri(
         allow_derived=allow_derived,
         local_only=local_only,
         refresh_index_on_materialize=(
-            write_sidecar and not recalculate_dependents_on_cache_write
+            write_sidecar and refresh_index and not recalculate_dependents_on_cache_write
         ),
         allow_runtime_cache_provenance=not write_sidecar,
         processing_hash_getter=get_processing_hash,
@@ -2314,7 +2321,7 @@ def run_arcrho_tri(
         if local_result.get("status") == "cache_derived":
             if write_sidecar:
                 _write_dataset_sidecar(data_path, pairs)
-                if not recalculate_dependents_on_cache_write:
+                if refresh_index and not recalculate_dependents_on_cache_write:
                     _refresh_dataset_instance_index_after_cache_write(pairs)
             else:
                 out["cache_provenance_recorded"] = _require_runtime_cache_provenance(
@@ -2340,7 +2347,7 @@ def run_arcrho_tri(
         recalculate_dependents=bool(
             write_sidecar and recalculate_dependents_on_cache_write
         ),
-        refresh_index=bool(write_sidecar),
+        refresh_index=bool(write_sidecar and refresh_index),
     )
     if calculated_result is not None:
         return calculated_result
@@ -2423,7 +2430,7 @@ def run_arcrho_tri(
             if recalculate_dependents_on_cache_write
             else None
         )
-        if not recalculate_dependents_on_cache_write:
+        if refresh_index and not recalculate_dependents_on_cache_write:
             _refresh_dataset_instance_index_after_cache_write(pairs)
     except OSError as err:
         raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")

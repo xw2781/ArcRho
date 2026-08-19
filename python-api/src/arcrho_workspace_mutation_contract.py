@@ -84,6 +84,16 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "dataset_names"),
         list_args=("dataset_names",),
     ),
+    # Submitting a source-table refresh publishes two small files into the
+    # Engine's queue. It is idempotent because the client owns the request id:
+    # an id that already has a published status is returned as-is rather than
+    # queued a second time, so a lost response can never start a second import.
+    "source_table_refresh_submit": WorkspaceMutationKind(
+        "source_refresh_service",
+        "submit_source_table_refresh_job",
+        ("project_name", "request_id"),
+        ("import_source", "force", "refresh_dependents"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

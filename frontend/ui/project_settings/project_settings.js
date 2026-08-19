@@ -23,15 +23,16 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260816pssel1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260818srj1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260816pssel1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260816pssel1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260816pssel1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260816pssel1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260818srj1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260818srj1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260818srj1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260818srj1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260818srj1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -458,6 +459,21 @@ const projectOpsFeature = createProjectOpsFeature({
   reloadProjectData: (...args) => loadProjectData(...args),
 });
 
+const sourceRefreshFeature = createSourceRefreshFeature({
+  fetchImpl: fetch.bind(window),
+  setStatus,
+  publishShellProgress: (message) => window.parent.postMessage(message, window.location.origin),
+  readResponseErrorDetail,
+});
+
+/** Re-attach to a refresh this page left running, then show what it produced. */
+async function resumePendingSourceRefresh(projectName) {
+  const outcome = await sourceRefreshFeature.resumePending(projectName);
+  if (!outcome) return false;
+  await reloadSourceDataViews(projectName, { forceRefresh: false });
+  return !!outcome.ok;
+}
+
 window.__arcrho_request_close = () => projectOpsFeature.requestClose();
 
 async function resolveWorkspaceConfig(config = null) {
@@ -477,6 +493,7 @@ async function reloadProjectSettingsForWorkspace(config = null) {
   const workspaceConfig = await resolveWorkspaceConfig(config);
   const workspaceRoot = String(workspaceConfig?.workspace_root || "").trim();
   projectOpsFeature.setWorkspaceRoot(workspaceConfig);
+  sourceRefreshFeature.setWorkspaceRoot(workspaceConfig);
   await loadProjectData(DEFAULT_SOURCE);
   if (workspaceRoot) await projectOpsFeature.resumePendingDuplicateProject();
 }
@@ -731,6 +748,9 @@ function showProjectDetails(project) {
 
   // Load the summary of the table this project has imported.
   loadTableSummary(project.name);
+  // A refresh submitted before the page was reloaded is still running on the
+  // server; re-attach to it so its progress is visible again.
+  void resumePendingSourceRefresh(project.name);
   datasetTypesFeature?.loadDatasetTypes(project.name);
   reservingClassTypesFeature?.loadReservingClassTypes(project.name);
   dataProcessingRulesFeature?.loadRules(project.name);
@@ -897,16 +917,8 @@ async function forgetSourceConnection(server, database) {
   }
 }
 
-/**
- * Rebuild the project-owned master table from the saved import settings, then
- * refresh everything derived from it.
- */
-async function importSourceData(sourceType) {
-  const name = String(selectedProject?.name || "").trim();
-  if (!name) return { ok: false, error: "Select a project first." };
-
-  const isSql = sourceType === "mssql";
-  setStatus(`Importing the source table for "${name}"...`);
+/** Copy the external source into the project master table, in this process. */
+async function importSourceDataLocally(name, isSql) {
   showProjectOperationProgress(isSql ? "Importing table from SQL Server..." : "Importing CSV file...");
   try {
     const res = await fetch(isSql ? "/source_table/import" : "/source_table/refresh", {
@@ -917,19 +929,89 @@ async function importSourceData(sourceType) {
     if (!res.ok) return { ok: false, error: await readResponseErrorDetail(res) };
     const out = await res.json();
     sourceDataFeature.applySourceState(out);
-    const rowCount = Number(out?.last_import?.row_count || 0);
-    setStatus(`Imported ${rowCount.toLocaleString("en-US")} row(s) into "${name}".`);
-    await loadTableSummary(name, {
-      forceRefresh: true,
-      forceFieldMappingReload: true,
-      forceReservingClassTypesReload: true,
-    });
-    return { ok: true, rowCount };
+    return { ok: true, rowCount: Number(out?.last_import?.row_count || 0) };
   } catch (err) {
     return { ok: false, error: err.message || "The import failed." };
   } finally {
     hideProjectOperationProgress();
   }
+}
+
+/** Everything the page shows about the source table, reloaded after a refresh. */
+async function reloadSourceDataViews(name, { forceRefresh }) {
+  await loadSourceTableState(name);
+  await loadTableSummary(name, {
+    forceRefresh,
+    forceFieldMappingReload: true,
+    forceReservingClassTypesReload: true,
+  });
+}
+
+/**
+ * Rebuild the project-owned master table from the saved import settings, then
+ * refresh everything derived from it.
+ *
+ * The work runs on the ArcRho Server host as one Engine job: the import lands
+ * on local disk instead of crossing this machine twice, and the job continues
+ * into the project's dependency graph, regenerating every engine-built dataset
+ * and re-running the methods that depend on them. Only when the server cannot
+ * reach the configured source - a SQL Server profile, which authenticates as
+ * the caller, or a CSV path only this machine can open - does the copy stay
+ * here, and even then the dependent refresh still runs on the server.
+ *
+ * With no Engine available the whole operation falls back to the local import
+ * plus the lazy cache clear this page has always done.
+ */
+async function importSourceData(sourceType) {
+  const name = String(selectedProject?.name || "").trim();
+  if (!name) return { ok: false, error: "Select a project first." };
+  if (sourceRefreshFeature.isRunning()) return { ok: false, error: "A source table refresh is already running." };
+
+  const isSql = sourceType === "mssql";
+  const plan = await sourceRefreshFeature.loadPlan(name);
+  if (plan?.busy) {
+    return {
+      ok: false,
+      error: "A source table refresh is already running for this project. Wait for it to finish.",
+    };
+  }
+
+  // Importing has always meant "the raw data changed": this page used to
+  // delete every generated dataset cache so each one recomputed whenever it
+  // was next opened. The job rebuilds them instead, which touches the same
+  // objects and leaves none of them empty in the meantime.
+  const importOnServer = !isSql && !!plan?.server_can_import;
+  let rowCount = 0;
+  if (!importOnServer) {
+    const local = await importSourceDataLocally(name, isSql);
+    if (!local.ok) return local;
+    rowCount = local.rowCount;
+  }
+
+  const job = await sourceRefreshFeature.runJob(name, {
+    importSource: importOnServer,
+    refreshDependents: true,
+  });
+  if (job.unavailable) {
+    // No Engine: keep the behaviour this page has always had.
+    if (importOnServer) {
+      const local = await importSourceDataLocally(name, isSql);
+      if (!local.ok) return local;
+      rowCount = local.rowCount;
+    }
+    setStatus(
+      `Imported ${rowCount.toLocaleString("en-US")} row(s) into "${name}". `
+      + "ArcRho Engine is unavailable, so dependents will refresh when each object is opened.",
+    );
+    await reloadSourceDataViews(name, { forceRefresh: true });
+    return { ok: true, rowCount };
+  }
+  if (!job.ok) {
+    await reloadSourceDataViews(name, { forceRefresh: false });
+    return { ok: false, error: job.error };
+  }
+  await reloadSourceDataViews(name, { forceRefresh: false });
+  return { ok: true, rowCount: Number(job.result?.row_count || rowCount || 0) };
 }
 
 // ============ Table Summary ============

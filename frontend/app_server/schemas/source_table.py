@@ -49,3 +49,15 @@ class SourceTableImportRequest(BaseModel):
 class SourceTableRefreshRequest(BaseModel):
     project_name: str
     force: bool = False
+
+
+class SourceRefreshJobSubmitRequest(BaseModel):
+    project_name: str
+    # The client owns the request id so a retry after a lost response resumes
+    # the same job instead of starting a second refresh.
+    request_id: str
+    # False when the client already replaced the master copy itself, which is
+    # what a SQL Server profile or a CSV only this machine can reach requires.
+    import_source: bool = True
+    force: bool = True
+    refresh_dependents: bool = True

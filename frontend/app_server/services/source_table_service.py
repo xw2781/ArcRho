@@ -36,7 +36,9 @@ from arcrho_api.source_table_contract import (
     SOURCE_TYPE_MSSQL,
     SUPPORTED_MSSQL_AUTH_MODES,
     csv_identity,
+    import_source_path_is_shared,
     mssql_source_label,
+    normalize_import_source_path,
     normalize_mssql_profile,
     normalize_source_import,
     normalize_source_type,
@@ -129,7 +131,10 @@ def _save_configured_csv_path(project_name: str, csv_path: str) -> None:
         raise HTTPException(404, str(error))
     payload = _read_json_object(mapping_path)
     payload["project_name"] = project_name
-    payload["table_path"] = str(csv_path or "").strip()
+    # Saved as the share it stands for, never as this machine's drive letter:
+    # the ArcRho Server host performs the import for a shared path and has no
+    # such mapping of its own.
+    payload["table_path"] = normalize_import_source_path(csv_path)
     payload.setdefault("rows", [])
     payload["updated_at"] = _utc_now_text()
     try:
@@ -698,6 +703,46 @@ def get_source_table_state(project_name: str) -> Dict[str, Any]:
     state["driver_available"] = mssql_odbc.driver_available()
     state["supported_authentication"] = list(SUPPORTED_MSSQL_AUTH_MODES)
     return state
+
+
+def resolve_import_source_for_server(project_name: str) -> Dict[str, Any]:
+    """Report whether the ArcRho Server host can perform this project's import.
+
+    A CSV path saved before this contract existed - or saved by a client whose
+    drive mapping was not resolvable at the time - can still be this machine's
+    own drive letter, which the Engine cannot open. When this session does have
+    that mapping the saved value is rewritten to the share it stands for, so the
+    project stops carrying a machine-local path and the server can read it.
+
+    A SQL Server project is reported as not server-importable on purpose: the
+    import authenticates with the caller's Windows identity, and moving it to a
+    server service account would silently change who reads the table.
+    """
+
+    name = _require_project_name(project_name)
+    record = read_source_import(name)
+    source_type = normalize_source_type(record.get("source_type"))
+    configured = _configured_csv_path(name)
+    normalized = normalize_import_source_path(configured)
+    rewritten = bool(configured) and normalized != configured
+    if rewritten:
+        with _project_lock(name):
+            _save_configured_csv_path(name, normalized)
+        safe_append_project_audit_log(
+            project_name=name,
+            action="Rewrote the source CSV path as its network share path",
+        )
+    return {
+        "project_name": name,
+        "source_type": source_type,
+        "csv_path": normalized,
+        "csv_path_rewritten": rewritten,
+        "server_can_import": bool(
+            source_type == SOURCE_TYPE_CSV
+            and normalized
+            and import_source_path_is_shared(normalized)
+        ),
+    }
 
 
 def resolve_source_table_for_read(project_name: str) -> str:

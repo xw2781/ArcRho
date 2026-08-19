@@ -26,6 +26,9 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `project_settings` | `clear_generated_dataset_csv_caches` |
 | `POST` | `/reserving_class_values/refresh` | `reserving_class` | `refresh_reserving_class_values` |
 | `POST` | `/source_table/refresh` | `source_table` | `refresh_source_table` |
+| `POST` | `/source_table/refresh_job` | `source_table` | `submit_source_refresh_job` |
+| `GET` | `/source_table/refresh_job/plan` | `source_table` | `get_source_refresh_plan` |
+| `GET` | `/source_table/refresh_job/status` | `source_table` | `get_source_refresh_job_status` |
 | `GET` | `/table_summary` | `table_summary` | `get_table_summary` |
 | `POST` | `/table_summary/refresh` | `table_summary` | `refresh_table_summary` |
 <!-- AUTO-GEN:END -->

@@ -139,6 +139,16 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_table_summary",
         ("project_name",),
     ),
+    # Polling a source-refresh job over the mapped drive reads a file the
+    # server rewrote seconds ago, and Windows' directory cache can keep serving
+    # the previous copy for several seconds after a terminal status lands. The
+    # hosted read answers from the file the Engine actually wrote.
+    "source_refresh_status": WorkspaceReadKind(
+        "source_refresh_service",
+        "get_source_table_refresh_status",
+        ("project_name",),
+        ("job_id",),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

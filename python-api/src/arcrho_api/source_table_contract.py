@@ -81,6 +81,72 @@ def normalize_source_type(value: Any) -> str:
     return candidate if candidate in SOURCE_TYPES else SOURCE_TYPE_CSV
 
 
+# --- External source reachability ----------------------------------------
+# The configured CSV is the one path in this contract that names a machine the
+# workspace does not own. A Client PC browses to it as `Z:\...`; the ArcRho
+# Server host has no such mapping, so a path saved in the client's own drive
+# letters is unreadable by the Engine that now performs the import. Resolving
+# the letter to the share it stands for makes one saved path mean the same file
+# on every machine, which is also what the persisted-JSON rules require of any
+# value stored in project configuration.
+
+
+def _mapped_drive_target(drive: str) -> str:
+    """UNC target of one mapped Windows drive letter, or "" when unmapped."""
+
+    if os.name != "nt":
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return ""
+    try:
+        buffer_length = wintypes.DWORD(1024)
+        buffer = ctypes.create_unicode_buffer(buffer_length.value)
+        result = ctypes.windll.mpr.WNetGetConnectionW(
+            ctypes.c_wchar_p(drive),
+            buffer,
+            ctypes.byref(buffer_length),
+        )
+    except Exception:
+        return ""
+    if result != 0:
+        return ""
+    return _text(buffer.value)
+
+
+def normalize_import_source_path(csv_path: Any) -> str:
+    """Rewrite a mapped-drive CSV path as the UNC path it stands for.
+
+    A UNC path, an unmapped local path, or a path on a machine without drive
+    mappings is returned unchanged; this never invents a share that the caller's
+    own session does not already have.
+    """
+
+    clean = _text(csv_path)
+    if len(clean) < 2 or clean[1] != ":":
+        return clean
+    drive = clean[0].upper() + ":"
+    target = _mapped_drive_target(drive)
+    if not target:
+        return clean
+    remainder = clean[2:].lstrip("\\/")
+    return os.path.join(target.rstrip("\\/"), remainder) if remainder else target
+
+
+def import_source_path_is_shared(csv_path: Any) -> bool:
+    """Whether a saved CSV path names a location another machine can open.
+
+    A UNC path qualifies; a drive letter does not, because the letter is only
+    the caller's own mapping. Callers use this to decide whether the ArcRho
+    Server host can perform the import, or whether it has to stay on the client.
+    """
+
+    clean = _text(csv_path).replace("/", "\\")
+    return clean.startswith("\\\\")
+
+
 def normalize_mssql_auth(value: Any) -> str:
     candidate = _text(value).lower()
     return candidate if candidate in MSSQL_AUTH_MODES else MSSQL_AUTH_WINDOWS

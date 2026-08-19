@@ -224,6 +224,8 @@ def build_exe() -> None:
             "--hidden-import",
             "arcrho_workspace_mutation_contract",
             "--hidden-import",
+            "arcrho_source_refresh_contract",
+            "--hidden-import",
             "arcrho_engine_calculation_contract",
             "--hidden-import",
             "arcrho_project_duplication_contract",

@@ -17,6 +17,7 @@ for path in (SOURCE_ROOT, CANONICAL_SOURCE_ROOT):
 
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
 from arcrho_engine_save_contract import SAVE_JOB_KINDS
+from arcrho_source_refresh_contract import SOURCE_REFRESH_SERVICE_MODULES
 from build_runtime import ensure_python_310_venv, stage_deploy, swap_deploy
 from utils import (
     component_app_name,
@@ -85,13 +86,15 @@ def install_requirements():
 def _hosted_service_modules():
     """Every ``app_server.services`` module the frozen Engine must import.
 
-    The hosted-save kinds come from the canonical ``SAVE_JOB_KINDS`` registry,
-    so registering a new kind is enough for its module to be probed and
+    The hosted-save kinds come from the canonical ``SAVE_JOB_KINDS`` registry
+    and the source-refresh services from ``SOURCE_REFRESH_SERVICE_MODULES``, so
+    registering a new kind or step is enough for its module to be probed and
     bundled; the rest are the walk and legacy calculation executors.
     """
 
     modules = {module for module, _function in SAVE_JOB_KINDS.values()}
     modules.update({"calculated_dataset_service", "arcrho_runtime_service"})
+    modules.update(SOURCE_REFRESH_SERVICE_MODULES)
     return sorted(modules)
 
 
@@ -108,6 +111,7 @@ def validate_canonical_runtime_environment():
         )
         + "import arcrho_dependent_propagation_contract; "
         "import arcrho_engine_save_contract; "
+        "import arcrho_source_refresh_contract; "
         "import arcrho_engine_job_lease"
     )
     print("\n>>> Validating canonical dependent-propagation dependencies")
@@ -119,6 +123,7 @@ def build_exe():
         "arcrho_project_duplication_contract.py",
         "arcrho_dependent_propagation_contract.py",
         "arcrho_engine_save_contract.py",
+        "arcrho_source_refresh_contract.py",
         "arcrho_engine_job_lease.py",
     ):
         contract_module = CANONICAL_SOURCE_ROOT / module_name
@@ -146,6 +151,7 @@ def build_exe():
         "--hidden-import", "arcrho_project_duplication_contract",
         "--hidden-import", "arcrho_dependent_propagation_contract",
         "--hidden-import", "arcrho_engine_save_contract",
+        "--hidden-import", "arcrho_source_refresh_contract",
         "--hidden-import", "arcrho_engine_job_lease",
         *[
             argument

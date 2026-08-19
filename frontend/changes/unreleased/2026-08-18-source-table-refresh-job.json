@@ -1,0 +1,14 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Importing a project's source table now runs on ArcRho Server and refreshes every dataset and method that depends on it, with live progress.",
+  "details": [
+    "A CSV on a network share is copied by the server instead of being pulled through your PC from one share and pushed to another, and the table summary, reserving-class values, and header caches are rebuilt there too.",
+    "After the import the job walks the project's dependency graph: every engine-built dataset instance is regenerated and the DFM, Bornhuetter Ferguson, Cape Cod, Result Selection, and Bootstrap methods that use them are re-run, instead of each object recomputing whenever it is next opened.",
+    "A progress window reports the current stage and reserving class, and the job survives closing or reloading Project Settings: reopening the project re-attaches to the refresh still running on the server.",
+    "Saves into a reserving class the refresh is rewriting are held with the same message a dependent update already shows, and a second refresh for the same project is refused while one is running.",
+    "A SQL Server import, or a CSV only your PC can open, is still copied here; the dependent refresh runs on the server either way. With no ArcRho Engine available the import behaves exactly as it did before.",
+    "The CSV path saved in Project Settings is now stored as its network share path rather than your machine's drive letter, so every machine reads the same file."
+  ]
+}
