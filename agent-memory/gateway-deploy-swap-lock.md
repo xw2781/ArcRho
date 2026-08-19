@@ -35,3 +35,8 @@ files ("(1653 of 1653 files changed)" — no manifest yet), the swap succeeded, 
 the Gateway within a minute; deltas start once a slot with a manifest exists (2 warm-up deploys). Do not delete
 `.slot` folders or their manifest. Legacy `.ArcRho <App>.new` / `.old` orphans from the old scheme are not
 swept by the new code — remove them by hand once (`build_runtime.remove_tree_with_retry`).
+
+**The Bridge is the one component whose swap does not come free, and its retries are not enough.** 2026-08-19, two attempts through the Build Listener, both identical: `>>> Stopping the live ArcRho Bridge (apps.bridge.kill_all = True)`, then `Rename busy (ArcRho Bridge -> .ArcRho Bridge.prev)` through all 8 retries at 5 s each, then `PermissionError: [WinError 5]` and `Releasing the ArcRho Bridge (apps.bridge.kill_all = False)`. The Gateway and Engine swapped cleanly in the same session. The reason is structural rather than transient: bridges run **one per interactive ResQ session** (two users that night), each holding the deployed folder's executable, and the ~40 s retry window is not long enough for every session's process plus its ResQ COM connection to let go. A failed swap is safe — both users' bridge and bridge_worker heartbeats were fresh within a minute and the previous build kept serving — but the change simply does not land. Do not keep retrying; report it, and expect a Bridge deploy to need a window when no ResQ session is live.
+
+Related: [[remote-component-deploy]], [[bridge-restart-after-deploy]]
+
