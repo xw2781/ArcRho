@@ -11,7 +11,7 @@
 - [Bridge restart after deploy](bridge-restart-after-deploy.md) — after build_exe.py check apps.bridge.auto_create_instance (flips over time); if false, Start-Process the exe manually; bridges are per user session since 2026-08-07
 - [ResQ COM probe](resq-com-probe.md) — ResQ COM works only on the Dev PC (arcrho_bridge venv python + ResQ3Automation.ResQApplication); the Client PC has no ResQ install, so in-process COM macros fail there with 'Invalid class string'
 - [Dev UI cache and restart](arcrho-dev-ui-cache-restart.md) — in-app restart can't pick up frontend/ui edits; ARCRHO_UI_VERSION is pinned per supervisor, and ?v= must be bumped in every importer
-- [Theme CSS version pins](theme-css-version-pins.md) — bumping dark/high_contrast ?v= requires updating the pinned stamps in color_theme.test.mjs (splash, dfm, shared high-contrast stamp)
+- [Theme CSS version pins](theme-css-version-pins.md) — tests pin exact ?v= stamps: dark/high_contrast in color_theme.test.mjs, and ui_automation.js across all three shell importers in review_table.test.mjs
 - [Launching ArcRho detached](arcrho-launch-electron-detached.md) — use Win32_Process.Create + start_electron.bat; poll app_ui_ready.json (written once); crash logs in %APPDATA%\arcrho-electron\logs
 - [Frontend node test suite](frontend-node-test-suite.md) — run with node-portable + glob; 4 tests already fail at HEAD, baseline via git worktree before blaming a change
 - [Python test runner](python-test-runner.md) — no interpreter here has pytest; pip install --target into a repo-local .pytest-tools, and 6 python-api tests already fail at HEAD
