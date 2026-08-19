@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode code, Snowflake, and SQL Server editors now share one editor page, and database connection profiles moved to Settings > Database Connections.",
+  "details": [
+    "Run now runs the selected code when the editor has a selection and the whole file otherwise, so the separate Run Selection command is gone.",
+    "Run, Stop, and Restart carry notebook-style icons, and the Test and Format buttons were removed; connection testing moved into the connections dialog and SQL formatting stays an ArcBot skill.",
+    "The Snowflake and SQL Server editors gained the code editor's workspace explorer, file open/save, Save As, and changed-on-disk handling.",
+    "Settings > Database Connections adds, edits, renames, tests, and removes both SQL Server and Snowflake profiles in one dialog; open SQL editors pick up the change immediately.",
+    "SQL editors offer Reconnect: Snowflake closes its session so the next Run starts without its temporary tables, and SQL Server reports that every Run already opens a new connection."
+  ]
+}

@@ -583,18 +583,16 @@ test("shell submenu indicators use the shared SVG chevron instead of text glyphs
 });
 
 test("all Monaco owners choose the shared initial theme and Electron accepts computed theme paint", () => {
-  const codeEditor = read("../ui/arcode/code-editor/index.js");
+  // The code editor and both SQL editors create their Monaco editor through
+  // the one editor framework, so it is the owner checked for all three.
+  const editorFramework = read("../ui/arcode/shared/editor_framework.js");
   const notebookEditor = read("../ui/arcode/notebook-editor/core.js");
-  // Both SQL consoles create their Monaco editor through the shared console core.
-  const sqlConsole = read("../ui/arcode/shared/sql_console.js");
-  const editorOwners = [codeEditor, notebookEditor, sqlConsole];
+  const editorOwners = [editorFramework, notebookEditor];
   for (const owner of editorOwners) {
     assert.match(owner, /ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs"/);
     assert.doesNotMatch(owner, /theme:\s*"vs"/);
   }
-  for (const owner of [codeEditor, sqlConsole]) {
-    assert.match(owner, /const monacoTheme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";[\s\S]*theme:\s*monacoTheme/);
-  }
+  assert.match(editorFramework, /const monacoTheme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";[\s\S]*theme:\s*monacoTheme/);
   assert.match(notebookEditor, /monacoReady = true;[\s\S]*EDITOR_OPTIONS\.theme = window\.ArcRhoColorTheme\?\.getMonacoTheme\?\.\(\) \|\| "vs";/);
 
   const preload = read("../electron/preload.js");
@@ -668,14 +666,20 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260817a"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260817a"],
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260817a"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260816pssel1"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260818srj1"],
     ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260812dtformat2"],
-    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260816c"],
+    ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260818a"],
+    ["../ui/arcode/code-editor/index.js", "shared/editor_framework.js?v=20260818a"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],
-    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260817a"],
-    ["../ui/arcode/snowflake-console/index.js", "shared/sql_console.js?v=20260817a"],
-    ["../ui/arcode/sql-server-console/index.html", "sql-server-console/index.js?v=20260817a"],
-    ["../ui/arcode/sql-server-console/index.js", "shared/sql_console.js?v=20260817a"],
+    ["../ui/arcode/snowflake-console/index.html", "snowflake-console/index.js?v=20260818a"],
+    ["../ui/arcode/snowflake-console/index.js", "shared/sql_mode.js?v=20260818a"],
+    ["../ui/arcode/sql-server-console/index.html", "sql-server-console/index.js?v=20260818a"],
+    ["../ui/arcode/sql-server-console/index.js", "shared/sql_mode.js?v=20260818a"],
+    ["../ui/arcode/shared/sql_mode.js", "./editor_framework.js?v=20260818a"],
+    ["../ui/arcode/shared/sql_mode.js", "./sql_engines.js?v=20260818a"],
+    ["../ui/arcode/main.html", "main.js?v=20260818a"],
+    ["../ui/arcode/main.js", "database-connections/dialog.js?v=20260818a"],
+    ["../ui/arcode/database-connections/dialog.js", "../shared/sql_engines.js?v=20260818a"],
   ];
   for (const [path, reference] of expectedReferences) {
     assert.ok(read(path).includes(reference), `${path} loads ${reference}`);

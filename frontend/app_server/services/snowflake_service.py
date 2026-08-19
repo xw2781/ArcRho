@@ -7,6 +7,8 @@ import re
 import threading
 from typing import Any, Dict, List
 
+from fastapi import HTTPException
+
 from app_server import config
 from app_server.services.sql_console_results import clamp_row_limit, json_safe_cell
 
@@ -140,13 +142,61 @@ def load_connections() -> Dict[str, Any]:
 
 
 def save_connection(name: str, profile: Dict[str, Any]) -> Dict[str, Any]:
-    connection_name = _normalize_name(name)
+    """Add or update one profile.
+
+    `name` is the profile being edited, so an edit that changes the name
+    renames in place instead of leaving the old profile behind. This mirrors
+    `sql_server_service.save_connection`; the Database Connections dialog
+    edits both engines the same way.
+    """
+
+    previous_name = str(name or "").strip()
+    submitted_name = str((profile or {}).get("name") or "").strip() if isinstance(profile, dict) else ""
+    # The seeded example name is a fallback for reading a profile, never for
+    # naming one the user is adding.
+    connection_name = submitted_name or previous_name
+    if not connection_name:
+        raise HTTPException(400, "Connection name is required.")
+    normalized = _normalize_profile(profile, connection_name)
     existing = load_connections()["connections"]
-    existing[connection_name] = _normalize_profile(profile, connection_name)
-    payload = {"connections": existing}
-    _write_json(config.SNOWFLAKE_CONNECTIONS_PATH, payload)
-    _close_cached_connection(connection_name)
+    if previous_name and previous_name != connection_name:
+        existing.pop(previous_name, None)
+    existing[connection_name] = normalized
+    _write_json(config.SNOWFLAKE_CONNECTIONS_PATH, {"connections": existing})
+    # A rename leaves a session cached under the old name too.
+    for cached_name in {previous_name, connection_name} - {""}:
+        _close_cached_connection(cached_name)
     return load_connections()
+
+
+def delete_connection(connection: str) -> Dict[str, Any]:
+    name = str(connection or "").strip()
+    if not name:
+        raise HTTPException(400, "Connection name is required.")
+    existing = load_connections()["connections"]
+    if name not in existing:
+        raise HTTPException(404, f"Snowflake connection not found: {name}")
+    existing.pop(name)
+    _write_json(config.SNOWFLAKE_CONNECTIONS_PATH, {"connections": existing})
+    _close_cached_connection(name)
+    return load_connections()
+
+
+def reset_connection(connection: str = DEFAULT_CONNECTION_NAME) -> Dict[str, Any]:
+    """End the cached session for one profile.
+
+    A Snowflake session is reused across runs, so its temporary tables, current
+    database, and session settings survive until the session ends. Closing it
+    here means the next Run opens a new one with none of that state.
+    """
+
+    name = _normalize_name(connection)
+    _close_cached_connection(name)
+    return {
+        "ok": True,
+        "connection": name,
+        "message": f"Snowflake session closed for {name}. The next Run opens a new session.",
+    }
 
 
 def _connection_params(profile: Dict[str, str]) -> Dict[str, str]:

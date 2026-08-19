@@ -15,6 +15,8 @@ test("ArcRho and Arcode keep saving explicit after AutoSave removal", () => {
   const arcodeCss = read("../ui/arcode/main.css");
   const arcodeMain = read("../ui/arcode/main.js");
   const codeEditor = read("../ui/arcode/code-editor/index.js");
+  // Saving belongs to the editor framework every Arcode editor page runs.
+  const editorFramework = read("../ui/arcode/shared/editor_framework.js");
   const notebookCore = read("../ui/arcode/notebook-editor/core.js");
   const notebookIo = read("../ui/arcode/notebook-editor/notebook-io.js");
   const notebookIndex = read("../ui/arcode/notebook-editor/index.js");
@@ -31,6 +33,7 @@ test("ArcRho and Arcode keep saving explicit after AutoSave removal", () => {
     workflow,
     arcodeMain,
     codeEditor,
+    editorFramework,
     notebookCore,
     notebookIo,
     notebookIndex,
@@ -42,8 +45,8 @@ test("ArcRho and Arcode keep saving explicit after AutoSave removal", () => {
   assert.match(workflow, /type === "arcrho:workflow-save"[\s\S]*?saveWorkflowToDefaultDir\(\{ force: true \}\)/u);
   // The code editor toolbar carries no Save button; saving stays an explicit
   // user gesture through the File menu message and the Ctrl+S handler.
-  assert.match(codeEditor, /msg\.type === "arcode:scripting-save"[\s\S]*?void saveCurrentFile\(\)/u);
-  assert.match(codeEditor, /key === "s"[\s\S]*?void saveCurrentFile\(\{ saveAs: event\.shiftKey \}\)/u);
+  assert.match(editorFramework, /msg\.type === "arcode:scripting-save"[\s\S]*?void saveCurrentFile\(\)/u);
+  assert.match(editorFramework, /key === "s"[\s\S]*?void saveCurrentFile\(\{ saveAs: event\.shiftKey \}\)/u);
   assert.match(notebookIo, /async function saveCurrentNotebookFile\(/u);
   assert.match(arcodeMain, /function confirmWindowClose\(\)/u);
 });

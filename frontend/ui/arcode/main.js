@@ -6,6 +6,7 @@ import {
 } from "/ui/ai-assistant/arcode.js?v=20260721a";
 import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "/ui/shared/components/cascade_menu/cascade_menu.js?v=20260817a";
+import { createDatabaseConnectionsDialog } from "/ui/arcode/database-connections/dialog.js?v=20260818a";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const initialOpenPath = new URLSearchParams(window.location.search).get("path") || "";
@@ -1499,7 +1500,9 @@ function renderFrames() {
   const host = $("arcodeFrameHost");
   const tab = activeTab();
   const hasActiveTab = !!tab;
-  const usesExplorerWorkspace = tab?.type === "editor";
+  // Every editor-framework tab - the code editor and both SQL editors - shows
+  // the workspace explorer; the notebook editor brings its own side panel.
+  const usesExplorerWorkspace = tab?.type === "editor" || isSqlConsoleTabType(tab?.type);
   home?.classList.toggle("open", !hasActiveTab);
   host?.classList.toggle("open", hasActiveTab);
   renderFrameExplorerWorkspace(usesExplorerWorkspace);
@@ -1671,6 +1674,17 @@ async function openFileDialog() {
     ],
   });
   if (filePath) openCodeTab({ path: filePath });
+}
+
+const databaseConnectionsDialog = createDatabaseConnectionsDialog({
+  setStatus: updateStatus,
+  // Open SQL editors hold a connection picker, so they reload it rather than
+  // keeping a list the dialog has already changed.
+  onChanged: () => broadcastToTabs({ type: "arcode:database-connections-changed" }),
+});
+
+function broadcastToTabs(message) {
+  for (const tab of state.tabs) postToTab(tab, message);
 }
 
 function sendScriptingCommand(type) {
@@ -1938,7 +1952,7 @@ function updateZoomUI() {
 }
 
 function broadcastZoom() {
-  for (const tab of state.tabs) postToTab(tab, { type: "arcode:set-zoom", zoom: state.zoomPercent, statusBarHeight: 28 });
+  broadcastToTabs({ type: "arcode:set-zoom", zoom: state.zoomPercent, statusBarHeight: 28 });
 }
 
 function setZoomPercent(value, { quiet = false } = {}) {
@@ -2052,6 +2066,7 @@ async function runShellAction(action, detail = {}) {
     updateStatus(`Color theme changed to ${label}.`);
     return;
   }
+  if (action === "database-connections") return databaseConnectionsDialog.open();
   if (action === "clear-cache-reload") {
     if (typeof window.ADAHost?.clearCacheAndReload !== "function") {
       updateStatus("Clear Cache & Reload requires the desktop app host.");

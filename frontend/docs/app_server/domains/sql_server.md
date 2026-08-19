@@ -13,18 +13,20 @@ SQL Server connection profiles and T-SQL execution for the Arcode SQL Server con
 | `POST` | `/sqlserver/connections` | `sql_server_save_connection` | `SqlServerConnectionSaveRequest` | [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) | `sql_server_service.save_connection` |
 | `POST` | `/sqlserver/connections/delete` | `sql_server_delete_connection` | `SqlServerConnectionDeleteRequest` | [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) | `sql_server_service.delete_connection` |
 | `POST` | `/sqlserver/query` | `sql_server_query` | `SqlServerQueryRequest` | [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) | `sql_server_service.run_query` |
+| `POST` | `/sqlserver/reset-connection` | `sql_server_reset_connection` | `SqlServerConnectionResetRequest` | [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) | `sql_server_service.reset_connection` |
 | `POST` | `/sqlserver/test-connection` | `sql_server_test_connection` | `SqlServerQueryRequest` | [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) | `sql_server_service.test_connection` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN app_server.sql_server.key_files -->
-- [`app_server/api/sql_server_router.py`](../../../app_server/api/sql_server_router.py) - SQL Server connection, test, and query routes.
+- [`app_server/api/sql_server_router.py`](../../../app_server/api/sql_server_router.py) - SQL Server connection, test, reset, and query routes.
 - [`app_server/services/sql_server_service.py`](../../../app_server/services/sql_server_service.py) - Connection profile store and SQL Server query execution.
 - [`app_server/services/mssql_odbc.py`](../../../app_server/services/mssql_odbc.py) - Canonical ODBC driver selection and Windows connection string.
 - [`app_server/services/sql_console_results.py`](../../../app_server/services/sql_console_results.py) - Row limit and driver-cell conversion shared by the SQL consoles.
 - [`app_server/schemas/sql_server.py`](../../../app_server/schemas/sql_server.py) - SQL Server connection and query request models.
-- [`ui/arcode/sql-server-console/index.js`](../../../ui/arcode/sql-server-console/index.js) - Arcode SQL Server editor client.
-- [`ui/arcode/sql-server-console/connections.js`](../../../ui/arcode/sql-server-console/connections.js) - Arcode SQL Server connection manager client.
+- [`ui/arcode/sql-server-console/index.js`](../../../ui/arcode/sql-server-console/index.js) - Arcode SQL Server editor page.
+- [`ui/arcode/shared/sql_engines.js`](../../../ui/arcode/shared/sql_engines.js) - Canonical Snowflake and SQL Server engine descriptors shared by the editors and the connections dialog.
+- [`ui/arcode/database-connections/dialog.js`](../../../ui/arcode/database-connections/dialog.js) - Arcode Database Connections dialog, which edits both engines' profiles.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -32,6 +34,7 @@ SQL Server connection profiles and T-SQL execution for the Arcode SQL Server con
 - `GET /sqlserver/connections` returns the per-user profiles, the stored default, and whether an ODBC driver is available.
 - `POST /sqlserver/connections` adds, edits, or renames one profile; `POST /sqlserver/connections/delete` removes one.
 - `POST /sqlserver/query` and `/sqlserver/test-connection` execute T-SQL as the caller's Windows identity.
+- `POST /sqlserver/reset-connection` answers what the next Run starts from. Nothing is cached to close, because a query opens and closes its own connection, so the route states that rather than pretending to reset a session; it never fails on an unknown or unset name. The Arcode SQL Server editor's Reconnect command calls it, so both engines offer the same command.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

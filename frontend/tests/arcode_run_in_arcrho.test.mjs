@@ -8,21 +8,23 @@ import {
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("Arcode routes its single full-file Run action from the current source", () => {
-  const html = read("../ui/arcode/code-editor/index.html");
+test("Arcode routes its single Run action from the current source", () => {
   const js = read("../ui/arcode/code-editor/index.js");
-  const css = read("../ui/arcode/code-editor/code-editor.css");
+  const framework = read("../ui/arcode/shared/editor_framework.js");
+  const css = read("../ui/arcode/shared/editor_framework.css");
 
-  assert.match(html, /id="runBtn"[^>]*>Run</);
-  assert.doesNotMatch(html, /id="runInArcRhoBtn"/);
+  assert.match(framework, /id: "runBtn"/);
+  assert.doesNotMatch(framework, /runInArcRhoBtn/);
   assert.match(js, /scriptingFetch\("\/scripting\/run-in-arcrho"/);
   assert.match(js, /JSON\.stringify\(\{[\s\S]*?\bsource,/);
-  assert.match(js, /source_path:\s*currentPath/);
+  assert.match(js, /source_path: page\.path/);
   assert.match(js, /function isArcRhoMacroSource\(code\)/);
   assert.match(js, /<arcrho-macro>/);
   assert.match(js, /run_macro/);
-  assert.match(js, /runBtn"\)\?\.addEventListener\("click", \(\) => void runCurrentPython/);
-  assert.match(js, /runSelectionBtn"\)\?\.addEventListener\("click", \(\) => void runPython/);
+  // One Run command. A selection is a fragment, so it runs locally; only a
+  // whole macro file is routed to ArcRho.
+  assert.match(js, /!selectionOnly && isArcRhoMacroSource\(code\) \? runInArcRho\(code\) : runPython\(code\)/);
+  assert.doesNotMatch(js, /runSelectionBtn/);
   assert.doesNotMatch(js, /runInArcRhoBtn/);
   assert.match(js, /scriptingFetch\("\/scripting\/run-stream"/);
 

@@ -1,0 +1,293 @@
+/* Settings > Database Connections dialog, hosted by the Arcode shell. It maps
+   its local names onto the shared chrome tokens in `shared/chrome.css` rather
+   than restating a color. */
+:root {
+  --dbc-border: var(--ark-border);
+  --dbc-text: var(--ark-text);
+  --dbc-muted: var(--ark-text-muted);
+  --dbc-surface: var(--ark-surface);
+  --dbc-chrome: var(--ark-surface-muted);
+  --dbc-accent: var(--ark-accent);
+  --dbc-accent-soft: var(--ark-accent-soft);
+  --dbc-error: var(--ark-danger);
+}
+
+.dbcBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.dbcBackdrop[hidden] {
+  display: none;
+}
+
+.dbcDialog {
+  width: min(620px, 100%);
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border: 1px solid var(--dbc-border);
+  border-radius: var(--ark-control-radius);
+  background: var(--dbc-surface);
+  color: var(--dbc-text);
+  font: 12px Arial, "Segoe UI", Tahoma, sans-serif;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.dbcHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--ark-toolbar-height);
+  padding: 0 8px 0 12px;
+  border-bottom: var(--ark-seam) solid var(--dbc-border);
+  background: var(--dbc-chrome);
+}
+
+.dbcTitle {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dbcIconBtn {
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ark-control-radius);
+  background: transparent;
+  color: var(--dbc-text);
+  cursor: pointer;
+  transition: background-color var(--ark-motion) ease;
+}
+
+.dbcIconBtn:hover {
+  background: var(--ark-surface-hover);
+}
+
+.dbcIconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* One dialog covers every engine, so the engine is a tab rather than a
+   separate command. */
+.dbcEngineTabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: var(--ark-seam) solid var(--dbc-border);
+  background: var(--dbc-chrome);
+}
+
+.dbcEngineTab {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--ark-control-radius) var(--ark-control-radius) 0 0;
+  background: transparent;
+  color: var(--dbc-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--ark-motion) ease, color var(--ark-motion) ease;
+}
+
+.dbcEngineTab:hover {
+  background: var(--ark-surface-hover);
+}
+
+.dbcEngineTab.selected {
+  border-color: var(--dbc-border);
+  background: var(--dbc-surface);
+  color: var(--dbc-text);
+  font-weight: 700;
+}
+
+.dbcBody {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.dbcSidebar {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.dbcList {
+  min-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid var(--dbc-border);
+  border-radius: var(--ark-control-radius);
+  background: var(--dbc-surface);
+}
+
+.dbcListEmpty {
+  margin: 0;
+  padding: 10px;
+  color: var(--dbc-muted);
+}
+
+.dbcListRow {
+  width: 100%;
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--dbc-border);
+  background: transparent;
+  color: var(--dbc-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ark-motion) ease;
+}
+
+.dbcListRow:last-child {
+  border-bottom: 0;
+}
+
+.dbcListRow:hover {
+  background: var(--ark-surface-hover);
+}
+
+.dbcListRow.selected {
+  background: var(--dbc-accent-soft);
+}
+
+.dbcListName,
+.dbcListDetail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbcListDetail {
+  color: var(--dbc-muted);
+  font-size: 11px;
+}
+
+.dbcForm {
+  min-width: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  margin: 0;
+}
+
+.dbcField {
+  display: grid;
+  gap: 3px;
+}
+
+.dbcFieldLabel {
+  color: var(--dbc-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dbcInput {
+  height: 30px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--ark-border-strong);
+  border-radius: var(--ark-control-radius);
+  background: var(--dbc-surface);
+  color: var(--dbc-text);
+  font: inherit;
+}
+
+.dbcInput:focus {
+  outline: none;
+  border-color: var(--dbc-accent);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+}
+
+.dbcCheckField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dbcHint,
+.dbcMessage {
+  margin: 0;
+  color: var(--dbc-muted);
+}
+
+.dbcMessage.error {
+  color: var(--dbc-error);
+}
+
+.dbcFooter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--ark-toolbar-height);
+  padding: 0 8px;
+  border-top: var(--ark-seam) solid var(--dbc-border);
+  background: var(--dbc-chrome);
+}
+
+.dbcFooterSpacer {
+  flex: 1 1 auto;
+}
+
+.dbcBtn {
+  height: var(--ark-control-height);
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--ark-control-radius);
+  background: transparent;
+  color: var(--dbc-text);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--ark-motion) ease, border-color var(--ark-motion) ease;
+}
+
+.dbcBtn:hover:not(:disabled) {
+  background: var(--ark-surface-hover);
+}
+
+.dbcBtn:active:not(:disabled) {
+  background: var(--ark-surface-active);
+}
+
+.dbcBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Dialog confirmations keep a frame; the rest stay flat until hover. */
+.dbcBtn.primary {
+  border-color: var(--ark-accent-border);
+  background: var(--dbc-accent-soft);
+  color: var(--ark-accent-text);
+  font-weight: 700;
+}
+
+.dbcBtn.danger {
+  border-color: var(--ark-danger-border);
+  background: var(--ark-danger-soft);
+  color: var(--dbc-error);
+}

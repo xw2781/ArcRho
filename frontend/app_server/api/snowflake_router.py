@@ -3,6 +3,8 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app_server.schemas.scripting import (
+    SnowflakeConnectionDeleteRequest,
+    SnowflakeConnectionResetRequest,
     SnowflakeConnectionSaveRequest,
     SnowflakeQueryRequest,
 )
@@ -27,6 +29,16 @@ def snowflake_connections() -> Dict[str, Any]:
 @router.post("/snowflake/connections")
 def snowflake_save_connection(req: SnowflakeConnectionSaveRequest) -> Dict[str, Any]:
     return snowflake_service.save_connection(req.connection, _model_to_dict(req.profile))
+
+
+@router.post("/snowflake/connections/delete")
+def snowflake_delete_connection(req: SnowflakeConnectionDeleteRequest) -> Dict[str, Any]:
+    return snowflake_service.delete_connection(req.connection)
+
+
+@router.post("/snowflake/reset-connection")
+def snowflake_reset_connection(req: SnowflakeConnectionResetRequest) -> Dict[str, Any]:
+    return snowflake_service.reset_connection(req.connection or snowflake_service.DEFAULT_CONNECTION_NAME)
 
 
 @router.post("/snowflake/query")

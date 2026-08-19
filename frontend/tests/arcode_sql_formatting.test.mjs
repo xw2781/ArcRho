@@ -218,30 +218,31 @@ test("SQL toolbar currentness rejects edits, navigation, and model replacement a
   assert.equal(isSqlFormatTargetCurrent({ ...base, previewMatchesSource: false }), false);
 });
 
-test("Arcode SQL toolbar clients verify the current source hash before applying", () => {
+test("Arcode editor pages verify the reviewed SQL is still on screen before applying", () => {
+  // Formatting is an ArcBot skill, not a toolbar command, so the contract that
+  // matters is the replacement one. Every editor page runs the one framework,
+  // so its checks are the checks each page is held to.
+  const framework = read("../ui/arcode/shared/editor_framework.js");
   const codeEditor = read("../ui/arcode/code-editor/index.js");
-  const codeEditorHtml = read("../ui/arcode/code-editor/index.html");
-  // Both SQL consoles run the shared console core, so its Format flow is the
-  // one every console client is checked against.
-  const sqlConsole = read("../ui/arcode/shared/sql_console.js");
-  const snowflakeHtml = read("../ui/arcode/snowflake-console/index.html");
-  const sqlServerHtml = read("../ui/arcode/sql-server-console/index.html");
+  const sqlMode = read("../ui/arcode/shared/sql_mode.js");
 
-  for (const source of [codeEditor, sqlConsole]) {
-    assert.match(source, /requestSqlFormatPreview\(\{ sql: sourceText, dialect \}\)/);
-    assert.match(source, /await isSqlFormatPreviewCurrent\(preview, sourceText\)/);
-    assert.match(source, /isSqlFormatTargetCurrent\(\{[\s\S]*?currentText: editor\?\.getValue\(\)[\s\S]*?currentModel: editor\?\.getModel\(\)/);
-    assert.ok(source.indexOf("isSqlFormatTargetCurrent({") < source.indexOf('editor.executeEdits("arcode-sql-format-toolbar"'));
-    assert.match(source, /if \(!preview\.safety\.safe_to_apply\)/);
-    assert.match(source, /SQL changed while formatting\. Run Format again\./);
-    assert.match(source, /expectedTargetPath !== \(currentPath \|\| ""\)/);
-    assert.match(source, /The selected SQL changed after the review opened\. Run the skill again before applying\./);
-    assert.match(source, /The editor changed after the SQL review opened\. Run the skill again before applying\./);
+  assert.match(framework, /expectedTargetPath !== \(currentPath \|\| ""\)/);
+  assert.match(framework, /The reviewed SQL file is no longer active\. Run the skill again before applying\./);
+  assert.match(framework, /The selected SQL range is no longer valid\. Run the skill again before applying\./);
+  assert.match(framework, /The selected SQL changed after the review opened\. Run the skill again before applying\./);
+  assert.match(framework, /The editor changed after the SQL review opened\. Run the skill again before applying\./);
+  // Every refusal is answered, so the assistant never applies into silence.
+  assert.ok(
+    framework.indexOf("expectedText !== currentSelectionText") < framework.indexOf('editor.executeEdits("arcbot-sql-format"'),
+  );
+
+  // The toolbar Format command and its parser-preview flow are gone from the
+  // editor pages; ArcBot owns that skill.
+  for (const source of [framework, codeEditor, sqlMode]) {
+    assert.doesNotMatch(source, /id="formatBtn"|formatSqlDocument/);
   }
 
-  assert.match(codeEditor, /if \(language\(\) === "sql"\)[\s\S]*?await formatSqlDocument\(\)/);
-  assert.match(codeEditorHtml, /<script type="module" src="\/ui\/arcode\/code-editor\/index\.js/);
-  assert.match(snowflakeHtml, /id="formatBtn"[^>]*>Format<\/button>/);
-  assert.match(sqlServerHtml, /id="formatBtn"[^>]*>Format<\/button>/);
-  assert.match(sqlConsole, /formatBtn"\)\?\.addEventListener\("click", \(\) => void formatSqlDocument\(\)\)/);
+  // Each page still declares its dialect so ArcBot formats with the right one.
+  assert.match(codeEditor, /inferSqlDialect\(\{ pageType: "code-editor", path: editorPage\.path \}\)/);
+  assert.match(sqlMode, /sqlDialect: inferSqlDialect\(\{ pageType: engine\.pageType \}\)/);
 });

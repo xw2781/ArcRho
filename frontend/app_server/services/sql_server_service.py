@@ -200,6 +200,30 @@ def delete_connection(connection: str) -> Dict[str, Any]:
     return load_connections()
 
 
+def reset_connection(connection: str = "") -> Dict[str, Any]:
+    """Report the session state a Run starts from.
+
+    Unlike Snowflake, a SQL Server query here opens and closes its own
+    connection, so no session outlives a Run and there is nothing cached to
+    close. The route exists so the SQL editors can offer one Reconnect command
+    for both engines and say what it actually did.
+    """
+
+    # Nothing is opened or closed here, so an unknown or unset name is answered
+    # rather than refused: the statement holds for every profile.
+    store = _read_store()
+    name = _text(connection) or _default_connection_name(store)
+    subject = name or "SQL Server"
+    return {
+        "ok": True,
+        "connection": name,
+        "message": (
+            f"{subject} opens a new connection for every Run, so no temporary table "
+            "or session setting carries over."
+        ),
+    }
+
+
 def _resolve_profile(connection: str) -> Dict[str, str]:
     store = _read_store()
     name = _text(connection) or _default_connection_name(store)

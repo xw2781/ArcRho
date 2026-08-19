@@ -7,42 +7,18 @@
   <title>Snowflake SQL</title>
   <link rel="stylesheet" href="/ui/arcode/shared/chrome.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/shared/sql_console.css?v=20260817a"/>
+  <link rel="stylesheet" href="/ui/arcode/shared/editor_framework.css?v=20260818a"/>
+  <link rel="stylesheet" href="/ui/arcode/shared/sql_mode.css?v=20260818a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
-  <main class="sqlcApp">
-    <header class="sqlcToolbar">
-      <select id="connectionSelect" class="sqlcSelect" aria-label="Snowflake connection"></select>
-      <button id="testConnectionBtn" class="sqlcBtn" type="button">Test</button>
-      <button id="saveBtn" class="sqlcBtn" type="button">Save</button>
-      <button id="formatBtn" class="sqlcBtn" type="button" aria-busy="false">Format</button>
-      <button id="runBtn" class="sqlcBtn primary" type="button">Run</button>
-    </header>
-
-    <section class="sqlcMetaBar" aria-label="Connection details">
-      <span class="sqlcChip" data-profile-field="role" data-label="Role">Role</span>
-      <span class="sqlcChip" data-profile-field="warehouse" data-label="Warehouse">Warehouse</span>
-      <span class="sqlcChip" data-profile-field="database" data-label="Database">Database</span>
-      <span class="sqlcChip" data-profile-field="schema,schema_name" data-label="Schema">Schema</span>
-    </section>
-
-    <section id="editorHost" class="sqlcEditorHost" aria-label="SQL editor"></section>
-
-    <section class="sqlcResults" aria-label="Query results">
-      <div class="sqlcResultsHeader">
-        <span id="resultsTitle">Results</span>
-        <span id="queryInfo" class="sqlcQueryInfo"></span>
-      </div>
-      <div id="messageBox" class="sqlcMessage">Run a query to see results.</div>
-      <div id="tableWrap" class="sqlcTableWrap"></div>
-    </section>
-  </main>
+  <div id="editorRoot"></div>
 
   <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
   <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
-  <script type="module" src="/ui/arcode/snowflake-console/index.js?v=20260817a"></script>
+  <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
+  <script type="module" src="/ui/arcode/snowflake-console/index.js?v=20260818a"></script>
 </body>
 </html>

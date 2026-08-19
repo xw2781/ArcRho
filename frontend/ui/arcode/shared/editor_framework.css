@@ -1,3 +1,6 @@
+/* Chrome for every Arcode editor page - the plain code editor and both SQL
+   editors. `shared/editor_framework.js` renders this markup once, so a rule
+   added here reaches all three surfaces. */
 :root {
   --ce-border: var(--ark-border);
   --ce-border-strong: var(--ark-border-strong);
@@ -110,6 +113,73 @@ body.ce-resizing-output {
   background: var(--ark-danger-soft);
 }
 
+/* A command carries its glyph beside its label, so Run, Stop, and Restart read
+   the same way here as they do in a notebook toolbar. */
+.ce-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 7px;
+}
+
+.ce-btn-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ce-btn-label {
+  min-width: 0;
+}
+
+/* Run is about to act on a selection rather than the whole file. The command
+   keeps its label and its place; only its outline says so. */
+.ce-btn.selectionScoped:not(:disabled) {
+  border-color: var(--ark-accent);
+}
+
+.ce-toolbar-lead,
+.ce-toolbar-trail {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ce-toolbar-lead:not(:empty) {
+  margin-right: 5px;
+}
+
+.ce-toolbar-trail {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+/* Second command-strip row: engine context a mode wants always visible, such
+   as the Snowflake role/warehouse/database/schema of the active connection. */
+.ce-context-bar {
+  min-height: 26px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: var(--ark-seam) solid var(--ce-border);
+  background: var(--ce-chrome);
+  color: var(--ce-muted);
+}
+
+.ce-context-bar[hidden] {
+  display: none;
+}
+
 .ce-sep {
   flex: 0 0 1px;
   width: 1px;
@@ -208,7 +278,7 @@ body.ce-resizing-output {
 }
 
 .ce-output-panel.hidden .ce-panel-header,
-.ce-output-panel.hidden .ce-output-text {
+.ce-output-panel.hidden .ce-panel-body {
   display: none;
 }
 
@@ -312,6 +382,17 @@ body.ce-resizing-output .ce-output-resize-handle::before {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* The panel body is whatever the mode puts there: run output for Python, a
+   results grid for SQL. The frame around it stays the same. */
+.ce-panel-body {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--ce-surface);
 }
 
 .ce-output-text {

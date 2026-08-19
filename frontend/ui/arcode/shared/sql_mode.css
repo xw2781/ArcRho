@@ -1,0 +1,95 @@
+/* What a SQL editor page adds to the generic editor chrome: the connection
+   picker in the command strip, the connection chips in the context bar, and
+   the result grid inside the framework's panel. The app frame, toolbar,
+   buttons, editor host, and panel come from `shared/editor_framework.css`. */
+:root {
+  --sqlc-border: var(--ark-border);
+  --sqlc-text: var(--ark-text);
+  --sqlc-muted: var(--ark-text-muted);
+  --sqlc-chrome: var(--ark-surface-muted);
+  --sqlc-panel: var(--ark-surface);
+  --sqlc-error: var(--ark-danger);
+}
+
+.sqlcSelect {
+  height: var(--ark-control-height);
+  min-width: 220px;
+  padding: 0 8px;
+  border: 1px solid var(--ark-border-strong);
+  border-radius: var(--ark-control-radius);
+  background: var(--ark-surface);
+  color: var(--sqlc-text);
+  font: inherit;
+}
+
+.sqlcChip {
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid var(--sqlc-border);
+  border-radius: var(--ark-control-radius);
+  background: var(--ark-surface);
+}
+
+/* The message line and the grid swap places as a query succeeds or fails, so
+   the body flexes instead of reserving a row for whichever one is hidden. */
+.sqlcResultsBody {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--sqlc-panel);
+}
+
+.sqlcMessage {
+  flex: 0 0 auto;
+  padding: 12px;
+  color: var(--sqlc-muted);
+}
+
+.sqlcMessage.error {
+  color: var(--sqlc-error);
+}
+
+.sqlcTableWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sqlcTable {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.sqlcTable th,
+.sqlcTable td {
+  max-width: 360px;
+  padding: 6px 8px;
+  border-right: 1px solid var(--sqlc-border);
+  border-bottom: 1px solid var(--sqlc-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sqlcTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sqlc-chrome);
+  color: var(--sqlc-text);
+  text-align: left;
+}
+
+.sqlcTable tbody tr:hover td {
+  background: var(--ark-surface-hover);
+}

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app_server.schemas.sql_server import (
     SqlServerConnectionDeleteRequest,
+    SqlServerConnectionResetRequest,
     SqlServerConnectionSaveRequest,
     SqlServerQueryRequest,
 )
@@ -29,6 +30,11 @@ def sql_server_save_connection(req: SqlServerConnectionSaveRequest) -> Dict[str,
 @router.post("/sqlserver/connections/delete")
 def sql_server_delete_connection(req: SqlServerConnectionDeleteRequest) -> Dict[str, Any]:
     return sql_server_service.delete_connection(req.connection)
+
+
+@router.post("/sqlserver/reset-connection")
+def sql_server_reset_connection(req: SqlServerConnectionResetRequest) -> Dict[str, Any]:
+    return sql_server_service.reset_connection(req.connection)
 
 
 @router.post("/sqlserver/query")

@@ -28,6 +28,11 @@ class SqlServerConnectionDeleteRequest(BaseModel):
     connection: str
 
 
+class SqlServerConnectionResetRequest(BaseModel):
+    # Empty resets the stored default connection.
+    connection: str = ""
+
+
 class SqlServerQueryRequest(BaseModel):
     sql: str = ""
     # Empty runs against the stored default connection.

@@ -45,8 +45,19 @@ class SnowflakeQueryRequest(BaseModel):
 
 
 class SnowflakeConnectionSaveRequest(BaseModel):
-    connection: str = "my_example_connection"
+    # The profile being edited. Empty adds one; a different `profile.name`
+    # renames the existing profile instead of leaving a copy behind.
+    connection: str = ""
     profile: SnowflakeConnectionProfile
+
+
+class SnowflakeConnectionDeleteRequest(BaseModel):
+    connection: str
+
+
+class SnowflakeConnectionResetRequest(BaseModel):
+    # Empty resets the stored default connection.
+    connection: str = ""
 
 
 class ScriptMacroRunRequest(BaseModel):

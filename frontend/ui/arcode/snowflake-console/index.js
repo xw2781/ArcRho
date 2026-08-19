@@ -1,24 +1,8 @@
-import { createSqlConsole } from "../shared/sql_console.js?v=20260817a";
+import { createSqlEditorPage } from "../shared/sql_mode.js?v=20260818a";
 
 /**
- * Snowflake console: the shared SQL console pointed at the Snowflake routes.
- * Connection profiles come from `%APPDATA%\Arcode\snowflake_connections.json`
- * and are picked here, not edited here.
+ * Snowflake SQL editor: the generic editor framework in SQL mode, pointed at
+ * the Snowflake engine. Its routes, wording, connection fields, and context
+ * chips come from the engine descriptor in `shared/sql_engines.js`.
  */
-const SNOWFLAKE_ENGINE = {
-  id: "snowflake",
-  pageType: "snowflake",
-  productName: "Snowflake",
-  sqlLabel: "Snowflake SQL",
-  defaultTitle: "Snowflake SQL",
-  routes: {
-    connections: "/snowflake/connections",
-    query: "/snowflake/query",
-    test: "/snowflake/test-connection",
-  },
-  connectorMissingStatus: "Snowflake connector is not installed in this runtime.",
-  connectionsErrorPrefix: "Could not load Snowflake connections",
-  emptyConnectionsMessage: "No Snowflake connection profile is configured.",
-};
-
-void createSqlConsole(SNOWFLAKE_ENGINE).boot();
+void createSqlEditorPage("snowflake").boot();

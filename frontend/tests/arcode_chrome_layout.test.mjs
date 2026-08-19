@@ -42,13 +42,10 @@ test("Arcode panes are separated by one hairline seam instead of a gutter", () =
 test("Arcode command strips carry actions only, not duplicated file or status labels", () => {
   const shell = read("../ui/arcode/main.js");
   const shellCss = read("../ui/arcode/main.css");
-  const codeEditor = read("../ui/arcode/code-editor/index.html");
-  const codeEditorCss = read("../ui/arcode/code-editor/code-editor.css");
-  const codeEditorJs = read("../ui/arcode/code-editor/index.js");
+  const frameworkCss = read("../ui/arcode/shared/editor_framework.css");
+  const frameworkJs = read("../ui/arcode/shared/editor_framework.js");
   const notebook = read("../ui/arcode/notebook-editor/index.html");
   const notebookIo = read("../ui/arcode/notebook-editor/notebook-io.js");
-  const snowflake = read("../ui/arcode/snowflake-console/index.html");
-  const sqlServer = read("../ui/arcode/sql-server-console/index.html");
 
   // The explorer header carries a generic "Workspace" title plus its actions;
   // it must not duplicate the active folder name, which the root row already shows.
@@ -58,34 +55,32 @@ test("Arcode command strips carry actions only, not duplicated file or status la
   assert.match(shell, /id="arcodeExplorerRefreshBtn"/);
 
   // The tab bar names the open file and the shell status bar reports state.
-  assert.doesNotMatch(codeEditor, /id="fileLabel"|id="statusText"/);
-  assert.doesNotMatch(codeEditorCss, /\.ce-(file|status|spacer)\s*[,{]/);
-  assert.match(codeEditorJs, /function setStatus\(text\) \{\s*const value[^}]*shared\.postStatus\(value\);\s*\}/);
+  // One framework draws every editor page, so one check covers all of them.
+  assert.doesNotMatch(frameworkJs, /id="fileLabel"|id="statusText"/);
+  assert.doesNotMatch(frameworkCss, /\.ce-(file|status|spacer)\s*[,{]/);
+  assert.match(frameworkJs, /function setStatus\(text\) \{\s*const value[^}]*shared\.postStatus\(value\);\s*\}/);
   assert.doesNotMatch(notebook, /id="statusText"/);
   assert.match(notebookIo, /function setStatus\(text\) \{\s*postShellStatus\(text\);\s*\}/);
-  assert.doesNotMatch(snowflake, /id="statusText"/);
-  assert.doesNotMatch(sqlServer, /id="statusText"/);
 });
 
 test("Output panel actions live in the panel header, not the editor command strip", () => {
-  const html = read("../ui/arcode/code-editor/index.html");
-  const css = read("../ui/arcode/code-editor/code-editor.css");
-  const js = read("../ui/arcode/code-editor/index.js");
+  const css = read("../ui/arcode/shared/editor_framework.css");
+  const js = read("../ui/arcode/shared/editor_framework.js");
 
-  const toolbar = html.match(/<header class="ce-toolbar">[\s\S]*?<\/header>/)?.[0] || "";
-  const panelHeader = html.match(/<div class="ce-panel-header">[\s\S]*?<\/div>/)?.[0] || "";
+  const toolbar = js.match(/<header class="ce-toolbar">[\s\S]*?<\/header>/)?.[0] || "";
+  const panelHeader = js.match(/<div class="ce-panel-header">[\s\S]*?<\/div>/)?.[0] || "";
   assert.doesNotMatch(toolbar, /id="clearOutputBtn"/);
   // File-level commands stay in the File menu and on their shortcuts.
   assert.doesNotMatch(toolbar, /id="saveBtn"|id="saveAsBtn"/);
   assert.match(js, /key === "s"[\s\S]*?void saveCurrentFile\(\{ saveAs: event\.shiftKey \}\)/);
-  assert.match(panelHeader, /id="clearOutputBtn"[^>]*class=|class="ce-panel-btn" id="clearOutputBtn"/);
+  assert.match(panelHeader, /id="clearOutputBtn"/);
   assert.match(js, /clearOutputBtn"\)\?\.addEventListener\("click"/);
   assert.match(css, /\.ce-panel-btn \{/);
 });
 
 test("Arcode chrome labels stay title case and command buttons stay quiet", () => {
   const shellCss = read("../ui/arcode/main.css");
-  const codeEditorCss = read("../ui/arcode/code-editor/code-editor.css");
+  const codeEditorCss = read("../ui/arcode/shared/editor_framework.css");
 
   // V18: no interface label is set in full uppercase.
   assert.doesNotMatch(shellCss, /text-transform:\s*uppercase/);
