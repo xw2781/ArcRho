@@ -10,9 +10,9 @@ import os
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
 from app_server import config
+from app_server.ui_static import RevalidatedStaticFiles
 from app_server.api.app_control_router import router as app_control_router
 from app_server.api.arcode_scripting_router import router as arcode_scripting_router
 from app_server.api.snowflake_router import router as snowflake_router
@@ -34,15 +34,15 @@ libs_ui = ui_root / "libs"
 shared_ui = ui_root / "shared"
 icons_root = config.PROJECT_ROOT / "icons"
 
-app.mount("/ui/arcode", StaticFiles(directory=str(arcode_ui), html=True), name="arcode-ui")
+app.mount("/ui/arcode", RevalidatedStaticFiles(directory=str(arcode_ui), html=True), name="arcode-ui")
 if assistant_ui.exists():
-    app.mount("/ui/ai-assistant", StaticFiles(directory=str(assistant_ui)), name="ai-assistant-ui")
+    app.mount("/ui/ai-assistant", RevalidatedStaticFiles(directory=str(assistant_ui)), name="ai-assistant-ui")
 if libs_ui.exists():
-    app.mount("/ui/libs", StaticFiles(directory=str(libs_ui)), name="ui-libs")
+    app.mount("/ui/libs", RevalidatedStaticFiles(directory=str(libs_ui)), name="ui-libs")
 if shared_ui.exists():
-    app.mount("/ui/shared", StaticFiles(directory=str(shared_ui)), name="ui-shared")
+    app.mount("/ui/shared", RevalidatedStaticFiles(directory=str(shared_ui)), name="ui-shared")
 if icons_root.exists():
-    app.mount("/icons", StaticFiles(directory=str(icons_root)), name="icons")
+    app.mount("/icons", RevalidatedStaticFiles(directory=str(icons_root)), name="icons")
 
 
 @app.get("/")

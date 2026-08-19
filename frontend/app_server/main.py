@@ -12,10 +12,10 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 
 from app_server import config
+from app_server.ui_static import RevalidatedStaticFiles
 from app_server.services import hosted_save_enrollment_service
 from app_server.api import (
     workflow_router,
@@ -111,8 +111,8 @@ app.include_router(user_identity_router)
 # --- Frontend assets (served from ./ui and ./icons, no /static) ---
 # Mount AFTER API routes to avoid conflicts
 
-app.mount("/ui", StaticFiles(directory=str(config.PROJECT_ROOT / "ui"), html=True), name="ui")
-app.mount("/icons", StaticFiles(directory=str(config.PROJECT_ROOT / "icons")), name="icons")
+app.mount("/ui", RevalidatedStaticFiles(directory=str(config.PROJECT_ROOT / "ui"), html=True), name="ui")
+app.mount("/icons", RevalidatedStaticFiles(directory=str(config.PROJECT_ROOT / "icons")), name="icons")
 
 
 @app.get("/")

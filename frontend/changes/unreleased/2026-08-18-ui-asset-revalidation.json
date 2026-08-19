@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "app server",
+  "audience": "user",
+  "summary": "UI pages no longer break after an update with a blank page and a missing-export error in the console.",
+  "details": [
+    "The app served UI script files without a cache directive, so the browser could reuse an old copy of one file next to a freshly downloaded copy of another.",
+    "A mismatched pair stopped the page from loading at all; the DFM method window was the most recent to hit it.",
+    "UI assets are now revalidated against the server on every load, so an updated file is always picked up."
+  ]
+}
