@@ -27,10 +27,10 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 13 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
 | `result_selection` | [`app_server/api/result_selection_router.py`](../../app_server/api/result_selection_router.py) | 3 | [`result_selection.md`](domains/result_selection.md) |
-| `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 4 | [`snowflake.md`](domains/snowflake.md) |
-| `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 8 | [`source_table.md`](domains/source_table.md) |
+| `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 6 | [`snowflake.md`](domains/snowflake.md) |
+| `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 11 | [`source_table.md`](domains/source_table.md) |
 | `sql_formatting` | [`app_server/api/sql_formatting_router.py`](../../app_server/api/sql_formatting_router.py) | 1 | [`sql_formatting.md`](domains/sql_formatting.md) |
-| `sql_server` | [`app_server/api/sql_server_router.py`](../../app_server/api/sql_server_router.py) | 5 | [`sql_server.md`](domains/sql_server.md) |
+| `sql_server` | [`app_server/api/sql_server_router.py`](../../app_server/api/sql_server_router.py) | 6 | [`sql_server.md`](domains/sql_server.md) |
 | `table_summary` | [`app_server/api/table_summary_router.py`](../../app_server/api/table_summary_router.py) | 2 | [`table_summary.md`](domains/table_summary.md) |
 | `ui_automation` | [`app_server/api/ui_automation_router.py`](../../app_server/api/ui_automation_router.py) | 6 | [`ui_automation.md`](domains/ui_automation.md) |
 | `workflow` | [`app_server/api/workflow_router.py`](../../app_server/api/workflow_router.py) | 5 | [`workflow.md`](domains/workflow.md) |
@@ -61,6 +61,7 @@ High-risk files that must follow contracts:
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Public interface is HTTP routes mounted by `app_server/main.py`; the frontend shell is served under `/ui` and shared icon assets under `/icons`.
+- Every static mount in both apps uses `RevalidatedStaticFiles` from `app_server/ui_static.py`, which answers with `cache-control: no-cache`. The UI is one ES-module graph resolved by URL, so a module the browser reuses without asking the server can disagree with a freshly fetched importer and break module linking outright. Assets stay cacheable but must be revalidated, which costs one `304` per unchanged file over loopback. Do not mount UI assets with a bare `StaticFiles`.
 - Internal interface is router -> service -> filesystem/state helpers.
 - Packaged builds include the `arcrho_api` Python package in the frozen app server for Arcode scripting imports, ship a pip-installable wheel under app resources `python_packages/`, and publish the same wheel to the shared Server packages folder as `arcrho_api-latest.whl` for external notebook environments. API-only releases can publish that shared wheel from `python-api/tools` without rebuilding the desktop app.
 - Both full ArcRho and standalone Arcode expose local-only `POST /scripting/run-in-arcrho` with the same source-buffer request contract. Full ArcRho captures/executes/applies against its live DFM UI; standalone Arcode verifies and proxies to the running ArcRho desktop server at its resolved local endpoint (default port 28765, or the per-user discovered fallback port).
