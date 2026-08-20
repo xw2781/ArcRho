@@ -1741,6 +1741,30 @@ def apply_owned_patch(
     )
 
 
+def stamp_last_modified(payload: Mapping[str, Any], modified_at: Any) -> dict[str, Any]:
+    """Return *payload* with only its ``last modified`` value replaced.
+
+    A DFM uploaded to the RPC server is saved there, and ResQ stamps that save
+    with its own ``Modified``. Nothing about the ArcRho method changed, so the
+    two copies are identical in content while their recorded times are not, and
+    the next sync reports the remote as newer. Recording the time ResQ actually
+    wrote makes the pair agree again.
+
+    This is deliberately not a save: no recalculation, no refresh timestamp, and
+    no other field is touched. ``last modified`` is outside all three revision
+    projections, so a stamp cannot shift a revision, invalidate an open editor's
+    optimistic-concurrency token, or make a dependent look stale.
+    """
+
+    method = deepcopy(dict(payload))
+    metadata = method.get("method metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        method["method metadata"] = metadata
+    metadata["last modified"] = _timestamp(modified_at)
+    return method
+
+
 build_dfm_method_v2 = normalize_dfm_method
 
 
@@ -1768,4 +1792,5 @@ __all__ = [
     "publication_projection",
     "recalculate_dfm_method",
     "source_snapshot_revision",
+    "stamp_last_modified",
 ]

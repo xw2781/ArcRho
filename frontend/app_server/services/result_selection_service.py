@@ -104,7 +104,41 @@ def _json_text(payload: Dict[str, Any]) -> str:
     return persisted_json_text(payload)
 
 
+def _revision_projection(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """The content a revision covers: everything except when it was written.
+
+    ``last_modified`` records when the file was saved rather than what it holds,
+    and every other method family already leaves it out -- DFM, BF, CC and
+    bootstrap all revision a projection through ``dfm_contract.method_revisions``
+    that never reaches it. Keeping it in meant an RPC upload recording ResQ's
+    own save time would move the token an open editor holds, and that editor's
+    next save would be refused even though nothing it edited had changed.
+    """
+
+    projection = dict(payload)
+    metadata = projection.get("method_metadata")
+    if isinstance(metadata, dict):
+        projection["method_metadata"] = {
+            key: value for key, value in metadata.items() if key != "last_modified"
+        }
+    return projection
+
+
 def _method_revision(payload: Dict[str, Any]) -> str:
+    digest = hashlib.sha256(_json_text(_revision_projection(payload)).encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _legacy_method_revision(payload: Dict[str, Any]) -> str:
+    """The whole-file revision minted before ``last_modified`` was excluded.
+
+    A revision is minted where the method is loaded -- a Client PC's own app
+    server, or the Gateway -- and checked where it is saved, which is always
+    ArcRho Engine. Those upgrade separately, so a save is accepted against
+    either form until every installed app has this change. Remove this and its
+    use in :func:`save_result_selection` once that is true.
+    """
+
     digest = hashlib.sha256(_json_text(payload).encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
 
@@ -617,7 +651,8 @@ def save_result_selection(
             current_method = normalize_method_payload(current_method, require_complete_basis=True)
             old_precedents = _precedent_names(current_method)
             current_revision = _method_revision(current_method)
-            if expected_revision is not None and _clean(expected_revision) != current_revision:
+            accepted_revisions = {current_revision, _legacy_method_revision(current_method)}
+            if expected_revision is not None and _clean(expected_revision) not in accepted_revisions:
                 raise HTTPException(409, "Result Selection changed on disk; reload the latest values before saving.")
             if dataset_sidecar_status_service.normalize_status(current_sidecar.get("status")) \
                     == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
@@ -1750,3 +1785,60 @@ def upgrade_legacy_method(
         )
         raise
     return payload
+
+
+def record_rpc_sync_last_modified(
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    last_modified: str,
+) -> Dict[str, Any]:
+    """Record the time ResQ stamped on a method this workspace just uploaded.
+
+    The counterpart of ``dfm_service.record_rpc_sync_last_modified``, and it
+    exists for the same reason: an upload leaves ArcRho and ResQ holding
+    identical settings under different times, so the next sync review calls the
+    remote newer and offers to pull back what was just pushed. ResQ's own value
+    is what makes them compare equal -- this machine's clock would only move the
+    disagreement to whichever side runs faster.
+
+    Only ``method_metadata.last_modified`` changes, and the revision no longer
+    covers it, so an open editor keeps the token it saves with.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    name = _clean(method_name)
+    stamped = _clean(last_modified)
+    if not project or not reserving or not name:
+        raise HTTPException(400, "project_name, reserving_class and method_name are required.")
+    if not stamped:
+        raise HTTPException(400, "last_modified is required.")
+    # A propagation walk rewrites whole method files in this class from another
+    # process, and this is a read-modify-write of one of them. Stand aside while
+    # it owns the class rather than risk reverting what it wrote.
+    if dependent_propagation_service.get_reserving_class_busy(project, reserving)["busy"]:
+        return {"ok": False, "status": "class_busy", "last_modified": ""}
+    method_path = _method_path(project, reserving, name)
+    with _lock(project, reserving):
+        current = _read_json(method_path)
+        if not current:
+            return {"ok": False, "status": "missing", "last_modified": ""}
+        if _clean(current.get("json_format")) != RESULT_SELECTION_JSON_FORMAT:
+            return {"ok": False, "status": "not_v2", "last_modified": ""}
+        metadata = current.get("method_metadata")
+        previous = _clean(metadata.get("last_modified")) if isinstance(metadata, dict) else ""
+        if previous == stamped:
+            return {"ok": True, "status": "unchanged", "last_modified": stamped}
+        updated = dict(current)
+        updated["method_metadata"] = {
+            **(metadata if isinstance(metadata, dict) else {}),
+            "last_modified": stamped,
+        }
+        _commit_text_files({method_path: _json_text(updated)})
+    return {
+        "ok": True,
+        "status": "stamped",
+        "last_modified": stamped,
+        "previous_last_modified": previous,
+    }

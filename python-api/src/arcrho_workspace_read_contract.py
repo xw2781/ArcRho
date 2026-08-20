@@ -149,6 +149,32 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name",),
         ("job_id",),
     ),
+    # The DFM and Result Selection sync dialogs compare the local method JSON
+    # against the copy the Bridge exported from ResQ. Both files live in the
+    # workspace, so from a Client PC rendering the review window costs several
+    # whole-file SMB reads before anything appears. The kwargs are the route
+    # schema's own fields; the service rebuilds its request model from them so
+    # validation keeps one owner.
+    "dfm_rpc_bridge_compare": WorkspaceReadKind(
+        "dfm_rpc_bridge_service",
+        "hosted_compare",
+        (
+            "project_name",
+            "reserving_class",
+            "method_name",
+            "output_vector",
+            "input_triangle",
+            "origin_length",
+            "development_length",
+        ),
+        ("decimal_places", "timeout_sec"),
+    ),
+    "result_selection_rpc_bridge_compare": WorkspaceReadKind(
+        "result_selection_rpc_bridge_service",
+        "hosted_compare",
+        ("project_name", "reserving_class", "method_name", "origin_length"),
+        ("output_type", "timeout_sec"),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

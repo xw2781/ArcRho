@@ -48,6 +48,7 @@ Own the aggregate load, validation, persistence, and eager dependency refresh fl
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
+- `method_revision` covers the method's content and deliberately excludes `method_metadata.last_modified`, matching DFM, BF, CC and bootstrap, whose revisions come from `dfm_contract.method_revisions` projections that never reach it. That is what lets an RPC upload record ResQ's save time without invalidating the token an open editor saves with. A revision is minted where the method loads (a Client PC's app server, or the Gateway) and checked where it saves (always ArcRho Engine), and those upgrade separately, so `save_result_selection` also accepts `_legacy_method_revision` -- the whole-file hash minted before the exclusion. Remove that fallback once every installed app carries the change.
 - Out-of-band edits that bypass ArcRho's durable save paths cannot publish a dependency event; use an ArcRho save or explicit refresh after external file changes.
 - DFM and Bornhuetter Ferguson retain their own method-specific recalculation rules. Result Selection refresh begins when the dataset/output it directly references is durably rewritten; a method merely marked for review has not yet published a new output vector.
 <!-- MANUAL:END -->

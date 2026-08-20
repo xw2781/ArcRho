@@ -292,6 +292,108 @@ class BridgeSyncRequestHandlingTests(unittest.TestCase):
         self.assertIn("ResQ is unavailable", str(statuses[-1][1]["message"]))
 
 
+class SyncDfmSaveTimeTests(unittest.TestCase):
+    """A confirmed upload reports the ``Modified`` its own save produced.
+
+    ResQ stamps the method when it saves, so without this the local copy keeps
+    an older time and the next sync review calls the remote newer even though
+    it holds the settings ArcRho just sent.
+    """
+
+    def _client_and_method(self):
+        from arcrho_bridge import resq_client
+
+        class _OutputVector:
+            Modified = "2026-08-19T09:00:00"
+
+        class _Dfm:
+            def __init__(self):
+                self.OutputVector = _OutputVector()
+                self.saved = False
+
+            def Save(self):
+                self.saved = True
+                # ResQ moves its own timestamp forward on save.
+                self.OutputVector.Modified = "2026-08-19T10:05:30.500000"
+
+        return resq_client.ResQClient(), _Dfm()
+
+    def _run(self, client, dfm, request):
+        from arcrho_bridge import resq_client
+
+        written = {}
+        with (
+            patch.object(client, "_connect"),
+            patch.object(client, "_disconnect"),
+            patch.object(client, "_dfm_method", return_value=dfm),
+            patch.object(client, "_sync_excluded_ratios", return_value=0),
+            patch.object(client, "_sync_user_entry_values", return_value=0),
+            patch.object(client, "_sync_selected_ratios", return_value=0),
+            patch.object(client, "_sync_cell_notes", return_value=False),
+            patch.object(client, "_sync_method_notes", return_value=False),
+            patch.object(resq_client, "read_json", return_value={}),
+            patch.object(resq_client, "write_json", side_effect=lambda path, payload: written.update(payload)),
+        ):
+            returned = client.write_sync_dfm_payload(request)
+        return returned, written
+
+    def test_the_status_reports_the_time_the_save_produced(self):
+        client, dfm = self._client_and_method()
+        request = {"MethodJsonPath": "method.json", "DataPath": "status.json", "MethodName": "M"}
+        returned, written = self._run(client, dfm, request)
+        self.assertTrue(dfm.saved)
+        # Read after Save(), so it is the new value rather than the one the
+        # method carried when the upload started.
+        self.assertEqual(returned["last modified"], "2026-08-19T10:05:30.500000")
+        self.assertEqual(written["last modified"], returned["last modified"])
+        self.assertTrue(written["ok"])
+
+    def test_a_method_without_a_readable_modified_reports_an_empty_value(self):
+        # The app server treats an empty value as "not reported" and leaves the
+        # local timestamp alone rather than inventing one.
+        client, dfm = self._client_and_method()
+
+        class _Unreadable:
+            @property
+            def Modified(self):
+                raise RuntimeError("no such property")
+
+        dfm.OutputVector = _Unreadable()
+        dfm.Save = lambda: None
+        request = {"MethodJsonPath": "method.json", "DataPath": "status.json", "MethodName": "M"}
+        returned, _ = self._run(client, dfm, request)
+        self.assertEqual(returned["last modified"], "")
+
+
+class BridgeWorkerWakeUpTests(unittest.TestCase):
+    """A request that arrives between scans must not wait out the idle period."""
+
+    def test_a_watchdog_event_ends_the_idle_wait_immediately(self):
+        handler = bridge_main.BridgeRequestHandler.__new__(bridge_main.BridgeRequestHandler)
+        handler._scan_requested = bridge_main.threading.Event()
+
+        started = time.monotonic()
+        handler.wait_for_scan_request(5)
+        self.assertGreaterEqual(time.monotonic() - started, 5 - 0.5)
+
+        handler._request_scan("request-DFM-2026.json")
+        started = time.monotonic()
+        handler.wait_for_scan_request(5)
+        self.assertLess(time.monotonic() - started, 1)
+        # The wait leaves the flag for the scan check at the top of the loop.
+        self.assertTrue(handler.consume_scan_request())
+        self.assertFalse(handler.consume_scan_request())
+
+    def test_a_non_json_event_does_not_wake_the_worker(self):
+        handler = bridge_main.BridgeRequestHandler.__new__(bridge_main.BridgeRequestHandler)
+        handler._scan_requested = bridge_main.threading.Event()
+        handler._request_scan("request-DFM-2026.tmp")
+        started = time.monotonic()
+        handler.wait_for_scan_request(1)
+        self.assertGreaterEqual(time.monotonic() - started, 0.5)
+        self.assertFalse(handler.consume_scan_request())
+
+
 class BridgeSyncRequestValidationTests(unittest.TestCase):
     def setUp(self):
         self.handler = bridge_main.BridgeRequestHandler(Mock())

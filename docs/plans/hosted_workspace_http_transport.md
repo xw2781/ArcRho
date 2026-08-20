@@ -42,8 +42,17 @@ service on the server host (cache validation, exchange, sidecar write,
 dependent enqueue, index refresh) and the client registers the returned
 dataset handle — profiling showed the exchange was ~3 s of a ~15 s
 length-change run and the sidecar/dependent SMB work the rest. See
-`frontend/docs/app_server/domains/engine_calculations.md`. The bounded-server
-foundation, SSE, and small writes remain as planned below.
+`frontend/docs/app_server/domains/engine_calculations.md`.
+
+The DFM and Result Selection RPC bridges followed on 2026-08-19, through the
+read and mutation registries rather than a route of their own: `compare` is a
+hosted read and `sync` / `keep-local` / `cleanup` / `update-remote` are hosted
+mutations, so the request file the ArcRho Bridge claims is written on the
+server host where that folder is local disk and the wait for its answer is a
+file-system event. `apply` deliberately stayed local; see
+[hosted_rpc_bridge_transport.md](hosted_rpc_bridge_transport.md).
+
+The bounded-server foundation, SSE, and small writes remain as planned below.
 
 ## Completed: the rename
 

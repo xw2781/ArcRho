@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Syncing a DFM or Result Selection method with ResQ now runs on the ArcRho Server instead of the network drive, so the review window opens in a fraction of the time.",
+  "details": [
+    "Sync, Refresh, Keep Local, and the remote update no longer publish their request file and poll for the answer across the mapped drive; the ArcRho Gateway does that work next to the data and the Bridge answers it from local disk.",
+    "The comparison now reads each method file once instead of two and three times, which speeds up the review window even when the Gateway is unavailable.",
+    "A sync request now records the person who started it rather than the account the service runs under.",
+    "A Client PC without the Gateway keeps working exactly as before."
+  ]
+}

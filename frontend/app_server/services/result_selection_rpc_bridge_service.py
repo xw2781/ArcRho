@@ -1,13 +1,14 @@
 """Result Selection RPC bridge request and comparison operations."""
 from __future__ import annotations
 
-import getpass
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import HTTPException
+
+from arcrho_workspace_mutation_contract import clamp_rpc_bridge_wait
 
 from app_server import config
 from app_server.helpers import (
@@ -15,12 +16,19 @@ from app_server.helpers import (
     sanitize_dataset_file_name,
     wait_for_file,
 )
-from app_server.schemas.result_selection_rpc_bridge import ResultSelectionRpcBridgeRequest
+from app_server.schemas.result_selection_rpc_bridge import (
+    ResultSelectionRpcBridgeRequest,
+    ResultSelectionRpcBridgeUpdateRemoteRequest,
+)
+from app_server.services import user_identity_service
 
 RPC_BRIDGE_DIR_NAME = "RPC bridge"
 RPC_BRIDGE_TMP_DIR_NAME = "tmp_rpc"
 RESULT_SELECTION_FUNCTION_NAME = "ResultSelection"
 SYNC_RESULT_SELECTION_FUNCTION_NAME = "SyncResultSelection"
+# The status field carrying the ``Modified`` value ResQ stamped on the method it
+# just saved, in the same spelling the DFM bridge uses for it.
+SYNC_LAST_MODIFIED_FIELD = "last modified"
 
 
 def _clean_text(value: Any) -> str:
@@ -88,7 +96,10 @@ def _request_payload(
         "OutputType": req.output_type,
         "OriginLength": req.origin_length,
         "DataPath": data_path,
-        "UserName": getpass.getuser(),
+        # The exchange runs on the Client PC or inside the Gateway on the
+        # server host; either way the request names the person who asked,
+        # not whichever account happens to own the process.
+        "UserName": user_identity_service.get_windows_login_name(),
     }
     payload.update(extra_fields or {})
     return payload
@@ -156,14 +167,29 @@ def _read_json(path: str) -> Dict[str, Any]:
     return data
 
 
-def _json_last_modified_meta(path: str) -> Dict[str, Any]:
+# One parse of one method JSON: whether the file was there, what it held, and
+# why it could not be read. The metadata and the snapshot are both derived from
+# this rather than from a path, because on a mapped drive every extra open is a
+# full round trip -- measured at 0.4-0.6 s per file whatever its size.
+ParsedJson = Tuple[bool, Optional[Dict[str, Any]], str]
+
+
+def _parse_json_once(path: str) -> ParsedJson:
+    if not os.path.exists(path):
+        return False, None, ""
     try:
-        payload = _read_json(path)
+        return True, _read_json(path), ""
     except HTTPException as err:
+        return True, None, _clean_text(err.detail)
+
+
+def _json_last_modified_meta(parsed: ParsedJson) -> Dict[str, Any]:
+    _exists, payload, error = parsed
+    if payload is None:
         return {
             "last_modified": "",
             "last_modified_timestamp": None,
-            "last_modified_error": _clean_text(err.detail),
+            "last_modified_error": error,
         }
     raw = _json_tab(payload, "method_metadata").get("last_modified")
     return {
@@ -173,8 +199,10 @@ def _json_last_modified_meta(path: str) -> Dict[str, Any]:
     }
 
 
-def _file_meta(path: str) -> Dict[str, Any]:
-    exists = os.path.exists(path)
+def _file_meta(path: str, parsed: Optional[ParsedJson] = None) -> Dict[str, Any]:
+    if parsed is None:
+        parsed = _parse_json_once(path)
+    exists = bool(parsed[0])
     out: Dict[str, Any] = {
         "path": path,
         "exists": exists,
@@ -196,7 +224,7 @@ def _file_meta(path: str) -> Dict[str, Any]:
     out["mtime"] = st.st_mtime
     out["mtime_iso"] = datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
     out["size"] = st.st_size
-    out.update(_json_last_modified_meta(path))
+    out.update(_json_last_modified_meta(parsed))
     return out
 
 
@@ -229,7 +257,7 @@ def _source_snapshot(source: Any) -> Dict[str, Any] | None:
     }
 
 
-def _build_json_snapshot(path: str) -> Dict[str, Any]:
+def _build_json_snapshot(parsed: ParsedJson) -> Dict[str, Any]:
     empty = {
         "available": False,
         "error": "",
@@ -248,12 +276,9 @@ def _build_json_snapshot(path: str) -> Dict[str, Any]:
         "ultimate_overrides_preview": [],
         "last_modified": "",
     }
-    if not os.path.exists(path):
-        return empty
-    try:
-        payload = _read_json(path)
-    except HTTPException as err:
-        return {**empty, "error": _clean_text(err.detail)}
+    _exists, payload, parse_error = parsed
+    if payload is None:
+        return empty if not parse_error else {**empty, "error": parse_error}
     json_format = _clean_text(payload.get("json_format"))
     status = _clean_text(payload.get("status"))
     message = _clean_text(payload.get("message"))
@@ -318,8 +343,10 @@ def _compare_state(local_meta: Dict[str, Any], remote_meta: Dict[str, Any]) -> s
 
 def compare(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
     paths = build_paths(req)
-    local_meta = _file_meta(paths["local_path"])
-    remote_meta = _file_meta(paths["remote_path"])
+    local_parsed = _parse_json_once(paths["local_path"])
+    remote_parsed = _parse_json_once(paths["remote_path"])
+    local_meta = _file_meta(paths["local_path"], local_parsed)
+    remote_meta = _file_meta(paths["remote_path"], remote_parsed)
     return {
         "ok": True,
         "status": "compared",
@@ -327,8 +354,8 @@ def compare(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
         "local": local_meta,
         "remote": remote_meta,
         "snapshots": {
-            "local": _build_json_snapshot(paths["local_path"]),
-            "remote": _build_json_snapshot(paths["remote_path"]),
+            "local": _build_json_snapshot(local_parsed),
+            "remote": _build_json_snapshot(remote_parsed),
         },
         "labels": {
             "local": "ArcRho - Local",
@@ -348,7 +375,7 @@ def send_sync_request(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
     stale_remote_deleted = _try_remove(paths["remote_path"])
     stale_sync_status_deleted = _try_remove(paths["sync_status_path"])
     request_file = _write_request_file(req, RESULT_SELECTION_FUNCTION_NAME, paths["remote_path"], paths["request_dir"])
-    ok = wait_for_file(paths["remote_path"], timeout_sec=max(0.1, float(req.timeout_sec)))
+    ok = wait_for_file(paths["remote_path"], timeout_sec=clamp_rpc_bridge_wait(req.timeout_sec))
     result = compare(req)
     result.update({
         "request_file": request_file,
@@ -448,6 +475,45 @@ def cleanup_tmp(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
     }
 
 
+def _record_remote_sync_time(
+    req: ResultSelectionRpcBridgeRequest,
+    status_payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Copy the time ResQ recorded for this upload onto the local method.
+
+    ResQ stamps its own ``Modified`` when it saves, so straight after a
+    successful upload the two copies hold identical settings under different
+    times and the next review window calls the remote newer -- inviting the user
+    to pull back what they just pushed. Taking ResQ's value rather than this
+    machine's clock is what makes them compare equal.
+
+    The upload has already happened by the time this runs, so a failure here is
+    reported alongside a successful sync rather than turning it into one.
+    """
+
+    stamped = _clean_text(status_payload.get(SYNC_LAST_MODIFIED_FIELD))
+    if not stamped:
+        # An older Bridge does not report it. Leaving the local value alone
+        # keeps today's behaviour rather than inventing a time.
+        return {"ok": False, "status": "not_reported", "last_modified": ""}
+    from app_server.services import result_selection_service
+
+    try:
+        return result_selection_service.record_rpc_sync_last_modified(
+            req.project_name,
+            req.reserving_class,
+            req.method_name,
+            stamped,
+        )
+    except HTTPException as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "last_modified": stamped,
+            "error": _clean_text(exc.detail),
+        }
+
+
 def update_remote(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
     if not getattr(req, "rpc_server_write_confirmed", False):
         raise HTTPException(400, "RPC server write confirmation is required before updating the remote Result Selection.")
@@ -464,7 +530,7 @@ def update_remote(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
             "RPCServerWriteConfirmed": True,
         },
     )
-    status_found = wait_for_file(paths["sync_status_path"], timeout_sec=max(0.1, float(req.timeout_sec)))
+    status_found = wait_for_file(paths["sync_status_path"], timeout_sec=clamp_rpc_bridge_wait(req.timeout_sec))
     remote_deleted = _try_remove(paths["remote_path"])
     if not status_found:
         return {
@@ -483,13 +549,101 @@ def update_remote(req: ResultSelectionRpcBridgeRequest) -> Dict[str, Any]:
     status_text = raw_status or ("passed" if status_ok else "failed")
     message = _clean_text(status_payload.get("message")) or status_text
     _try_remove(paths["sync_status_path"])
+    last_modified = (
+        _record_remote_sync_time(req, status_payload)
+        if status_ok
+        else {"ok": False, "status": "not_attempted", "last_modified": ""}
+    )
     return {
         "ok": status_ok,
         "status": status_text,
         "message": message,
         "payload": status_payload,
+        "last_modified_record": last_modified,
         "request_file": request_file,
         "status_path": paths["sync_status_path"],
         "remote_deleted": remote_deleted,
         "paths": paths,
     }
+
+
+# ---------------------------------------------------------------------------
+# Gateway-hosted entry points
+#
+# The same transport the DFM bridge uses, for the same reason: the ArcRho
+# Bridge that answers these requests runs on the server host where these
+# folders are local disk, while a Client PC reaches them over SMB. The flat
+# keyword arguments are the route schema's own fields, and rebuilding the
+# request model here keeps pydantic the single validator for both transports.
+# ---------------------------------------------------------------------------
+
+
+def _hosted_request(model, fields: Dict[str, Any]):
+    """Rebuild a route request model from one hosted call's arguments.
+
+    An optional argument the caller omitted arrives as None and is dropped, so
+    the schema stays the only place these defaults are written down.
+    """
+
+    return model(**{name: value for name, value in fields.items() if value is not None})
+
+
+def hosted_compare(
+    *,
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    origin_length: int,
+    output_type: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+) -> Dict[str, Any]:
+    return compare(_hosted_request(ResultSelectionRpcBridgeRequest, locals()))
+
+
+def hosted_send_sync_request(
+    *,
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    origin_length: int,
+    output_type: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+) -> Dict[str, Any]:
+    return send_sync_request(_hosted_request(ResultSelectionRpcBridgeRequest, locals()))
+
+
+def hosted_keep_local(
+    *,
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    origin_length: int,
+    output_type: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+) -> Dict[str, Any]:
+    return keep_local(_hosted_request(ResultSelectionRpcBridgeRequest, locals()))
+
+
+def hosted_cleanup_tmp(
+    *,
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    origin_length: int,
+    output_type: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+) -> Dict[str, Any]:
+    return cleanup_tmp(_hosted_request(ResultSelectionRpcBridgeRequest, locals()))
+
+
+def hosted_update_remote(
+    *,
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    origin_length: int,
+    output_type: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+    rpc_server_write_confirmed: Optional[bool] = None,
+) -> Dict[str, Any]:
+    return update_remote(_hosted_request(ResultSelectionRpcBridgeUpdateRemoteRequest, locals()))

@@ -226,6 +226,13 @@ class ResQClient:
                     "cell notes": cell_notes_changed,
                     "method notes": method_notes_changed,
                 },
+                # The save above gave this method a new ResQ ``Modified``.
+                # Report it so ArcRho can record the same instant against its
+                # own copy: the two now hold identical settings, and without
+                # this the next sync review calls the remote newer and offers
+                # to pull back what was just pushed. Read after Save() and in
+                # the same spelling the DFM export uses.
+                "last modified": self._dfm_last_modified(dfm),
             }
             write_json(request["DataPath"], payload)
             return payload
@@ -325,6 +332,13 @@ class ResQClient:
                     "weights": weight_count,
                     "ultimate overrides": ultimate_count,
                 },
+                # Reported for the same reason as the DFM status above. Nothing
+                # consumes it yet: a Result Selection revision is a hash of the
+                # whole method file, so recording this against the local copy
+                # would invalidate an open editor's save token until that
+                # revision stops covering the timestamp. Sent now because the
+                # field costs nothing and a Bridge deploy is expensive.
+                "last modified": self._result_selection_last_modified(result_selection),
             }
             write_json(request["DataPath"], status_payload)
             return status_payload

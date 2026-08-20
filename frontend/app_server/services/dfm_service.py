@@ -29,6 +29,7 @@ from arcrho_api.dfm_contract import (
     persisted_projection,
     preview_dfm_method as canonical_preview_dfm_method,
     recalculate_dfm_method,
+    stamp_last_modified,
 )
 from arcrho_api.io import persisted_json_text
 from app_server import config
@@ -1541,4 +1542,62 @@ def refresh_dependents(
         "skipped": skipped,
         "errors": errors,
         "review_status_updates": review_status_updates,
+    }
+
+
+def record_rpc_sync_last_modified(
+    project_name: str,
+    reserving_class: str,
+    method_name: str,
+    last_modified: str,
+) -> Dict[str, Any]:
+    """Record the time ResQ stamped on a method this workspace just uploaded.
+
+    An upload writes ArcRho's settings into the RPC server and ResQ saves them
+    under its own ``Modified``. The two copies then hold identical content and
+    different times, so the next sync review calls the remote newer and invites
+    the user to pull back the values they just pushed. Writing ResQ's own value
+    here -- not this machine's clock, which would only move the disagreement to
+    whichever side has the faster clock -- makes the pair compare equal.
+
+    Only ``method metadata.last modified`` changes. It is outside every revision
+    projection, so an editor open on this method keeps its optimistic-concurrency
+    token and no dependent is disturbed.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    name = _clean(method_name)
+    stamped = _clean(last_modified)
+    if not project or not reserving or not name:
+        raise HTTPException(400, "project_name, reserving_class and method_name are required.")
+    if not stamped:
+        raise HTTPException(400, "last_modified is required.")
+    # A propagation walk rewrites whole method files in this class from another
+    # process, and this is a read-modify-write of one of them. Stand aside while
+    # it owns the class rather than risk reverting what it wrote; the caller
+    # reports that beside a sync that has already succeeded. The read-only probe
+    # is used rather than the save preflight because recording a timestamp needs
+    # no Engine and must not fail merely because none is running.
+    if dependent_propagation_service.get_reserving_class_busy(project, reserving)["busy"]:
+        return {"ok": False, "status": "class_busy", "last_modified": ""}
+    method_path = _method_path(project, reserving, name)
+    with _lock(project, reserving):
+        current = _read_json(method_path)
+        if not current:
+            return {"ok": False, "status": "missing", "last_modified": ""}
+        if _clean(current.get("json format")) != DFM_JSON_FORMAT:
+            return {"ok": False, "status": "not_v2", "last_modified": ""}
+        previous = _clean((current.get("method metadata") or {}).get("last modified"))
+        if previous == stamped:
+            return {"ok": True, "status": "unchanged", "last_modified": stamped}
+        updated = _contract_call(stamp_last_modified, current, stamped)
+        # The persisted projection is a no-op on an already-persisted payload,
+        # so this rewrites the file exactly as its own writer would have.
+        changed = _commit_text_files({method_path: _method_json_text(updated)})
+    return {
+        "ok": True,
+        "status": "stamped" if changed else "unchanged",
+        "last_modified": stamped,
+        "previous_last_modified": previous,
     }

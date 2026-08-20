@@ -181,7 +181,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_json(self.sidecars / "Selection.json", sidecar)
         loaded = result_selection_service.load_result_selection("Project", "Class", "Selection")
         changed = self.method_payload()
-        changed["method_metadata"]["last_modified"] = "2026-02-01T00:00:00Z"
+        # Somebody else edited the method itself, which is what the token guards.
+        changed["method_tab"]["loaded_datasets"][0]["values"] = [11, 21]
         self.write_json(self.methods / "RS@Selection.json", changed)
 
         with self.assertRaises(HTTPException) as raised:
@@ -194,6 +195,65 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 409)
         self.assertIn("changed on disk", str(raised.exception.detail))
+
+    def test_a_timestamp_only_rewrite_does_not_make_an_open_method_stale(self) -> None:
+        # An RPC upload records the time ResQ stamped on the copy it just saved.
+        # The content is untouched, so the editor that has this method open must
+        # keep the token it saves with.
+        self.write_selection()
+        self.write_source("Paid", [10, 20])
+        sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        sidecar["status"] = 0
+        self.write_json(self.sidecars / "Selection.json", sidecar)
+        loaded = result_selection_service.load_result_selection("Project", "Class", "Selection")
+        restamped = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        restamped["method_metadata"]["last_modified"] = "2026-02-01T00:00:00Z"
+        self.write_json(self.methods / "RS@Selection.json", restamped)
+
+        with (
+            mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.save_result_selection(
+                "Project",
+                "Class",
+                loaded["method"],
+                expected_revision=loaded["method_revision"],
+            )
+
+        self.assertTrue(result["ok"])
+
+    def test_save_accepts_a_revision_minted_before_the_timestamp_was_excluded(self) -> None:
+        # A revision is minted where the method loads -- a Client PC's own app
+        # server or the Gateway -- and checked here on ArcRho Engine. Those
+        # upgrade separately, so the older whole-file form stays acceptable.
+        self.write_selection()
+        self.write_source("Paid", [10, 20])
+        sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        sidecar["status"] = 0
+        self.write_json(self.sidecars / "Selection.json", sidecar)
+        loaded = result_selection_service.load_result_selection("Project", "Class", "Selection")
+        current = result_selection_service.normalize_method_payload(
+            json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8")),
+            require_complete_basis=True,
+        )
+        legacy_revision = result_selection_service._legacy_method_revision(current)
+        self.assertNotEqual(legacy_revision, loaded["method_revision"])
+
+        with (
+            mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.save_result_selection(
+                "Project",
+                "Class",
+                loaded["method"],
+                expected_revision=legacy_revision,
+            )
+
+        self.assertTrue(result["ok"])
 
     def test_review_needed_save_revalidates_only_the_revised_precedent_list(self) -> None:
         self.write_selection()

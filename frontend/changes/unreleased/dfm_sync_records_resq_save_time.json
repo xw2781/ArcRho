@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "After sending a DFM or Result Selection method to the ResQ server, the next sync no longer reports ResQ as the newer version when nothing has actually changed.",
+  "details": [
+    "ResQ stamps its own modified time when it saves, so an upload used to leave the two copies holding identical settings under different times, and the review window then offered to pull back the values just sent.",
+    "A confirmed remote update now records the time ResQ itself reported for that save against the local method, so the two compare as the same version.",
+    "Only the recorded time changes: the method's contents and any dependent refresh are untouched.",
+    "A Result Selection method's saved-version check now covers its contents rather than the whole file, so recording that time cannot make an open method look out of date."
+  ]
+}

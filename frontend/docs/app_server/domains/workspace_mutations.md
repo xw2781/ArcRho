@@ -14,6 +14,22 @@ No new browser-facing route. This existing route selects the transport per reque
 | Route | Mutation kind | Service |
 | --- | --- | --- |
 | `POST /datasets/cached/delete` | `cached_dataset_delete` | `dataset_service.delete_cached_datasets` |
+| `POST /dfm/rpc-bridge/sync` | `dfm_rpc_bridge_sync` | `dfm_rpc_bridge_service.hosted_send_sync_request` |
+| `POST /dfm/rpc-bridge/keep-local` | `dfm_rpc_bridge_keep_local` | `dfm_rpc_bridge_service.hosted_keep_local` |
+| `POST /dfm/rpc-bridge/cleanup` | `dfm_rpc_bridge_cleanup` | `dfm_rpc_bridge_service.hosted_cleanup_tmp` |
+| `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
+| the four `/result-selection/rpc-bridge/*` equivalents | `result_selection_rpc_bridge_*` | `result_selection_rpc_bridge_service.hosted_*` |
+
+The RPC-bridge kinds are the one family whose work is not finished when the
+service returns from local disk: `sync` and `update-remote` publish a request
+file and then wait for the ArcRho Bridge to answer. The Bridge runs on the
+server host, so hosting these puts both halves of that exchange on local disk,
+where the wait is a file-system event rather than a poll that must write and
+delete a probe file to defeat the SMB redirector's cached "not found". Their
+keyword arguments are the route schema's own fields and the service rebuilds
+its request model from them, so pydantic stays the only validator; the wait a
+caller may ask the Gateway to hold a thread for is clamped by
+`clamp_rpc_bridge_wait`.
 
 Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_mutation_contract.WORKSPACE_MUTATION_PATH`), authenticated with the same per-user HMAC headers as hosted saves and workspace reads. `GET /api/capabilities` advertises `workspace_mutation_kinds`.
 <!-- MANUAL:END -->

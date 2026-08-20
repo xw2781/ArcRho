@@ -69,6 +69,46 @@ class WorkspaceMutationKind:
         return frozenset(self.required + self.optional)
 
 
+# The RPC-bridge kinds take their route schema's own fields, so the service can
+# rebuild its request model from them and pydantic stays the single validator.
+_DFM_RPC_BRIDGE_REQUIRED: tuple[str, ...] = (
+    "project_name",
+    "reserving_class",
+    "method_name",
+    "output_vector",
+    "input_triangle",
+    "origin_length",
+    "development_length",
+)
+_DFM_RPC_BRIDGE_OPTIONAL: tuple[str, ...] = ("decimal_places", "timeout_sec")
+_RESULT_SELECTION_RPC_BRIDGE_REQUIRED: tuple[str, ...] = (
+    "project_name",
+    "reserving_class",
+    "method_name",
+    "origin_length",
+)
+_RESULT_SELECTION_RPC_BRIDGE_OPTIONAL: tuple[str, ...] = ("output_type", "timeout_sec")
+
+# A hosted mutation that waits for the Bridge holds a Gateway worker thread for
+# the duration, so the caller's budget is clamped into this range rather than
+# trusted. The frontend asks for 8 s today; the ceiling exists so a client
+# cannot pin a thread for minutes.
+MIN_RPC_BRIDGE_WAIT_SECONDS = 0.1
+MAX_RPC_BRIDGE_WAIT_SECONDS = 60.0
+
+
+def clamp_rpc_bridge_wait(timeout_sec: Any) -> float:
+    """Return the wait a hosted RPC-bridge exchange may hold a thread for."""
+
+    try:
+        wait = float(timeout_sec)
+    except (TypeError, ValueError) as exc:
+        raise WorkspaceMutationContractError("timeout_sec must be a number.") from exc
+    if wait != wait:  # NaN
+        raise WorkspaceMutationContractError("timeout_sec must be a number.")
+    return min(MAX_RPC_BRIDGE_WAIT_SECONDS, max(MIN_RPC_BRIDGE_WAIT_SECONDS, wait))
+
+
 # kind -> canonical service mutation. The Gateway resolves mutations only
 # through this table; a request naming anything else, or passing an argument
 # not listed here, is rejected before any import happens.
@@ -93,6 +133,79 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "submit_source_table_refresh_job",
         ("project_name", "request_id"),
         ("import_source", "force", "refresh_dependents"),
+    ),
+    # The DFM sync dialog publishes a request file the ArcRho Bridge claims,
+    # then waits for the JSON the Bridge exports from ResQ. Both halves are
+    # server-local for the Bridge and both cross SMB for a Client PC, where the
+    # publish is several round trips and every wait tick writes and deletes a
+    # probe file so the redirector cannot serve a cached "not found". Hosted,
+    # the request lands on local disk and the wait is a file-system event.
+    #
+    # Idempotent: the stale response and status files are deleted first, and a
+    # repeat regenerates the same export from the same ResQ method. A second
+    # run costs a duplicate ResQ export, never a divergent workspace.
+    "dfm_rpc_bridge_sync": WorkspaceMutationKind(
+        "dfm_rpc_bridge_service",
+        "hosted_send_sync_request",
+        _DFM_RPC_BRIDGE_REQUIRED,
+        _DFM_RPC_BRIDGE_OPTIONAL,
+    ),
+    # Deleting the temporary response and status JSON. Idempotent because a
+    # file that is already gone is skipped rather than failed.
+    "dfm_rpc_bridge_cleanup": WorkspaceMutationKind(
+        "dfm_rpc_bridge_service",
+        "hosted_cleanup_tmp",
+        _DFM_RPC_BRIDGE_REQUIRED,
+        _DFM_RPC_BRIDGE_OPTIONAL,
+    ),
+    # Keeping the local method and discarding the remote export: the same
+    # delete, with the message the dialog reports.
+    "dfm_rpc_bridge_keep_local": WorkspaceMutationKind(
+        "dfm_rpc_bridge_service",
+        "hosted_keep_local",
+        _DFM_RPC_BRIDGE_REQUIRED,
+        _DFM_RPC_BRIDGE_OPTIONAL,
+    ),
+    # Writing the local method's owned settings back into the RPC server. This
+    # is the one kind whose effect lands outside the workspace, so it carries
+    # the transport rule most strictly: once the Gateway has accepted the
+    # request, an ambiguous outcome is reported, never retried over SMB.
+    # Idempotent in the sense the contract requires: a repeat writes the same
+    # values from the same local method and saves again. The confirmation flag
+    # is optional here on purpose: a false value must reach the service so both
+    # transports refuse it with the same message.
+    "dfm_rpc_bridge_update_remote": WorkspaceMutationKind(
+        "dfm_rpc_bridge_service",
+        "hosted_update_remote",
+        _DFM_RPC_BRIDGE_REQUIRED,
+        _DFM_RPC_BRIDGE_OPTIONAL + ("rpc_server_write_confirmed",),
+    ),
+    # The Result Selection sync is the same exchange against its own request
+    # function and method files; the arguments differ because its route schema
+    # does.
+    "result_selection_rpc_bridge_sync": WorkspaceMutationKind(
+        "result_selection_rpc_bridge_service",
+        "hosted_send_sync_request",
+        _RESULT_SELECTION_RPC_BRIDGE_REQUIRED,
+        _RESULT_SELECTION_RPC_BRIDGE_OPTIONAL,
+    ),
+    "result_selection_rpc_bridge_cleanup": WorkspaceMutationKind(
+        "result_selection_rpc_bridge_service",
+        "hosted_cleanup_tmp",
+        _RESULT_SELECTION_RPC_BRIDGE_REQUIRED,
+        _RESULT_SELECTION_RPC_BRIDGE_OPTIONAL,
+    ),
+    "result_selection_rpc_bridge_keep_local": WorkspaceMutationKind(
+        "result_selection_rpc_bridge_service",
+        "hosted_keep_local",
+        _RESULT_SELECTION_RPC_BRIDGE_REQUIRED,
+        _RESULT_SELECTION_RPC_BRIDGE_OPTIONAL,
+    ),
+    "result_selection_rpc_bridge_update_remote": WorkspaceMutationKind(
+        "result_selection_rpc_bridge_service",
+        "hosted_update_remote",
+        _RESULT_SELECTION_RPC_BRIDGE_REQUIRED,
+        _RESULT_SELECTION_RPC_BRIDGE_OPTIONAL + ("rpc_server_write_confirmed",),
     ),
 }
 

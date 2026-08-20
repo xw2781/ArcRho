@@ -776,6 +776,20 @@ class BridgeRequestHandler(FileSystemEventHandler):
         self._scan_requested.clear()
         return True
 
+    def wait_for_scan_request(self, timeout):
+        """Idle until a watchdog event asks for a scan, or *timeout* elapses.
+
+        The worker loop used to sleep a flat second between scans, so a request
+        that arrived just after a scan waited out the rest of that second
+        before anyone looked -- half a second on average added to every DFM and
+        Result Selection sync a user is watching. Waiting on the event instead
+        keeps the same ceiling for the periodic rescan a share needs while
+        answering a local event immediately. The flag is left set for
+        ``consume_scan_request`` to clear.
+        """
+
+        self._scan_requested.wait(timeout)
+
     def process_pending(self, folder):
         """Claim pending requests in deterministic mtime order.
 
@@ -1202,7 +1216,7 @@ def run_bridge_worker():
                 handler.process_pending(import_request_folder)
                 handler.process_pending(sync_request_folder)
                 last_request_scan = time.monotonic()
-            time.sleep(1)
+            handler.wait_for_scan_request(1)
     except KeyboardInterrupt:
         observer.stop()
     finally:
