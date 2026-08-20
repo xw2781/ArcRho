@@ -11,7 +11,9 @@ const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
 const GITHUB_API_ROOT = "https://api.github.com";
 const DOWNLOAD_PROGRESS_CHANNEL = "update-download-progress";
 const MANDATORY_MARKER_RE = /\bmandatory\s*:\s*true\b/i;
-const MAX_RELEASES_SCANNED = 15;
+// Wide enough that a user who skipped a long run of releases still gets every
+// note in between; only the winning version costs a checksum round trip.
+const MAX_RELEASES_SCANNED = 30;
 const USER_SECTION_HEADING_RE = /^##\s+user-facing changes\s*$/i;
 const SECTION_HEADING_RE = /^##\s+/;
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
@@ -19,6 +21,10 @@ const BULLET_RE = /^[-*]\s+(.*)$/;
 const NESTED_BULLET_RE = /^\s{2,}[-*]\s+/;
 const RELEASED_ON_RE = /^released on .*\.$/i;
 const MAX_RELEASE_NOTE_BULLETS = 12;
+// Every installer ships the notes generated for it and for every release before
+// it, so an installed app already holds its own complete history offline.
+const LOCAL_RELEASE_NOTES_DIR = path.resolve(__dirname, "..", "docs", "releases");
+const LOCAL_RELEASE_NOTE_FILE_RE = /^(\d+\.\d+\.\d+)\.md$/i;
 const PENDING_CLEANUP_FILE = "pending_update_cleanup.json";
 const CLEANUP_RETRY_DELAY_MS = 20000;
 const INSTALLER_LAUNCH_RETRY_DELAYS_MS = [400, 1200, 2500, 5000];
@@ -102,11 +108,12 @@ function stripInlineMarkdown(text) {
     .trim();
 }
 
-// A native message box renders plain text only, so the release body is reduced to
-// the user-facing section as flat lines: the label itself, the internal and
-// fragment-source sections, and the per-change detail bullets are all dropped.
-// Those details are what make the box tall enough to need its own scrollbar.
-function userFacingReleaseNoteEntries(body) {
+// The one reader of a release body. It keeps the user-facing section and drops
+// the internal and fragment-source sections, so no surface built on it can leak
+// build chatter to a user. `includeNested` is what separates the two surfaces:
+// the in-app dialog scrolls and takes the per-change detail bullets, while a
+// native message box cannot scroll and gets the summary bullets only.
+function releaseNoteEntries(body, { includeNested = false } = {}) {
   const lines = String(body || "").replace(/\r\n/g, "\n").split("\n");
   const userSectionIndex = lines.findIndex((line) => USER_SECTION_HEADING_RE.test(line.trim()));
   let scoped = lines;
@@ -134,14 +141,37 @@ function userFacingReleaseNoteEntries(body) {
       entries.push({ kind: "text", text: stripInlineMarkdown(trimmed) });
       continue;
     }
-    if (NESTED_BULLET_RE.test(line)) continue;
+    if (NESTED_BULLET_RE.test(line)) {
+      if (includeNested) entries.push({ kind: "nested", text: stripInlineMarkdown(bullet[1]) });
+      continue;
+    }
     entries.push({ kind: "bullet", text: stripInlineMarkdown(bullet[1]) });
   }
   return entries;
 }
 
+function releasedOnFromBody(body) {
+  const line = String(body || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => RELEASED_ON_RE.test(entry));
+  return line ? line.replace(/^released on\s*/i, "").replace(/\.$/, "").trim() : "";
+}
+
+// One version's notes in the shape every renderer surface consumes, so the
+// update dialog and the release-history window cannot drift apart.
+function releaseNotePresentation(version, body, publishedAt = "") {
+  return {
+    version,
+    publishedAt: String(publishedAt || "").trim(),
+    releasedOn: releasedOnFromBody(body),
+    entries: releaseNoteEntries(body, { includeNested: true }),
+  };
+}
+
 function formatReleaseNotesForDialog(body) {
-  const entries = userFacingReleaseNoteEntries(body);
+  const entries = releaseNoteEntries(body);
   const rendered = [];
   let bullets = 0;
   let dropped = 0;
@@ -172,16 +202,28 @@ function formatReleaseNotesForDialog(body) {
   return rendered.join("\n").trim();
 }
 
-function createUpdateInfo(version, asset, sha256, release) {
+// `skipped` carries every release newer than the installed build up to and
+// including the winning one, newest first. A user who jumps 1.4.0 -> 1.4.2 has
+// never seen 1.4.1's notes, and the releases list already in hand holds them.
+function createUpdateInfo(candidate, sha256, skipped) {
+  const releases = skipped.map((entry) => ({
+    version: entry.version,
+    publishedAt: String(entry.release?.published_at || "").trim(),
+    body: String(entry.release?.body || "").trim(),
+  }));
   return {
-    version,
-    assetName: asset.name,
-    downloadUrl: asset.browser_download_url,
+    version: candidate.version,
+    currentVersion: app.getVersion(),
+    assetName: candidate.asset.name,
+    downloadUrl: candidate.asset.browser_download_url,
     sha256,
     source: "github",
-    releaseNotes: String(release?.body || "").trim(),
-    mandatory: MANDATORY_MARKER_RE.test(String(release?.body || "")),
-    publishedAt: String(release?.published_at || "").trim(),
+    releaseNotes: String(candidate.release?.body || "").trim(),
+    releases,
+    // A mandatory marker anywhere in the skipped span still makes this update
+    // mandatory; the version that carried it is one the user never installed.
+    mandatory: releases.some((entry) => MANDATORY_MARKER_RE.test(entry.body)),
+    publishedAt: String(candidate.release?.published_at || "").trim(),
   };
 }
 
@@ -223,11 +265,11 @@ async function readAssetText(url) {
   return String(await response.text());
 }
 
-async function findAvailableUpdateFromReleases(releases, options = {}) {
-  const reportIssues = options.reportIssues === true;
-  let best = null;
-  let bestIssue = null;
-
+// Every published release carrying an installer for this product, newest first.
+// No network here: the checksum is fetched only for the version that wins.
+function installerReleaseCandidates(releases) {
+  const candidates = [];
+  const seenVersions = new Set();
   for (const release of releases) {
     if (release?.draft || release?.prerelease) continue;
     const assets = Array.isArray(release?.assets) ? release.assets : [];
@@ -235,40 +277,55 @@ async function findAvailableUpdateFromReleases(releases, options = {}) {
       const match = String(asset?.name || "").match(UPDATE_INSTALLER_NAME_RE);
       if (!match) continue;
       const version = match[1];
-      if (compareVersions(version, app.getVersion()) <= 0) continue;
-      if (best && compareVersions(version, best.version) <= 0) continue;
-
-      const checksumAsset = assets.find((entry) => entry?.name === `${asset.name}.sha256`);
-      if (!checksumAsset) {
-        console.warn(`ArcRho update asset is missing a SHA-256 checksum asset: ${asset.name}`);
-        bestIssue = createUpdateIssue(
-          "missing-checksum",
-          version,
-          asset.name,
-          "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
-          `Add a ${asset.name}.sha256 asset to the release.`
-        );
-        continue;
-      }
-
-      const sha256 = parseSha256Text(await readAssetText(checksumAsset.browser_download_url));
-      if (!sha256) {
-        console.warn(`ArcRho update checksum asset could not be read: ${checksumAsset.name}`);
-        bestIssue = createUpdateIssue(
-          "missing-checksum",
-          version,
-          asset.name,
-          "ArcRho found a newer installer, but its SHA-256 checksum could not be read."
-        );
-        continue;
-      }
-
-      best = createUpdateInfo(version, asset, sha256, release);
+      if (seenVersions.has(version)) continue;
+      seenVersions.add(version);
+      candidates.push({ version, release, asset, assets });
     }
   }
+  candidates.sort((left, right) => compareVersions(right.version, left.version));
+  return candidates;
+}
 
-  if (best) return best;
-  return reportIssues ? bestIssue : null;
+async function findAvailableUpdateFromReleases(releases, options = {}) {
+  const reportIssues = options.reportIssues === true;
+  const newer = installerReleaseCandidates(releases)
+    .filter((candidate) => compareVersions(candidate.version, app.getVersion()) > 0);
+  let issue = null;
+
+  // Highest version first, so the first candidate with a usable checksum wins
+  // and a lower one is only reached when the higher one cannot be installed.
+  for (const candidate of newer) {
+    const checksumName = `${candidate.asset.name}.sha256`;
+    const checksumAsset = candidate.assets.find((entry) => entry?.name === checksumName);
+    if (!checksumAsset) {
+      console.warn(`ArcRho update asset is missing a SHA-256 checksum asset: ${candidate.asset.name}`);
+      issue = issue || createUpdateIssue(
+        "missing-checksum",
+        candidate.version,
+        candidate.asset.name,
+        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
+        `Add a ${checksumName} asset to the release.`
+      );
+      continue;
+    }
+
+    const sha256 = parseSha256Text(await readAssetText(checksumAsset.browser_download_url));
+    if (!sha256) {
+      console.warn(`ArcRho update checksum asset could not be read: ${checksumAsset.name}`);
+      issue = issue || createUpdateIssue(
+        "missing-checksum",
+        candidate.version,
+        candidate.asset.name,
+        "ArcRho found a newer installer, but its SHA-256 checksum could not be read."
+      );
+      continue;
+    }
+
+    const skipped = newer.filter((entry) => compareVersions(entry.version, candidate.version) <= 0);
+    return createUpdateInfo(candidate, sha256, skipped);
+  }
+
+  return reportIssues ? issue : null;
 }
 
 async function findAvailableUpdate(options = {}) {
@@ -569,9 +626,46 @@ async function downloadVerifyAndInstall(updateInfo) {
   }
 }
 
-async function promptForUpdateInstall(updateInfo) {
-  const win = getMainWindow();
-  if (!updateInfo || !win || win.isDestroyed()) return { status: "unavailable" };
+function releasesPageUrl() {
+  return `https://github.com/${UPDATE_GITHUB_REPO}/releases`;
+}
+
+function buildUpdateDialogPayload(updateInfo) {
+  return {
+    mode: "update",
+    currentVersion: app.getVersion(),
+    version: updateInfo.version,
+    assetName: updateInfo.assetName,
+    publishedAt: updateInfo.publishedAt || "",
+    mandatory: !!updateInfo.mandatory,
+    releasesUrl: releasesPageUrl(),
+    releases: (updateInfo.releases || []).map((entry) =>
+      releaseNotePresentation(entry.version, entry.body, entry.publishedAt)),
+  };
+}
+
+// The renderer owns the scrollable dialog; a native message box cannot scroll,
+// which is why the notes it shows have to stay truncated. Returns null whenever
+// the window cannot answer, so the caller falls back to the native box instead
+// of silently skipping the prompt.
+async function requestInAppUpdateChoice(win, updateInfo) {
+  const payloadJson = JSON.stringify(buildUpdateDialogPayload(updateInfo));
+  try {
+    const answer = await win.webContents.executeJavaScript(
+      `window.__arcrho_show_update_dialog`
+      + ` ? window.__arcrho_show_update_dialog(JSON.parse(${JSON.stringify(payloadJson)}))`
+      + ` : null`,
+      true
+    );
+    const choice = String(answer?.choice || "");
+    return choice === "update" || choice === "later" ? choice : null;
+  } catch (err) {
+    console.warn(`ArcRho could not show the in-app update dialog: ${err?.message || err}`);
+    return null;
+  }
+}
+
+async function nativeUpdatePrompt(updateInfo) {
   const detailLines = [
     `Current version: ${app.getVersion()}`,
     `Available version: ${updateInfo.version}`,
@@ -580,6 +674,10 @@ async function promptForUpdateInstall(updateInfo) {
   if (updateInfo.publishedAt) detailLines.push(`Published: ${updateInfo.publishedAt}`);
   const releaseNotes = formatReleaseNotesForDialog(updateInfo.releaseNotes);
   if (releaseNotes) detailLines.push("", releaseNotes);
+  const skipped = (updateInfo.releases || []).filter((entry) => entry.version !== updateInfo.version);
+  if (skipped.length) {
+    detailLines.push("", `Also includes ${skipped.map((entry) => entry.version).join(", ")}.`);
+  }
   if (updateInfo.mandatory) detailLines.push("", "This update is marked as mandatory.");
 
   const response = await showMainWindowMessageBox({
@@ -592,12 +690,57 @@ async function promptForUpdateInstall(updateInfo) {
     cancelId: 1,
     noLink: true,
   });
+  return response.response === 0;
+}
 
-  if (response.response !== 0) return { status: "deferred", version: updateInfo.version };
+async function promptForUpdateInstall(updateInfo) {
+  const win = getMainWindow();
+  if (!updateInfo || !win || win.isDestroyed()) return { status: "unavailable" };
+
+  const choice = await requestInAppUpdateChoice(win, updateInfo);
+  const accepted = choice === null ? await nativeUpdatePrompt(updateInfo) : choice === "update";
+  if (!accepted) return { status: "deferred", version: updateInfo.version };
+
   const canShutdown = await confirmUpdateShutdown();
   if (!canShutdown) return { status: "cancelled", version: updateInfo.version };
 
   return downloadVerifyAndInstall(updateInfo);
+}
+
+// The notes shipped inside this build: complete from the first release up to the
+// installed version, and readable with no network. Each upgrade replaces the set
+// with a newer one, so the history stays current without anything to persist.
+async function readLocalReleaseHistory() {
+  const base = {
+    mode: "history",
+    currentVersion: app.getVersion(),
+    releasesUrl: releasesPageUrl(),
+    releases: [],
+  };
+
+  let names = [];
+  try {
+    names = await fs.promises.readdir(LOCAL_RELEASE_NOTES_DIR);
+  } catch (err) {
+    console.warn(`ArcRho could not read the bundled release notes: ${err?.message || err}`);
+    return { ...base, available: false };
+  }
+
+  const files = names
+    .map((name) => ({ name, match: name.match(LOCAL_RELEASE_NOTE_FILE_RE) }))
+    .filter((entry) => entry.match)
+    .map((entry) => ({ name: entry.name, version: entry.match[1] }))
+    .sort((left, right) => compareVersions(right.version, left.version));
+
+  const bodies = await Promise.all(files.map((entry) =>
+    fs.promises.readFile(path.join(LOCAL_RELEASE_NOTES_DIR, entry.name), "utf8").catch(() => "")));
+
+  const releases = files
+    .map((entry, index) => ({ entry, body: bodies[index] }))
+    .filter((pair) => pair.body.trim())
+    .map((pair) => releaseNotePresentation(pair.entry.version, pair.body));
+
+  return { ...base, available: true, releases };
 }
 
 async function checkForUpdate(options = {}) {
@@ -705,4 +848,5 @@ module.exports = {
   checkForUpdate,
   checkForStartupUpdate,
   cleanupCompletedUpdateInstaller,
+  readLocalReleaseHistory,
 };

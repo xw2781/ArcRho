@@ -3,21 +3,23 @@ import {
   closeAutomationProgress,
   openAutomationProgress,
   updateAutomationProgress,
-} from "./ui_automation.js?v=20260817a";
+} from "./ui_automation.js?v=20260820a";
 
 const PROGRESS_ID = "arcrho-update-download";
 let wired = false;
 
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+const BYTES_PER_MB = 1024 * 1024;
+
+function megabytes(bytes) {
+  const value = Number(bytes);
+  return Number.isFinite(value) && value > 0 ? value / BYTES_PER_MB : 0;
+}
+
+// Installers run to hundreds of megabytes, so both sides stay in MB rather than
+// scaling per value: a unit that changes mid-download makes the readout jump.
+function formatDownloadedSize(receivedBytes, totalBytes) {
+  const received = `${megabytes(receivedBytes).toFixed(1)} MB`;
+  return totalBytes > 0 ? `${received} / ${megabytes(totalBytes).toFixed(1)} MB` : received;
 }
 
 function handleDownloadProgress(payload = {}) {
@@ -29,13 +31,14 @@ function handleDownloadProgress(payload = {}) {
       label: `Downloading ArcRho ${version || ""}...`,
       total: totalBytes,
       completed: 0,
+      countText: formatDownloadedSize(0, totalBytes),
     });
   } else if (phase === "progress") {
     updateAutomationProgress({
       progressId: PROGRESS_ID,
       completed: receivedBytes,
       total: totalBytes,
-      countText: totalBytes > 0 ? "" : formatBytes(receivedBytes),
+      countText: formatDownloadedSize(receivedBytes, totalBytes),
     });
   } else if (phase === "verifying") {
     updateAutomationProgress({

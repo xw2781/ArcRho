@@ -1,7 +1,8 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
 import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260817a";
-import { initUpdateProgressBridge } from "./update_progress.js?v=20260817a";
+import { initUpdateProgressBridge } from "./update_progress.js?v=20260820a";
+import { initReleaseNotesDialog, openReleaseHistory } from "./release_notes_dialog.js?v=20260820a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "../shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 
 const fileMenuBtn = document.querySelector('.menu[data-menu="file"]');
@@ -20,6 +21,7 @@ const menuBarEl = document.getElementById("menubar");
 const aboutOverlay = document.getElementById("aboutOverlay");
 const aboutVersion = document.getElementById("aboutVersion");
 const aboutCheckUpdatesBtn = document.getElementById("aboutCheckUpdatesBtn");
+const aboutReleaseHistoryBtn = document.getElementById("aboutReleaseHistoryBtn");
 let dfmEditEnabled = false;
 let dfmUndoEnabled = false;
 let dfmRedoEnabled = false;
@@ -400,6 +402,11 @@ export function initShellMenus() {
     void refreshAboutVersion();
   });
   aboutCheckUpdatesBtn?.addEventListener("click", checkForUpdatesFromAbout);
+  aboutReleaseHistoryBtn?.addEventListener("click", () => {
+    closeAboutDialog();
+    void openReleaseHistory();
+  });
+  initReleaseNotesDialog();
   initUpdateProgressBridge();
   aboutOverlay?.addEventListener("click", (e) => { if (e.target === aboutOverlay) closeAboutDialog(); });
   menuBarEl?.addEventListener("click", (e) => {

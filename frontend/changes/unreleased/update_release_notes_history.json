@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "update",
+  "audience": "user",
+  "summary": "The update prompt now scrolls, shows the notes for every version you skipped, and reports the download in megabytes.",
+  "details": [
+    "Upgrading from 1.4.0 straight to 1.4.2 now shows the 1.4.1 notes as well, one collapsible section per version.",
+    "Release notes open in an in-app window with its own scrollbar instead of a message box that could grow taller than the screen, so per-change detail bullets are no longer dropped.",
+    "About > Release History lists the notes for every version bundled with the installed build, and works with no network connection.",
+    "The update download window now reads 64.0 MB / 256.0 MB (25.0%) instead of a raw byte count."
+  ]
+}

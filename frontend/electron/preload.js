@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   shutdownApp: () => invoke("app-shutdown"),
   getAppInfo: () => invoke("app-info"),
   checkForUpdates: () => invoke("app-check-for-update"),
+  getReleaseHistory: () => invoke("app-release-history"),
   onUpdateDownloadProgress: (callback) => {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, payload) => callback(payload);

@@ -16,6 +16,7 @@ const {
   checkForUpdate,
   checkForStartupUpdate,
   cleanupCompletedUpdateInstaller,
+  readLocalReleaseHistory,
 } = require("./update_checker");
 const {
   initBackendLifecycle,
@@ -1837,6 +1838,8 @@ ipcMain.handle("app-shutdown", async () => {
 });
 
 ipcMain.handle("app-check-for-update", async () => checkForUpdate({ showNoUpdate: true }));
+
+ipcMain.handle("app-release-history", async () => readLocalReleaseHistory());
 
 ipcMain.handle("app-info", async () => ({
   mode: APP_MODE,

@@ -247,6 +247,184 @@ test("update_checker downloads a newer release with progress events and rejects 
   assert.ok(!fs.existsSync(`${downloadedPath}.part`), "no partial download may be left in the Downloads folder");
 });
 
+// The host asks the renderer for a choice by evaluating a snippet in the page.
+// Running that snippet against a stub window is what a real renderer does, so the
+// test covers the serialization the main process actually performs.
+function rendererWindow({ onUpdatePayload = () => {}, choice = null } = {}) {
+  return {
+    isDestroyed: () => false,
+    webContents: {
+      send: () => {},
+      executeJavaScript: async (code) => {
+        const pageWindow = choice === null ? {} : {
+          __arcrho_show_update_dialog: (payload) => {
+            onUpdatePayload(payload);
+            return { choice };
+          },
+        };
+        return new Function("window", `return (${code});`)(pageWindow);
+      },
+    },
+  };
+}
+
+function releaseWithInstaller(version, body, publishedAt = "2026-08-01T00:00:00Z") {
+  return {
+    draft: false,
+    prerelease: false,
+    published_at: publishedAt,
+    body,
+    assets: [
+      { name: `ArcRho-Setup-${version}.exe`, browser_download_url: `https://dl.example/ArcRho-Setup-${version}.exe` },
+      {
+        name: `ArcRho-Setup-${version}.exe.sha256`,
+        browser_download_url: `https://dl.example/ArcRho-Setup-${version}.exe.sha256`,
+      },
+    ],
+  };
+}
+
+function skippedReleaseFixture() {
+  const notes = (version, extra = "") => [
+    `# Release ${version}`,
+    "",
+    `Released on 2026-08-1${version.at(-1)}.`,
+    "",
+    "## User-Facing Changes",
+    "",
+    "### Improvements",
+    `- **dataset**: Change shipped in ${version}.`,
+    `  - Detail bullet for ${version}.`,
+    extra,
+    "",
+    "## Internal Notes",
+    "",
+    `- **build**: makensis note for ${version}.`,
+    "",
+  ].filter((line) => line !== "").join("\n");
+
+  return [
+    releaseWithInstaller("0.0.4", notes("0.0.4")),
+    releaseWithInstaller("0.0.3", notes("0.0.3")),
+    releaseWithInstaller("0.0.2", `${notes("0.0.2")}\nmandatory: true`),
+    releaseWithInstaller("0.0.1", notes("0.0.1")),
+  ];
+}
+
+async function runSkippedVersionCheck(win) {
+  const sha256 = "b".repeat(64);
+  const fetchStub = async (url) => {
+    const target = String(url);
+    if (target.includes("/releases?")) {
+      return { ok: true, json: async () => skippedReleaseFixture() };
+    }
+    if (target.endsWith(".sha256")) return { ok: true, text: async () => `${sha256}  installer` };
+    throw new Error(`Unexpected fetch URL in test: ${target}`);
+  };
+  process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK = "1";
+  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => win, fetchImpl: fetchStub });
+  try {
+    return await updateChecker.checkForUpdate({ showNoUpdate: false });
+  } finally {
+    delete process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK;
+  }
+}
+
+test("update_checker sends every skipped version's notes to the in-app dialog", async () => {
+  let payload = null;
+  const originalShowMessageBox = electronStub.dialog.showMessageBox;
+  let nativeBoxShown = false;
+  electronStub.dialog.showMessageBox = async (...args) => {
+    nativeBoxShown = true;
+    return originalShowMessageBox(...args);
+  };
+
+  let result;
+  try {
+    result = await runSkippedVersionCheck(rendererWindow({
+      onUpdatePayload: (value) => { payload = value; },
+      choice: "later",
+    }));
+  } finally {
+    electronStub.dialog.showMessageBox = originalShowMessageBox;
+  }
+
+  assert.equal(result.status, "deferred");
+  assert.equal(result.version, "0.0.4");
+  assert.equal(nativeBoxShown, false, "the in-app dialog replaces the native message box");
+
+  assert.equal(payload.mode, "update");
+  assert.equal(payload.currentVersion, "0.0.1");
+  assert.equal(payload.version, "0.0.4");
+  assert.deepEqual(
+    payload.releases.map((release) => release.version),
+    ["0.0.4", "0.0.3", "0.0.2"],
+    "a 0.0.1 -> 0.0.4 jump must carry the notes for 0.0.3 and 0.0.2 the user never saw"
+  );
+
+  const flattened = JSON.stringify(payload.releases);
+  assert.match(flattened, /Change shipped in 0\.0\.3/);
+  assert.match(flattened, /Detail bullet for 0\.0\.4/, "the scrollable dialog keeps per-change detail bullets");
+  assert.doesNotMatch(flattened, /makensis/, "internal notes must not reach the update dialog");
+  assert.doesNotMatch(flattened, /Released on/, "the released-on line is carried as a field, not a note");
+  assert.equal(payload.releases[0].releasedOn, "2026-08-14");
+  assert.ok(payload.releases[0].entries.some((entry) => entry.kind === "nested"));
+  assert.ok(payload.mandatory, "a mandatory marker on a skipped version still applies to this update");
+});
+
+test("update_checker accepts the in-app dialog's update choice", async () => {
+  const result = await runSkippedVersionCheck(rendererWindow({ choice: "update" }));
+  // The download runs against a stub checksum that cannot match the payload.
+  assert.equal(result.status, "download-failed");
+  assert.equal(result.version, "0.0.4");
+});
+
+test("update_checker falls back to the native prompt when the renderer cannot answer", async () => {
+  let detail = "";
+  const originalShowMessageBox = electronStub.dialog.showMessageBox;
+  electronStub.dialog.showMessageBox = async (winOrOptions, maybeOptions) => {
+    const options = maybeOptions || winOrOptions || {};
+    if ((options.buttons || []).includes("Update now")) detail = String(options.detail || "");
+    return { response: 1 };
+  };
+
+  let result;
+  try {
+    result = await runSkippedVersionCheck(rendererWindow({ choice: null }));
+  } finally {
+    electronStub.dialog.showMessageBox = originalShowMessageBox;
+  }
+
+  assert.equal(result.status, "deferred");
+  assert.match(detail, /Available version: 0\.0\.4/);
+  assert.match(detail, /Also includes 0\.0\.3, 0\.0\.2\./);
+  assert.doesNotMatch(detail, /Detail bullet/, "a native box cannot scroll, so detail bullets stay out of it");
+  assert.doesNotMatch(detail, /makensis/);
+});
+
+test("update_checker reads the release notes bundled with the installed build", async () => {
+  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => null });
+  const history = await updateChecker.readLocalReleaseHistory();
+
+  assert.equal(history.mode, "history");
+  assert.equal(history.available, true, "every build ships frontend/docs/releases");
+  assert.ok(history.releases.length > 1);
+  assert.match(history.releasesUrl, /^https:\/\/github\.com\/.+\/releases$/);
+
+  const versions = history.releases.map((release) => release.version);
+  assert.deepEqual(
+    versions,
+    [...versions].sort((left, right) => {
+      const parse = (value) => value.split(".").map(Number);
+      const [leftParts, rightParts] = [parse(right), parse(left)];
+      return leftParts[0] - rightParts[0] || leftParts[1] - rightParts[1] || leftParts[2] - rightParts[2];
+    }),
+    "the history reads newest first"
+  );
+  assert.ok(history.releases.every((release) => Array.isArray(release.entries)));
+  assert.doesNotMatch(JSON.stringify(history.releases), /Fragment Sources/);
+});
+
 test("update_checker deletes the installer recorded for cleanup and legacy update downloads", async () => {
   const installerPath = path.join(downloadsDir, "ArcRho-Setup-0.0.3.exe");
   fs.writeFileSync(installerPath, "completed installer");
