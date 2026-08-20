@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-08-19T23:10:00.000Z
+  modified: 2026-08-20T00:00:00.000Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
@@ -29,6 +29,15 @@ two DFM Excel freshness failures were **not** flakes: the harness in
 `
 while the file on disk is CRLF, so the slice never matched. Fixed on 2026-08-19; if a
 source-slicing harness reports "missing <marker>", suspect the line ending before the code.
+
+The same trap has a second shape, found 2026-08-20 in `tests/dfm_formula_validation.test.mjs`:
+a **template literal normalises its own CRLF to LF**, so any multi-line `` `import {...}` ``
+passed to `.replace()` silently never matches CRLF source and the real site-absolute import
+survives into the `data:` module. The symptom is not "marker missing" but
+`ERR_INVALID_URL` on a `/ui/...` specifier, because a `data:` URL cannot resolve one.
+Fix: normalise the source once (`(await readFile(...)).replaceAll("\r\n", "\n")`), and
+point any import the harness does not stub at a real `file://` URL built with `new URL(...)`.
+That made the whole `dfm_formula_validation` file load again after months of failing.
 
 Separately, "changed theme and chart owners are reached through current cache-version chains"
 (tests/color_theme.test.mjs) is a **flake in full-suite runs only** — it passes in isolation
