@@ -130,6 +130,7 @@
           reservingClass: state.reservingClass,
           methodName: getDetails().name,
           outputDataset: getDetails().name,
+          selfWriteStamp: result?.sidecar?.updated_at,
         });
         const basisNames = getRatioBasisNames();
         const storedBasisNames = new Set(
@@ -289,6 +290,7 @@
             reservingClass: state.reservingClass,
             methodName: getDetails().name,
             outputDataset: getDetails().name,
+            selfWriteStamp: payload?.sidecar?.updated_at,
           });
           reconcilePersistedMutation(mutation, "dependency update during Result Selection save");
           try {
@@ -341,6 +343,7 @@
           reservingClass: state.reservingClass,
           methodName: getDetails().name,
           outputDataset: getDetails().name,
+          selfWriteStamp: payload?.sidecar?.updated_at,
         });
         reconcilePersistedMutation(mutation, "dependency update during Result Selection RPC sync");
         try {

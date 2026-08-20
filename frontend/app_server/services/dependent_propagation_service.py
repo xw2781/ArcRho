@@ -31,6 +31,8 @@ from arcrho_dependent_propagation_contract import (
     build_dependent_propagation_request,
     dependent_propagation_request_path,
     dependent_propagation_status_path,
+    find_any_reserving_class_propagation_hold,
+    find_project_scope_propagation_hold,
     find_reserving_class_propagation_hold,
     require_live_engine,
     validate_dependent_propagation_status,
@@ -362,6 +364,67 @@ def require_reserving_class_writable(
     _record_latency(timings, "preflight_class_hold_ms", started)
     if hold is not None:
         raise HTTPException(423, RESERVING_CLASS_BUSY_MESSAGE)
+    return server_root
+
+
+def workspace_server_root() -> Path:
+    """Return the validated ArcRho Server workspace root for this process.
+
+    Exposed so a sibling job service reaches the same validated root through
+    the module that owns the propagation protocol paths instead of deriving
+    one of its own.
+    """
+
+    return _workspace_server_root()
+
+
+PROJECT_SCOPE_BUSY_MESSAGE = (
+    "A project-wide update is currently running for this project. "
+    "Please wait for it to finish, then try again."
+)
+PROJECT_SCOPE_CLASS_BUSY_MESSAGE = (
+    "Dependent updates are still running in this project. "
+    "Please wait for them to finish, then try again."
+)
+
+
+def require_project_scope_writable(project_name: str) -> Path:
+    """Refuse a project-wide job while anything else owns part of the project.
+
+    A project-scope job rewrites what every reserving class derives from, so it
+    may not start while a single class is being walked, nor while another
+    project-wide job is running. The reserving-class preflight cannot answer
+    that: it only knows about the one class its caller named. Returns the
+    validated workspace root so the caller can reuse it.
+    """
+
+    server_root = _workspace_server_root()
+    try:
+        require_live_engine(server_root)
+    except EngineUnavailableError as error:
+        raise HTTPException(503, ENGINE_UNAVAILABLE_MESSAGE) from error
+
+    try:
+        project_hold = find_project_scope_propagation_hold(server_root, project_name)
+        class_hold = (
+            find_any_reserving_class_propagation_hold(server_root, project_name)
+            if project_hold is None
+            else None
+        )
+    except DependentPropagationContractError as error:
+        raise HTTPException(400, str(error)) from error
+
+    if project_hold is not None:
+        raise HTTPException(423, PROJECT_SCOPE_BUSY_MESSAGE)
+    if class_hold is not None:
+        reserving_class = str(class_hold.get("reserving_class") or "").strip()
+        detail = PROJECT_SCOPE_CLASS_BUSY_MESSAGE
+        if reserving_class:
+            detail = (
+                f"Dependent updates are still running for '{reserving_class}'. "
+                "Please wait for them to finish, then try again."
+            )
+        raise HTTPException(423, detail)
     return server_root
 
 

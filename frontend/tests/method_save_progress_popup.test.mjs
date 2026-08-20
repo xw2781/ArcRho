@@ -85,8 +85,22 @@ async function source(relativePath) {
 
 function createStubElement() {
   const parts = new Map();
+  const classes = new Set();
   return {
     className: "",
+    // The popup marks its card when it is sized for countable progress, so a
+    // stub element needs the same class bag a real one has.
+    classList: {
+      add: (...names) => names.forEach((name) => classes.add(name)),
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+      contains: (name) => classes.has(name),
+      toggle: (name, force) => {
+        const next = force === undefined ? !classes.has(name) : Boolean(force);
+        if (next) classes.add(name);
+        else classes.delete(name);
+        return next;
+      },
+    },
     innerHTML: "",
     textContent: "",
     hidden: false,

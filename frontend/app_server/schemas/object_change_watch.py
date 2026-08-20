@@ -27,3 +27,20 @@ class ObjectChangeFingerprintResponse(BaseModel):
     ok: Literal[True]
     files: List[ObjectChangeFileFingerprint]
     token: str
+
+
+class ObjectChangeAttribution(BaseModel):
+    # Display name recorded by the write, "" when the payload names nobody.
+    user: str
+    # Canonical audit action ("Insert", "Update", "Auto Refresh"), or "".
+    action: str
+    # When the write happened, as the payload recorded it (UTC ISO-8601).
+    at: str
+    # True when the action is one only a background process performs.
+    automatic: bool
+    subject: Literal["dataset", "method"]
+
+
+class ObjectChangeAttributionResponse(BaseModel):
+    ok: Literal[True]
+    attribution: ObjectChangeAttribution

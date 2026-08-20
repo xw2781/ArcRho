@@ -6,12 +6,20 @@ DFM Ratios Summary Excel Integration
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
-import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import {
+  cancelDfmExcelFreshnessCheck,
+  currentRatioHeaderLabels,
+  dfmExcelInvalidTargetKey,
+  dfmTargetDestinationLabel,
+  setDfmExcelInvalidTargets,
+} from "/ui/method_pages/dfm/ratios_summary/summary_excel_validation.js?v=20260819a";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
   resolveDfmDatasetReferencesInFormulas,
-} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -99,12 +107,6 @@ async function resolveExcelRefsInExpression(raw, referenceValues, options = {}) 
 }
 
 // Cache of last-resolved Excel cell values, keyed by ref match string (e.g. "'dir\[file]Sheet'!A1")
-
-export function cancelDfmExcelFreshnessCheck() {
-  summaryRuntime._dfmExcelFreshnessGeneration += 1;
-  summaryRuntime._dfmExcelFreshnessAbortController?.abort?.();
-  summaryRuntime._dfmExcelFreshnessAbortController = null;
-}
 
 function invalidateDfmExcelRefresh() {
   summaryRuntime._dfmExcelRefreshGeneration += 1;
@@ -218,6 +220,24 @@ export async function refreshAllExcelLinks(options = {}) {
   let linkedCellCount = 0;
   let changedCount = 0;
   let failedCount = 0;
+  // A cell the workbook refused is reported by name; a cell that simply did
+  // not resolve for any other reason stays a count, because there is no
+  // reference to send the user to.
+  const refreshFailures = [];
+  const refreshedTargetKeys = new Set();
+  const refreshRatioLabels = currentRatioHeaderLabels();
+  const recordRefreshFailure = (rowId, col, { bookPath, sheet, cell, error }) => {
+    refreshFailures.push({
+      key: dfmExcelInvalidTargetKey(rowId, col),
+      failure: {
+        workbookPath: String(bookPath || ""),
+        worksheet: String(sheet || ""),
+        sourceCell: String(cell || ""),
+        destination: dfmTargetDestinationLabel(rowId, col, refreshRatioLabels),
+        error: String(error || "The linked cell could not be read."),
+      },
+    });
+  };
 
   try {
   for (const link of rangeLinks) {
@@ -239,6 +259,12 @@ export async function refreshAllExcelLinks(options = {}) {
     }
     if (!readResult.ok) {
       failedCount += destination.entries.length;
+      recordRefreshFailure(link.rowId, link.col, {
+        bookPath: link.range.bookPath,
+        sheet: link.range.sheet,
+        cell: readResult.cell,
+        error: readResult.error,
+      });
       continue;
     }
     summaryRuntime._applyingDfmExcelRefresh = true;
@@ -256,6 +282,9 @@ export async function refreshAllExcelLinks(options = {}) {
     } finally {
       summaryRuntime._applyingDfmExcelRefresh = false;
     }
+    destination.entries.forEach((entry) => {
+      refreshedTargetKeys.add(dfmExcelInvalidTargetKey(entry.rowId, entry.col));
+    });
     const anchor = destination.entries[0]?.cell;
     if (anchor) {
       anchor.classList.add("excelLinked");
@@ -264,6 +293,7 @@ export async function refreshAllExcelLinks(options = {}) {
   }
 
   const resolvedMap = new Map();
+  const refReadErrors = new Map();
   linkedCellCount += cellsToRefresh.length;
   if (batchItems.length) {
     const result = await readExcelCellsBatch(batchItems, {
@@ -278,6 +308,11 @@ export async function refreshAllExcelLinks(options = {}) {
         if (itemResult.ok && Number.isFinite(itemResult.value)) {
           resolvedMap.set(batchMeta[i].refMatch, itemResult.value);
           summaryRuntime._xlCellValueCache.set(batchMeta[i].refMatch, itemResult.value);
+        } else if (itemResult && itemResult.ok === false) {
+          refReadErrors.set(batchMeta[i].refMatch, {
+            ...batchItems[i],
+            error: String(itemResult.error || "The linked cell could not be read."),
+          });
         }
       }
     }
@@ -301,6 +336,15 @@ export async function refreshAllExcelLinks(options = {}) {
     }
     if (!allResolved) {
       failedCount += 1;
+      const broken = refs.map((ref) => refReadErrors.get(ref.match)).find(Boolean);
+      if (broken) {
+        recordRefreshFailure(rowId, col, {
+          bookPath: broken.book_path,
+          sheet: broken.sheet,
+          cell: broken.cell,
+          error: broken.error,
+        });
+      }
       continue;
     }
 
@@ -323,12 +367,26 @@ export async function refreshAllExcelLinks(options = {}) {
     const parsed = evaluateSimpleMathExpression(expr, refValues);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       failedCount += 1;
+      // The reference resolved but the workbook no longer holds a ratio: a
+      // User Entry value must be a number greater than zero.
+      const source = findExcelRefsInline(
+        inputRaw.startsWith("=") ? inputRaw : `=${inputRaw}`,
+      )[0];
+      if (source) {
+        recordRefreshFailure(rowId, col, {
+          bookPath: source.bookPath,
+          sheet: source.sheet,
+          cell: source.cell,
+          error: "The linked value must be a number greater than 0.",
+        });
+      }
       continue;
     }
 
     const nextValue = roundRatio(parsed, 6);
     const cfg = summaryRowMap.get(rowId);
     if (!cfg) continue;
+    refreshedTargetKeys.add(dfmExcelInvalidTargetKey(rowId, col));
     const currentValue = getUserEntryValueForCol(cfg, col);
     if (Math.abs(currentValue - nextValue) < 1e-10) continue;
     summaryRuntime._applyingDfmExcelRefresh = true;
@@ -346,6 +404,11 @@ export async function refreshAllExcelLinks(options = {}) {
     }
   }
 
+  const invalidTargets = new Map(summaryRuntime._dfmExcelInvalidTargets);
+  refreshedTargetKeys.forEach((key) => invalidTargets.delete(key));
+  refreshFailures.forEach(({ key, failure }) => invalidTargets.set(key, failure));
+  setDfmExcelInvalidTargets(invalidTargets);
+  const namedFailures = refreshFailures.map(({ failure }) => failure);
   if (changedCount > 0) persistUserEntryRowsFromState();
   if (summaryTable && selectedTable) {
     ensureSelectedRowValues(summaryTable, selectedTable);
@@ -363,7 +426,15 @@ export async function refreshAllExcelLinks(options = {}) {
       `Linked formula refresh: ${failedCount} cell${failedCount === 1 ? "" : "s"} failed.${changedSuffix}`,
     );
     if (!options.silentErrors) {
-      showSummaryFormulaBarValidationError("One or more linked formula values could not be refreshed.");
+      // A refresh that did not do what was asked belongs in a message the user
+      // must dismiss, not in a status line the next action overwrites - with
+      // the references to fix when it has them, and a plain count when it does
+      // not.
+      showExcelLinkFailureAlert({
+        failures: namedFailures,
+        unnamedCount: Math.max(0, failedCount - namedFailures.length),
+        valueNoun: "linked ratio cell",
+      });
     }
   } else if (changedCount > 0) {
     setStatusBarText(
@@ -390,159 +461,6 @@ export async function refreshAllExcelLinks(options = {}) {
     }
   }
 }
-
-function canonicalExcelComparisonValue(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  const scaled = Math.abs(number) * 1_000_000;
-  const rounded = Math.floor(scaled + 0.5 + Number.EPSILON);
-  return Math.sign(number || 1) * rounded / 1_000_000;
-}
-
-function excelFreshnessSourceKey(bookPath, sheet, cell) {
-  return [
-    String(bookPath || "").trim().toLowerCase(),
-    String(sheet || "").trim().toLowerCase(),
-    String(cell || "").trim().toUpperCase(),
-  ].join("\u001f");
-}
-
-/**
- * Checks saved workbook values without mutating DFM rows, Excel caches, dirty
- * state, JSON, or rendering. All source cells are deduplicated into one batch.
- */
-export async function checkDfmExcelLinkFreshness(options = {}) {
-  cancelDfmExcelFreshnessCheck();
-  const generation = summaryRuntime._dfmExcelFreshnessGeneration;
-  const controller = new AbortController();
-  summaryRuntime._dfmExcelFreshnessAbortController = controller;
-  const signal = options.signal || controller.signal;
-  const isCurrent = () => generation === summaryRuntime._dfmExcelFreshnessGeneration && !signal.aborted;
-  const itemsByKey = new Map();
-  const consumers = [];
-  const columnCount = getCurrentRatioColumnCount();
-
-  for (const cfg of summaryRowConfigs) {
-    if (!isUserEntryConfig(cfg)) continue;
-    const inputs = Array.isArray(cfg.inputs) ? cfg.inputs : [];
-    inputs.forEach((rawInput, col) => {
-      const inputRaw = String(rawInput || "").trim();
-      if (!containsExcelRef(inputRaw)) return;
-      const range = parseStandaloneExcelRange(inputRaw);
-      if (range) {
-        const sourceCells = buildExcelRangeSourceCells(range).flat();
-        const targets = getDfmExternalLinkRangeTargets({
-          rows: summaryRowConfigs,
-          rowId: String(cfg.id),
-          startColumn: col,
-          range,
-          columnCount,
-          isUserEntry: isUserEntryConfig,
-        });
-        targets.forEach((target, index) => {
-          const cell = sourceCells[index];
-          const key = excelFreshnessSourceKey(range.bookPath, range.sheet, cell);
-          if (!itemsByKey.has(key)) {
-            itemsByKey.set(key, { book_path: range.bookPath, sheet: range.sheet, cell });
-          }
-          consumers.push({
-            kind: "value",
-            sourceKeys: [key],
-            expected: getUserEntryValueForCol(target.cfg, target.col),
-          });
-        });
-        return;
-      }
-
-      const refs = findExcelRefsInline(inputRaw.startsWith("=") ? inputRaw : `=${inputRaw}`);
-      const sourceKeys = [];
-      refs.forEach((ref) => {
-        const key = excelFreshnessSourceKey(ref.bookPath, ref.sheet, ref.cell);
-        sourceKeys.push(key);
-        if (!itemsByKey.has(key)) {
-          itemsByKey.set(key, { book_path: ref.bookPath, sheet: ref.sheet, cell: ref.cell });
-        }
-      });
-      consumers.push({
-        kind: "formula",
-        sourceKeys,
-        refs,
-        inputRaw,
-        col,
-        expected: getUserEntryValueForCol(cfg, col),
-      });
-    });
-  }
-
-  if (!itemsByKey.size) {
-    if (summaryRuntime._dfmExcelFreshnessAbortController === controller) summaryRuntime._dfmExcelFreshnessAbortController = null;
-    return { ok: true, linkedCellCount: 0, staleCount: 0, unverifiedCount: 0 };
-  }
-
-  const entries = Array.from(itemsByKey.entries());
-  try {
-    const result = await readExcelCellsBatch(entries.map(([, item]) => item), { signal });
-    if (!isCurrent()) return { ok: false, aborted: true, staleCount: 0, unverifiedCount: 0 };
-    const values = new Map();
-    entries.forEach(([key], index) => {
-      const itemResult = result?.results?.[index];
-      const value = Number(itemResult?.value);
-      values.set(key, itemResult?.ok && Number.isFinite(value) ? value : null);
-    });
-
-    let staleCount = 0;
-    let unverifiedCount = 0;
-    const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
-    consumers.forEach((consumer) => {
-      if (consumer.sourceKeys.some((key) => !Number.isFinite(values.get(key)))) {
-        unverifiedCount += 1;
-        return;
-      }
-      let freshValue = null;
-      if (consumer.kind === "value") {
-        freshValue = values.get(consumer.sourceKeys[0]);
-      } else {
-        let expression = consumer.inputRaw.startsWith("=")
-          ? consumer.inputRaw
-          : `=${consumer.inputRaw}`;
-        consumer.refs.forEach((ref, index) => {
-          expression = expression.split(ref.match).join(String(values.get(consumer.sourceKeys[index])));
-        });
-        freshValue = evaluateSimpleMathExpression(
-          expression,
-          summaryTable ? buildSummaryReferenceValues(summaryTable, consumer.col) : new Map(),
-        );
-      }
-      const expected = canonicalExcelComparisonValue(consumer.expected);
-      const actual = canonicalExcelComparisonValue(freshValue);
-      if (!Number.isFinite(actual) || actual <= 0 || !Number.isFinite(expected)) {
-        unverifiedCount += 1;
-      } else if (actual !== expected) {
-        staleCount += 1;
-      }
-    });
-    return {
-      ok: true,
-      linkedCellCount: consumers.length,
-      staleCount,
-      unverifiedCount,
-    };
-  } catch (error) {
-    if (error?.name === "AbortError" || !isCurrent()) {
-      return { ok: false, aborted: true, staleCount: 0, unverifiedCount: 0 };
-    }
-    return {
-      ok: false,
-      linkedCellCount: consumers.length,
-      staleCount: 0,
-      unverifiedCount: consumers.length,
-      error: String(error?.message || error || "Excel freshness check failed."),
-    };
-  } finally {
-    if (summaryRuntime._dfmExcelFreshnessAbortController === controller) summaryRuntime._dfmExcelFreshnessAbortController = null;
-  }
-}
-
 
 function collectDfmExternalLinkGroups() {
   return collectDfmExternalLinkGroupsModel({
@@ -890,6 +808,7 @@ async function readExcelRangeValues(range, options = {}) {
     if (!itemResult?.ok || !Number.isFinite(value) || value <= 0) {
       return {
         ok: false,
+        cell: items[index].cell,
         error: itemResult?.error || `Excel cell ${items[index].cell} must contain a number greater than 0.`,
       };
     }
@@ -952,14 +871,10 @@ async function commitExcelRangeFormulaAsync(rowId, col, raw, range, options = {}
 
 registerSummaryFunctions({
   resolveExcelRefsInExpression,
-  cancelDfmExcelFreshnessCheck,
   invalidateDfmExcelRefresh,
   dfmExternalInputStillMatches,
   commitExcelFormulaAsync,
   refreshAllExcelLinks,
-  canonicalExcelComparisonValue,
-  excelFreshnessSourceKey,
-  checkDfmExcelLinkFreshness,
   collectDfmExternalLinkGroups,
   dfmExternalTargetLabel,
   getDfmExternalLinkRecords,

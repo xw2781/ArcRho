@@ -6,12 +6,12 @@ DFM Ratios Summary User Entries
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
-import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
   substituteCachedDfmDatasetReferencesInFormula,
-} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,

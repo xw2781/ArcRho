@@ -27,6 +27,7 @@ from arcrho_api.cape_cod_contract import (
     recalculate_cape_cod_method,
 )
 from arcrho_api.io import persisted_json_text
+from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
@@ -562,7 +563,7 @@ def _build_sidecar(
         output_changed=bool(output_changed or not automatic),
         append_audit=bool(not automatic or output_changed),
         audit_action=(
-            "Auto Refresh" if automatic and output_changed
+            AUDIT_ACTION_AUTO_REFRESH if automatic and output_changed
             else ("Update" if existing else "Insert")
         ),
         status=dataset_sidecar_status_service.STATUS_CURRENT,

@@ -1,7 +1,7 @@
 import {
   readExcelCellsBatch,
-  readExcelFileMtimesBatch,
-} from "/ui/shared/integrations/excel_api.js?v=20260811a";
+  validateExcelLinksBatch,
+} from "/ui/shared/integrations/excel_api.js?v=20260819a";
 import {
   excelColumnFromIndex,
   formatExcelReference,
@@ -300,7 +300,7 @@ function targetValuePreview(model, targets, isRange) {
 export function createDatasetExternalLinksController({
   state,
   readCellsBatch = readExcelCellsBatch,
-  readFileMtimesBatch = readExcelFileMtimesBatch,
+  validateLinksBatch = validateExcelLinksBatch,
   isReadOnly = () => false,
   isTransposed = () => false,
   onInventoryChanged = () => {},
@@ -311,10 +311,62 @@ export function createDatasetExternalLinksController({
   let requestController = null;
   let pendingTargetKeys = new Set();
   let targetDecorationIndex = null;
+  // Target cell key -> the reference failure that left its stored value in
+  // place. Kept on the controller so a re-render repaints the same cells red
+  // and the Data tab can re-open the alert without another Excel read.
+  let failuresByTargetKey = new Map();
+
+  function ownedTargetKeys() {
+    const keys = new Set();
+    links.forEach((link) => link.target_cells.forEach((target) => keys.add(targetCellKey(target))));
+    return keys;
+  }
 
   function notifyInventoryChanged() {
     targetDecorationIndex = null;
+    if (failuresByTargetKey.size) {
+      // A link that was broken, hard-coded, or replaced is no longer a broken
+      // reference; only cells a live link still owns stay flagged.
+      const owned = ownedTargetKeys();
+      failuresByTargetKey.forEach((_failure, key) => {
+        if (!owned.has(key)) failuresByTargetKey.delete(key);
+      });
+    }
     onInventoryChanged();
+  }
+
+  function clearFailuresForTargets(targetCells) {
+    (Array.isArray(targetCells) ? targetCells : []).forEach((target) => {
+      failuresByTargetKey.delete(targetCellKey(target));
+    });
+  }
+
+  function recordTaskFailures(task, resolveError) {
+    const description = task.description;
+    const failures = [];
+    task.link.target_cells.forEach((target, index) => {
+      const error = resolveError(index);
+      const key = targetCellKey(target);
+      if (!error) {
+        failuresByTargetKey.delete(key);
+        return;
+      }
+      const failure = {
+        reference: task.link.reference,
+        workbookPath: description?.bookPath || "",
+        worksheet: description?.sheet || "",
+        sourceCell: target.source_cell || "",
+        destination: targetDestinationLabel(state?.model, target),
+        error,
+      };
+      failuresByTargetKey.set(key, failure);
+      failures.push(failure);
+    });
+    return failures;
+  }
+
+  function listFailures() {
+    return Array.from(failuresByTargetKey.values()).map((failure) => ({ ...failure }));
   }
 
   function getTargetDecorationIndex() {
@@ -354,6 +406,7 @@ export function createDatasetExternalLinksController({
 
   function load(value) {
     abort();
+    failuresByTargetKey = new Map();
     links = normalizeDatasetExternalLinks(value);
     savedLinks = cloneLinks(links);
     notifyInventoryChanged();
@@ -379,6 +432,7 @@ export function createDatasetExternalLinksController({
 
   function restoreSaved() {
     abort();
+    failuresByTargetKey = new Map();
     links = cloneLinks(savedLinks);
     notifyInventoryChanged();
   }
@@ -450,56 +504,125 @@ export function createDatasetExternalLinksController({
     });
   }
 
-  async function checkForNewerWorkbooks(datasetMtime, options = {}) {
-    const baseline = Number(datasetMtime);
-    if (!Number.isFinite(baseline)) {
-      return { ok: false, newerWorkbookCount: 0, unverifiedWorkbookCount: 0 };
-    }
-    const pathsByKey = new Map();
-    links.forEach((link) => {
+  const UNPARSEABLE_REFERENCE_ERROR = "The saved link reference could not be read.";
+  const UNAVAILABLE_TARGET_ERROR = "The linked dataset cell is no longer part of this dataset.";
+
+  /**
+   * Plans one batched workbook read for the given links.
+   *
+   * Every link contributes its source cells to a single request in link order,
+   * and each task remembers where its cells start so a per-cell answer maps
+   * back to the dataset cell that asked for it. A link whose reference no
+   * longer parses, or whose dataset cells no longer exist, contributes nothing
+   * to the request and is reported from `readable` instead.
+   */
+  function buildLinkReadPlan(scopedLinks) {
+    const tasks = scopedLinks.map((link) => {
       const description = describeExcelReference(link.reference);
-      const path = String(description?.bookPath || "").trim();
-      if (path) pathsByKey.set(path.toLowerCase(), path);
+      const cells = link.target_cells.map((target) => target.source_cell);
+      const validTargets = link.target_cells.every((target) => (
+        state.model?.mask?.[target.row]?.[target.column] === true
+        && Array.isArray(state.model?.values?.[target.row])
+      ));
+      return { link, description, cells, validTargets, start: -1, readable: false };
     });
-    const bookPaths = Array.from(pathsByKey.values());
-    if (!bookPaths.length) {
-      return { ok: true, newerWorkbookCount: 0, unverifiedWorkbookCount: 0, newerWorkbooks: [] };
+    const items = [];
+    tasks.forEach((task) => {
+      task.start = items.length;
+      task.readable = !!task.description
+        && task.validTargets
+        && task.cells.length === task.link.target_cells.length;
+      if (!task.readable) return;
+      task.cells.forEach((cell) => items.push({
+        book_path: task.description.bookPath,
+        sheet: task.description.sheet,
+        cell,
+      }));
+    });
+    return { tasks, items };
+  }
+
+  function unreadableTaskError(task) {
+    return task.description ? UNAVAILABLE_TARGET_ERROR : UNPARSEABLE_REFERENCE_ERROR;
+  }
+
+  function emptyValidation(extra = {}) {
+    return {
+      ok: false,
+      failures: [],
+      failedCellCount: 0,
+      newerWorkbooks: [],
+      newerWorkbookCount: 0,
+      unverifiedWorkbookCount: 0,
+      ...extra,
+    };
+  }
+
+  /**
+   * Validates every saved link and reports which workbooks are newer, in one pass.
+   *
+   * The app server reads each stored source cell where it can reach the
+   * workbook, so a renamed sheet, a moved workbook, or a deleted row that left
+   * a `#REF!` comes back as that reference's own error rather than as a count,
+   * and the workbook timestamps ride along from the same read. Values are never
+   * applied here: a dataset that opens onto a broken reference keeps its saved
+   * numbers and shows the broken cells red until the reference is fixed.
+   */
+  async function validateLinks(datasetMtime, options = {}) {
+    if (!links.length || !state?.model) {
+      failuresByTargetKey = new Map();
+      return emptyValidation({ ok: true });
     }
-    let response;
-    try {
-      response = await readFileMtimesBatch(bookPaths, { signal: options.signal });
-    } catch (error) {
-      if (error?.name === "AbortError") return { ok: false, aborted: true, newerWorkbookCount: 0, unverifiedWorkbookCount: 0 };
-      return {
-        ok: false,
-        error: String(error?.message || error || "Excel timestamp check failed."),
-        newerWorkbookCount: 0,
-        unverifiedWorkbookCount: bookPaths.length,
-      };
+    const generation = requestGeneration;
+    const { tasks, items } = buildLinkReadPlan(links);
+    let response = null;
+    if (items.length) {
+      try {
+        response = await validateLinksBatch(items, { signal: options.signal });
+      } catch (error) {
+        if (error?.name === "AbortError") return emptyValidation({ aborted: true });
+        return emptyValidation({
+          error: String(error?.message || error || "Excel link validation failed."),
+        });
+      }
+      if (generation !== requestGeneration) return emptyValidation({ stale: true });
+      if (
+        !response?.ok
+        || !Array.isArray(response.results)
+        || response.results.length !== items.length
+      ) {
+        return emptyValidation({
+          error: String(response?.error || "Excel link validation failed."),
+        });
+      }
     }
-    if (!response?.ok || !Array.isArray(response.results) || response.results.length !== bookPaths.length) {
-      return {
-        ok: false,
-        error: String(response?.error || "Excel timestamp check failed."),
-        newerWorkbookCount: 0,
-        unverifiedWorkbookCount: bookPaths.length,
-      };
-    }
+    const results = Array.isArray(response?.results) ? response.results : [];
+    const failures = [];
+    tasks.forEach((task) => {
+      failures.push(...recordTaskFailures(task, (index) => {
+        if (!task.readable) return unreadableTaskError(task);
+        const parsed = excelResultValue(results[task.start + index]);
+        return parsed.ok ? "" : parsed.error;
+      }));
+    });
+    const baseline = Number(datasetMtime);
     const newerWorkbooks = [];
     let unverifiedWorkbookCount = 0;
-    response.results.forEach((result, index) => {
-      const mtime = Number(result?.mtime);
-      if (!result?.ok || !Number.isFinite(mtime)) {
+    (Array.isArray(response?.workbooks) ? response.workbooks : []).forEach((workbook) => {
+      const mtime = Number(workbook?.mtime);
+      if (!workbook?.ok || !Number.isFinite(mtime)) {
         unverifiedWorkbookCount += 1;
-      } else if (mtime > baseline + 0.001) {
-        newerWorkbooks.push({ path: bookPaths[index], mtime });
+      } else if (Number.isFinite(baseline) && mtime > baseline + 0.001) {
+        newerWorkbooks.push({ path: String(workbook.path || ""), mtime });
       }
     });
     return {
       ok: true,
+      failures,
+      failedCellCount: failures.length,
+      newerWorkbooks,
       newerWorkbookCount: newerWorkbooks.length,
       unverifiedWorkbookCount,
-      newerWorkbooks,
     };
   }
 
@@ -565,7 +688,9 @@ export function createDatasetExternalLinksController({
     const decoration = getTargetDecorationIndex().get(key);
     const link = decoration?.link;
     const isArrayFormula = !!decoration?.isArrayFormula;
+    const failure = failuresByTargetKey.get(key);
     cell.classList.toggle("arExternalLinkCell", !!link);
+    cell.classList.toggle("arExternalLinkErrorCell", !!failure);
     cell.classList.toggle("arArrayFormulaCell", isArrayFormula);
     cell.classList.toggle("arArrayFormulaEdgeTop", isArrayFormula && decoration.edgeTop);
     cell.classList.toggle("arArrayFormulaEdgeRight", isArrayFormula && decoration.edgeRight);
@@ -684,79 +809,83 @@ export function createDatasetExternalLinksController({
       })
       : links;
     if (!scopedLinks.length || !state?.model) {
-      return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
+      return { linkedCellCount: 0, changedCount: 0, failedCount: 0, failures: [] };
     }
     abort();
     const generation = requestGeneration;
     requestController = new AbortController();
     pendingTargetKeys = new Set(scopedLinks.flatMap((link) => link.target_cells.map(targetCellKey)));
-    const tasks = scopedLinks.map((link) => {
-      const description = describeExcelReference(link.reference);
-      const cells = link.target_cells.map((target) => target.source_cell);
-      const validTargets = link.target_cells.every((target) => (
-        state.model?.mask?.[target.row]?.[target.column] === true
-        && Array.isArray(state.model?.values?.[target.row])
-      ));
-      return { link, description, cells, validTargets, start: -1 };
-    });
-    const items = [];
-    tasks.forEach((task) => {
-      task.start = items.length;
-      if (!task.description || !task.validTargets || task.cells.length !== task.link.target_cells.length) return;
-      task.cells.forEach((cell) => items.push({
-        book_path: task.description.bookPath,
-        sheet: task.description.sheet,
-        cell,
-      }));
-    });
-    if (!items.length) {
+    const { tasks, items } = buildLinkReadPlan(scopedLinks);
+    let response = null;
+    if (items.length) {
+      try {
+        response = await readCellsBatch(items, { signal: requestController.signal });
+      } catch (error) {
+        if (error?.name === "AbortError") return { linkedCellCount: 0, changedCount: 0, failedCount: 0, failures: [], aborted: true };
+        return {
+          linkedCellCount: items.length,
+          changedCount: 0,
+          failedCount: items.length,
+          failures: [],
+          error: String(error?.message || error || "Excel refresh failed."),
+        };
+      } finally {
+        if (generation === requestGeneration) {
+          requestController = null;
+          pendingTargetKeys = new Set();
+        }
+      }
+      if (generation !== requestGeneration) {
+        return { linkedCellCount: 0, changedCount: 0, failedCount: 0, failures: [], stale: true };
+      }
+      if (
+        !response?.ok
+        || !Array.isArray(response.results)
+        || response.results.length !== items.length
+      ) {
+        // The request itself did not come back; that is a transport problem,
+        // not a broken reference, so no cell is flagged as invalid.
+        return {
+          linkedCellCount: items.length,
+          changedCount: 0,
+          failedCount: items.length,
+          failures: [],
+          error: String(response?.error || "Excel refresh failed."),
+        };
+      }
+    } else {
       requestController = null;
       pendingTargetKeys = new Set();
-      return {
-        linkedCellCount: scopedLinks.reduce((count, link) => count + link.target_cells.length, 0),
-        changedCount: 0,
-        failedCount: scopedLinks.reduce((count, link) => count + link.target_cells.length, 0),
-      };
-    }
-    let response;
-    try {
-      response = await readCellsBatch(items, { signal: requestController.signal });
-    } catch (error) {
-      if (error?.name === "AbortError") return { linkedCellCount: 0, changedCount: 0, failedCount: 0, aborted: true };
-      return {
-        linkedCellCount: items.length,
-        changedCount: 0,
-        failedCount: items.length,
-        error: String(error?.message || error || "Excel refresh failed."),
-      };
-    } finally {
-      if (generation === requestGeneration) {
-        requestController = null;
-        pendingTargetKeys = new Set();
-      }
-    }
-    if (generation !== requestGeneration) {
-      return { linkedCellCount: 0, changedCount: 0, failedCount: 0, stale: true };
     }
     const results = response?.ok && Array.isArray(response.results) ? response.results : [];
+    const failures = [];
     let linkedCellCount = 0;
     let changedCount = 0;
     let failedCount = 0;
     tasks.forEach((task) => {
       const count = task.link.target_cells.length;
       linkedCellCount += count;
-      if (!task.description || !task.validTargets || task.cells.length !== count) {
+      // Read every cell of the link before applying any of it: a link is
+      // refreshed whole or not at all, so a broken reference can never leave
+      // half of a range on new values and half on saved ones.
+      const nextValues = [];
+      const cellErrors = [];
+      let linkFailed = false;
+      for (let offset = 0; offset < count; offset += 1) {
+        if (!task.readable) {
+          cellErrors.push(unreadableTaskError(task));
+          linkFailed = true;
+          continue;
+        }
+        const parsed = excelResultValue(results[task.start + offset]);
+        cellErrors.push(parsed.ok ? "" : parsed.error);
+        if (parsed.ok) nextValues.push(parsed.value);
+        else linkFailed = true;
+      }
+      failures.push(...recordTaskFailures(task, (index) => cellErrors[index]));
+      if (linkFailed) {
         failedCount += count;
         return;
-      }
-      const nextValues = [];
-      for (let offset = 0; offset < count; offset += 1) {
-        const parsed = excelResultValue(results[task.start + offset]);
-        if (!parsed.ok) {
-          failedCount += count;
-          return;
-        }
-        nextValues.push(parsed.value);
       }
       task.link.target_cells.forEach((target, index) => {
         const value = nextValues[index];
@@ -771,19 +900,19 @@ export function createDatasetExternalLinksController({
         }
       });
     });
-    return { linkedCellCount, changedCount, failedCount };
+    return { linkedCellCount, changedCount, failedCount, failures };
   }
 
   return {
     abort,
     breakLink,
     breakLinks,
-    checkForNewerWorkbooks,
     clear,
     commitReference,
     decorateCell,
     hardCodeTargetCells,
     getCellLinkInfo,
+    getLinkFailures: listFailures,
     isDirty,
     listRecords,
     load,
@@ -791,5 +920,6 @@ export function createDatasetExternalLinksController({
     refreshAll,
     restoreSaved,
     serialize,
+    validateLinks,
   };
 }

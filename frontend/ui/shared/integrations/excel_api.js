@@ -34,6 +34,24 @@ export async function readExcelCellsBatch(items, options = {}) {
   return parseExcelResponse(resp, options.signal);
 }
 
+/**
+ * Validates saved link sources and reports each workbook's timestamp in one pass.
+ *
+ * The response carries `results` in item order, exactly as
+ * `readExcelCellsBatch` does, plus `workbooks` with one `{path, ok, mtime}`
+ * entry per distinct workbook, so an opening dataset or method can tell a
+ * broken reference from a merely newer workbook without a second round trip.
+ */
+export async function validateExcelLinksBatch(items, options = {}) {
+  const resp = await fetch(`${config.API_BASE}/excel/validate_links`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: Array.isArray(items) ? items : [] }),
+    signal: options.signal,
+  });
+  return parseExcelResponse(resp, options.signal);
+}
+
 export async function readExcelFileMtimesBatch(bookPaths, options = {}) {
   const resp = await fetch(`${config.API_BASE}/excel/file_mtimes_batch`, {
     method: "POST",

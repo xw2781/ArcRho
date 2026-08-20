@@ -4,16 +4,26 @@ import test from "node:test";
 
 const helperUrl = new URL("../ui/method_pages/dfm/dfm_formula_validation.js", import.meta.url);
 const helperSource = await readFile(helperUrl, "utf8");
-const summarySource = await readFile(
+// A template literal normalises its own line endings to LF, so the checked-in
+// CRLF source has to be normalised too or a multi-line stub never matches.
+const summarySource = (await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_formula_bar.js", import.meta.url),
   "utf8",
-);
+)).replaceAll("\r\n", "\n");
 const ratiosTabSource = await readFile(
   new URL("../ui/method_pages/dfm/dfm_ratios_tab.js", import.meta.url),
   "utf8",
 );
+const formulaTextUrl = new URL(
+  "../ui/shared/components/formula_bar/formula_text.js",
+  import.meta.url,
+).href;
 const validation = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);
 const summaryFormatterSource = summarySource
+  .replace(
+    '"/ui/shared/components/formula_bar/formula_text.js?v=20260812a"',
+    JSON.stringify(formulaTextUrl),
+  )
   .replace(
     'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";',
     "const attachArcrhoTooltip = (target, text) => { target.tooltipText = text; };",
@@ -23,14 +33,17 @@ const summaryFormatterSource = summarySource
     "const installDfmDatasetAutocomplete = () => {};",
   )
   .replace(
-    'import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";',
-    'const resolveDfmDatasetReferencesInFormulaDetailed = async (formula) => { globalThis.__dfmTooltipResolutionCalls = (globalThis.__dfmTooltipResolutionCalls || 0) + 1; globalThis.__dfmTooltipReferenceFormula = formula; return { resolvedFormula: "=1.00264" }; };',
+    `import {
+  getCachedDfmDatasetReferenceValues,
+  resolveDfmDatasetReferencesInFormulaDetailed,
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";`,
+    'const getCachedDfmDatasetReferenceValues = (formula) => (globalThis.__dfmCachedReferenceValues || (() => []))(formula); const resolveDfmDatasetReferencesInFormulaDetailed = async (formula) => { globalThis.__dfmTooltipResolutionCalls = (globalThis.__dfmTooltipResolutionCalls || 0) + 1; globalThis.__dfmTooltipReferenceFormula = formula; if (globalThis.__dfmResolveReferenceValues) globalThis.__dfmCachedReferenceValues = globalThis.__dfmResolveReferenceValues; return { resolvedFormula: "=1.00264" }; };',
   )
   .replace(
     `import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";`,
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";`,
     'const summaryRuntime = { formatUserEntryFormulaEvaluationValue: (value) => Number(value).toFixed(4) }; const registerSummaryFunctions = (functions) => Object.assign(summaryRuntime, functions);',
   )
   .concat("\nexport { tokenizeFormula, formatFormulaText, openDfmFormulaDataset, renderFormulaBarDisplay, updateFormulaBarDisplayMode };\n");
@@ -53,6 +66,43 @@ class FakeClassList {
 
   contains(value) {
     return this.values.has(value);
+  }
+
+  toggle(value, force) {
+    const next = force === undefined ? !this.values.has(value) : !!force;
+    if (next) this.values.add(value);
+    else this.values.delete(value);
+    return next;
+  }
+}
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = String(tagName || "").toUpperCase();
+    this.children = [];
+    this.dataset = {};
+    this.attributes = new Map();
+    this.listeners = new Map();
+    this.className = "";
+    this.classList = new FakeClassList();
+    this.textContent = "";
+  }
+
+  set innerHTML(_value) {
+    this.children = [];
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  addEventListener(type, listener) {
+    this.listeners.set(type, listener);
   }
 }
 
@@ -304,38 +354,15 @@ test("formula display formatting preserves all bracket contents verbatim", () =>
 });
 
 test("non-editing formula display renders average formulas and datasets as reference pills", async () => {
-  class FakeElement {
-    constructor(tagName) {
-      this.tagName = String(tagName || "").toUpperCase();
-      this.children = [];
-      this.dataset = {};
-      this.attributes = new Map();
-      this.listeners = new Map();
-      this.className = "";
-      this.textContent = "";
-    }
-
-    set innerHTML(_value) {
-      this.children = [];
-    }
-
-    appendChild(child) {
-      this.children.push(child);
-      return child;
-    }
-
-    setAttribute(name, value) {
-      this.attributes.set(name, String(value));
-    }
-
-    addEventListener(type, listener) {
-      this.listeners.set(type, listener);
-    }
-  }
-
   const posted = [];
   const priorDocument = globalThis.document;
   const priorWindow = globalThis.window;
+  // Every reference already carries a value, so rendering reads the session
+  // cache instead of asking the API for one.
+  globalThis.__dfmCachedReferenceValues = (formula) => summaryFormatter
+    .tokenizeFormula(formula)
+    .filter((token) => token.datasetName)
+    .map(() => 1.0118);
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
     createTextNode: (textContent) => ({ nodeType: 3, textContent }),
@@ -397,6 +424,8 @@ test("non-editing formula display renders average formulas and datasets as refer
     assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[2025 Q4\]/u);
     assert.doesNotMatch(modeDisplay.children.map((child) => child.textContent).join(""), /\[-1\]/u);
     const modePill = modeDisplay.children.find((child) => child.className === "fmtDatasetRef");
+    assert.equal(modePill.classList.contains("isNeutral"), false);
+    globalThis.__dfmTooltipResolutionCalls = 0;
     assert.equal(typeof modePill.tooltipText, "function");
     assert.equal(await modePill.tooltipText(), "1.0026");
     assert.equal(await modePill.tooltipText(), "1.0026");
@@ -425,11 +454,71 @@ test("non-editing formula display renders average formulas and datasets as refer
       targetOrigin: "*",
     }]);
   } finally {
+    delete globalThis.__dfmCachedReferenceValues;
     if (priorDocument === undefined) delete globalThis.document;
     else globalThis.document = priorDocument;
     if (priorWindow === undefined) delete globalThis.window;
     else globalThis.window = priorWindow;
     delete globalThis.__dfmTooltipResolutionCalls;
     delete globalThis.__dfmTooltipReferenceFormula;
+  }
+});
+
+test("a dataset reference worth exactly 1 renders as a quiet pill", async () => {
+  const priorDocument = globalThis.document;
+  const priorWindow = globalThis.window;
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+    createTextNode: (textContent) => ({ nodeType: 3, textContent }),
+  };
+  globalThis.window = { parent: { postMessage: () => {} } };
+  const formula = '= "Simple - 3" * [Accounting Cutoff][-1] * [Growth Adjustment - Counts][-1]';
+  const neutralFlags = (display) => display.children
+    .filter((child) => child.className === "fmtDatasetRef")
+    .map((pill) => pill.classList.contains("isNeutral"));
+
+  try {
+    globalThis.__dfmTooltipResolutionCalls = 0;
+    globalThis.__dfmCachedReferenceValues = () => [1, 1.0012];
+    const display = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(display, formula);
+    assert.deepEqual(neutralFlags(display), [true, false]);
+    assert.equal(globalThis.__dfmTooltipResolutionCalls, 0);
+
+    // Binary rounding around 1 still reads as neutral; a real adjustment, and a
+    // reference that failed to read, do not.
+    globalThis.__dfmCachedReferenceValues = () => [1 + 1e-12, null];
+    const rounded = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(rounded, formula);
+    assert.deepEqual(neutralFlags(rounded), [true, false]);
+
+    // A cache reading of the formula that found a different number of
+    // references cannot be lined up with the pills, so none of them is greyed.
+    globalThis.__dfmCachedReferenceValues = () => [1];
+    const mismatched = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(mismatched, formula);
+    assert.deepEqual(neutralFlags(mismatched), [false, false]);
+
+    // Nothing resolved yet: the pills start blue and settle after one batched
+    // read fills the cache for the whole formula.
+    globalThis.__dfmTooltipResolutionCalls = 0;
+    globalThis.__dfmCachedReferenceValues = () => [];
+    globalThis.__dfmResolveReferenceValues = () => [1, 1.0012];
+    const cold = new FakeElement("div");
+    summaryFormatter.renderFormulaBarDisplay(cold, formula);
+    assert.deepEqual(neutralFlags(cold), [false, false]);
+    assert.equal(globalThis.__dfmTooltipResolutionCalls, 1);
+    assert.equal(globalThis.__dfmTooltipReferenceFormula, formula);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(neutralFlags(cold), [true, false]);
+  } finally {
+    delete globalThis.__dfmCachedReferenceValues;
+    delete globalThis.__dfmResolveReferenceValues;
+    delete globalThis.__dfmTooltipResolutionCalls;
+    delete globalThis.__dfmTooltipReferenceFormula;
+    if (priorDocument === undefined) delete globalThis.document;
+    else globalThis.document = priorDocument;
+    if (priorWindow === undefined) delete globalThis.window;
+    else globalThis.window = priorWindow;
   }
 });

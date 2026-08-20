@@ -6,17 +6,15 @@ import {
   getDatasetTypeColumnFilterValueKeyFromRow,
   isDatasetTypeSelectionFilterActive,
 } from "/ui/shared/dataset/dataset_types_view_model.js";
-import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
+import { createArcRhoProgressPopup } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260820dtjob1";
+import {
+  createDatasetTypesChangeRequestId,
+  datasetTypesRowsSignature,
+  describeDatasetTypesChangeResult,
+  waitForDatasetTypesChangeJob,
+} from "/ui/project_settings/project_settings_dataset_types_job.js?v=20260820dtjob1";
 import { createDatasetTypeCategoryCombo } from "/ui/project_settings/project_settings_dataset_type_category_combo.js?v=20260811dtcategory1";
 import { createDatasetTypeFormatSelect } from "/ui/project_settings/project_settings_dataset_type_format_select.js?v=20260812dtformat2";
-
-function calculationStepReservingPath(step) {
-  const explicit = String(step?.reserving_class || "").trim();
-  if (explicit) return decodeFileNameSegment(explicit);
-  const path = String(step?.path || step?.sidecar_path || "").trim();
-  const match = path.match(/[\\/]data[\\/](.*?)[\\/](?:datasets|sidecars|methods)[\\/]/i);
-  return match ? decodeFileNameSegment(match[1]) : "";
-}
 
 export function createDatasetTypesFeature(deps = {}) {
   const {
@@ -69,6 +67,27 @@ export function createDatasetTypesFeature(deps = {}) {
   const DATASET_TYPES_BLANK_CATEGORY_KEY = "__blank__";
   const datasetTypesByProject = new Map();
   const loadedDatasetTypesByProject = new Set();
+  // One entry per project whose change job is still running. The table is
+  // read-only while it is present: the Engine holds the whole project, so an
+  // edit made now could not be saved anyway, and queueing it would leave the
+  // grid disagreeing with the file again.
+  const runningChangeJobByProject = new Map();
+  // The last submission for a project, kept so a retry of the *same* table
+  // replays its request id instead of applying the change twice.
+  const lastSubmissionByProject = new Map();
+  // The follow-up for the job this page most recently submitted, so a caller
+  // that does want the finished outcome can wait for it.
+  let runningChangeJobPromise = Promise.resolve(true);
+  // The change job's own blocking window. It covers Project Settings for the
+  // whole job, because every reserving class of the project is held while it
+  // runs: there is nothing on this page the user could usefully do meanwhile,
+  // and a status line is too easy to miss for work that takes minutes.
+  const changeProgressPopup = createArcRhoProgressPopup({
+    title: "Applying Dataset Type Changes",
+    // Every step names a reserving class, so the card is sized once rather
+    // than re-sized to each path it reports.
+    measured: true,
+  });
   const datasetTypesInvalidFormulaByProject = new Map();
   const datasetTypesSortStateByProject = new Map();
   const datasetTypesDataFormatFilterStateByProject = new Map();
@@ -1087,6 +1106,7 @@ export function createDatasetTypesFeature(deps = {}) {
 
   function openDatasetTypeEditor(projectName, rowIndex, options = {}) {
     if (!datasetTypeEditor || !projectName) return;
+    if (blockedByRunningChange(projectName)) return;
     const mode = String(options?.mode || "edit").toLowerCase() === "add" ? "add" : "edit";
     const state = getProjectDatasetTypesState(projectName);
     if (!Array.isArray(state.rows)) return;
@@ -1130,6 +1150,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const mode = dtEditorMode;
     const rowIndex = dtEditorRowIndex;
     if (!projectName) return;
+    if (blockedByRunningChange(projectName)) return;
 
     const state = getProjectDatasetTypesState(projectName);
     if (!Array.isArray(state.rows)) return;
@@ -1239,6 +1260,7 @@ export function createDatasetTypesFeature(deps = {}) {
   }
 
   function addDatasetTypesRow(projectName, insertIndex) {
+    if (blockedByRunningChange(projectName)) return;
     const state = getProjectDatasetTypesState(projectName);
     const blank = createEmptyDatasetTypesRow();
     const idx = Number(insertIndex);
@@ -1248,6 +1270,7 @@ export function createDatasetTypesFeature(deps = {}) {
   }
 
   function deleteDatasetTypesRow(projectName, rowIndex) {
+    if (blockedByRunningChange(projectName)) return;
     const state = getProjectDatasetTypesState(projectName);
     if (!state.rows.length) return;
     if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= state.rows.length) return;
@@ -1481,25 +1504,20 @@ export function createDatasetTypesFeature(deps = {}) {
     if (loadedOk) setDatasetTypesStatus("");
   }
 
-  function collectRecalcSteps(report) {
-    const steps = [];
-    if (Array.isArray(report?.steps)) steps.push(...report.steps);
-    if (Array.isArray(report?.chains)) {
-      report.chains.forEach((chain) => {
-        if (Array.isArray(chain?.steps)) {
-          steps.push(...chain.steps.map((step) => ({
-            ...step,
-            reserving_class: step?.reserving_class || chain?.reserving_class || "",
-          })));
-        }
-      });
-    }
-    return steps.filter((step) => String(step?.dataset_type_name || "").trim() || String(step?.reason || "").trim());
-  }
+  /**
+   * Report what one finished dataset-type change did, or why it stopped.
+   *
+   * A change to this table is rare and rebuilds data the user cannot see from
+   * here, so its outcome gets a dialog rather than a status line that the next
+   * message would overwrite.
+   */
+  function showDatasetTypesChangeDialog({ summary, failures = [], failed = false }) {
+    const summaryText = String(summary || "").trim();
+    const failureLines = (failures || [])
+      .map((line) => String(line || "").trim())
+      .filter(Boolean);
+    if (!summaryText && !failureLines.length) return;
 
-  function showRecalcDialog(report) {
-    const steps = collectRecalcSteps(report);
-    if (!steps.length) return;
     const overlay = document.createElement("div");
     overlay.className = "datasetTypesRecalcOverlay";
     const box = document.createElement("div");
@@ -1513,25 +1531,24 @@ export function createDatasetTypesFeature(deps = {}) {
     close.textContent = "x";
     const title = document.createElement("div");
     title.className = "datasetTypesRecalcTitle";
-    title.textContent = "Calculated Dataset Refresh";
-    const summary = document.createElement("div");
-    summary.className = "datasetTypesRecalcSummary";
-    const updatedCount = steps.filter((step) => step?.ok).length;
-    summary.textContent = `Refreshed ${updatedCount} calculated dataset${updatedCount === 1 ? "" : "s"} after Dataset Types save.`;
+    title.textContent = failed ? "Dataset Type Change Failed" : "Dataset Type Change Complete";
+    const summaryEl = document.createElement("div");
+    summaryEl.className = "datasetTypesRecalcSummary";
+    summaryEl.textContent = summaryText;
+    // Only a run with something to list gets the list. An empty bordered box
+    // reads as a progress bar that never filled, which is exactly the wrong
+    // thing to show beside "complete".
     const list = document.createElement("div");
     list.className = "datasetTypesRecalcList";
-    steps.forEach((step, index) => {
+    failureLines.forEach((line, index) => {
       const item = document.createElement("div");
       item.className = "datasetTypesRecalcItem";
       const name = document.createElement("div");
       name.className = "datasetTypesRecalcName";
-      name.textContent = `${index + 1}. ${String(step?.dataset_type_name || "Calculated dataset")}`;
+      name.textContent = `${index + 1}. Not completed`;
       const meta = document.createElement("div");
       meta.className = "datasetTypesRecalcMeta";
-      meta.textContent = [
-        calculationStepReservingPath(step),
-        step?.reason ? `Reason: ${step.reason}` : "",
-      ].filter(Boolean).join(" | ") || (step?.ok ? "CSV refreshed" : "Skipped");
+      meta.textContent = line;
       item.append(name, meta);
       list.appendChild(item);
     });
@@ -1542,7 +1559,9 @@ export function createDatasetTypesFeature(deps = {}) {
     ok.type = "button";
     ok.textContent = "OK";
     actions.appendChild(ok);
-    box.append(close, title, summary, list, actions);
+    box.append(close, title, summaryEl);
+    if (failureLines.length) box.appendChild(list);
+    box.appendChild(actions);
     overlay.appendChild(box);
     const dismiss = () => overlay.remove();
     close.addEventListener("click", dismiss);
@@ -1557,50 +1576,243 @@ export function createDatasetTypesFeature(deps = {}) {
     ok.focus();
   }
 
+  /** Whether a project's dataset-type change job is still running. */
+  function isDatasetTypesChangeRunning(projectName) {
+    return runningChangeJobByProject.has(normalizeProjectKey(projectName));
+  }
+
+  /**
+   * Refuse an edit while the project is being rebuilt, and say why.
+   *
+   * Called by every mutating entry point rather than by the save: a change
+   * accepted into the grid now would sit there unsaved until the job ended,
+   * which is exactly the divergence this whole flow exists to prevent.
+   */
+  function blockedByRunningChange(projectName) {
+    if (!isDatasetTypesChangeRunning(projectName)) return false;
+    setDatasetTypesStatus(
+      "Dataset types are being applied for this project. Please wait for that to finish.",
+      true,
+    );
+    return true;
+  }
+
+  /**
+   * Reuse the previous request id when this is a retry of the same table.
+   *
+   * The server returns an already-published job untouched, so replaying an id
+   * under different rows would silently drop the newer edit.
+   */
+  function requestIdForSubmission(projectName, rows) {
+    const key = normalizeProjectKey(projectName);
+    const signature = datasetTypesRowsSignature(rows);
+    const previous = lastSubmissionByProject.get(key);
+    if (previous && previous.signature === signature && previous.requestId) {
+      return { requestId: previous.requestId, signature };
+    }
+    return { requestId: createDatasetTypesChangeRequestId(), signature };
+  }
+
+  // The job counts different things in different stages, and a bar labelled in
+  // the wrong unit is worse than no bar. The stage says which.
+  const CHANGE_PROGRESS_UNITS = {
+    scanning: "reserving classes",
+    recalculate: "reserving classes",
+    index: "reserving classes",
+  };
+
+  function reportChangeProgress(projectName, progress) {
+    const label = String(progress?.label || "").trim() || "Applying dataset type changes...";
+    const total = Math.max(0, Number(progress?.total) || 0);
+    const completed = Math.max(0, Number(progress?.completed) || 0);
+    const stage = String(progress?.stage || "").trim().toLowerCase();
+    changeProgressPopup.show(label, {
+      progress: {
+        completed,
+        total,
+        unit: CHANGE_PROGRESS_UNITS[stage] || "datasets",
+      },
+    });
+    // The shell status bar is the only place this is still worth echoing: the
+    // page itself is behind the popup.
+    setStatus(`Dataset types: ${label}`);
+  }
+
+  /**
+   * Follow a submitted change job, then show the project's saved table again.
+   *
+   * The job wrote the file, so the rows held here are no longer the authority:
+   * on success the cache is dropped and the table is re-read, which is also
+   * what makes a change another user made visible.
+   */
+  async function followDatasetTypesChangeJob(projectName, jobId) {
+    const key = normalizeProjectKey(projectName);
+    runningChangeJobByProject.set(key, jobId);
+    renderDatasetTypesTable(projectName);
+    changeProgressPopup.show("Queued for ArcRho Engine", {
+      progress: { completed: 0, total: 0, unit: "datasets" },
+    });
+    try {
+      const terminal = await waitForDatasetTypesChangeJob({
+        fetchImpl,
+        projectName,
+        jobId,
+        onProgress: (progress) => reportChangeProgress(projectName, progress),
+      });
+      runningChangeJobByProject.delete(key);
+      changeProgressPopup.hide();
+      // The grid is read-only for the life of the job, but not while the
+      // submission itself was in flight: an edit made in that window is newer
+      // than the table the Engine just wrote and must survive the reload.
+      const submitted = lastSubmissionByProject.get(key);
+      const pendingRows = buildPersistableRows(
+        getProjectDatasetTypesState(projectName).rows || [],
+      );
+      const editedWhileSubmitting = Boolean(submitted)
+        && submitted.signature !== datasetTypesRowsSignature(pendingRows);
+      lastSubmissionByProject.delete(key);
+      clearInvalidFormulaSet(projectName);
+      const summary = describeDatasetTypesChangeResult(terminal);
+
+      if (editedWhileSubmitting) {
+        const message = `${summary} Your later edits are not saved yet - saving them now.`;
+        renderDatasetTypesTable(projectName);
+        setDatasetTypesStatus(message);
+        setStatus(`Dataset types applied with later edits pending: ${projectName}`);
+        showDatasetTypesChangeDialog({ summary: message });
+        scheduleDatasetTypesAutoSave(projectName);
+        await loadAuditLog(projectName, true);
+        return true;
+      }
+
+      // Re-read rather than trust the rows that were submitted: the Engine
+      // resolved each row's Source and Generated while it wrote them.
+      loadedDatasetTypesByProject.delete(key);
+      await loadDatasetTypes(projectName);
+      setDatasetTypesStatus(summary);
+      setStatus(`Dataset types applied: ${projectName}`);
+      showDatasetTypesChangeDialog({ summary });
+      await loadAuditLog(projectName, true);
+      return true;
+    } catch (err) {
+      runningChangeJobByProject.delete(key);
+      changeProgressPopup.hide();
+      // The table stays on screen exactly as the user left it: the file may or
+      // may not have been written, so the next save is the user's decision.
+      const message = String(err?.message || err || "The dataset type change failed.");
+      // A job the Engine finished in error is a decided outcome, so the next
+      // attempt must be a new submission. A status this page could not read is
+      // not: keeping that id lets the retry re-attach to the same running job.
+      if (err?.code === "DATASET_TYPES_CHANGE_JOB_ERROR") {
+        lastSubmissionByProject.delete(key);
+      }
+      renderDatasetTypesTable(projectName);
+      setDatasetTypesStatus(`Dataset type change failed: ${message}`, true);
+      setStatus(`Dataset type change failed: ${message}`);
+      showDatasetTypesChangeDialog({
+        summary: "The dataset type table on screen has not been confirmed as saved.",
+        failures: [message],
+        failed: true,
+      });
+      await loadAuditLog(projectName, true);
+      return false;
+    }
+  }
+
+  /**
+   * Save the table, directly or as a project-wide job.
+   *
+   * The request itself always answers quickly. A change that re-derives
+   * nothing outside the table is written by the app server and confirmed here;
+   * anything that touches names, formulas or formats is applied by ArcRho
+   * Engine under a lock on the whole project, and this call then follows that
+   * job to its end.
+   */
   async function saveDatasetTypes(projectName) {
     if (!projectName) return false;
+    if (isDatasetTypesChangeRunning(projectName)) return false;
+    const key = normalizeProjectKey(projectName);
     const state = getProjectDatasetTypesState(projectName);
     const rows = buildPersistableRows(state.rows || []);
+    const { requestId, signature } = requestIdForSubmission(projectName, rows);
 
     setDatasetTypesStatus("Saving dataset types...");
+    let res;
     try {
-      const res = await fetchImpl("/dataset_types", {
+      res = await fetchImpl("/dataset_types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_name: projectName,
           columns: [...DATASET_TYPES_COLUMNS],
           rows,
+          request_id: requestId,
         }),
       });
-      if (!res.ok) {
-        let detail = "";
-        try {
-          const body = await res.json();
-          detail = String(body?.detail || "").trim();
-        } catch {
-          const text = await res.text();
-          detail = String(text || "").trim();
-        }
-        throw new Error(detail || `HTTP ${res.status}`);
-      }
-      const out = await res.json();
-      clearInvalidFormulaSet(projectName);
-      renderDatasetTypesTable(projectName);
-      setDatasetTypesStatus(`Saved dataset types to ${out.path}`);
-      setStatus(`Saved dataset types: ${projectName}`);
-      showRecalcDialog(out?.calculated_updates);
-      await loadAuditLog(projectName, true);
-      return true;
     } catch (err) {
-      const detail = String(err?.message || "");
+      // The request may or may not have reached the server, so the id is kept:
+      // replaying it is what makes the retry safe.
+      lastSubmissionByProject.set(key, { requestId, signature });
+      const detail = String(err?.message || err || "Network request failed.");
+      setDatasetTypesStatus(`Save error: ${detail}`, true);
+      setStatus(`Dataset types save error: ${detail}`);
+      return false;
+    }
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const body = await res.json();
+        detail = String(body?.detail || "").trim();
+      } catch {
+        try {
+          detail = String((await res.text()) || "").trim();
+        } catch {
+          detail = "";
+        }
+      }
+      detail = detail || `HTTP ${res.status}`;
+      // A refusal is a decision, not a lost request: the server did not accept
+      // this id, so the next attempt must submit a new one.
+      lastSubmissionByProject.delete(key);
       const invalidNames = parseInvalidFormulaDatasetNames(detail);
       setInvalidFormulaNames(projectName, invalidNames);
       renderDatasetTypesTable(projectName);
-      setDatasetTypesStatus(`Save error: ${err.message}`, true);
-      setStatus(`Dataset types save error: ${err.message}`);
+      setDatasetTypesStatus(`Save error: ${detail}`, true);
+      setStatus(`Dataset types save error: ${detail}`);
       return false;
     }
+
+    const out = await res.json();
+    clearInvalidFormulaSet(projectName);
+
+    if (String(out?.applied || "") !== "job") {
+      lastSubmissionByProject.delete(key);
+      renderDatasetTypesTable(projectName);
+      setDatasetTypesStatus(`Saved dataset types to ${out.path}`);
+      setStatus(`Saved dataset types: ${projectName}`);
+      await loadAuditLog(projectName, true);
+      return true;
+    }
+
+    const jobId = String(out?.job?.job_id || "").trim();
+    if (!jobId) {
+      lastSubmissionByProject.delete(key);
+      setDatasetTypesStatus("Save error: ArcRho Engine did not return a job id.", true);
+      return false;
+    }
+    lastSubmissionByProject.set(key, { requestId, signature });
+    // The job runs for as long as the project needs; following it is not part
+    // of this request. Awaiting it here would hold the auto-save scheduler's
+    // single-flight slot for minutes, and the running-job state below is what
+    // actually keeps the table from being edited meanwhile.
+    runningChangeJobPromise = followDatasetTypesChangeJob(projectName, jobId);
+    return true;
+  }
+
+  /** Resolve once the running change job (if any) has finished. */
+  async function waitForRunningDatasetTypesChange() {
+    await runningChangeJobPromise;
   }
 
   async function saveDatasetTypesToLocalFile(projectName) {
@@ -1665,6 +1877,7 @@ export function createDatasetTypesFeature(deps = {}) {
       setDatasetTypesStatus("Select a project first.", true);
       return;
     }
+    if (blockedByRunningChange(name)) return;
 
     const hostApi = window.ADAHost || window.parent?.ADAHost || window.top?.ADAHost;
     if (!hostApi?.pickOpenFile) {
@@ -1861,6 +2074,8 @@ export function createDatasetTypesFeature(deps = {}) {
 
   return {
     getDatasetTypeNamesForProject,
+    isDatasetTypesChangeRunning,
+    waitForRunningDatasetTypesChange,
     setDatasetTypesStatus,
     renderDatasetTypesEmpty,
     ensureDatasetTypesLoaded,

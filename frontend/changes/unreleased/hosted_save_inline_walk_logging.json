@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "ArcRho Engine now records what each hosted save's inline dependent walk refreshed.",
+  "details": [
+    "The walk runs inside the save and never reaches the durable queue, so it left no line in dependent_propagation.log and a save was recorded only as \"success\".",
+    "hosted_saves.log now names the refreshed datasets, an unchanged publication, and a failed walk's reason."
+  ]
+}

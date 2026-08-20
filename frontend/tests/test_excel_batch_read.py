@@ -75,6 +75,12 @@ class ExcelBatchReadTests(unittest.TestCase):
     def test_deduplicates_cells_opens_each_workbook_once_and_preserves_order(self) -> None:
         first = _Workbook(12.5)
         second = _Workbook(33.0)
+
+        # Keyed on the path, not an ordered side_effect list: the two workbooks
+        # are opened on separate threads, so their order is not the caller's.
+        def fake_load(path, **_kwargs):
+            return first if "first" in str(path) else second
+
         items = [
             self.item("first.xlsx"),
             self.item("second.xlsx"),
@@ -83,9 +89,7 @@ class ExcelBatchReadTests(unittest.TestCase):
         with (
             mock.patch.object(Path, "exists", return_value=True),
             mock.patch.object(
-                excel_service.openpyxl,
-                "load_workbook",
-                side_effect=[first, second],
+                excel_service.openpyxl, "load_workbook", side_effect=fake_load
             ) as load,
         ):
             result = excel_service.excel_read_cells_batch(items)
@@ -99,6 +103,179 @@ class ExcelBatchReadTests(unittest.TestCase):
         self.assertEqual(load.call_count, 2)
         self.assertTrue(first.closed)
         self.assertTrue(second.closed)
+
+    def test_a_cell_that_looks_empty_is_a_blank_value_not_an_error(self) -> None:
+        # Untouched, outside the used range, an empty string cached by a
+        # formula, and a whitespace-only cell all read as the blank ArcRho
+        # stores as null. Only text that is not a number - the #REF! a deleted
+        # row leaves behind - is that cell's own error.
+        for raw in (None, "", " ", "\u00a0", "\t"):
+            self.assertEqual(
+                excel_service.workbook_cell_value(raw), {"ok": True, "value": None}
+            )
+        self.assertEqual(excel_service.workbook_cell_value(0), {"ok": True, "value": 0.0})
+        self.assertEqual(excel_service.workbook_cell_value(-2.5), {"ok": True, "value": -2.5})
+        broken = excel_service.workbook_cell_value("#REF!")
+        self.assertFalse(broken["ok"])
+        self.assertIn("#REF!", broken["error"])
+
+    def test_blank_cells_inside_a_range_do_not_fail_the_read(self) -> None:
+        # A linked range is applied whole or not at all, so one blank inside it
+        # rejecting the read would drop every value in the range.
+        work = self.work_dir()
+        book = work / "Range.xlsx"
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Sheet1"
+        sheet["A1"] = 1
+        sheet["A3"] = 3
+        sheet["B4"] = 4
+        workbook.save(book)
+
+        items = [
+            SimpleNamespace(book_path=str(book), sheet="Sheet1", cell=cell)
+            for cell in ("A1", "A2", "A3", "A4", "Z99")
+        ]
+        result = excel_service.excel_read_cells_batch(items)
+
+        self.assertTrue(all(item["ok"] for item in result["results"]))
+        self.assertEqual(
+            [item["value"] for item in result["results"]], [1.0, None, 3.0, None, None]
+        )
+
+    def test_single_and_batch_reads_answer_one_cell_identically(self) -> None:
+        # One rule for what a linked cell means, so a client commit and the
+        # hosted retarget cannot disagree about the same workbook cell.
+        work = self.work_dir()
+        book = work / "One.xlsx"
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Sheet1"
+        sheet["A2"] = "#REF!"
+        sheet["A3"] = 7
+        workbook.save(book)
+
+        for cell in ("A1", "A2", "A3"):
+            single = excel_service.excel_read_cell(str(book), "Sheet1", cell)
+            batch = excel_service.excel_read_cells_batch(
+                [SimpleNamespace(book_path=str(book), sheet="Sheet1", cell=cell)]
+            )["results"][0]
+            self.assertEqual(single, batch, cell)
+
+    def test_one_bad_cell_does_not_poison_the_rest_of_its_workbook(self) -> None:
+        # A saved link is validated cell by cell, so an address the sheet cannot
+        # resolve names itself instead of failing every cell read from the same
+        # workbook - which is the difference between "this reference broke" and
+        # "40 cells failed".
+        class _MixedWorkbook:
+            sheetnames = ["Sheet1"]
+
+            def __init__(self) -> None:
+                self.closed = False
+
+            def __getitem__(self, key: str):
+                if key == "Sheet1":
+                    return self
+                if key == "B1":
+                    raise ValueError("B1 is not a valid coordinate")
+                return SimpleNamespace(value=7.5 if key == "A1" else "#REF!")
+
+            def close(self) -> None:
+                self.closed = True
+
+        book = _MixedWorkbook()
+        items = [self.item("first.xlsx", cell) for cell in ("A1", "B1", "C1")]
+        with (
+            mock.patch.object(Path, "exists", return_value=True),
+            mock.patch.object(
+                excel_service.openpyxl, "load_workbook", return_value=book
+            ) as load,
+        ):
+            result = excel_service.excel_read_cells_batch(items)
+
+        good, unreadable, not_numeric = result["results"]
+        self.assertEqual(good, {"ok": True, "value": 7.5})
+        self.assertFalse(unreadable["ok"])
+        self.assertIn("B1", unreadable["error"])
+        self.assertFalse(not_numeric["ok"])
+        self.assertIn("#REF!", not_numeric["error"])
+        self.assertEqual(load.call_count, 1)
+        self.assertTrue(book.closed)
+
+    def test_validate_links_answers_cells_and_workbook_times_in_one_pass(self) -> None:
+        # The open dataset asks two questions - is every reference still
+        # readable, and is any workbook newer - and pays one pass for both.
+        first = _Workbook(12.5)
+        second = _Workbook(33.0)
+        stat_calls = []
+
+        def fake_stat(path: str):
+            stat_calls.append(path)
+            return SimpleNamespace(
+                st_mtime=101.0 if "first" in path else 202.0,
+                st_mode=stat.S_IFREG,
+            )
+
+        # Keyed on the path, not an ordered side_effect list: the two workbooks
+        # are opened on separate threads, so their order is not the caller's.
+        def fake_load(path, **_kwargs):
+            return first if "first" in str(path) else second
+
+        items = [
+            self.item("first.xlsx"),
+            self.item("second.xlsx"),
+            self.item("first.xlsx", "B2"),
+        ]
+        with (
+            mock.patch.object(Path, "exists", return_value=True),
+            mock.patch.object(
+                excel_service.openpyxl, "load_workbook", side_effect=fake_load
+            ) as load,
+            mock.patch.object(excel_service.os, "stat", side_effect=fake_stat),
+        ):
+            result = excel_service.excel_validate_links(items)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            [item["value"] for item in result["results"]], [12.5, 33.0, 12.5]
+        )
+        # One open and one stat per distinct workbook, however many cells asked.
+        self.assertEqual(load.call_count, 2)
+        self.assertEqual(len(stat_calls), 2)
+        self.assertEqual(
+            sorted(workbook["mtime"] for workbook in result["workbooks"]),
+            [101.0, 202.0],
+        )
+        self.assertTrue(all(workbook["ok"] for workbook in result["workbooks"]))
+
+    def test_validate_links_reports_a_workbook_it_cannot_reach(self) -> None:
+        # A workbook that moved fails both halves of the answer, and the caller
+        # needs both: the reference is broken, and its timestamp is unknown.
+        missing = self.work_dir() / "Gone.xlsx"
+
+        result = excel_service.excel_validate_links(
+            [SimpleNamespace(book_path=str(missing), sheet="Sheet1", cell="A1")]
+        )
+
+        self.assertFalse(result["results"][0]["ok"])
+        self.assertIn("File not found", result["results"][0]["error"])
+        self.assertEqual(len(result["workbooks"]), 1)
+        self.assertFalse(result["workbooks"][0]["ok"])
+
+    def test_read_cells_batch_does_not_pay_for_workbook_timestamps(self) -> None:
+        # Only the validating read stats the workbooks; the plain batch read
+        # every commit and refresh uses must not start doing it too.
+        with (
+            mock.patch.object(Path, "exists", return_value=True),
+            mock.patch.object(
+                excel_service.openpyxl, "load_workbook", return_value=_Workbook(1.0)
+            ),
+            mock.patch.object(excel_service.os, "stat") as stat_call,
+        ):
+            result = excel_service.excel_read_cells_batch([self.item("first.xlsx")])
+
+        self.assertNotIn("workbooks", result)
+        stat_call.assert_not_called()
 
     def test_bounds_workbook_concurrency(self) -> None:
         items = [self.item(f"missing-{index}.xlsx") for index in range(8)]

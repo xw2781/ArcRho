@@ -425,5 +425,56 @@ class SaveJobContractModeTests(unittest.TestCase):
             )
 
 
+class InlineWalkSummaryTests(unittest.TestCase):
+    """The inline walk leaves no queue record, so the save log is the only one."""
+
+    def test_method_save_names_what_the_walk_refreshed(self) -> None:
+        summary = save_jobs._inline_walk_summary({
+            "propagation": {"ok": True, "status": "completed",
+                            "refreshed_datasets": ["C 30 - Ultimate", "C 31 - IBNR"]},
+        })
+        self.assertEqual(summary, "walk refreshed 2: C 30 - Ultimate, C 31 - IBNR")
+
+    def test_dataset_sidecar_save_reports_its_nested_payload(self) -> None:
+        summary = save_jobs._inline_walk_summary({
+            "data": {"calculated_updates": {"ok": True, "status": "completed",
+                                            "refreshed_datasets": ["C 30 - Ultimate"]}},
+        })
+        self.assertEqual(summary, "walk refreshed 1: C 30 - Ultimate")
+
+    def test_a_walk_that_touched_nothing_still_records_that(self) -> None:
+        self.assertEqual(
+            save_jobs._inline_walk_summary({"propagation": {"ok": True, "refreshed_datasets": []}}),
+            "walk refreshed 0",
+        )
+
+    def test_an_unchanged_publication_is_distinguished_from_an_empty_walk(self) -> None:
+        self.assertEqual(
+            save_jobs._inline_walk_summary({"propagation": {"ok": True, "status": "unchanged"}}),
+            "walk skipped (publication unchanged)",
+        )
+
+    def test_a_failed_walk_keeps_its_reason(self) -> None:
+        summary = save_jobs._inline_walk_summary({
+            "propagation": {"ok": False, "status": "completed", "refreshed_datasets": [],
+                            "message": "Dependent update failed"},
+        })
+        self.assertEqual(summary, "walk refreshed 0; walk FAILED: Dependent update failed")
+
+    def test_a_long_walk_is_truncated_and_says_so(self) -> None:
+        names = [f"C {index}" for index in range(20)]
+        summary = save_jobs._inline_walk_summary({
+            "propagation": {"ok": True, "refreshed_datasets": names},
+        })
+        self.assertIn("walk refreshed 20:", summary)
+        self.assertIn("(+8 more)", summary)
+
+    def test_an_unexpected_shape_never_raises(self) -> None:
+        for response in (None, "text", {}, {"propagation": "not a mapping"},
+                         {"data": {"calculated_updates": None}},
+                         {"propagation": {"refreshed_datasets": "not a list"}}):
+            self.assertEqual(save_jobs._inline_walk_summary(response), "")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import openpyxl
@@ -671,3 +672,257 @@ def _build_dataset_source_resolver(
         return memo[key]
 
     return resolve_dataset_source
+
+
+# ---------------------------------------------------------------------------
+# Submitted-table normalization, validation and write
+#
+# One dataset-type change is applied by two processes: the app server, for a
+# change that alters nothing the dependency graph is derived from, and ArcRho
+# Engine, for one that does. Everything below is what they share, so the table
+# written by a Client PC and the table written by the Engine are the same
+# document for the same submitted rows.
+# ---------------------------------------------------------------------------
+
+
+SUBMITTED_ROW_LENGTH = 5
+
+
+def normalize_submitted_rows(rows: Any) -> List[List[Any]]:
+    """Trim one submitted table into canonical 5-cell rows, dropping blanks.
+
+    A row survives when it carries any content at all; the Dataset Types grid
+    always holds one trailing blank row, and a table of nothing but blanks is
+    an empty table rather than a row of empty strings.
+    """
+
+    normalized: List[List[Any]] = []
+    for row in rows or []:
+        if not isinstance(row, (list, tuple)):
+            continue
+        cells = [
+            str(row[0] if len(row) > 0 and row[0] is not None else "").strip(),
+            str(row[1] if len(row) > 1 and row[1] is not None else "").strip(),
+            str(row[2] if len(row) > 2 and row[2] is not None else "").strip(),
+            _parse_calculated_flag(row[3] if len(row) > 3 else False),
+            str(row[4] if len(row) > 4 and row[4] is not None else "").strip(),
+        ]
+        if not cells[3]:
+            cells[4] = ""
+        if cells[0] or cells[1] or cells[2] or cells[4] or cells[3] is True:
+            normalized.append(cells)
+    return normalized
+
+
+def require_resolvable_formulas(normalized_rows: List[List[Any]]) -> None:
+    """Refuse a table whose formulas name a dataset type it does not define.
+
+    Raised before anything is written, on whichever process is about to write:
+    a formula component that resolves to nothing would leave a calculated
+    dataset that can never be rebuilt.
+    """
+
+    known_dataset_names = [
+        str(row[0]).strip()
+        for row in normalized_rows
+        if isinstance(row, list) and len(row) > 0 and str(row[0] or "").strip()
+    ]
+    known_keys = {
+        key
+        for key in (_canon_dataset_name(name) for name in known_dataset_names)
+        if key
+    }
+
+    errors: List[str] = []
+    for row in normalized_rows:
+        dataset_name = str(row[0] if len(row) > 0 and row[0] is not None else "").strip()
+        is_calculated = _parse_calculated_flag(row[3] if len(row) > 3 else False)
+        formula = str(row[4] if len(row) > 4 and row[4] is not None else "").strip()
+        if not dataset_name or not is_calculated or not formula:
+            continue
+        unresolved = [
+            component
+            for component in _extract_formula_components(formula, known_dataset_names)
+            if _canon_dataset_name(component) not in known_keys
+        ]
+        if unresolved:
+            errors.append(
+                f"{dataset_name}: unresolved in formula [{', '.join(unresolved[:6])}]"
+            )
+
+    if not errors:
+        return
+    sample = "; ".join(errors[:6])
+    more = f" (+{len(errors) - 6} more)" if len(errors) > 6 else ""
+    raise HTTPException(
+        400,
+        f"Invalid formula: unresolved dataset component found. {sample}{more}. "
+        "Please fix formula components, then save again.",
+    )
+
+
+def resolve_persisted_rows(
+    project_name: str,
+    normalized_rows: List[List[Any]],
+) -> List[List[Any]]:
+    """Extend canonical 5-cell rows with their derived Source and Generated."""
+
+    source_map = _load_dataset_source_map(project_name)
+    field_names = _load_field_mapping_field_names(project_name)
+    resolve_dataset_source = _build_dataset_source_resolver(normalized_rows, source_map)
+
+    resolved: List[List[Any]] = []
+    for row in normalized_rows:
+        source_value = str(resolve_dataset_source(row[0]) or "").strip()
+        if source_value == "":
+            source_value = str(
+                source_map.get(_canon_dataset_name(row[0]), "") or ""
+            ).strip()
+        generated = _is_source_generated_from_field_names(source_value, field_names)
+        resolved.append([row[0], row[1], row[2], row[3], row[4], source_value, generated])
+    return resolved
+
+
+def build_dataset_types_payload(persisted_rows: List[List[Any]]) -> Dict[str, Any]:
+    """Build the complete persisted document for one resolved table."""
+
+    return {
+        "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
+        "rows": list(persisted_rows),
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
+
+
+def read_persisted_rows(project_name: str) -> List[List[Any]]:
+    """Return the project's currently persisted rows, or an empty table."""
+
+    try:
+        filepath = config.get_dataset_types_path(project_name)
+    except ValueError:
+        return []
+    if not os.path.exists(filepath):
+        return []
+    try:
+        with open(filepath, "r", encoding="utf-8") as stream:
+            raw = json.load(stream)
+    except (OSError, ValueError):
+        return []
+    return list(normalize_dataset_types_data(raw).get("rows") or [])
+
+
+def _graph_projection(rows: List[List[Any]]) -> Dict[str, Tuple[str, bool, str, bool]]:
+    """Project one table down to what every existing sidecar's graph is built from.
+
+    Category and row order are presentation. A type's data format, whether it
+    is calculated, its formula and whether it is engine-generated are not: each
+    one changes what a sidecar's ``Precedents``/``Dependents`` mean, or which
+    instances the type can still describe.
+    """
+
+    projection: Dict[str, Tuple[str, bool, str, bool]] = {}
+    for row in rows or []:
+        if not isinstance(row, (list, tuple)):
+            continue
+        key = _canon_dataset_name(str(row[0] if len(row) > 0 else "") or "")
+        if not key:
+            continue
+        projection[key] = (
+            str(row[1] if len(row) > 1 and row[1] is not None else "").strip().casefold(),
+            _parse_calculated_flag(row[3] if len(row) > 3 else False),
+            str(row[4] if len(row) > 4 and row[4] is not None else "").strip(),
+            _parse_calculated_flag(row[6] if len(row) > 6 else False),
+        )
+    return projection
+
+
+def _formula_component_map(rows: List[List[Any]]) -> Dict[str, Tuple[str, ...]]:
+    """What each calculated formula actually resolves to, given these names.
+
+    A formula is tokenized against the set of known dataset-type names, so the
+    same formula text can resolve to different components once the table gains
+    or loses a name -- ``"Paid Loss"`` added beside an existing ``"Paid Loss
+    Ratio"`` is the case that matters. Comparing the resolved components,
+    rather than assuming any new name is dangerous, is what lets an ordinary
+    addition be written in place instead of rebuilding the whole project.
+    """
+
+    known_names = [
+        str(row[0]).strip()
+        for row in rows or []
+        if isinstance(row, (list, tuple)) and len(row) > 0 and str(row[0] or "").strip()
+    ]
+    components_by_key: Dict[str, Tuple[str, ...]] = {}
+    for row in rows or []:
+        if not isinstance(row, (list, tuple)):
+            continue
+        key = _canon_dataset_name(str(row[0] if len(row) > 0 else "") or "")
+        formula = str(row[4] if len(row) > 4 and row[4] is not None else "").strip()
+        if not key or not formula:
+            continue
+        if not _parse_calculated_flag(row[3] if len(row) > 3 else False):
+            continue
+        resolved = {
+            component_key
+            for component_key in (
+                _canon_dataset_name(component)
+                for component in _extract_formula_components(formula, known_names)
+            )
+            if component_key
+        }
+        components_by_key[key] = tuple(sorted(resolved))
+    return components_by_key
+
+
+def change_needs_project_job(
+    previous_rows: List[List[Any]],
+    next_rows: List[List[Any]],
+) -> bool:
+    """Say whether this change re-derives data outside the table itself.
+
+    ``False`` means the file is the entire change: Category and row order are
+    presentation, and a brand-new dataset type has no instances and no sidecar
+    referring to it, so nothing derived from the table moves. That case has to
+    stay instant -- adding a type is the most common edit this grid sees.
+
+    ``True`` means something every sidecar's dependency graph is derived from
+    is now different, so the project must be rebuilt under one lock:
+
+    - a type disappeared, and sidecars may still name it;
+    - a surviving type changed data format, calculated flag, formula or
+      engine-generated flag;
+    - the components some calculated formula resolves to moved, which a new
+      name can do to a formula whose text never changed.
+    """
+
+    previous = _graph_projection(previous_rows)
+    current = _graph_projection(next_rows)
+
+    if set(previous) - set(current):
+        return True
+    if any(previous[key] != current[key] for key in previous.keys() & current.keys()):
+        return True
+    return _formula_component_map(previous_rows) != _formula_component_map(next_rows)
+
+
+def apply_dataset_types_rows(
+    project_name: str,
+    submitted_rows: Any,
+) -> Dict[str, Any]:
+    """Validate, resolve and persist one submitted dataset-type table.
+
+    The single write path for both producers. Returns the resolved rows and the
+    file paths, so a caller can report counts without reading the table back.
+    """
+
+    filepath = config.get_dataset_types_path(project_name)
+    normalized_rows = normalize_submitted_rows(submitted_rows)
+    require_resolvable_formulas(normalized_rows)
+    persisted_rows = resolve_persisted_rows(project_name, normalized_rows)
+    payload = build_dataset_types_payload(persisted_rows)
+    written = save_dataset_types_payload(filepath, payload)
+    return {
+        "path": filepath,
+        "xlsx_path": written.get("xlsx_path", ""),
+        "rows": persisted_rows,
+        "count": len(persisted_rows),
+    }

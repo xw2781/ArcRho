@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving a dataset or method no longer raises a spurious \"Updated Outside This Window\" alert about your own save.",
+  "details": [
+    "A mapped-drive read can report file details several seconds out of date, so the window could baseline on the state from before its own save and then report that save as an outside change.",
+    "A change is now reported only when the object's recorded write is newer than the one the window already has in view.",
+    "A rename or Save As no longer lets the window start watching again while the save is still writing."
+  ]
+}

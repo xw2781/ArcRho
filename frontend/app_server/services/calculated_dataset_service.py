@@ -2302,24 +2302,64 @@ def _dataset_type_name_by_key_from_rows(rows: List[List[Any]]) -> Dict[str, str]
     return out
 
 
-def _iter_project_sidecars(project_name: str):
+class _ProjectSidecars(NamedTuple):
+    """Every dataset instance of one project, listed before any is read.
+
+    A caller that reports progress needs the denominator before the work
+    starts, and listing the folders is cheap next to reading each payload:
+    one directory enumeration per reserving class either way.
+    """
+
+    paths: List[str]
+    class_count: int
+
+
+def _list_project_sidecars(
+    project_name: str,
+    *,
+    on_class: Callable[[int, int, str], None] | None = None,
+) -> _ProjectSidecars:
+    """List every dataset instance of the project, class by class.
+
+    ``on_class`` receives ``(scanned, total, reserving_class)`` after each
+    class. Listing is the one part of a project-wide job whose own denominator
+    is known from the start, so it is also the only part that can show a bar
+    while the job is still working out how much there is to do.
+    """
+
     try:
         data_dir = config.get_project_data_dir(project_name)
     except ValueError:
-        return
+        return _ProjectSidecars([], 0)
     if not os.path.isdir(data_dir):
-        return
-    for rc_entry in os.scandir(data_dir):
-        if not rc_entry.is_dir():
-            continue
-        sidecar_dir = os.path.join(rc_entry.path, config.DATASET_SIDECAR_DIR)
-        if not os.path.isdir(sidecar_dir):
-            continue
-        for entry in os.scandir(sidecar_dir):
-            if entry.is_file() and entry.name.lower().endswith(".json"):
-                payload = _read_sidecar(entry.path)
-                if payload:
-                    yield entry.path, payload
+        return _ProjectSidecars([], 0)
+
+    class_dirs = sorted(
+        (entry.path for entry in os.scandir(data_dir) if entry.is_dir()),
+        key=os.path.basename,
+    )
+    total_classes = len(class_dirs)
+    paths: List[str] = []
+    for scanned, rc_path in enumerate(class_dirs, start=1):
+        sidecar_dir = os.path.join(rc_path, config.DATASET_SIDECAR_DIR)
+        if os.path.isdir(sidecar_dir):
+            for entry in os.scandir(sidecar_dir):
+                if entry.is_file() and entry.name.lower().endswith(".json"):
+                    paths.append(entry.path)
+        if on_class is not None:
+            on_class(
+                scanned,
+                total_classes,
+                config.decode_filename_segment(os.path.basename(rc_path)),
+            )
+    return _ProjectSidecars(paths, total_classes)
+
+
+def _iter_project_sidecars(project_name: str):
+    for path in _list_project_sidecars(project_name).paths:
+        payload = _read_sidecar(path)
+        if payload:
+            yield path, payload
 
 
 def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
@@ -2329,10 +2369,141 @@ def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
     dataset_sidecar_status_service.write_sidecar(path, payload)
 
 
+def _sidecar_instance_name(path: str) -> str:
+    """The dataset instance a sidecar file describes, decoded from its name."""
+
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return dataset_instance_index_service._normalize_cached_dataset_name(stem)
+
+
+def find_dataset_type_removal_blockers(
+    project_name: str,
+    removed_type_names: Sequence[str],
+    *,
+    on_progress: Callable[[str, str, int, int], None] | None = None,
+) -> List[Dict[str, Any]]:
+    """Instances of disappearing dataset types that other objects still read.
+
+    Deleting a dataset type deletes the definition its instances are described
+    by, so it may only happen once nothing downstream reads those instances --
+    the same rule that already governs deleting one dataset. A dependent that
+    is itself an instance of a type being removed in the same change is not a
+    blocker: it is leaving too.
+
+    Returns one entry per blocked type, each naming the instances still read
+    and, for each, the datasets or methods reading them.
+    """
+
+    removed_keys = {
+        key
+        for key in (_canon_dataset_name(name) for name in removed_type_names or [])
+        if key
+    }
+    if not removed_keys:
+        return []
+
+    def report(scanned: int, total: int, reserving_class: str) -> None:
+        if on_progress is None:
+            return
+        try:
+            on_progress(
+                "scanning",
+                f"Checking dataset types in use: {reserving_class}",
+                scanned,
+                total,
+            )
+        except Exception:
+            pass
+
+    listed = _list_project_sidecars(project_name, on_class=report)
+
+    # One pass builds both halves: which instances belong to a departing type,
+    # and what every instance of the class is, so a dependent can be labelled
+    # without a second read of the same folder.
+    payload_by_class: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    departing: List[Tuple[str, str, str, Dict[str, Any]]] = []
+    for path in listed.paths:
+        payload = _read_sidecar(path)
+        if not payload:
+            continue
+        class_dir = os.path.dirname(os.path.dirname(path))
+        instance_name = _sidecar_instance_name(path)
+        instance_key = _canon_dataset_name(instance_name)
+        if instance_key:
+            payload_by_class.setdefault(class_dir, {})[instance_key] = payload
+        dataset_type = _clean_text(
+            payload.get("dataset_type") or payload.get("dataset_name")
+        )
+        if _canon_dataset_name(dataset_type) in removed_keys:
+            departing.append((class_dir, dataset_type, instance_name, payload))
+
+    departing_keys_by_class: Dict[str, Set[str]] = {}
+    for class_dir, _dataset_type, instance_name, _payload in departing:
+        key = _canon_dataset_name(instance_name)
+        if key:
+            departing_keys_by_class.setdefault(class_dir, set()).add(key)
+
+    blocked_by_type: Dict[str, Dict[str, Any]] = {}
+    for class_dir, dataset_type, instance_name, payload in departing:
+        leaving = departing_keys_by_class.get(class_dir, set())
+        dependents: List[Dict[str, str]] = []
+        for dependent_name in dataset_sidecar_status_service.entry_names(
+            payload.get("Dependents")
+        ):
+            dependent_key = _canon_dataset_name(dependent_name)
+            if not dependent_key or dependent_key in leaving:
+                continue
+            dependent_payload = payload_by_class.get(class_dir, {}).get(dependent_key, {})
+            dependents.append({
+                "dataset_name": dependent_name,
+                "method_type": dataset_sidecar_status_service.normalize_method_type(
+                    dependent_payload.get("method_type"),
+                    dependent_payload.get("source_kind"),
+                ),
+            })
+        if not dependents:
+            continue
+        entry = blocked_by_type.setdefault(
+            _canon_dataset_name(dataset_type),
+            {"dataset_type": dataset_type, "instances": []},
+        )
+        entry["instances"].append({
+            "reserving_class": _clean_text(payload.get("reserving_class"))
+            or config.decode_filename_segment(os.path.basename(class_dir)),
+            "dataset_name": instance_name,
+            "dependents": dependents,
+        })
+
+    return [blocked_by_type[key] for key in sorted(blocked_by_type)]
+
+
 def refresh_sidecar_graphs_and_recalculate(
     project_name: str,
     changed_dataset_types: List[str] | None = None,
+    *,
+    on_progress: Callable[[str, str, int, int], None] | None = None,
 ) -> Dict[str, Any]:
+    """Re-derive every sidecar's dependency graph, then rebuild what changed.
+
+    ``on_progress`` receives ``(stage, label, completed, total)`` for a caller
+    publishing job status. It exists because this walk visits every dataset
+    instance of every reserving class: on any real project it is the long part
+    of a dataset-type change, and a job whose status never moves is
+    indistinguishable from a dead one. The unit is one dataset instance, then
+    one reserving class for each class the change makes the walk revisit, so
+    the count a caller shows is work done rather than stages passed.
+    """
+
+    def report(stage: str, label: str, completed: int, total: int) -> None:
+        if on_progress is None:
+            return
+        try:
+            on_progress(stage, label, completed, total)
+        except Exception:
+            # Progress is telemetry. A publisher that cannot write its status
+            # must not abort a rebuild that is already under way.
+            pass
+
     changed_keys = {
         _canon_dataset_name(name)
         for name in (changed_dataset_types or [])
@@ -2343,7 +2514,25 @@ def refresh_sidecar_graphs_and_recalculate(
     recalc_seeds: Set[Tuple[str, str]] = set()
     errors: List[str] = []
 
-    for path, payload in _iter_project_sidecars(project_name) or []:
+    listed = _list_project_sidecars(
+        project_name,
+        on_class=lambda scanned, total, reserving_class: report(
+            "scanning",
+            f"Scanning reserving classes: {reserving_class}",
+            scanned,
+            total,
+        ),
+    )
+    datasets_total = len(listed.paths)
+    total_units = datasets_total
+    completed_units = 0
+    report("graphs", "Rebuilding dataset dependency graphs", 0, total_units)
+
+    for path in listed.paths:
+        payload = _read_sidecar(path)
+        completed_units += 1
+        if not payload:
+            continue
         dataset_type = _clean_text(payload.get("dataset_type") or payload.get("dataset_name"))
         dataset_key = _canon_dataset_name(dataset_type)
         reserving_class = _clean_text(payload.get("reserving_class"))
@@ -2370,6 +2559,13 @@ def refresh_sidecar_graphs_and_recalculate(
             errors.append(f"{os.path.basename(path)}: {exc}")
             continue
 
+        if reserving_class:
+            report(
+                "graphs",
+                f"Rebuilding dependency graphs: {reserving_class}",
+                completed_units,
+                total_units,
+            )
         if changed_keys and dataset_key in changed_keys and dataset_key in rows_by_key and reserving_class:
             recalc_seeds.add((reserving_class, rows_by_key[dataset_key]["name"]))
 
@@ -2383,8 +2579,17 @@ def refresh_sidecar_graphs_and_recalculate(
     for reserving_class, dataset_type in sorted(recalc_seeds):
         seeds_by_reserving_class.setdefault(reserving_class, []).append(dataset_type)
 
+    # The classes the change makes the walk revisit are only known now, so the
+    # denominator grows once here rather than being guessed up front.
+    total_units = datasets_total + len(seeds_by_reserving_class)
     chains: List[Dict[str, Any]] = []
     for reserving_class, dataset_types in seeds_by_reserving_class.items():
+        report(
+            "recalculate",
+            f"Recalculating {reserving_class}",
+            completed_units,
+            total_units,
+        )
         steps: List[Dict[str, Any]] = []
         for dataset_type in dataset_types:
             try:
@@ -2423,6 +2628,7 @@ def refresh_sidecar_graphs_and_recalculate(
             "skipped": [step for step in steps if not step.get("ok")],
             "propagation": propagation,
         })
+        completed_units += 1
 
     touched_rcs = {
         _clean_text(chain.get("reserving_class"))
@@ -2430,6 +2636,12 @@ def refresh_sidecar_graphs_and_recalculate(
         if _clean_text(chain.get("reserving_class"))
     }
     for reserving_class in touched_rcs:
+        report(
+            "index",
+            f"Rebuilding the dataset index: {reserving_class}",
+            completed_units,
+            total_units,
+        )
         try:
             dataset_instance_index_service.rebuild_index(project_name, reserving_class)
         except Exception as exc:
@@ -2440,6 +2652,8 @@ def refresh_sidecar_graphs_and_recalculate(
         "project_name": project_name,
         "changed_dataset_types": list(changed_dataset_types or []),
         "sidecars_updated": sidecars_updated,
+        "datasets_total": datasets_total,
+        "classes_total": listed.class_count,
         "chains": chains,
         "errors": errors,
     }

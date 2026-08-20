@@ -7,7 +7,7 @@ import { waitForDependentPropagationOutcome } from "/ui/shared/services/dependen
 import {
   PROPAGATION_SCOPE_FINISHED_MESSAGE,
   PROPAGATION_SCOPE_STARTED_MESSAGE,
-} from "/ui/shared/services/object_change_watch.js?v=20260816a";
+} from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import {
   TABBED_PAGE_NEXT_MESSAGE,
   TABBED_PAGE_PREVIOUS_MESSAGE,

@@ -1,10 +1,12 @@
 """Open-window change-watch fingerprint endpoint behavior."""
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, Dict
 from unittest import mock
 
 from fastapi import HTTPException
@@ -129,6 +131,89 @@ class ObjectChangeWatchServiceTests(unittest.TestCase):
     def test_missing_identity_is_a_client_error(self) -> None:
         with self.assertRaises(HTTPException) as raised:
             self._fingerprint(name="  ")
+        self.assertEqual(raised.exception.status_code, 400)
+
+    def _attribution(self, **overrides):
+        request = {
+            "project_name": "Example Project",
+            "reserving_class": "Example RC",
+            "kind": "dataset",
+            "name": "Paid Loss",
+        }
+        request.update(overrides)
+        return object_change_watch_service.object_change_attribution(
+            request["project_name"],
+            request["reserving_class"],
+            request["kind"],
+            request["name"],
+            method_type=request.get("method_type", ""),
+            output_dataset=request.get("output_dataset", ""),
+        )["attribution"]
+
+    def _write_sidecar(self, name: str, payload: Dict[str, Any]) -> None:
+        (self.sidecars / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def test_attribution_names_the_person_who_saved_the_dataset(self) -> None:
+        self._write_sidecar("Paid Loss", {
+            "updated_at": "2026-08-20T14:20:00Z",
+            "modified_by": "Dana Reid",
+            "audit_log": [
+                {"event_date": "2026-08-19T09:00:00Z", "action": "Insert", "user": "Dana Reid"},
+                {"event_date": "2026-08-20T14:24:11Z", "action": "Update", "user": "Sam Okafor"},
+            ],
+        })
+        attribution = self._attribution()
+        self.assertEqual(attribution["user"], "Sam Okafor")
+        self.assertEqual(attribution["action"], "Update")
+        self.assertEqual(attribution["at"], "2026-08-20T14:24:11Z")
+        self.assertFalse(attribution["automatic"])
+        self.assertEqual(attribution["subject"], "dataset")
+
+    def test_attribution_marks_an_automatic_refresh_and_the_account_it_ran_as(self) -> None:
+        self._write_sidecar("Development Output", {
+            "updated_at": "2026-08-20T14:24:11Z",
+            "modified_by": "Dana Reid",
+            "audit_log": [
+                {"event_date": "2026-08-20T14:24:11Z", "action": "Auto Refresh", "user": "Dana Reid"},
+            ],
+        })
+        (self.methods / "DFM@Development.json").write_text("{}", encoding="utf-8")
+        attribution = self._attribution(
+            kind="method",
+            name="Development",
+            method_type="dfm",
+            output_dataset="Development Output",
+        )
+        self.assertEqual(attribution["action"], "Auto Refresh")
+        self.assertTrue(attribution["automatic"])
+        self.assertEqual(attribution["user"], "Dana Reid")
+        self.assertEqual(attribution["subject"], "method")
+
+    def test_attribution_falls_back_to_the_method_stamp_then_to_nothing(self) -> None:
+        (self.methods / "DFM@Development.json").write_text(
+            json.dumps({"method metadata": {"last modified": "2026-08-20T14:24:11Z"}}),
+            encoding="utf-8",
+        )
+        attribution = self._attribution(
+            kind="method", name="Development", method_type="dfm",
+        )
+        self.assertEqual(attribution["at"], "2026-08-20T14:24:11Z")
+        self.assertEqual(attribution["user"], "")
+
+        missing = self._attribution(name="Nothing Here")
+        self.assertEqual(missing["user"], "")
+        self.assertEqual(missing["action"], "")
+        self.assertEqual(missing["at"], "")
+
+    def test_attribution_survives_an_unreadable_payload(self) -> None:
+        (self.sidecars / "Paid Loss.json").write_text("{not json", encoding="utf-8")
+        attribution = self._attribution()
+        self.assertEqual(attribution["user"], "")
+        self.assertFalse(attribution["automatic"])
+
+    def test_attribution_rejects_an_unknown_kind(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            self._attribution(kind="triangle")
         self.assertEqual(raised.exception.status_code, 400)
 
     def test_canonical_method_json_paths_cover_every_method_type(self) -> None:

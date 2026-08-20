@@ -45,6 +45,7 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
 import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import {
   isEngineUnavailableSaveError,
@@ -54,7 +55,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260816a";
+} from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
@@ -70,7 +71,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260818a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260820a";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -116,10 +117,10 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260820a";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
-import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
-import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260814b";
+import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
+import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260820a";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -142,9 +143,10 @@ let currentDfmOutputCategory = "";
 // pause the watch and rebase its fingerprint through ensureDfmObjectChangeWatch.
 const dfmObjectChangeWatch = createMethodObjectChangeWatchController({
   methodType: "dfm",
-  onChange: () => {
+  onChange: (attribution) => {
     void showObjectUpdatedAlert({
       showMessageBox: showPageMessageBox,
+      attribution,
       isDirty: getDfmIsDirty,
       onBlockedRefresh: () => {
         postDfmStatus(
@@ -161,12 +163,15 @@ wireSamePropagationScopePause({
   getReservingClass: getResolvedReservingClass,
 });
 
-function ensureDfmObjectChangeWatch(methodName) {
+function ensureDfmObjectChangeWatch(methodName, sidecar = null) {
   dfmObjectChangeWatch.ensure({
     projectName: getResolvedProjectName(),
     reservingClass: getResolvedReservingClass(),
     methodName,
     outputDataset: currentDfmOutputDataset,
+    // What this window now has in view; a share read reporting this write, or
+    // any earlier one, is not an outside change however late it arrives.
+    selfWriteStamp: sidecar?.updated_at,
   });
 }
 let currentOwnedRevision = "";
@@ -1250,6 +1255,14 @@ function scheduleDfmExcelFreshnessCheck(method) {
       if (result?.aborted || appliedRevision !== checkingExcelAppliedRevision || getDfmIsDirty()) return;
       checkedExcelAppliedRevision = appliedRevision;
       setDfmExcelFreshnessState(result);
+      const invalidLinks = Array.isArray(result?.invalidLinks) ? result.invalidLinks : [];
+      if (invalidLinks.length) {
+        // A reference the workbook can no longer answer is not a freshness
+        // note: the stored ratios stay in place, the cells are already red,
+        // and the user is told which reference to fix before anything else.
+        await showExcelLinkFailureAlert({ failures: invalidLinks, valueNoun: "linked ratio cell" });
+        return;
+      }
       const staleCount = Number(result?.staleCount || 0);
       const unverifiedCount = Number(result?.unverifiedCount || 0);
       if (staleCount || unverifiedCount) {
@@ -1323,7 +1336,7 @@ async function loadRatioSelectionIfExistsOnce(reason) {
       reviewNeeded ? { tone: "warn" } : {},
     );
     scheduleDfmExcelFreshnessCheck(method);
-    ensureDfmObjectChangeWatch(details.name);
+    ensureDfmObjectChangeWatch(details.name, response?.sidecar);
     return { ok: true, method, sidecar: response?.sidecar };
   } catch (error) {
     if (Number(error?.status) === 404) {
@@ -1714,7 +1727,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     if (!applied?.ok) throw new Error(applied?.error || "Saved DFM could not be applied.");
     const details = getDfmDetailsTab(canonicalMethod);
     currentDfmOutputDataset = String(details["output dataset"] || nextOutputDataset).trim();
-    ensureDfmObjectChangeWatch(details.name);
+    ensureDfmObjectChangeWatch(details.name, response?.sidecar);
     syncDfmIdentityQuery(canonicalMethod);
     hydrateDfmOutputSidecar(response?.sidecar, {
       hydrateNotes: true,

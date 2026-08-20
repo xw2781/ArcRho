@@ -1,0 +1,14 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Dataset Types edits are saved reliably: the table can no longer keep accepting changes that never reach the file.",
+  "details": [
+    "A Dataset Types save used to rebuild every reserving class's dependency graph inside the request. On a large project that request could run for minutes without answering, and every edit made afterwards was silently dropped while the grid still showed it.",
+    "Saving now answers immediately. Adding a dataset type, renaming a Category and reordering rows are written straight away.",
+    "Removing a type, or changing one's Data Format, Calculated flag or Formula, runs on ArcRho Engine as a project-wide job. Project Settings waits behind a progress window showing the current step and how many datasets of the total have been updated, then reports what the change did.",
+    "Deleting a dataset type is now refused while any dataset of that type is still used by another dataset or method, naming what still reads it. Nothing is saved when that happens.",
+    "That job locks the whole project while it runs, and refuses to start while any reserving class is still being updated, so a dataset type change can no longer race the data it defines.",
+    "If a save cannot be confirmed, Project Settings now says so and keeps your edits instead of appearing to have saved them."
+  ]
+}

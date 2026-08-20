@@ -94,3 +94,73 @@
 .arcrho-load-popup-elapsed[hidden] {
   display: none;
 }
+
+/*
+  Determinate variant. A job that knows its denominator shows a bar and a count
+  in place of the spinner, so a long rebuild reads as progress rather than as
+  something that may have stopped. The track keeps the card's width stable while
+  the fill moves, so the card cannot resize mid-job.
+*/
+.arcrho-load-popup-progress[hidden] {
+  display: none;
+}
+
+.arcrho-load-popup-progress {
+  margin: 12px 0 2px;
+}
+
+.arcrho-load-popup-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #e8edf3;
+  overflow: hidden;
+}
+
+.arcrho-load-popup-progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 3px;
+  background: #2b6df6;
+  transition: width 160ms ease;
+}
+
+.arcrho-load-popup-progress-count {
+  margin-top: 7px;
+  color: #64748b;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.arcrho-load-popup-spinner[hidden] {
+  display: none;
+}
+
+/*
+  A measured job re-announces itself every few hundred milliseconds, and its
+  message is a reserving-class path whose length changes each time. Left to
+  size itself the card would jump on every tick, so this mode fixes the card's
+  width and reserves the message two lines of height instead of growing into
+  them. The path breaks anywhere and clips at the second line: seeing which
+  class is being rebuilt matters, watching the window resize does not.
+*/
+.arcrho-load-popup-card.is-measured {
+  width: min(92vw, 560px);
+  min-width: 0;
+  max-width: none;
+}
+
+.arcrho-load-popup-card.is-measured .arcrho-load-popup-msg {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: calc(1.35em * 2);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The count is blank until the job reports a denominator, so its line is
+   reserved rather than appearing later and pushing the card taller. */
+.arcrho-load-popup-card.is-measured .arcrho-load-popup-progress-count {
+  min-height: 1.35em;
+  line-height: 1.35;
+}

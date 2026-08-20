@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260818srj1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260820dtjob1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -86,7 +86,7 @@ Detected `arcrho:*` message types in key JS files:
 - Uses `POST /project_settings/{source}/open_project_folder` from the detail header action to open the selected project's folder in the OS file explorer.
 - Posts `arcrho:open-project-instance` when the project tree's `View project contents in a new tab` action is clicked for a project.
 - Folder tree "Create New Project" action calls `POST /project_settings/{source}/create_project_folder` before saving the updated project index.
-- Dataset Types pane persists changes through `POST /dataset_types` (debounced auto-save).
+- Dataset Types pane persists changes through `POST /dataset_types` (debounced auto-save). The request always answers quickly. Adding a dataset type, renaming a Category and reordering rows are written directly and confirmed at once; removing a type, changing a type's Data Format, Calculated flag or Formula, or adding a name that changes what an existing formula resolves to, is applied by ArcRho Engine as a project-wide job the pane then follows.
 - Data processing rules uses `GET /data_processing_rules`, `POST /data_processing_rules/validate`, and `POST /data_processing_rules` for project-scoped rule editing with optimistic revision checks.
 - Posts title/status events to shell.
 <!-- MANUAL:END -->
@@ -98,14 +98,14 @@ Detected `arcrho:*` message types in key JS files:
 - Project tree folder expand/collapse state is saved in `%APPDATA%\ArcRho\local_project_prefs.json` under `projectExplorer.expandedFolders` and restored when Project Settings opens.
 - `Project Settings` ribbon page includes an `Open Folder` action button with folder icon styling and disabled-state feedback while the request is in flight.
 - Coordinates feature modules for mapping/type editors.
-- Dataset Types row mutations (add/edit/delete) update in-memory state and schedule per-project debounced save.
+- Dataset Types row mutations (add/edit/delete) update in-memory state and schedule per-project debounced save. The shared auto-save scheduler cannot be wedged by a save that never answers: a watchdog releases its single-flight slot, says so in the pane's status, and leaves the edits queued for the next save rather than silently dropping them.
 - Dataset Types pane now reuses shared dataset-types helpers (`dataset_types_source.js`, `dataset_types_view_model.js`) for `/dataset_types` payload normalization, `Name`/`Data Format`/`Category`/`Calculated` filter option-building, shared filter label/key generation, and active-filter state checks, to stay aligned with the reusable dataset picker while preserving the existing Project Settings UI behavior.
 - Field Mapping `Dataset Type` cells use a modern floating suggestion dropdown and typed entry; typing filters suggestions, deleting all text is allowed, empty input shows all available options, dropdown arrow click forces full-option view regardless of current text, any input text change re-applies filtering, the dropdown always opens below the active input, and only dataset types with empty `Formula` are available for selection. The non-typed Significance dropdown uses a hand cursor across its cell to signal selection.
 - Field Mapping `Level` cells auto-fill when `Significances` changes to `Reserving Class` using `max(other Level values) + 1`. They keep the table's flat in-cell appearance, with a narrow square up/down caret lane, a minimum of `1`, and no mouse-wheel value changes.
 - Field Mapping saves are enabled only when the table differs from its last loaded or saved state. Until then, the Save Field Mapping button is non-clickable with a quiet grey treatment; unsaved edits give it the blue-tinted actionable treatment.
 - After Field Mapping save succeeds, Project Settings automatically saves Dataset Types for the same project so `dataset_types.json` `Source` values are re-synced from rows where Field Mapping `Significance = Dataset` (`Field Name` mapped into each Dataset Type source chain).
 - Dataset Types saves also refresh the persisted `Generated` flag in `dataset_types.json`/`dataset_types.xlsx`; the flag is `true` when all non-operator components of the saved `Source` are found in project `field_mapping.json` `field_name` values.
-- Dataset Types formula saves update existing dataset sidecars with current formulas plus `Precedents`/`Dependents` graph metadata, then recalculate existing instances of changed calculated dataset types through their dependent chains. When a chain runs, Project Settings shows a compact refresh report listing recalculated dataset types, decoded reserving-class paths, and skipped reasons.
+- A dataset-type change that alters the dependency graph is submitted as an Engine-hosted job that holds the whole project: it writes the table, re-derives every sidecar's formula plus `Precedents`/`Dependents`, recalculates the changed calculated dataset types, and walks their dependent chains. While that job runs the pane is read-only -- add, edit, delete, the editor and local load all refuse with a status line -- because every reserving class of the project is held and an edit made then could not be saved. For the life of the job the pane sits behind the shared blocking progress popup, which shows the current step, a determinate bar and a count in the unit that step is measured in -- reserving classes while the project is being scanned, dataset instances while their graphs are rebuilt -- rather than a status line the user can miss; the popup is opened in its measured mode, so the card is sized once and keeps that size for the whole job instead of resizing to each reserving-class path it reports; when the job ends the popup closes and a report dialog gives the finished counts in datasets, or the failure and a warning that the table on screen has not been confirmed as saved. Deleting a dataset type whose instances are still read downstream comes back as that failure, naming the instance and what reads it, with nothing saved.
 - Dataset Types editor blocks enabling `Calculated` when the dataset type name is already used by a field in Field Mapping for the same project.
 - When the `Dataset Types` ribbon is active, shell `File` actions map to local export/import (`Save Dataset Types` / `Load Dataset Types`) using default folder `Documents\\ArcRho\\templates`; local load accepts both `.json` and `.xlsx` files.
 - When the `Reserving Class Types` ribbon is active, shell `File` actions replace default Save/Save As with local export/import (`Save Reserving Class Types As...` / `Load Reserving Class Types From...`) using default folder `Documents\\ArcRho\\templates`; local load accepts both `.json` and `.xlsx` files and then schedules normal project auto-save.
@@ -197,6 +197,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
+- A dataset-type change that needs the project-wide job leaves the grid read-only until the job ends. That is the point: the Engine holds the project, so an edit made meanwhile could not be saved.
 - Folder rename/delete/create-project flows have rollback branches. Duplicate metadata finalization is resumable and deliberately preserves the server copy on uncertain failures.
 - Large settings payload edits can impact response timing.
 - Reserving class type formula auto-formatting preserves quoted text verbatim; only operators outside quotes are normalized, so quoted names can safely contain `/`, `+`, `-`, `*`, `/`, and repeated spaces. Validation is strict for quoted components: the text inside `"..."` must match an existing reserving class type name exactly, including repeated spaces.

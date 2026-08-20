@@ -6,7 +6,7 @@ DFM Ratios Summary Table Interactions
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
 
 const {

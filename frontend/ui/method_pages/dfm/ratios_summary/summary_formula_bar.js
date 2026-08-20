@@ -5,7 +5,10 @@ DFM Ratios Summary Formula Bar
 */
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260814b";
-import { resolveDfmDatasetReferencesInFormulaDetailed } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260814b";
+import {
+  getCachedDfmDatasetReferenceValues,
+  resolveDfmDatasetReferencesInFormulaDetailed,
+} from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import {
   formatFormulaText,
   tokenizeFormula,
@@ -13,7 +16,7 @@ import {
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
@@ -68,11 +71,20 @@ function openDfmFormulaDataset(datasetName, windowRef = window) {
   return true;
 }
 
+// A dataset factor of exactly 1 leaves the User Entry value where it was, so
+// its pill is drawn quiet grey: the reference is still live and clickable, it
+// just is not moving the number. The tolerance only absorbs binary rounding.
+const NEUTRAL_DATASET_FACTOR_TOLERANCE = 1e-9;
+
+function isNeutralDatasetFactor(value) {
+  return Number.isFinite(value) && Math.abs(value - 1) <= NEUTRAL_DATASET_FACTOR_TOLERANCE;
+}
+
 /**
  * Render colorized formula display in the overlay div.
  * - Excel refs → dark green
  * - Quoted row references → blue
- * - Dataset references → clickable DSV pills
+ * - Dataset references → clickable DSV pills, grey when the value is 1
  * - Operators get spaces around them
  * - Always shows leading '='
  */
@@ -86,6 +98,12 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
 
   displayEl.innerHTML = "";
   const sourceDatasetTokens = tokenizeFormula(sourceText).filter((token) => token.datasetName);
+  // Values come from the session cache the page warms when it opens, keyed by
+  // the reference finder rather than by this tokenizer, so they are only
+  // trusted when both readings of the formula found the same references.
+  const cachedValues = getCachedDfmDatasetReferenceValues(sourceText);
+  const datasetValues = cachedValues.length === sourceDatasetTokens.length ? cachedValues : [];
+  const unresolvedPills = [];
   let datasetIndex = 0;
   for (const tok of tokens) {
     if (tok.datasetCoordinate) continue;
@@ -100,11 +118,15 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
       span.textContent = tok.text.slice(1, -1);
       displayEl.appendChild(span);
     } else if (tok.type === "bracket" && tok.datasetName) {
-      const sourceToken = sourceDatasetTokens[datasetIndex] || tok;
+      const referenceIndex = datasetIndex;
+      const sourceToken = sourceDatasetTokens[referenceIndex] || tok;
       datasetIndex += 1;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "fmtDatasetRef";
+      const cachedValue = datasetValues[referenceIndex];
+      if (isNeutralDatasetFactor(cachedValue)) button.classList.add("isNeutral");
+      else if (!Number.isFinite(cachedValue)) unresolvedPills.push({ button, referenceIndex });
       button.textContent = `${tok.datasetName} @ ${tok.datasetCoordinateLabel}`;
       button.dataset.datasetName = tok.datasetName;
       button.dataset.coordinateLabel = tok.datasetCoordinateLabel;
@@ -141,6 +163,22 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
       const t = tok.text.trim();
       if (t) displayEl.appendChild(document.createTextNode(t === "=" ? "= " : t));
     }
+  }
+
+  // Nothing is known about a reference until it resolves once, and until then
+  // its pill reads as blue. One batched read for the whole formula fills the
+  // cache the next render also uses, so this costs a single request in the
+  // narrow window before the page-open warm-up lands.
+  if (unresolvedPills.length) {
+    resolveDfmDatasetReferencesInFormulaDetailed(sourceText).then(() => {
+      const resolvedValues = getCachedDfmDatasetReferenceValues(sourceText);
+      if (resolvedValues.length !== sourceDatasetTokens.length) return;
+      for (const pill of unresolvedPills) {
+        pill.button.classList.toggle("isNeutral", isNeutralDatasetFactor(resolvedValues[pill.referenceIndex]));
+      }
+    }).catch(() => {
+      // Best-effort: an unreadable reference simply keeps its blue pill.
+    });
   }
 }
 

@@ -55,6 +55,9 @@ export const summaryRuntime = {
   _applyingDfmExcelRefresh: false,
   _dfmExcelFreshnessGeneration: 0,
   _dfmExcelFreshnessAbortController: null,
+  // `rowId\u001fcol` -> the failure that broke that User Entry cell's Excel
+  // reference. Survives a summary re-render so the cell stays red until fixed.
+  _dfmExcelInvalidTargets: new Map(),
   _renderRatioTable: noop,
   _onRatioStateMutated: noop,
   _toggleRatioInteractionMode: noop,

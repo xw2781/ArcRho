@@ -7,14 +7,14 @@ Compatibility facade and render scheduler for the modular summary table.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
-import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260812d";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260814b";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260812f";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260818a";
-import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260814b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260814b";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260812f";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260819a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260820a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260819a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260819a";
+import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260820a";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260820a";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260819a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -100,7 +100,7 @@ export function updateRatioSummary() {
     const isSummary = !!config;
 
     if (!Number.isFinite(col) || col < 0) return;
-    cell.classList.remove("userEntryEditable", "excelLinked");
+    cell.classList.remove("userEntryEditable", "excelLinked", "excelLinkError");
     cell.title = "";
     if (config && summaryRuntime.isUserEntryConfig(config)) {
       const value = summaryRuntime.getUserEntryValueForCol(config, col);
@@ -111,6 +111,13 @@ export function updateRatioSummary() {
       if (summaryRuntime.containsExcelRef(inputText)) {
         cell.classList.add("excelLinked");
         cell.title = inputText;
+        // A reference that failed validation stays red through every re-render;
+        // the record lives on the runtime, not on the discarded cell.
+        const failure = summaryRuntime._dfmExcelInvalidTargets?.get(`${rowType}\u001f${col}`);
+        if (failure) {
+          cell.classList.add("excelLinkError");
+          cell.title = `${inputText}\n${failure.error}`;
+        }
       }
       return;
     }

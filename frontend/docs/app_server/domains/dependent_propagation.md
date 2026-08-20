@@ -39,6 +39,9 @@ Engine-hosted dependent propagation job domain: saves write only the saved objec
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
+- Two lease scopes share the `locks` folder. A reserving-class lease is keyed by project + class; a project-scope lease (`project-<digest>.lock`) is keyed by project alone and is taken by a job that rewrites what every class derives from -- currently the dataset-type change job. While a project-scope lease is fresh, `find_reserving_class_propagation_hold` answers `{"reason": "project"}` for every class of that project.
+- Both are answered by one directory listing rather than one stat per question, because a preflight on a mapped drive pays per operation. `find_any_reserving_class_propagation_hold` uses the same listing to answer the whole-project question a project-scope job must ask before it starts, and names the class it found.
+- The project-scope lease is recovered far later than a class lease (`PROJECT_SCOPE_LEASE_STALE_SECONDS`, 900 s): the job it protects can legitimately spend longer in one stage than any single class walk takes.
 - Transient runtime files under `<server-root>/requests/dependent_propagation/{requests,statuses,locks}`; statuses follow the project-duplication retention policy (retained, no automatic pruning).
 - Hosted-save requests live directly under `<server-root>/requests`; statuses and legacy compatibility results live under `<server-root>/requests/save_jobs/{statuses,results}` until the client consumes them or the Engine prunes stale artifacts.
 - HTTP pilot receipts live under `<server-root>/runtime/arcrho_gateway/receipts`; terminal receipts are retained for 24 hours by default, while nonterminal receipts are preserved for recovery.

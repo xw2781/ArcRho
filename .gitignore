@@ -95,3 +95,6 @@ data-engine/src/arcrho_orchestrator/instances/
 Thumbs.db
 Desktop.ini
 desktop.ini
+
+# Repo-local test tooling installed with pip --target; never committed.
+.pytest-tools/

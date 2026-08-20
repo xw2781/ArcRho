@@ -67,6 +67,14 @@ DEPENDENT_PROPAGATION_STATUS_VALUES = (
 DEPENDENT_PROPAGATION_LEASE_HEARTBEAT_SECONDS = 5.0
 DEPENDENT_PROPAGATION_LEASE_STALE_SECONDS = 300.0
 
+# A project-scope job holds every reserving class of one project at once. It
+# renews on the same cadence as a class lease, but it is recovered far later:
+# the job it protects rewrites the dependency graph of every dataset in the
+# project and then walks each class, so a single stage can legitimately run
+# far longer than any one class walk ever does.
+PROJECT_SCOPE_LEASE_STALE_SECONDS = 900.0
+_PROJECT_SCOPE_LOCK_PREFIX = "project-"
+
 # The Engine worker republishes the current "processing" status on this cadence
 # even when progress has not advanced, so a remote poller can tell a live walk
 # from a dead worker. A status whose updated_at/mtime stops moving for the
@@ -607,8 +615,261 @@ def held_reserving_class_lease(
 
 
 # ---------------------------------------------------------------------------
+# Project-scope lease
+# ---------------------------------------------------------------------------
+
+
+def project_scope_identity(project_name: Any) -> str:
+    """Return the case-insensitive coalescing identity of one whole project."""
+
+    return validate_project_name(project_name).casefold()
+
+
+def project_scope_lock_path(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+) -> Path:
+    """Return the lease file that claims every reserving class of one project.
+
+    It lives in the reserving-class lock folder on purpose: one directory
+    listing then answers both "is this class held?" and "is the whole project
+    held?", which is the difference between one and two round trips for a
+    client preflighting a save over a mapped drive. The ``project-`` prefix
+    keeps it outside the reserving-class digest namespace.
+    """
+
+    digest = hashlib.sha256(
+        project_scope_identity(project_name).encode("utf-8")
+    ).hexdigest()
+    return (
+        dependent_propagation_locks_directory(server_root)
+        / f"{_PROJECT_SCOPE_LOCK_PREFIX}{digest}.lock"
+    )
+
+
+def acquire_project_scope_lease(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+) -> EngineJobLease | None:
+    """Exclusively claim every reserving class of one project, or ``None``.
+
+    A project-scope job rewrites data that belongs to no single reserving
+    class -- the dataset-type table every sidecar's dependency graph is derived
+    from -- so it cannot be serialized by the per-class leases. While this
+    lease is held :func:`find_reserving_class_propagation_hold` reports a hold
+    for every class of the project, so every ordinary save meets the same 423
+    it already understands and no new propagation job can be queued.
+    """
+
+    lock_path = project_scope_lock_path(server_root, project_name)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    return acquire_engine_job_lease(
+        lock_path,
+        stale_seconds=PROJECT_SCOPE_LEASE_STALE_SECONDS,
+        payload_fields={
+            "project_name": validate_project_name(project_name),
+            "scope": "project",
+        },
+    )
+
+
+def release_project_scope_lease(lease: EngineJobLease | None) -> None:
+    release_engine_job_lease(lease)
+
+
+def start_project_scope_lease_heartbeat(lease: EngineJobLease):
+    return start_engine_job_lease_heartbeat(
+        lease,
+        interval_seconds=DEPENDENT_PROPAGATION_LEASE_HEARTBEAT_SECONDS,
+        thread_name=f"arcrho-project-scope-lease-{lease.owner_token[:8]}",
+    )
+
+
+def stop_project_scope_lease_heartbeat(stop_event, thread) -> None:
+    stop_engine_job_lease_heartbeat(
+        stop_event,
+        thread,
+        interval_seconds=DEPENDENT_PROPAGATION_LEASE_HEARTBEAT_SECONDS,
+    )
+
+
+@contextmanager
+def held_project_scope_lease(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+) -> Iterator[EngineJobLease]:
+    """Hold the project-scope lease with a running heartbeat.
+
+    Unlike the reserving-class lease this one never waits: a project-scope job
+    is submitted only after its own preflight found the project quiet, so an
+    occupied lease means another such job won the race and this one must not
+    queue behind it for minutes.
+    """
+
+    lease = acquire_project_scope_lease(server_root, project_name)
+    if lease is None:
+        raise DependentPropagationLeaseUnavailable(
+            "Another project-wide ArcRho job is already running for this project."
+        )
+    stop_event, thread = start_project_scope_lease_heartbeat(lease)
+    try:
+        yield lease
+    finally:
+        stop_project_scope_lease_heartbeat(stop_event, thread)
+        release_project_scope_lease(lease)
+
+
+# ---------------------------------------------------------------------------
 # Reserving-class write-hold probe
 # ---------------------------------------------------------------------------
+
+
+def _scan_fresh_locks(
+    server_root: str | os.PathLike[str],
+    observed_at: float,
+    fresh_seconds: float,
+) -> dict[str, float]:
+    """Return ``{lock file name: age}`` for leases renewed within the window.
+
+    One directory enumeration answers every lease question a preflight has --
+    this class, the whole project, any class of the project -- because the
+    listing already carries each entry's modification time. A caller that
+    stat-ed each candidate separately would pay one round trip per question on
+    a mapped drive, which is the whole cost of this probe.
+    """
+
+    locks_dir = dependent_propagation_locks_directory(server_root)
+    fresh: dict[str, float] = {}
+    try:
+        with os.scandir(locks_dir) as entries:
+            for entry in entries:
+                if not entry.name.endswith(".lock"):
+                    continue
+                try:
+                    age = observed_at - entry.stat().st_mtime
+                except OSError:
+                    continue
+                if age <= fresh_seconds:
+                    fresh[entry.name] = age
+    except OSError:
+        return {}
+    return fresh
+
+
+def _lease_payload(path: Path) -> Mapping[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _iter_fresh_queued_requests(
+    server_root: str | os.PathLike[str],
+    observed_at: float,
+    queued_fresh_seconds: float,
+) -> Iterator[dict[str, Any]]:
+    """Yield every validated queued request that still lacks a terminal status."""
+
+    requests_dir = dependent_propagation_requests_directory(server_root)
+    try:
+        candidates = tuple(requests_dir.glob("*.json"))
+    except OSError:
+        return
+    for candidate in candidates:
+        try:
+            request_age = observed_at - candidate.stat().st_mtime
+        except OSError:
+            continue
+        if request_age > queued_fresh_seconds:
+            continue
+        try:
+            request = validate_dependent_propagation_request(
+                json.loads(candidate.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, TypeError, DependentPropagationContractError):
+            continue
+        status_path = dependent_propagation_status_path(
+            server_root, request["RequestId"]
+        )
+        try:
+            status = validate_dependent_propagation_status(
+                json.loads(status_path.read_text(encoding="utf-8")),
+                expected_request_id=request["RequestId"],
+            )
+        except OSError:
+            status = None
+        except (ValueError, TypeError, DependentPropagationContractError):
+            status = None
+        if status is not None and status["status"] in {"success", "error"}:
+            continue
+        yield request
+
+
+def find_project_scope_propagation_hold(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+    *,
+    now: float | None = None,
+    processing_fresh_seconds: float = DEPENDENT_PROPAGATION_STATUS_STALE_SECONDS,
+) -> dict[str, str] | None:
+    """Return the active project-scope hold on one project, or ``None``.
+
+    A project-scope job -- currently the dataset-type change job -- holds every
+    reserving class of the project at once. Its freshness window is the same
+    heartbeat-renewed one a class lease uses, so a dead worker releases the
+    whole project by itself exactly as it releases a single class.
+    """
+
+    observed_at = time.time() if now is None else float(now)
+    fresh = _scan_fresh_locks(server_root, observed_at, processing_fresh_seconds)
+    lock_name = project_scope_lock_path(server_root, project_name).name
+    return {"reason": "project"} if lock_name in fresh else None
+
+
+def find_any_reserving_class_propagation_hold(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+    *,
+    now: float | None = None,
+    processing_fresh_seconds: float = DEPENDENT_PROPAGATION_STATUS_STALE_SECONDS,
+    queued_fresh_seconds: float = DEPENDENT_PROPAGATION_QUEUED_STALE_SECONDS,
+) -> dict[str, str] | None:
+    """Return the first propagation hold on *any* class of one project.
+
+    A project-scope job may not start while a single class is still being
+    walked: it is about to rewrite the dataset-type table that walk derives its
+    dependency graph from, and the per-class lease it would have to respect is
+    not the lease it takes. This probe answers the whole-project question the
+    per-class probe cannot, and names the class it found so the refusal can say
+    which one is busy.
+    """
+
+    identity = project_scope_identity(project_name)
+    observed_at = time.time() if now is None else float(now)
+
+    locks_dir = dependent_propagation_locks_directory(server_root)
+    fresh = _scan_fresh_locks(server_root, observed_at, processing_fresh_seconds)
+    for lock_name in sorted(fresh):
+        if lock_name.startswith(_PROJECT_SCOPE_LOCK_PREFIX):
+            continue
+        payload = _lease_payload(locks_dir / lock_name)
+        if payload is None:
+            continue
+        if str(payload.get("project_name") or "").strip().casefold() != identity:
+            continue
+        return {
+            "reason": "processing",
+            "reserving_class": str(payload.get("path") or "").strip(),
+        }
+
+    for request in _iter_fresh_queued_requests(
+        server_root, observed_at, queued_fresh_seconds
+    ):
+        if str(request["ProjectName"]).casefold() != identity:
+            continue
+        return {"reason": "queued", "reserving_class": str(request["Path"])}
+    return None
 
 
 def find_reserving_class_propagation_hold(
@@ -625,71 +886,42 @@ def find_reserving_class_propagation_hold(
     A save into a reserving class must not race the dependent walk that is
     rewriting that class, so writers preflight this probe and refuse with a
     lock-contention error while it reports a hold. The probe is deliberately
-    cheap for a remote caller on a mapped drive: one lock-file stat, plus a
-    scan of the (normally empty) queued-requests folder.
+    cheap for a remote caller on a mapped drive: one lock-folder listing, plus
+    a scan of the (normally empty) queued-requests folder.
 
-    A hold exists while either:
+    A hold exists while any of these is true:
 
-    - the reserving-class lease file is fresh — its heartbeat-renewed mtime is
-      within ``processing_fresh_seconds`` (reason ``"processing"``); or
+    - a project-scope lease covering every class of the project is fresh
+      (reason ``"project"``);
+    - the reserving-class lease file is fresh -- its heartbeat-renewed mtime is
+      within ``processing_fresh_seconds`` (reason ``"processing"``);
     - a queued request for the class, no older than ``queued_fresh_seconds``,
       has no terminal status yet (reason ``"queued"``).
 
-    Both freshness windows exist so a dead worker or an abandoned queue entry
+    Every freshness window exists so a dead worker or an abandoned queue entry
     can never freeze the class forever; a stale hold simply stops being
     reported. This check-then-write gate cannot be atomic on a plain
-    filesystem — two saves may still slip past it together — and that residual
-    race stays safe because the Engine merges concurrent queued requests for
-    one class into a single walk.
+    filesystem -- two saves may still slip past it together -- and that
+    residual race stays safe because the Engine merges concurrent queued
+    requests for one class into a single walk.
     """
 
     identity = reserving_class_identity(project_name, path)
     observed_at = time.time() if now is None else float(now)
 
-    lock_path = dependent_propagation_lock_path(server_root, project_name, path)
-    try:
-        lease_age = observed_at - lock_path.stat().st_mtime
-    except OSError:
-        lease_age = None
-    if lease_age is not None and lease_age <= processing_fresh_seconds:
+    fresh = _scan_fresh_locks(server_root, observed_at, processing_fresh_seconds)
+    if project_scope_lock_path(server_root, project_name).name in fresh:
+        return {"reason": "project"}
+    if dependent_propagation_lock_path(server_root, project_name, path).name in fresh:
         return {"reason": "processing"}
 
-    requests_dir = dependent_propagation_requests_directory(server_root)
-    try:
-        candidates = tuple(requests_dir.glob("*.json"))
-    except OSError:
-        return None
-    for candidate in candidates:
-        try:
-            request_age = observed_at - candidate.stat().st_mtime
-        except OSError:
-            continue
-        if request_age > queued_fresh_seconds:
-            continue
-        try:
-            request = validate_dependent_propagation_request(
-                json.loads(candidate.read_text(encoding="utf-8"))
-            )
-        except (OSError, ValueError, TypeError, DependentPropagationContractError):
-            continue
+    for request in _iter_fresh_queued_requests(
+        server_root, observed_at, queued_fresh_seconds
+    ):
         if (
             reserving_class_identity(request["ProjectName"], request["Path"])
             != identity
         ):
-            continue
-        status_path = dependent_propagation_status_path(
-            server_root, request["RequestId"]
-        )
-        try:
-            status = validate_dependent_propagation_status(
-                json.loads(status_path.read_text(encoding="utf-8")),
-                expected_request_id=request["RequestId"],
-            )
-        except OSError:
-            status = None
-        except (ValueError, TypeError, DependentPropagationContractError):
-            status = None
-        if status is not None and status["status"] in {"success", "error"}:
             continue
         return {"reason": "queued"}
     return None

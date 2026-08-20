@@ -27,6 +27,7 @@ from .dfm_contract import (
 from .exceptions import DfmDataError, InvalidDfmJsonError, ReadOnlyError
 from .io import format_json_for_save, read_json
 from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
+from .sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 
 if TYPE_CHECKING:
     from .reserving_class import ReservingClass
@@ -651,7 +652,7 @@ class DfmMethod:
                 user=getpass.getuser(),
                 output_changed=output_changed,
                 append_audit=not automatic or output_changed,
-                audit_action="Auto Refresh" if automatic and output_changed else None,
+                audit_action=AUDIT_ACTION_AUTO_REFRESH if automatic and output_changed else None,
             )
         except ValueError as err:
             raise DfmDataError(str(err)) from err

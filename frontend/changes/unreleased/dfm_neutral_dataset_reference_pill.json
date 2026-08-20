@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM Ratios dataset reference worth exactly 1 now shows as a grey pill in the formula bar.",
+  "details": [
+    "A factor that leaves the User Entry value unchanged reads as quiet instead of active.",
+    "The pill stays clickable and still shows its value on hover."
+  ]
+}

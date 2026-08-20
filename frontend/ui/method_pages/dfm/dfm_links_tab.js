@@ -3,7 +3,7 @@ import {
   breakDfmExternalLinks,
   getDfmExternalLinkRecords,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260820a";
 
 let dfmLinksController = null;
 let linksChangedListener = null;
@@ -27,15 +27,17 @@ function renderDfmExcelFreshnessWarning() {
   if (!dfmLinksController) return;
   const staleCount = Number(dfmExcelFreshnessState?.staleCount || 0);
   const unverifiedCount = Number(dfmExcelFreshnessState?.unverifiedCount || 0);
-  if (!staleCount && !unverifiedCount) {
+  const invalidCount = Number(dfmExcelFreshnessState?.invalidCount || 0);
+  if (!staleCount && !unverifiedCount && !invalidCount) {
     dfmLinksController.clearWarning?.();
     return;
   }
   const parts = [];
+  if (invalidCount) parts.push(`${invalidCount} broken reference${invalidCount === 1 ? "" : "s"}`);
   if (staleCount) parts.push(`${staleCount} stale linked value${staleCount === 1 ? "" : "s"}`);
   if (unverifiedCount) parts.push(`${unverifiedCount} unverified linked value${unverifiedCount === 1 ? "" : "s"}`);
   dfmLinksController.setWarning?.(
-    "Saved Excel values may be out of date",
+    invalidCount ? "Excel links need attention" : "Saved Excel values may be out of date",
     `${parts.join(" and ")}. Stored values remain active until you choose Refresh.`,
   );
 }

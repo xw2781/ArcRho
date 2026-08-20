@@ -76,7 +76,21 @@ class DeployRequestError(RuntimeError):
     """Raised for a precondition the caller can fix."""
 
 
-def _git(*arguments: str, repository: Path = REPOSITORY_ROOT, check: bool = True) -> str:
+def _git(
+    *arguments: str,
+    repository: Path = REPOSITORY_ROOT,
+    check: bool = True,
+    strip: bool = True,
+) -> str:
+    """Run one git command and return its output.
+
+    ``strip`` is the default because almost every caller wants a single bare
+    value -- a commit id, a file list. A patch is the exception. Its last line
+    may be a context line that is a single space, and trimming that leaves the
+    final hunk one line shorter than its own header claims, which ``git apply``
+    rejects as ``corrupt patch`` rather than as a hunk that did not apply.
+    """
+
     completed = subprocess.run(
         ["git", *arguments],
         cwd=str(repository),
@@ -93,7 +107,8 @@ def _git(*arguments: str, repository: Path = REPOSITORY_ROOT, check: bool = True
                 f"{(completed.stderr or completed.stdout or '').strip()}"
             )
         return ""
-    return (completed.stdout or "").strip()
+    output = completed.stdout or ""
+    return output.strip() if strip else output
 
 
 def _repository_relative_roots(components: Sequence[Component]) -> list[str]:
@@ -159,7 +174,16 @@ def _build_payload(
     visible rather than implied.
     """
 
-    patch = _git("diff", "--binary", base_commit, "--", *roots, repository=repository, check=False)
+    patch = _git(
+        "diff",
+        "--binary",
+        base_commit,
+        "--",
+        *roots,
+        repository=repository,
+        check=False,
+        strip=False,
+    )
     changed = [
         line.strip()
         for line in _git(
@@ -186,7 +210,11 @@ def _build_payload(
     destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         if patch.strip():
-            archive.writestr(PATCH_MEMBER_NAME, patch + "\n")
+            # git already terminates its last line; a second newline would turn
+            # the final context line into something git apply cannot parse.
+            archive.writestr(
+                PATCH_MEMBER_NAME, patch if patch.endswith("\n") else patch + "\n"
+            )
         for relative in untracked:
             source = repository / relative
             if not source.is_file():

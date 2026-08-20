@@ -11,13 +11,15 @@ import stat
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Tuple
 from xml.etree import ElementTree
 
 import openpyxl
 
 
 EXCEL_BATCH_MAX_WORKERS = 4
+# Identifies one requested cell: normalized workbook path, sheet, and address.
+CellKey = Tuple[str, str, str]
 # The OOXML package part that carries a workbook's own Created, Modified, and
 # Last saved by properties, and the namespaces its elements are written in.
 _CORE_PROPERTIES_ENTRY = "docProps/core.xml"
@@ -63,6 +65,29 @@ def excel_workbook_readable(book_path: str) -> Dict[str, Any]:
     return {"ok": True}
 
 
+def workbook_cell_value(raw: Any) -> Dict[str, Any]:
+    """Turn one raw workbook cell into the value ArcRho stores, or its error.
+
+    This is the single rule for what a linked cell means, shared by the single
+    read and the batch reads so a client and the hosted retarget can never
+    disagree about one workbook cell.
+
+    A cell the user sees as empty is a blank value (``None``), whether it was
+    never touched, sits outside the sheet's used range, or holds a formula whose
+    cached result is an empty or whitespace-only string - Excel writes that last
+    case as text, and rejecting it would fail a whole linked range over cells
+    that look empty on screen. Text that is not a number - the ``#REF!`` a
+    deleted row leaves behind - is still that cell's own error.
+    """
+
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return {"ok": True, "value": None}
+    try:
+        return {"ok": True, "value": float(raw)}
+    except (TypeError, ValueError):
+        return {"ok": False, "error": f"Not numeric: {raw!r}"}
+
+
 def excel_read_cell(book_path: str, sheet: str, cell: str) -> Dict[str, Any]:
     book = Path(book_path).resolve()
     if not book.exists():
@@ -75,20 +100,20 @@ def excel_read_cell(book_path: str, sheet: str, cell: str) -> Dict[str, Any]:
         ws = wb[sheet]
         cell_value = ws[cell].value
         wb.close()
-        numeric = None
-        if cell_value is not None:
-            try:
-                numeric = float(cell_value)
-            except (ValueError, TypeError):
-                return {"ok": False, "error": f"Cell value is not numeric: {repr(cell_value)}"}
-        return {"ok": True, "value": numeric}
+        return workbook_cell_value(cell_value)
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def excel_read_cells_batch(items: list) -> Dict[str, Any]:
+def _group_cell_read_items(items: list) -> Tuple[Dict[str, Dict[str, Any]], List[CellKey]]:
+    """Group requested cells by workbook, deduplicated, keeping caller order.
+
+    The same workbook is opened once however many cells a caller asks it for,
+    and every caller slot is answered from that one read.
+    """
+
     groups: Dict[str, Dict[str, Any]] = {}
-    result_keys: List[tuple[str, str, str]] = []
+    result_keys: List[CellKey] = []
     for item in items:
         resolved = str(Path(str(_item_field(item, "book_path") or "")).resolve())
         book_key = os.path.normcase(resolved)
@@ -98,48 +123,110 @@ def excel_read_cells_batch(items: list) -> Dict[str, Any]:
         result_keys.append(cell_key)
         group = groups.setdefault(book_key, {"path": resolved, "items": {}})
         group["items"].setdefault(cell_key, {"sheet": sheet, "cell": cell})
+    return groups, result_keys
 
-    def read_workbook(group: Dict[str, Any]) -> Dict[tuple[str, str, str], Dict[str, Any]]:
-        book_path = str(group["path"])
-        unique_items = group["items"]
-        workbook_results: Dict[tuple[str, str, str], Dict[str, Any]] = {}
-        p = Path(book_path).resolve()
-        if not p.exists():
-            return {
-                key: {"ok": False, "error": f"File not found: {book_path}"}
-                for key in unique_items
-            }
+
+def _read_workbook_cells(group: Dict[str, Any]) -> Dict[CellKey, Dict[str, Any]]:
+    """Read every requested cell of one workbook in a single open.
+
+    Each cell is answered on its own: an address the sheet cannot resolve, a
+    missing sheet, or a non-numeric value is that cell's error and leaves the
+    other cells of the same workbook with their real values, because callers
+    validating a saved link need to know which reference broke.
+    """
+
+    book_path = str(group["path"])
+    unique_items: Dict[CellKey, Dict[str, str]] = group["items"]
+    workbook_results: Dict[CellKey, Dict[str, Any]] = {}
+    p = Path(book_path).resolve()
+    if not p.exists():
+        return {
+            key: {"ok": False, "error": f"File not found: {book_path}"}
+            for key in unique_items
+        }
+    try:
+        wb = openpyxl.load_workbook(str(p), data_only=True, read_only=True)
         try:
-            wb = openpyxl.load_workbook(str(p), data_only=True, read_only=True)
-            try:
-                for key, item in unique_items.items():
-                    if item["sheet"] not in wb.sheetnames:
-                        workbook_results[key] = {"ok": False, "error": f"Sheet not found: {item['sheet']}"}
-                        continue
+            for key, item in unique_items.items():
+                if item["sheet"] not in wb.sheetnames:
+                    workbook_results[key] = {"ok": False, "error": f"Sheet not found: {item['sheet']}"}
+                    continue
+                try:
                     val = wb[item["sheet"]][item["cell"]].value
-                    try:
-                        numeric = float(val) if val is not None else None
-                        workbook_results[key] = {"ok": True, "value": numeric}
-                    except (ValueError, TypeError):
-                        workbook_results[key] = {"ok": False, "error": f"Not numeric: {repr(val)}"}
-            finally:
-                wb.close()
-        except Exception as e:
-            for key in unique_items:
-                workbook_results.setdefault(key, {"ok": False, "error": str(e)})
-        return workbook_results
+                except Exception as cell_error:
+                    workbook_results[key] = {
+                        "ok": False,
+                        "error": f"Cell not readable: {item['cell']} ({cell_error})",
+                    }
+                    continue
+                workbook_results[key] = workbook_cell_value(val)
+        finally:
+            wb.close()
+    except Exception as e:
+        for key in unique_items:
+            workbook_results.setdefault(key, {"ok": False, "error": str(e)})
+    return workbook_results
 
-    by_key: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+
+def _run_cell_read_batch(
+    items: list,
+    with_workbook_stats: bool,
+    thread_name_prefix: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Run one grouped read pass and return the per-cell and per-workbook answers.
+
+    When ``with_workbook_stats`` is set the worker that opens a workbook also
+    stats it, so a caller that needs both the cell values and the file's
+    modification time pays one pass over the (often network) share, not two.
+    """
+
+    groups, result_keys = _group_cell_read_items(items)
+
+    def read_group(group: Dict[str, Any]) -> Tuple[Dict[CellKey, Dict[str, Any]], Dict[str, Any] | None]:
+        cells = _read_workbook_cells(group)
+        stats = _stat_workbook(str(group["path"])) if with_workbook_stats else None
+        return cells, stats
+
+    by_key: Dict[CellKey, Dict[str, Any]] = {}
+    stats_by_key: Dict[str, Dict[str, Any]] = {}
     if groups:
         with ThreadPoolExecutor(
             max_workers=min(EXCEL_BATCH_MAX_WORKERS, len(groups)),
-            thread_name_prefix="arcrho-excel-check",
+            thread_name_prefix=thread_name_prefix,
         ) as executor:
-            futures = [executor.submit(read_workbook, group) for group in groups.values()]
-            for future in futures:
-                by_key.update(future.result())
+            futures = {
+                executor.submit(read_group, group): book_key
+                for book_key, group in groups.items()
+            }
+            for future, book_key in futures.items():
+                cells, stats = future.result()
+                by_key.update(cells)
+                if stats is not None:
+                    stats_by_key[book_key] = stats
     results = [dict(by_key[key]) for key in result_keys]
+    workbooks = [dict(stats_by_key[book_key]) for book_key in groups if book_key in stats_by_key]
+    return results, workbooks
+
+
+def excel_read_cells_batch(items: list) -> Dict[str, Any]:
+    results, _workbooks = _run_cell_read_batch(items, False, "arcrho-excel-check")
     return {"ok": True, "results": results}
+
+
+def excel_validate_links(items: list) -> Dict[str, Any]:
+    """Validate saved Excel link sources and report each workbook's timestamp.
+
+    This is the check a dataset or DFM method runs when it opens: every stored
+    reference is read where the app server can reach it, so a renamed sheet, a
+    deleted row that left a ``#REF!``, or a workbook that moved is reported as
+    that reference's own error rather than as a silent count. The workbook
+    timestamps ride along from the same pass, so the caller can also tell
+    whether an otherwise valid workbook is newer than the stored values
+    without a second round trip over the share.
+    """
+
+    results, workbooks = _run_cell_read_batch(items, True, "arcrho-excel-validate")
+    return {"ok": True, "results": results, "workbooks": workbooks}
 
 
 def _run_workbook_path_batch(

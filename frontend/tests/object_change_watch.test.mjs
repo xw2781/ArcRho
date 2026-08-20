@@ -10,10 +10,14 @@ const {
   createMethodObjectChangeWatchController,
   createObjectChangeWatch,
   DEFAULT_POLL_INTERVAL_MS,
+  formatObjectChangeTime,
+  OBJECT_CHANGE_ATTRIBUTION_URL,
   OBJECT_CHANGE_FINGERPRINT_URL,
   OBJECT_UPDATED_MESSAGE,
   OBJECT_UPDATED_REFRESH_ACTION,
   OBJECT_UPDATED_TITLE,
+  objectUpdatedMessage,
+  parseObjectChangeTime,
   PROPAGATION_SCOPE_FINISHED_MESSAGE,
   PROPAGATION_SCOPE_STARTED_MESSAGE,
   showObjectUpdatedAlert,
@@ -32,7 +36,11 @@ function drain() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function harness({ tokens }) {
+function attributionResponse(attribution) {
+  return { ok: true, status: 200, json: async () => ({ ok: true, attribution }) };
+}
+
+function harness({ tokens, attribution = null }) {
   const queue = [...tokens];
   const requests = [];
   let intervalFn = null;
@@ -41,6 +49,13 @@ function harness({ tokens }) {
     identity: { kind: "dataset", name: "Paid Loss" },
     fetchImpl: (url, options) => {
       requests.push({ url, options });
+      // The attribution read is not part of the fingerprint sequence: it
+      // happens once, after a move, so it must not consume a queued token.
+      if (url === OBJECT_CHANGE_ATTRIBUTION_URL) {
+        return attribution instanceof Error
+          ? Promise.reject(attribution)
+          : Promise.resolve(attributionResponse(attribution));
+      }
       const next = queue.shift();
       if (next instanceof Error) return Promise.reject(next);
       if (typeof next === "function") return next();
@@ -74,7 +89,67 @@ test("advisory message and endpoint constants stay canonical", () => {
   );
   assert.equal(OBJECT_UPDATED_TITLE, "Updated Outside This Window");
   assert.equal(OBJECT_CHANGE_FINGERPRINT_URL, "/object_change/fingerprint");
+  assert.equal(OBJECT_CHANGE_ATTRIBUTION_URL, "/object_change/attribution");
   assert.ok(DEFAULT_POLL_INTERVAL_MS >= 1000);
+});
+
+test("the message names the person or the automation task that wrote the object", () => {
+  assert.equal(objectUpdatedMessage(null), OBJECT_UPDATED_MESSAGE);
+  assert.equal(
+    objectUpdatedMessage({ user: "", action: "", at: "", automatic: false }),
+    OBJECT_UPDATED_MESSAGE,
+    "an unreadable or unattributed write keeps the generic sentence",
+  );
+
+  const person = objectUpdatedMessage({
+    user: "Dana Reid",
+    action: "Update",
+    at: "2026-08-20T14:24:11Z",
+    automatic: false,
+    subject: "dataset",
+  });
+  assert.match(person, /^This dataset was updated by Dana Reid at /u);
+  assert.ok(person.endsWith("Please close and reopen to view the updated values."));
+
+  const automation = objectUpdatedMessage({
+    user: "Dana Reid",
+    action: "Auto Refresh",
+    at: "2026-08-20T14:24:11Z",
+    automatic: true,
+    subject: "method",
+  });
+  assert.match(
+    automation,
+    /^This method was updated by the Auto Refresh automation running as Dana Reid at /u,
+    "an automatic rewrite names its task, and names the account it ran as",
+  );
+
+  assert.match(
+    objectUpdatedMessage({
+      user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z", automatic: false,
+      subject: "dataset", is_current_user: true,
+    }),
+    /^This dataset was updated by Dana Reid at /u,
+    "the writer is always named, even when it is the account this window runs as",
+  );
+
+  assert.match(
+    objectUpdatedMessage({ user: "Dana Reid", action: "Update", at: "", automatic: false }),
+    /^This dataset was updated by Dana Reid since it was opened\./u,
+    "a write with no recorded time still names its writer",
+  );
+});
+
+test("recorded times are read as the UTC they are stored in", () => {
+  const utc = new Date("2026-08-20T14:24:11Z").toLocaleString();
+  assert.equal(formatObjectChangeTime("2026-08-20T14:24:11Z"), utc);
+  assert.equal(
+    formatObjectChangeTime("2026-08-20T14:24:11"),
+    utc,
+    "an unmarked persisted timestamp is UTC, not local",
+  );
+  assert.equal(formatObjectChangeTime("not a time"), "not a time");
+  assert.equal(formatObjectChangeTime(""), "");
 });
 
 test("first poll records the baseline; a moved fingerprint alerts exactly once and stops", async () => {
@@ -96,6 +171,47 @@ test("first poll records the baseline; a moved fingerprint alerts exactly once a
   assert.equal(posted.url, OBJECT_CHANGE_FINGERPRINT_URL);
   assert.equal(posted.options.method, "POST");
   assert.equal(JSON.parse(posted.options.body).name, "Paid Loss");
+});
+
+test("the attribution is read once, only after the fingerprint moved", async () => {
+  const recorded = {
+    user: "Dana Reid", action: "Auto Refresh", at: "2026-08-20T14:24:11Z",
+    automatic: true, subject: "dataset",
+  };
+  const h = harness({ tokens: ["a", "a", "b"], attribution: recorded });
+  const seen = [];
+  const watch = createObjectChangeWatch({
+    ...h.watchArgsBase,
+    onChange: (attribution) => { seen.push(attribution); },
+  });
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.equal(
+    h.requests.filter((item) => item.url === OBJECT_CHANGE_ATTRIBUTION_URL).length,
+    0,
+    "an unmoved fingerprint costs stats only",
+  );
+  await h.tick();
+  assert.deepEqual(seen, [recorded]);
+  assert.equal(
+    h.requests.filter((item) => item.url === OBJECT_CHANGE_ATTRIBUTION_URL).length,
+    1,
+  );
+});
+
+test("an attribution read that fails still raises the generic alert", async () => {
+  const h = harness({ tokens: ["a", "b"], attribution: new Error("share offline") });
+  const seen = [];
+  const watch = createObjectChangeWatch({
+    ...h.watchArgsBase,
+    onChange: (attribution) => { seen.push(attribution); },
+  });
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.deepEqual(seen, [null]);
+  assert.equal(objectUpdatedMessage(seen[0]), OBJECT_UPDATED_MESSAGE);
 });
 
 test("failed polls are skipped silently and never alert", async () => {
@@ -167,11 +283,13 @@ test("method controller starts once, rebases on same identity, recreates on rena
         rebased: 0,
         paused: 0,
         resumed: 0,
+        selfWrites: [],
         start() { this.started += 1; },
         stop() { this.stopped += 1; },
         async rebase() { this.rebased += 1; },
         pause() { this.paused += 1; },
         async resume() { this.resumed += 1; },
+        noteSelfWrite(stamp) { this.selfWrites.push(stamp); },
       };
       created.push(record);
       return record;
@@ -198,6 +316,148 @@ test("method controller starts once, rebases on same identity, recreates on rena
 
   controller.ensure({ projectName: "", reservingClass: "RC", methodName: "X" });
   assert.equal(created.length, 2);
+});
+
+test("the method controller carries a save's pause and stamp across a rename swap", () => {
+  const created = [];
+  const controller = createMethodObjectChangeWatchController({
+    methodType: "dfm",
+    onChange: () => {},
+    watchFactory: (options) => {
+      const record = {
+        identity: options.identity,
+        paused: 0, resumed: 0, started: 0, stopped: 0, rebased: 0, selfWrites: [],
+        start() { this.started += 1; },
+        stop() { this.stopped += 1; },
+        async rebase() { this.rebased += 1; },
+        pause() { this.paused += 1; },
+        async resume() { this.resumed += 1; },
+        noteSelfWrite(stamp) { this.selfWrites.push(stamp); },
+      };
+      created.push(record);
+      return record;
+    },
+  });
+  controller.ensure({ projectName: "P", reservingClass: "RC", methodName: "M", outputDataset: "M" });
+  // A Save As pauses, then swaps the watch to the new identity mid-save. The
+  // replacement must start paused, or it baselines while the save is writing.
+  controller.pause();
+  controller.ensure({
+    projectName: "P", reservingClass: "RC", methodName: "Renamed", outputDataset: "Renamed",
+    selfWriteStamp: "2026-08-20T14:24:11Z",
+  });
+  assert.equal(created.length, 2);
+  assert.equal(created[1].paused, 1, "the replacement inherits the save's pause");
+  assert.deepEqual(created[1].selfWrites, ["2026-08-20T14:24:11Z"]);
+  controller.resume();
+  assert.equal(created[1].resumed, 1);
+});
+
+test("every watched surface hands its own write stamp to the watch", async () => {
+  const stamped = [
+    ["ui/method_pages/dfm/dfm_persistence.js", "selfWriteStamp: sidecar?.updated_at"],
+    ["ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js", "selfWriteStamp: result?.sidecar?.updated_at"],
+    ["ui/method_pages/cape_cod/cape_cod_main.js", "selfWriteStamp: result?.sidecar?.updated_at"],
+    ["ui/method_pages/result_selection/result_selection_model.js", "selfWriteStamp:"],
+    ["ui/dataset_viewer/dataset_viewer_main.js", "changeWatch.noteSelfWrite(sharedDatasetState.sidecarUpdatedAt)"],
+  ];
+  for (const [path, marker] of stamped) {
+    const text = await source(path);
+    assert.ok(text.includes(marker), `${path} supplies its own write stamp`);
+  }
+  const persistence = await source("ui/shared/tabs/data/data_tab_persistence_controller.js");
+  assert.ok(
+    persistence.includes("state.sidecarUpdatedAt ="),
+    "the shared Data tab records the sidecar stamp it loaded or saved",
+  );
+});
+
+test("a stale share read of this window's own write is adopted, not alerted", async () => {
+  // The fingerprint moves because the redirector finally served the current
+  // metadata for the save this window already made - not because anyone else
+  // wrote. The recorded write is not newer than what the window has, so the
+  // watch re-baselines and keeps polling instead of raising the alert.
+  const h = harness({
+    tokens: ["stale", "fresh", "fresh", "outside"],
+    attribution: {
+      user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z",
+      automatic: false, subject: "dataset",
+    },
+  });
+  let alerts = 0;
+  const watch = createObjectChangeWatch({ ...h.watchArgsBase, onChange: () => { alerts += 1; } });
+  watch.noteSelfWrite("2026-08-20T14:24:11Z");
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.equal(alerts, 0, "the window's own write, however late, never alerts");
+  assert.ok(!watch.hasAlerted());
+  await h.tick();
+  assert.equal(alerts, 0, "the adopted fingerprint is the new baseline");
+  await h.tick();
+  assert.equal(alerts, 0, "a token move whose recorded write is not newer stays suppressed");
+});
+
+test("a write newer than this window's own still alerts", async () => {
+  const h = harness({
+    tokens: ["a", "b"],
+    attribution: {
+      user: "Sam Okafor", action: "Update", at: "2026-08-20T14:30:00Z",
+      automatic: false, subject: "dataset",
+    },
+  });
+  let alerts = 0;
+  const watch = createObjectChangeWatch({ ...h.watchArgsBase, onChange: () => { alerts += 1; } });
+  watch.noteSelfWrite("2026-08-20T14:24:11Z");
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.equal(alerts, 1);
+});
+
+test("with no self-write stamp the watch alerts on any move, as before", async () => {
+  const h = harness({
+    tokens: ["a", "b"],
+    attribution: {
+      user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z",
+      automatic: false, subject: "dataset",
+    },
+  });
+  let alerts = 0;
+  const watch = createObjectChangeWatch({ ...h.watchArgsBase, onChange: () => { alerts += 1; } });
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.equal(alerts, 1);
+});
+
+test("the self-write stamp only ever moves forward", async () => {
+  const h = harness({
+    tokens: ["a", "b"],
+    attribution: {
+      user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z",
+      automatic: false, subject: "dataset",
+    },
+  });
+  let alerts = 0;
+  const watch = createObjectChangeWatch({ ...h.watchArgsBase, onChange: () => { alerts += 1; } });
+  watch.noteSelfWrite("2026-08-20T14:24:11Z");
+  watch.noteSelfWrite("2026-08-20T10:00:00Z");
+  watch.noteSelfWrite("");
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.equal(alerts, 0, "an older payload cannot lower the bar and re-expose the alert");
+});
+
+test("timestamps compare by instant, not by string", () => {
+  // The writers differ in precision, and "...:11.205Z" sorts before "...:11Z".
+  assert.equal(
+    parseObjectChangeTime("2026-08-20T14:24:11.205000Z"),
+    parseObjectChangeTime("2026-08-20T14:24:11Z") + 205,
+  );
+  assert.equal(parseObjectChangeTime("not a time"), null);
+  assert.equal(parseObjectChangeTime(""), null);
 });
 
 test("dataset viewer and every propagation-saving method page wire the change alert", async () => {
@@ -237,6 +497,19 @@ test("the updated-object alert offers a refresh action that reloads only clean w
   assert.equal(boxes[0].message, OBJECT_UPDATED_MESSAGE);
   assert.equal(boxes[0].title, OBJECT_UPDATED_TITLE);
   assert.equal(boxes[0].actions[0].id, OBJECT_UPDATED_REFRESH_ACTION);
+
+  const attribution = {
+    user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z",
+    automatic: false, subject: "dataset",
+  };
+  await showObjectUpdatedAlert({
+    showMessageBox: (options) => { boxes.push(options); return Promise.resolve(undefined); },
+    attribution,
+    reloadImpl: () => { reloads += 1; },
+  });
+  assert.equal(boxes.at(-1).message, objectUpdatedMessage(attribution));
+  assert.notEqual(boxes.at(-1).message, OBJECT_UPDATED_MESSAGE);
+  assert.equal(reloads, 1);
 
   await showObjectUpdatedAlert({
     showMessageBox,

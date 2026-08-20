@@ -22,6 +22,10 @@ const summarySource = await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_excel.js", import.meta.url),
   "utf8",
 );
+const summaryValidationSource = await readFile(
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_excel_validation.js", import.meta.url),
+  "utf8",
+);
 const summaryEntriesSource = await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_entries.js", import.meta.url),
   "utf8",
@@ -41,24 +45,24 @@ function sourceSlice(text, startMarker, endMarker) {
 
 function createExcelFreshnessHarness(rows, readExcelCellsBatch) {
   const cancelSource = sourceSlice(
-    summarySource,
+    summaryValidationSource,
     "function cancelDfmExcelFreshnessCheck",
-    "function invalidateDfmExcelRefresh",
+    "function canonicalExcelComparisonValue",
   );
   const canonicalSource = sourceSlice(
-    summarySource,
+    summaryValidationSource,
     "function canonicalExcelComparisonValue",
     "function excelFreshnessSourceKey",
   );
   const sourceKeySource = sourceSlice(
-    summarySource,
+    summaryValidationSource,
     "function excelFreshnessSourceKey",
-    "/**\n * Checks saved workbook values",
+    "export async function checkDfmExcelLinkFreshness",
   );
   const checkSource = sourceSlice(
-    summarySource,
+    summaryValidationSource,
     "async function checkDfmExcelLinkFreshness",
-    "function collectDfmExternalLinkGroups",
+    "registerSummaryFunctions(",
   );
   const factory = new Function("deps", `
     "use strict";
@@ -92,11 +96,17 @@ function createExcelFreshnessHarness(rows, readExcelCellsBatch) {
     );
     const evaluateSimpleMathExpression = (value) => Number(String(value || "").replace(/^=/, ""));
     const buildSummaryReferenceValues = () => new Map();
+    const invalidTargets = { value: new Map() };
+    const dfmExcelInvalidTargetKey = (rowId, col) => String(rowId) + "\u001f" + Number(col);
+    const dfmTargetDestinationLabel = (rowId, col) => String(rowId) + " / " + String(col);
+    const currentRatioHeaderLabels = () => [];
+    const setDfmExcelInvalidTargets = (next) => { invalidTargets.value = next; };
+    const clearDfmExcelLinkFailures = () => { invalidTargets.value = new Map(); };
     ${cancelSource}
     ${canonicalSource}
     ${sourceKeySource}
     ${checkSource}
-    return { checkDfmExcelLinkFreshness, cancelDfmExcelFreshnessCheck };
+    return { checkDfmExcelLinkFreshness, cancelDfmExcelFreshnessCheck, invalidTargets };
   `);
   return factory({
     summaryRowConfigs: rows,
@@ -254,6 +264,44 @@ test("DFM Links records expose value previews and selected refresh scope", () =>
   );
 });
 
+test("a broken DFM reference reads red and survives a summary re-render", async () => {
+  const summaryTableSource = await readFile(
+    new URL("../ui/method_pages/dfm/dfm_ratios_summary_table.js", import.meta.url),
+    "utf8",
+  );
+  // Declared after the linked-cell green, at the same specificity, so it wins.
+  assert.match(
+    dfmCssSource,
+    /td\.summaryCell\.excelRangeAffected \{[\s\S]*?\}[\s\S]*?#ratioWrap td\.summaryCell\.excelLinkError \{\s*color: #b91c1c;/u,
+  );
+  // The record lives on the runtime, so a rebuilt cell is painted again.
+  assert.match(
+    summaryTableSource,
+    /cell\.classList\.remove\("userEntryEditable", "excelLinked", "excelLinkError"\)/u,
+  );
+  assert.match(
+    summaryTableSource,
+    /summaryRuntime\._dfmExcelInvalidTargets\?\.get\(`\$\{rowType\}\\u001f\$\{col\}`\)[\s\S]*?cell\.classList\.add\("excelLinkError"\)/u,
+  );
+});
+
+test("every failed DFM refresh reaches the alert, named or not", () => {
+  // Named references are listed; cells that failed with no reference to name
+  // ride along as a count, so no failure is left to the status bar alone.
+  assert.match(
+    summarySource,
+    /if \(!options\.silentErrors\) \{[\s\S]*?showExcelLinkFailureAlert\(\{\s*failures: namedFailures,\s*unnamedCount: Math\.max\(0, failedCount - namedFailures\.length\),\s*valueNoun: "linked ratio cell",\s*\}\);/u,
+  );
+  assert.doesNotMatch(
+    summarySource,
+    /showSummaryFormulaBarValidationError\("One or more linked formula values could not be refreshed\."\)/u,
+  );
+  assert.match(
+    summarySource,
+    /refreshedTargetKeys\.forEach\(\(key\) => invalidTargets\.delete\(key\)\);\s*refreshFailures\.forEach\(\(\{ key, failure \}\) => invalidTargets\.set\(key, failure\)\);/u,
+  );
+});
+
 test("DFM linked cells keep green text while array formulas receive a shared perimeter", () => {
   assert.match(
     dfmCssSource,
@@ -323,12 +371,49 @@ test("DFM Excel freshness check deduplicates cells and reports stale and unverif
 
   assert.equal(batchCalls.length, 1);
   assert.deepEqual(batchCalls[0].map((item) => item.cell), ["A1", "B1", "C1"]);
+  // The cell the workbook refused is a broken reference, not an unverified
+  // value: it is named, and its User Entry cell is recorded so it turns red.
+  assert.deepEqual(result.invalidLinks, [{
+    workbookPath: "C:\\Data\\Book.xlsx",
+    worksheet: "Sheet1",
+    sourceCell: "C1",
+    destination: "user-1 / 3",
+    error: "saved cell unavailable",
+  }]);
+  assert.deepEqual(
+    Array.from(harness.invalidTargets.value.keys()),
+    ["user-1\u001f3"],
+  );
   assert.deepEqual(result, {
     ok: true,
     linkedCellCount: 4,
     staleCount: 1,
-    unverifiedCount: 1,
+    unverifiedCount: 0,
+    invalidCount: 1,
+    invalidLinks: result.invalidLinks,
   });
+});
+
+test("DFM Excel freshness clears a broken reference once the workbook answers again", async () => {
+  const rows = [{
+    id: "user-1",
+    averageType: "user_entry",
+    inputs: ["=XL_A"],
+    values: [2],
+  }];
+  const results = [
+    [{ ok: false, error: "Sheet not found: Sheet1" }],
+    [{ ok: true, value: 2 }],
+  ];
+  const harness = createExcelFreshnessHarness(rows, async () => ({ ok: true, results: results.shift() }));
+
+  const broken = await harness.checkDfmExcelLinkFreshness();
+  assert.equal(broken.invalidCount, 1);
+  assert.equal(harness.invalidTargets.value.size, 1);
+
+  const fixed = await harness.checkDfmExcelLinkFreshness();
+  assert.equal(fixed.invalidCount, 0);
+  assert.equal(harness.invalidTargets.value.size, 0);
 });
 
 test("DFM Excel freshness cancellation aborts an in-flight batch without warnings", async () => {
@@ -355,5 +440,6 @@ test("DFM Excel freshness cancellation aborts an in-flight batch without warning
     aborted: true,
     staleCount: 0,
     unverifiedCount: 0,
+    invalidLinks: [],
   });
 });

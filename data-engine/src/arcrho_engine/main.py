@@ -21,6 +21,7 @@ for _path in (_SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from arcrho_dataset_types_change_contract import DATASET_TYPES_CHANGE_FUNCTION
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
 from arcrho_engine_save_contract import SAVE_JOB_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
@@ -55,6 +56,9 @@ from arcrho_engine.general_utils import (
     safe_remove,
     write_json,
     write_lists_to_csv,
+)
+from arcrho_engine.dataset_types_change import (
+    process_durable_dataset_types_change_request,
 )
 from arcrho_engine.dependent_propagation import (
     process_durable_dependent_propagation_request,
@@ -153,6 +157,7 @@ class RequestHandler(FileSystemEventHandler):
         propagation_queue_capacity: int = 1,
         hosted_save_queue_capacity: int = 4,
         source_refresh_queue_capacity: int = 1,
+        dataset_types_change_queue_capacity: int = 1,
     ):
         super().__init__()
         self._processing_lock = Lock()
@@ -180,6 +185,15 @@ class RequestHandler(FileSystemEventHandler):
             thread_name="arcrho-source-refresh-worker",
             execute=self._execute_source_refresh,
             queue_capacity=source_refresh_queue_capacity,
+        )
+        # A dataset-type change holds the whole project while it rebuilds every
+        # sidecar's dependency graph. It gets its own worker for the same
+        # reason a source refresh does: that long job must never occupy the
+        # propagation slot a user's save needs.
+        self._dataset_types_change = _DurableJobDispatcher(
+            thread_name="arcrho-dataset-types-change-worker",
+            execute=self._execute_dataset_types_change,
+            queue_capacity=dataset_types_change_queue_capacity,
         )
 
     @property
@@ -262,6 +276,21 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as exc:
             print(f"(source refresh request error: {exc})")
 
+    def _schedule_dataset_types_change(self, file_path, arg) -> bool:
+        return self._dataset_types_change.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
+
+    def _execute_dataset_types_change(self, file_path, arg) -> None:
+        try:
+            process_durable_dataset_types_change_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(dataset types change request error: {exc})")
+
     def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
         """Stop accepting durable jobs and optionally wait for active work."""
 
@@ -271,11 +300,15 @@ class RequestHandler(FileSystemEventHandler):
         source_refresh_stopped = self._source_refresh.shutdown(
             wait=wait, timeout=timeout
         )
+        dataset_types_change_stopped = self._dataset_types_change.shutdown(
+            wait=wait, timeout=timeout
+        )
         return (
             duplication_stopped
             and propagation_stopped
             and hosted_save_stopped
             and source_refresh_stopped
+            and dataset_types_change_stopped
         )
 
     def _process_event_path(self, event, file_path):
@@ -335,6 +368,12 @@ class RequestHandler(FileSystemEventHandler):
                 self._schedule_source_refresh(file_path, arg)
             else:
                 self._execute_source_refresh(file_path, arg)
+            return
+        if function_name_raw == DATASET_TYPES_CHANGE_FUNCTION:
+            if dispatch_duplication:
+                self._schedule_dataset_types_change(file_path, arg)
+            else:
+                self._execute_dataset_types_change(file_path, arg)
             return
         if function_name_raw == SAVE_JOB_FUNCTION:
             # Hosted saves claim by delete inside the executor; scheduling
@@ -492,10 +531,11 @@ def process_existing_requests(
 ) -> None:
     """Process requests that were queued while this Engine was offline.
 
-    The dependent-propagation and source-refresh queues live in subfolders (so
-    the orchestrator's loose-file garbage collection cannot touch them) that the
-    non-recursive watchdog observer never reports; this rescan is their only
-    intake, on the same 5 s cycle that re-drives retained duplication files.
+    The dependent-propagation, source-refresh and dataset-type change queues
+    live in subfolders (so the orchestrator's loose-file garbage collection
+    cannot touch them) that the non-recursive watchdog observer never reports;
+    this rescan is their only intake, on the same 5 s cycle that re-drives
+    retained duplication files.
     """
 
     request_dir = Path(path)
@@ -505,6 +545,9 @@ def process_existing_requests(
     )
     queued_paths.extend(
         _queued_request_files(request_dir / "source_table_refresh" / "requests")
+    )
+    queued_paths.extend(
+        _queued_request_files(request_dir / "dataset_types_change" / "requests")
     )
     for queued_path in queued_paths:
         if queued_path.suffix.casefold() == ".json":

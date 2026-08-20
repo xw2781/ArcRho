@@ -2,20 +2,21 @@ from __future__ import annotations
 
 import os
 import json
-from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
 
 from app_server import config
-from app_server.schemas.dataset_types import DatasetTypesSaveRequest, DatasetTypesImportLocalFileRequest
+from app_server.schemas.dataset_types import (
+    DatasetTypesSaveRequest,
+    DatasetTypesImportLocalFileRequest,
+)
 from app_server.services import (
     calculated_dataset_service,
+    dataset_types_change_service,
     dataset_types_service,
-    dependent_propagation_service,
 )
 from app_server.services.audit_service import safe_append_project_audit_log
-from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 
 router = APIRouter()
 
@@ -69,125 +70,99 @@ def import_local_dataset_types_file(req: DatasetTypesImportLocalFileRequest) -> 
 
 @router.post("/dataset_types")
 def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
+    """Apply one dataset-type table change, directly or as a project-wide job.
+
+    Two changes wear the same clothes in the grid and cost wildly different
+    things. Renaming a Category rewrites one file. Adding, removing, renaming
+    or re-formulating a type re-derives the dependency graph of every sidecar
+    in the project and can invalidate calculated datasets in any reserving
+    class, so it is submitted to ArcRho Engine as a durable job that holds the
+    whole project while it runs, and the caller polls
+    ``/dataset_types/change_job/status``.
+
+    Either way this route answers immediately: the long work never runs inside
+    the request, because an auto-saving grid cannot tell a slow save from a
+    lost one.
+    """
+
     project_name = (req.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
 
     try:
-        filepath = config.get_dataset_types_path(project_name)
+        config.get_dataset_types_path(project_name)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
-    previous_rows: List[List[Any]] = []
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f_prev:
-                previous_raw = json.load(f_prev)
-            previous_rows = list(dataset_types_service.normalize_dataset_types_data(previous_raw).get("rows") or [])
-        except Exception:
-            previous_rows = []
+    normalized_rows = dataset_types_service.normalize_submitted_rows(req.rows)
+    # Validate before deciding anything: a formula naming a type this table
+    # does not define is refused the same way on both paths, and the caller
+    # gets that answer without a job ever being queued.
+    dataset_types_service.require_resolvable_formulas(normalized_rows)
 
-    source_map = dataset_types_service._load_dataset_source_map(project_name)
-    field_names = dataset_types_service._load_field_mapping_field_names(project_name)
-    normalized_rows_base: List[List[Any]] = []
-    for row in req.rows or []:
-        if not isinstance(row, list):
-            continue
-        norm = [
-            str(row[0] if len(row) > 0 and row[0] is not None else "").strip(),
-            str(row[1] if len(row) > 1 and row[1] is not None else "").strip(),
-            str(row[2] if len(row) > 2 and row[2] is not None else "").strip(),
-            _parse_calculated_flag(row[3] if len(row) > 3 else False),
-            str(row[4] if len(row) > 4 and row[4] is not None else "").strip(),
-        ]
-        if not norm[3]:
-            norm[4] = ""
-        if norm[0] != "" or norm[1] != "" or norm[2] != "" or norm[4] != "" or norm[3] is True:
-            normalized_rows_base.append(norm)
+    previous_rows = dataset_types_service.read_persisted_rows(project_name)
+    next_rows = dataset_types_service.resolve_persisted_rows(
+        project_name, normalized_rows
+    )
 
-    resolve_dataset_source = dataset_types_service._build_dataset_source_resolver(normalized_rows_base, source_map)
-    known_dataset_names = [
-        str(r[0]).strip()
-        for r in normalized_rows_base
-        if isinstance(r, list) and len(r) > 0 and str(r[0] if r[0] is not None else "").strip()
-    ]
+    if not dataset_types_service.change_needs_project_job(previous_rows, next_rows):
+        return _apply_presentation_only_change(project_name, normalized_rows)
 
-    known_dataset_name_keys = set()
-    for name in known_dataset_names:
-        name_key = _canon_dataset_name(name)
-        if name_key:
-            known_dataset_name_keys.add(name_key)
-
-    validation_errors: List[str] = []
-    for norm in normalized_rows_base:
-        dataset_name = str(norm[0] if len(norm) > 0 and norm[0] is not None else "").strip()
-        is_calculated = _parse_calculated_flag(norm[3] if len(norm) > 3 else False)
-        formula = str(norm[4] if len(norm) > 4 and norm[4] is not None else "").strip()
-        if not dataset_name or not is_calculated or not formula:
-            continue
-
-        components = dataset_types_service._extract_formula_components(formula, known_dataset_names)
-        unresolved_components: List[str] = []
-        for comp in components:
-            comp_key = _canon_dataset_name(comp)
-            if not comp_key or comp_key not in known_dataset_name_keys:
-                unresolved_components.append(comp)
-        if unresolved_components:
-            detail = f"{dataset_name}: unresolved in formula"
-            if unresolved_components:
-                detail += f" [{', '.join(unresolved_components[:6])}]"
-            validation_errors.append(detail)
-
-    if validation_errors:
-        sample = "; ".join(validation_errors[:6])
-        more = f" (+{len(validation_errors) - 6} more)" if len(validation_errors) > 6 else ""
-        raise HTTPException(
-            400,
-            f"Invalid formula: unresolved dataset component found. {sample}{more}. "
-            "Please fix formula components, then save again.",
-        )
-
-    normalized_rows: List[List[Any]] = []
-    for norm in normalized_rows_base:
-        source_value = str(resolve_dataset_source(norm[0]) or "").strip()
-        if source_value == "":
-            source_value = str(source_map.get(_canon_dataset_name(norm[0]), "") or "").strip()
-        generated = dataset_types_service._is_source_generated_from_field_names(source_value, field_names)
-        normalized_rows.append([norm[0], norm[1], norm[2], norm[3], norm[4], source_value, generated])
-
-    payload = {
-        "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
-        "rows": normalized_rows,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    changed_types = calculated_dataset_service.changed_formula_dataset_type_names(
+        previous_rows,
+        next_rows,
+    )
+    submitted = dataset_types_change_service.submit_dataset_types_change_job(
+        project_name,
+        normalized_rows,
+        changed_types,
+        request_id=(req.request_id or "").strip() or None,
+    )
+    return {
+        "ok": True,
+        "applied": "job",
+        "count": len(next_rows),
+        "changed_formula_types": changed_types,
+        "job": submitted,
     }
 
-    changed_formula_types = calculated_dataset_service.changed_formula_dataset_type_names(
-        previous_rows,
-        normalized_rows,
-    )
-    if changed_formula_types:
-        # Formula changes cascade through ArcRho Engine; refuse the save
-        # before writing anything when no live Engine instance exists.
-        dependent_propagation_service.require_engine_available()
+
+def _apply_presentation_only_change(
+    project_name: str,
+    normalized_rows: List[List[Any]],
+) -> Dict[str, Any]:
+    """Write a change that re-derives nothing outside the table itself."""
 
     try:
-        dataset_types_service.save_dataset_types_payload(filepath, payload)
-        calculation_updates = calculated_dataset_service.refresh_sidecar_graphs_and_recalculate(
-            project_name,
-            changed_formula_types,
+        written = dataset_types_service.apply_dataset_types_rows(
+            project_name, normalized_rows
         )
-        safe_append_project_audit_log(
-            project_name=project_name,
-            action=f"Saved Dataset Types ({len(normalized_rows)} rows)",
-        )
-        return {
-            "ok": True,
-            "path": filepath,
-            "count": len(normalized_rows),
-            "changed_formula_types": changed_formula_types,
-            "calculated_updates": calculation_updates,
-        }
     except PermissionError:
         raise HTTPException(423, "Dataset types file is locked. Another user may have it open.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Failed to save dataset types: {str(e)}")
+
+    safe_append_project_audit_log(
+        project_name=project_name,
+        action=f"Saved Dataset Types ({written['count']} rows)",
+    )
+    return {
+        "ok": True,
+        "applied": "direct",
+        "path": written["path"],
+        "count": written["count"],
+        "changed_formula_types": [],
+        "job": None,
+    }
+
+
+@router.get("/dataset_types/change_job/status")
+def get_dataset_types_change_job_status(
+    project_name: str,
+    job_id: str = "",
+) -> Dict[str, Any]:
+    return dataset_types_change_service.get_dataset_types_change_status(
+        project_name, job_id
+    )

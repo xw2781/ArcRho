@@ -144,7 +144,7 @@ test("DFM formula resolution batches every reference into one API request", asyn
       JSON.stringify(apiUrl),
     )
     .replace(
-      '"/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a"',
+      '"/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b"',
       JSON.stringify(parserUrl),
     );
 
@@ -195,5 +195,18 @@ test("DFM formula resolution batches every reference into one API request", asyn
     formulaModule.substituteCachedDfmDatasetReferencesInFormula("=[Paid][1, "),
     { ok: false, formula: "=[Paid][1, " },
   );
+
+  // The same cache answers per reference, in formula order, so the formula bar
+  // can tell which pills are worth exactly 1 without a read of its own.
+  assert.deepEqual(
+    formulaModule.getCachedDfmDatasetReferenceValues('="Simple - 3" * [Premium][1] * [Paid][1, 2]'),
+    [11, 10],
+  );
+  assert.deepEqual(
+    formulaModule.getCachedDfmDatasetReferenceValues("=[Never Resolved][1] * [Paid][1, 2]"),
+    [null, 10],
+  );
+  assert.deepEqual(formulaModule.getCachedDfmDatasetReferenceValues("=2 * 3"), []);
+  assert.deepEqual(formulaModule.getCachedDfmDatasetReferenceValues("=[Paid][1, "), []);
   delete globalThis.__dfmDatasetReferencePayload;
 });

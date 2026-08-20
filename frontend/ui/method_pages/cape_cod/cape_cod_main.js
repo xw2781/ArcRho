@@ -32,7 +32,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260816a";
+} from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import {
@@ -140,9 +140,10 @@ const ccCloseConfirm = createPageCloseConfirm({ subject: CC_METHOD_TYPE });
 // dependent-propagation job rewrites this method while it is open.
 const ccObjectChangeWatch = createMethodObjectChangeWatchController({
   methodType: "cape_cod",
-  onChange: () => {
+  onChange: (attribution) => {
     void showObjectUpdatedAlert({
       showMessageBox: showPageMessageBox,
+      attribution,
       isDirty: () => isDirty,
       onBlockedRefresh: () => {
         postStatus("Unsaved changes block the refresh. Save or discard them, then reopen the window.", "warn");
@@ -1485,6 +1486,7 @@ async function applyPersistedAggregate(result, options = {}) {
     reservingClass: state.reservingClass,
     methodName: savedName,
     outputDataset: savedName,
+    selfWriteStamp: result?.sidecar?.updated_at,
   });
   return true;
 }

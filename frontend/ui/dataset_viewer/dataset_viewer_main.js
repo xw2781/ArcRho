@@ -28,7 +28,7 @@ import {
   createObjectChangeWatch,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260816a";
+} from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
 import { state as sharedDatasetState } from "/ui/shared/dataset/dataset_state.js";
 
@@ -90,9 +90,10 @@ function wireDatasetChangeWatch() {
       kind: "dataset",
       name: instanceName,
     },
-    onChange: () => {
+    onChange: (attribution) => {
       void showObjectUpdatedAlert({
         showMessageBox: showPageMessageBox,
+        attribution,
         isDirty: () => sharedDatasetState.dirty.size > 0,
         onBlockedRefresh: () => {
           window.parent?.postMessage?.({
@@ -114,6 +115,7 @@ function wireDatasetChangeWatch() {
     onMutationStarted: () => changeWatch.pause(),
     onMutationEnded: () => { void changeWatch.resume(); },
     onDurableDatasetState: () => {
+      changeWatch.noteSelfWrite(sharedDatasetState.sidecarUpdatedAt);
       if (!watchStarted) {
         watchStarted = true;
         changeWatch.start();
@@ -143,7 +145,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260817c"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260819a"
 );
 
 const datasetLinksTab = createExternalLinksTab({

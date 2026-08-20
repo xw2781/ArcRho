@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The \"Updated Outside This Window\" alert now names who or what changed the open object.",
+  "details": [
+    "Names the user who saved it, or the automation task that rewrote it (for example an automatic dependent refresh) and the account that task ran as.",
+    "Shows the time the change was recorded, in local time.",
+    "Reads the attribution once, only after a change is detected, so the open-window watch costs the same as before."
+  ]
+}

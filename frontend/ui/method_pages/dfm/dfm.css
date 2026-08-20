@@ -1114,6 +1114,17 @@ body {
   border-color: var(--ar-color-accent, #2b6df6);
   background: var(--ar-color-accent-hover, #dbeafe);
 }
+/* Declared after the accent rules so a dataset reference worth exactly 1, which
+   leaves the User Entry value unchanged, reads as quiet rather than active. */
+.dfmSummaryFormulaBarDisplay .fmtDatasetRef.isNeutral {
+  border-color: var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  color: var(--ar-color-text-muted, #64748b);
+}
+.dfmSummaryFormulaBarDisplay .fmtDatasetRef.isNeutral:hover {
+  border-color: var(--ar-color-border-strong, #cbd5e1);
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
 .dfmSummaryFormulaBarDisplay .fmtDatasetRef:focus-visible {
   outline: 2px solid var(--ar-color-border-focus, #93c5fd);
   outline-offset: 1px;
@@ -1227,6 +1238,11 @@ body {
 #ratioWrap td.summaryCell.excelRangeAffected {
   color: #166534;
   font-weight: 700;
+}
+/* Declared after the linked-cell green so a User Entry cell whose Excel
+   reference failed validation keeps its saved value but reads as broken. */
+#ratioWrap td.summaryCell.excelLinkError {
+  color: #b91c1c;
 }
 .dfmModalActions {
   display: flex;

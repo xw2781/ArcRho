@@ -82,6 +82,59 @@ def _log(root: Path, message: str) -> None:
     append_runtime_log(root, HOSTED_SAVE_LOG_FILENAME, message)
 
 
+# Where a save response carries the outcome of the walk that ran inside it.
+# Method saves answer under ``propagation``; the dataset sidecar save answers
+# under ``data.calculated_updates``.
+_INLINE_WALK_RESPONSE_PATHS = (("propagation",), ("data", "calculated_updates"))
+# Enough names to recognise the walk, short enough to keep one line readable.
+_INLINE_WALK_LOG_NAME_LIMIT = 12
+
+
+def _inline_walk_summary(response: Any) -> str:
+    """Name what a hosted save's inline dependent walk touched.
+
+    The walk runs inside the save (``inline_engine_propagation``), so it never
+    reaches the durable queue and writes nothing to ``dependent_propagation.log``.
+    Without this line a hosted save is recorded only as "success", and the
+    objects it rewrote — which is what other users' open windows react to —
+    leave no server-side record at all.
+
+    Never raises: an unexpected payload shape yields an empty summary rather
+    than failing the save it only describes.
+    """
+
+    payload: Any = None
+    try:
+        for path in _INLINE_WALK_RESPONSE_PATHS:
+            candidate: Any = response
+            for key in path:
+                candidate = candidate.get(key) if isinstance(candidate, Mapping) else None
+            if isinstance(candidate, Mapping):
+                payload = candidate
+                break
+        if payload is None:
+            return ""
+        status = str(payload.get("status") or "").strip().lower()
+        if status == "unchanged":
+            return "walk skipped (publication unchanged)"
+        # A str is iterable; taking it as a name list would log one character
+        # per "dataset", so only a real sequence counts.
+        raw_names = payload.get("refreshed_datasets")
+        if not isinstance(raw_names, (list, tuple)):
+            return ""
+        names = [str(name).strip() for name in raw_names if str(name or "").strip()]
+        listed = ", ".join(names[:_INLINE_WALK_LOG_NAME_LIMIT])
+        if len(names) > _INLINE_WALK_LOG_NAME_LIMIT:
+            listed += f", (+{len(names) - _INLINE_WALK_LOG_NAME_LIMIT} more)"
+        refreshed = f"walk refreshed {len(names)}" + (f": {listed}" if listed else "")
+        if payload.get("ok") is False:
+            reason = _redact_machine_paths(str(payload.get("message") or "")) or "see status"
+            return f"{refreshed}; walk FAILED: {reason}"
+        return refreshed
+    except Exception:
+        return ""
+
+
 def _acquire_lease_with_wait(root: Path, project: str, reserving: str):
     deadline = time.monotonic() + SAVE_JOB_LEASE_WAIT_SECONDS
     while True:
@@ -321,7 +374,8 @@ def process_hosted_save_request(
         # one extra SMB read; older clients still read this legacy artifact.
         write_save_job_result(root, request_id, response)
         publish("success", response=response)
-        _log(root, f"{request_id} success")
+        walk = _inline_walk_summary(response)
+        _log(root, f"{request_id} success" + (f" ({walk})" if walk else ""))
         return True
     except Exception as exc:
         _log(root, f"{request_id} failed: {exc!r}\n{traceback.format_exc()}")

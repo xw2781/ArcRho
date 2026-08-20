@@ -30,6 +30,7 @@ from fastapi import HTTPException
 from arcrho_dependent_propagation_contract import (
     ENGINE_UNAVAILABLE_MESSAGE,
     EngineUnavailableError,
+    find_project_scope_propagation_hold,
     require_live_engine,
 )
 from arcrho_project_duplication_contract import (
@@ -55,6 +56,10 @@ from app_server.services import source_table_service, user_identity_service
 SOURCE_REFRESH_BUSY_MESSAGE = (
     "A source table refresh is already running for this project. "
     "Please wait for it to finish before starting another."
+)
+PROJECT_JOB_RUNNING_MESSAGE = (
+    "A project-wide update is currently running for this project. "
+    "Please wait for it to finish before refreshing the source table."
 )
 
 
@@ -197,6 +202,11 @@ def submit_source_table_refresh_job(
     hold = find_source_refresh_hold(server_root, request["ProjectName"])
     if hold is not None:
         raise HTTPException(423, SOURCE_REFRESH_BUSY_MESSAGE)
+    # A project-scope job (a dataset-type change) already owns every class of
+    # this project; a refresh queued behind it would walk the classes it is
+    # still rewriting.
+    if find_project_scope_propagation_hold(server_root, request["ProjectName"]) is not None:
+        raise HTTPException(423, PROJECT_JOB_RUNNING_MESSAGE)
 
     request_path = source_refresh_request_path(server_root, normalized_request_id)
     published_status_path: Path | None = None

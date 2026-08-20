@@ -8,14 +8,14 @@ const referenceSource = await readFile(
 );
 const referenceUrl = `data:text/javascript;base64,${Buffer.from(referenceSource).toString("base64")}`;
 const excelApiStubUrl = `data:text/javascript;base64,${Buffer.from(
-  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; } export async function readExcelFileMtimesBatch(){ return { ok: false, results: [] }; }",
+  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; } export async function validateExcelLinksBatch(){ return { ok: false, results: [], workbooks: [] }; }",
 ).toString("base64")}`;
 let controllerSource = await readFile(
   new URL("../ui/shared/dataset/dataset_external_links.js", import.meta.url),
   "utf8",
 );
 controllerSource = controllerSource
-  .replace('"/ui/shared/integrations/excel_api.js?v=20260811a"', JSON.stringify(excelApiStubUrl))
+  .replace('"/ui/shared/integrations/excel_api.js?v=20260819a"', JSON.stringify(excelApiStubUrl))
   .replace(
     '"/ui/shared/integrations/excel_reference.js?v=20260715a"',
     JSON.stringify(referenceUrl),
@@ -391,7 +391,7 @@ test("refresh replaces a numeric linked value with null when Excel is blank", as
 
   const result = await controller.refreshAll();
 
-  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 1, failedCount: 0 });
+  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 1, failedCount: 0, failures: [] });
   assert.deepEqual(state.model.values, [[null, 2], [3, 4]]);
   assert.equal(state.dirty.get("0,0"), null);
 });
@@ -444,7 +444,7 @@ test("refresh applies each range atomically and marks only changed cells", async
 
   const result = await controller.refreshAll();
 
-  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 2, failedCount: 0 });
+  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 2, failedCount: 0, failures: [] });
   assert.deepEqual(state.model.values, [[1, 20], [3, 40]]);
   assert.deepEqual(Array.from(state.dirty.keys()), ["0,1", "1,1"]);
   assert.equal(controller.isDirty(), false);
@@ -471,7 +471,7 @@ test("accepted freshness refresh marks equal linked values dirty for a durable s
 
   const result = await controller.refreshAll(null, { markRefreshedCellsDirty: true });
 
-  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 0, failedCount: 0 });
+  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 0, failedCount: 0, failures: [] });
   assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
   assert.deepEqual(Array.from(state.dirty.keys()), ["0,0", "0,1", "1,0", "1,1"]);
 });
@@ -497,7 +497,13 @@ test("refresh does not apply result payloads from a failed batch response", asyn
 
   const result = await controller.refreshAll();
 
-  assert.deepEqual(result, { linkedCellCount: 4, changedCount: 0, failedCount: 4 });
+  assert.deepEqual(result, {
+    linkedCellCount: 4,
+    changedCount: 0,
+    failedCount: 4,
+    failures: [],
+    error: "Excel refresh failed.",
+  });
   assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
   assert.equal(state.dirty.size, 0);
 });
@@ -532,7 +538,7 @@ test("refresh honors clipped source mappings and selected link groups", async ()
 
   const result = await controller.refreshAll([records[0].id]);
 
-  assert.deepEqual(result, { linkedCellCount: 2, changedCount: 2, failedCount: 0 });
+  assert.deepEqual(result, { linkedCellCount: 2, changedCount: 2, failedCount: 0, failures: [] });
   assert.deepEqual(readItems.map((item) => item.cell), ["A1", "D4"]);
   assert.deepEqual(state.model.values, [[11, 2], [3, 44]]);
   assert.equal(records[0].value, "1...");
@@ -736,40 +742,230 @@ test("breaking a link invalidates its unresolved refresh", async () => {
   assert.deepEqual(controller.serialize(), []);
 });
 
-test("checks each linked workbook timestamp once without changing dataset values", async () => {
-  const requestedPaths = [];
+const LINKED_WORKBOOKS = [
+  { reference: "='C:\\Data\\[Older.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
+  { reference: "='C:\\Data\\[Older.xlsx]Sheet 2'!B2", target_cells: [{ row: 0, column: 1 }] },
+  { reference: "='C:\\Data\\[Newer.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 0 }] },
+  { reference: "='C:\\Data\\[Missing.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 1 }] },
+];
+
+test("validates every linked cell and reports newer workbooks in one pass", async () => {
+  const requests = [];
   const state = { model: model2x2(), dirty: new Map() };
   const controller = externalLinks.createDatasetExternalLinksController({
     state,
-    readFileMtimesBatch: async (paths) => {
-      requestedPaths.push(...paths);
+    validateLinksBatch: async (items) => {
+      requests.push(items);
       return {
         ok: true,
         results: [
-          { ok: true, mtime: 99 },
-          { ok: true, mtime: 101 },
-          { ok: false, error: "Unavailable" },
+          { ok: true, value: 5 },
+          { ok: true, value: 6 },
+          { ok: true, value: 7 },
+          { ok: false, error: "Not numeric: '#REF!'" },
+        ],
+        workbooks: [
+          { ok: true, path: "C:\\Data\\Older.xlsx", mtime: 99 },
+          { ok: true, path: "C:\\Data\\Newer.xlsx", mtime: 101 },
+          { ok: false, path: "C:\\Data\\Missing.xlsx", error: "Unavailable" },
         ],
       };
     },
   });
-  controller.load([
-    { reference: "='C:\\Data\\[Older.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
-    { reference: "='C:\\Data\\[Older.xlsx]Sheet 2'!B2", target_cells: [{ row: 0, column: 1 }] },
-    { reference: "='C:\\Data\\[Newer.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 0 }] },
-    { reference: "='C:\\Data\\[Missing.xlsx]Sheet 1'!A1", target_cells: [{ row: 1, column: 1 }] },
-  ]);
+  controller.load(LINKED_WORKBOOKS);
 
-  const result = await controller.checkForNewerWorkbooks(100);
+  const result = await controller.validateLinks(100);
 
-  assert.deepEqual(requestedPaths, [
-    "C:\\Data\\Older.xlsx",
-    "C:\\Data\\Newer.xlsx",
-    "C:\\Data\\Missing.xlsx",
-  ]);
+  // One request, every stored source cell in it, in link order.
+  assert.equal(requests.length, 1);
+  assert.deepEqual(
+    requests[0].map((item) => `${item.book_path}|${item.sheet}|${item.cell}`),
+    [
+      "C:\\Data\\Older.xlsx|Sheet 1|A1",
+      "C:\\Data\\Older.xlsx|Sheet 2|B2",
+      "C:\\Data\\Newer.xlsx|Sheet 1|A1",
+      "C:\\Data\\Missing.xlsx|Sheet 1|A1",
+    ],
+  );
   assert.equal(result.newerWorkbookCount, 1);
   assert.deepEqual(result.newerWorkbooks, [{ path: "C:\\Data\\Newer.xlsx", mtime: 101 }]);
   assert.equal(result.unverifiedWorkbookCount, 1);
+  assert.equal(result.failedCellCount, 1);
+  const [failure] = result.failures;
+  assert.equal(failure.workbookPath, "C:\\Data\\Missing.xlsx");
+  assert.equal(failure.worksheet, "Sheet 1");
+  assert.equal(failure.sourceCell, "A1");
+  assert.equal(failure.destination, "2025 / 24m");
+  assert.equal(failure.error, "Not numeric: '#REF!'");
+  // Validation never touches the stored values.
   assert.deepEqual(state.model.values, [[1, 2], [3, 4]]);
   assert.equal(state.dirty.size, 0);
+});
+
+test("a transport failure is not reported as a broken reference", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    validateLinksBatch: async () => ({ ok: false, error: "Network error" }),
+  });
+  controller.load(LINKED_WORKBOOKS);
+
+  const result = await controller.validateLinks(100);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "Network error");
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(controller.getLinkFailures(), []);
+});
+
+test("a refresh that hits a broken reference keeps the saved value and marks the cell", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    readCellsBatch: async () => ({
+      ok: true,
+      results: [
+        { ok: true, value: 10 },
+        { ok: false, error: "Not numeric: '#REF!'" },
+      ],
+    }),
+  });
+  controller.load([
+    { reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
+    { reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!B1", target_cells: [{ row: 0, column: 1 }] },
+  ]);
+
+  const result = await controller.refreshAll();
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.failedCount, 1);
+  // The broken cell keeps its saved value; the readable one refreshes.
+  assert.deepEqual(state.model.values, [[10, 2], [3, 4]]);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].sourceCell, "B1");
+  assert.equal(result.failures[0].destination, "2024 / 24m");
+  assert.deepEqual(controller.getLinkFailures().map((item) => item.sourceCell), ["B1"]);
+
+  const refreshed = decoratedCell();
+  const broken = decoratedCell();
+  controller.decorateCell(refreshed, 0, 0);
+  controller.decorateCell(broken, 0, 1);
+  assert.equal(refreshed.classList.contains("arExternalLinkErrorCell"), false);
+  assert.equal(broken.classList.contains("arExternalLinkErrorCell"), true);
+});
+
+test("a link that no longer parses or no longer has a dataset cell is reported by name", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    validateLinksBatch: async () => ({ ok: true, results: [], workbooks: [] }),
+  });
+  controller.load([
+    { reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
+  ]);
+  // The grid shrank underneath a saved link.
+  state.model.mask[0][0] = false;
+
+  const result = await controller.validateLinks(100);
+
+  assert.equal(result.failedCellCount, 1);
+  assert.match(result.failures[0].error, /no longer part of this dataset/);
+});
+
+test("breaking a broken link clears its reference failure", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    validateLinksBatch: async () => ({
+      ok: true,
+      results: [{ ok: false, error: "Sheet not found: Sheet 1" }],
+      workbooks: [{ ok: true, path: "C:\\Data\\Book.xlsx", mtime: 10 }],
+    }),
+  });
+  controller.load([
+    { reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!A1", target_cells: [{ row: 0, column: 0 }] },
+  ]);
+
+  await controller.validateLinks(100);
+  assert.equal(controller.getLinkFailures().length, 1);
+
+  const [record] = controller.listRecords();
+  assert.equal(controller.breakLink(record.id).ok, true);
+
+  assert.deepEqual(controller.getLinkFailures(), []);
+  const cell = decoratedCell();
+  controller.decorateCell(cell, 0, 0);
+  assert.equal(cell.classList.contains("arExternalLinkErrorCell"), false);
+});
+
+test("blank source cells refresh as nulls and never read as broken references", async () => {
+  const state = { model: model2x2(), dirty: new Map() };
+  const controller = externalLinks.createDatasetExternalLinksController({
+    state,
+    readCellsBatch: async () => ({
+      ok: true,
+      results: [
+        { ok: true, value: 10 },
+        { ok: true, value: null },
+        { ok: true, value: null },
+        { ok: true, value: 40 },
+      ],
+    }),
+  });
+  controller.load([{
+    reference: REF,
+    target_cells: [
+      { row: 0, column: 0 },
+      { row: 0, column: 1 },
+      { row: 1, column: 0 },
+      { row: 1, column: 1 },
+    ],
+  }]);
+
+  const result = await controller.refreshAll();
+
+  // A blank is a value, not a failure: the range still applies whole.
+  assert.equal(result.failedCount, 0);
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(state.model.values, [[10, null], [null, 40]]);
+  assert.deepEqual(controller.getLinkFailures(), []);
+  const blank = decoratedCell();
+  controller.decorateCell(blank, 0, 1);
+  assert.equal(blank.classList.contains("arExternalLinkErrorCell"), false);
+});
+
+test("the grid shows a blank linked value as a muted zero rather than an empty cell", async () => {
+  const gridView = await readFile(
+    new URL("../ui/shared/tabs/data/dataset_grid_view.js", import.meta.url),
+    "utf8",
+  );
+  const dataTabCss = await readFile(
+    new URL("../ui/shared/tabs/data/data_tab.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(gridView, /const displayNullAsZero = isEditable && v == null;/u);
+  assert.match(gridView, /td\.textContent = formatCellValue\(displayNullAsZero \? 0 : v\);/u);
+  assert.match(dataTabCss, /#tableWrap td\.dsNullValue[\s\S]*?color:\s*#7a858f/u);
+});
+
+test("the shared grid stylesheet paints a failed link red in both themes", async () => {
+  const spreadsheetCss = await readFile(
+    new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
+    "utf8",
+  );
+  const darkCss = await readFile(
+    new URL("../ui/shared/styles/themes/dark.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    spreadsheetCss,
+    /\.arSpreadsheetTable td\.arExternalLinkErrorCell \{\s*color: var\(--ar-spreadsheet-link-error-text\);/u,
+  );
+  assert.match(spreadsheetCss, /--ar-spreadsheet-link-error-text: #b91c1c;/u);
+  // The Dark rule for a plain cell is more specific than the base rule, so the
+  // deviation has to be declared in the theme or the red is lost.
+  assert.match(
+    darkCss,
+    /\[data-arcrho-theme="dark"\] \.arSpreadsheetTable td\.arExternalLinkErrorCell \{\s*color: var\(--ar-color-danger\);/u,
+  );
 });

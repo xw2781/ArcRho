@@ -14,6 +14,7 @@
   --ar-spreadsheet-weighted-selection-fill: #d9e98be5;
   --ar-spreadsheet-selected-label-fill: #a6a6a6;
   --ar-spreadsheet-anchor-color: #0f172a;
+  --ar-spreadsheet-link-error-text: #b91c1c;
 }
 
 .arSpreadsheetTable {
@@ -68,6 +69,14 @@
   background: var(--ar-spreadsheet-selected-label-fill);
   color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
+}
+
+/* A linked cell whose Excel reference failed validation keeps its saved value
+   and says so in red, so the broken reference stays visible after the alert is
+   dismissed and until it is fixed. Declared after the selection rule so a
+   selected cell still reads as broken. */
+.arSpreadsheetTable td.arExternalLinkErrorCell {
+  color: var(--ar-spreadsheet-link-error-text);
 }
 
 .arSpreadsheetTable td.arSpreadsheetSelectionAnchor {

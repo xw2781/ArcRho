@@ -18,12 +18,12 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `cape_cod` | [`app_server/api/cape_cod_router.py`](../../app_server/api/cape_cod_router.py) | 4 | [`cape_cod.md`](domains/cape_cod.md) |
 | `data_processing_rules` | [`app_server/api/data_processing_rules_router.py`](../../app_server/api/data_processing_rules_router.py) | 3 | [`data_processing_rules.md`](domains/data_processing_rules.md) |
 | `dataset` | [`app_server/api/dataset_router.py`](../../app_server/api/dataset_router.py) | 15 | [`dataset.md`](domains/dataset.md) |
-| `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 3 | [`dataset_types.md`](domains/dataset_types.md) |
+| `dataset_types` | [`app_server/api/dataset_types_router.py`](../../app_server/api/dataset_types_router.py) | 4 | [`dataset_types.md`](domains/dataset_types.md) |
 | `dependent_propagation` | [`app_server/api/dependent_propagation_router.py`](../../app_server/api/dependent_propagation_router.py) | 3 | [`dependent_propagation.md`](domains/dependent_propagation.md) |
-| `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 4 | [`excel.md`](domains/excel.md) |
+| `excel` | [`app_server/api/excel_router.py`](../../app_server/api/excel_router.py) | 5 | [`excel.md`](domains/excel.md) |
 | `excel_link` | [`app_server/api/excel_link_router.py`](../../app_server/api/excel_link_router.py) | 3 | [`excel_link.md`](domains/excel_link.md) |
 | `field_mapping` | [`app_server/api/field_mapping_router.py`](../../app_server/api/field_mapping_router.py) | 2 | [`field_mapping.md`](domains/field_mapping.md) |
-| `object_change_watch` | [`app_server/api/object_change_watch_router.py`](../../app_server/api/object_change_watch_router.py) | 1 | [`object_change_watch.md`](domains/object_change_watch.md) |
+| `object_change_watch` | [`app_server/api/object_change_watch_router.py`](../../app_server/api/object_change_watch_router.py) | 2 | [`object_change_watch.md`](domains/object_change_watch.md) |
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 13 | [`project_settings.md`](domains/project_settings.md) |
 | `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
 | `result_selection` | [`app_server/api/result_selection_router.py`](../../app_server/api/result_selection_router.py) | 3 | [`result_selection.md`](domains/result_selection.md) |

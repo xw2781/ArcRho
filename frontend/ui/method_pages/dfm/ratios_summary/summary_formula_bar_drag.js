@@ -10,7 +10,7 @@ this one — hands the bar back to its anchor above the cell it edits.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260812d";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
 import {
   clampFormulaBarWithinFrame,
   getFormulaBarContentWidth,

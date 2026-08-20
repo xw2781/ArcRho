@@ -1075,8 +1075,16 @@
   box-shadow: var(--ar-shadow-dialog) !important;
 }
 
-:root[data-arcrho-theme="dark"] :is(.arcrho-load-popup-msg, .arcrho-load-popup-elapsed) {
+:root[data-arcrho-theme="dark"] :is(.arcrho-load-popup-msg, .arcrho-load-popup-elapsed, .arcrho-load-popup-progress-count) {
   color: var(--ar-color-text-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-progress-track {
+  background-color: var(--ar-color-surface-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-progress-fill {
+  background-color: var(--ar-color-accent) !important;
 }
 
 /* Shared spreadsheet base. Semantic selection fills intentionally remain unchanged. */
@@ -1090,6 +1098,10 @@
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable td.arExternalLinkErrorCell {
+  color: var(--ar-color-danger);
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable thead th:not(.arSpreadsheetSelectedLabel) {

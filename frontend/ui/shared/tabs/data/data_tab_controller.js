@@ -61,7 +61,7 @@ import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
 import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
-import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260812a";
+import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260819a";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -90,7 +90,7 @@ import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260814b";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260820a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";

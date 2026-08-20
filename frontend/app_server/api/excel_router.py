@@ -25,6 +25,11 @@ def excel_read_cells_batch(req: ExcelBatchReadRequest) -> Dict[str, Any]:
     return excel_service.excel_read_cells_batch(req.items)
 
 
+@router.post("/excel/validate_links")
+def excel_validate_links(req: ExcelBatchReadRequest) -> Dict[str, Any]:
+    return excel_service.excel_validate_links(req.items)
+
+
 @router.post("/excel/file_mtimes_batch")
 def excel_file_mtimes_batch(req: ExcelFileMtimeBatchRequest) -> Dict[str, Any]:
     return excel_service.excel_file_mtimes_batch(req.book_paths)

@@ -12,7 +12,7 @@
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260816pssel1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260812dtformat2";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260820dtjob1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260816pssel1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260816pssel1";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260816pssel1";
@@ -23,21 +23,21 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260818srj1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260820dtjob1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260818srj1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260818srj1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260818srj1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260818srj1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260820dtjob1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260820dtjob1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260820dtjob1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260820dtjob1";
+import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260820dtjob1";
 import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260818srj1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const DEFAULT_SOURCE = "project_map";
-const AUTO_SAVE_DEBOUNCE_MS = 700;
 
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 
@@ -306,53 +306,32 @@ async function appendAuditLogAction(projectName, action) {
   return auditLogStore.append(projectName, action);
 }
 
-// ============ Debounced auto-save ============
-/** Debounce + single-flight wrapper shared by the auto-saving grid features. */
-function createAutoSaveScheduler(runSave) {
-  const timers = new Map();
-  const inFlight = new Map();
-  const pending = new Set();
-
-  function clearTimer(key) {
-    const timerId = timers.get(key);
-    if (timerId) {
-      clearTimeout(timerId);
-      timers.delete(key);
-    }
-  }
-
-  function schedule(projectName) {
-    const key = normalizeProjectKey(projectName);
-    if (!key) return;
-    clearTimer(key);
-    timers.set(key, setTimeout(() => trigger(projectName), AUTO_SAVE_DEBOUNCE_MS));
-  }
-
-  async function trigger(projectName) {
-    const key = normalizeProjectKey(projectName);
-    if (!key) return;
-    clearTimer(key);
-    if (inFlight.get(key)) {
-      pending.add(key);
-      return;
-    }
-    inFlight.set(key, true);
-    try {
-      await runSave(projectName);
-    } finally {
-      inFlight.set(key, false);
-      if (pending.has(key)) {
-        pending.delete(key);
-        schedule(projectName);
-      }
-    }
-  }
-
-  return schedule;
-}
-
-const scheduleDatasetTypesAutoSave = createAutoSaveScheduler((projectName) => datasetTypesFeature?.saveDatasetTypes(projectName));
-const scheduleReservingClassTypesAutoSave = createAutoSaveScheduler((projectName) => reservingClassTypesFeature?.saveReservingClassTypes(projectName));
+const scheduleDatasetTypesAutoSave = createAutoSaveScheduler(
+  (projectName) => datasetTypesFeature?.saveDatasetTypes(projectName),
+  {
+    normalizeProjectKey,
+    onStalled: (projectName) => {
+      datasetTypesFeature?.setDatasetTypesStatus(
+        "The dataset types save has not answered. Your changes are still unsaved - edit any row to try again.",
+        true,
+      );
+      setStatus(`Dataset types save did not answer: ${projectName}`);
+    },
+  },
+);
+const scheduleReservingClassTypesAutoSave = createAutoSaveScheduler(
+  (projectName) => reservingClassTypesFeature?.saveReservingClassTypes(projectName),
+  {
+    normalizeProjectKey,
+    onStalled: (projectName) => {
+      reservingClassTypesFeature?.setReservingClassTypesStatus(
+        "The reserving class types save has not answered. Your changes are still unsaved - edit any row to try again.",
+        true,
+      );
+      setStatus(`Reserving class types save did not answer: ${projectName}`);
+    },
+  },
+);
 
 async function syncDatasetTypeSourcesAfterFieldMappingSave(projectName) {
   const name = String(projectName || "").trim();

@@ -2,13 +2,14 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
-Open-window change-watch domain: a dataset window or method page polls a stat-only fingerprint of the object it opened and shows a one-time advisory alert when another user or an automation process (including the Engine dependent-propagation job) rewrites it.
+Open-window change-watch domain: a dataset window or method page polls a stat-only fingerprint of the object it opened and shows a one-time advisory alert when another user or an automation process (including the Engine dependent-propagation job) rewrites it. The alert names the writer, read once from the object's own audit record after the fingerprint moved.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN app_server.object_change_watch.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
+| `POST` | `/object_change/attribution` | `get_object_change_attribution` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_attribution` |
 | `POST` | `/object_change/fingerprint` | `get_object_change_fingerprint` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_fingerprint` |
 <!-- AUTO-GEN:END -->
 
@@ -24,15 +25,17 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - `POST /object_change/fingerprint` stats the watched files only — the dataset sidecar for `kind: "dataset"`, the canonical `<PREFIX>@<name>.json` method file (plus the output sidecar when `output_dataset` is given) for `kind: "method"` — and returns `{files, token}`; it never reads a payload.
+- `POST /object_change/attribution` takes the same identity and answers who last wrote the object: `{user, action, at, automatic, subject}`, projected by `arcrho_api.sidecar_audit_contract.sidecar_attribution` from the output sidecar's last audit entry (falling back to `modified_by`/`updated_at`, and for a method with no readable sidecar to its `method metadata.last modified`). It is called once per alert, never per poll, so the watch's steady-state cost stays two stats. An unreadable or absent payload answers an empty attribution rather than an error, and the window keeps its generic message.
+- `arcrho_api.sidecar_audit_contract` owns the audit-action vocabulary every sidecar producer writes and this domain reads: `Insert`/`Update` for a person's save, `Auto Refresh` for an unattended rewrite (the classification that lets the alert name an automation task instead of a person).
 - `dataset_sidecar_status_service.method_json_path` is the single owner of the method-type-to-filename-prefix rule; every method service path builder delegates to it.
-- The shared UI poller `ui/shared/services/object_change_watch.js` compares tokens on an interval (default 5 s), fires `onChange` once, and exposes `pause`/`resume`/`rebase` so self-saves are never reported. The Data tab reports save/run boundaries through `ui/shared/tabs/data/data_tab_change_watch_port.js` for the Dataset Viewer host.
-- The one-time alert (`showObjectUpdatedAlert`) offers a Refresh Now action that reloads the window in place; a dirty window blocks the reload and explains why.
+- The shared UI poller `ui/shared/services/object_change_watch.js` compares tokens on an interval (default 5 s), fires `onChange` once, and exposes `pause`/`resume`/`rebase` so self-saves are never reported. `noteSelfWrite(updated_at)` records what the window already has in view (its `ensure({selfWriteStamp})` argument on the method controller), and a moved fingerprint whose recorded write is **not newer** than that stamp is adopted as the new baseline instead of alerting - a stale share read can only ever report an older state than the truth, never a newer one, so this is what makes the alert immune to the redirector's metadata cache. The method controller also carries an in-flight pause across the watch swap a rename or Save As causes, so the replacement cannot baseline mid-save. The Data tab reports save/run boundaries through `ui/shared/tabs/data/data_tab_change_watch_port.js` for the Dataset Viewer host.
+- The one-time alert (`showObjectUpdatedAlert`) offers a Refresh Now action that reloads the window in place; a dirty window blocks the reload and explains why. Its message is composed by `objectUpdatedMessage` from the attribution the watch passes to `onChange` - naming the person by their recorded display name (never "you", even when that account is this window's own), or the automation task and the account it ran as, plus the recorded time in local time - and falls back to the generic sentence when nothing was attributable.
 - Same-app dependent-propagation jobs never raise the alert: saves attach the queued `propagationJobId` to their dependency-source `cleared` message, Project Instance defers the downstream preview clear until the job's terminal status (`waitForDependentPropagationOutcome`), and its `arcrho:dependent-propagation-started`/`-finished` scope broadcasts pause every matching window's watch (`wireSamePropagationScopePause`, with a failsafe resume timer) until the refreshed values are reloaded.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Stateless: each request is one or two `os.stat` calls; the baseline token lives in the open window.
+- Stateless: each fingerprint request is one or two `os.stat` calls and each attribution request is one sidecar read; the baseline token lives in the open window.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
@@ -43,4 +46,6 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - The alert is advisory: detection latency is the poll interval plus SMB attribute-cache lag, and a change landing between open and the first poll baseline is not reported.
+- The stat itself cannot be made authoritative on a mapped drive. Measured on a Client PC against `E:`, `os.stat` alternates between current and cached metadata for seconds after a server-side write (regressions up to 16 s), and neither the `_bust_network_lookup_cache` probe write nor an open file handle fixes it - a handle also makes a concurrent `os.replace` fail, so the watch must never hold one. The self-write stamp above, not a better read, is what keeps the alert honest.
+- A write by another window of the *same* app still alerts: hosted saves run the dependent walk inline and answer without a `job_id`, so the `propagationJobId` the scope broadcasts depend on is never produced and `wireSamePropagationScopePause` does not engage.
 <!-- MANUAL:END -->

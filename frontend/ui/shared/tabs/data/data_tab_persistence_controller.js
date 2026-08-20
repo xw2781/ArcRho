@@ -3,6 +3,7 @@ import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/u
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
@@ -15,8 +16,8 @@ export function registerDataTabPersistenceController(runtime) {
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
   let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
-  let datasetExcelFreshnessAbortController = null;
-  const datasetExcelFreshnessCheckedKeys = new Set();
+  let datasetExcelLinkCheckAbortController = null;
+  const datasetExcelLinkCheckedKeys = new Set();
   const {
     loadTemporaryNumberFormatSettings,
     resolveTemporaryDatasetSettings,
@@ -346,34 +347,61 @@ export function registerDataTabPersistenceController(runtime) {
 
   function invalidateDatasetContextLoads() {
     sidecarSyncNonce += 1;
-    datasetExcelFreshnessAbortController?.abort();
-    datasetExcelFreshnessAbortController = null;
+    datasetExcelLinkCheckAbortController?.abort();
+    datasetExcelLinkCheckAbortController = null;
     runtime.datasetExternalLinks.abort();
   }
 
-  function scheduleDatasetExcelFreshnessPrompt({ contextKey, isCurrent }) {
+  async function reportDatasetExcelLinkFailures(failures, options = {}) {
+    const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+    // Repaint first: the alert names the broken references, and the grid behind
+    // it must already show those cells red, because the red marking is what
+    // survives the dismissal and points at the cells still to fix.
+    renderTable();
+    applyGridSelectionFromState();
+    getDataTabLinksController()?.refresh?.();
+    if (!isCurrent()) return;
+    await showExcelLinkFailureAlert({
+      failures,
+      unnamedCount: options?.unnamedCount ?? 0,
+      reason: options?.reason ?? "",
+      valueNoun: "linked dataset cell",
+    });
+  }
+
+  function scheduleDatasetExcelLinkCheck({ contextKey, isCurrent }) {
     if (
       !contextKey
-      || datasetExcelFreshnessCheckedKeys.has(contextKey)
+      || datasetExcelLinkCheckedKeys.has(contextKey)
       || !datasetExternalLinksLoaded
-      || !Number.isFinite(Number(state.fileMtime))
     ) return;
-    datasetExcelFreshnessCheckedKeys.add(contextKey);
+    datasetExcelLinkCheckedKeys.add(contextKey);
     window.setTimeout(async () => {
       if (!isCurrent()) return;
-      datasetExcelFreshnessAbortController?.abort();
+      datasetExcelLinkCheckAbortController?.abort();
       const abortController = new AbortController();
-      datasetExcelFreshnessAbortController = abortController;
-      const result = await runtime.datasetExternalLinks.checkForNewerWorkbooks(
+      datasetExcelLinkCheckAbortController = abortController;
+      // One server pass answers both questions this dataset has about its
+      // links: is every saved reference still readable, and is any workbook
+      // newer than the values stored here.
+      const result = await runtime.datasetExternalLinks.validateLinks(
         state.fileMtime,
         { signal: abortController.signal },
       );
-      if (datasetExcelFreshnessAbortController === abortController) {
-        datasetExcelFreshnessAbortController = null;
+      if (datasetExcelLinkCheckAbortController === abortController) {
+        datasetExcelLinkCheckAbortController = null;
       }
-      if (!isCurrent() || result?.aborted) return;
+      if (!isCurrent() || result?.aborted || result?.stale) return;
       if (!result?.ok) {
-        setStatus("Excel link timestamps could not be verified.");
+        setStatus("Excel links could not be verified.");
+        return;
+      }
+      if (result.failures.length) {
+        // A reference that no longer resolves is the answer the user has to act
+        // on, so it replaces the newer-workbook prompt rather than queueing
+        // behind it: refreshing from a workbook whose reference is broken
+        // cannot succeed anyway.
+        await reportDatasetExcelLinkFailures(result.failures, { isCurrent });
         return;
       }
       if (!result.newerWorkbookCount) return;
@@ -411,22 +439,38 @@ export function registerDataTabPersistenceController(runtime) {
     ) {
       return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
     }
+    const hadLinkFailures = runtime.datasetExternalLinks.getLinkFailures().length > 0;
     const result = await runtime.datasetExternalLinks.refreshAll(
       options?.ids ?? null,
       { markRefreshedCellsDirty: options?.markRefreshedCellsDirty === true },
     );
     if (!isCurrent() || result?.stale || result?.aborted) return result;
+    const failures = Array.isArray(result.failures) ? result.failures : [];
     if (result.changedCount > 0) {
       renderTable();
       notifyDatasetUpdated();
       applyGridSelectionFromState();
+    } else if (hadLinkFailures) {
+      // A repaired reference reads back the value already stored, so nothing
+      // changed - but the red marking it clears still has to leave the grid.
+      renderTable();
+      applyGridSelectionFromState();
     }
     getDataTabLinksController()?.refresh?.();
     updateDatasetSaveUi();
-    if (result.failedCount > 0) {
+    // A refresh the user asked for that did not do what they asked always says
+    // so in the window, never only in a status line the next action overwrites:
+    // with the references to fix when it has them, and with whatever reason it
+    // does have when the batch itself did not come back.
+    const unnamedCount = failures.length ? 0 : Number(result.failedCount) || 0;
+    if (failures.length || unnamedCount) {
       window.setTimeout(() => {
         if (isCurrent()) {
-          setStatus(`Excel refresh: ${result.failedCount} linked dataset cell${result.failedCount === 1 ? "" : "s"} failed; saved values were retained.`);
+          reportDatasetExcelLinkFailures(failures, {
+            isCurrent,
+            unnamedCount,
+            reason: result.error,
+          });
         }
       }, 0);
     } else if (result.changedCount > 0) {
@@ -500,6 +544,7 @@ export function registerDataTabPersistenceController(runtime) {
     }
 
     const data = resp.data || {};
+    state.sidecarUpdatedAt = data.exists ? String(data.updated_at || "") : "";
     const notesSynced = await syncNotesForCurrentDataset({
       isCurrent,
       forceReload: options?.forceReload === true,
@@ -513,7 +558,7 @@ export function registerDataTabPersistenceController(runtime) {
     runtime.datasetExternalLinks.load(
       datasetExternalLinksLoaded && data.exists ? data.external_links : [],
     );
-    if (data.exists) scheduleDatasetExcelFreshnessPrompt({ contextKey: key, isCurrent });
+    if (data.exists) scheduleDatasetExcelLinkCheck({ contextKey: key, isCurrent });
     if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
       runtime.savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
     }
@@ -656,6 +701,7 @@ export function registerDataTabPersistenceController(runtime) {
     // recalculation dialog.
     progress?.finish();
     handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
+    state.sidecarUpdatedAt = String(resp.data?.updated_at || state.sidecarUpdatedAt || "");
     notifyDataTabDurableDatasetState({ source: "sidecar-save" });
     return {
       ok: true,

@@ -13,6 +13,7 @@ Excel integration domain (workbook value reads, lightweight file metadata checks
 | `POST` | `/excel/open_workbook` | `excel_open_workbook` | `ExcelOpenRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_open_workbook` |
 | `POST` | `/excel/read_cell` | `excel_read_cell` | `ExcelCellReadRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_read_cell` |
 | `POST` | `/excel/read_cells_batch` | `excel_read_cells_batch` | `ExcelBatchReadRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_read_cells_batch` |
+| `POST` | `/excel/validate_links` | `excel_validate_links` | `ExcelBatchReadRequest` | [`app_server/schemas/excel.py`](../../../app_server/schemas/excel.py) | `excel_service.excel_validate_links` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -26,6 +27,7 @@ Excel integration domain (workbook value reads, lightweight file metadata checks
 <!-- MANUAL:BEGIN -->
 - Called by interactive Excel-based workflows.
 - `/excel/file_mtimes_batch` resolves and deduplicates workbook paths, then reads file metadata with bounded concurrency while preserving request order. It does not open Excel or load workbook contents.
+- `/excel/validate_links` is the check an opening Dataset or DFM method runs against its saved Excel links. It takes the same item list as `/excel/read_cells_batch` and returns the same per-cell `results`, plus a `workbooks` entry per distinct workbook carrying that file's `ok`/`mtime`. Both halves come from one grouped pass — the worker that opens a workbook also stats it — so an opening window can tell a broken reference from a merely newer workbook without a second round trip over a network share. Every cell is answered on its own: a missing sheet, an address the sheet cannot resolve, or a non-numeric value (a `#REF!` left by a deleted row) is that cell's error and leaves the other cells of the same workbook with their real values. `workbook_cell_value` is the single rule for what one workbook cell means and is shared by `excel_read_cell` and both batch reads: a cell that reads as empty — never filled, outside the used range, or a formula whose cached result is an empty or whitespace-only string — is the blank ArcRho stores as `null`, not an error. `/excel/read_cells_batch` keeps its narrower result shape, so the commit and refresh paths never pay for the workbook stats.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

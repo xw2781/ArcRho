@@ -6,7 +6,7 @@ import {
   findDfmDatasetReferences,
   substituteDfmDatasetReferenceLabels,
   substituteDfmDatasetReferences,
-} from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811a";
+} from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 
 // Last-resolved dataset-reference values for this page session, keyed by
 // project, reserving class, and the reference text exactly as stored in the
@@ -36,6 +36,28 @@ export function substituteCachedDfmDatasetReferencesInFormula(rawFormula) {
     resolvedResults.push({ value: cached });
   }
   return { ok: true, formula: substituteDfmDatasetReferences(formula, references, resolvedResults) };
+}
+
+/**
+ * Session-cached values for the dataset references in one formula, in the order
+ * the references appear. An entry is null when that reference has not resolved
+ * yet, so a caller can tell "value not known" apart from a resolved zero, and
+ * the result is empty when the formula holds no readable reference at all.
+ */
+export function getCachedDfmDatasetReferenceValues(rawFormula) {
+  let references;
+  try {
+    references = findDfmDatasetReferences(String(rawFormula || ""));
+  } catch {
+    return [];
+  }
+  if (!references.length) return [];
+  const identity = readDfmMethodIdentityFromPage();
+  if (!identity.project_name || !identity.reserving_class) return references.map(() => null);
+  return references.map((reference) => {
+    const cached = resolvedDatasetReferenceValues.get(datasetReferenceCacheKey(identity, reference.match));
+    return Number.isFinite(cached) ? cached : null;
+  });
 }
 
 export async function resolveDfmDatasetReferencesInFormulasDetailed(rawFormulas, options = {}) {

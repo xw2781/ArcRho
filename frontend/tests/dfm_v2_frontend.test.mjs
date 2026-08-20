@@ -15,6 +15,7 @@ const [
   datasetTableSource,
   projectMessagesSource,
   summarySource,
+  summaryValidationSource,
   linksSource,
   ratioCalcSource,
 ] = await Promise.all([
@@ -27,6 +28,7 @@ const [
   source("ui/project_instance/project_instance_dataset_table.js"),
   source("ui/project_instance/project_instance_messages.js"),
   source("ui/method_pages/dfm/ratios_summary/summary_excel.js"),
+  source("ui/method_pages/dfm/ratios_summary/summary_excel_validation.js"),
   source("ui/method_pages/dfm/dfm_links_tab.js"),
   source("ui/method_pages/dfm/dfm_ratio_calc.js"),
 ]);
@@ -130,7 +132,7 @@ test("v2 open hydrates snapshots, stays clean, and warms the dataset-reference c
   const linkedRefresh = functionSlice(
     summarySource,
     "export async function refreshAllExcelLinks",
-    "function canonicalExcelComparisonValue",
+    "function collectDfmExternalLinkGroups",
   );
   assert.doesNotMatch(linkedRefresh, /datasetReferencesOnly|dfm-open/u);
   assert.match(linkedRefresh, /save to keep the refreshed values/u);
@@ -306,9 +308,9 @@ test("preview/save and Excel freshness retain owned and stored-value semantics",
   assert.match(freshnessSchedule, /currentPublicationRevision \|\| metadata\["publication revision"\]/u);
 
   const check = functionSlice(
-    summarySource,
+    summaryValidationSource,
     "async function checkDfmExcelLinkFreshness",
-    "function collectDfmExternalLinkGroups",
+    "registerSummaryFunctions(",
   );
   assert.match(check, /itemsByKey/u);
   assert.match(check, /readExcelCellsBatch/u);

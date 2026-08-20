@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A broken Excel link now opens an alert in the Dataset or DFM window naming the reference to fix, and the affected cells stay red until it is.",
+  "details": [
+    "Opening a Dataset or DFM method validates its saved Excel references on the server in one pass; a broken reference is reported instead of the \"Linked Excel File Updated\" prompt.",
+    "The alert names each failing workbook cell, the grid cell it feeds, and the reason, and opens the workbook in Excel.",
+    "Saved values are kept, and cells whose reference failed render in red until the reference is fixed or the link is broken.",
+    "Refresh from Excel reports named references in the same alert rather than only in the status bar.",
+    "Empty cells inside a linked Excel range are accepted as blanks and shown as muted grey zeros instead of failing the range."
+  ]
+}
