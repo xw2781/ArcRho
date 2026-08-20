@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Restored Dataset Viewer and Berquist Sherman Number Format fields to the compact width used by Decimal Places."
+}
