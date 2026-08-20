@@ -10,6 +10,12 @@ const pageCss = await readFile(
   new URL("../ui/project_instance/project_instance.css", import.meta.url),
   "utf8",
 );
+// The table's own look lives in the shared pi-table sheet, which the Project
+// Instance page and the macro review table both load.
+const tableCss = await readFile(
+  new URL("../ui/shared/styles/pi_table.css", import.meta.url),
+  "utf8",
+);
 const darkCss = await readFile(
   new URL("../ui/shared/styles/themes/dark.css", import.meta.url),
   "utf8",
@@ -172,7 +178,7 @@ test("the active row keeps the solid left bar while other selected rows go hollo
     "the emphasis only applies to multi-row selections",
   );
   assert.ok(
-    !/\.selected\.active/su.test(pageCss),
+    !/\.selected\.active/su.test(pageCss) && !/\.selected\.active/su.test(tableCss),
     "the active row shares the normal selected background (no rules of its own)",
   );
   assert.ok(
@@ -184,7 +190,7 @@ test("the active row keeps the solid left bar while other selected rows go hollo
     /classList\.toggle\("multi", selected && datasetTableSelection\.selectedKeys\.size > 1\)/,
     "selected rows are tagged when they are part of a multi-row selection",
   );
-  const multiRule = pageCss.match(
+  const multiRule = tableCss.match(
     /\.pi-table tbody tr\[data-record-key\]\.selected\.multi:not\(\.active\) td:first-child \{([^}]*)\}/su,
   );
   assert.ok(multiRule, "non-active rows in a multi-selection have their own first-cell rule");

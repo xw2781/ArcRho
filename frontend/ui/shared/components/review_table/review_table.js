@@ -1,3 +1,5 @@
+import { createReviewTableView } from "./review_table_view.js?v=20260819a";
+
 const CELL_TONES = new Set(["", "muted", "info", "ok", "warn", "error", "newer", "older"]);
 let reviewTableSequence = 0;
 
@@ -58,12 +60,24 @@ export function normalizeReviewTableColumns(columns = [], rows = []) {
       key,
       label: cleanText(raw.label) || titleFromKey(key),
       align: ["left", "center", "right"].includes(align) ? align : "left",
+      // The pi-table column model needs an explicit width per column. A caller
+      // may state one; otherwise the view sizes the column to its own content
+      // on first render, capped by `maxAutoWidth` so one long value cannot
+      // crowd out the columns the reader acts on.
+      width: positiveNumber(raw.width ?? raw.column_width),
+      minWidth: positiveNumber(raw.minWidth ?? raw.min_width),
+      maxAutoWidth: positiveNumber(raw.maxAutoWidth ?? raw.max_auto_width),
     };
   });
   if (!normalized.length && Array.isArray(rows) && rows.length) {
-    return [{ key: "id", label: "Item", align: "left" }];
+    return [{ key: "id", label: "Item", align: "left", width: 0, minWidth: 0, maxAutoWidth: 0 }];
   }
   return normalized;
+}
+
+function positiveNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
 }
 
 function rawCellValue(row, key) {
@@ -271,10 +285,15 @@ function enableDialogMovement(dialog, header, resizeHandle, windowRef) {
   };
 }
 
-// Host-neutral review surface: the message, search toolbar, selectable table,
+// Host-neutral review surface: the message, search toolbar, the pi-table grid,
 // and footer actions without any dialog chrome. The modal dialog below and the
 // Project Instance nested-window page both embed this panel, so selection,
 // filtering, and completion semantics stay identical in every host.
+//
+// The grid itself lives in review_table_view.js, which renders the same
+// `pi-table` markup the Project Instance dataset table renders; this function
+// owns only what sits around it - the message, the search box, the two
+// counters, and the Accept/Cancel decision.
 export function createReviewTablePanel(options = {}, settings = {}) {
   const model = normalizeReviewTableOptions(options);
   const doc = settings.documentRef || document;
@@ -295,31 +314,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   const count = element(doc, "span", "reviewTableCount");
   count.setAttribute("aria-live", "polite");
   toolbar.append(search, count);
-
-  const frame = element(doc, "div", "reviewTableFrame");
-  const table = element(doc, "table", "reviewTable");
-  const head = element(doc, "thead");
-  const headRow = element(doc, "tr");
-  const selectHead = element(doc, "th", "reviewTableSelectColumn");
-  selectHead.scope = "col";
-  const selectAll = element(doc, "input", "reviewTableSelectAll");
-  selectAll.type = "checkbox";
-  selectAll.setAttribute("aria-label", "Select all visible actions");
-  selectHead.appendChild(selectAll);
-  headRow.appendChild(selectHead);
-  model.columns.forEach((column) => {
-    const cell = element(doc, "th", "", column.label);
-    cell.scope = "col";
-    cell.dataset.align = column.align;
-    headRow.appendChild(cell);
-  });
-  head.appendChild(headRow);
-  const tableBody = element(doc, "tbody");
-  table.append(head, tableBody);
-  const empty = element(doc, "div", "reviewTableEmpty", "No actions match the current search.");
-  empty.hidden = true;
-  frame.append(table, empty);
-  body.append(message, toolbar, frame);
+  body.append(message, toolbar);
 
   const footer = element(doc, "div", "reviewTableFooter");
   const selectionStatus = element(doc, "span", "reviewTableSelectionStatus");
@@ -333,53 +328,40 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   footer.append(selectionStatus, actions);
   container.append(body, footer);
 
+  // The view calls back while it is still being constructed, so this reads
+  // `view` optionally and the panel makes one explicit call once it exists.
+  let view = null;
+
   function updateSelectionUi() {
     const summary = summarizeReviewTableSelection(model.rows, selectedIds, visibleRows);
-    selectAll.checked = summary.allVisibleSelected;
-    selectAll.indeterminate = summary.someVisibleSelected;
-    selectAll.disabled = summary.visibleActionableCount === 0;
+    view?.setSelectAllState({
+      checked: summary.allVisibleSelected,
+      indeterminate: summary.someVisibleSelected,
+      disabled: summary.visibleActionableCount === 0,
+    });
     count.textContent = `${summary.visibleCount} of ${model.rows.length} rows shown`;
     selectionStatus.textContent = `${summary.selectedCount} of ${summary.actionableCount} actions selected`;
     acceptButton.disabled = !model.allowEmptySelection && summary.selectedCount === 0;
   }
 
-  function renderRows() {
-    tableBody.replaceChildren();
-    visibleRows = filterReviewTableRows(model.rows, search.value);
-    visibleRows.forEach((row) => {
-      const tableRow = element(doc, "tr");
-      tableRow.dataset.rowId = row.id;
-      if (row.disabled) tableRow.setAttribute("aria-disabled", "true");
-      const actionCell = element(doc, "td", "reviewTableSelectColumn");
-      const checkbox = element(doc, "input", "reviewTableRowSelect");
-      checkbox.type = "checkbox";
-      checkbox.checked = selectedIds.has(row.id);
-      checkbox.disabled = row.disabled;
-      checkbox.setAttribute("aria-label", row.disabled ? `Action unavailable for ${row.id}` : `Select action for ${row.id}`);
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) selectedIds.add(row.id);
-        else selectedIds.delete(row.id);
-        updateSelectionUi();
-      });
-      actionCell.appendChild(checkbox);
-      tableRow.appendChild(actionCell);
-      row.cells.forEach((cellValue, columnIndex) => {
-        const cell = element(doc, "td");
-        cell.textContent = cellValue.text;
-        cell.dataset.align = model.columns[columnIndex]?.align || "left";
-        if (cellValue.tone) cell.dataset.tone = cellValue.tone;
-        tableRow.appendChild(cell);
-      });
-      tableBody.appendChild(tableRow);
-    });
-    table.hidden = visibleRows.length === 0;
-    empty.hidden = visibleRows.length !== 0;
-    updateSelectionUi();
-  }
+  view = createReviewTableView({
+    documentRef: doc,
+    container: body,
+    columns: model.columns,
+    rows: model.rows,
+    selectedIds,
+    filterRows: filterReviewTableRows,
+    onSelectionChange: updateSelectionUi,
+    onViewChange(state) {
+      visibleRows = state.visibleRows;
+      updateSelectionUi();
+    },
+  });
 
   function finish(accepted, reason = "user") {
     if (settled) return;
     settled = true;
+    view?.destroy();
     settings.onComplete?.({
       accepted: !!accepted,
       selectedRowIds: accepted ? selectedReviewTableRowIds(model.rows, selectedIds) : [],
@@ -387,17 +369,10 @@ export function createReviewTablePanel(options = {}, settings = {}) {
     });
   }
 
-  search.addEventListener("input", renderRows);
-  selectAll.addEventListener("change", () => {
-    visibleRows.filter((row) => !row.disabled).forEach((row) => {
-      if (selectAll.checked) selectedIds.add(row.id);
-      else selectedIds.delete(row.id);
-    });
-    renderRows();
-  });
+  search.addEventListener("input", () => view.setSearchText(search.value));
   cancelButton.addEventListener("click", () => finish(false, "cancel"));
   acceptButton.addEventListener("click", () => finish(true, "accept"));
-  renderRows();
+  updateSelectionUi();
 
   return {
     title: model.title,

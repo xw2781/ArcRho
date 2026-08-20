@@ -3768,3 +3768,92 @@
 :root[data-arcrho-theme="dark"] .sfTable tbody tr:hover td {
   background-color: var(--ar-color-table-row-hover);
 }
+
+/* Macro review table ("Sync Reserving Class with ResQ"). The grid itself is a
+   pi-table and is already dressed by the .pi-table rules above; these are the
+   panel around it - the message, the search toolbar, the footer, and the modal
+   dialog chrome the shell host adds. */
+:root[data-arcrho-theme="dark"] :is(.reviewTableWindowPage, .reviewTableBody) {
+  background-color: var(--ar-color-canvas);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableDialog {
+  border-color: var(--ar-color-border-strong);
+  background-color: var(--ar-color-surface-raised);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-dialog);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableOverlay {
+  background-color: var(--ar-color-overlay);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.reviewTableHeader, .reviewTableFooter) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableTitle {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.reviewTableMessage, .reviewTableCount, .reviewTableSelectionStatus) {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableSearch {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableSearch:focus {
+  border-color: var(--ar-color-border-focus);
+}
+
+:root[data-arcrho-theme="dark"] :is(.reviewTableButton, .reviewTableClose) {
+  border-color: var(--ar-color-border);
+  background-color: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] :is(.reviewTableButton:hover:not(:disabled), .reviewTableClose:hover) {
+  background-color: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableButton.primary {
+  border-color: var(--ar-color-border-focus);
+  background-color: var(--ar-color-accent-soft);
+  color: var(--ar-color-text);
+}
+
+/* The payload's cell tones on a dark ground: the light hexes the review table
+   ships would sit below the readable contrast the theme keeps. */
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="muted"],
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="older"] {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="info"] {
+  color: #61afef;
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="ok"],
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="newer"] {
+  color: #98c379;
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="warn"] {
+  color: #e5c07b;
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table td[data-tone="error"] {
+  color: #e06c75;
+}
+
+:root[data-arcrho-theme="dark"] .reviewTableFrame .pi-table tbody tr[aria-disabled="true"] td {
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}

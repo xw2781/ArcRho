@@ -81,14 +81,139 @@ test("review-table rows require unique stable identifiers", () => {
   );
 });
 
+test("review-table columns carry the pi-table width fields the grid sizes from", () => {
+  const columns = normalizeReviewTableColumns([
+    { key: "name", label: "Dataset Or Method", width: 210, minWidth: 90, maxAutoWidth: 320 },
+    { key: "status", label: "Status" },
+    { key: "note", label: "Note", width: "0", max_auto_width: "180" },
+  ]);
+
+  assert.deepEqual(columns[0], {
+    key: "name",
+    label: "Dataset Or Method",
+    align: "left",
+    width: 210,
+    minWidth: 90,
+    maxAutoWidth: 320,
+  });
+  // A column with no stated width opens at whatever its own content needs.
+  assert.equal(columns[1].width, 0);
+  assert.equal(columns[1].maxAutoWidth, 0);
+  // Zero and negative widths mean "size me", not "collapse me".
+  assert.equal(columns[2].width, 0);
+  assert.equal(columns[2].maxAutoWidth, 180);
+});
+
+test("the review grid is the Project Instance dataset table, minus grouping", async () => {
+  const [view, styles, sharedTable, projectInstanceStyles, projectInstancePage] = await Promise.all([
+    source("ui/shared/components/review_table/review_table_view.js"),
+    source("ui/shared/components/review_table/review_table.css"),
+    source("ui/shared/styles/pi_table.css"),
+    source("ui/project_instance/project_instance.css"),
+    source("ui/project_instance/project_instance.html"),
+  ]);
+
+  // One copy of the table's look: the Project Instance page reads it from the
+  // shared sheet instead of declaring its own.
+  assert.match(projectInstancePage, /shared\/styles\/pi_table\.css\?v=20260819a/u);
+  assert.doesNotMatch(projectInstanceStyles, /^\.pi-table/mu);
+  assert.match(sharedTable, /^\.pi-table \{/mu);
+  assert.match(sharedTable, /^\.pi-table-header-cell \{/mu);
+  assert.match(sharedTable, /^\.pi-table-col-resizer \{/mu);
+  assert.match(sharedTable, /^\.pi-table-filter-popover \{/mu);
+  // `--border` keeps one declaration; the Project Instance page reads it too.
+  assert.match(sharedTable, /--border:\s*#d9dee8/u);
+  assert.doesNotMatch(projectInstanceStyles, /--border:\s*#/u);
+
+  // The review grid renders that markup: a colgroup of explicit widths, a
+  // sticky header cell with sort, filter, and resize affordances, and rows the
+  // shared selection rules paint through `data-record-key`.
+  assert.match(view, /"pi-table-wrap reviewTableFrame"/u);
+  assert.match(view, /"pi-table-surface reviewTableSurface"/u);
+  assert.match(view, /element\(doc, "table", "pi-table"\)/u);
+  assert.match(view, /col\.dataset\.colKey = column\.key/u);
+  assert.match(view, /"pi-table-header-cell"/u);
+  assert.match(view, /"pi-table-col-label"/u);
+  assert.match(view, /"pi-table-filter-btn"/u);
+  assert.match(view, /"pi-table-col-resizer"/u);
+  assert.match(view, /"pi-table-cell-text"/u);
+  assert.match(view, /tr\.dataset\.recordKey = row\.id/u);
+  assert.match(view, /table\.style\.minWidth = total/u);
+  // Grouping is the one dataset-table feature a one-off review has no use for.
+  assert.doesNotMatch(view, /pi-table-group/u);
+  assert.doesNotMatch(styles, /dataset-group-status|has-groups/u);
+});
+
+test("ticking a review row is the only kind of selection the grid shows", async () => {
+  const [view, styles, sharedTable] = await Promise.all([
+    source("ui/shared/components/review_table/review_table_view.js"),
+    source("ui/shared/components/review_table/review_table.css"),
+    source("ui/shared/styles/pi_table.css"),
+  ]);
+
+  // A click toggles the row it lands on; Shift-click paints the range from the
+  // anchor with the anchor's new state.
+  assert.match(view, /setRowTicked\(row, !selectedIds\.has\(row\.id\)\)/u);
+  assert.match(view, /const ticked = selectedIds\.has\(anchorId\)/u);
+  assert.match(view, /for \(let index = from; index <= to; index \+= 1\) setRowTicked\(visibleRows\[index\], ticked\)/u);
+  // A ticked row wears the shared pi-table highlight, so there is never a
+  // highlighted row that will not be accepted.
+  assert.match(view, /tr\.classList\.toggle\("selected", ticked\)/u);
+  assert.match(view, /box\.checked = ticked/u);
+  // A disabled row can be neither clicked nor swept into a range.
+  assert.match(view, /if \(row\.disabled\) return;/u);
+
+  // The dataset table's left bar marks the row Enter would act on. A review
+  // has no such target, so the review frame drops the bar - both the solid one
+  // and the hollow multi-selection one - while the dataset table keeps them.
+  const barOverride = styles.match(
+    /\.reviewTableFrame \.pi-table tbody tr\[data-record-key\]\.selected td:first-child,\s*\.reviewTableFrame \.pi-table tbody tr\[data-record-key\]\.selected\.multi:not\(\.active\) td:first-child \{([^}]*)\}/su,
+  );
+  assert.ok(barOverride, "the review frame overrides both first-cell selection rules");
+  assert.ok(!/inset 3px/su.test(barOverride[1]), "no solid left bar");
+  assert.match(barOverride[1], /background-image: none;/u);
+  assert.match(sharedTable, /box-shadow: inset 3px 0 0 #2474d8/u);
+
+  // Dragging across rows ticks them, so it must not also select their text.
+  assert.match(
+    styles,
+    /\.reviewTableFrame\.pi-table-wrap \{[^}]*user-select: none;/su,
+  );
+});
+
+test("a payload's ASCII direction arrow is drawn rather than typed", async () => {
+  const [view, styles] = await Promise.all([
+    source("ui/shared/components/review_table/review_table_view.js"),
+    source("ui/shared/components/review_table/review_table.css"),
+  ]);
+
+  // "ArcRho -> ResQ" reaches the grid as plain text because a Python producer
+  // can only write a string; the grid paints the token as a real arrow.
+  assert.match(view, /const ARROW_TOKEN = " -> ";/u);
+  assert.match(view, /if \(index > 0\) node\.appendChild\(arrowIcon\(doc\)\)/u);
+  // Only the spaced token counts, so "a->b" stays exactly as written.
+  assert.doesNotMatch(view, /split\("->"\)/u);
+  // The text around it stays in text nodes: wrapper spans would be clamped by
+  // the cell's -webkit-box and ellipsised by the filter list's span rule.
+  assert.match(view, /node\.appendChild\(doc\.createTextNode\(part\)\)/u);
+  assert.doesNotMatch(view, /innerHTML/u);
+  // Both places that show a cell's value draw it the same way.
+  assert.match(view, /appendTextWithArrows\(doc, td\.appendChild\(/u);
+  assert.match(view, /appendTextWithArrows\(doc, element\(doc, "span", ""\), option\.label\)/u);
+  // The arrow is announced, and takes the cell's colour so it follows the tone.
+  assert.match(view, /icon\.setAttribute\("aria-label", "to"\)/u);
+  assert.match(styles, /\.reviewTableArrow \{[^}]*stroke: currentColor;/su);
+});
+
 test("shell UI automation wires asynchronous review-table open, status, and close commands", async () => {
-  const [automation, index, uiShell, shellMessages, updateProgress, component, styles] = await Promise.all([
+  const [automation, index, uiShell, shellMessages, updateProgress, component, view, styles] = await Promise.all([
     source("ui/shell/ui_automation.js"),
     source("ui/index.html"),
     source("ui/shell/ui_shell.js"),
     source("ui/shell/shell_messages.js"),
     source("ui/shell/update_progress.js"),
     source("ui/shared/components/review_table/review_table.js"),
+    source("ui/shared/components/review_table/review_table_view.js"),
     source("ui/shared/components/review_table/review_table.css"),
   ]);
 
@@ -98,16 +223,20 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   assert.match(automation, /return \{ dialogId \}/u);
   assert.match(automation, /status: "completed"/u);
   assert.match(automation, /selectedRowIds/u);
-  assert.match(index, /review_table\/review_table\.css\?v=20260812b/u);
-  assert.match(index, /ui_shell\.js\?v=20260812b/u);
+  assert.match(index, /review_table\/review_table\.css\?v=20260819a/u);
+  // The modal host renders the same pi-table the nested window does, so it
+  // loads the shared table sheet the grid is dressed by.
+  assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
+  assert.match(index, /ui_shell\.js\?v=20260819a/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260812b/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260820a/u);
   }
-  assert.match(component, /cell\.textContent/u);
+  // Payload text reaches the DOM as text, never as markup, in both modules.
+  assert.match(view, /textContent = toText\(text\)/u);
   assert.doesNotMatch(component, /innerHTML/u);
+  assert.doesNotMatch(view, /innerHTML/u);
   assert.match(component, /event\.key === "Escape"/u);
-  assert.match(component, /Select all visible actions/u);
-  assert.match(styles, /\.reviewTable th\s*\{[\s\S]*?position: sticky;/u);
+  assert.match(view, /Select all visible actions/u);
   assert.match(styles, /\.reviewTableResizeHandle/u);
 });
 
@@ -148,8 +277,11 @@ test("a projectInstance-hosted review table runs as a nested pi-window", async (
   assert.match(piWindows, /windowKind === "review_table"\) return null/u);
 
   // The nested-window page embeds the same shared panel the modal uses.
-  assert.match(windowPage, /review_table\.css\?v=20260812b/u);
-  assert.match(windowPage, /review_table_window\.js\?v=20260812a/u);
+  assert.match(windowPage, /review_table\.css\?v=20260819a/u);
+  assert.match(windowPage, /review_table_window\.js\?v=20260819a/u);
+  // The nested window is dressed by the shared pi-table sheet and the theme
+  // sheets that already target those class names.
+  assert.match(windowPage, /shared\/styles\/pi_table\.css\?v=20260819a/u);
   assert.match(windowScript, /createReviewTablePanel/u);
   assert.match(windowScript, /arcrho:review-table-window-ready/u);
   assert.match(component, /export function createReviewTablePanel/u);

@@ -1,0 +1,663 @@
+/* ArcRho dense table surface (`pi-table`).
+
+   Canonical home for the Project Instance dataset table's look and its column
+   chrome: the scroll frame and its tray, the sticky header cell with its sort
+   icon, filter button and resize grip, the row and selection painting, the
+   group rows, the loading skeleton, and the column filter popover. It used to
+   live in project_instance.css; it moved here when a second host - the macro
+   review table behind "Sync Reserving Class with ResQ" - had to render the same
+   table, so both hosts read one copy instead of drifting apart. The dark and
+   high-contrast sheets already target these class names, so a host that loads
+   this sheet and the theme sheets is themed without rules of its own.
+
+   Load this sheet BEFORE a page's own stylesheet, so page-level placement (the
+   Project Instance table's left margin, a window host's insets) still wins.
+
+   Some scrollbar rules name the Project Instance path tree and add-dataset
+   picker alongside `.pi-table-wrap`: they are one declaration set shared by
+   those scroll surfaces, kept whole here rather than split into two copies.
+   Those selectors simply match nothing on a page that has no such panel. */
+
+:root {
+  /* Line color for the table's cell borders, and the alias the Project
+     Instance page chrome reads for the same lines. themes/dark.css remaps
+     `--border` for the dark theme, so this is the light value only. */
+  --border: #d9dee8;
+}
+
+body.pi-resizing-table-column,
+body.pi-resizing-table-column * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* The scroll frame around the table. A host places it (the Project Instance
+   page adds its own left margin); everything here is the frame itself, so the
+   same border, tray, and breathing room appear in every host. */
+.pi-table-wrap {
+  --pi-dataset-table-chrome: #eeeeee7c;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #cfd6df;
+  overflow: auto;
+  position: relative;
+  background: #f4f7fa;
+  scrollbar-gutter: stable;
+  padding: 0 8px 8px 0;
+  isolation: isolate;
+}
+.pi-table-wrap::-webkit-scrollbar-track,
+.pi-add-picker-table-wrap::-webkit-scrollbar-track,
+.pi-table-wrap::-webkit-scrollbar-corner,
+.pi-add-picker-table-wrap::-webkit-scrollbar-corner {
+  background: var(--pi-dataset-table-chrome, #f1f3f5);
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button,
+.pi-table-wrap::-webkit-scrollbar-button,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button {
+  width: 16px;
+  height: 16px;
+  display: block;
+  background-color: var(--pi-dataset-table-chrome, #f1f3f5);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:hover,
+.pi-table-wrap::-webkit-scrollbar-button:hover,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:hover {
+  background-color: #e5e9ef;
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:active,
+.pi-table-wrap::-webkit-scrollbar-button:active,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:active {
+  background-color: #d9dee7;
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:start:increment,
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:end:decrement,
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:start:increment,
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:end:decrement,
+.pi-table-wrap::-webkit-scrollbar-button:horizontal:start:increment,
+.pi-table-wrap::-webkit-scrollbar-button:horizontal:end:decrement,
+.pi-table-wrap::-webkit-scrollbar-button:vertical:start:increment,
+.pi-table-wrap::-webkit-scrollbar-button:vertical:end:decrement,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:start:increment,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:end:decrement,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:start:increment,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:end:decrement {
+  width: 0;
+  height: 0;
+  display: none;
+  background-image: none;
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:start:decrement,
+.pi-table-wrap::-webkit-scrollbar-button:horizontal:start:decrement,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:horizontal:end:increment,
+.pi-table-wrap::-webkit-scrollbar-button:horizontal:end:increment,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:start:decrement,
+.pi-table-wrap::-webkit-scrollbar-button:vertical:start:decrement,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-button:vertical:end:increment,
+.pi-table-wrap::-webkit-scrollbar-button:vertical:end:increment,
+.pi-add-picker-table-wrap::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-thumb,
+.pi-table-wrap::-webkit-scrollbar-thumb,
+.pi-add-picker-table-wrap::-webkit-scrollbar-thumb {
+  background-color: rgba(182, 182, 182, 0.2);
+  border: 3px solid var(--pi-dataset-table-chrome, #f1f3f5);
+  border-radius: 5px;
+  background-clip: content-box;
+}
+.pi-path-tree .ptree-window-embedded .ptree-body.isScrolling::-webkit-scrollbar-thumb,
+.pi-path-tree .ptree-window-embedded .ptree-body.isScrollbarHover::-webkit-scrollbar-thumb,
+.pi-path-tree .ptree-window-embedded .ptree-body::-webkit-scrollbar-thumb:hover,
+.pi-table-wrap.isScrolling::-webkit-scrollbar-thumb,
+.pi-table-wrap.isScrollbarHover::-webkit-scrollbar-thumb,
+.pi-table-wrap::-webkit-scrollbar-thumb:hover,
+.pi-add-picker-table-wrap.isScrolling::-webkit-scrollbar-thumb,
+.pi-add-picker-table-wrap.isScrollbarHover::-webkit-scrollbar-thumb,
+.pi-add-picker-table-wrap::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(120, 120, 120, 0.267);
+}
+.pi-table-wrap.group-remove-target {
+  outline: 2px solid rgba(47, 111, 236, 0.34);
+  outline-offset: -2px;
+}
+/* The surface holds the table and its empty state. A host whose columns are
+   narrower than the Project Instance dataset table's set overrides the floor. */
+.pi-table-surface {
+  min-width: 1120px;
+  padding: 0;
+  background: #fff;
+}
+.pi-table-surface:focus {
+  outline: none;
+}
+.pi-table-group {
+  min-width: 0;
+}
+.pi-table-group-button {
+  width: 100%;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pi-table-group-row.depth-1 .pi-table-group-button {
+  padding-left: 22px;
+}
+.pi-table-group-caret {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  color: #667085;
+  transition: transform 120ms ease;
+  fill: currentColor;
+}
+.pi-table-group-row.collapsed .pi-table-group-caret {
+  transform: rotate(-90deg);
+}
+.pi-table-group-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pi-table-group-count {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #d8e1ef;
+  color: #475467;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.pi-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 12px;
+  background: #fff;
+}
+.pi-table th,
+.pi-table td {
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pi-table th {
+  white-space: nowrap;
+}
+.pi-table tbody tr[data-record-key] {
+  cursor: default;
+}
+.pi-table tbody tr[data-record-key].selected td {
+  background: #e9f2ff;
+  box-shadow: inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+}
+.pi-table tbody tr[data-record-key].selected td:first-child {
+  box-shadow: inset 3px 0 0 #2474d8, inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+}
+/* Non-active rows inside a multi-row selection keep a hollow left bar (two 1px
+   lines around a 2px transparent gap) so only the active row carries a solid
+   bar marking the Enter target. */
+.pi-table tbody tr[data-record-key].selected.multi:not(.active) td:first-child {
+  box-shadow: inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+  background-image: linear-gradient(
+    to right,
+    #2474d8 0 1px,
+    transparent 1px 3px,
+    #2474d8 3px 4px,
+    transparent 4px
+  );
+}
+/* The active row (the Enter target) needs no rules of its own: it shares the
+   normal selected background and keeps the base solid left bar. */
+.pi-table td {
+  white-space: normal;
+  vertical-align: top;
+}
+.pi-table .pi-table-group-row td {
+  height: 20px;
+  padding: 0;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: #eef3fb;
+  color: #344054;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.pi-table .pi-table-group-row.depth-1 td {
+  background: #f6f8fc;
+  color: #475467;
+}
+.pi-table tr > :first-child {
+  border-left: 0;
+}
+.pi-table tr > :last-child {
+  border-right: 1px solid var(--border);
+}
+.pi-table thead th {
+  border-top: 0;
+}
+.pi-table tbody tr:last-child > * {
+  border-bottom: 1px solid var(--border);
+}
+.pi-table th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--pi-dataset-table-chrome, #e9edf2);
+  background-clip: padding-box;
+  font-weight: 700;
+  color: #444c5a;
+  padding: 0;
+  isolation: isolate;
+}
+.pi-table-header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 12px 0 8px;
+  background: #f5f5f5;
+}
+.pi-table-cell-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: 32px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 16px;
+  white-space: normal;
+}
+.pi-table th[data-col-key="status"] .pi-table-header-cell {
+  justify-content: center;
+  padding-left: 6px;
+  padding-right: 12px;
+}
+.pi-table td.pi-table-status-td {
+  text-align: center;
+  vertical-align: middle;
+}
+.pi-status-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  color: #65a30d;
+}
+.pi-status-cell.warning {
+  color: #eab308;
+}
+.pi-status-cell.temp-indexed {
+  color: #15803d;
+}
+.pi-status-cell.temp-unindexed {
+  color: #98a2b3;
+}
+.pi-status-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+.pi-status-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pi-status-soft-fill {
+  fill: color-mix(in srgb, currentColor 16%, #ffffff);
+}
+.pi-status-dark-mark {
+  fill: currentColor;
+}
+.pi-table-col-label {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+}
+.pi-table-col-label.is-sorted {
+  padding-right: 12px;
+}
+.pi-table-col-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pi-table-sort-icon {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  color: #2f6fec;
+  fill: currentColor;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.pi-table-col-label:active {
+  cursor: grabbing;
+}
+.pi-table th.pi-col-drag-before,
+.pi-table th.pi-col-drag-after {
+  position: relative;
+}
+.pi-table th.pi-col-drag-before::before,
+.pi-table th.pi-col-drag-after::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: #2f6fec;
+  box-shadow:
+    0 0 0 1px rgba(47, 111, 236, 0.22),
+    0 0 8px rgba(47, 111, 236, 0.35);
+  pointer-events: none;
+  z-index: 6;
+}
+.pi-table th.pi-col-drag-before::before {
+  left: -2px;
+}
+.pi-table th.pi-col-drag-after::after {
+  right: -2px;
+}
+.pi-table-column-drag-image {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10070;
+  max-width: 260px;
+  height: 30px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid #2f6fec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #174ea6;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16), inset 3px 0 0 #2f6fec;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  transform: translate(-9999px, -9999px);
+}
+.pi-table-filter-btn {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid #c6ccd4;
+  border-radius: 4px;
+  background: #fff;
+  color: #66758b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+.pi-table-filter-btn:hover {
+  border-color: #8ea5c8;
+  color: #33455f;
+  background: #f7faff;
+}
+.pi-table-filter-btn.active {
+  border-color: #0d6efd;
+  color: #0d6efd;
+  background: #eaf2ff;
+}
+.pi-table-filter-btn svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+  pointer-events: none;
+}
+.pi-table-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 4;
+}
+.pi-table-col-resizer:hover::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 3px;
+  border-left: 1px solid #2f6fec;
+}
+.pi-table tr {
+  cursor: default;
+}
+.pi-table-empty {
+  color: #8a94a6;
+  text-align: center;
+  padding: 18px;
+}
+/*
+Dataset table loading skeleton: real headers and column widths with placeholder
+bars for the rows, so the surface keeps the shape of the arriving table while
+the cached dataset list is read.
+*/
+.pi-table-skeleton {
+  position: relative;
+  overflow: hidden;
+  --pi-table-skeleton-bar: rgba(15, 23, 42, 0.11);
+  --pi-table-skeleton-sweep: rgba(255, 255, 255, 0.55);
+}
+.pi-table-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 32%,
+    var(--pi-table-skeleton-sweep) 50%,
+    transparent 68%
+  );
+  animation: piTableSkeletonSweep 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.pi-table-skeleton .pi-table,
+.pi-table-skeleton .pi-table tr {
+  cursor: default;
+  user-select: none;
+}
+.pi-table-skeleton-bar {
+  display: inline-block;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pi-table-skeleton-bar);
+  vertical-align: middle;
+}
+@keyframes piTableSkeletonSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-table-skeleton::after {
+    animation: none;
+    background: none;
+  }
+}
+.pi-table-surface[data-empty-add-dataset="1"],
+.pi-table-empty[data-empty-action="add-dataset"] {
+  cursor: context-menu;
+}
+.pi-table-context-menu,
+.pi-table-group-context-menu,
+.pi-table-row-context-menu,
+.pi-table-filter-popover {
+  position: fixed;
+  z-index: 10080;
+  border: 1px solid #c9ced5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: none;
+}
+.pi-table-context-menu.open,
+.pi-table-group-context-menu.open,
+.pi-table-row-context-menu.open,
+.pi-table-filter-popover.open {
+  display: block;
+}
+.pi-table-context-menu,
+.pi-table-group-context-menu,
+.pi-table-row-context-menu {
+  min-width: 190px;
+  padding: 4px;
+  overflow: visible;
+}
+.pi-table-filter-popover {
+  min-width: 210px;
+  max-width: 320px;
+  max-height: 360px;
+  padding: 8px;
+}
+.pi-table-filter-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2f3a4a;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff3;
+}
+.pi-table-filter-search {
+  width: 100%;
+  height: 30px;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #2f3a4a;
+  font: inherit;
+  font-size: 12px;
+}
+.pi-table-filter-search:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.16);
+  border-color: #7da5f7;
+}
+.pi-table-filter-clear-all {
+  width: 100%;
+  height: 26px;
+  margin: 0 0 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #f8fafc;
+  color: #2f3a4a;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pi-table-filter-clear-all:hover:not(:disabled) {
+  background: #eef4ff;
+  border-color: #9fb9ff;
+}
+.pi-table-filter-clear-all:disabled {
+  color: #9aa3b2;
+  cursor: default;
+  opacity: 0.75;
+}
+.pi-table-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 260px;
+  padding-right: 2px;
+}
+.pi-table-filter-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #2f3a4a;
+  padding: 2px;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.pi-table-filter-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pi-table-filter-option input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #2a63d4;
+}
+.pi-table-filter-empty {
+  font-size: 12px;
+  color: #9099a7;
+  padding: 6px 2px 2px;
+  font-style: italic;
+}

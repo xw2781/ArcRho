@@ -1,0 +1,15 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Sync Reserving Class with ResQ review window now shows its actions in the same table as the Project Instance dataset list, with sortable, filterable, resizable, and reorderable columns.",
+  "details": [
+    "Columns open sized to their own contents, can be dragged wider or narrower, double-clicked back to that sizing, and dragged into a different order.",
+    "Click a column heading to sort by it, or its filter button to keep only the values you pick; the search box still narrows every column at once.",
+    "Clicking anywhere on a row ticks or unticks it, and a ticked row is highlighted the same way a selected dataset row is; Shift-click ticks a whole run at once.",
+    "Dragging across rows no longer selects their text, and ticked rows no longer carry the dataset table's left marker bar, which pointed at a keyboard target the review window does not have.",
+    "A proposed direction such as ArcRho -> ResQ now draws a real arrow instead of a hyphen and a greater-than sign.",
+    "The window now follows the Dark and High Contrast themes, which it previously ignored.",
+    "Grouping is the one dataset-table feature the review window does not offer, because a review lists the actions of a single sync run."
+  ]
+}

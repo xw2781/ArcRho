@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [projectInstanceHtml, projectInstanceCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource, datasetApiSource] = await Promise.all([
+const [projectInstanceHtml, projectInstanceCss, tableCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource, datasetApiSource] = await Promise.all([
   readFile(new URL("../ui/project_instance/project_instance.html", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance.css", import.meta.url), "utf8"),
+  readFile(new URL("../ui/shared/styles/pi_table.css", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_context.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_dataset_cache.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
@@ -46,8 +47,8 @@ test("temporary view uses index membership for its status without cleanup", () =
   assert.match(tableSource, /function makeTemporaryDatasetPermanent\(record\)/);
   assert.match(tableSource, /"\/arcrho\/vec\/refresh"/);
   assert.match(tableSource, /"\/arcrho\/tri\/refresh"/);
-  assert.match(projectInstanceCss, /\.pi-status-cell\.temp-indexed\s*\{\s*color:\s*#15803d;/);
-  assert.match(projectInstanceCss, /\.pi-status-cell\.temp-unindexed\s*\{\s*color:\s*#98a2b3;/);
+  assert.match(tableCss, /\.pi-status-cell\.temp-indexed\s*\{\s*color:\s*#15803d;/);
+  assert.match(tableCss, /\.pi-status-cell\.temp-unindexed\s*\{\s*color:\s*#98a2b3;/);
   assert.match(tableSource, /\["methodType", "lastModified", "created", "user"\]/);
   assert.match(tableSource, /isTemporaryViewActive\(\) && !\["view", "make-permanent"\]\.includes\(normalized\)/);
   assert.match(tableSource, /function saveDatasetTablePreferences\(\) \{\s*if \(isTemporaryViewActive\(\)\) return;/);
@@ -60,8 +61,8 @@ test("Project Instance table filter menus support type-to-search without changin
   assert.match(tableSource, /const searchText = state\.datasetTableFilterSearchText;/);
   assert.match(tableSource, /allCb\.checked = selected\.size === 0 \|\| isDatasetFilterAllValuesSelected\(selected, options\)/);
   assert.match(tableSource, /empty\.textContent = options\.length \? "No matching values" : "No values"/);
-  assert.match(projectInstanceCss, /\.pi-table-filter-search\s*\{/);
-  assert.match(projectInstanceCss, /\.pi-table-filter-list\s*\{[\s\S]*?overflow-x: hidden;/);
+  assert.match(tableCss, /\.pi-table-filter-search\s*\{/);
+  assert.match(tableCss, /\.pi-table-filter-list\s*\{[\s\S]*?overflow-x: hidden;/);
 });
 
 test("temporary view toolbar uses concise dataset copy and a styled mode tooltip", () => {

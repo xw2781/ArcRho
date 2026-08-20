@@ -136,115 +136,52 @@
   font-variant-numeric: tabular-nums;
 }
 
-.reviewTableFrame {
-  position: relative;
+/* The grid is a `pi-table`, dressed by shared/styles/pi_table.css so the review
+   reads exactly like the Project Instance dataset table. Only what the review
+   host changes about that table lives here. */
+
+/* The Project Instance surface holds a fixed column set and floors itself at
+   its combined width; a review's columns come from the macro payload, so the
+   surface here follows the table it is given. */
+.reviewTableSurface.pi-table-surface {
+  min-width: 0;
+}
+
+/* The frame is placed by this panel, not by the Project Instance layout, so it
+   takes the panel's remaining height and carries no left margin.
+
+   Dragging across rows ticks them, so a drag must not also sweep a text
+   selection through the cells it crosses. The search box and the filter
+   popover sit outside the frame and stay selectable. */
+.reviewTableFrame.pi-table-wrap {
   min-height: 0;
   flex: 1 1 auto;
-  overflow: auto;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  scrollbar-gutter: stable both-edges;
+  user-select: none;
 }
 
-.reviewTable {
-  width: max-content;
-  min-width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: auto;
-  color: #1f2937;
-  font-size: 12px;
+/* No left bar on a ticked row. The dataset table draws one to mark the row
+   Enter would act on, solid on that row and hollow on the rest of a
+   multi-selection; a review has no such target - Accept acts on every ticked
+   row - so the bar would point at nothing. The tick column already says which
+   rows are in, and the row keeps the top and bottom edge lines. */
+.reviewTableFrame .pi-table tbody tr[data-record-key].selected td:first-child,
+.reviewTableFrame .pi-table tbody tr[data-record-key].selected.multi:not(.active) td:first-child {
+  box-shadow: inset 0 1px 0 #9cc7ff, inset 0 -1px 0 #9cc7ff;
+  background-image: none;
 }
 
-.reviewTable th,
-.reviewTable td {
-  height: 31px;
-  box-sizing: border-box;
-  padding: 0 9px;
-  border-right: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
-  line-height: 1.25;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.reviewTable th {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  background: #f1f5f9;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.reviewTable th::before {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: #f1f5f9;
-  content: "";
-}
-
-.reviewTable th:last-child,
-.reviewTable td:last-child {
-  border-right: 0;
-}
-
-.reviewTable tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.reviewTable tbody tr:hover td {
-  background: #f8fbff;
-}
-
-.reviewTable tbody tr[aria-disabled="true"] td {
-  background: #f8fafc;
-  color: #94a3b8;
-}
-
-.reviewTable th[data-align="center"],
-.reviewTable td[data-align="center"] {
+/* The tick column is chrome, not data: a fixed lane holding one centered box,
+   with no resize grip and no sort or filter affordance in its header. The box
+   sits on the row's first line, not at the top of a cell that wrapped. */
+.reviewTableFrame .pi-table :is(th, td).reviewTableSelectColumn {
+  padding: 0;
   text-align: center;
+  vertical-align: middle;
 }
 
-.reviewTable th[data-align="right"],
-.reviewTable td[data-align="right"] {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.reviewTable td[data-tone="muted"],
-.reviewTable td[data-tone="older"] {
-  color: #64748b;
-}
-
-.reviewTable td[data-tone="info"] {
-  color: #1d4ed8;
-}
-
-.reviewTable td[data-tone="ok"],
-.reviewTable td[data-tone="newer"] {
-  color: #15803d;
-  font-weight: 600;
-}
-
-.reviewTable td[data-tone="warn"] {
-  color: #b45309;
-  font-weight: 600;
-}
-
-.reviewTable td[data-tone="error"] {
-  color: #be123c;
-  font-weight: 600;
-}
-
-.reviewTableSelectColumn {
-  width: 42px;
-  min-width: 42px;
-  padding: 0 !important;
-  text-align: center !important;
+.reviewTableFrame .pi-table th.reviewTableSelectColumn .pi-table-header-cell {
+  justify-content: center;
+  padding: 0;
 }
 
 .reviewTableSelectAll,
@@ -256,20 +193,71 @@
   vertical-align: middle;
 }
 
-.reviewTableEmpty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
+/* The arrow a payload writes as " -> ". It is drawn rather than typed, takes
+   the cell's own color so it follows the row's tone, and sits on the text
+   baseline's optical centre rather than the line box's top. */
+.reviewTableArrow {
+  width: 13px;
+  height: 13px;
+  margin: 0 5px;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Column alignment and the payload's cell tones. The dataset table has no
+   equivalent - its one non-text column is the status icon - so these stay with
+   the review table that defines them. */
+.reviewTableFrame .pi-table th[data-align="center"] .pi-table-header-cell,
+.reviewTableFrame .pi-table td[data-align="center"] {
   justify-content: center;
-  padding: 24px;
-  color: #64748b;
-  font-size: 12px;
   text-align: center;
 }
 
-.reviewTableEmpty[hidden] {
-  display: none;
+.reviewTableFrame .pi-table th[data-align="right"] .pi-table-header-cell {
+  justify-content: flex-end;
+}
+
+.reviewTableFrame .pi-table td[data-align="right"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reviewTableFrame .pi-table td[data-tone="muted"],
+.reviewTableFrame .pi-table td[data-tone="older"] {
+  color: #64748b;
+}
+
+.reviewTableFrame .pi-table td[data-tone="info"] {
+  color: #1d4ed8;
+}
+
+.reviewTableFrame .pi-table td[data-tone="ok"],
+.reviewTableFrame .pi-table td[data-tone="newer"] {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.reviewTableFrame .pi-table td[data-tone="warn"] {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.reviewTableFrame .pi-table td[data-tone="error"] {
+  color: #be123c;
+  font-weight: 600;
+}
+
+/* A row whose action cannot be taken is readable but visibly out of reach.
+   Ticked rows need no rule: pi_table.css paints `.selected` from the row's
+   `data-record-key`, the same highlight the dataset table uses. */
+.reviewTableFrame .pi-table tbody tr[aria-disabled="true"] td {
+  background: #f8fafc;
+  color: #94a3b8;
 }
 
 .reviewTableFooter {
@@ -379,28 +367,6 @@
 .reviewTableWindowHost .reviewTableBody {
   min-height: 0;
   flex: 1 1 auto;
-}
-
-.reviewTableFrame::-webkit-scrollbar {
-  width: 20px;
-  height: 20px;
-}
-
-.reviewTableFrame::-webkit-scrollbar-track,
-.reviewTableFrame::-webkit-scrollbar-corner {
-  background: #f1f3f5;
-}
-
-.reviewTableFrame::-webkit-scrollbar-thumb {
-  border: 5px solid #f1f3f5;
-  border-radius: 5px;
-  background: rgba(182, 182, 182, 0.35);
-  background-clip: content-box;
-}
-
-.reviewTableFrame::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 120, 120, 0.45);
-  background-clip: content-box;
 }
 
 @media (max-width: 700px) {

@@ -3,7 +3,7 @@ import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
 } from "../macro/macro_window.js?v=20260817a";
-import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260812b";
+import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260819a";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -629,6 +629,17 @@ function coerceProgressNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+// The one place a progress readout is worded. A caller that measures in
+// something other than whole items - bytes, above all - supplies its own value
+// text and still gets the shared percentage, so no caller has to format a
+// percent of its own.
+export function composeProgressCountText(total, completed, providedCount = "") {
+  const value = String(providedCount || "").trim();
+  if (total <= 0) return value;
+  const percent = Math.max(0, Math.min(100, (completed / total) * 100));
+  return `${value || `${Math.min(completed, total)} / ${total}`} (${percent.toFixed(1)}%)`;
+}
+
 function applyProgressWindowState(entry, args = {}) {
   if (!entry?.overlay) return;
   const total = Math.max(0, coerceProgressNumber(args.total, entry.total || 0));
@@ -636,10 +647,9 @@ function applyProgressWindowState(entry, args = {}) {
   entry.total = total;
   entry.completed = completed;
   const percent = total > 0 ? Math.max(0, Math.min(100, (completed / total) * 100)) : 0;
-  const percentText = total > 0 ? `${percent.toFixed(1)}%` : "";
   const label = toText(args.label) || entry.label || "Progress";
   entry.label = label;
-  const countText = total > 0 ? `${Math.min(completed, total)} / ${total} (${percentText})` : toText(args.countText || args.count_text);
+  const countText = composeProgressCountText(total, completed, toText(args.countText || args.count_text));
 
   const titleEl = entry.overlay.querySelector(".uiAutomationDialogTitle");
   const labelEl = entry.overlay.querySelector(".uiAutomationProgressLabel");

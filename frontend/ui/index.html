@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
   <link rel="stylesheet" href="/ui/macro/macro_window.css?v=20260817a"/>
-  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260809f"/>
-  <link rel="stylesheet" href="/ui/shared/components/review_table/review_table.css?v=20260812b"/>
+  <link rel="stylesheet" href="/ui/shell/shell.css?v=20260820a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/pi_table.css?v=20260819a"/>
+  <link rel="stylesheet" href="/ui/shared/components/review_table/review_table.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260817d"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/styles/cascade_menu.css?v=20260817a"/>
 </head>
@@ -330,6 +331,30 @@
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
         <div id="aboutActions">
           <button id="aboutCheckUpdatesBtn" type="button">Check for Updates</button>
+          <button id="aboutReleaseHistoryBtn" type="button">Release History</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="releaseNotesOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="releaseNotesTitle">
+    <div id="releaseNotesBox">
+      <div id="releaseNotesHeader">
+        <div id="releaseNotesTitle">ArcRho Update Available</div>
+        <button id="releaseNotesCloseBtn" type="button" aria-label="Close release notes" title="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6L6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="releaseNotesSummary"></div>
+      <div id="releaseNotesScroll" tabindex="0"></div>
+      <div id="releaseNotesFooter">
+        <div id="releaseNotesSourceNote"></div>
+        <div id="releaseNotesActions">
+          <button id="releaseNotesLaterBtn" type="button" class="releaseNotesBtn">Later</button>
+          <button id="releaseNotesUpdateBtn" type="button" class="releaseNotesBtn primary">Update now</button>
         </div>
       </div>
     </div>
@@ -356,6 +381,6 @@
       }
     })();
   </script>
-  <script type="module" src="/ui/shell/ui_shell.js?v=20260817a"></script>
+  <script type="module" src="/ui/shell/ui_shell.js?v=20260819a"></script>
 </body>
 </html>
