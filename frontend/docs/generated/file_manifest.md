@@ -10,11 +10,11 @@ Excluded directories: `.cache`, `__pycache__`, `dist`, `local_workspace_log`, `n
 | `(root)` | 10 |
 | `app_server` | 141 |
 | `build` | 63 |
-| `changes` | 993 |
+| `changes` | 998 |
 | `docs` | 101 |
 | `electron` | 12 |
 | `icons` | 18 |
-| `tests` | 180 |
+| `tests` | 185 |
 | `tools` | 2 |
-| `ui` | 495 |
+| `ui` | 498 |
 | `user-manual` | 18 |
