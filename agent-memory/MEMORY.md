@@ -27,3 +27,4 @@
 - [Adding a hosted workspace read](adding-a-hosted-workspace-read.md) — register the kind in arcrho_workspace_read_contract + service + router, then rebuild the Gateway; hidden imports and the build-time import probe derive from the contract automatically
 - [Propagation status SMB cache lag](propagation-status-smb-cache-lag.md) — a queued propagation makes the client poll status over SMB where Windows' 10s cache hides an already-written terminal status; the Engine walk itself was 1.3s of a 19s save
 - [Standalone DSV/DFM tabs are legacy](standalone-dsv-dfm-tabs-legacy.md) — the shell's standalone Dataset Viewer and DFM tabs are being dropped; PI windows and Workflow steps are the only live hosts to design for
+- [Hung app-server request diagnosis](hung-app-server-request-diagnosis.md) — uvicorn logs an access line only on response, so a route missing from the log may still be running; corroborate with file mtimes and the audit log
