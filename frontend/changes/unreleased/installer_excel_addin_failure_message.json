@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "When setup cannot register the Excel add-in, it now shows how to add it by hand instead of a raw PowerShell error.",
+  "details": [
+    "The dialog gives the File > Options > Add-ins steps for the add-in path on the ArcRho Server share.",
+    "It also names the Trust Center change that lets setup do it automatically next time: allow trusted locations on the network and trust the Excel Add-ins folder.",
+    "The underlying error text stays in the installer details panel for support."
+  ]
+}

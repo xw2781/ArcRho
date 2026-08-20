@@ -446,7 +446,7 @@ ShowUninstDetails show
     ${Else}
       !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation failed with exit code $0."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be installed automatically. You can install it manually from $ArcRhoExcelAddInPath.$\r$\n$\r$\n$1"
+        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be registered automatically.$\r$\n$\r$\nTo add it manually, open Excel and go to File > Options > Add-ins, set Manage to Excel Add-ins, click Go, then Browse to:$\r$\n$ArcRhoExcelAddInPath$\r$\nIf Excel offers to copy the add-in to your local add-ins folder, choose No.$\r$\n$\r$\nThis usually means Excel is not allowed to run the add-in installer from that folder. In Excel, go to File > Options > Trust Center > Trust Center Settings > Trusted Locations, tick $\"Allow Trusted Locations on my network$\", then click Add new location and add:$\r$\n$ArcRhoServerRoot\Excel Add-ins$\r$\nwith $\"Subfolders of this location are also trusted$\" ticked."
       ${EndIf}
     ${EndIf}
   FunctionEnd
