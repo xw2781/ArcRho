@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 05c09575-2234-4404-bf4e-fcede99def6e
-  modified: 2026-08-13T18:09:46.018Z
+  modified: 2026-08-21T03:56:13.106Z
 ---
 
 Claude Code memories for ArcRho are **tracked in the repository**, not left under the user
@@ -25,3 +25,11 @@ no elevation, and refuses to clobber a non-empty real memory directory.
 Because memories are now shared across machines, a note that depends on one workstation's
 layout (installed interpreters, drive letters, `node-portable` presence, pre-existing test
 failure counts) must say so in its own text rather than being written as a universal fact.
+
+**The Stop hook's memory sync pushes the whole branch, not just memory commits.** The hook
+commits only `agent-memory/` paths, but its `git push` is branch-level, so any local code
+commits sitting on `main` ride along to the remote at the end of the turn (observed
+2026-08-20: fix commit `bcffffb` reached the remote under the memory commit on top of it).
+**How to apply:** never tell the user a `main` commit is "local until you approve the push" —
+it will be pushed by the next memory sync. Work needing push approval must stay on a branch
+or uncommitted.

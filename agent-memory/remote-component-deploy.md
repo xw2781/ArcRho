@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec5d33a-1179-4b13-9b77-8a931ebeb128
-  modified: 2026-08-18T02:15:00.545Z
+  modified: 2026-08-21T03:55:59.301Z
 ---
 
 Since 2026-08-17, component rebuilds go through `python data-engine/deploy.py` (no arguments = every stale component). It queues a request under `E:\ArcRho Server\requests\builds` and the **ArcRho Build Listener** — the "Listen for build requests" toggle in `data-engine\build_manager.bat` on the server — runs the same `build_exe.py` locally, streaming its log back. Exit codes: `0` ok, `1` build failed, `2` usage/precondition, `3` no listener running (relay the CLI's message asking a human to start it; nothing else in the flow needs a person).
@@ -33,5 +33,7 @@ Gotchas: the listener **resets its own clone** on every request, so nothing may 
 **The patch is snapshotted when `deploy.py` starts.** An edit made while a deploy is running is not in it, even for a component that has not started building yet — on 2026-08-19 a Bridge source change written 37 s after launching a no-argument deploy was absent from the Bridge that deploy produced, while `--stale` afterwards reported bridge as `Updated` because staleness compares the deployed build's timestamp against source mtimes. Finish editing before deploying, or deploy that component again.
 
 **A `WinError 5` renaming the build status JSON aborts the rest of the run while the finished components stay deployed.** Seen 2026-08-19: renaming the status file .build-*.json.<hex>.tmp to build-*.json under the requests/builds/statuses folder failed as Access denied, the CLI printed `Build failed:` and `[error]` and still exited **0**, Engine and Bridge were deployed and verified, and Gateway — the component the task actually needed — was never built. Do not read exit 0 as success when the log contains `[error]`; re-check `--stale` and deploy what remains, one component per run if it recurs.
+
+**On this Client PC the auto-mode permission classifier blocks `deploy.py` runs** (even `--stale`), so `.claude/settings.local.json` carries allow rules for `Bash(py -3.10 data-engine/deploy.py*)` / `Bash(python data-engine/deploy.py*)` and their `PowerShell(...)` twins (added 2026-08-20 with user approval). Rules are prefix-matched, so run the bare command — a `Set-Location ...;` prefix breaks the match and re-triggers the classifier.
 
 Related: [[gateway-deploy-swap-lock]], [[bridge-restart-after-deploy]], [[client-pc-primary-workstation]], [[pi-path-load-smb-cost]]
