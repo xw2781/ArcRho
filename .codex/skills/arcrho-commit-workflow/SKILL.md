@@ -15,7 +15,7 @@ When the user explicitly asks to create a commit using this skill, treat that re
 
 Read the applicable repository instructions before preparing a commit:
 
-- Read `AGENTS.md` at the ArcRho repo root.
+- Read `AGENTS.md` and `AGENT_GUIDELINES.md` at the ArcRho repo root.
 - Read any nested `AGENTS.md` files that apply to the files being committed, including `frontend/AGENTS.md` before committing files under `frontend/`.
 - Read `tools/agent_commit_workflow.md` when present. Treat it as the detailed source of truth if it differs from this skill.
 
@@ -37,7 +37,7 @@ git diff --name-status
 
 Review relevant diffs before summarizing. Use targeted file diffs when the full diff is large.
 
-Run targeted validation when appropriate and feasible within the repository validation limit. Respect ArcRho runtime preferences from `AGENTS.md`, including Python 3.10 preference, bundled frontend Node/npm preference, and the 120-second default validation limit.
+Run targeted validation when appropriate and feasible within the repository validation limit. Respect ArcRho runtime preferences from `AGENT_GUIDELINES.md`, including Python 3.10 preference, bundled frontend Node/npm preference, and the 120-second default validation limit.
 
 ## Commit Plan
 

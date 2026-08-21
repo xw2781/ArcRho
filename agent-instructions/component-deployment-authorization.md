@@ -1,6 +1,6 @@
 # Component Deployment Authorization
 
-Read this before rebuilding or redeploying any frozen server component. `AGENTS.md` covers how to run a deploy; this file covers what each component's rebuild costs, what to verify afterwards, and how far the standing authorization reaches.
+Read this before rebuilding or redeploying any frozen server component. `AGENT_GUIDELINES.md` covers how to run a deploy; this file covers what each component's rebuild costs, what to verify afterwards, and how far the standing authorization reaches.
 
 ## Standing authorization
 

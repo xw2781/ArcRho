@@ -29,7 +29,7 @@ When changing dataset sidecar JSON or reserving-class `index.json` formats, stru
 
 ## Workflow
 
-1. Read the applicable repository instructions first, including root `AGENTS.md`; read `frontend/AGENTS.md` before changing files under `frontend/`.
+1. Read the applicable repository instructions first, including root `AGENTS.md` and `AGENT_GUIDELINES.md`; read `frontend/AGENTS.md` before changing files under `frontend/`.
 2. Identify the JSON contract surface: migration output, dataset sidecar files, reserving-class `index.json`, frontend writers, frontend readers, and any macro behavior that mirrors the migration.
 3. Make the contract change across producers and consumers together.
 4. Remove clearly obsolete code in the touched area when fixing a bug, but ask before broader cleanup or cleanup with behavior risk.
@@ -38,9 +38,9 @@ When changing dataset sidecar JSON or reserving-class `index.json` formats, stru
 
 ## Data Access Reminder
 
-When inspecting on-disk ArcRho Server project metadata, obey the project data access restrictions in root `AGENTS.md`. Do not use this skill as permission to inspect non-default project metadata.
+When inspecting on-disk ArcRho Server project metadata, obey the project data access restrictions in root `AGENT_GUIDELINES.md`. Do not use this skill as permission to inspect non-default project metadata.
 
-- If the task needs existing sidecars, method JSON, dataset JSON, or related project files, inspect the paths allowed by root `AGENTS.md` when needed.
-- If the user mentions a specific dataset name but does not provide an explicit reserving-class data path, use the default ArcRho Server data folder from root `AGENTS.md` and look for that dataset there.
-- If the user does not mention a dataset or path but the task requires concrete on-disk examples, use the default ArcRho Server data folder from root `AGENTS.md`.
+- If the task needs existing sidecars, method JSON, dataset JSON, or related project files, inspect the paths allowed by root `AGENT_GUIDELINES.md` when needed.
+- If the user mentions a specific dataset name but does not provide an explicit reserving-class data path, use the default ArcRho Server data folder from root `AGENT_GUIDELINES.md` and look for that dataset there.
+- If the user does not mention a dataset or path but the task requires concrete on-disk examples, use the default ArcRho Server data folder from root `AGENT_GUIDELINES.md`.
 - If the dataset appears to belong to a non-default ArcRho Server project, ask for session-specific permission before reading that project's on-disk metadata JSON files.

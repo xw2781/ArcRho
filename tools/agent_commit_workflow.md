@@ -12,7 +12,7 @@ Ask for clarification before staging only when the requested scope is ambiguous,
 
 ## Preflight
 
-1. Read the applicable `AGENTS.md` files for the files being committed.
+1. Read the applicable `AGENTS.md` and `AGENT_GUIDELINES.md` files for the files being committed.
 2. Inspect the worktree with:
    - `git status --short`
    - `git diff --stat`
