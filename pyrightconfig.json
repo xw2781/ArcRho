@@ -1,0 +1,20 @@
+{
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "frontend",
+    "data-engine",
+    "data-engine/src",
+    "python-api/src",
+    "python-api/migration"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "data-engine/builds",
+    "frontend/dist",
+    "frontend/python_dist",
+    "frontend/python_build"
+  ]
+}
