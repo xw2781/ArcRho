@@ -5,7 +5,7 @@
   --dfm-cell-w: 90px;
   --dfm-cell-min-w: 80px;
   --dfm-cell-max-w: 100px;
-  --dfm-spin-w: 70px;
+  --dfm-spin-w: var(--ar-details-short-field-width, 70px);
   --dfm-scrollbar-chrome: #f1f3f5;
   --dfm-scrollbar-button-hover: #e5e9ef;
   --dfm-scrollbar-button-active: #d9dee7;
@@ -184,17 +184,10 @@ body {
 #dfmNotesPage { display: none; }
 #dfmLinksPage { display: none; }
 #dfmAuditPage { display: none; }
+/* The Details sections own the space between them, so this wrapper adds none. */
 .dfmSection {
   display: flex;
   flex-direction: column;
-  gap: var(--ar-details-row-gap);
-}
-.dfmFormGrid3 {
-  display: grid;
-  grid-template-columns: var(--ar-details-label-width) 560px minmax(0, 1fr);
-  column-gap: var(--ar-details-label-control-gap);
-  row-gap: var(--ar-details-row-gap);
-  align-items: center;
 }
 .dfmFormField {
   display: flex;
@@ -243,7 +236,6 @@ body {
 }
 .dfmFormField .projectSelectWrap,
 .dfmFormField .datasetSelectWrap,
-.dfmFormField .reservingClassWrap,
 .dfmFormField .dfmMethodNameWrap,
 .dfmFormField .dfmOutputVectorWrap {
   width: 100%;
@@ -263,16 +255,11 @@ body {
 #dfmOutputVector {
   width: 100%;
 }
-.dfmFormField .reservingClassWrap,
 .dfmFormField .dfmMethodNameWrap,
 .dfmFormField .dfmOutputVectorWrap {
   position: relative;
 }
 .dfmFormField .projectSelectWrap #projectSelect {
-  width: 100%;
-  padding-right: 34px;
-}
-.dfmFormField .reservingClassWrap #pathInput {
   width: 100%;
   padding-right: 34px;
 }

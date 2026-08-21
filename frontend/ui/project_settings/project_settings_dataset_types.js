@@ -15,6 +15,11 @@ import {
 } from "/ui/project_settings/project_settings_dataset_types_job.js?v=20260820dtjob1";
 import { createDatasetTypeCategoryCombo } from "/ui/project_settings/project_settings_dataset_type_category_combo.js?v=20260811dtcategory1";
 import { createDatasetTypeFormatSelect } from "/ui/project_settings/project_settings_dataset_type_format_select.js?v=20260812dtformat2";
+import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
+import {
+  clearTableSkeletonRows,
+  renderTableSkeletonRows,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
 
 export function createDatasetTypesFeature(deps = {}) {
   const {
@@ -62,6 +67,20 @@ export function createDatasetTypesFeature(deps = {}) {
   } = deps;
 
   const DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula"];
+
+  /**
+   * How a formula reads in this table. One shared formatter serves this grid,
+   * the Project Instance dataset table, and the Dataset Viewer Formula field,
+   * so the same formula never reads three ways. The stored text is untouched;
+   * the raw value stays on the cell for copy and for the row editor.
+   */
+  function displayDatasetTypeFormula(rows, formula) {
+    const knownNames = (rows || [])
+      .map((row) => String(row?.[0] ?? "").trim())
+      .filter(Boolean);
+    return formatDetailsFormulaText(formula, knownNames);
+  }
+
   const DATASET_TYPES_SORTABLE_COLS = new Set([...DATASET_TYPES_COLUMNS]);
   const DATASET_TYPES_FILTERABLE_COLS = new Set(["Name", "Data Format", "Category", "Calculated"]);
   const DATASET_TYPES_BLANK_CATEGORY_KEY = "__blank__";
@@ -1034,9 +1053,17 @@ export function createDatasetTypesFeature(deps = {}) {
     return { columns: [...DATASET_TYPES_COLUMNS], rows };
   }
 
+  /** Flowing placeholder rows while the types are read from the project folder. */
+  function renderDatasetTypesLoading() {
+    if (!datasetTypesBody) return;
+    closeDatasetTypesCategoryFilterPopover();
+    renderTableSkeletonRows(datasetTypesBody, { columns: 5 });
+  }
+
   function renderDatasetTypesEmpty(message) {
     if (!datasetTypesBody) return;
     closeDatasetTypesCategoryFilterPopover();
+    clearTableSkeletonRows(datasetTypesBody);
     datasetTypesBody.innerHTML = `
       <tr>
         <td colspan="5" class="dataset-types-empty">${escapeHtml(message || "No rows found.")}</td>
@@ -1351,6 +1378,7 @@ export function createDatasetTypesFeature(deps = {}) {
       ? sortedGroups.filter((group) => categorySelected.has(group.key))
       : sortedGroups;
 
+    clearTableSkeletonRows(datasetTypesBody);
     datasetTypesBody.innerHTML = "";
 
     if (visibleGroups.length === 0) {
@@ -1432,8 +1460,13 @@ export function createDatasetTypesFeature(deps = {}) {
               td.style.textAlign = "center";
               td.appendChild(checkbox);
             } else {
+              const raw = String(state.rows[rowIndex][colIndex] ?? "");
               const span = document.createElement("span");
-              span.textContent = String(state.rows[rowIndex][colIndex] ?? "");
+              span.textContent = colName === "Formula"
+                ? displayDatasetTypeFormula(state.rows, raw)
+                : raw;
+              // Copy and the row editor want what is stored, not how it reads.
+              if (colName === "Formula" && span.textContent !== raw) td.dataset.rawValue = raw;
               td.appendChild(span);
             }
             if (isInvalidFormulaCell) {
@@ -1452,7 +1485,7 @@ export function createDatasetTypesFeature(deps = {}) {
             hideTreeContextMenu();
             hideReservingClassTypesRowContextMenu();
             const cell = e.target?.closest?.("td");
-            let cellText = cell ? String(cell.textContent ?? "") : "";
+            let cellText = cell ? String(cell.dataset?.rawValue ?? cell.textContent ?? "") : "";
             const checkbox = cell?.querySelector?.('input[type="checkbox"]');
             if (checkbox) cellText = checkbox.checked ? "TRUE" : "FALSE";
             showDatasetTypesRowContextMenu(e.clientX, e.clientY, projectName, rowIndex, cellText);
@@ -1488,6 +1521,10 @@ export function createDatasetTypesFeature(deps = {}) {
     }
 
     setDatasetTypesStatus("Loading dataset types...");
+    // A cached project renders in the same tick; only a real read needs the frame.
+    if (!loadedDatasetTypesByProject.has(normalizeProjectKey(projectName))) {
+      renderDatasetTypesLoading();
+    }
     const loadedOk = await ensureDatasetTypesLoaded(projectName);
     if (requestSeq !== datasetTypesLoadSeq) return;
     renderDatasetTypesTable(projectName);
@@ -2078,6 +2115,7 @@ export function createDatasetTypesFeature(deps = {}) {
     waitForRunningDatasetTypesChange,
     setDatasetTypesStatus,
     renderDatasetTypesEmpty,
+    renderDatasetTypesLoading,
     ensureDatasetTypesLoaded,
     showDatasetTypesRowContextMenu,
     hideDatasetTypesRowContextMenu,

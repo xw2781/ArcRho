@@ -6,20 +6,21 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Development Factor Method</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b"/>
+<link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260807a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
-  <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260715a"/>
+  <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260811c"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260812a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260820a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
@@ -34,89 +35,106 @@
     <button class="dfmTab tabbedPageTab" data-page="audit" type="button">Audit Log</button>
   </div>
   <div id="dfmDetailsPage" class="arDetailsRoot">
-    <!-- One ungrouped, evenly spaced field list: Name first, Output Type second,
-         then the remaining Details fields. -->
+    <!-- Identity, then the input this method develops, then the shape and
+         precision of its output. Name is the first row and Output Type the
+         second, as on every Details tab. -->
     <div class="dfmSection">
-      <div class="dfmFormGrid arDetailsGrid">
-        <label class="arDetailsLabel" for="dfmMethodName">Name : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="dfmMethodNameWrap">
-            <input id="dfmMethodName" type="text" placeholder="Enter the method name" />
-            <button id="dfmMethodNameBtn" type="button" class="pathTreeBtn" title="Select DFM method name" aria-label="Select DFM method name">...</button>
-            <div id="dfmMethodNameDropdown" class="datasetDropdown"></div>
+      <div class="arDetailsSection">
+        <div class="arDetailsGrid">
+          <label class="arDetailsLabel" for="dfmMethodName">Name : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="dfmMethodNameWrap">
+              <input id="dfmMethodName" type="text" placeholder="Enter the method name" />
+              <button id="dfmMethodNameBtn" type="button" class="pathTreeBtn" title="Select DFM method name" aria-label="Select DFM method name">...</button>
+              <div id="dfmMethodNameDropdown" class="datasetDropdown"></div>
+            </div>
+            <div id="dfmInstanceMissingNotice" class="dfmInstanceMissingNotice" aria-live="polite">
+              <span id="dfmInstanceMissingText">This DFM instance has not been created, click confirm to generate it.</span>
+              <button id="dfmInstanceConfirmBtn" type="button" class="dfmActionBtn">Confirm</button>
+            </div>
           </div>
-          <div id="dfmInstanceMissingNotice" class="dfmInstanceMissingNotice" aria-live="polite">
-            <span id="dfmInstanceMissingText">This DFM instance has not been created, click confirm to generate it.</span>
-            <button id="dfmInstanceConfirmBtn" type="button" class="dfmActionBtn">Confirm</button>
+          <label class="arDetailsLabel" for="dfmOutputVector">Output Type : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="dfmOutputVectorWrap">
+              <input id="dfmOutputVector" type="text" placeholder="Select output type" />
+              <button id="dfmOutputVectorBtn" type="button" class="pathTreeBtn" title="Select output type" aria-label="Select output type">...</button>
+              <div id="dfmOutputVectorDropdown" class="datasetDropdown"></div>
+            </div>
           </div>
-        </div>
-        <label class="arDetailsLabel" for="dfmOutputVector">Output Type : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="dfmOutputVectorWrap">
-            <input id="dfmOutputVector" type="text" placeholder="Select output type" />
-            <button id="dfmOutputVectorBtn" type="button" class="pathTreeBtn" title="Select output type" aria-label="Select output type">...</button>
-            <div id="dfmOutputVectorDropdown" class="datasetDropdown"></div>
+          <label class="arDetailsLabel" data-details-field="project" for="projectSelect">Project : </label>
+          <div class="dfmFormField arDetailsField" data-details-field="project">
+            <div class="projectSelectWrap">
+              <input id="projectSelect" autocomplete="off" />
+              <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">...</button>
+              <div id="projectDropdown" class="projectDropdown"></div>
+            </div>
           </div>
-        </div>
-        <label class="arDetailsLabel" data-details-field="project" for="projectSelect">Project : </label>
-        <div class="dfmFormField arDetailsField" data-details-field="project">
-          <div class="projectSelectWrap">
-            <input id="projectSelect" autocomplete="off" />
-            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">...</button>
-            <div id="projectDropdown" class="projectDropdown"></div>
-          </div>
-        </div>
-        <label class="arDetailsLabel" for="pathInput">Segment : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="reservingClassWrap">
-            <input id="pathInput" />
-            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse segments" aria-label="Browse segments">...</button>
-          </div>
-        </div>
-        <label class="arDetailsLabel" for="triInput">Input Triangle : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="datasetSelectWrap">
-            <input id="triInput" autocomplete="off" />
-            <button id="dfmTriTypeBtn" type="button" class="datasetTreeBtn" title="Select input triangle" aria-label="Select input triangle">...</button>
-            <div id="datasetDropdown" class="datasetDropdown"></div>
-            <div id="dfmTriTypeDropdown" class="datasetDropdown"></div>
+          <label class="arDetailsLabel" for="pathInput">Segment : </label>
+          <div class="dfmFormField arDetailsField">
+            <input id="pathInput" readonly />
           </div>
         </div>
       </div>
-      <div class="dfmFormGrid3">
-        <label class="arDetailsLabel" for="originLenSelect">Origin Length : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="dfmSpinner" data-target="originLenSelect">
-            <select id="originLenSelect"></select>
-            <div class="dfmSpinBtns">
-              <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
-              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+
+      <div class="arDetailsSection">
+        <div class="arDetailsGrid">
+          <label class="arDetailsLabel" for="triInput">Input Triangle : </label>
+          <div class="dfmFormField arDetailsField">
+            <div class="datasetSelectWrap">
+              <input id="triInput" autocomplete="off" />
+              <button id="dfmTriTypeBtn" type="button" class="datasetTreeBtn" title="Select input triangle" aria-label="Select input triangle">...</button>
+              <div id="datasetDropdown" class="datasetDropdown"></div>
+              <div id="dfmTriTypeDropdown" class="datasetDropdown"></div>
+            </div>
+          </div>
+          <label class="arDetailsLabel" id="dfmPrecedentsLabel">Precedents : </label>
+          <div class="arDetailsField">
+            <div class="arDetailsChipBox">
+              <div id="dfmPrecedentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="dfmPrecedentsLabel"></div>
+            </div>
+          </div>
+          <label class="arDetailsLabel" id="dfmDependentsLabel">Dependents : </label>
+          <div class="arDetailsField">
+            <div class="arDetailsChipBox">
+              <div id="dfmDependentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="dfmDependentsLabel"></div>
             </div>
           </div>
         </div>
-        <div class="dfmFormField arDetailsField"></div>
-        <label class="arDetailsLabel" for="devLenSelect">Development Length : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="dfmSpinner" data-target="devLenSelect">
-            <select id="devLenSelect"></select>
-            <div class="dfmSpinBtns">
-              <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
-              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+      </div>
+
+      <div class="arDetailsSection">
+        <div class="arDetailsGrid">
+          <label class="arDetailsLabel" for="originLenSelect">Origin Length : </label>
+          <div class="dfmFormField arDetailsField arDetailsShortField">
+            <div class="dfmSpinner" data-target="originLenSelect">
+              <select id="originLenSelect"></select>
+              <div class="dfmSpinBtns">
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+          <label class="arDetailsLabel" for="devLenSelect">Development Length : </label>
+          <div class="dfmFormField arDetailsField arDetailsShortField">
+            <div class="dfmSpinner" data-target="devLenSelect">
+              <select id="devLenSelect"></select>
+              <div class="dfmSpinBtns">
+                <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+              </div>
+            </div>
+          </div>
+          <label class="arDetailsLabel" for="decimalPlaces">Decimal Places : </label>
+          <div class="dfmFormField arDetailsField arDetailsShortField">
+            <div class="decimalPlacesWrap" data-dfm-spinner="decimalPlaces">
+              <input id="decimalPlaces" type="number" min="0" max="6" value="4" aria-label="Decimal Places" />
+              <div class="decimalPlacesStepper">
+                <button class="decimalPlacesStepBtn" data-step-direction="up" type="button" aria-label="Increase Decimal Places"><span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span></button>
+                <button class="decimalPlacesStepBtn" data-step-direction="down" type="button" aria-label="Decrease Decimal Places"><span class="datasetStepperCaret" aria-hidden="true"></span></button>
+              </div>
             </div>
           </div>
         </div>
-        <div class="dfmFormField arDetailsField"></div>
-        <label class="arDetailsLabel" for="decimalPlaces">Decimal Places : </label>
-        <div class="dfmFormField arDetailsField">
-          <div class="decimalPlacesWrap" data-dfm-spinner="decimalPlaces">
-            <input id="decimalPlaces" type="number" min="0" max="6" value="4" aria-label="Decimal Places" />
-            <div class="decimalPlacesStepper">
-              <button class="decimalPlacesStepBtn" data-step-direction="up" type="button" aria-label="Increase Decimal Places"><span class="datasetStepperCaret datasetStepperCaretUp" aria-hidden="true"></span></button>
-              <button class="decimalPlacesStepBtn" data-step-direction="down" type="button" aria-label="Decrease Decimal Places"><span class="datasetStepperCaret" aria-hidden="true"></span></button>
-            </div>
-          </div>
-        </div>
-        <div class="dfmFormField arDetailsField"></div>
       </div>
       <input id="cumulativeChk" type="checkbox" checked style="display:none;" />
       <input id="linkLenChk" type="checkbox" style="display:none;" />
@@ -355,13 +373,13 @@
 
   <script type="module">
     (async () => {
-      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260819a");
+      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260820b");
       try {
         await window.ADA_DATASET_READY;
       } catch (err) {
         console.error("Dataset boot failed before DFM initialization:", err);
       }
-      await import("/ui/method_pages/dfm/dfm_main.js?v=20260820a");
+      await import("/ui/method_pages/dfm/dfm_main.js?v=20260820b");
     })();
   </script>
 </body>

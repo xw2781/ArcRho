@@ -73,6 +73,24 @@ body {
 #ccDetailsPage {
   width: 100%;
 }
+/* The Method page fills the tab host so the table stops just inside the host
+   border instead of at a fixed viewport offset that left dead space below. */
+#ccMethodPage[style*="display: block"] {
+  display: flex !important;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+#ccMethodPage > .ccMethodToolbar {
+  flex: 0 0 auto;
+}
+#ccMethodPage > .ccTableWrap {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: none;
+}
 .ccDetailsStack {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -176,17 +194,18 @@ body {
   cursor: default;
   opacity: 0.55;
 }
-.ccMethodSources {
-  display: grid;
-  grid-template-columns: max-content minmax(220px, 520px) max-content;
-  gap: 6px 8px;
+/* The source rows are Details rows now, so the picker takes the field column and
+   its trailing note or Type control follows it inside the same cell. */
+.ccSourceField {
+  display: flex;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 8px;
+  min-width: 0;
 }
-.ccSourceLabel {
-  justify-self: end;
-  color: #000;
-  white-space: nowrap;
+.ccSourceField > .ccFieldControl {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 520px;
 }
 .ccSourceTypeNote {
   color: var(--cc-muted);
@@ -206,12 +225,18 @@ body {
   height: 28px;
   flex: 0 0 auto;
 }
+/* The toolbar keeps a single row at any window width: narrowing the window
+   never reflows it into a taller block, the groups just run off to the right
+   and the tab host scrolls horizontally to reach them. */
 .ccMethodToolbar {
   display: flex;
   align-items: stretch;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-bottom: 8px;
+}
+.ccMethodToolbar > .ccToolGroup {
+  flex: 0 0 auto;
 }
 .ccToolGroup {
   position: relative;
@@ -289,8 +314,7 @@ body {
 }
 .ccOriginLengthDropdown {
   position: relative;
-  width: 70px;
-  min-width: 60px;
+  width: 100%;
   height: 30px;
 }
 .ccDropdownButton {
@@ -337,6 +361,8 @@ body {
   z-index: 80;
   width: 100%;
   display: none;
+  /* Reset inherited nowrap (e.g. from .ccSourceTypeControl) so options stack. */
+  white-space: normal;
   padding: 3px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
@@ -347,6 +373,7 @@ body {
 .ccPriorModeDropdown.open .ccDropdownMenu,
 .ccOriginLengthDropdown.open .ccDropdownMenu { display: block; }
 .ccDropdownOption {
+  display: block;
   width: 100%;
   height: 24px;
   padding: 0 8px;
@@ -855,9 +882,7 @@ table.ccUltimatesTable {
 @media (max-width: 900px) {
   .ccShell { min-width: 0; }
   .ccFieldGrid { grid-template-columns: var(--ar-details-label-width) minmax(0, 1fr); }
-  .ccMethodSources { grid-template-columns: max-content minmax(0, 1fr); }
-  .ccMethodSources .ccSourceTypeNote,
-  .ccMethodSources .ccSourceTypeControl { grid-column: 2; justify-self: start; }
+  .ccSourceField { flex-wrap: wrap; }
   .ccToolControls { flex-wrap: wrap; }
   .ccChartHeader { align-items: flex-start; flex-direction: column; }
   .ccChartLegend { flex-wrap: wrap; justify-content: flex-start; }

@@ -1,4 +1,8 @@
 import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js";
+import {
+  clearTableSkeletonRows,
+  renderTableSkeletonRows,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
 
 const RULES_FORMAT = "arcrho-data-processing-rules-v1";
 
@@ -1125,6 +1129,8 @@ export function createDataProcessingRulesFeature(deps = {}) {
 
     const sequence = ++loadSequence;
     setRulesStatus("Loading data processing rules...");
+    // Every path from here reaches the project folder, so the frame always earns itself.
+    renderLoading();
     try {
       const response = await fetchImpl(`/data_processing_rules?project_name=${encodeURIComponent(name)}`);
       const payload = await readJsonResponse(response);
@@ -1148,8 +1154,16 @@ export function createDataProcessingRulesFeature(deps = {}) {
     }
   }
 
+  /** Flowing placeholder rows while the rules are read from the project folder. */
+  function renderLoading() {
+    if (!rulesBody) return;
+    hideRowContextMenu();
+    renderTableSkeletonRows(rulesBody, { columns: 5 });
+  }
+
   function renderEmpty(message) {
     if (!rulesBody) return;
+    clearTableSkeletonRows(rulesBody);
     rulesBody.innerHTML = "";
     const text = cleanText(message) || "No custom processing rules.";
     const row = document.createElement("tr");
@@ -1239,6 +1253,7 @@ export function createDataProcessingRulesFeature(deps = {}) {
       return;
     }
 
+    clearTableSkeletonRows(rulesBody);
     rulesBody.innerHTML = "";
     renderRulesTable(state, rules);
   }
@@ -2703,6 +2718,7 @@ export function createDataProcessingRulesFeature(deps = {}) {
     loadRules,
     renderRules,
     renderRulesEmpty: renderEmpty,
+    renderRulesLoading: renderLoading,
     openEditor,
     closeEditor,
     hideRowContextMenu,

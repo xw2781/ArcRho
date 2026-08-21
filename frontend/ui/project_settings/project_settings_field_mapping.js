@@ -1,3 +1,8 @@
+import {
+  clearTableSkeletonRows,
+  renderTableSkeletonRows,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
+
 export function createFieldMappingFeature(deps = {}) {
   const {
     fieldMappingBody = null,
@@ -49,9 +54,22 @@ export function createFieldMappingFeature(deps = {}) {
     fieldMappingStatus.classList.toggle("error", !!isError);
   }
 
+  /**
+   * Flowing placeholder rows while the fields are read.
+   *
+   * The field list arrives with the table summary, so this frame stays up for
+   * as long as Source Data's own busy frame does.
+   */
+  function renderFieldMappingLoading() {
+    if (!fieldMappingBody) return;
+    closeFieldMappingDatasetTypeDropdown();
+    renderTableSkeletonRows(fieldMappingBody, { columns: 4 });
+  }
+
   function renderFieldMappingEmpty(message) {
     if (!fieldMappingBody) return;
     closeFieldMappingDatasetTypeDropdown();
+    clearTableSkeletonRows(fieldMappingBody);
     fieldMappingBody.innerHTML = `
       <tr>
         <td colspan="4" class="field-mapping-empty">${escapeHtml(message || "No fields available.")}</td>
@@ -455,6 +473,7 @@ export function createFieldMappingFeature(deps = {}) {
     const state = getProjectFieldMappingState(projectName);
     const datasetTypeOptions = getDatasetTypeNamesForProject(projectName, { formulaEmptyOnly: true });
     const datasetTypeOptionIndex = buildDatasetTypeOptionIndex(datasetTypeOptions);
+    clearTableSkeletonRows(fieldMappingBody);
     fieldMappingBody.innerHTML = "";
 
     for (const fieldName of fieldNames) {
@@ -912,6 +931,7 @@ export function createFieldMappingFeature(deps = {}) {
   return {
     setFieldMappingStatus,
     renderFieldMappingEmpty,
+    renderFieldMappingLoading,
     updateSaveFieldMappingButton,
     ensureFieldMappingLoaded,
     findDatasetTypeOwner,

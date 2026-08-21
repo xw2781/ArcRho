@@ -1,5 +1,5 @@
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
-import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 export function mountDatasetViewer(container) {
@@ -16,78 +16,82 @@ export function mountDatasetViewer(container) {
     <button class="dsTab tabbedPageTab" data-page="auditLog" type="button">Audit Log</button>
   </div>
 
-  <!-- Details tab page: one ungrouped field list, Name first and Dataset Type
-       second, so every Details tab in the app opens the same way. -->
+  <!-- Details tab page: identity first, then what this dataset is computed from
+       and what consumes it. Name is the first row and Dataset Type the second,
+       so every Details tab in the app opens the same way. -->
   <div id="dsDetailsPage" class="arDetailsRoot" style="display:none;">
-    <div class="dsDetailsPanel arDetailsGroup" id="topFrame">
-      <div class="dsDetailsGrid arDetailsGrid">
-        <div class="dsDetailLabel arDetailsLabel">
-          <label for="dsDetailName">Name : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div class="dsDetailNameWrap">
-            <input id="dsDetailName" class="arDetailsControl" autocomplete="off" />
-            <span id="dsDetailNameWarning" class="dsDetailNameWarning" role="tooltip" aria-live="polite" hidden></span>
+    <div id="topFrame">
+      <div class="arDetailsSection">
+        <div class="arDetailsGrid">
+          <div class="dsDetailLabel arDetailsLabel">
+            <label for="dsDetailName">Name : </label>
+          </div>
+          <div class="dsDetailInput arDetailsField">
+            <div class="dsDetailNameWrap">
+              <input id="dsDetailName" class="arDetailsControl" autocomplete="off" />
+              <span id="dsDetailNameWarning" class="dsDetailNameWarning" role="tooltip" aria-live="polite" hidden></span>
+            </div>
+          </div>
+
+          <div class="dsDetailLabel arDetailsLabel">
+            <label for="triInput">Dataset Type : </label>
+          </div>
+          <div class="dsDetailInput arDetailsField">
+            <div class="datasetSelectWrap">
+              <input id="triInput" class="arDetailsControl" autocomplete="off" />
+              <button id="datasetTreeBtn" type="button" class="datasetTreeBtn" title="Browse dataset types" aria-label="Browse dataset types">...</button>
+              <div id="datasetDropdown" class="datasetDropdown"></div>
+            </div>
+          </div>
+
+          <div class="dsDetailLabel arDetailsLabel" data-details-field="project">
+            <label for="projectSelect">Project Name : </label>
+          </div>
+          <div class="dsDetailInput arDetailsField" data-details-field="project">
+            <div class="projectSelectWrap">
+              <input id="projectSelect" class="arDetailsControl" autocomplete="off" />
+              <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
+                ...
+              </button>
+              <div id="projectDropdown" class="projectDropdown"></div>
+            </div>
+          </div>
+
+          <div class="dsDetailLabel arDetailsLabel">
+            <label for="pathInput">Segment : </label>
+          </div>
+          <div class="dsDetailInput arDetailsField">
+            <input id="pathInput" class="arDetailsControl" readonly />
           </div>
         </div>
+      </div>
 
-        <div class="dsDetailLabel arDetailsLabel">
-          <label for="triInput">Dataset Type : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div class="datasetSelectWrap">
-            <input id="triInput" class="arDetailsControl" autocomplete="off" />
-            <button id="datasetTreeBtn" type="button" class="datasetTreeBtn" title="Browse dataset types" aria-label="Browse dataset types">...</button>
-            <div id="datasetDropdown" class="datasetDropdown"></div>
+      <div class="arDetailsSection">
+        <div class="arDetailsGrid">
+          <div class="dsDetailLabel arDetailsLabel">
+            <label id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
           </div>
-        </div>
-
-        <div class="dsDetailLabel arDetailsLabel" data-details-field="project">
-          <label for="projectSelect">Project Name : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField" data-details-field="project">
-          <div class="projectSelectWrap">
-            <input id="projectSelect" class="arDetailsControl" autocomplete="off" />
-            <button id="projectTreeBtn" type="button" class="projectTreeBtn" title="Browse project folders" aria-label="Browse project folders">
-              ...
-            </button>
-            <div id="projectDropdown" class="projectDropdown"></div>
+          <div class="dsDetailInput arDetailsField">
+            <div id="dsDetailFormulaBox" class="arDetailsFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
+            <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1" tabindex="-1" aria-hidden="true"></textarea>
           </div>
-        </div>
 
-        <div class="dsDetailLabel arDetailsLabel">
-          <label for="pathInput">Segment : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div class="reservingClassWrap">
-            <input id="pathInput" class="arDetailsControl" />
-            <button id="pathTreeBtn" type="button" class="pathTreeBtn" title="Browse segments" aria-label="Browse segments">...</button>
+          <div class="dsDetailLabel arDetailsLabel">
+            <label id="dsPrecedentsTitle">Precedents : </label>
           </div>
-        </div>
-
-        <div class="dsDetailLabel arDetailsLabel">
-          <label id="dsFormulaLabel" for="dsDetailFormulaBox">Formula : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div id="dsDetailFormulaBox" class="dsDetailFormulaBox" role="group" aria-labelledby="dsFormulaLabel"></div>
-          <textarea id="dsDetailFormula" autocomplete="off" readonly rows="1" tabindex="-1" aria-hidden="true"></textarea>
-        </div>
-
-        <div class="dsDetailLabel arDetailsLabel">
-          <label id="dsPrecedentsTitle">Precedents : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div class="dsDatasetChipBox">
-            <div id="dsPrecedentsList" class="dsDatasetChipList" aria-live="polite"></div>
+          <div class="dsDetailInput arDetailsField">
+            <div class="arDetailsChipBox">
+              <div id="dsPrecedentsList" class="arDetailsChipList" aria-live="polite"></div>
+            </div>
           </div>
-        </div>
 
-        <div class="dsDetailLabel arDetailsLabel">
-          <label id="dsDependentsTitle">Dependents : </label>
-        </div>
-        <div class="dsDetailInput arDetailsField">
-          <div class="dsDatasetChipBox">
-            <div id="dsDependentsList" class="dsDatasetChipList" aria-live="polite"></div>
+          <div class="dsDetailLabel arDetailsLabel">
+            <label id="dsDependentsTitle">Dependents : </label>
+          </div>
+          <div class="dsDetailInput arDetailsField">
+            <div class="arDetailsChipBox">
+              <div id="dsDependentsList" class="arDetailsChipList" aria-live="polite"></div>
+            </div>
           </div>
         </div>
       </div>

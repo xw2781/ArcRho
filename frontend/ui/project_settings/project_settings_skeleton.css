@@ -1,0 +1,68 @@
+/*
+ * Project Settings - loading skeleton primitives.
+ *
+ * Canonical owner of the flowing placeholder every ribbon page shows while it
+ * reads the project folder over the network. Source Data's column list and the
+ * Field Mapping, Reserving Class Types, Dataset Types, Data Processing Rules,
+ * and Audit Log tables all paint from these tokens, this bar class, and this
+ * keyframe, so the six tabs cannot drift apart.
+ */
+
+.project-settings-page {
+  --ps-skeleton-base: var(--ar-color-surface-muted, #e9eef4);
+  --ps-skeleton-sheen: var(--ar-color-surface-raised, #f6f9fc);
+  --ps-skeleton-fill: linear-gradient(
+    90deg,
+    var(--ps-skeleton-base) 25%,
+    var(--ps-skeleton-sheen) 37%,
+    var(--ps-skeleton-base) 63%
+  );
+}
+
+/* One placeholder bar. Width belongs to the surface that places it. */
+.ps-skeleton-bar {
+  display: block;
+  height: 9px;
+  border-radius: 3px;
+  background-color: var(--ps-skeleton-base);
+  background-image: var(--ps-skeleton-fill);
+  background-size: 400% 100%;
+  animation: ps-skeleton-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes ps-skeleton-sweep {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/*
+ * Table tabs: one bar per cell inside the real row frame, so the arriving rows
+ * land on the same 31px grid the placeholder occupied.
+ */
+/*
+ * A placeholder is not a target: pointer-events also keeps every themed
+ * `tbody tr:hover td` rule from lighting the row up, without each theme
+ * needing its own exclusion.
+ */
+.ps-skeleton-row {
+  pointer-events: none;
+  user-select: none;
+}
+.ps-skeleton-row > td {
+  vertical-align: middle;
+}
+.ps-skeleton-row > td > .ps-skeleton-bar { width: 62%; }
+.ps-skeleton-row:nth-child(2n) > td > .ps-skeleton-bar { width: 78%; }
+.ps-skeleton-row:nth-child(3n) > td > .ps-skeleton-bar { width: 46%; }
+.ps-skeleton-row:nth-child(5n) > td > .ps-skeleton-bar { width: 88%; }
+.ps-skeleton-row > td:first-child > .ps-skeleton-bar { width: 70%; }
+.ps-skeleton-row:nth-child(2n) > td:first-child > .ps-skeleton-bar { width: 52%; }
+.ps-skeleton-row > td:last-child > .ps-skeleton-bar { width: 84%; }
+.ps-skeleton-row:nth-child(3n) > td:last-child > .ps-skeleton-bar { width: 64%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-skeleton-bar {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}

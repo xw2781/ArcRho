@@ -42,7 +42,7 @@ import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_por
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
 import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260813e";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
-import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260817c";
+import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260820b";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 import {
   applyDecimalPlacesToDatasetNumberFormat,
@@ -54,7 +54,6 @@ import {
   isPersistedDfmMethodBootstrap,
 } from "/ui/shared/tabs/data/data_tab_context.js";
 import { mountDataTabPageHost } from "/ui/shared/tabs/data/data_tab_page_host_port.js";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js";
 import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
@@ -86,7 +85,7 @@ import {
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
 import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260805a";
-import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260726a";
+import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260820b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
@@ -248,42 +247,6 @@ export async function refreshDatasetExternalLinkRecords(ids) {
   return runtime.refreshDatasetExternalLinks({ ids });
 }
 
-async function openReservingClassTreeForDataset(targetInput) {
-  const projectName = runtime.getResolvedProjectValue();
-  const initialPath = targetInput
-    ? (runtime.isInputDefaultBound(targetInput) ? runtime.getResolvedReservingClassValue() : (targetInput.value || ""))
-    : "";
-  await openReservingClassPicker({
-    projectName,
-    initialPath,
-    anchorElement: targetInput || null,
-    setStatus: runtime.setStatus,
-    title: "Reserving Class",
-    onProjectMissing: (name) => {
-      alert(`Project "${name}" does not exist.`);
-      runtime.setStatus(`Project "${name}" does not exist.`);
-    },
-    onError: (err) => {
-      console.error("Failed to load reserving class tree:", err);
-      runtime.setStatus("Error loading reserving class paths.");
-    },
-    onSelect: async (path) => {
-      if (!targetInput) return;
-      runtime.setInputDefaultBound(targetInput, false);
-      const normalized = runtime.ensureReservingClassOption(path);
-      targetInput.value = normalized || normalizeReservingClassPath(path);
-      if (targetInput.value) {
-        runtime.setLastReservingClassSelection(targetInput.value);
-        runtime.clearInputInvalid(targetInput);
-      }
-      runtime.saveTriInputsToStorage();
-      await runtime.syncSidecarForCurrentDataset({ applyLengths: true });
-      runtime.setStatus("Loading dataset...");
-      runtime.scheduleAutoRun(0);
-    },
-  });
-}
-
 async function openProjectNameTreeForDataset(targetInput) {
   const initialProject = runtime.getResolvedProjectValue() || targetInput?.value || "";
   await openProjectNameTreePicker({
@@ -368,7 +331,6 @@ function applyGridSelectionFromState() {
 }
 
 Object.assign(runtime, {
-  openReservingClassTreeForDataset,
   openProjectNameTreeForDataset,
   openDatasetNameTreeForDataset,
   wireGridInteractions,
@@ -382,7 +344,6 @@ function wireEvents() {
     ...runtime,
     state,
     $,
-    openReservingClassTreeForDataset,
     openProjectNameTreeForDataset,
     openDatasetNameTreeForDataset,
     wireDatasetHostBridge,

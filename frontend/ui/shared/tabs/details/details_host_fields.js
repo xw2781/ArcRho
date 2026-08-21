@@ -1,7 +1,7 @@
 import {
   DETAILS_FIELD_ATTRIBUTE,
   setDetailsFieldsHidden,
-} from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+} from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
 
 export { DETAILS_FIELD_ATTRIBUTE };
 

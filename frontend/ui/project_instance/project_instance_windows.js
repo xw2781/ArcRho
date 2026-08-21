@@ -636,12 +636,12 @@ function lockDatasetViewerInputs(iframe, datasetTypeName, pathValue = state.sele
   if (triInput && datasetTypeName) {
     triInput.value = datasetTypeName;
   }
-  for (const id of ["projectTreeBtn", "pathTreeBtn"]) {
-    const button = doc.getElementById(id);
-    if (button) {
-      button.disabled = true;
-      button.title = "Set by the project instance tab";
-    }
+  // Segment has no picker at all any more, so only the project button is left
+  // to disable here.
+  const projectButton = doc.getElementById("projectTreeBtn");
+  if (projectButton) {
+    projectButton.disabled = true;
+    projectButton.title = "Set by the project instance tab";
   }
 }
 

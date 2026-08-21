@@ -13,6 +13,7 @@ const projectSettingsHtml = await readFile(
 );
 const projectSettingsStylesheetNames = [
   "project_settings.css",
+  "project_settings_skeleton.css",
   "project_settings_summary.css",
   "project_settings_field_mapping.css",
   "project_settings_dataset_types.css",
@@ -73,6 +74,7 @@ test("Project Settings loads its external stylesheets in cascade order", () => {
 test("Project Settings stylesheet split keeps feature rules with their owners", () => {
   const ownershipMarkers = new Map([
     ["project_settings.css", /\/\* Shared data-grid frames and tables \*\//],
+    ["project_settings_skeleton.css", /@keyframes ps-skeleton-sweep\s*\{/],
     ["project_settings_summary.css", /\.sd-columns\s*\{/],
     ["project_settings_field_mapping.css", /\.fm-dataset-type-dropdown\s*\{/],
     ["project_settings_dataset_types.css", /#datasetTypesTable \.dt-filter-btn\s*\{/],

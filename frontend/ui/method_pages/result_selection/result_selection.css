@@ -661,11 +661,10 @@ body {
   min-width: 106px;
 }
 .rsOriginLengthDropdown {
-  width: 70px;
-  min-width: 60px;
+  width: 100%;
 }
 .rsOriginLengthDropdown .rsDropdownMenu {
-  width: 70px;
+  width: 100%;
 }
 .rsRatioBasisDropdown {
   width: min(340px, 32vw);

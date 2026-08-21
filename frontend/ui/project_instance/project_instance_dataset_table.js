@@ -1,4 +1,5 @@
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
+import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
 import {
   BERQUIST_SHERMAN_VARIANTS,
   berquistShermanDisplayLabel,
@@ -853,6 +854,18 @@ function getDatasetName(row) {
   return toText(row?.[0]);
 }
 
+/**
+ * How a formula reads in this table. One shared formatter serves this grid, the
+ * Project Settings Dataset Types table, and the Dataset Viewer Formula field, so
+ * the same formula never reads three ways. The dataset-type rows are the names
+ * an unquoted formula can refer to; without them a name holding `-` or `/` -
+ * "C 22 - CWOP DFM w/ Selected LDFs" - cannot be told from an expression.
+ */
+function displayDatasetFormula(formula) {
+  const knownNames = state.datasetRows.map(getDatasetName).filter(Boolean);
+  return formatDetailsFormulaText(formula, knownNames);
+}
+
 function getDatasetTypeRowByName(name) {
   const key = normalizeLookupKey(name);
   if (!key) return null;
@@ -1009,7 +1022,7 @@ function getDatasetCellValue(row, key) {
     case "dataFormat":
       return toText(row?.[1]);
     case "formula":
-      return toText(row?.[4]);
+      return displayDatasetFormula(row?.[4]);
     case "category":
       return toText(row?.[2]);
     case "methodType":
@@ -1042,9 +1055,9 @@ function getDatasetRecordCellValue(row, key, instance = null) {
     case "dataFormat":
       return instance ? (toText(instance?.data_format) || toText(row?.[1])) : toText(row?.[1]);
     case "formula":
-      return instance
+      return displayDatasetFormula(instance
         ? (meta?.formula || toText(instance?.formula) || toText(row?.[4]))
-        : toText(row?.[4]);
+        : toText(row?.[4]));
     case "category":
       return instance ? (getInstanceDatasetCategory(instance) || toText(row?.[2])) : toText(row?.[2]);
     case "methodType":

@@ -293,6 +293,9 @@
             selfWriteStamp: payload?.sidecar?.updated_at,
           });
           reconcilePersistedMutation(mutation, "dependency update during Result Selection save");
+          // A save rewrites the graph on both sides, so the Details rows are
+          // stale until they are re-read.
+          void ctx.refreshDetailsDependencies?.();
           try {
             window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
           } catch {}
@@ -346,6 +349,7 @@
           selfWriteStamp: payload?.sidecar?.updated_at,
         });
         reconcilePersistedMutation(mutation, "dependency update during Result Selection RPC sync");
+        void ctx.refreshDetailsDependencies?.();
         try {
           window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
         } catch {}

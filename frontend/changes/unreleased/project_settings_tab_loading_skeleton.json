@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Every Project Settings tab now shows the same flowing loading placeholder while it reads the project, instead of a bare \"Loading ...\" line.",
+  "details": [
+    "Field Mapping, Reserving Class Types, Dataset Types, Data Processing Rules, and Audit Log fill their grid with placeholder rows shaped like the table that is arriving, matching the effect Source Data already used.",
+    "Selecting a different project puts all of the tabs into that state at once, so the page reads as one load rather than six unrelated messages.",
+    "A tab whose data is already loaded for the selected project skips the placeholder instead of flashing it, and reduced-motion mode shows a static placeholder."
+  ]
+}

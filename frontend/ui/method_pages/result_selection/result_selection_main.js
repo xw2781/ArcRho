@@ -15,7 +15,8 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
+import { createDetailsDependenciesController } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
 import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selection/result_selection_rpc_bridge_client.js?v=20260817e";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
@@ -368,6 +369,23 @@ syncDetailsLabelWidth({
   root: "#rsDetailsPage",
   labelSelector: ".arDetailsLabel",
 });
+
+// The UI layer runs inside a `with (ctx)` block and cannot import, so the shared
+// Details dependency controller is built here and reached through `ctx`.
+const detailsDependencies = createDetailsDependenciesController({
+  precedentsList: "rsPrecedentsList",
+  dependentsList: "rsDependentsList",
+  // The graph is keyed by the dataset this method publishes, not the method.
+  getIdentity: () => ({
+    projectName: state.project,
+    reservingClass: state.reservingClass,
+    datasetName: ctx.getDetails().name,
+  }),
+  instanceId: inst,
+  isProjectInstanceHost: window.parent !== window,
+  setStatus: (message) => ctx.postStatus(message),
+});
+ctx.refreshDetailsDependencies = () => detailsDependencies.refresh().catch(() => null);
 
 ctx.init().catch((err) => {
   console.error("Result Selection initialization failed:", err);

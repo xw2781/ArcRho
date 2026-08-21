@@ -10,12 +10,12 @@
  *   - origin/development boundary months      -> project_settings_general_settings.js
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
-import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260223";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260816pssel1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260820dtjob1";
-import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260816pssel1";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260816pssel1";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260816pssel1";
+import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260820psskel1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260820psskel1";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260820psskel1";
+import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260820psskel1";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260820psskel1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260820psskel1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,17 +23,17 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260820dtjob1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260820psskel1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260820dtjob1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260820dtjob1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260820dtjob1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260820dtjob1";
-import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260820dtjob1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260818srj1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260820psskel1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260820psskel1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260820psskel1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260820psskel1";
+import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260820psskel1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260820psskel1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -645,7 +645,8 @@ function restoreSelectedProjectFromSession() {
  * Each ribbon page loads from the project folder on a network drive, so the
  * first rendered content is seconds away. Until then the previous project's
  * rows would still be on screen under the new project's title; this replaces
- * them with the panels' own loading state before the first request is sent.
+ * them with the same flowing placeholder Source Data shows, so switching
+ * projects reads as one busy page rather than six unrelated states.
  */
 function clearProjectDetailPanels(project) {
   detailEmpty.style.display = "none";
@@ -658,17 +659,17 @@ function clearProjectDetailPanels(project) {
   datasetTypesFeature?.closeDatasetTypeEditor();
   sourceDataFeature.resetForProjectChange();
 
-  fieldMappingFeature?.renderFieldMappingEmpty("Loading fields...");
+  fieldMappingFeature?.renderFieldMappingLoading();
   fieldMappingFeature?.setFieldMappingStatus("");
   // The previous project's unsaved edits must not leave Save actionable here.
   fieldMappingFeature?.updateSaveFieldMappingButton(project?.name);
-  reservingClassTypesFeature?.renderReservingClassTypesEmpty("Loading reserving class types...");
+  reservingClassTypesFeature?.renderReservingClassTypesLoading();
   reservingClassTypesFeature?.setReservingClassTypesStatus("");
-  datasetTypesFeature?.renderDatasetTypesEmpty("Loading dataset types...");
+  datasetTypesFeature?.renderDatasetTypesLoading();
   datasetTypesFeature?.setDatasetTypesStatus("");
-  dataProcessingRulesFeature?.renderRulesEmpty("Loading data processing rules...");
+  dataProcessingRulesFeature?.renderRulesLoading();
   dataProcessingRulesFeature?.setRulesStatus("");
-  auditLogStore.renderEmpty("Loading audit log...");
+  auditLogStore.renderLoading();
   auditLogStore.setStatus("");
 }
 
@@ -1157,6 +1158,8 @@ async function loadTableSummary(projectName = "", options = {}) {
   }
 
   sourceDataFeature.showLoading();
+  // The field list arrives with this summary, so both tabs stay busy together.
+  fieldMappingFeature?.renderFieldMappingLoading();
 
   try {
     if (forceRefresh && projectName) {

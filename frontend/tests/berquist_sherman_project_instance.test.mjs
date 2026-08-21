@@ -19,7 +19,7 @@ const [
   tableSource,
   windowsSource,
   messagesSource,
-  dataTabSource,
+  detailsDependenciesSource,
   indexServiceSource,
   sidecarStatusSource,
   migrationCoreSource,
@@ -30,7 +30,7 @@ const [
   readFile(new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_windows.js", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance_messages.js", import.meta.url), "utf8"),
-  readFile(new URL("../ui/shared/tabs/data/data_tab_details_controller.js", import.meta.url), "utf8"),
+  readFile(new URL("../ui/shared/tabs/details/details_dependencies.js", import.meta.url), "utf8"),
   readFile(new URL("../app_server/services/dataset_instance_index_service.py", import.meta.url), "utf8"),
   readFile(new URL("../app_server/services/dataset_sidecar_status_service.py", import.meta.url), "utf8"),
   readFile(new URL("../../python-api/migration/resq_migration/core.py", import.meta.url), "utf8"),
@@ -140,8 +140,10 @@ test("the shared method page uses the routed tab and generic lifecycle messages"
 
 test("method JSON and shared Data-tab links retain the canonical B&S method identity", () => {
   assert.match(messagesSource, /filename = `\$\{contract\.filenamePrefix\}\$\{namePart\}\.json`/u);
-  assert.match(dataTabSource, /getBerquistShermanContract\(text\)/u);
-  assert.match(dataTabSource, /return berquistShermanContract\.methodType/u);
+  // The routing that turns a persisted method_type into a B&S contract now lives
+  // in the shared Details dependency surface, which every method page uses too.
+  assert.match(detailsDependenciesSource, /getBerquistShermanContract\(text\)\?\.methodType/u);
+  assert.match(detailsDependenciesSource, /getBerquistShermanContract\(methodType\)\?\.displayLabel/u);
 });
 
 test("app-server and migration adapters retain every canonical frontend contract value", () => {

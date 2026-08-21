@@ -9,8 +9,9 @@ import {
   updateTabbedPageSaveControls,
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
-import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
+import { syncDetailsLabelWidth, syncDetailsSections } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
+import { createDetailsDependenciesController } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
   formatSidecarAuditEventDate,
@@ -2152,6 +2153,27 @@ function getPrecedentNames() {
   return names;
 }
 
+let detailsDependencies = null;
+
+function getDetailsDependencies() {
+  if (!detailsDependencies) {
+    detailsDependencies = createDetailsDependenciesController({
+      precedentsList: "bsPrecedentsList",
+      dependentsList: "bsDependentsList",
+      getIdentity: () => ({
+        projectName: state.project,
+        reservingClass: state.reservingClass,
+        datasetName: getDetails().name,
+      }),
+      getBerquistShermanContract,
+      instanceId: inst,
+      isProjectInstanceHost: window.parent !== window,
+      setStatus: (message) => postStatus(message),
+    });
+  }
+  return detailsDependencies;
+}
+
 // One place applies a loaded sidecar, whether it arrived with the page open or
 // from a later Audit-tab refresh.
 function applySidecarPayload(sidecar) {
@@ -2168,6 +2190,8 @@ function applySidecarPayload(sidecar) {
   }
   notesController.setValue(text(sidecar?.notes), { markClean: true });
   auditLogView.render(sidecar?.audit_log);
+  // The Details graph rows come from the same payload, so they cost no extra read.
+  getDetailsDependencies().apply(sidecar);
   return sidecar || null;
 }
 
@@ -2176,6 +2200,7 @@ async function loadSidecar() {
   const details = getDetails();
   if (!state.project || !state.reservingClass || !details.name) {
     auditLogView.clear();
+    getDetailsDependencies().clear();
     return null;
   }
   auditLogView.setLoading();
@@ -2198,6 +2223,7 @@ async function loadSidecar() {
   } catch (error) {
     if (requestSequence !== sidecarLoadSequence) return null;
     auditLogView.setError(`Could not load the audit log. ${text(error?.message || error)}`);
+    getDetailsDependencies().clear();
     return null;
   }
 }
@@ -2573,6 +2599,9 @@ async function init() {
   });
   els.srInputs.hidden = variant !== "sr";
   els.craInputs.hidden = variant !== "cra";
+  // The section divider is a `+` rule, so the hidden source section has to be
+  // resolved before the tab paints or the visible one keeps its leading rule.
+  syncDetailsSections("#bsDetailsPage");
   const initialTriangle = text(params.get("input_triangle"));
   if (initialTriangle) state.sourceNames.paid_claims = initialTriangle;
   syncSourceInputs();

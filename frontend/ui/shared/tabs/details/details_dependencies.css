@@ -1,0 +1,197 @@
+/*
+ * Look for the Details "inputs and dependencies" section: the formula field,
+ * the Precedents and Dependents chip boxes, and the formula hover tooltip.
+ *
+ * This sheet is the only owner of that look. It sits beside
+ * `details_form_layout.css` because the Dataset Viewer and all five method
+ * pages paint the same surface, and a page stylesheet must not restate it.
+ */
+
+.arDetailsRoot {
+  --ar-details-chip-border: #d4d4d4;
+  --ar-details-chip-background: #ffffff;
+  --ar-details-chip-hover-border: #9d9d9d;
+  --ar-details-chip-hover-background: #f6f9ff;
+  --ar-details-chip-box-border: #d7deea;
+  --ar-details-chip-box-background: #f8fafc;
+  --ar-details-formula-operator: #64748b;
+  --ar-details-calculated-icon: #2563eb;
+}
+
+/* ---- Precedents and Dependents ------------------------------------------ */
+
+.arDetailsChipBox {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px;
+  border: 1px solid var(--ar-details-chip-box-border);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-details-chip-box-background);
+  box-sizing: border-box;
+}
+
+.arDetailsChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+  align-items: center;
+}
+
+/* A related dataset is a set member, not part of an expression, so it keeps the
+   pill the formula gave up. */
+.arDetailsChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 360px;
+  min-height: 22px;
+  padding: 2px 9px;
+  border: 1px solid var(--ar-details-chip-border);
+  border-radius: 14px;
+  background: var(--ar-details-chip-background);
+  color: var(--ar-details-control-color, #000);
+  font-size: 12px;
+  font-family: var(--ar-details-font-family);
+  line-height: 16px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.arDetailsChip:hover,
+.arDetailsChip:focus {
+  border-color: var(--ar-details-chip-hover-border);
+  background: var(--ar-details-chip-hover-background);
+  outline: none;
+}
+
+.arDetailsChipLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Marks a related dataset that is itself calculated. It rides on the chip
+   rather than inside the formula, where it competed with the expression. */
+.arDetailsCalculatedIcon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ar-details-calculated-icon);
+  flex: 0 0 auto;
+}
+
+.arDetailsCalculatedIcon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- Formula ------------------------------------------------------------- */
+
+/* The formula reads as one expression rather than a row of chips, so the box is
+   the same field as every other Details row and only grows when it wraps.
+ *
+ * It always carries the read-only fill. A calculated dataset's formula belongs
+ * to its Dataset Type in Project Settings and cannot be edited from a Project
+ * Instance window, so the field must not look like somewhere to type. */
+.arDetailsFormulaBox {
+  width: 100%;
+  min-height: var(--ar-details-control-height, 30px);
+  max-height: 140px;
+  padding: 6px 10px;
+  border: 1px solid var(--ar-details-control-border, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-details-readonly-background, #f5f7fa);
+  color: var(--ar-details-readonly-color, #1f2b40);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-control-font-size, 12px);
+  line-height: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  align-items: center;
+  align-content: center;
+  overflow-y: auto;
+  white-space: normal;
+  cursor: default;
+  box-sizing: border-box;
+}
+
+.arDetailsFormulaBox.empty {
+  height: var(--ar-details-control-height, 30px);
+  overflow: hidden;
+}
+
+.arDetailsFormulaText {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  color: var(--ar-details-readonly-color, #000);
+  overflow-wrap: anywhere;
+}
+
+/* An operator is the character the user typed, not a token shape. */
+.arDetailsFormulaOperator {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  color: var(--ar-details-formula-operator);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-control-font-size, 12px);
+  line-height: 16px;
+}
+
+/* A quoted dataset name is body text, in the same colour as every other value on
+   the tab. It is deliberately not a link: the Precedents row below lists the
+   same sources as chips and owns opening them. */
+.arDetailsFormulaComponent {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 20px;
+  color: var(--ar-details-readonly-color, #000);
+  font-family: var(--ar-details-font-family);
+  font-size: var(--ar-details-control-font-size, 12px);
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Formula tooltip ----------------------------------------------------- */
+
+/* The tooltip is appended to `body`, outside any `.arDetailsRoot`, so it cannot
+   inherit the Details tokens and states its own values. */
+.arDetailsFormulaTooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(624px, calc(100vw - 24px));
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  color: #1e293b;
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  pointer-events: none;
+}
+
+.arDetailsFormulaTooltipBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+}

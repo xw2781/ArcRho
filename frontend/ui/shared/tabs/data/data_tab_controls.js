@@ -38,7 +38,6 @@ export function wireDatasetInputController(deps) {
     wireLenDropdowns,
     syncDetailDatasetTypeFromTopInput,
     clearInputInvalid,
-    openReservingClassTreeForDataset,
     showProjectDropdown,
     openProjectNameTreeForDataset,
     showDatasetDropdown,
@@ -107,7 +106,6 @@ export function wireDatasetInputController(deps) {
   $("toggleBlankBtn").addEventListener("click", toggleBlanks);
 
   const pathInput = document.getElementById("pathInput");
-  const pathTreeBtn = document.getElementById("pathTreeBtn");
   const triInput = document.getElementById("triInput");
   const datasetTreeBtn = document.getElementById("datasetTreeBtn");
   const projectSelect = document.getElementById("projectSelect");
@@ -124,14 +122,6 @@ export function wireDatasetInputController(deps) {
     const detailName = document.getElementById("dsDetailName");
     const hasInstanceName = !!String(detailName?.value || "").trim();
     syncDetailDatasetTypeFromTopInput(triInput.value, { syncName: !hasInstanceName });
-  }
-
-  if (pathTreeBtn && pathInput) {
-    pathTreeBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void openReservingClassTreeForDataset(pathInput);
-    });
   }
 
   if (projectTreeBtn && projectSelect) {
@@ -325,10 +315,8 @@ export function wireDatasetInputController(deps) {
     });
   }
   if (triInput) {
-    triInput.addEventListener("focus", () => {
-      filterDatasetOptions(triInput.value);
-    });
-
+    // Typing filters the list and ArrowDown opens it; putting the caret in the
+    // field does not, so the browse button stays the only pointer path in.
     triInput.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         const list = document.getElementById("datasetDropdown");
@@ -401,10 +389,6 @@ export function wireDatasetInputController(deps) {
   }
 
   if (projectSelect) {
-    projectSelect.addEventListener("focus", () => {
-      filterProjectOptions(getProjectFilterQuery(projectSelect));
-    });
-
     projectSelect.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         const list = document.getElementById("projectDropdown");

@@ -180,7 +180,9 @@ test("the Dataset Viewer and Berquist Sherman drive one Number Format component"
   assert.match(sharedCss, /\.arNumberFormatField\.open \.arNumberFormatCaret \{/u);
   assert.match(datasetHtml, /pickers\/number_format_field\.css/u);
   assert.match(datasetCss, /#datasetTopBar \.arNumberFormatField \{\s*width: 69px;/u);
-  assert.match(bsCss, /#bsNumberFormatField \{\s*width: 70px;/u);
+  // B&S shows Number Format in its own Details section rather than among the
+  // short numeric fields, so it takes the width its longest preset needs.
+  assert.match(bsCss, /#bsNumberFormatField \{\s*width: 110px;/u);
   assert.match(stepperCss, /\.decimalPlacesWrap \{\s*position: relative;\s*width: 69px;/u);
   assert.doesNotMatch(datasetCss, /\.arNumberFormatToggle \{/u);
   assert.doesNotMatch(datasetCss, /numberFormatDropdownBtn/u);

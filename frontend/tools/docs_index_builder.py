@@ -591,6 +591,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("ui/project_settings/project_settings.html", "Project settings workspace and panels."),
             ("ui/project_settings/project_settings.css", "Project settings shared shell and reusable feature styling."),
+            ("ui/project_settings/project_settings_skeleton.css", "Shared loading-skeleton tokens, bar, and placeholder rows."),
             ("ui/project_settings/project_settings_summary.css", "Source Data summary styling."),
             ("ui/project_settings/project_settings_field_mapping.css", "Field Mapping styling."),
             ("ui/project_settings/project_settings_dataset_types.css", "Dataset Types styling."),
@@ -609,6 +610,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_settings/project_settings_reserving_class_types.js", "Reserving class types feature module."),
             ("ui/project_settings/project_settings_data_processing_rules.js", "Data-processing rule editor, validation, and persistence UI module."),
             ("ui/project_settings/project_settings_audit.js", "Audit log UI helper."),
+            ("ui/project_settings/project_settings_skeleton.js", "Shared loading-skeleton row builder for the ribbon tables."),
         ],
     },
     "project_instance": {

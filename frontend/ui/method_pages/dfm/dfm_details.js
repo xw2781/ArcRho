@@ -15,8 +15,7 @@ import {
 import { resetRatioChartThresholds } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260820a";
 import {
   scheduleRatioSelectionLoad,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260820a";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260820b";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import {
   loadProjectUserPreferences,
@@ -533,7 +532,6 @@ export function wireMethodName() {
   pathInput?.addEventListener("change", triggerLoad);
   projectInput?.addEventListener("change", triggerLoad);
 
-  wireReservingClassPicker();
   wireDfmMethodNamePicker();
   wireOutputTypePicker();
   wireTriangleTypePicker();
@@ -611,37 +609,6 @@ export function wireDfmInstanceCreationNotice() {
   setDfmInstanceMissingNoticeVisible(false);
   // Inline "missing instance" notice beside Name is intentionally disabled.
   // New-object guidance is shown in the shell status bar (yellow warning) instead.
-}
-
-function wireReservingClassPicker() {
-  const pathInput = document.getElementById("pathInput");
-  const pathTreeBtn = document.getElementById("pathTreeBtn");
-  if (!pathInput || !pathTreeBtn || pathTreeBtn.dataset.wired === "1") return;
-  pathTreeBtn.dataset.wired = "1";
-
-  pathTreeBtn.addEventListener("click", async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const projectName = toText(getResolvedProjectName());
-    await openReservingClassPicker({
-      projectName,
-      initialPath: toText(getResolvedReservingClass()) || pathInput.value || "",
-      anchorElement: pathInput || null,
-      onProjectMissing: (name) => {
-        alert(`Project "${name}" does not exist.`);
-      },
-      onError: (err) => {
-        console.error("Failed to load reserving class tree:", err);
-        alert("Error loading reserving class paths.");
-      },
-      onSelect: (path) => {
-        pathInput.value = String(path || "");
-        pathInput.dispatchEvent(new Event("input", { bubbles: true }));
-        pathInput.dispatchEvent(new Event("change", { bubbles: true }));
-      },
-    });
-  });
 }
 
 function wireOutputTypePicker() {
@@ -760,19 +727,11 @@ function wireOutputTypePicker() {
     void openPicker({ forceReload: true, alertOnProjectMissing: true });
   });
 
-  let suppressNextClickOpen = false;
-
-  input.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (suppressNextClickOpen) return;
-    void openPicker({ forceReload: false, alertOnProjectMissing: false });
-  });
-
+  // The picker button is the only pointer path that opens the list. Clicking or
+  // tabbing into the field puts a caret in it, which is what a text box should
+  // do; ArrowDown below still opens the list from the keyboard.
   input.addEventListener("focus", () => {
     committedOutputType = toText(input.value);
-    suppressNextClickOpen = true;
-    setTimeout(() => { suppressNextClickOpen = false; }, 0);
-    void openPicker({ forceReload: false, alertOnProjectMissing: false });
   });
 
   input.addEventListener("input", () => {
@@ -900,20 +859,6 @@ function wireTriangleTypePicker() {
     e.preventDefault();
     e.stopPropagation();
     void openPicker({ forceReload: true, alertOnContextMissing: true });
-  });
-
-  let suppressNextClickOpen = false;
-
-  triInput.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (suppressNextClickOpen) return;
-    void openPicker({ forceReload: false, alertOnContextMissing: false });
-  });
-
-  triInput.addEventListener("focus", () => {
-    suppressNextClickOpen = true;
-    setTimeout(() => { suppressNextClickOpen = false; }, 0);
-    void openPicker({ forceReload: false, alertOnContextMissing: false });
   });
 
   triInput.addEventListener("input", () => {

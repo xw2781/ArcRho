@@ -38,6 +38,10 @@ const projectSettingsCss = await readFile(
   new URL("../ui/project_settings/project_settings.css", import.meta.url),
   "utf8",
 );
+const skeletonCss = await readFile(
+  new URL("../ui/project_settings/project_settings_skeleton.css", import.meta.url),
+  "utf8",
+);
 const summaryService = await readFile(
   new URL("../app_server/services/table_summary_service.py", import.meta.url),
   "utf8",
@@ -286,10 +290,12 @@ test("Source Data shows flowing placeholders while the table is copied or read",
   // The working surface stays in place and exposes a real busy state.
   assert.match(moduleSource, /function setSummaryLoading\(loading, message = ""\)/);
   assert.match(moduleSource, /setAttribute\("aria-busy", String\(summaryLoading\)\)/);
-  assert.match(moduleSource, /Array\.from\(\{ length: 7 \}/);
+  assert.match(moduleSource, /Array\.from\(\{ length: SKELETON_ROW_COUNT \}/);
   assert.match(moduleSource, /class="sd-row sd-loading-row"/);
-  assert.match(moduleSource, /class="sd-loading-bar sd-loading-bar-mark"/);
-  assert.match(moduleSource, /class="sd-loading-bar sd-loading-bar-summary"/);
+  assert.match(moduleSource, /\$\{bar\} sd-loading-bar-mark/);
+  assert.match(moduleSource, /\$\{bar\} sd-loading-bar-summary/);
+  // The flowing fill has one owner, so Source Data and the table tabs match.
+  assert.match(moduleSource, /const bar = `\$\{SKELETON_BAR_CLASS\} sd-loading-bar`/);
 
   // The three period fields and their picker actions stay inert and shimmer
   // until their values have been resolved from summary + saved settings.
@@ -297,9 +303,12 @@ test("Source Data shows flowing placeholders while the table is copied or read",
     assert.ok(moduleSource.includes(binding), `${binding} is not part of the loading state`);
   }
   assert.match(moduleSource, /\.\.\.dom\.monthPickerButtons, dom\.filter/);
-  assert.match(summaryCss, /\.table-summary\.is-loading \.sd-month input \{[\s\S]*?background-image: var\(--sd-loading-fill\);/);
-  assert.match(summaryCss, /\.sd-loading-bar \{[\s\S]*?animation: sd-loading-sweep 1\.15s ease-in-out infinite;/);
+  assert.match(summaryCss, /\.table-summary\.is-loading \.sd-month input \{[\s\S]*?background-image: var\(--ps-skeleton-fill\);/);
+  assert.match(skeletonCss, /\.ps-skeleton-bar \{[\s\S]*?animation: ps-skeleton-sweep 1\.15s ease-in-out infinite;/);
+  assert.match(skeletonCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(summaryCss, /@media \(prefers-reduced-motion: reduce\)/);
+  // Only the skeleton stylesheet paints the fill; the summary sheet sizes it.
+  assert.doesNotMatch(summaryCss, /@keyframes sd-loading-sweep|--sd-loading-base:/);
 
   // Import Data starts the same state before the potentially long copy call.
   const importBlock = moduleSource.split("async function importData()")[1].split("/* ---------------- tooltips")[0];

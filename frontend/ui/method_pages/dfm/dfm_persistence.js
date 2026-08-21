@@ -121,6 +121,7 @@ import {
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260820a";
+import { refreshDfmDetailsDependencies } from "/ui/method_pages/dfm/dfm_details_dependencies.js?v=20260820b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -1324,6 +1325,9 @@ async function loadRatioSelectionIfExistsOnce(reason) {
       hydrateNotes: true,
       outputDataset: currentDfmOutputDataset,
     });
+    // The raw method-load sidecar carries bare names; the Details rows want the
+    // enriched graph, so they are read through the shared Details loader.
+    void refreshDfmDetailsDependencies(currentDfmOutputDataset);
     recordCleanDfmMethodPayload(method);
     markDfmClean({ force: true });
     emitDfmInstancePresence("found");
@@ -1733,6 +1737,9 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
       hydrateNotes: true,
       outputDataset: currentDfmOutputDataset,
     });
+    // A save rewrites the graph on both sides, so the Details rows are stale
+    // until they are re-read.
+    void refreshDfmDetailsDependencies(currentDfmOutputDataset);
     recordCleanDfmMethodPayload(canonicalMethod);
     markMethodSaved();
     markDfmClean({ force: true });

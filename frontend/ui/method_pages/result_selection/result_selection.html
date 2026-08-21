@@ -6,16 +6,17 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Result Selection</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b"/>
+<link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/chart_legend/chart_legend.css?v=20260724b"/>
-  <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260817e"/>
+  <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -32,51 +33,76 @@
   </div>
   <div class="rsPageHost">
     <section id="rsDetailsPage" class="rsPage arDetailsRoot active">
-      <!-- One ungrouped, evenly spaced field list: Name first, Output Type
-           second, then the remaining Details fields. -->
-      <div class="rsDetailsBlock arDetailsGroup">
-        <div class="rsDetailsGrid arDetailsGrid">
-          <label class="arDetailsLabel" for="rsNameInput">Name : </label>
-          <div class="rsFieldRow arDetailsField">
-            <input id="rsNameInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
-          </div>
-          <label class="arDetailsLabel" for="rsOutputTypeInput">Output Type : </label>
-          <div class="rsFieldRow arDetailsField">
-            <div class="rsInputPicker">
-              <input id="rsOutputTypeInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
-              <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output type">...</button>
+      <!-- Identity, then the datasets the selection is built from, then the
+           shape of the output. Name is the first row and Output Type the
+           second, as on every Details tab. -->
+      <div class="rsDetailsBlock">
+        <div class="arDetailsSection">
+          <div class="rsDetailsGrid arDetailsGrid">
+            <label class="arDetailsLabel" for="rsNameInput">Name : </label>
+            <div class="rsFieldRow arDetailsField">
+              <input id="rsNameInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
             </div>
-          </div>
-          <label class="arDetailsLabel" for="rsOriginLengthButton">Origin Length : </label>
-          <div class="rsFieldRow arDetailsField">
-            <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect rsNativeSelectHidden" tabindex="-1" aria-hidden="true">
-              <option value="12">12</option>
-              <option value="6">6</option>
-              <option value="3">3</option>
-              <option value="1">1</option>
-            </select>
-            <div id="rsOriginLengthDropdown" class="rsDropdown rsOriginLengthDropdown">
-              <button id="rsOriginLengthButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Origin length">
-                <span id="rsOriginLengthLabel" class="rsDropdownLabel">12</span>
-                <span class="rsDropdownCaret" aria-hidden="true"></span>
-              </button>
-              <div id="rsOriginLengthMenu" class="rsDropdownMenu" role="listbox" aria-label="Origin length">
-                <button class="rsDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
-                <button class="rsDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
-                <button class="rsDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
-                <button class="rsDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+            <label class="arDetailsLabel" for="rsOutputTypeInput">Output Type : </label>
+            <div class="rsFieldRow arDetailsField">
+              <div class="rsInputPicker">
+                <input id="rsOutputTypeInput" class="rsInput arDetailsControl" type="text" autocomplete="off"/>
+                <button id="rsOutputTypeBtn" class="rsButton rsInputPickerBtn" type="button" title="Select output type">...</button>
               </div>
             </div>
           </div>
-          <label class="rsBasisLabel arDetailsLabel" for="rsRatioBasisAddBtn">Ratio Basis : </label>
-          <div class="rsFieldRow arDetailsField">
-            <div class="rsRatioBasisPicker">
-              <div id="rsRatioBasisList" class="rsRatioBasisList" role="list" aria-live="polite"></div>
-              <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" aria-label="Add ratio basis">+ Add datasets</button>
-              <input id="rsRatioBasisInput" type="hidden"/>
-              <input id="rsRatioBasisInput2" type="hidden"/>
-              <input id="rsRatioBasisInput3" type="hidden"/>
-              <input id="rsStatisticDecimalsInput" type="hidden" value="1"/>
+        </div>
+
+        <div class="arDetailsSection">
+          <div class="rsDetailsGrid arDetailsGrid">
+            <label class="rsBasisLabel arDetailsLabel" for="rsRatioBasisAddBtn">Ratio Basis : </label>
+            <div class="rsFieldRow arDetailsField">
+              <div class="rsRatioBasisPicker">
+                <div id="rsRatioBasisList" class="rsRatioBasisList" role="list" aria-live="polite"></div>
+                <button id="rsRatioBasisAddBtn" class="rsRatioBasisAdd" type="button" aria-label="Add ratio basis">+ Add datasets</button>
+                <input id="rsRatioBasisInput" type="hidden"/>
+                <input id="rsRatioBasisInput2" type="hidden"/>
+                <input id="rsRatioBasisInput3" type="hidden"/>
+                <input id="rsStatisticDecimalsInput" type="hidden" value="1"/>
+              </div>
+            </div>
+            <label class="arDetailsLabel" id="rsPrecedentsLabel">Precedents : </label>
+            <div class="arDetailsField">
+              <div class="arDetailsChipBox">
+                <div id="rsPrecedentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="rsPrecedentsLabel"></div>
+              </div>
+            </div>
+            <label class="arDetailsLabel" id="rsDependentsLabel">Dependents : </label>
+            <div class="arDetailsField">
+              <div class="arDetailsChipBox">
+                <div id="rsDependentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="rsDependentsLabel"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arDetailsSection">
+          <div class="rsDetailsGrid arDetailsGrid">
+            <label class="arDetailsLabel" for="rsOriginLengthButton">Origin Length : </label>
+            <div class="rsFieldRow arDetailsField arDetailsShortField">
+              <select id="rsOriginLengthInput" class="rsSelect rsOriginLengthSelect rsNativeSelectHidden" tabindex="-1" aria-hidden="true">
+                <option value="12">12</option>
+                <option value="6">6</option>
+                <option value="3">3</option>
+                <option value="1">1</option>
+              </select>
+              <div id="rsOriginLengthDropdown" class="rsDropdown rsOriginLengthDropdown">
+                <button id="rsOriginLengthButton" class="rsDropdownButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Origin length">
+                  <span id="rsOriginLengthLabel" class="rsDropdownLabel">12</span>
+                  <span class="rsDropdownCaret" aria-hidden="true"></span>
+                </button>
+                <div id="rsOriginLengthMenu" class="rsDropdownMenu" role="listbox" aria-label="Origin length">
+                  <button class="rsDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                  <button class="rsDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                  <button class="rsDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                  <button class="rsDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -198,10 +224,10 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
-  <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260813e"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260820b"></script>
   <script src="/ui/method_pages/result_selection/result_selection_data.js?v=20260725c"></script>
   <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260722a"></script>
-  <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260820a"></script>
-  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260817a"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260820b"></script>
+  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260820b"></script>
 </body>
 </html>

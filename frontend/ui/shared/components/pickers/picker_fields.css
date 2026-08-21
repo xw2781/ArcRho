@@ -1,12 +1,10 @@
 /* Shared project, reserving-class, and dataset picker fields. */
 .projectSelectWrap,
-.datasetSelectWrap,
-.reservingClassWrap {
+.datasetSelectWrap {
   position: relative;
   width: 100%;
 }
 
-.reservingClassWrap #pathInput,
 .projectSelectWrap #projectSelect,
 .datasetSelectWrap #triInput {
   padding-right: 34px;

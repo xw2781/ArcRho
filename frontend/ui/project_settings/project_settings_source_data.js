@@ -18,6 +18,10 @@
  */
 
 import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js";
+import {
+  SKELETON_BAR_CLASS,
+  SKELETON_ROW_COUNT,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
 
 const COLUMN_MIN_WIDTH = { name: 120, type: 74 };
 const DETAILS_CLOSE_DELAY_MS = 160;
@@ -754,13 +758,14 @@ export function createSourceDataFeature(deps = {}) {
   }
 
   function loadingRowsHtml() {
+    const bar = `${SKELETON_BAR_CLASS} sd-loading-bar`;
     return '<div class="sd-loading-rows" aria-hidden="true">'
-      + Array.from({ length: 7 }, (_unused, index) => (
+      + Array.from({ length: SKELETON_ROW_COUNT }, (_unused, index) => (
         `<div class="sd-row sd-loading-row" data-loading-row="${index}">`
-        + '<span class="sd-c-name"><i class="sd-loading-bar"></i></span>'
-        + '<span class="sd-c-type"><i class="sd-loading-bar"></i></span>'
-        + '<span class="sd-c-dist"><i class="sd-loading-bar sd-loading-bar-mark"></i>'
-        + '<i class="sd-loading-bar sd-loading-bar-summary"></i></span>'
+        + `<span class="sd-c-name"><i class="${bar}"></i></span>`
+        + `<span class="sd-c-type"><i class="${bar}"></i></span>`
+        + `<span class="sd-c-dist"><i class="${bar} sd-loading-bar-mark"></i>`
+        + `<i class="${bar} sd-loading-bar-summary"></i></span>`
         + "</div>"
       )).join("")
       + "</div>";

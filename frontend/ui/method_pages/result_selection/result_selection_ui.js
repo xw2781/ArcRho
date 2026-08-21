@@ -1569,6 +1569,7 @@
         }
         setTab(state.activeTab);
         markClean();
+        void ctx.refreshDetailsDependencies?.();
         if (loadError) {
           syncLoadBlockedControls();
           return;

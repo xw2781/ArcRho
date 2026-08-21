@@ -1,0 +1,19 @@
+{
+  "type": "improvement",
+  "scope": "ui",
+  "audience": "user",
+  "summary": "Every Details tab now groups its fields into ordered sections, shows Precedents and Dependents, and reads its formula as plain quoted text.",
+  "details": [
+    "Details rows are grouped in one order everywhere: identity, then what the output is computed from and what consumes it, then length and decimal settings, then any remaining settings. The groups carry no headings - a light line marks each boundary.",
+    "Every method page now shows Precedents and Dependents, the same chips the Dataset Viewer shows, for the dataset the method publishes. Clicking one opens that dataset or its method window, hovering shows its formula, and both refresh after a save.",
+    "Cape Cod moves its Latest, Exposure, and Prior Ultimate pickers from the Method tab to Details, so it matches Bornhuetter Ferguson and Berquist Sherman.",
+    "The Dataset Viewer formula now reads as plain text: operators are the characters you typed and each source is its name in double quotes, in normal body colour. Opening a source is the Precedents row's job, so the formula no longer doubles as a set of links.",
+    "A formula now reads the same in all three places that show one: the Dataset Viewer Formula field, the Project Settings Dataset Types table, and the Project Instance dataset table. Each dataset name is quoted and operator spacing is normalised, and a name containing '-' or '/' is no longer split into what looks like an expression.",
+    "The Formula field is shown with the read-only fill, since a calculated dataset's formula belongs to its Dataset Type in Project Settings and cannot be edited from a dataset window.",
+    "Origin Length, Development Length, and Decimal Places share one short width on every page that shows them, so the numeric fields line up as a column.",
+    "Segment is read-only on every Details tab and its browse button is gone, matching the fact that the host always fixes it.",
+    "A picker opens its list only from its own button. Clicking into the text box now just places a caret; typing still filters, and ArrowDown still opens the list.",
+    "Berquist Sherman moves Number Format into its own group, wide enough for its longest preset, and shows the source triangles above the length and decimal settings.",
+    "Result Selection and Bornhuetter Ferguson now list Origin Length after their dataset pickers rather than before them."
+  ]
+}

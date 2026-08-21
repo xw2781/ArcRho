@@ -123,6 +123,7 @@
   --ar-details-control-color: var(--ar-color-text);
   --ar-details-readonly-color: var(--ar-color-text-muted);
   --ar-details-control-border: var(--ar-color-border-strong);
+  --ar-details-section-divider: var(--ar-color-border-strong);
   --ar-details-control-background: var(--ar-color-input);
   --ar-details-readonly-background: var(--ar-color-surface-muted);
   --ar-details-focus-border: var(--ar-color-border-focus);
@@ -942,7 +943,7 @@
   color: inherit;
 }
 
-:root[data-arcrho-theme="dark"] :is(.arDetailsGroup, .arDetailsGrid, .arDetailsField) {
+:root[data-arcrho-theme="dark"] :is(.arDetailsSection, .arDetailsGrid, .arDetailsField) {
   background-color: transparent;
   color: var(--ar-color-text);
 }
@@ -1321,18 +1322,14 @@
   #datasetTopBar input,
   #datasetTopBar .lenSelectDisplay,
   .arNumberFormatToggle,
-  .dsDetailInput textarea,
-  .dsDetailFormulaBox
+  .dsDetailInput textarea
 ) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-input);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(
-  #datasetTopBar .lenDropdown,
-  .dsDependentFormulaTooltip
-) {
+:root[data-arcrho-theme="dark"] #datasetTopBar .lenDropdown {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
@@ -1390,46 +1387,29 @@
   color: var(--ar-color-text-muted);
 }
 
-:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsDetailFormulaBox, .dsDatasetChipBox) {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-input);
-  color: var(--ar-color-text);
+/* The Details dependency surface is shared by the Dataset Viewer and all five
+   method pages, so it is themed through its own tokens rather than per page. */
+:root[data-arcrho-theme="dark"] .arDetailsRoot {
+  --ar-details-chip-border: var(--ar-color-border-strong);
+  --ar-details-chip-background: var(--ar-color-surface-muted);
+  --ar-details-chip-hover-border: var(--ar-color-border-focus);
+  --ar-details-chip-hover-background: var(--ar-color-surface-raised);
+  --ar-details-chip-box-border: var(--ar-color-border-strong);
+  --ar-details-chip-box-background: var(--ar-color-input);
+  --ar-details-formula-operator: var(--ar-color-text-muted);
+  --ar-details-calculated-icon: var(--ar-color-accent);
 }
 
-:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsFormulaComponentChip, .dsDependentLink) {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-surface-muted);
-  color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] #dsDetailsPage :is(.dsFormulaComponentChip:hover, .dsFormulaComponentChip:focus, .dsDependentLink:hover, .dsDependentLink:focus) {
-  border-color: var(--ar-color-border-focus);
-  background-color: var(--ar-color-surface-raised);
+:root[data-arcrho-theme="dark"] .arDetailsChip:hover,
+:root[data-arcrho-theme="dark"] .arDetailsChip:focus {
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken {
+:root[data-arcrho-theme="dark"] .arDetailsFormulaTooltip {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
-  color: var(--ar-color-text-strong);
-}
-
-:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.plus {
-  border-color: var(--ar-color-success);
-  background-color: var(--ar-color-success-soft);
-  color: var(--ar-color-success);
-}
-
-:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.minus {
-  border-color: var(--ar-color-warning);
-  background-color: var(--ar-color-warning-soft);
-  color: var(--ar-color-warning);
-}
-
-:root[data-arcrho-theme="dark"] #dsDetailsPage .dsFormulaOperatorToken.equals {
-  border-color: var(--ar-color-border-focus);
-  background-color: var(--ar-color-accent-soft);
-  color: var(--ar-color-accent-strong);
+  color: var(--ar-color-text);
+  box-shadow: var(--ar-shadow-floating);
 }
 
 :root[data-arcrho-theme="dark"] :is(.datasetPrimaryBtn, .chartToggleBtn.active) {
@@ -1452,12 +1432,6 @@
 :root[data-arcrho-theme="dark"] :is(.datasetRecalcList, .datasetRecalcItem) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-canvas-subtle);
-}
-
-:root[data-arcrho-theme="dark"] :is(.dsFormulaComponentChip, .dsDatasetChipBox) {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface-muted);
-  color: var(--ar-color-text);
 }
 
 /* Development Factor Method. Selection/highlight paint remains feature-owned. */
@@ -2176,20 +2150,32 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.dataset-filter-chip, .dataset-index-update-btn) {
+:root[data-arcrho-theme="dark"] .dataset-filter-chip {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
   color: var(--ar-color-text-strong);
 }
 
+/* Warning yellow, matching the Needs review status icon in the table. */
+:root[data-arcrho-theme="dark"] .dataset-index-update-btn {
+  border-color: var(--ar-color-warning);
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
 :root[data-arcrho-theme="dark"] :is(
   .dataset-filter-chip:hover,
-  .dataset-index-update-btn:hover,
   .dataset-group-status.has-groups .dataset-group-placeholder:hover
 ) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-hover);
   color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .dataset-index-update-btn:hover {
+  border-color: var(--ar-color-warning);
+  background: color-mix(in srgb, var(--ar-color-warning) 22%, var(--ar-color-warning-soft));
+  color: var(--ar-color-warning);
 }
 
 :root[data-arcrho-theme="dark"] :is(

@@ -89,9 +89,9 @@ input {
 }
 
 /* Details follows the DFM/BF/CC/RS form: the stack supplies the page inset and
-   the scroll. B&S keeps the source sections only because it shows one of them
-   at a time; `--ar-details-group-separation` equals the row gap, so the fields
-   still read as one evenly spaced list. */
+   the scroll, and `.arDetailsSection` supplies the rule between one section and
+   the next. The two source sections are the pair B&S shows one at a time, so a
+   hidden one must leave no rule behind; `syncDetailsSections` resolves that. */
 .bsDetailsStack {
   display: grid;
   align-content: start;
@@ -140,14 +140,15 @@ input {
   outline: none;
 }
 
+/* `.arDetailsShortField` sizes the cell; the control fills it. */
 .bsLengthInput {
-  width: 70px;
+  width: 100%;
 }
 
-/* Keep the calculated-triangle Number Format picker aligned with the compact
-   Decimal Places stepper without narrowing the other Details fields. */
+/* Number Format is its own section rather than one of the short numeric fields,
+   so it takes the width its longest preset needs instead of their 70px. */
 #bsNumberFormatField {
-  width: 70px;
+  width: 110px;
 }
 
 /* The Details decimal-places spinner matches the read-only length fields, so
@@ -157,7 +158,7 @@ input {
 .bsDecimalPlacesWrap {
   --topbar-control-height: 30px;
   display: inline-flex;
-  width: 70px;
+  width: 100%;
 }
 
 .bsDecimalPlacesInput {

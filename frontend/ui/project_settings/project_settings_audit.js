@@ -1,3 +1,8 @@
+import {
+  clearTableSkeletonRows,
+  renderTableSkeletonRows,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
+
 export class AuditLogStore {
   constructor(options = {}) {
     this.auditLogBody = options.auditLogBody || null;
@@ -38,8 +43,14 @@ export class AuditLogStore {
     this.auditLogStatus.classList.toggle("error", !!isError);
   }
 
+  /** Flowing placeholder rows while the log is read from the project folder. */
+  renderLoading() {
+    renderTableSkeletonRows(this.auditLogBody, { columns: 3 });
+  }
+
   renderEmpty(message) {
     if (!this.auditLogBody) return;
+    clearTableSkeletonRows(this.auditLogBody);
     this.auditLogBody.innerHTML = `
       <tr>
         <td colspan="3" class="dataset-types-empty">${this.escapeHtml(message || "No audit log entries.")}</td>
@@ -83,6 +94,7 @@ export class AuditLogStore {
       return;
     }
 
+    clearTableSkeletonRows(this.auditLogBody);
     this.auditLogBody.innerHTML = "";
     for (const raw of rows) {
       const tr = document.createElement("tr");
@@ -141,6 +153,8 @@ export class AuditLogStore {
     if (force) this.loadedProjects.delete(key);
 
     this.setStatus("Loading audit log...");
+    // A cached log renders in the same tick; only a real read needs the frame.
+    if (!this.loadedProjects.has(key)) this.renderLoading();
     const loadedOk = await this.ensureLoaded(projectName);
     if (requestSeq !== this.loadSeq) return;
     this.renderTable(projectName);

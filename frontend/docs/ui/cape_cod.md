@@ -5,7 +5,7 @@ Cape Cod method page replicating the ResQ Generalised Cape Cod method: an ultima
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.cape_cod.entry_points -->
-- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260820a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260820b`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -29,6 +29,7 @@ Detected `arcrho:*` message types in key JS files:
 <!-- MANUAL:BEGIN -->
 - Opens from Project Instance as a floating iframe method window at `/ui/method_pages/cape_cod/cape_cod.html`. Home no longer offers a Cape Cod launch card. `tab_actions.openCapeCodTab` and the shell's `cape_cod` tab type remain only so a previously opened standalone Cape Cod tab still restores; the shell API does not expose an entry point that creates one.
 - Uses `ui/shared/tabbed_page/` for reusable tab chrome and pop-out behavior, and the shared Details/Notes/Audit tab presentation modules; tab order is `Details`, `Method`, `Ultimates`, `Ratios`, `Notes`, `Audit Log`, matching the ResQ Cape Cod editor.
+- The Details tab is three sections separated by light rules and carrying no headings: identity - Name, Output Type, Project, Segment - then the datasets the method is built from - `Latest`, `Exposure`, and `Prior Ultimate`, followed by the Precedents and Dependents rows - then Origin Length at the shared short field width. The three source pickers moved here from the Method tab so Cape Cod matches Bornhuetter Ferguson and Berquist Sherman; each keeps the trailing detail it had in its old three-column strip, inside its own field cell: `Latest` its `Type : Triangle` note, and `Prior Ultimate` its `Type` mode dropdown.
 - `Ctrl+PageUp` and `Ctrl+PageDown` cycle through Cape Cod tabs with wraparound through the shared tabbed-page runtime, including when the shell or Project Instance host still owns keyboard focus.
 - Loads a saved method through `/cape-cod/load`, which reads only `methods/CC@<Name>.json` and the output sidecar; the response also carries the derived as-if `ultimates_triangle` for the Ultimates tab.
 - Saves through `/cape-cod/save`, which publishes `methods/CC@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.

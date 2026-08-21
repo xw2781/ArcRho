@@ -6,12 +6,13 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Cape Cod</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b">
+<link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260819a">
-  <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260804a"/>
+  <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260820e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -20,41 +21,101 @@
       <div class="ccPageHost">
         <section class="ccPage arDetailsRoot" id="ccDetailsPage" role="tabpanel">
           <div class="ccDetailsStack">
-            <!-- One ungrouped, evenly spaced field list: Name first, Output Type
-                 second, then the remaining Details fields. -->
-            <section class="ccPanel arDetailsGroup">
+            <!-- Identity, then the datasets the method is built from, then the
+                 shape of the output. Name is the first row and Output Type the
+                 second, as on every Details tab. -->
+            <section class="ccPanel">
               <div class="ccPanelBody">
-                <div class="ccFieldGrid arDetailsGrid">
-                  <label class="ccLabel arDetailsLabel" for="ccNameInput">Name : </label>
-                  <div class="ccFieldControl arDetailsField">
-                    <input class="ccInput arDetailsControl" id="ccNameInput" type="text">
+                <div class="arDetailsSection">
+                  <div class="ccFieldGrid arDetailsGrid">
+                    <label class="ccLabel arDetailsLabel" for="ccNameInput">Name : </label>
+                    <div class="ccFieldControl arDetailsField">
+                      <input class="ccInput arDetailsControl" id="ccNameInput" type="text">
+                    </div>
+                    <label class="ccLabel arDetailsLabel" for="ccOutputTypeInput">Output Type : </label>
+                    <div class="ccFieldControl arDetailsField withPicker">
+                      <input class="ccInput arDetailsControl" id="ccOutputTypeInput" type="text">
+                      <button class="ccIconButton" id="ccOutputTypeBtn" type="button" title="Select output type" aria-label="Select output type">...</button>
+                    </div>
+                    <label class="ccLabel arDetailsLabel" data-details-field="project" for="ccProjectInput">Project : </label>
+                    <div class="ccFieldControl arDetailsField" data-details-field="project">
+                      <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
+                    </div>
+                    <label class="ccLabel arDetailsLabel" for="ccClassInput">Segment : </label>
+                    <div class="ccFieldControl arDetailsField">
+                      <input class="ccInput arDetailsControl" id="ccClassInput" type="text" readonly>
+                    </div>
                   </div>
-                  <label class="ccLabel arDetailsLabel" for="ccOutputTypeInput">Output Type : </label>
-                  <div class="ccFieldControl arDetailsField withPicker">
-                    <input class="ccInput arDetailsControl" id="ccOutputTypeInput" type="text">
-                    <button class="ccIconButton" id="ccOutputTypeBtn" type="button" title="Select output type" aria-label="Select output type">...</button>
+                </div>
+
+                <div class="arDetailsSection">
+                  <div class="ccFieldGrid arDetailsGrid">
+                    <label class="ccLabel arDetailsLabel" for="ccLatestInput">Latest : </label>
+                    <div class="arDetailsField ccSourceField">
+                      <div class="ccFieldControl withPicker">
+                        <input class="ccInput arDetailsControl" id="ccLatestInput" type="text" readonly>
+                        <button class="ccIconButton" id="ccLatestBtn" type="button" title="Select latest triangle" aria-label="Select latest triangle">...</button>
+                      </div>
+                      <span class="ccSourceTypeNote">Type : Triangle</span>
+                    </div>
+                    <label class="ccLabel arDetailsLabel" for="ccExposureInput">Exposure : </label>
+                    <div class="arDetailsField ccSourceField">
+                      <div class="ccFieldControl withPicker">
+                        <input class="ccInput arDetailsControl" id="ccExposureInput" type="text" readonly>
+                        <button class="ccIconButton" id="ccExposureBtn" type="button" title="Select exposure vector" aria-label="Select exposure vector">...</button>
+                      </div>
+                    </div>
+                    <label class="ccLabel arDetailsLabel" for="ccPriorUltimateInput">Prior Ultimate : </label>
+                    <div class="arDetailsField ccSourceField">
+                      <div class="ccFieldControl withPicker">
+                        <input class="ccInput arDetailsControl" id="ccPriorUltimateInput" type="text" readonly>
+                        <button class="ccIconButton" id="ccPriorUltimateBtn" type="button" title="Select prior ultimate vector" aria-label="Select prior ultimate vector">...</button>
+                      </div>
+                      <span class="ccSourceTypeControl">
+                        <label class="ccToolControlLabel" for="ccPriorModeButton">Type : </label>
+                        <div class="ccPriorModeDropdown" id="ccPriorModeDropdown">
+                          <button class="ccDropdownButton" id="ccPriorModeButton" type="button" aria-haspopup="listbox" aria-controls="ccPriorModeMenu" aria-expanded="false" aria-label="Prior ultimate mode">
+                            <span id="ccPriorModeLabel">Latest / Ultimates</span>
+                            <span class="ccDropdownCaret" aria-hidden="true"></span>
+                          </button>
+                          <div class="ccDropdownMenu" id="ccPriorModeMenu" role="listbox" aria-label="Prior ultimate mode">
+                            <button class="ccDropdownOption" type="button" role="option" data-value="latest_ultimates" aria-selected="true">Latest / Ultimates</button>
+                            <button class="ccDropdownOption" type="button" role="option" data-value="pattern" aria-selected="false">Pattern</button>
+                          </div>
+                        </div>
+                      </span>
+                    </div>
+                    <label class="arDetailsLabel" id="ccPrecedentsLabel">Precedents : </label>
+                    <div class="arDetailsField">
+                      <div class="arDetailsChipBox">
+                        <div id="ccPrecedentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="ccPrecedentsLabel"></div>
+                      </div>
+                    </div>
+                    <label class="arDetailsLabel" id="ccDependentsLabel">Dependents : </label>
+                    <div class="arDetailsField">
+                      <div class="arDetailsChipBox">
+                        <div id="ccDependentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="ccDependentsLabel"></div>
+                      </div>
+                    </div>
                   </div>
-                  <label class="ccLabel arDetailsLabel" data-details-field="project" for="ccProjectInput">Project : </label>
-                  <div class="ccFieldControl arDetailsField" data-details-field="project">
-                    <input class="ccInput arDetailsControl" id="ccProjectInput" type="text" readonly>
-                  </div>
-                  <label class="ccLabel arDetailsLabel" for="ccClassInput">Segment : </label>
-                  <div class="ccFieldControl arDetailsField">
-                    <input class="ccInput arDetailsControl" id="ccClassInput" type="text" readonly>
-                  </div>
-                  <label class="ccLabel arDetailsLabel" for="ccOriginLengthButton">Origin Length : </label>
-                  <div class="ccFieldControl arDetailsField">
-                    <div class="ccOriginLengthDropdown" id="ccOriginLengthDropdown">
-                      <input id="ccOriginLengthInput" type="hidden" value="12">
-                      <button class="ccDropdownButton ccOriginLengthButton" id="ccOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="ccOriginLengthMenu" aria-expanded="false">
-                        <span id="ccOriginLengthLabel">12</span>
-                        <span class="ccDropdownCaret" aria-hidden="true"></span>
-                      </button>
-                      <div class="ccDropdownMenu" id="ccOriginLengthMenu" role="listbox" aria-label="Origin Length">
-                        <button class="ccDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
-                        <button class="ccDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
-                        <button class="ccDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
-                        <button class="ccDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                </div>
+
+                <div class="arDetailsSection">
+                  <div class="ccFieldGrid arDetailsGrid">
+                    <label class="ccLabel arDetailsLabel" for="ccOriginLengthButton">Origin Length : </label>
+                    <div class="ccFieldControl arDetailsField arDetailsShortField">
+                      <div class="ccOriginLengthDropdown" id="ccOriginLengthDropdown">
+                        <input id="ccOriginLengthInput" type="hidden" value="12">
+                        <button class="ccDropdownButton ccOriginLengthButton" id="ccOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="ccOriginLengthMenu" aria-expanded="false">
+                          <span id="ccOriginLengthLabel">12</span>
+                          <span class="ccDropdownCaret" aria-hidden="true"></span>
+                        </button>
+                        <div class="ccDropdownMenu" id="ccOriginLengthMenu" role="listbox" aria-label="Origin Length">
+                          <button class="ccDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                          <button class="ccDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                          <button class="ccDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                          <button class="ccDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -65,38 +126,6 @@
         </section>
 
         <section class="ccPage" id="ccMethodPage" role="tabpanel">
-          <div class="ccMethodSources">
-            <label class="ccLabel ccSourceLabel" for="ccLatestInput">Latest : </label>
-            <div class="ccFieldControl withPicker">
-              <input class="ccInput" id="ccLatestInput" type="text" readonly>
-              <button class="ccIconButton" id="ccLatestBtn" type="button" title="Select latest triangle" aria-label="Select latest triangle">...</button>
-            </div>
-            <span class="ccSourceTypeNote">Type : Triangle</span>
-            <label class="ccLabel ccSourceLabel" for="ccExposureInput">Exposure : </label>
-            <div class="ccFieldControl withPicker">
-              <input class="ccInput" id="ccExposureInput" type="text" readonly>
-              <button class="ccIconButton" id="ccExposureBtn" type="button" title="Select exposure vector" aria-label="Select exposure vector">...</button>
-            </div>
-            <span class="ccSourceTypeNote"></span>
-            <label class="ccLabel ccSourceLabel" for="ccPriorUltimateInput">Prior Ultimate : </label>
-            <div class="ccFieldControl withPicker">
-              <input class="ccInput" id="ccPriorUltimateInput" type="text" readonly>
-              <button class="ccIconButton" id="ccPriorUltimateBtn" type="button" title="Select prior ultimate vector" aria-label="Select prior ultimate vector">...</button>
-            </div>
-            <span class="ccSourceTypeControl">
-              <label class="ccToolControlLabel" for="ccPriorModeButton">Type : </label>
-              <div class="ccPriorModeDropdown" id="ccPriorModeDropdown">
-                <button class="ccDropdownButton" id="ccPriorModeButton" type="button" aria-haspopup="listbox" aria-controls="ccPriorModeMenu" aria-expanded="false" aria-label="Prior ultimate mode">
-                  <span id="ccPriorModeLabel">Latest / Ultimates</span>
-                  <span class="ccDropdownCaret" aria-hidden="true"></span>
-                </button>
-                <div class="ccDropdownMenu" id="ccPriorModeMenu" role="listbox" aria-label="Prior ultimate mode">
-                  <button class="ccDropdownOption" type="button" role="option" data-value="latest_ultimates" aria-selected="true">Latest / Ultimates</button>
-                  <button class="ccDropdownOption" type="button" role="option" data-value="pattern" aria-selected="false">Pattern</button>
-                </div>
-              </div>
-            </span>
-          </div>
           <div class="ccMethodToolbar">
             <div class="ccToolGroup">
               <span class="ccToolTitle">Trend</span>
@@ -212,6 +241,6 @@
     <button type="button" role="menuitem" data-cc-cell-action="remove-highlights">Remove Highlights</button>
   </div>
 
-  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260820a"></script>
+  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260820b"></script>
 </body>
 </html>

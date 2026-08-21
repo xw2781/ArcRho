@@ -1,3 +1,8 @@
+import {
+  clearTableSkeletonRows,
+  renderTableSkeletonRows,
+} from "./project_settings_skeleton.js?v=20260820psskel1";
+
 export function createReservingClassTypesFeature(deps = {}) {
   const {
     reservingClassTypesBody = null,
@@ -1842,8 +1847,19 @@ export function createReservingClassTypesFeature(deps = {}) {
     return { columns: [...RESERVING_CLASS_TYPES_COLUMNS], rows };
   }
 
+  /**
+   * Flowing placeholder rows while the types are read from the project folder.
+   *
+   * The visible column count is read from the live header, which this tab
+   * rebuilds for itself, so the placeholder always matches the arriving grid.
+   */
+  function renderReservingClassTypesLoading() {
+    renderTableSkeletonRows(reservingClassTypesBody, { columns: 2 });
+  }
+
   function renderReservingClassTypesEmpty(message, colspan = 3) {
     if (!reservingClassTypesBody) return;
+    clearTableSkeletonRows(reservingClassTypesBody);
     const span = Math.max(1, Number(colspan) || 3);
     reservingClassTypesBody.innerHTML = `
       <tr>
@@ -2024,6 +2040,7 @@ export function createReservingClassTypesFeature(deps = {}) {
       return aKey.localeCompare(bKey);
     });
 
+    clearTableSkeletonRows(reservingClassTypesBody);
     reservingClassTypesBody.innerHTML = "";
     for (const group of sortedGroups) {
       const groupTr = document.createElement("tr");
@@ -2121,6 +2138,10 @@ export function createReservingClassTypesFeature(deps = {}) {
     }
 
     setReservingClassTypesStatus("Loading reserving class types...");
+    // A cached project renders in the same tick; only a real read needs the frame.
+    if (options?.force || !loadedReservingClassTypesByProject.has(normalizeProjectKey(projectName))) {
+      renderReservingClassTypesLoading();
+    }
     const loadedOk = await ensureReservingClassTypesLoaded(projectName, options);
     if (requestSeq !== reservingClassTypesLoadSeq) return;
     renderReservingClassTypesTable(projectName);
@@ -2408,6 +2429,7 @@ export function createReservingClassTypesFeature(deps = {}) {
   return {
     setReservingClassTypesStatus,
     renderReservingClassTypesEmpty,
+    renderReservingClassTypesLoading,
     closeReservingClassTypeEditor,
     openReservingClassTypeEditor,
     applyReservingClassTypeEditor,

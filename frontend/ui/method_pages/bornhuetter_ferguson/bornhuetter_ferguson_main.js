@@ -12,8 +12,9 @@ import {
 } from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260714a";
-import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260817a";
-import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260817a";
+import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
+import { createDetailsDependenciesController } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
+import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { createAuditLogView } from "/ui/shared/tabs/audit_log/audit_log_view.js?v=20260714c";
 import {
   formatSidecarAuditEventDate,
@@ -279,6 +280,31 @@ function getDetails() {
     showWeights: state.showWeights,
     statisticDecimalPlaces: state.statisticDecimalPlaces,
   };
+}
+
+let detailsDependencies = null;
+
+function getDetailsDependencies() {
+  if (!detailsDependencies) {
+    detailsDependencies = createDetailsDependenciesController({
+      precedentsList: "bfPrecedentsList",
+      dependentsList: "bfDependentsList",
+      // The graph is keyed by the dataset this method publishes, not the method.
+      getIdentity: () => ({
+        projectName: state.project,
+        reservingClass: state.reservingClass,
+        datasetName: getDetails().name,
+      }),
+      instanceId: inst,
+      isProjectInstanceHost: window.parent !== window,
+      setStatus: (message) => postStatus(message),
+    });
+  }
+  return detailsDependencies;
+}
+
+function refreshDetailsDependencies() {
+  return getDetailsDependencies().refresh().catch(() => null);
 }
 
 function withProgrammatic(fn) {
@@ -1516,6 +1542,9 @@ async function runBornhuetterFergusonSave(progress) {
     }
     await applyPersistedAggregate(result);
     markClean();
+    // A save rewrites the graph on both sides, so the Details rows are stale
+    // until it is re-read.
+    void refreshDetailsDependencies();
     try {
       window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
     } catch {}
@@ -1984,6 +2013,7 @@ async function init() {
     postStatus(`Could not load existing ${BF_METHOD_TYPE}: ${String(err?.message || err)}`, "error");
     return false;
   });
+  void refreshDetailsDependencies();
   if (loaded) {
     postStatus(`${BF_METHOD_TYPE} ready.`);
   } else if (!loadError) {

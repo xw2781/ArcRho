@@ -177,21 +177,28 @@ test("Dark tabbed pages keep tab frames and the selected seam visible", () => {
   assert.match(selectedSeam, /background-color:\s*var\(--ar-color-surface-raised\)/);
 });
 
-test("DSV Details keeps field values, relationships, and formula tokens readable in Dark mode", () => {
+test("Details fields and the shared dependency surface stay readable in Dark mode", () => {
   const dark = read("../ui/shared/styles/themes/dark.css");
   const control = declarationsFor(dark, "#dsDetailsPage .arDetailsControl");
   const readonly = declarationsFor(dark, "#dsDetailsPage :is(.arDetailsControl[readonly]");
-  const detailFrame = declarationsFor(dark, "#dsDetailsPage :is(.dsDetailFormulaBox, .dsDatasetChipBox)");
-  const formulaChip = declarationsFor(dark, "#dsDetailsPage :is(.dsFormulaComponentChip, .dsDependentLink)");
-  const operator = declarationsFor(dark, "#dsDetailsPage .dsFormulaOperatorToken");
+  // The chips, the formula field, and the tooltip are one surface the Dataset
+  // Viewer and all five method pages share, so Dark mode moves its tokens
+  // rather than repainting each page.
+  const surface = declarationsFor(dark, ":root[data-arcrho-theme=\"dark\"] .arDetailsRoot");
+  const tooltip = declarationsFor(dark, ".arDetailsFormulaTooltip");
 
   assert.match(control, /background-color:\s*var\(--ar-color-input\)/);
   assert.match(control, /color:\s*var\(--ar-color-text-strong\)/);
   assert.match(readonly, /background-color:\s*var\(--ar-color-surface-muted\)/);
   assert.match(readonly, /color:\s*var\(--ar-color-text-muted\)/);
-  assert.match(detailFrame, /border-color:\s*var\(--ar-color-border-strong\)/);
-  assert.match(formulaChip, /background-color:\s*var\(--ar-color-surface-muted\)/);
-  assert.match(operator, /background-color:\s*var\(--ar-color-surface-raised\)/);
+  assert.match(surface, /--ar-details-chip-box-border:\s*var\(--ar-color-border-strong\)/);
+  assert.match(surface, /--ar-details-chip-background:\s*var\(--ar-color-surface-muted\)/);
+  // The formula carries no chip or token shape any more: a source name is body
+  // text and an operator is quiet punctuation - colour only, no fill.
+  assert.match(surface, /--ar-details-formula-operator:\s*var\(--ar-color-text-muted\)/);
+  assert.match(tooltip, /background-color:\s*var\(--ar-color-surface-raised\)/);
+  // No page may repaint the shared surface behind the tokens' back.
+  assert.doesNotMatch(dark, /dsFormulaComponent|dsDependentLink|dsDatasetChipBox/u);
 });
 
 test("DSV tab pages use the same muted outer frame as the tab strip in Dark mode", () => {
@@ -332,7 +339,7 @@ test("Project Settings and Project Instance override light-only child paint in D
   const projectSettingsHtml = read("../ui/project_settings/project_settings.html");
   assert.match(datasetTypesCss, /\.datasetTypesRecalcOverlay\s*\{/);
   assert.doesNotMatch(datasetTypesJs, /datasetTypesRecalcDialogStyles|createElement\("style"\)/);
-  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260812dtformat2/);
+  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260820psskel1/);
 });
 
 test("theme runtime validates, persists per user, applies, notifies frames, and updates Monaco live", async () => {
@@ -631,7 +638,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260817d/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260820a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260820c/);
   assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
@@ -654,21 +661,21 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260820a/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260820c/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260820a"],
-    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260817e"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260820b"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260820b"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260805a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260820a"],
-    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260820a"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260817a"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260820a"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260820dtjob1"],
-    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260820dtjob1"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260820b"],
+    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260820b"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260820b"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260820b"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260820psskel1"],
+    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260820psskel1"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260818a"],
     ["../ui/arcode/code-editor/index.js", "shared/editor_framework.js?v=20260818a"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],

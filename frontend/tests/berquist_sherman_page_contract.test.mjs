@@ -308,7 +308,7 @@ test("row hover never repaints a meaningful cell fill", () => {
 });
 
 test("the Details form matches the other method pages", () => {
-  // Group spacing comes from the shared Details primitive alone, so the panels
+  // Section spacing comes from the shared Details primitive alone, so the panels
   // are not padded twice the way BF, CC, and RS avoid.
   assert.match(css, /\.bsDetailsStack \{[^}]*gap: 0;/u);
   assert.match(css, /\.bsPanelBody \{\s*\n\s*padding: 0;\s*\n\}/u);
@@ -317,8 +317,10 @@ test("the Details form matches the other method pages", () => {
   assert.doesNotMatch(css, /\.bsFieldControl\.withPicker \{[^}]*grid-template-columns/u);
   assert.match(css, /\.bsFieldControl\.withPicker \.bsInput \{[^}]*padding-right: 36px;/u);
   assert.match(css, /\.bsIconButton \{[^}]*position: absolute;[^}]*width: 22px;[^}]*height: 22px;/u);
-  // An inline wrap cannot take a width, which stretched the spinner full width.
-  assert.match(css, /\.bsDecimalPlacesWrap \{[^}]*display: inline-flex;[^}]*width: 70px;/u);
+  // An inline wrap cannot take a width at all, so it stays a block-level box; the
+  // 70px now comes from `.arDetailsShortField` on the cell, not from this page.
+  assert.match(css, /\.bsDecimalPlacesWrap \{[^}]*display: inline-flex;[^}]*width: 100%;/u);
+  assert.doesNotMatch(css, /\.bsDecimalPlacesWrap \{[^}]*width: 70px;/u);
   // The shared stepper owns the control geometry; only the token is set here.
   assert.match(css, /\.bsDecimalPlacesWrap \{[^}]*--topbar-control-height: 30px;/u);
   assert.doesNotMatch(css, /\.bsDecimalPlacesInput \{[^}]*(?:padding|text-align|height)/u);

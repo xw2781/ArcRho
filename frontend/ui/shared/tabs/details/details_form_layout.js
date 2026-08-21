@@ -1,7 +1,9 @@
 export const DETAILS_FORM_PROPERTIES = Object.freeze({
   labelWidth: "--ar-details-label-width",
   labelGap: "--ar-details-label-control-gap",
-  groupSeparation: "--ar-details-group-separation",
+  sectionGap: "--ar-details-section-gap",
+  sectionDivider: "--ar-details-section-divider",
+  shortFieldWidth: "--ar-details-short-field-width",
   rowGap: "--ar-details-row-gap",
   controlHeight: "--ar-details-control-height",
   fontFamily: "--ar-details-font-family",
@@ -14,10 +16,11 @@ export const DETAILS_FORM_PROPERTIES = Object.freeze({
 
 export const DETAILS_FORM_CLASS_NAMES = Object.freeze({
   root: "arDetailsRoot",
-  group: "arDetailsGroup",
+  section: "arDetailsSection",
   grid: "arDetailsGrid",
   label: "arDetailsLabel",
   field: "arDetailsField",
+  shortField: "arDetailsShortField",
   control: "arDetailsControl",
 });
 
@@ -29,6 +32,20 @@ export const DETAILS_FORM_DEFAULT_LABEL_SELECTOR = `.${DETAILS_FORM_CLASS_NAMES.
  * no single element to toggle without it.
  */
 export const DETAILS_FIELD_ATTRIBUTE = "data-details-field";
+
+/**
+ * Marks the first Details section that still renders a row. The divider between
+ * sections is a `+` rule, which cannot know that every earlier section was
+ * emptied by its host, so the lead is resolved here and the rule suppressed.
+ */
+export const DETAILS_SECTION_LEAD_ATTRIBUTE = "data-details-section-lead";
+
+/**
+ * Marks a Details section with no visible row. Such a section is collapsed
+ * rather than hidden, because `hidden` belongs to the page that toggles a
+ * section - Berquist Sherman swaps two source sections with it.
+ */
+export const DETAILS_SECTION_EMPTY_ATTRIBUTE = "data-details-section-empty";
 
 function resolveDetailsRoot(root, documentRef) {
   if (typeof root !== "string") return root || null;
@@ -47,7 +64,9 @@ function setProperty(style, propertyName, value) {
 export function applyDetailsFormTokens(root, {
   labelWidth,
   labelGap,
-  groupSeparation,
+  sectionGap,
+  sectionDivider,
+  shortFieldWidth,
   rowGap,
   controlHeight,
   fontFamily,
@@ -63,7 +82,9 @@ export function applyDetailsFormTokens(root, {
 
   setProperty(container.style, DETAILS_FORM_PROPERTIES.labelWidth, labelWidth);
   setProperty(container.style, DETAILS_FORM_PROPERTIES.labelGap, labelGap);
-  setProperty(container.style, DETAILS_FORM_PROPERTIES.groupSeparation, groupSeparation);
+  setProperty(container.style, DETAILS_FORM_PROPERTIES.sectionGap, sectionGap);
+  setProperty(container.style, DETAILS_FORM_PROPERTIES.sectionDivider, sectionDivider);
+  setProperty(container.style, DETAILS_FORM_PROPERTIES.shortFieldWidth, shortFieldWidth);
   setProperty(container.style, DETAILS_FORM_PROPERTIES.rowGap, rowGap);
   setProperty(container.style, DETAILS_FORM_PROPERTIES.controlHeight, controlHeight);
   setProperty(container.style, DETAILS_FORM_PROPERTIES.fontFamily, fontFamily);
@@ -96,6 +117,42 @@ export function setDetailsFieldsHidden(root, fieldKeys, hidden = true, {
     }
   }
   return { root: container, cells, hidden: !!hidden };
+}
+
+function sectionRendersARow(section) {
+  const cells = section?.querySelectorAll?.(`.${DETAILS_FORM_CLASS_NAMES.field}`);
+  return Array.from(cells || []).some((cell) => cell?.hidden !== true);
+}
+
+/**
+ * Resolves the two things the section divider cannot express in CSS: which
+ * section leads the tab, and which sections render nothing at all. Call it
+ * after the rows a host fixes are hidden and after a page toggles a section,
+ * or the tab opens with a rule above its first visible row.
+ */
+export function syncDetailsSections(root, { documentRef = globalThis.document } = {}) {
+  const container = resolveDetailsRoot(root, documentRef);
+  const sections = Array.from(
+    container?.querySelectorAll?.(`.${DETAILS_FORM_CLASS_NAMES.section}`) || [],
+  );
+  if (!sections.length) return null;
+
+  let lead = null;
+  for (const section of sections) {
+    const renders = section?.hidden !== true && sectionRendersARow(section);
+    if (renders) {
+      section.removeAttribute?.(DETAILS_SECTION_EMPTY_ATTRIBUTE);
+    } else {
+      section.setAttribute?.(DETAILS_SECTION_EMPTY_ATTRIBUTE, "");
+    }
+    if (renders && !lead) {
+      lead = section;
+      section.setAttribute?.(DETAILS_SECTION_LEAD_ATTRIBUTE, "");
+    } else {
+      section.removeAttribute?.(DETAILS_SECTION_LEAD_ATTRIBUTE);
+    }
+  }
+  return { root: container, sections, lead };
 }
 
 /**
@@ -174,8 +231,9 @@ export function measureDetailsLabelWidth(labels, {
 }
 
 /**
- * Applies any explicit token overrides, measures every matching literal label
- * across all Details groups, and writes one common label-column width.
+ * Applies any explicit token overrides, resolves the section dividers, measures
+ * every matching literal label across all Details sections, and writes one common
+ * label-column width.
  */
 export function syncDetailsLabelWidth({
   root,
@@ -189,6 +247,8 @@ export function syncDetailsLabelWidth({
 } = {}) {
   const container = applyDetailsFormTokens(root, { ...tokenOptions, documentRef });
   if (!container?.querySelectorAll || !labelSelector || !propertyName) return null;
+
+  syncDetailsSections(container, { documentRef });
 
   const labels = Array.from(container.querySelectorAll(labelSelector));
   const width = measureDetailsLabelWidth(labels, {

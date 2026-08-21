@@ -6,12 +6,13 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Bornhuetter Ferguson</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
-  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260817e">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b">
+<link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260819a">
-  <link rel="stylesheet" href="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.css?v=20260722a"/>
+  <link rel="stylesheet" href="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
 <body>
@@ -20,57 +21,82 @@
       <div class="bfPageHost">
         <section class="bfPage arDetailsRoot" id="bfDetailsPage" role="tabpanel">
           <div class="bfDetailsStack">
-            <!-- One ungrouped, evenly spaced field list: Name first, Output Type
-                 second, then the remaining Details fields. -->
-            <section class="bfPanel arDetailsGroup">
+            <!-- Identity, then the datasets this method is built from, then the
+                 shape of its output. Name is the first row and Output Type the
+                 second, as on every Details tab. -->
+            <section class="bfPanel">
               <div class="bfPanelBody">
-                <div class="bfFieldGrid arDetailsGrid">
-                  <label class="bfLabel arDetailsLabel" for="bfNameInput">Name : </label>
-                  <div class="bfFieldControl arDetailsField">
-                    <input class="bfInput arDetailsControl" id="bfNameInput" type="text">
+                <div class="arDetailsSection">
+                  <div class="bfFieldGrid arDetailsGrid">
+                    <label class="bfLabel arDetailsLabel" for="bfNameInput">Name : </label>
+                    <div class="bfFieldControl arDetailsField">
+                      <input class="bfInput arDetailsControl" id="bfNameInput" type="text">
+                    </div>
+                    <label class="bfLabel arDetailsLabel" for="bfOutputTypeInput">Output Type : </label>
+                    <div class="bfFieldControl arDetailsField withPicker">
+                      <input class="bfInput arDetailsControl" id="bfOutputTypeInput" type="text">
+                      <button class="bfIconButton" id="bfOutputTypeBtn" type="button" title="Select output type" aria-label="Select output type">...</button>
+                    </div>
+                    <label class="bfLabel arDetailsLabel" data-details-field="project" for="bfProjectInput">Project : </label>
+                    <div class="bfFieldControl arDetailsField" data-details-field="project">
+                      <input class="bfInput arDetailsControl" id="bfProjectInput" type="text" readonly>
+                    </div>
+                    <label class="bfLabel arDetailsLabel" for="bfClassInput">Segment : </label>
+                    <div class="bfFieldControl arDetailsField">
+                      <input class="bfInput arDetailsControl" id="bfClassInput" type="text" readonly>
+                    </div>
                   </div>
-                  <label class="bfLabel arDetailsLabel" for="bfOutputTypeInput">Output Type : </label>
-                  <div class="bfFieldControl arDetailsField withPicker">
-                    <input class="bfInput arDetailsControl" id="bfOutputTypeInput" type="text">
-                    <button class="bfIconButton" id="bfOutputTypeBtn" type="button" title="Select output type" aria-label="Select output type">...</button>
-                  </div>
-                  <label class="bfLabel arDetailsLabel" data-details-field="project" for="bfProjectInput">Project : </label>
-                  <div class="bfFieldControl arDetailsField" data-details-field="project">
-                    <input class="bfInput arDetailsControl" id="bfProjectInput" type="text" readonly>
-                  </div>
-                  <label class="bfLabel arDetailsLabel" for="bfClassInput">Segment : </label>
-                  <div class="bfFieldControl arDetailsField">
-                    <input class="bfInput arDetailsControl" id="bfClassInput" type="text" readonly>
-                  </div>
-                  <label class="bfLabel arDetailsLabel" for="bfOriginLengthButton">Origin Length : </label>
-                  <div class="bfFieldControl arDetailsField">
-                    <div class="bfOriginLengthDropdown" id="bfOriginLengthDropdown">
-                      <input id="bfOriginLengthInput" type="hidden" value="12">
-                      <button class="bfDropdownButton bfOriginLengthButton" id="bfOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="bfOriginLengthMenu" aria-expanded="false">
-                        <span id="bfOriginLengthLabel">12</span>
-                        <span class="bfDropdownCaret" aria-hidden="true"></span>
-                      </button>
-                      <div class="bfDropdownMenu" id="bfOriginLengthMenu" role="listbox" aria-label="Origin Length">
-                        <button class="bfDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
-                        <button class="bfDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
-                        <button class="bfDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
-                        <button class="bfDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                </div>
+
+                <div class="arDetailsSection">
+                  <div class="bfFieldGrid arDetailsGrid">
+                    <label class="bfLabel arDetailsLabel" for="bfLatestInput">Latest : </label>
+                    <div class="bfFieldControl arDetailsField withPicker">
+                      <input class="bfInput arDetailsControl" id="bfLatestInput" type="text" readonly>
+                      <button class="bfIconButton" id="bfLatestBtn" type="button" title="Select latest" aria-label="Select latest">...</button>
+                    </div>
+                    <label class="bfLabel arDetailsLabel" for="bfDfmInput">Development Pattern : </label>
+                    <div class="bfFieldControl arDetailsField withPicker">
+                      <input class="bfInput arDetailsControl" id="bfDfmInput" type="text" readonly>
+                      <button class="bfIconButton" id="bfDfmBtn" type="button" title="Select development pattern" aria-label="Select development pattern">...</button>
+                    </div>
+                    <label class="bfLabel arDetailsLabel bfPriorLabel" for="bfPriorAddBtn">Prior Vector : </label>
+                    <div class="bfFieldControl arDetailsField bfPriorPicker">
+                      <div class="bfPriorList" id="bfPriorList" role="list" aria-label="Selected prior vectors"></div>
+                    </div>
+                    <label class="arDetailsLabel" id="bfPrecedentsLabel">Precedents : </label>
+                    <div class="arDetailsField">
+                      <div class="arDetailsChipBox">
+                        <div id="bfPrecedentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="bfPrecedentsLabel"></div>
+                      </div>
+                    </div>
+                    <label class="arDetailsLabel" id="bfDependentsLabel">Dependents : </label>
+                    <div class="arDetailsField">
+                      <div class="arDetailsChipBox">
+                        <div id="bfDependentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="bfDependentsLabel"></div>
                       </div>
                     </div>
                   </div>
-                  <label class="bfLabel arDetailsLabel" for="bfLatestInput">Latest : </label>
-                  <div class="bfFieldControl arDetailsField withPicker">
-                    <input class="bfInput arDetailsControl" id="bfLatestInput" type="text" readonly>
-                    <button class="bfIconButton" id="bfLatestBtn" type="button" title="Select latest" aria-label="Select latest">...</button>
-                  </div>
-                  <label class="bfLabel arDetailsLabel" for="bfDfmInput">Development Pattern : </label>
-                  <div class="bfFieldControl arDetailsField withPicker">
-                    <input class="bfInput arDetailsControl" id="bfDfmInput" type="text" readonly>
-                    <button class="bfIconButton" id="bfDfmBtn" type="button" title="Select development pattern" aria-label="Select development pattern">...</button>
-                  </div>
-                  <label class="bfLabel arDetailsLabel bfPriorLabel" for="bfPriorAddBtn">Prior Vector : </label>
-                  <div class="bfFieldControl arDetailsField bfPriorPicker">
-                    <div class="bfPriorList" id="bfPriorList" role="list" aria-label="Selected prior vectors"></div>
+                </div>
+
+                <div class="arDetailsSection">
+                  <div class="bfFieldGrid arDetailsGrid">
+                    <label class="bfLabel arDetailsLabel" for="bfOriginLengthButton">Origin Length : </label>
+                    <div class="bfFieldControl arDetailsField arDetailsShortField">
+                      <div class="bfOriginLengthDropdown" id="bfOriginLengthDropdown">
+                        <input id="bfOriginLengthInput" type="hidden" value="12">
+                        <button class="bfDropdownButton bfOriginLengthButton" id="bfOriginLengthButton" type="button" aria-haspopup="listbox" aria-controls="bfOriginLengthMenu" aria-expanded="false">
+                          <span id="bfOriginLengthLabel">12</span>
+                          <span class="bfDropdownCaret" aria-hidden="true"></span>
+                        </button>
+                        <div class="bfDropdownMenu" id="bfOriginLengthMenu" role="listbox" aria-label="Origin Length">
+                          <button class="bfDropdownOption" type="button" role="option" data-value="12" aria-selected="true">12</button>
+                          <button class="bfDropdownOption" type="button" role="option" data-value="6" aria-selected="false">6</button>
+                          <button class="bfDropdownOption" type="button" role="option" data-value="3" aria-selected="false">3</button>
+                          <button class="bfDropdownOption" type="button" role="option" data-value="1" aria-selected="false">1</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -169,6 +195,6 @@
     <button type="button" role="menuitem" data-bf-prior-action="delete">Delete</button>
   </div>
 
-  <script type="module" src="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260820a"></script>
+  <script type="module" src="/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js?v=20260820b"></script>
 </body>
 </html>
