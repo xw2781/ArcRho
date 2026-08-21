@@ -26,6 +26,7 @@ See [`data-engine/docs/dataset-scenarios.md`](../../../../data-engine/docs/datas
 | `GET` | `/datasets/cached` | `list_cached_dataset_names` | `str` | - | `dataset_service.list_cached_dataset_names`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/datasets/cached/delete` | `delete_cached_datasets` | `CachedDatasetDeleteRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.delete_cached_datasets`, `workspace_mutation_client.run_workspace_mutation` |
 | `POST` | `/datasets/cached/empty` | `create_empty_cached_dataset` | `EmptyDatasetCacheCreateRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.create_empty_cached_dataset` |
+| `GET` | `/datasets/cached/index-signature` | `get_cached_dataset_index_signature` | `str` | - | `dataset_service.get_cached_dataset_index_signature` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

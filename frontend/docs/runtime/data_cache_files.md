@@ -19,6 +19,7 @@ Index cache/data files and refresh points used by app-server services.
 | `GET` | `/datasets/cached` | `dataset` | `list_cached_dataset_names` |
 | `POST` | `/datasets/cached/delete` | `dataset` | `delete_cached_datasets` |
 | `POST` | `/datasets/cached/empty` | `dataset` | `create_empty_cached_dataset` |
+| `GET` | `/datasets/cached/index-signature` | `dataset` | `get_cached_dataset_index_signature` |
 | `POST` | `/dependent_propagation/refresh_dependents` | `dependent_propagation` | `submit_refresh_dependents_job` |
 | `GET` | `/dependent_propagation/refresh_dependents/status/{request_id}` | `dependent_propagation` | `get_refresh_dependents_job_status` |
 | `POST` | `/dfm/method-index/refresh` | `dfm_method_index` | `refresh_dfm_method_index` |

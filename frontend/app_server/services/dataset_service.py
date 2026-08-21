@@ -326,6 +326,14 @@ def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: 
     return dataset_instance_index_service.get_index(project, rc, refresh=refresh)
 
 
+def get_cached_dataset_index_signature(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    project = str(project_name if project_name is not None else "").strip()
+    rc = str(reserving_class if reserving_class is not None else "").strip()
+    if not project or not rc:
+        raise HTTPException(400, "project_name and reserving_class are required.")
+    return dataset_instance_index_service.get_index_signature(project, rc)
+
+
 def delete_cached_datasets(project_name: str, reserving_class: str, dataset_names: List[str]) -> Dict[str, Any]:
     project = str(project_name if project_name is not None else "").strip()
     rc = str(reserving_class if reserving_class is not None else "").strip()

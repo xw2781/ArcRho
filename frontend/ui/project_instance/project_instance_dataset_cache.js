@@ -139,84 +139,128 @@ function getSnapshotDataFolder(payload) {
   return toText(folderPaths.data || payload?.folder_path || payload?.folderPath);
 }
 
-function ensureDatasetIndexWatchListener() {
-  if (datasetIndexWatch.unsubscribe || typeof window.ADAHost?.onProjectInstanceIndexChanged !== "function") return;
-  datasetIndexWatch.unsubscribe = window.ADAHost.onProjectInstanceIndexChanged((payload) => {
-    if (!payload || payload.watchId !== datasetIndexWatch.watchId) return;
-    if (payload.error) {
-      datasetIndexWatch.error = toText(payload.error);
-      datasetIndexWatch.pending = false;
-      syncDatasetIndexUpdatePrompt();
+const DATASET_INDEX_POLL_MS = 8000;
+
+async function fetchDatasetIndexSignature(selectedPath) {
+  const url = new URL("/datasets/cached/index-signature", window.location.origin);
+  url.searchParams.set("project_name", projectName);
+  url.searchParams.set("reserving_class", selectedPath);
+  const resp = await fetch(url.toString(), { cache: "no-store" });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.detail || `Index signature lookup failed (${resp.status})`);
+  }
+  return toText(payload?.signature);
+}
+
+/** Reads index.json's signature once and treats it as the loaded baseline. */
+async function baselineDatasetIndexSignature(selectedPath) {
+  try {
+    const signature = await fetchDatasetIndexSignature(selectedPath);
+    if (normalizePath(datasetIndexWatch.selectedPath).toLowerCase() !== selectedPath.toLowerCase()) return;
+    datasetIndexWatch.signature = signature;
+    datasetIndexWatch.error = "";
+  } catch (err) {
+    datasetIndexWatch.error = toText(err?.message) || "Could not read the dataset index signature.";
+  }
+}
+
+async function checkDatasetIndexSignature() {
+  const selectedPath = normalizePath(datasetIndexWatch.selectedPath);
+  if (!selectedPath || datasetIndexWatch.checking) return;
+  // A poll that lands mid-load would compare against a baseline the load is
+  // about to replace, so let the load re-baseline instead.
+  if (cachedDatasetFilter.loading || datasetIndexWatch.pending) return;
+  datasetIndexWatch.checking = true;
+  try {
+    const signature = await fetchDatasetIndexSignature(selectedPath);
+    if (normalizePath(datasetIndexWatch.selectedPath).toLowerCase() !== selectedPath.toLowerCase()) return;
+    datasetIndexWatch.error = "";
+    if (!datasetIndexWatch.signature) {
+      datasetIndexWatch.signature = signature;
       return;
     }
-    if (Date.now() < Number(datasetIndexWatch.suppressUntil || 0)) return;
+    if (signature === datasetIndexWatch.signature) return;
+    // Writes this window just made are not news to it, so adopt them silently.
+    if (Date.now() < Number(datasetIndexWatch.suppressUntil || 0)) {
+      datasetIndexWatch.signature = signature;
+      return;
+    }
     datasetIndexWatch.pending = true;
-    datasetIndexWatch.error = "";
     syncDatasetIndexUpdatePrompt();
+  } catch (err) {
+    datasetIndexWatch.error = toText(err?.message) || "Could not read the dataset index signature.";
+  } finally {
+    datasetIndexWatch.checking = false;
+  }
+}
+
+function stopDatasetIndexPollTimer() {
+  if (datasetIndexWatch.timer) {
+    clearInterval(datasetIndexWatch.timer);
+    datasetIndexWatch.timer = 0;
+  }
+}
+
+function startDatasetIndexPollTimer() {
+  stopDatasetIndexPollTimer();
+  if (!datasetIndexWatch.selectedPath) return;
+  // A hidden window cannot show the prompt anyway, so polling it only spends
+  // round trips; the visibility handler re-checks the moment it comes back.
+  if (typeof document !== "undefined" && document.hidden) return;
+  datasetIndexWatch.timer = setInterval(() => {
+    void checkDatasetIndexSignature();
+  }, DATASET_INDEX_POLL_MS);
+  // Node's timer object keeps its event loop alive; the browser's numeric
+  // handle has no unref, so this only matters when a test loads this module.
+  datasetIndexWatch.timer?.unref?.();
+}
+
+function ensureDatasetIndexVisibilityListener() {
+  if (datasetIndexWatch.visibilityWired || typeof document === "undefined") return;
+  datasetIndexWatch.visibilityWired = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopDatasetIndexPollTimer();
+      return;
+    }
+    startDatasetIndexPollTimer();
+    void checkDatasetIndexSignature();
   });
 }
 
 async function stopDatasetIndexWatch(options = {}) {
-  const watchId = toText(datasetIndexWatch.watchId);
-  datasetIndexWatch.watchId = "";
-  datasetIndexWatch.path = "";
+  stopDatasetIndexPollTimer();
   datasetIndexWatch.selectedPath = "";
+  datasetIndexWatch.path = "";
+  datasetIndexWatch.signature = "";
+  datasetIndexWatch.checking = false;
   datasetIndexWatch.error = "";
   datasetIndexWatch.suppressUntil = 0;
   if (options?.clearPending !== false) datasetIndexWatch.pending = false;
-  if (watchId && typeof window.ADAHost?.stopProjectInstanceIndexWatch === "function") {
-    try {
-      await window.ADAHost.stopProjectInstanceIndexWatch({ watchId });
-    } catch {
-      // Manual refresh remains available if a host watcher cannot be stopped.
-    }
-  }
   syncDatasetIndexUpdatePrompt();
 }
 
 async function startDatasetIndexWatchForSnapshot(payload, selectedPath) {
   const folderPath = getSnapshotDataFolder(payload);
-  const indexFileName = toText(payload?.index_file_name || payload?.indexFileName);
   const normalizedSelectedPath = normalizePath(selectedPath);
-  if (!folderPath || !indexFileName || !normalizedSelectedPath || typeof window.ADAHost?.startProjectInstanceIndexWatch !== "function") {
+  if (!normalizedSelectedPath) {
     await stopDatasetIndexWatch();
     return;
   }
-  if (
-    datasetIndexWatch.watchId
-    && datasetIndexWatch.path === folderPath
-    && normalizePath(datasetIndexWatch.selectedPath).toLowerCase() === normalizedSelectedPath.toLowerCase()
-  ) {
-    return;
-  }
-  await stopDatasetIndexWatch();
-  ensureDatasetIndexWatchListener();
-  try {
-    const result = await window.ADAHost.startProjectInstanceIndexWatch({
-      path: folderPath,
-      indexFileName,
-    });
-    if (normalizePath(state.selectedPath).toLowerCase() !== normalizedSelectedPath.toLowerCase()) {
-      if (result?.watchId && typeof window.ADAHost?.stopProjectInstanceIndexWatch === "function") {
-        try { await window.ADAHost.stopProjectInstanceIndexWatch({ watchId: result.watchId }); } catch {}
-      }
-      return;
-    }
-    if (!result?.ok || !result.watchId) {
-      datasetIndexWatch.error = toText(result?.error);
-      syncDatasetIndexUpdatePrompt();
-      return;
-    }
-    datasetIndexWatch.watchId = toText(result.watchId);
-    datasetIndexWatch.path = toText(result.path) || folderPath;
-    datasetIndexWatch.selectedPath = normalizedSelectedPath;
-    datasetIndexWatch.pending = false;
-    datasetIndexWatch.error = "";
-    syncDatasetIndexUpdatePrompt();
-  } catch (err) {
-    datasetIndexWatch.error = toText(err?.message) || "Could not watch dataset index.";
-    syncDatasetIndexUpdatePrompt();
-  }
+  const samePath = normalizePath(datasetIndexWatch.selectedPath).toLowerCase()
+    === normalizedSelectedPath.toLowerCase();
+  datasetIndexWatch.selectedPath = normalizedSelectedPath;
+  datasetIndexWatch.path = folderPath;
+  datasetIndexWatch.pending = false;
+  // The snapshot just loaded is the new baseline whether or not the path
+  // changed, so a refresh always clears what the poll had flagged.
+  datasetIndexWatch.signature = "";
+  ensureDatasetIndexVisibilityListener();
+  startDatasetIndexPollTimer();
+  syncDatasetIndexUpdatePrompt();
+  await baselineDatasetIndexSignature(normalizedSelectedPath);
+  if (!samePath) syncDatasetIndexUpdatePrompt();
 }
 
 
@@ -608,10 +652,6 @@ function initCachedDatasetToolbar() {
   }
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", () => {
-      if (datasetIndexWatch.unsubscribe) {
-        try { datasetIndexWatch.unsubscribe(); } catch {}
-        datasetIndexWatch.unsubscribe = null;
-      }
       void stopDatasetIndexWatch();
     }, { once: true });
   }

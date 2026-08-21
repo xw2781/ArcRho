@@ -58,6 +58,14 @@ def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: 
     )
 
 
+@router.get("/datasets/cached/index-signature")
+def get_cached_dataset_index_signature(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    # Deliberately local even when the index itself is read on the Gateway: this
+    # is a single stat that clients poll on a timer, so a hosted round trip
+    # would cost more than the call saves.
+    return dataset_service.get_cached_dataset_index_signature(project_name, reserving_class)
+
+
 @router.post("/datasets/cached/delete")
 def delete_cached_datasets(req: CachedDatasetDeleteRequest) -> Dict[str, Any]:
     # Hosted on the Server when the Gateway offers it: the dependency check

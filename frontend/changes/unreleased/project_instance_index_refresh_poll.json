@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Project Instance notices another user's dataset changes on its own and offers a Refresh Table button, in every host rather than only in the desktop app.",
+  "details": [
+    "The dataset table checks the selected reserving class's index every few seconds and compares it with the copy it loaded, instead of relying on a desktop-only folder watcher.",
+    "The prompt that appears is now labelled Refresh Table, so it reads as the action it performs rather than as a status.",
+    "Changes you make in your own window are adopted silently, and the check pauses while the window is hidden and catches up as soon as you return to it."
+  ]
+}

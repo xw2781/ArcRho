@@ -756,6 +756,46 @@ def get_index(project_name: str, reserving_class: str, refresh: bool = False) ->
     )
 
 
+def get_index_signature(project_name: str, reserving_class: str) -> Dict[str, Any]:
+    """Report index.json's size and mtime so a client can poll for staleness.
+
+    One stat instead of the three directory listings get_index() costs, because
+    callers poll this on a timer and only need to know whether the file they
+    already loaded still matches the one on disk.
+    """
+
+    project = _clean_text(project_name)
+    rc = _clean_text(reserving_class)
+    if not project or not rc:
+        raise HTTPException(400, "project_name and reserving_class are required.")
+    response: Dict[str, Any] = {
+        "ok": True,
+        "project_name": project,
+        "reserving_class": rc,
+        "index_file_name": INDEX_FILE_NAME,
+        "exists": False,
+        "mtime_ms": 0.0,
+        "size": 0,
+        "signature": "missing",
+    }
+    try:
+        index_path = os.path.join(_reserving_class_dir(project, rc), INDEX_FILE_NAME)
+    except HTTPException:
+        # A project folder that has gone missing is a staleness answer, not a
+        # polling failure: report "missing" and let the caller keep polling.
+        return response
+    response["path"] = index_path
+    try:
+        stat = os.stat(index_path)
+    except OSError:
+        return response
+    response["exists"] = True
+    response["mtime_ms"] = round(stat.st_mtime * 1000.0, 3)
+    response["size"] = int(stat.st_size)
+    response["signature"] = f"{response['mtime_ms']}:{response['size']}"
+    return response
+
+
 def get_cached_dataset_index(project_name: str, reserving_class: str) -> Dict[str, Any]:
     return get_index(project_name, reserving_class, refresh=False)
 
