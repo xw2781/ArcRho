@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-08-20T00:00:00.000Z
+  modified: 2026-08-21T03:32:58.967Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
@@ -38,6 +38,13 @@ survives into the `data:` module. The symptom is not "marker missing" but
 Fix: normalise the source once (`(await readFile(...)).replaceAll("\r\n", "\n")`), and
 point any import the harness does not stub at a real `file://` URL built with `new URL(...)`.
 That made the whole `dfm_formula_validation` file load again after months of failing.
+
+On 2026-08-20 at HEAD 4256369 a full run reported 912 tests with 9 failures: the usual
+cast (B&S adapters-contract, shared-grid module URL x2, Data-tab split, RS apply, shell
+add-tab SVG) plus three `project_settings_source_data.test.mjs` table-summary tests
+("table summary service publishes versioned distribution data", "app server owns
+date-role detection", "table summary is addressed by project") — all nine confirmed
+failing at clean HEAD via a worktree baseline.
 
 Separately, "changed theme and chart owners are reached through current cache-version chains"
 (tests/color_theme.test.mjs) is a **flake in full-suite runs only** — it passes in isolation
