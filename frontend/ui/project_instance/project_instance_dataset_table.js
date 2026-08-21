@@ -2828,6 +2828,10 @@ async function deleteSelectedDatasetRows(records) {
     // cost a second round trip over the share for data we are holding.
     const freshIndex = payload?.index;
     if (freshIndex?.ok && Array.isArray(freshIndex.files)) {
+      // The returned index carries the authoritative post-delete signature,
+      // so the watch re-baselines from the payload; this brief hold only
+      // covers a poll racing applyCachedDatasetSnapshot (see
+      // DATASET_INDEX_SETTLE_SUPPRESS_MS in project_instance_dataset_cache.js).
       state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
       applyCachedDatasetSnapshot(freshIndex, state.selectedPath);
       state.datasetIndexWatch.pending = false;

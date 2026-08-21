@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dataset table's Refresh Table prompt no longer appears for saves, propagations, deletes, or Excel-link retargets you triggered yourself.",
+  "details": [
+    "The table load now carries the index fingerprint recorded by the process that wrote the file, so the staleness check starts from the truth instead of a mapped-drive stat that can lag ~10 seconds behind a server-side write.",
+    "A polled fingerprint older than that baseline is recognized as the network drive's metadata cache echoing the past and is ignored; only a genuinely newer write - another user's or another app session's - shows the prompt."
+  ]
+}

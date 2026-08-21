@@ -140,6 +140,21 @@ function getSnapshotDataFolder(payload) {
 }
 
 const DATASET_INDEX_POLL_MS = 8000;
+// Brief hold after a reload so a poll racing the load's re-baseline cannot
+// flag the reload's own index write. Self-write protection does not rest on
+// this window: the snapshot payload carries the authoritative signature and
+// the poll ignores observations older than the baseline (see
+// checkDatasetIndexSignature), so this only needs to cover the fallback
+// baseline fetch when an older server omits `index_signature`.
+const DATASET_INDEX_SETTLE_SUPPRESS_MS = 1500;
+
+/** Leading mtime (in ms) of an "mtime_ms:size" signature, NaN when unparseable. */
+function parseDatasetIndexSignatureMtime(signature) {
+  const text = toText(signature);
+  const sep = text.indexOf(":");
+  if (sep <= 0) return NaN;
+  return Number(text.slice(0, sep));
+}
 
 async function fetchDatasetIndexSignature(selectedPath) {
   const url = new URL("/datasets/cached/index-signature", window.location.origin);
@@ -181,6 +196,17 @@ async function checkDatasetIndexSignature() {
       return;
     }
     if (signature === datasetIndexWatch.signature) return;
+    // A mapped-drive stat can be answered from the SMB redirector's cache and
+    // report metadata from before the baseline write. Staleness only ever
+    // reports an older state than the truth (business logic contract rule 15),
+    // so an observation older than the baseline is that cache echoing the
+    // past — never new work. Ignore it without adopting it, or the next fresh
+    // stat would read as an external update.
+    const baselineMtime = parseDatasetIndexSignatureMtime(datasetIndexWatch.signature);
+    const observedMtime = parseDatasetIndexSignatureMtime(signature);
+    if (Number.isFinite(baselineMtime) && Number.isFinite(observedMtime) && observedMtime < baselineMtime) {
+      return;
+    }
     // Writes this window just made are not news to it, so adopt them silently.
     if (Date.now() < Number(datasetIndexWatch.suppressUntil || 0)) {
       datasetIndexWatch.signature = signature;
@@ -259,7 +285,20 @@ async function startDatasetIndexWatchForSnapshot(payload, selectedPath) {
   ensureDatasetIndexVisibilityListener();
   startDatasetIndexPollTimer();
   syncDatasetIndexUpdatePrompt();
-  await baselineDatasetIndexSignature(normalizedSelectedPath);
+  const payloadSignature = toText(payload?.index_signature);
+  if (payloadSignature) {
+    // Statted by the process that wrote or validated index.json — the Gateway
+    // for hosted reads — so it cannot be an SMB attribute-cache echo of the
+    // pre-write file the way a client-side stat taken right after a hosted
+    // save can be. Baselining on it means this window's own writes can never
+    // out-run the baseline and raise the refresh prompt.
+    datasetIndexWatch.signature = payloadSignature;
+    datasetIndexWatch.error = "";
+  } else {
+    // Older server without index_signature in the snapshot payload: fall back
+    // to a client-side stat, guarded by the settle suppression window.
+    await baselineDatasetIndexSignature(normalizedSelectedPath);
+  }
   if (!samePath) syncDatasetIndexUpdatePrompt();
 }
 
@@ -545,7 +584,7 @@ async function refreshCachedDatasetTableFromDisk() {
   };
   const selectionState = captureDatasetTableSelection();
   closeDatasetTableFilterPopover();
-  datasetIndexWatch.suppressUntil = Date.now() + 1500;
+  datasetIndexWatch.suppressUntil = Date.now() + DATASET_INDEX_SETTLE_SUPPRESS_MS;
   setStatus(isTemporaryDatasetView()
     ? "Refreshing dataset index status..."
     : "Refreshing dataset table...");
@@ -660,6 +699,7 @@ function initCachedDatasetToolbar() {
 
   Object.assign(api, {
     applyCachedDatasetSnapshot,
+    checkDatasetIndexSignature,
     fetchCachedDatasetSnapshot,
     formatCachedTimestamp,
     getCachedFileDatasetNames,

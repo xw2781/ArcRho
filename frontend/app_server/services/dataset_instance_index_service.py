@@ -164,6 +164,19 @@ def _safe_read_json(path: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _format_index_signature(stat: os.stat_result) -> str:
+    return f"{round(stat.st_mtime * 1000.0, 3)}:{int(stat.st_size)}"
+
+
+def _index_signature_of(index_path: str) -> str:
+    """mtime+size fingerprint of index.json, ``"missing"`` when not on disk."""
+
+    try:
+        return _format_index_signature(os.stat(index_path))
+    except OSError:
+        return "missing"
+
+
 def _read_index_file(path: str) -> Dict[str, Any] | None:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -559,6 +572,15 @@ def _index_response(
         )
     )
     response["index_file_name"] = INDEX_FILE_NAME
+    data_dir = _clean_text(response["folder_paths"].get("data"))
+    # Statted by the process that just wrote or validated index.json — the
+    # Gateway for hosted reads — so a client can baseline its staleness watch
+    # on a value no SMB metadata cache has had a chance to distort. A client
+    # stat over the mapped drive can echo pre-write metadata for ~10s after a
+    # server-side write, which made the watch flag the user's own save.
+    response["index_signature"] = (
+        _index_signature_of(os.path.join(data_dir, INDEX_FILE_NAME)) if data_dir else "missing"
+    )
     response["index_persisted"] = bool(persisted)
     response["index_warning"] = _clean_text(warning)
     response["index_rebuild_reason"] = _clean_text(rebuild_reason)
@@ -792,7 +814,7 @@ def get_index_signature(project_name: str, reserving_class: str) -> Dict[str, An
     response["exists"] = True
     response["mtime_ms"] = round(stat.st_mtime * 1000.0, 3)
     response["size"] = int(stat.st_size)
-    response["signature"] = f"{response['mtime_ms']}:{response['size']}"
+    response["signature"] = _format_index_signature(stat)
     return response
 
 

@@ -486,6 +486,11 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self.assertEqual(persisted_response.pop("index_rebuild_reason"), "explicit-rebuild")
         self.assertTrue(persisted_response.pop("index_rebuilt"))
         self.assertGreaterEqual(persisted_response.pop("index_elapsed_ms"), 0)
+        # Response-only staleness baseline: the just-written file's own stat.
+        self.assertEqual(
+            persisted_response.pop("index_signature"),
+            dataset_instance_index_service._index_signature_of(str(self.index_path)),
+        )
         self.assertEqual(
             persisted_response.pop("index_file_name"),
             dataset_index_contract.INDEX_FILE_NAME,
@@ -635,6 +640,11 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self.assertEqual(persisted_response.pop("index_rebuild_reason"), "")
         self.assertFalse(persisted_response.pop("index_rebuilt"))
         self.assertGreaterEqual(persisted_response.pop("index_elapsed_ms"), 0)
+        # Response-only staleness baseline: the untouched file's own stat.
+        self.assertEqual(
+            persisted_response.pop("index_signature"),
+            dataset_instance_index_service._index_signature_of(str(self.index_path)),
+        )
         self.assertEqual(
             persisted_response.pop("index_file_name"),
             dataset_index_contract.INDEX_FILE_NAME,

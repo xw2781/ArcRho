@@ -15,6 +15,10 @@ import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=
 // affected object and rebuilds the index as it goes; the client gives it the
 // hosted-save processing timeout, and the end message shortens this again.
 const RETARGET_INDEX_WATCH_SUPPRESS_MS = 180000;
+// The table reload after retarget-end re-baselines the watch from the
+// snapshot payload's authoritative signature, so this brief hold only covers
+// a poll racing that reload (see DATASET_INDEX_SETTLE_SUPPRESS_MS in
+// project_instance_dataset_cache.js).
 const SETTLED_INDEX_WATCH_SUPPRESS_MS = 1500;
 
 export function installProjectInstanceExcelLinks(ctx) {

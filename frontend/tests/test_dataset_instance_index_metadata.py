@@ -456,6 +456,46 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
             self.assertFalse(second["index_rebuilt"])
             self.assertEqual(forced["index_rebuild_reason"], "refresh-requested")
 
+    def test_index_response_reports_the_on_disk_signature(self) -> None:
+        # The Project Instance staleness watch baselines on this field, so it
+        # must match the format the /datasets/cached/index-signature poll
+        # reports for the same file: "<mtime_ms>:<size>", mtime first so the
+        # client can compare write recency.
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            rc_dir = Path(temp_dir)
+            folder_paths = _folder_paths_for(rc_dir)
+            index_path = rc_dir / dataset_instance_index_service.INDEX_FILE_NAME
+            index_path.write_text('{"files": []}', encoding="utf-8")
+
+            response = dataset_instance_index_service._index_response(
+                {"project_name": "Example", "reserving_class": "Paid", "files": []},
+                persisted=True,
+                folder_paths=folder_paths,
+            )
+
+            stat = index_path.stat()
+            self.assertEqual(
+                response["index_signature"],
+                f"{round(stat.st_mtime * 1000.0, 3)}:{int(stat.st_size)}",
+            )
+            self.assertEqual(
+                response["index_signature"],
+                dataset_instance_index_service._index_signature_of(str(index_path)),
+            )
+
+    def test_index_response_signature_is_missing_without_a_file(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+            folder_paths = _folder_paths_for(Path(temp_dir))
+
+            response = dataset_instance_index_service._index_response(
+                {"project_name": "Example", "reserving_class": "Paid", "files": []},
+                persisted=False,
+                warning="not written",
+                folder_paths=folder_paths,
+            )
+
+            self.assertEqual(response["index_signature"], "missing")
+
 
 if __name__ == "__main__":
     unittest.main()
