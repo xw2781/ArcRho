@@ -198,7 +198,9 @@ def _engine_dataset_instances(project_name: str, reserving_class: str) -> list[s
             continue
         if str(row.get("source_kind") or "").strip().casefold() != "engine":
             continue
-        name = str(row.get("dataset_name") or "").strip()
+        # Index rows name the instance "name" (dataset_index_contract
+        # INDEX_ROW_FIELDS); "dataset_name" exists only on sidecar payloads.
+        name = str(row.get("name") or "").strip()
         key = name.casefold()
         if name and key not in seen:
             seen.add(key)

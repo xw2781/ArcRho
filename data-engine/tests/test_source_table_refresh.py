@@ -19,6 +19,7 @@ for path in (DATA_ENGINE_SRC, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from arcrho_api.dataset_index_contract import canonicalize_index_row
 from arcrho_source_refresh_contract import (
     SOURCE_REFRESH_FUNCTION,
     acquire_source_refresh_lease,
@@ -106,6 +107,50 @@ class ReservingClassEnumerationTests(unittest.TestCase):
             sys.modules, {"app_server": app_server, "app_server.config": missing}
         ):
             self.assertEqual(source_table_refresh._reserving_class_paths("Demo"), [])
+
+
+class EngineDatasetEnumerationTests(unittest.TestCase):
+    """The job must read names from index rows as the index contract writes them.
+
+    The rows are built through ``canonicalize_index_row`` on purpose: a
+    hand-typed fixture once carried the sidecar-only ``dataset_name`` field,
+    which the contract's projection drops, and the enumeration silently found
+    zero datasets on every real project.
+    """
+
+    def _enumerate(self, rows):
+        index_service = SimpleNamespace(
+            get_index=lambda project, reserving_class: {"files": rows}
+        )
+        with _install_fake_app_server(
+            {"dataset_instance_index_service": index_service}
+        ):
+            return source_table_refresh._engine_dataset_instances(
+                "Demo Project", "HPPREF\\NJ"
+            )
+
+    def test_engine_rows_are_found_in_a_contract_shaped_index(self) -> None:
+        rows = [
+            # A sidecar-flavored source names its dataset "dataset_name"; the
+            # canonical projection persists it as "name" only.
+            canonicalize_index_row(
+                {"dataset_name": "ALAE Paid", "source_kind": "engine"}
+            ),
+            canonicalize_index_row({"name": "Paid", "source_kind": "engine"}),
+            canonicalize_index_row({"name": "Cutoff", "source_kind": "input"}),
+            canonicalize_index_row({"name": "Ultimate", "source_kind": "dfm"}),
+        ]
+        self.assertNotIn("dataset_name", rows[0])
+        self.assertEqual(self._enumerate(rows), ["ALAE Paid", "Paid"])
+
+    def test_duplicate_names_and_malformed_rows_are_skipped(self) -> None:
+        rows = [
+            canonicalize_index_row({"name": "Paid", "source_kind": "engine"}),
+            canonicalize_index_row({"name": "PAID", "source_kind": "engine"}),
+            "not a row",
+            {"source_kind": "engine"},
+        ]
+        self.assertEqual(self._enumerate(rows), ["Paid"])
 
 
 class RegenerationRequestTests(unittest.TestCase):

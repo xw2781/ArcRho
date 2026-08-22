@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Importing the source table again now really rebuilds every generated dataset.",
+  "details": [
+    "The refresh job previously finished green while rebuilding nothing, because it read dataset names from the class index under the wrong field.",
+    "Downstream calculated datasets and methods are refreshed again after the rebuild, so their timestamps move with the import."
+  ]
+}
