@@ -1,6 +1,6 @@
 # Persisted JSON Contract v4: One Naming Convention, Fewer Fields, One Audit Policy
 
-Status: In progress — Steps 1-2 landed 2026-08-22
+Status: In progress — Steps 1-3 landed 2026-08-22
 Last updated: 2026-08-22
 
 ## Progress Checklist
@@ -25,11 +25,11 @@ One box per task, in the order the work must land. Each step is its own commit; 
 
 ### Step 3 — Audit log and shared sidecar validator · Fable 5 · `high`
 
-- [ ] Stop `_normalize_dataset_audit_log` discarding `Auto Refresh`; keep every action, collapse consecutive automatic entries to the most recent.
-- [ ] One shared cap constant: 200 per dataset, 500 per project; remove the 50, 1 and 5000 figures.
-- [ ] Add the shared sidecar-core validator (rule 9): common core present, `audit_log` last, method-only fields allowed on top; every sidecar writer calls it (engine contract + four method-output contracts).
-- [ ] Cross-writer test that runs all five producers against the validator.
-- [ ] Commit.
+- [x] Stop `_normalize_dataset_audit_log` discarding `Auto Refresh`; keep every action, collapse consecutive automatic entries to the most recent.
+- [x] One shared cap constant: 200 per dataset, 500 per project; remove the 50, 1 and 5000 figures.
+- [x] Add the shared sidecar-core validator (rule 9): common core present, `audit_log` last, method-only fields allowed on top; every sidecar writer calls it (engine contract + four method-output contracts).
+- [x] Cross-writer test that runs all five producers against the validator.
+- [x] Commit.
 
 ### Step 4 — Rename, drop fields, delete legacy readers · Fable 5 · `xhigh` (one commit; `ultracode` fan-out by contract, test sweep at `low`)
 

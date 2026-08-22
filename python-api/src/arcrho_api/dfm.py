@@ -29,6 +29,7 @@ from .exceptions import DfmDataError, InvalidDfmJsonError, ReadOnlyError
 from .io import persisted_json_text, read_json
 from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
 from .sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
+from .sidecar_core_contract import with_audit_log_last
 
 if TYPE_CHECKING:
     from .reserving_class import ReservingClass
@@ -733,7 +734,7 @@ class DfmMethod:
             if normalized == dependency_entries(source.get("Dependents")):
                 continue
             source["Dependents"] = normalized
-            files[path] = _json_bytes(source)
+            files[path] = _json_bytes(with_audit_log_last(source))
         return files
 
     def save(self, *, automatic: bool = False, output_changed: bool | None = None) -> Path:

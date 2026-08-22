@@ -45,6 +45,13 @@ from .bootstrap_simulation import (
 from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number, selected_ratio_values
 from .revision_contract import fingerprint
+from .sidecar_audit_contract import (
+    AUDIT_ACTION_INSERT,
+    AUDIT_ACTION_UPDATE,
+    append_audit_entry,
+    normalize_audit_log,
+)
+from .sidecar_core_contract import validate_sidecar_core
 
 
 BST_JSON_FORMAT = "arcrho-bootstrap-method-by-tab-v1"
@@ -1017,17 +1024,17 @@ def build_bootstrap_output_sidecar(
         actor = _clean(prior.get("modified_by") or prior.get("user")) or actor
     created = str(prior.get("created") or "").strip() or published_at
     sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
-    audits = deepcopy(prior.get("audit_log")) if isinstance(prior.get("audit_log"), list) else []
     if append_audit:
-        action = _clean(audit_action) or ("Update" if record_exists else "Insert")
-        audits.append({
-            "event_date": published_at,
-            "action": action,
-            "change_info": "" if action == "Insert" else "Values",
-            "user": actor,
-        })
+        audits = append_audit_entry(
+            prior.get("audit_log"),
+            event_date=published_at,
+            action=_clean(audit_action) or (AUDIT_ACTION_UPDATE if record_exists else AUDIT_ACTION_INSERT),
+            user=actor,
+        )
+    else:
+        audits = normalize_audit_log(prior.get("audit_log"))
     graph_precedents = bootstrap_precedent_names(method) if precedents is None else precedents
-    return {
+    return validate_sidecar_core({
         "dataset_name": details["name"],
         "dataset_type": details["output_type"] or details["name"],
         "dataset_category": details.get("dataset_category", ""),
@@ -1060,7 +1067,7 @@ def build_bootstrap_output_sidecar(
         "status": _integer(status, 0, minimum=0),
         "publication_revision": metadata["publication_revision"],
         "audit_log": audits,
-    }
+    })
 
 
 __all__ = [

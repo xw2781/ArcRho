@@ -106,7 +106,7 @@ def safe_append_project_audit_log(project_name: str, action: str, user_name: Opt
 
 def read_audit_log(project_name: str, limit: int = 500) -> Dict[str, Any]:
     filepath = config.get_audit_log_path(project_name)
-    safe_limit = max(1, min(int(limit or 500), 5000))
+    safe_limit = max(1, min(int(limit or 500), config.AUDIT_LOG_MAX_ENTRIES))
     entries = _read_audit_log_entries(filepath)
     if safe_limit > 0:
         entries = entries[-safe_limit:]

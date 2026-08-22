@@ -5,6 +5,8 @@ from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
 from .dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
+from .sidecar_audit_contract import AUDIT_ACTION_INSERT, append_audit_entry
+from .sidecar_core_contract import validate_sidecar_core
 
 
 ENGINE_SOURCE_KIND = "engine"
@@ -34,8 +36,9 @@ def build_engine_dataset_sidecar(
     processing: Mapping[str, Any] | None = None,
     precedents: Sequence[Any] = (),
     dependents: Sequence[Any] = (),
-    audit_action: str = "Insert",
+    audit_action: str = AUDIT_ACTION_INSERT,
     source_modified: str = "",
+    audit_log: Sequence[Any] = (),
 ) -> dict[str, Any]:
     """Return the complete location-independent engine sidecar payload.
 
@@ -49,6 +52,10 @@ def build_engine_dataset_sidecar(
     dataset's content last changed at its source system (e.g. ResQ); review
     status comparisons must use it instead of ``updated_at``, because a newly
     written cache of unchanged data is not a data change.
+
+    ``audit_log`` is the history the sidecar already held when one is being
+    rewritten; this write is appended to it under the one audit policy rather
+    than replacing it.
     """
 
     vector = str(data_format or "").strip().casefold() == "vector"
@@ -92,12 +99,13 @@ def build_engine_dataset_sidecar(
             payload["csv_file"]: deepcopy(canonical_processing),
         }
 
-    payload["audit_log"] = [{
-        "event_date": payload["updated_at"],
-        "action": str(audit_action or "Insert"),
-        "change_info": "",
-        "user": payload["user"],
-    }]
     payload["Precedents"] = deepcopy(list(precedents))
     payload["Dependents"] = deepcopy(list(dependents))
-    return payload
+    payload["audit_log"] = append_audit_entry(
+        audit_log,
+        event_date=payload["updated_at"],
+        action=str(audit_action or AUDIT_ACTION_INSERT),
+        user=payload["user"],
+        change_info="",
+    )
+    return validate_sidecar_core(payload)

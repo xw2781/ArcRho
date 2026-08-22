@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
+from arcrho_api.sidecar_audit_contract import PROJECT_AUDIT_LOG_MAX_ENTRIES
 from arcrho_hosted_save_http_contract import (
     CLIENT_CONFIG_FILE_NAME as GATEWAY_CONFIG_FILE,
     HostedSaveHttpContractError,
@@ -376,7 +377,9 @@ RESERVING_CLASS_TYPES_FILE_COLUMNS = ["Name", "Level", "Formula", "Source"]
 DATASET_TYPES_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula"]
 DATASET_TYPES_FILE_COLUMNS = ["Name", "Data Format", "Category", "Calculated", "Formula", "Source", "Generated"]
 AUDIT_LOG_FILE = "audit_log.json"
-AUDIT_LOG_MAX_ENTRIES = 5000
+# The project log shares the one audit policy with dataset sidecars; the cap
+# is owned by ``arcrho_api.sidecar_audit_contract``.
+AUDIT_LOG_MAX_ENTRIES = PROJECT_AUDIT_LOG_MAX_ENTRIES
 # The table-summary cache is shared by every user of a project. Its payload
 # carries `summary_version`; `table_summary_service.load_valid_cache` rejects a
 # cache built by another version so a schema change regenerates it in place.

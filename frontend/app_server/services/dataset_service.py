@@ -19,6 +19,13 @@ from fastapi import HTTPException
 
 from arcrho_api.dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
 from arcrho_api.io import persisted_json_text
+from arcrho_api.sidecar_audit_contract import (
+    AUDIT_ACTION_INSERT,
+    AUDIT_ACTION_UPDATE,
+    append_audit_entry,
+    normalize_audit_log,
+)
+from arcrho_api.sidecar_core_contract import with_audit_log_last
 from app_server import config
 from app_server.helpers import (
     atomic_write_csv,
@@ -383,9 +390,6 @@ def _normalize_name_list(value: Any) -> List[str]:
     return out
 
 
-DATASET_AUDIT_LOG_MAX_ENTRIES = 50
-
-
 def _current_user_name() -> str:
     """Display name stamped onto dataset metadata and audit entries.
 
@@ -406,37 +410,29 @@ def _current_user_name() -> str:
 
 
 def _normalize_dataset_audit_log(value: Any) -> List[Dict[str, str]]:
-    entries: List[Dict[str, str]] = []
-    if not isinstance(value, list):
-        return entries
-    for raw in value:
-        if not isinstance(raw, dict):
-            continue
-        event_date = str(raw.get("event_date") or raw.get("Event Date") or "").strip()
-        action = str(raw.get("action") or raw.get("Action") or "").strip()
-        change_info = str(raw.get("change_info") or raw.get("Change Info") or "").strip()
-        user = str(raw.get("user") or raw.get("User") or "").strip()
-        if not event_date or action not in {"Insert", "Update"}:
-            continue
-        entries.append({
-            "event_date": event_date,
-            "action": action,
-            "change_info": "" if action == "Insert" else (change_info or "Values"),
-            "user": user,
-        })
-    return entries[-DATASET_AUDIT_LOG_MAX_ENTRIES:]
+    """The one audit policy (``arcrho_api.sidecar_audit_contract``) on a stored log.
+
+    Every action is kept -- including the Engine's ``Auto Refresh`` entries,
+    which an earlier version of this normalizer silently discarded on every
+    dataset save -- with consecutive automatic entries collapsed and the cap
+    applied.
+    """
+
+    return normalize_audit_log(value)
 
 
 def _append_dataset_audit_entry(payload: Dict[str, Any], action: str, *, event_date: str | None = None, user_name: str | None = None) -> None:
-    action_value = "Insert" if str(action or "").strip().lower() == "insert" else "Update"
-    entries = _normalize_dataset_audit_log(payload.get("audit_log"))
-    entries.append({
-        "event_date": event_date or _now_utc_iso(),
-        "action": action_value,
-        "change_info": "" if action_value == "Insert" else "Values",
-        "user": str(user_name or "").strip() or _current_user_name(),
-    })
-    payload["audit_log"] = entries[-DATASET_AUDIT_LOG_MAX_ENTRIES:]
+    action_value = (
+        AUDIT_ACTION_INSERT
+        if str(action or "").strip().lower() == "insert"
+        else AUDIT_ACTION_UPDATE
+    )
+    payload["audit_log"] = append_audit_entry(
+        payload.get("audit_log"),
+        event_date=event_date or _now_utc_iso(),
+        action=action_value,
+        user=str(user_name or "").strip() or _current_user_name(),
+    )
 
 
 def _normalize_dataset_external_links(
@@ -660,7 +656,7 @@ def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(persisted_json_text(payload))
+                fh.write(persisted_json_text(with_audit_log_last(payload)))
             os.replace(tmp_path, path)
         except PermissionError:
             try:

@@ -18,6 +18,13 @@ from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
 from .revision_contract import fingerprint
+from .sidecar_audit_contract import (
+    AUDIT_ACTION_INSERT,
+    AUDIT_ACTION_UPDATE,
+    append_audit_entry,
+    normalize_audit_log,
+)
+from .sidecar_core_contract import validate_sidecar_core
 
 
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v2"
@@ -1030,16 +1037,16 @@ def build_dfm_output_sidecar(
         actor = _clean(prior.get("modified_by") or prior.get("user")) or actor
     created = str(prior.get("created") or "").strip() or published_at
     sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
-    audits = deepcopy(prior.get("audit_log")) if isinstance(prior.get("audit_log"), list) else []
     if append_audit:
-        action = _clean(audit_action) or ("Update" if record_exists else "Insert")
-        audits.append({
-            "event_date": published_at,
-            "action": action,
-            "change_info": "" if action == "Insert" else "Values",
-            "user": actor,
-        })
-    return {
+        audits = append_audit_entry(
+            prior.get("audit_log"),
+            event_date=published_at,
+            action=_clean(audit_action) or (AUDIT_ACTION_UPDATE if record_exists else AUDIT_ACTION_INSERT),
+            user=actor,
+        )
+    else:
+        audits = normalize_audit_log(prior.get("audit_log"))
+    return validate_sidecar_core({
         "dataset_name": output_dataset,
         "dataset_type": _clean(details.get("output type")) or output_dataset,
         "dataset_category": _clean(details.get("output category")),
@@ -1072,7 +1079,7 @@ def build_dfm_output_sidecar(
         "status": _integer(status, 0, minimum=0),
         "publication_revision": str(metadata.get("publication revision") or "").strip(),
         "audit_log": audits,
-    }
+    })
 
 
 def _set_revisions(payload: dict[str, Any]) -> None:

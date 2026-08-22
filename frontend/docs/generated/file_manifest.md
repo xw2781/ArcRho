@@ -14,7 +14,7 @@ Excluded directories: `.cache`, `__pycache__`, `dist`, `local_workspace_log`, `n
 | `docs` | 102 |
 | `electron` | 13 |
 | `icons` | 18 |
-| `tests` | 191 |
+| `tests` | 192 |
 | `tools` | 2 |
 | `ui` | 524 |
 | `user-manual` | 18 |

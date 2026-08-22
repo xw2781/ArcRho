@@ -36,6 +36,7 @@ from arcrho_api.cape_cod_contract import (
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
+from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_UPDATE
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
@@ -1416,6 +1417,8 @@ def write_engine_generated_export(
         show_subtotal=normalize_show_subtotal(existing.get("show_subtotal")),
         processing=provenance,
         source_modified=str(payload.get("modified") or "").strip(),
+        audit_log=existing.get("audit_log") or (),
+        audit_action=AUDIT_ACTION_UPDATE if existing else AUDIT_ACTION_INSERT,
     )
 
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)

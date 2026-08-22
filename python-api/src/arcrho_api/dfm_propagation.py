@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from .dfm_contract import DFM_JSON_FORMAT, dependency_entries, recalculate_dfm_method
 from .io import persisted_json_text
+from .sidecar_core_contract import with_audit_log_last
 from .paths import clean_text, sanitize_file_name_part
 
 if TYPE_CHECKING:
@@ -44,7 +45,7 @@ def _mark_review_needed(path: Path) -> None:
     if payload.get("status") == 2:
         return
     payload["status"] = 2
-    encoded = persisted_json_text(payload).encode("utf-8")
+    encoded = persisted_json_text(with_audit_log_last(payload)).encode("utf-8")
     temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         temporary.write_bytes(encoded)

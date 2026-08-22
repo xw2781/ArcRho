@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Set
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.sidecar_core_contract import with_audit_log_last
 from app_server import config
 from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
 
@@ -211,12 +212,14 @@ def read_sidecar_strict(path: str) -> Dict[str, Any]:
 
 
 def write_sidecar(path: str, payload: Dict[str, Any]) -> None:
+    """Write one sidecar; ``audit_log`` lands last under the one audit policy."""
+
     with sidecar_write_lock(path):
         tmp_path = f"{path}.{uuid.uuid4()}.tmp"
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(persisted_json_text(payload))
+                fh.write(persisted_json_text(with_audit_log_last(payload)))
             os.replace(tmp_path, path)
         finally:
             try:
@@ -387,7 +390,7 @@ def update_precedent_dependents(
                     backups[path] = fh.read()
                 temporary = f"{path}.{uuid.uuid4()}.tmp"
                 with open(temporary, "w", encoding="utf-8", newline="\n") as fh:
-                    fh.write(persisted_json_text(payload))
+                    fh.write(persisted_json_text(with_audit_log_last(payload)))
                 staged[path] = temporary
             for path in sorted(updates, key=os.path.normcase):
                 os.replace(staged.pop(path), path)

@@ -29,7 +29,7 @@ Audit log read/write domain for project actions.
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Stores rolling JSON audit records with lock protection.
+- Stores rolling JSON audit records with lock protection, capped at `PROJECT_AUDIT_LOG_MAX_ENTRIES` (500) from `arcrho_api.sidecar_audit_contract`, the same module that owns the dataset-sidecar cap, so there is one audit policy rather than one per file kind.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
