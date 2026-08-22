@@ -1,7 +1,79 @@
 # Persisted JSON Contract v4: One Naming Convention, Fewer Fields, One Audit Policy
 
-Status: Decided — all open decisions settled, no code changed
+Status: In progress — Step 1 landed 2026-08-22
 Last updated: 2026-08-22
+
+## Progress Checklist
+
+One box per task, in the order the work must land. Each step is its own commit; do not start a step until the previous one is committed. The model and effort beside each step are the recommendation for driving it (`ultracode` = multi-agent workflow; start the step with `ultracode — implement step N of docs/plans/persisted_json_contract_v4.md`). Steps 6 and 7 touch the shared server and are run by a person, not an agent fleet.
+
+### Step 1 — Fingerprint decoupling · Fable 5 · `xhigh`
+
+- [x] Make the three self-fingerprints (`owned`, `derived`, `publication`) hash a vocabulary independent of the persisted key spelling, in every method contract (DFM, BF, CC, Bootstrap).
+- [x] Make the `source revision` fingerprints spelling-independent the same way, so a converted precedent still matches a downstream method's stored value.
+- [x] Move fingerprint production into one function and truncate there to `sha256:` + 16 hex characters (rule 2a), including the processing-rules `config_hash`.
+- [x] Prove it: a real method file loads, re-normalises and rewrites byte for byte before and after the change, with only the fingerprint values differing.
+- [x] Commit.
+
+### Step 2 — Reconcile the two method writers · Fable 5 · `xhigh`
+
+- [ ] Make `dfm_service._publish` write through `persisted_projection`, so both DFM writers emit one shape.
+- [ ] Check BF, CC, Bootstrap, RS and B&S for the same split (service writer vs contract projection) and close any found.
+- [ ] Route the browser-side Berquist Sherman save (`berquist_sherman_main.js` → `save-json-file` IPC) through the app server instead of `fs.writeFileSync` (Trap 3).
+- [ ] Collapse the four JSON text writers onto the canonical `arcrho_api/io.py` behaviour (Bridge, `host_support.js`, `arcbot_host.js`).
+- [ ] Commit.
+
+### Step 3 — Audit log and shared sidecar validator · Fable 5 · `high`
+
+- [ ] Stop `_normalize_dataset_audit_log` discarding `Auto Refresh`; keep every action, collapse consecutive automatic entries to the most recent.
+- [ ] One shared cap constant: 200 per dataset, 500 per project; remove the 50, 1 and 5000 figures.
+- [ ] Add the shared sidecar-core validator (rule 9): common core present, `audit_log` last, method-only fields allowed on top; every sidecar writer calls it (engine contract + four method-output contracts).
+- [ ] Cross-writer test that runs all five producers against the validator.
+- [ ] Commit.
+
+### Step 4 — Rename, drop fields, delete legacy readers · Fable 5 · `xhigh` (one commit; `ultracode` fan-out by contract, test sweep at `low`)
+
+- [ ] Migrate `notes_tab` text from the four BF method files into their dataset sidecars' `notes` **before** any deletion (Trap 1) — a one-time fix in the style of `migrate_legacy_notes_files`.
+- [ ] Fix the `notes_tab` guard test: pattern that matches `"notes_tab": {}` in Python, and every producer on its file list.
+- [ ] DFM: rename the 48 spaced keys in `dfm_contract.py` and the 46 in `dfm_persistence.js`; keep the `ratios tab` labels (Decision 6); drop `results tab.ratio basis origin labels`.
+- [ ] All method kinds: `json_format` → `arcrho-<kind>-v4`, no `-by-tab`; delete the always-empty placeholder sections (`validation_tab`, `results_tab`, `audit_log_tab`, `chart_tab`, `ultimates_tab`, `ratios_tab` where empty); remove the audit log from method files (rule 8).
+- [ ] Dataset sidecars: `Precedents`/`Dependents` → `precedents`/`dependents`; one entry shape `{dataset_name, method_type?}` plus optional `reserving_class` / `project` (rule 7); drop `path`, `mtime`, `mtime_ns`, `method_type_code`, `data_format_code`, `origin_count`, `user`, `formula`, `processing_by_csv`.
+- [ ] Redirect the one `processing_by_csv` reader (`data_processing_rules_service.py:1324-1336`) to the flat `processing` copy (Decision 5).
+- [ ] Timestamps: ISO-8601 UTC, millisecond precision, `Z` suffix, everywhere (rule 3).
+- [ ] Project `audit_log.json`: adopt the sidecar record shape (Decision 4).
+- [ ] Restamp the three extra on-server files: cache provenance (`format` → `json_format`), `dataset_number_formats.json`, `source_import.json` (`version` → `json_format`).
+- [ ] Delete every legacy/dual-spelling reader: `dataset_index_contract.py`, `arcrho_api/dfm.py`, `result_selection_service.py`, `dfm_service.py`, the `_snapshot_field(spaced, snake)` helpers in BF and CC contracts.
+- [ ] Update the spaced keys in `export_reserving_class_to_resq.py`, `sync_reserving_class_with_resq.py`, and `python-api/migration/resq_migration/{catalog,dfm,extractors,merge,sync_session}.py`.
+- [ ] Sweep the ~47 test files / 334 literal occurrences (`"json format"`, `"details tab"`, `"ratios tab"`, `"method metadata"`, `dataset_type_name`, …) and `test_persisted_json_text.py`.
+- [ ] Regenerate `tmp_data/json_contract_v4_samples/` and make `check_samples.py` pass rules 1–5 plus the Decision 6 exception.
+- [ ] Verify no reader of the old shape remains (grep for every old key across `python-api/`, `frontend/`, `data-engine/`).
+- [ ] Run `/code-review ultra` on the branch.
+- [ ] Commit.
+
+### Step 5 — Tests and documentation · Opus 5 · `high`
+
+- [ ] Rewrite `frontend/docs/ui/dfm_json_format.md` for v4 (not an edit — it is spaced names throughout).
+- [ ] Regenerate the generated docs under `frontend/docs/generated/`.
+- [ ] Release fragment under `frontend/changes/unreleased/` for the format change and the forced update.
+- [ ] Full Python and frontend test suites green (baseline the pre-existing failures first — see agent memory).
+- [ ] Commit.
+
+### Step 6 — Conversion script and server rehearsal · Fable 5 · `max` for the verify/rollback path · run on the Server PC
+
+- [ ] Write `tools/migrate_persisted_json_v4.py` in the `migrate_eex_formulas.py` style: `--dry-run` / `--apply`, per-file backup, rollback.
+- [ ] Walk `projects/*/data/*/{methods,sidecars}`, the project root files, `.arcrho-cache-provenance/`, and `.arcrho-resq-import-staging/` (Trap 5) — decide rewrite vs delete for the staging root.
+- [ ] Rewrite only through the canonical contract modules; verify each converted file by re-normalising it and asserting it is unchanged.
+- [ ] Dry run on `NJ_Annual_Prod_202605_Fake`; compare file counts and sizes against the Measured Impact table.
+- [ ] Apply to `NJ_Annual_Prod_202605_Fake`; open DFM, BF, CC, Bootstrap, RS and B&S methods and a plain dataset in the app; save one of each and confirm the byte-identical round trip.
+- [ ] Apply to the remaining 36 projects on the Server PC, not across the mapped drive.
+- [ ] Commit the script.
+
+### Step 7 — Release every component together · Opus 5 · `high` · person-driven
+
+- [ ] Rebuild and deploy Engine, Bridge and Gateway (bundled sources carry the contracts — Trap 4); check the bridge auto-create setting afterwards.
+- [ ] Republish the active macros to the shared library (`publish_macro_library.py`).
+- [ ] Build and force the frontend release; confirm an old client cannot open a converted workspace silently.
+- [ ] Update `Status:` at the top of this document to Implemented, with the date.
 
 ## Summary
 

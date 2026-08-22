@@ -8,8 +8,6 @@ Chart tabs without reading its precedent datasets.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -18,6 +16,7 @@ from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number
+from .revision_contract import fingerprint
 
 
 BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v3"
@@ -95,17 +94,6 @@ def _duplicates(values: Iterable[str]) -> list[str]:
     return duplicates
 
 
-def _hash_projection(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
 def _whole_number(value: Any) -> float | int | None:
     if value is None or isinstance(value, bool) or value == "":
         return None
@@ -123,7 +111,7 @@ def _whole_number(value: Any) -> float | int | None:
 def _snapshot_revision(name: str, origin_labels: list[str], values: list[Any]) -> str:
     if not name or not origin_labels or len(origin_labels) != len(values):
         return ""
-    return _hash_projection({
+    return fingerprint({
         "name": name,
         "origin_labels": origin_labels,
         "values": [_number(value) for value in values],
@@ -244,9 +232,9 @@ def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     """Return deterministic revisions for BF-owned, derived, and published state."""
 
     return {
-        "owned_revision": _hash_projection(owned_projection(payload)),
-        "derived_revision": _hash_projection(derived_projection(payload)),
-        "publication_revision": _hash_projection(publication_projection(payload)),
+        "owned_revision": fingerprint(owned_projection(payload)),
+        "derived_revision": fingerprint(derived_projection(payload)),
+        "publication_revision": fingerprint(publication_projection(payload)),
     }
 
 

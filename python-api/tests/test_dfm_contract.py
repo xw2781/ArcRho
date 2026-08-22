@@ -276,7 +276,7 @@ class DfmContractTests(unittest.TestCase):
             ["Paid Loss", "Earned Premium", "Accounting Cutoff", "Growth Adjustment"],
         )
         self.assertEqual(method["ratios tab"]["average formulas"]["values"][2][:2], [9, 9])
-        owned_values = owned_projection(method)["ratios tab"]["average formulas"]["owned values"]
+        owned_values = owned_projection(method)["average_formulas"]["owned_values"]
         user_a = next(item for item in owned_values if item["label"] == "User A")
         self.assertEqual(user_a, {"label": "User A", "columns": [0, 1, 2], "values": [9, 9, 1.0]})
         sidecar = build_dfm_output_sidecar(

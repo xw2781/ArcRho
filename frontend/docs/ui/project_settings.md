@@ -49,7 +49,6 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:close-active-tab`
 - `arcrho:close-shell-menus`
 - `arcrho:hotkey`
-- `arcrho:open-project`
 - `arcrho:open-project-instance`
 - `arcrho:project-settings-progress`
 - `arcrho:project-settings-ribbon-changed`

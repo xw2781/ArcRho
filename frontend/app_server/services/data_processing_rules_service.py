@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import getpass
-import hashlib
 import json
 import os
 import re
@@ -15,6 +14,7 @@ import pandas as pd
 from pydantic import ValidationError
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.revision_contract import fingerprint
 from app_server import config
 from app_server.schemas.data_processing_rules import DataProcessingRulesData
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -306,13 +306,10 @@ def _canonical_rules_for_hash(document: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _hash_json(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    # The processing ``config_hash`` is a persisted fingerprint: the Engine
+    # writes it into every dataset sidecar and the app compares it against a
+    # freshly computed value, so it must come from the one shared producer.
+    return fingerprint(value)
 
 
 def semantic_rules_hash(document: Dict[str, Any]) -> str:

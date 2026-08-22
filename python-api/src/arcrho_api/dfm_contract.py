@@ -9,8 +9,6 @@ an equivalent JSON payload regardless of the producer or machine path.
 from __future__ import annotations
 
 import ast
-import hashlib
-import json
 import math
 import re
 from copy import deepcopy
@@ -19,6 +17,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
+from .revision_contract import fingerprint
 
 
 DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v2"
@@ -308,7 +307,12 @@ def _tab(payload: Mapping[str, Any], name: str) -> dict[str, Any]:
 
 
 def source_snapshot_revision(snapshot: Mapping[str, Any]) -> str:
-    """Hash canonical source content, ignoring producer-local timestamps/revisions."""
+    """Fingerprint canonical source content, ignoring producer-local timestamps/revisions.
+
+    The projection below is the hashed vocabulary. It is spelled independently
+    of the snapshot's own keys, so a snapshot read from a spaced-key file and
+    one read from a snake_case file fingerprint identically.
+    """
 
     origins = _labels(_snapshot_field(snapshot, "origin labels", "origin_labels"))
     developments = _labels(_snapshot_field(snapshot, "development labels", "development_labels"))
@@ -319,20 +323,20 @@ def source_snapshot_revision(snapshot: Mapping[str, Any]) -> str:
     mask: Any = _bool_matrix(raw_mask) if isinstance(raw_mask, list) else []
     projection = {
         "name": _clean(snapshot.get("name")),
-        "origin labels": origins,
-        "development labels": developments,
+        "origin_labels": origins,
+        "development_labels": developments,
         "values": values,
         "mask": mask,
-        "data format": _clean(_snapshot_field(snapshot, "data format", "data_format")),
-        "number format": _clean(_snapshot_field(snapshot, "number format", "number_format")),
-        "decimal places": _integer(
+        "data_format": _clean(_snapshot_field(snapshot, "data format", "data_format")),
+        "number_format": _clean(_snapshot_field(snapshot, "number format", "number_format")),
+        "decimal_places": _integer(
             _snapshot_field(snapshot, "decimal places", "decimal_places"),
             0,
             minimum=0,
             maximum=8,
         ),
     }
-    return _hash_projection(projection)
+    return fingerprint(projection)
 
 
 def _is_direct_literal(value: Any) -> bool:
@@ -593,17 +597,6 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
             raise DfmContractError("DFM Ratio Basis snapshot must contain a source revision.")
 
 
-def _hash_projection(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
 def _split_coordinates_top_level(coordinates: str) -> list[str]:
     """Split ``row, col`` coordinates on top-level commas, honoring quotes."""
 
@@ -798,19 +791,30 @@ def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# The three revision projections below define the hashed vocabulary of a DFM
+# method. Every key they emit is fixed here and spelled independently of the
+# persisted field it is read from, so renaming an on-disk field never moves a
+# stored fingerprint. Keys that carry user data (ratio-cell note coordinates)
+# are copied as they are; they are content, not vocabulary.
+
+
 def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The person's choices: details, exclusions, formula selections, cell notes."""
+
     details = _tab(payload, "details tab")
     ratios = _tab(payload, "ratios tab")
     ratio = _tab(ratios, "ratio triangle")
     formulas = _tab(ratios, "average formulas")
+    settings = _tab(formulas, "custom average formula settings")
+    notes = _tab(ratios, "cell notes")
     results = _tab(payload, "results tab")
     ratio_origins = ratio.get("origin labels") if isinstance(ratio.get("origin labels"), list) else []
     ratio_devs = ratio.get("development labels") if isinstance(ratio.get("development labels"), list) else []
     excluded = ratio.get("excluded") if isinstance(ratio.get("excluded"), list) else []
     excluded_cells = [
         {
-            "origin label": ratio_origins[row] if row < len(ratio_origins) else str(row),
-            "development label": ratio_devs[col] if col < len(ratio_devs) else str(col),
+            "origin_label": ratio_origins[row] if row < len(ratio_origins) else str(row),
+            "development_label": ratio_devs[col] if col < len(ratio_devs) else str(col),
         }
         for row, values in enumerate(excluded)
         if isinstance(values, list)
@@ -818,70 +822,89 @@ def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         if value == 1
     ]
     return {
-        "details tab": deepcopy(details),
-        "ratios tab": {
-            "ratio triangle": {"excluded cells": excluded_cells},
-            "average formulas": {
-                "label": deepcopy(formulas.get("label") or []),
-                "custom average formula settings": deepcopy(
-                    formulas.get("custom average formula settings") or {}
-                ),
-                "selected": deepcopy(formulas.get("selected") or []),
-                "inputs": deepcopy(formulas.get("inputs") or []),
-                "owned values": _owned_formula_values(payload),
+        "details": {
+            "name": details.get("name"),
+            "output_type": details.get("output type"),
+            "output_dataset": details.get("output dataset"),
+            "output_category": details.get("output category"),
+            "input_triangle": details.get("input triangle"),
+            "origin_length": details.get("origin length"),
+            "development_length": details.get("development length"),
+            "decimal_places": details.get("decimal places"),
+        },
+        "excluded_cells": excluded_cells,
+        "average_formulas": {
+            "label": deepcopy(formulas.get("label") or []),
+            "settings": {
+                "average_type": deepcopy(settings.get("averageType") or []),
+                "base": deepcopy(settings.get("base") or []),
+                "periods": deepcopy(settings.get("periods") or []),
+                "exclude": deepcopy(settings.get("exclude") or []),
             },
-            "cell notes": deepcopy(ratios.get("cell notes") or {}),
+            "selected": deepcopy(formulas.get("selected") or []),
+            "inputs": deepcopy(formulas.get("inputs") or []),
+            "owned_values": _owned_formula_values(payload),
         },
-        "results tab": {
-            "ratio basis dataset": results.get("ratio basis dataset", ""),
-            "ultimate ratio decimal places": results.get("ultimate ratio decimal places", 2),
+        "cell_notes": {
+            "ratio_main_table": deepcopy(notes.get("ratio main table") or {}),
+            "ratio_summary_table": deepcopy(notes.get("ratio summary table") or {}),
         },
+        "ratio_basis_dataset": results.get("ratio basis dataset", ""),
+        "ultimate_ratio_decimal_places": results.get("ultimate ratio decimal places", 2),
     }
 
 
 def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The computed numbers and the snapshots they were computed from."""
+
     data = _tab(payload, "data tab")
     ratios = _tab(payload, "ratios tab")
     ratio = _tab(ratios, "ratio triangle")
     formulas = _tab(ratios, "average formulas")
     results = _tab(payload, "results tab")
     return {
-        "data tab": deepcopy(data),
-        "ratios tab": {
-            "ratio triangle": {
-                "origin labels": deepcopy(ratio.get("origin labels") or []),
-                "development labels": deepcopy(ratio.get("development labels") or []),
-                "ratio values": deepcopy(ratio.get("ratio values") or []),
-            },
-            "average formula values": deepcopy(formulas.get("values") or []),
+        "input": {
+            "origin_labels": deepcopy(data.get("origin labels")),
+            "development_labels": deepcopy(data.get("development labels")),
+            "values": deepcopy(data.get("input data triangle values")),
+            "mask": deepcopy(data.get("input data triangle mask")),
+            "data_format": data.get("data format"),
+            "number_format": data.get("number format"),
+            "decimal_places": data.get("decimal places"),
+            "source_revision": data.get("source revision"),
         },
-        "results tab": {
-            key: deepcopy(results.get(key))
-            for key in (
-                "ratio basis origin labels",
-                "ratio basis values",
-                "ratio basis data format",
-                "ratio basis number format",
-                "ratio basis decimal places",
-                "ratio basis source revision",
-                "ultimate vector",
-            )
+        "ratio_triangle": {
+            "origin_labels": deepcopy(ratio.get("origin labels") or []),
+            "development_labels": deepcopy(ratio.get("development labels") or []),
+            "values": deepcopy(ratio.get("ratio values") or []),
         },
+        "average_formula_values": deepcopy(formulas.get("values") or []),
+        "ratio_basis": {
+            "origin_labels": deepcopy(results.get("ratio basis origin labels")),
+            "values": deepcopy(results.get("ratio basis values")),
+            "data_format": results.get("ratio basis data format"),
+            "number_format": results.get("ratio basis number format"),
+            "decimal_places": results.get("ratio basis decimal places"),
+            "source_revision": results.get("ratio basis source revision"),
+        },
+        "ultimate_vector": deepcopy(results.get("ultimate vector")),
     }
 
 
 def publication_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Only what a downstream method can see of this one."""
+
     details = _tab(payload, "details tab")
     data = _tab(payload, "data tab")
     results = _tab(payload, "results tab")
     return {
-        "output dataset": details.get("output dataset", ""),
-        "output type": details.get("output type", ""),
-        "output category": details.get("output category", ""),
-        "origin length": details.get("origin length", 12),
-        "decimal places": details.get("decimal places", 0),
-        "origin labels": deepcopy(data.get("origin labels") or []),
-        "ultimate vector": deepcopy(results.get("ultimate vector") or []),
+        "output_dataset": details.get("output dataset", ""),
+        "output_type": details.get("output type", ""),
+        "output_category": details.get("output category", ""),
+        "origin_length": details.get("origin length", 12),
+        "decimal_places": details.get("decimal places", 0),
+        "origin_labels": deepcopy(data.get("origin labels") or []),
+        "ultimate_vector": deepcopy(results.get("ultimate vector") or []),
     }
 
 
@@ -923,9 +946,9 @@ def persisted_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     return {
-        "owned revision": _hash_projection(owned_projection(payload)),
-        "derived revision": _hash_projection(derived_projection(payload)),
-        "publication revision": _hash_projection(publication_projection(payload)),
+        "owned revision": fingerprint(owned_projection(payload)),
+        "derived revision": fingerprint(derived_projection(payload)),
+        "publication revision": fingerprint(publication_projection(payload)),
     }
 
 

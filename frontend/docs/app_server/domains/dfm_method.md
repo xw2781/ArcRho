@@ -22,6 +22,7 @@ The DFM method domain owns self-contained v2 method loading, canonical calculati
 - `app_server/schemas/dfm_method.py` - Method identity, preview, save, and revision request schemas.
 - `app_server/services/dfm_service.py` - Two-file load, v1 upgrade, source snapshot reads, revision checks, publication, and dependent refresh.
 - `python-api/src/arcrho_api/dfm_contract.py` - Canonical location-independent v2 schema, six-decimal normalization, ownership projections, revisions, and DFM calculations.
+- `python-api/src/arcrho_api/revision_contract.py` - The one producer of every persisted fingerprint (`fingerprint`): the owned/derived/publication revisions of DFM, BF, CC and Bootstrap methods, every embedded `source revision`, and the processing `config_hash`. A fingerprint is `sha256:` plus the first sixteen hex characters of the digest of a sorted, compact JSON projection; the projection's keys are a fixed vocabulary spelled independently of the persisted field names, so renaming an on-disk field never moves a stored revision, and the shortening lives in that one function so both sides of every comparison shorten together.
 - `ui/method_pages/dfm/dfm_method_api.js` - Frontend client for the aggregate endpoints.
 <!-- MANUAL:END -->
 

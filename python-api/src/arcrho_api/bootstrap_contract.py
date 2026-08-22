@@ -18,8 +18,6 @@ result against the stored summary so drift is detected rather than accepted.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -46,6 +44,7 @@ from .bootstrap_simulation import (
 )
 from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number, selected_ratio_values
+from .revision_contract import fingerprint
 
 
 BST_JSON_FORMAT = "arcrho-bootstrap-method-by-tab-v1"
@@ -143,15 +142,10 @@ def _choice(value: Any, allowed: tuple[str, ...], default: str) -> str:
     return text if text in allowed else default
 
 
-def _hash_projection(value: Any) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
-    return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
-
-
 def _snapshot_revision(name: str, *parts: Any) -> str:
     if not _clean(name):
         return ""
-    return _hash_projection({"name": _clean(name), "parts": list(parts)})
+    return fingerprint({"name": _clean(name), "parts": list(parts)})
 
 
 # ---------------------------------------------------------------------------
@@ -740,9 +734,9 @@ def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     """Return deterministic revisions for owned, derived, and published state."""
 
     return {
-        "owned_revision": _hash_projection(owned_projection(payload)),
-        "derived_revision": _hash_projection(derived_projection(payload)),
-        "publication_revision": _hash_projection(publication_projection(payload)),
+        "owned_revision": fingerprint(owned_projection(payload)),
+        "derived_revision": fingerprint(derived_projection(payload)),
+        "publication_revision": fingerprint(publication_projection(payload)),
     }
 
 
