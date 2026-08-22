@@ -64,6 +64,7 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
         "required_request_fields",
         "forbidden_path_fields",
         "allowed_export_modes",
+        "allowed_import_policies",
         "status_values",
     )
     normalized: dict[str, Any] = dict(payload)
@@ -92,5 +93,9 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
     if set(normalized["status_values"]) != {"processing", "success", "error"}:
         raise ResQImportContractError(
             "Status values must be exactly processing, success, and error."
+        )
+    if "merge" not in normalized["allowed_import_policies"]:
+        raise ResQImportContractError(
+            "The default merge policy must be an allowed import policy."
         )
     return MappingProxyType(normalized)

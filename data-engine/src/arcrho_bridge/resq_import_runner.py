@@ -213,6 +213,7 @@ def run_reserving_class_import(
     project_name = _project_name_from_request(request)
     rc_path = _rc_path_from_request(request)
     export_mode = _export_mode_from_request(request)
+    import_policy = _import_policy_from_request(request)
     request_id = _request_id_from_request(request)
     server_root = Path(get_project_root()).expanduser().resolve()
     bundle = configure_canonical_runtime(server_root)
@@ -282,7 +283,20 @@ def run_reserving_class_import(
                 "The canonical ResQ migration returned a non-object result."
             )
         result = dict(result)
-        _require_no_non_engine_errors(result)
+        skipped_source_items = _sanitize_import_errors(result)
+        if skipped_source_items:
+            _report_progress(
+                progress_callback,
+                {
+                    "event": "activity",
+                    "kind": "resq_skip",
+                    "status": "warning",
+                    "message": (
+                        f"Skipped {skipped_source_items} ResQ item(s) that could not be "
+                        "exported; any existing ArcRho copy of each is kept."
+                    ),
+                },
+            )
         _require_staged_rc_dir(stage_rc_dir, stage_data_dir)
 
         preserve_engine = (not bool(result.get("engine_available"))) or int(
@@ -315,6 +329,7 @@ def run_reserving_class_import(
             stage_data_dir,
             target_rc_dir,
             stage_rc_dir,
+            overwrite=import_policy == "overwrite",
         )
         preserved_groups = int(merge_result.get("groups") or 0)
         if preserved_groups:
@@ -325,7 +340,9 @@ def run_reserving_class_import(
                     "kind": "arcrho_merge",
                     "status": "success",
                     "message": (
-                        f"Retained {preserved_groups} ArcRho-owned or newer "
+                        f"Retained {preserved_groups} ArcRho-only dataset/method group(s)."
+                        if import_policy == "overwrite"
+                        else f"Retained {preserved_groups} ArcRho-owned or newer "
                         "dataset/method group(s)."
                     ),
                 },
@@ -354,6 +371,7 @@ def run_reserving_class_import(
 
         result["engine_component_preserved"] = preserve_engine
         result["engine_artifacts_restored"] = restored_engine_artifacts
+        result["import_policy"] = import_policy
         result["arcrho_groups_preserved"] = preserved_groups
         result["arcrho_artifacts_preserved"] = int(merge_result.get("files") or 0)
         result["previous_data_deleted"] = previous_data_deleted
@@ -551,6 +569,35 @@ def _allowed_export_modes() -> frozenset[str]:
     return normalized
 
 
+def _import_policy_from_request(request: Mapping[str, Any]) -> str:
+    """Return the request's merge/overwrite policy; absent means merge.
+
+    The field is optional so a request written by an older client stays valid
+    and keeps today's merge behavior.
+    """
+
+    if not isinstance(request, Mapping):
+        raise ResQImportRequestError("The ResQ import request must be a JSON object.")
+    raw = request.get("ImportPolicy")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return "merge"
+    value = str(raw).strip().casefold() if isinstance(raw, str) else ""
+    contract = load_resq_reserving_class_import_contract()
+    policies = contract.get("allowed_import_policies")
+    allowed = (
+        frozenset(str(item).strip().casefold() for item in policies if str(item).strip())
+        if isinstance(policies, tuple)
+        else frozenset()
+    )
+    if not allowed:
+        raise ResQMigrationBundleError("The ResQ import contract has no usable import policies.")
+    if value not in allowed:
+        raise ResQImportRequestError(
+            "ImportPolicy must be one of: " + ", ".join(sorted(allowed)) + "."
+        )
+    return value
+
+
 def _request_id_from_request(request: Mapping[str, Any]) -> str:
     value = _required_text(request, "RequestId")
     if not _REQUEST_ID_RE.fullmatch(value):
@@ -691,28 +738,27 @@ def _require_staged_rc_dir(stage_rc_dir: Path, stage_data_dir: Path) -> None:
         raise ResQImportCommitError("The canonical import produced no safe staged reserving-class folder.")
 
 
-def _require_no_non_engine_errors(result: Mapping[str, Any]) -> None:
+def _sanitize_import_errors(result: dict[str, Any]) -> int:
+    """Validate error counts, redact detail messages, and return the non-engine count.
+
+    An item the export could not read is skipped by the canonical migration —
+    its staged files are simply absent — and the ArcRho-only merge overlay
+    keeps any existing live copy of it under both import policies. The commit
+    therefore proceeds; the bounded, redacted details stay in the result so the
+    operator sees which items were skipped and why.
+    """
+
     errors = _non_negative_int(result.get("errors"), "errors")
     engine_errors = _non_negative_int(result.get("engine_errors"), "engine_errors")
     if engine_errors > errors:
         raise ResQMigrationBundleError("The canonical import reported more engine errors than total errors.")
-    non_engine_errors = errors - engine_errors
-    if non_engine_errors:
-        raise ResQImportCommitError(
-            f"The ResQ import reported {non_engine_errors} non-engine error(s); the live RC was not changed.",
-            status_result=_error_status_result(result, errors=errors, engine_errors=engine_errors),
-        )
+    result["error_details"] = _sanitized_error_details(result.get("error_details"))
+    return errors - engine_errors
 
 
-def _error_status_result(
-    result: Mapping[str, Any],
-    *,
-    errors: int,
-    engine_errors: int,
-) -> dict[str, Any]:
+def _sanitized_error_details(details: Any) -> list[dict[str, str]]:
     """Project bounded import diagnostics into the location-independent status contract."""
 
-    details = result.get("error_details")
     safe_details: list[dict[str, str]] = []
     if isinstance(details, list):
         for raw in details[:12]:
@@ -726,11 +772,7 @@ def _error_status_result(
                 "name": name or "unnamed",
                 "message": message or "Import failed.",
             })
-    return {
-        "errors": errors,
-        "engine_errors": engine_errors,
-        "error_details": safe_details,
-    }
+    return safe_details
 
 
 def _redact_machine_paths(value: str) -> str:
@@ -846,6 +888,8 @@ def _refresh_stage_contract(
     stage_data_dir: Path,
     live_rc_dir: Path,
     stage_rc_dir: Path,
+    *,
+    overwrite: bool = False,
 ) -> dict[str, object]:
     apply_scope = getattr(module, "_apply_runtime_scope", None)
     restore_scope = getattr(module, "_restore_runtime_scope", None)
@@ -861,7 +905,7 @@ def _refresh_stage_contract(
         )
     previous_scope = apply_scope(project_name, server_root, stage_data_dir)
     try:
-        merge_result = merge_artifacts(live_rc_dir, stage_rc_dir)
+        merge_result = merge_artifacts(live_rc_dir, stage_rc_dir, overwrite=overwrite)
         if not isinstance(merge_result, Mapping):
             raise ResQMigrationBundleError("The canonical ArcRho merge returned a non-object result.")
         refresh_graphs(stage_rc_dir)

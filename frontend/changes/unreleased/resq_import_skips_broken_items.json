@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "A ResQ item that cannot be exported is skipped by name instead of failing its whole reserving-class import.",
+  "details": [
+    "The Bridge now commits the rest of the reserving class and reports each skipped item; any existing ArcRho copy of a skipped item is kept under both Merge and Overwrite.",
+    "Both import macros list the skipped items by name in their completion message, so the operator sees exactly which methods to repair in ResQ.",
+    "A blank method input is reported by the ResQ field that needs fixing (Latest, Exposure, Perc Developed, or Prior) rather than a generic precedent error."
+  ]
+}

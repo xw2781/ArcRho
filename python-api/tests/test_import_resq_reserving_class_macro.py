@@ -56,10 +56,13 @@ class _Progress:
 
 
 class _UI:
-    def __init__(self):
+    def __init__(self, button_script=None):
         self.messages = []
         self.progress_calls = []
         self.reload_calls = []
+        # Buttons returned by successive message boxes; empty answers mean the
+        # non-destructive merge default, which keeps the older tests unchanged.
+        self.button_script = list(button_script or [])
         self.project_instance = types.SimpleNamespace(
             context=lambda **_kwargs: {
                 "projectName": "Demo",
@@ -74,6 +77,8 @@ class _UI:
 
     def message_box(self, message, **kwargs):
         self.messages.append((message, kwargs))
+        if kwargs.get("buttons") and self.button_script:
+            return {"ok": True, "button": self.button_script.pop(0)}
         return {"ok": True}
 
     def progress_bar(self, **kwargs):
@@ -166,6 +171,10 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertEqual(
             self.module.ALLOWED_EXPORT_MODES,
             frozenset(contract["allowed_export_modes"]),
+        )
+        self.assertEqual(
+            self.module.ALLOWED_IMPORT_POLICIES,
+            frozenset(contract["allowed_import_policies"]),
         )
         self.assertEqual(
             self.module.STATUS_VALUES,
@@ -348,6 +357,111 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertFalse(request_path.with_name(f".{_REQUEST_ID}.tmp").exists())
         self.assertIn("Datasets imported: 2", result["message"])
         self.assertIn("Methods imported: 1", result["message"])
+
+    def test_confirmed_overwrite_travels_in_the_request_payload(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Overwrite", "Overwrite"])
+        status = {
+            "contract_version": 1,
+            "status": "success",
+            "updated_at": "2026-07-26T10:00:00",
+            "request_id": _REQUEST_ID,
+            "result": {"datasets_imported": 1, "errors": 0},
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["ImportPolicy"], "overwrite")
+        # The choice ran as two prompts: policy pick, then explicit confirm.
+        prompts = [kwargs for _msg, kwargs in self.ui.messages if kwargs.get("buttons")]
+        self.assertEqual(len(prompts), 2)
+        self.assertEqual(prompts[0]["buttons"], ["Merge", "Overwrite", "Cancel"])
+        self.assertEqual(prompts[1]["buttons"], ["Overwrite", "Cancel"])
+        self.assertEqual(prompts[1]["kind"], "warning")
+
+    def test_a_declined_overwrite_confirmation_publishes_nothing(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Overwrite", "Cancel"])
+
+        with self._macro_modules():
+            result = self.module.run_macro()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["reason"], "cancelled")
+        self.assertFalse((self.server_root / self.module.REQUEST_ROOT / "requests").exists())
+
+    def test_a_merge_answer_keeps_the_payload_free_of_the_policy_field(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Merge"])
+        status = {
+            "contract_version": 1,
+            "status": "success",
+            "updated_at": "2026-07-26T10:00:00",
+            "request_id": _REQUEST_ID,
+            "result": {"datasets_imported": 1, "errors": 0},
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertNotIn("ImportPolicy", payload)
+
+    def test_a_success_status_with_skipped_items_lists_them_by_name(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Merge"])
+        status = {
+            "contract_version": 1,
+            "status": "success",
+            "updated_at": "2026-08-21T10:00:00",
+            "request_id": _REQUEST_ID,
+            "result": {
+                "datasets_imported": 4,
+                "errors": 1,
+                "error_details": [{
+                    "kind": "vector",
+                    "name": "G 41 - BF Paid",
+                    "message": (
+                        "The Perc Developed input does not name a ResQ dataset; "
+                        "its selection is blank or broken."
+                    ),
+                }],
+            },
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
+        ):
+            result = self.module.run_macro()
+
+        # The class committed with one item skipped; the completion box names
+        # the skipped item and stays on screen as a warning.
+        self.assertEqual(len(self.ui.reload_calls), 1)
+        message, options = self.ui.messages[-1]
+        self.assertIn("Import from ResQ completed.", message)
+        self.assertIn("Skipped (could not be exported from ResQ", message)
+        self.assertIn("vector G 41 - BF Paid: The Perc Developed input", message)
+        self.assertEqual(options["kind"], "warning")
+        self.assertIsNone(options.get("auto_close_ms"))
 
     def test_bridge_error_status_is_reported_without_reloading_dataset_table(self):
         self._write_worker()

@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.3.2
-# Release Note: List each skipped ResQ item by name in the completion message now that a broken method no longer fails the whole reserving class.
+# Version: 1.3.0
+# Release Note: Ask whether to merge with existing ArcRho data or overwrite it with the fresh ResQ copy, with a confirmation before an overwrite.
 # Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -309,15 +309,6 @@ def choose_import_policy(ui, *, title: str = TITLE, scope_note: str = "") -> str
         return None
     if button != IMPORT_POLICY_OVERWRITE:
         return IMPORT_POLICY_MERGE
-    if confirm_overwrite(ui, title=title, scope_note=scope_note):
-        return IMPORT_POLICY_OVERWRITE
-    return None
-
-
-def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
-    """The explicit second confirmation every overwrite import must pass."""
-
-    scope_lines = f"{scope_note}\n\n" if scope_note else ""
     confirm = _message(
         ui,
         scope_lines
@@ -329,7 +320,9 @@ def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
         kind="warning",
         buttons=["Overwrite", "Cancel"],
     )
-    return _message_button(confirm).strip().casefold() == IMPORT_POLICY_OVERWRITE
+    if _message_button(confirm).strip().casefold() == IMPORT_POLICY_OVERWRITE:
+        return IMPORT_POLICY_OVERWRITE
+    return None
 
 
 def _report_macro_activity() -> None:
@@ -469,13 +462,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
         value = _summary_count(result, *keys)
         if value is not None:
             lines.append(f"{label}: {value}")
-    skipped = _detail_lines(result)
-    if skipped:
-        lines.extend((
-            "",
-            "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
-            *skipped,
-        ))
     detail = str(status.get("message") or result.get("message") or "").strip()
     if detail:
         lines.extend(("", detail))
@@ -504,12 +490,12 @@ def _dataset_table_reload_cost(reload_info: Any) -> str:
     return f"Dataset table index was rebuilt{elapsed} ({reason})."
 
 
-def _detail_lines(result: object) -> list[str]:
-    """One display line per bounded per-item detail in a Bridge result."""
-
+def _failure_details_message(error: Exception) -> str:
+    status = error.status if isinstance(error, BridgeRequestError) else {}
+    result = _status_result(status)
     details = result.get("error_details") if isinstance(result, dict) else None
     if not isinstance(details, list):
-        return []
+        return ""
     lines = []
     for raw in details[:12]:
         if not isinstance(raw, dict):
@@ -518,12 +504,6 @@ def _detail_lines(result: object) -> list[str]:
         name = str(raw.get("name") or "unnamed").strip()
         detail = str(raw.get("message") or "Import failed.").strip()
         lines.append(f"- {kind} {name}: {detail}")
-    return lines
-
-
-def _failure_details_message(error: Exception) -> str:
-    status = error.status if isinstance(error, BridgeRequestError) else {}
-    lines = _detail_lines(_status_result(status))
     return "\n\nDetails:\n" + "\n".join(lines) if lines else ""
 
 

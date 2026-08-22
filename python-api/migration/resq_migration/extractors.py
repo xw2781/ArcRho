@@ -1870,14 +1870,28 @@ def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[st
     return labels
 
 
-def _bf_source_snapshot(source, origin_labels: list[str], *, latest: bool, context: str = "BF") -> dict:
-    """Extract the exact source vector a method consumes, without filesystem I/O."""
+def _bf_source_snapshot(
+    source,
+    origin_labels: list[str],
+    *,
+    latest: bool,
+    context: str = "BF",
+    role: str = "source",
+) -> dict:
+    """Extract the exact source vector a method consumes, without filesystem I/O.
+
+    ``role`` is the ResQ method-dialog field the precedent came from (Latest,
+    Exposure, Perc Developed, Prior), so a blank selection is reported by the
+    field the operator has to fix.
+    """
 
     name = _normalize_import_name(
-        _extract_attr(source, "Name", "", context=f"{context} precedent")
+        _extract_attr(source, "Name", "", context=f"{context} {role} precedent")
     )
     if not name:
-        raise ValueError(f"A ResQ {context} precedent does not expose a dataset name.")
+        raise ValueError(
+            f"The {role} input does not name a ResQ dataset; its selection is blank or broken."
+        )
     values: list = []
     successful_reads = 0
     errors: list[Exception] = []
@@ -1995,9 +2009,9 @@ def export_bornhuetter_ferguson(method, *, strict: bool = False) -> dict:
         context=f"Bornhuetter Ferguson {name!r}",
     )
     prior_source = _extract_attr(method, "Prior", None, context=f"Bornhuetter Ferguson {name!r}")
-    latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True)
-    dfm_snapshot = _bf_source_snapshot(dfm_source, origin_labels, latest=False)
-    prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False)
+    latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, role="Latest")
+    dfm_snapshot = _bf_source_snapshot(dfm_source, origin_labels, latest=False, role="Perc Developed")
+    prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, role="Prior")
     try:
         notes = _clean_name(method.Notes)
     except Exception as exc:
@@ -2256,9 +2270,15 @@ def export_cape_cod(method, *, strict: bool = False) -> dict:
         None,
         context=f"Cape Cod {name!r}",
     )
-    latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, context="Cape Cod")
-    exposure_snapshot = _bf_source_snapshot(exposure_source, origin_labels, latest=False, context="Cape Cod")
-    prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, context="Cape Cod")
+    latest_snapshot = _bf_source_snapshot(
+        latest_source, origin_labels, latest=True, context="Cape Cod", role="Latest"
+    )
+    exposure_snapshot = _bf_source_snapshot(
+        exposure_source, origin_labels, latest=False, context="Cape Cod", role="Exposure"
+    )
+    prior_snapshot = _bf_source_snapshot(
+        prior_source, origin_labels, latest=False, context="Cape Cod", role="Perc Developed"
+    )
     pd_type_code = _extract_attr(
         method,
         "PercentageDevelopedType",

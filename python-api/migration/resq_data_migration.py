@@ -15,9 +15,9 @@ Run:
 """
 from __future__ import annotations
 
-# PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
-PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May Test"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May Test"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
 
 # RC_PATH may be a string or a list of reserving-class paths.
@@ -51,7 +51,7 @@ import tempfile
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 _MIGRATION_DIR = Path(__file__).resolve().parent
 _PYTHON_API_SRC = _MIGRATION_DIR.parent / "src"
@@ -322,6 +322,11 @@ def _method_file_names(path: Path) -> set[str]:
     return set()
 
 
+def _dict_field(source: dict, key: str) -> dict:
+    value = source.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 def _method_payload_dataset_names(path: Path) -> set[str]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -332,20 +337,20 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
 
     names: set[str] = set()
     if path.name.startswith("DFM@"):
-        details = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
+        details = _dict_field(payload, "details tab")
         for key in ("output dataset", "output vector", "output type"):
             name = _normalize_import_name(details.get(key))
             if name:
                 names.add(name)
     elif path.name.startswith("RS@"):
-        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        details = _dict_field(payload, "details_tab")
         for key in ("name", "output_type"):
             name = _normalize_import_name(details.get(key))
             if name:
                 names.add(name)
     elif path.name.startswith("BF@"):
-        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
-        method = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+        details = _dict_field(payload, "details_tab")
+        method = _dict_field(payload, "method_tab")
         for key in ("name", "output_type"):
             name = _normalize_import_name(details.get(key))
             if name:
@@ -354,7 +359,8 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
             name = _normalize_import_name(method.get(key))
             if name:
                 names.add(name)
-        prior_datasets = method.get("prior_datasets") if isinstance(method.get("prior_datasets"), list) else []
+        prior_datasets_value = method.get("prior_datasets")
+        prior_datasets = prior_datasets_value if isinstance(prior_datasets_value, list) else []
         for prior in prior_datasets:
             name = _normalize_import_name(prior.get("name")) if isinstance(prior, dict) else ""
             if name:
@@ -364,8 +370,8 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
             if legacy_prior_name:
                 names.add(legacy_prior_name)
     elif path.name.startswith("CC@"):
-        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
-        method = payload.get("method_tab") if isinstance(payload.get("method_tab"), dict) else {}
+        details = _dict_field(payload, "details_tab")
+        method = _dict_field(payload, "method_tab")
         for key in ("name", "output_type"):
             name = _normalize_import_name(details.get(key))
             if name:
@@ -375,7 +381,7 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
             if name:
                 names.add(name)
     elif path.name.startswith((BS_SR_FILE_PREFIX, BS_CRA_FILE_PREFIX)):
-        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+        details = _dict_field(payload, "details_tab")
         for key in ("name", "output_type"):
             name = _normalize_import_name(details.get(key))
             if name:
@@ -725,7 +731,7 @@ def _engine_generated_metadata_payload(
 ) -> dict:
     """Read only the ResQ metadata needed for an engine-owned sidecar."""
 
-    def read(source, member: str, default=None):
+    def read(source, member: str, default=None) -> Any:
         if not strict:
             return _safe_attr(source, member, default)
         try:

@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.3.2
-# Release Note: List each skipped ResQ item by name in the completion message now that a broken method no longer fails the whole reserving class.
-# Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
+# Version: 1.2.6
+# Release Note: Report when the dataset table reload had to rebuild the index, and how long it took.
+# Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -47,12 +47,6 @@ FORBIDDEN_PATH_FIELDS = ("StatusPath", "DataPath", "TargetPath", "ServerRoot")
 ALLOWED_EXPORT_MODES = frozenset(
     {"configured", "all", "triangles", "vectors", "vector", "dfm", "dfms"}
 )
-# How existing ArcRho copies are treated. "merge" keeps ArcRho-only artifacts
-# and any live copy newer than the staged ResQ result; "overwrite" lets the
-# fresh ResQ copy win every conflict while still keeping ArcRho-only work.
-ALLOWED_IMPORT_POLICIES = frozenset({"merge", "overwrite"})
-IMPORT_POLICY_MERGE = "merge"
-IMPORT_POLICY_OVERWRITE = "overwrite"
 STATUS_VALUES = frozenset({"processing", "success", "error"})
 _INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
@@ -69,16 +63,14 @@ class BridgeRequestError(RuntimeError):
         self.status = status or {}
 
 
-def _message(ui, text, *, title=TITLE, kind="info", auto_close_ms=None, buttons=None):
-    kwargs = {
-        "title": title,
-        "kind": kind,
-        "auto_close_ms": auto_close_ms,
-        "timeout_sec": 120,
-    }
-    if buttons is not None:
-        kwargs["buttons"] = list(buttons)
-    return ui.message_box(str(text or ""), **kwargs)
+def _message(ui, text, *, title=TITLE, kind="info", auto_close_ms=None):
+    return ui.message_box(
+        str(text or ""),
+        title=title,
+        kind=kind,
+        auto_close_ms=auto_close_ms,
+        timeout_sec=120,
+    )
 
 
 def _context_value(context, *names):
@@ -212,16 +204,12 @@ def create_import_request(
     project_name: object,
     rc_path: object,
     request_id: str | None = None,
-    import_policy: str = IMPORT_POLICY_MERGE,
 ) -> tuple[str, dict[str, Any]]:
     """Build the location-independent payload consumed by ArcRho Bridge."""
 
     identifier = str(request_id or uuid.uuid4().hex).strip()
     if not identifier:
         raise ValueError("Request ID is required.")
-    policy = str(import_policy or IMPORT_POLICY_MERGE).strip().casefold()
-    if policy not in ALLOWED_IMPORT_POLICIES:
-        raise ValueError("Import policy must be merge or overwrite.")
     payload: dict[str, Any] = {
         "Function": REQUEST_FUNCTION,
         "ContractVersion": CONTRACT_VERSION,
@@ -231,10 +219,6 @@ def create_import_request(
         "UserName": _user_name(),
         "ExportMode": "configured",
     }
-    # The field is optional in the Bridge contract, so a merge request stays
-    # byte-compatible with a Bridge that predates the overwrite policy.
-    if policy != IMPORT_POLICY_MERGE:
-        payload["ImportPolicy"] = policy
     return identifier, payload
 
 
@@ -263,73 +247,6 @@ def publish_import_request(
             f"Could not publish ArcRho Bridge request [{request_id}]: {exc}"
         ) from exc
     return request_path
-
-
-def _message_button(response) -> str:
-    """Clicked-button text from a UI command result, in any of its shapes."""
-
-    button = getattr(response, "button", "")
-    if button:
-        return str(button)
-    payload = getattr(response, "result", None)
-    if isinstance(payload, dict) and payload.get("button"):
-        return str(payload.get("button"))
-    if isinstance(response, dict):
-        inner = response.get("result")
-        if isinstance(inner, dict) and inner.get("button"):
-            return str(inner.get("button"))
-        return str(response.get("button") or "")
-    return ""
-
-
-def choose_import_policy(ui, *, title: str = TITLE, scope_note: str = "") -> str | None:
-    """Ask how existing ArcRho copies are treated; ``None`` means cancelled.
-
-    Overwrite is destructive, so it takes a second, explicit confirmation.
-    Anything other than a clear Overwrite or Cancel answer falls back to the
-    non-destructive merge, so an automated caller keeps today's behavior.
-    """
-
-    scope_lines = f"{scope_note}\n\n" if scope_note else ""
-    choice = _message(
-        ui,
-        scope_lines
-        + "How should existing ArcRho data be treated?\n\n"
-        + "Merge: keep datasets that exist only in ArcRho and any ArcRho copy "
-        + "newer than the ResQ version.\n"
-        + "Overwrite: the fresh ResQ copy replaces the ArcRho copy for "
-        + "everything ResQ provides, even where the ArcRho copy is newer. "
-        + "Datasets that exist only in ArcRho are kept either way.",
-        title=title,
-        kind="question",
-        buttons=["Merge", "Overwrite", "Cancel"],
-    )
-    button = _message_button(choice).strip().casefold()
-    if button == "cancel":
-        return None
-    if button != IMPORT_POLICY_OVERWRITE:
-        return IMPORT_POLICY_MERGE
-    if confirm_overwrite(ui, title=title, scope_note=scope_note):
-        return IMPORT_POLICY_OVERWRITE
-    return None
-
-
-def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
-    """The explicit second confirmation every overwrite import must pass."""
-
-    scope_lines = f"{scope_note}\n\n" if scope_note else ""
-    confirm = _message(
-        ui,
-        scope_lines
-        + "Overwrite replaces every dataset and method output that ResQ "
-        + "provides, discarding the current ArcRho copies and any edits made "
-        + "to them, even recent ones. This cannot be undone.\n\n"
-        + "Overwrite the existing ArcRho data?",
-        title=title,
-        kind="warning",
-        buttons=["Overwrite", "Cancel"],
-    )
-    return _message_button(confirm).strip().casefold() == IMPORT_POLICY_OVERWRITE
 
 
 def _report_macro_activity() -> None:
@@ -469,13 +386,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
         value = _summary_count(result, *keys)
         if value is not None:
             lines.append(f"{label}: {value}")
-    skipped = _detail_lines(result)
-    if skipped:
-        lines.extend((
-            "",
-            "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
-            *skipped,
-        ))
     detail = str(status.get("message") or result.get("message") or "").strip()
     if detail:
         lines.extend(("", detail))
@@ -504,12 +414,12 @@ def _dataset_table_reload_cost(reload_info: Any) -> str:
     return f"Dataset table index was rebuilt{elapsed} ({reason})."
 
 
-def _detail_lines(result: object) -> list[str]:
-    """One display line per bounded per-item detail in a Bridge result."""
-
+def _failure_details_message(error: Exception) -> str:
+    status = error.status if isinstance(error, BridgeRequestError) else {}
+    result = _status_result(status)
     details = result.get("error_details") if isinstance(result, dict) else None
     if not isinstance(details, list):
-        return []
+        return ""
     lines = []
     for raw in details[:12]:
         if not isinstance(raw, dict):
@@ -518,12 +428,6 @@ def _detail_lines(result: object) -> list[str]:
         name = str(raw.get("name") or "unnamed").strip()
         detail = str(raw.get("message") or "Import failed.").strip()
         lines.append(f"- {kind} {name}: {detail}")
-    return lines
-
-
-def _failure_details_message(error: Exception) -> str:
-    status = error.status if isinstance(error, BridgeRequestError) else {}
-    lines = _detail_lines(_status_result(status))
     return "\n\nDetails:\n" + "\n".join(lines) if lines else ""
 
 
@@ -571,20 +475,6 @@ def run_macro(active_dfm=None, active_context=None):
         return {"success": False, "message": message}
 
     try:
-        import_policy = choose_import_policy(
-            ui,
-            scope_note=f"Project: {project_name}\nPath: {rc_path}",
-        )
-    except Exception as exc:
-        message = f"The import could not be prepared.\n\n{exc}"
-        _message(ui, message, kind="error")
-        return {"success": False, "message": message}
-    if import_policy is None:
-        message = "Import cancelled; nothing was changed."
-        _message(ui, message, auto_close_ms=3000)
-        return {"success": False, "message": message, "reason": "cancelled"}
-
-    try:
         progress = ui.progress_bar(
             progress_id="import-resq-reserving-class",
             title=TITLE,
@@ -595,11 +485,7 @@ def run_macro(active_dfm=None, active_context=None):
         progress = None
 
     try:
-        request_id, payload = create_import_request(
-            project_name=project_name,
-            rc_path=rc_path,
-            import_policy=import_policy,
-        )
+        request_id, payload = create_import_request(project_name=project_name, rc_path=rc_path)
         publish_import_request(server_root=server_root, request_id=request_id, payload=payload)
         if progress is not None:
             try:

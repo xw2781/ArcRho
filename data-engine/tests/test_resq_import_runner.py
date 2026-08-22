@@ -114,7 +114,7 @@ class ResQImportRunnerTests(unittest.TestCase):
             import_reserving_class_from_resq=importer,
             _apply_runtime_scope=lambda *args: ("previous", args),
             _restore_runtime_scope=lambda _previous: None,
-            merge_preserved_arcrho_artifacts=lambda _live, _stage: {
+            merge_preserved_arcrho_artifacts=lambda _live, _stage, **_kwargs: {
                 "groups": 0,
                 "files": 0,
                 "names": [],
@@ -147,10 +147,12 @@ class ResQImportRunnerTests(unittest.TestCase):
         self.assertTrue(any(event.get("event") == "commit" for event in events))
         self.assertFalse((server_root / "r" / "run-123").exists())
 
-    def test_non_engine_errors_leave_the_live_rc_untouched(self):
+    def test_item_errors_skip_the_item_and_still_commit_the_rc(self):
         server_root = self.root / "server"
         live_rc = server_root / "projects" / "Demo" / "data" / "rc"
         self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+
+        events = []
 
         def importer(_project_name, _rc_path, **kwargs):
             stage_rc = Path(kwargs["project_data_dir"]) / "rc"
@@ -159,37 +161,43 @@ class ResQImportRunnerTests(unittest.TestCase):
                 "errors": 1,
                 "engine_errors": 0,
                 "engine_available": True,
+                "total_written": 1,
                 "error_details": [{
-                    "kind": "dfm",
-                    "name": "Broken DFM",
+                    "kind": "vector",
+                    "name": "G 41 - BF Paid",
                     "message": r"Input is unavailable at E:\ArcRho Server\projects\Demo\data\missing.csv",
                 }],
             }
 
         module = SimpleNamespace(
+            INDEX_FILE_NAME="index.json",
             _encode_rc_folder=lambda _rc_path: "rc",
             import_reserving_class_from_resq=importer,
+            _apply_runtime_scope=lambda *args: ("previous", args),
+            _restore_runtime_scope=lambda _previous: None,
+            merge_preserved_arcrho_artifacts=lambda _live, _stage, **_kwargs: {
+                "groups": 0,
+                "files": 0,
+                "names": [],
+            },
+            refresh_sidecar_graphs_for_rc=lambda _path: None,
+            rebuild_dataset_instance_index=(
+                lambda _project, _rc, path: self._write_index(Path(path))
+            ),
         )
-        request = {
-            "RequestId": "run-456",
-            "ProjectName": "Demo",
-            "Path": r"Business\Auto",
-            "ExportMode": "configured",
-            "UserName": "tester",
-        }
 
         with (
             patch.object(runner, "get_project_root", return_value=server_root),
             patch.object(runner, "load_resq_data_migration", return_value=module),
-            self.assertRaises(runner.ResQImportCommitError) as raised,
         ):
-            runner.run_reserving_class_import(request)
+            result = runner.run_reserving_class_import(self._swap_request("run-456"), events.append)
 
-        self.assertTrue((live_rc / "sidecars" / "old-resq.json").is_file())
-        self.assertFalse((live_rc / "sidecars" / "partial.json").exists())
-        self.assertEqual(raised.exception.status_result["errors"], 1)
-        self.assertEqual(raised.exception.status_result["error_details"][0]["name"], "Broken DFM")
-        self.assertNotIn("E:\\", raised.exception.status_result["error_details"][0]["message"])
+        self.assertTrue(result["committed"])
+        self.assertTrue((live_rc / "sidecars" / "partial.json").is_file())
+        self.assertEqual(result["errors"], 1)
+        self.assertEqual(result["error_details"][0]["name"], "G 41 - BF Paid")
+        self.assertNotIn("E:\\", result["error_details"][0]["message"])
+        self.assertTrue(any(event.get("kind") == "resq_skip" for event in events))
 
     def test_merge_runs_before_graph_refresh_and_commit(self):
         server_root = self.root / "server"
@@ -203,8 +211,11 @@ class ResQImportRunnerTests(unittest.TestCase):
             self._write_dataset(stage_rc, "new-resq", source_kind="input", value="new")
             return {"errors": 0, "engine_errors": 0, "engine_available": True}
 
-        def merge(live, stage):
+        merge_kwargs = []
+
+        def merge(live, stage, **kwargs):
             order.append("merge")
+            merge_kwargs.append(kwargs)
             source = Path(live) / "sidecars" / "ArcRho-only.json"
             target = Path(stage) / "sidecars" / source.name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -238,10 +249,45 @@ class ResQImportRunnerTests(unittest.TestCase):
             )
 
         self.assertEqual(order, ["merge", "refresh"])
+        # A request with no policy keeps today's merge behavior.
+        self.assertEqual(merge_kwargs, [{"overwrite": False}])
+        self.assertEqual(result["import_policy"], "merge")
         self.assertEqual(result["arcrho_groups_preserved"], 1)
         self.assertEqual(result["arcrho_artifacts_preserved"], 2)
         self.assertTrue((live_rc / "sidecars" / "ArcRho-only.json").is_file())
         self.assertTrue(any(event.get("kind") == "arcrho_merge" for event in events))
+
+    def test_an_overwrite_request_skips_the_newer_live_protection(self):
+        server_root = self.root / "server"
+        live_rc = server_root / "projects" / "Demo" / "data" / "rc"
+        self._write_dataset(live_rc, "old-resq", source_kind="input", value="old")
+        merge_kwargs = []
+        module = self._swap_module()
+        original_merge = module.merge_preserved_arcrho_artifacts
+        module.merge_preserved_arcrho_artifacts = (
+            lambda live, stage, **kwargs: merge_kwargs.append(kwargs)
+            or original_merge(live, stage)
+        )
+        request = {**self._swap_request("run-overwrite"), "ImportPolicy": "overwrite"}
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            result = runner.run_reserving_class_import(request)
+
+        self.assertTrue(result["committed"])
+        self.assertEqual(result["import_policy"], "overwrite")
+        self.assertEqual(merge_kwargs, [{"overwrite": True}])
+
+    def test_an_unknown_import_policy_is_rejected_before_any_work(self):
+        server_root = self.root / "server"
+        request = {**self._swap_request("run-bad-policy"), "ImportPolicy": "replace"}
+
+        with patch.object(runner, "get_project_root", return_value=server_root):
+            with self.assertRaisesRegex(runner.ResQImportRequestError, "ImportPolicy"):
+                runner.run_reserving_class_import(request)
+        self.assertFalse((server_root / "r").exists())
 
     def test_backup_cleanup_failure_keeps_the_committed_import_and_old_backup(self):
         server_root = self.root / "server"
@@ -495,8 +541,10 @@ class ResQImportRunnerTests(unittest.TestCase):
         def importer(_project_name, _rc_path, **kwargs):
             stage_rc = Path(kwargs["project_data_dir"]) / "rc"
             self._write_dataset(stage_rc, "partial", source_kind="input", value="partial")
-            return {"errors": 2, "engine_errors": 0, "engine_available": True}
+            return {"errors": 0, "engine_errors": 0, "engine_available": True}
 
+        # The module lacks the merge/graph/index helpers, so the run fails
+        # after staging but before anything live is moved aside.
         module = SimpleNamespace(
             _encode_rc_folder=lambda _rc_path: "rc",
             import_reserving_class_from_resq=importer,
@@ -505,7 +553,7 @@ class ResQImportRunnerTests(unittest.TestCase):
         with (
             patch.object(runner, "get_project_root", return_value=server_root),
             patch.object(runner, "load_resq_data_migration", return_value=module),
-            self.assertRaises(runner.ResQImportCommitError),
+            self.assertRaises(runner.ResQMigrationBundleError),
         ):
             runner.run_reserving_class_import(self._swap_request("run-import-error"))
 
@@ -564,7 +612,7 @@ class ResQImportRunnerTests(unittest.TestCase):
             import_reserving_class_from_resq=importer,
             _apply_runtime_scope=lambda *args: ("previous", args),
             _restore_runtime_scope=lambda _previous: None,
-            merge_preserved_arcrho_artifacts=lambda _live, _stage: {
+            merge_preserved_arcrho_artifacts=lambda _live, _stage, **_kwargs: {
                 "groups": 0,
                 "files": 0,
                 "names": [],

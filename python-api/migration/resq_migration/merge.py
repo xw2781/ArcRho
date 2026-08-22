@@ -226,8 +226,16 @@ def snapshot_reserving_class_artifacts(live_rc_dir: Path, snapshot_rc_dir: Path)
 def merge_preserved_arcrho_artifacts(
     live_rc_dir: Path,
     staged_rc_dir: Path,
+    *,
+    overwrite: bool = False,
 ) -> dict[str, object]:
-    """Overlay ArcRho-owned or newer live groups onto a completed ResQ stage."""
+    """Overlay ArcRho-owned or newer live groups onto a completed ResQ stage.
+
+    With ``overwrite`` the newer-live-copy protection is skipped, so the fresh
+    ResQ result always wins for anything ResQ provided. Groups whose ArcRho
+    dataset type the stage did not produce at all are preserved either way:
+    an overwrite must not delete work that exists only in ArcRho.
+    """
 
     live_rc = Path(live_rc_dir).resolve(strict=False)
     staged_rc = Path(staged_rc_dir).resolve(strict=False)
@@ -254,7 +262,8 @@ def merge_preserved_arcrho_artifacts(
             and live_type_key not in staged_type_keys
         )
         live_is_newer = (
-            staged_group is not None
+            not overwrite
+            and staged_group is not None
             and _group_modified_timestamp(live_group)
             > _group_modified_timestamp(staged_group) + 0.000001
         )

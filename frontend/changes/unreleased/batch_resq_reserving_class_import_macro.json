@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "New macro imports any set of a project's reserving classes from ResQ in one run.",
+  "details": [
+    "Import ResQ Reserving Classes lists every class in the active project in a review table, preselected, so a whole-project re-import is one accept away.",
+    "Each selected class goes through the same ArcRho Bridge import as the single-class macro, one at a time, with batch progress and a final summary of any failures."
+  ]
+}

@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.3.2
-# Release Note: List each skipped ResQ item by name in the completion message now that a broken method no longer fails the whole reserving class.
+# Version: 1.3.1
+# Release Note: Share the overwrite confirmation with the batch import macro so both word and confirm it identically.
 # Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -469,13 +469,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
         value = _summary_count(result, *keys)
         if value is not None:
             lines.append(f"{label}: {value}")
-    skipped = _detail_lines(result)
-    if skipped:
-        lines.extend((
-            "",
-            "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
-            *skipped,
-        ))
     detail = str(status.get("message") or result.get("message") or "").strip()
     if detail:
         lines.extend(("", detail))
@@ -504,12 +497,12 @@ def _dataset_table_reload_cost(reload_info: Any) -> str:
     return f"Dataset table index was rebuilt{elapsed} ({reason})."
 
 
-def _detail_lines(result: object) -> list[str]:
-    """One display line per bounded per-item detail in a Bridge result."""
-
+def _failure_details_message(error: Exception) -> str:
+    status = error.status if isinstance(error, BridgeRequestError) else {}
+    result = _status_result(status)
     details = result.get("error_details") if isinstance(result, dict) else None
     if not isinstance(details, list):
-        return []
+        return ""
     lines = []
     for raw in details[:12]:
         if not isinstance(raw, dict):
@@ -518,12 +511,6 @@ def _detail_lines(result: object) -> list[str]:
         name = str(raw.get("name") or "unnamed").strip()
         detail = str(raw.get("message") or "Import failed.").strip()
         lines.append(f"- {kind} {name}: {detail}")
-    return lines
-
-
-def _failure_details_message(error: Exception) -> str:
-    status = error.status if isinstance(error, BridgeRequestError) else {}
-    lines = _detail_lines(_status_result(status))
     return "\n\nDetails:\n" + "\n".join(lines) if lines else ""
 
 

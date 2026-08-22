@@ -954,6 +954,65 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "resq-newer\n",
         )
 
+    def test_overwrite_merge_keeps_only_arcrho_only_groups(self) -> None:
+        """Overwrite drops the newer-live protection but never ArcRho-only work."""
+
+        live_rc = self.project_dir / "data" / "live-overwrite"
+        staged_rc = self.project_dir / "data" / "stage-overwrite"
+        for rc_dir in (live_rc, staged_rc):
+            for folder in ("datasets", "methods", "sidecars"):
+                (rc_dir / folder).mkdir(parents=True, exist_ok=True)
+
+        def write_dataset(rc_dir, name, dataset_type, updated_at, value):
+            csv_name = f"{name}@12.csv"
+            (rc_dir / "datasets" / csv_name).write_text(f"{value}\n", encoding="utf-8")
+            (rc_dir / "sidecars" / f"{name}.json").write_text(json.dumps({
+                "dataset_name": name,
+                "dataset_type": dataset_type,
+                "csv_file": csv_name,
+                "updated_at": updated_at,
+            }), encoding="utf-8")
+
+        write_dataset(
+            live_rc,
+            "ArcRho Scenario",
+            "Net Ultimate",
+            "2026-07-01T00:00:00Z",
+            "local-only",
+        )
+        write_dataset(
+            live_rc,
+            "Paid Loss",
+            "Paid Loss",
+            "2026-08-03T00:00:00Z",
+            "local-newer",
+        )
+        write_dataset(
+            staged_rc,
+            "Paid Loss",
+            "Paid Loss",
+            "2026-08-02T00:00:00Z",
+            "resq-older",
+        )
+
+        snapshot_rc = self.project_dir / "snapshots" / "live-overwrite"
+        self.module.snapshot_reserving_class_artifacts(live_rc, snapshot_rc)
+        result = self.module.merge_preserved_arcrho_artifacts(
+            snapshot_rc, staged_rc, overwrite=True
+        )
+
+        self.assertEqual(set(result["names"]), {"ArcRho Scenario"})
+        self.assertEqual(result["groups"], 1)
+        self.assertEqual(
+            (staged_rc / "datasets" / "ArcRho Scenario@12.csv").read_text(encoding="utf-8"),
+            "local-only\n",
+        )
+        # The fresh ResQ copy wins even though the live copy was newer.
+        self.assertEqual(
+            (staged_rc / "datasets" / "Paid Loss@12.csv").read_text(encoding="utf-8"),
+            "resq-older\n",
+        )
+
     def test_cleanup_target_flag_defaults_on_and_can_be_disabled(self) -> None:
         self.assertTrue(self.module._parse_args([]).cleanup_target)
         self.assertFalse(self.module._parse_args(["--no-cleanup-target"]).cleanup_target)

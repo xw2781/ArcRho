@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Both ResQ reserving-class import macros now offer merging with or overwriting existing ArcRho data.",
+  "details": [
+    "Merge keeps today's behavior: datasets that exist only in ArcRho and any ArcRho copy newer than the ResQ version are preserved.",
+    "Overwrite makes the fresh ResQ copy win every conflict, even where the ArcRho copy is newer, after an explicit confirmation; datasets that exist only in ArcRho are still kept.",
+    "The batch macro puts the Overwrite checkbox in the class-selection window itself and preselects the canonical default reserving-class list; review-table windows now support such footer checkboxes for any macro."
+  ]
+}

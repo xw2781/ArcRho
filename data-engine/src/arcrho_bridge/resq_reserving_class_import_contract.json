@@ -44,6 +44,10 @@
     "dfm",
     "dfms"
   ],
+  "allowed_import_policies": [
+    "merge",
+    "overwrite"
+  ],
   "status_values": [
     "processing",
     "success",
