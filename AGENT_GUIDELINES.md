@@ -8,7 +8,7 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - `frontend/`: current ArcRho desktop/web UI, Electron host, backend service code currently bundled with the frontend app, docs, release fragments, and frontend-specific agent rules.
 - `python-api/`: Python API, ResQ migration scripts, migration references, and macro source files.
 - `data-engine/`: ArcRho data-engine component.
-- `tools/`: repository-level automation, including commit/push helpers for agents.
+- `tools/`: repository-level automation, including commit/push helpers for agents and `svg_icon_preview.py`, which collects every SVG in the repository into one browser gallery (run it directly, or double-click `tools/preview_svg_icons.bat`).
 - `agent-memory/`: tracked Claude Code project memories; see [Agent Memory](#agent-memory).
 
 ## Project Terms and Abbreviations
@@ -19,8 +19,8 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - **RS (Result Selection):** the frontend workspace for result selection methods under `frontend/ui/method_pages/result_selection`.
 - **PI (Project Instance):** the frontend workspace for browsing and working within a project instance under `frontend/ui/project_instance`.
 - **PS (Project Settings):** the frontend workspace for configuring project settings under `frontend/ui/project_settings`.
-- **Dev PC:** the development machine that hosts this repository, builds the app, and publishes macros to the shared macro library.
-- **Client PC:** a user machine that runs the installed ArcRho desktop app and reaches the ArcRho Server workspace (`E:\ArcRho Server`) as a mapped or UNC network drive; it loads shared macros from the library into its own local `Documents\ArcRho\macros`.
+- **Server PC:** the shared machine that physically holds `E:\ArcRho Server` — the project workspace, the deployed server components, and the shared macro library — runs the server-side build listener, and is the machine with ResQ installed. Currently `NE7SASWPN02`. Older notes and commit messages call it the "Dev PC"; that name predates development moving onto a client machine, so prefer "Server PC" in new writing.
+- **Client PC:** a user machine that runs the ArcRho desktop app and reaches the ArcRho Server workspace (`E:\ArcRho Server`) as a mapped or UNC network drive; it loads shared macros from the library into its own local `Documents\ArcRho\macros`. Development happens on one of these: the developer's workstation `L-H2MQ6280FVP` holds this repository's working clone and runs the frontend app in dev mode, and maps `\\NE7SASWPN02\E` as drive `E:`, so `E:\ArcRho Server` resolves there exactly as it does on the Server PC.
 
 ## Mandatory Read Before Editing
 Before changing files under `frontend/`, read `frontend/FRONTEND_AGENT_GUIDELINES.md`.
@@ -94,6 +94,7 @@ When designing or maintaining a frontend feature, including its bundled app-serv
 | [Excel Add-in Build and Release](agent-instructions/excel-addin-build-and-release.md) | `excel-addin/`, `Excel add-in`, `.xlam`, `VBA add-in`, `build_xlam`, `release_xlam` |
 | [Agent Project Data Access](agent-instructions/agent-project-data-access.md) | `ArcRho Server project data`, `project metadata JSON`, `sidecar`, `method JSON`, `dataset JSON`, `reserving-class data path`, `resq_data_migration.py`, `E:\ArcRho Server\projects` |
 | [Component Deployment Authorization](agent-instructions/component-deployment-authorization.md) | `rebuild`, `redeploy`, `deploy.py`, `build_exe.py`, `build_manager.bat`, `bundled_sources`, `kill_all`, `heartbeat`, `Bridge`, `Engine`, `Gateway`, `Orchestrator`, `Admin Control`, `Launcher` |
+| [SVG Icon Management](agent-instructions/svg-icon-management.md) | `svg`, `.svg`, `icon`, `icons`, `iconography`, `glyph`, `sprite`, `symbol`, `cursor image`, `logo`, `artwork`, `viewBox`, `currentColor`, `mask-image`, `icon folder`, `shared/icons`, `file-icons`, `tab-type-icons` |
 
 ## Bug Fix Verification and Cleanup
 Before changing code for a bug fix, review the relevant code and verify that its current logic can explain the bug or unexpected behavior reported by the user. If the reported behavior cannot be traced to the code, or if any material detail is uncertain, stop and ask the user for more details or clarification until the issue is clear. Do not make assumptions or guesses when deciding on code changes.
