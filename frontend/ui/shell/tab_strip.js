@@ -50,6 +50,17 @@ function createTabCloseIcon() {
   return svg;
 }
 
+// The glyph on the left edge of a tab. Which drawing a tab type gets is decided entirely in
+// /ui/shell/tab-type-icons/tab_type_icons.css, keyed off this element's data-tab-type, so a new
+// tab type needs no change here and an unmapped one falls back to a generic page icon on its own.
+function createTabTypeIcon(tabType) {
+  const icon = document.createElement("span");
+  icon.className = "tabTypeIcon";
+  icon.dataset.tabType = String(tabType || "").trim().toLowerCase();
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 function getScriptingFilePath(tab) {
   if (!tab || tab.type !== "scripting") return "";
   return String(tab.scPath || tab.scOpenPath || "").trim();
@@ -546,6 +557,7 @@ export function renderTabs() {
       });
       el.addEventListener("pointercancel", (e) => { if (ptrActive && ptrId === e.pointerId) cleanupDragUI(); });
     }
+    el.appendChild(createTabTypeIcon(t.type));
     const label = document.createElement("span");
     label.textContent = t.title;
     el.appendChild(label);

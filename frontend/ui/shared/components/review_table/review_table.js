@@ -147,6 +147,24 @@ export function summarizeReviewTableSelection(rows = [], selectedIds = new Set()
   };
 }
 
+export function normalizeReviewTableChoices(choices = []) {
+  const source = Array.isArray(choices) ? choices : [];
+  const seen = new Set();
+  return source.map((item, index) => {
+    const raw = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    const key = cleanText(raw.key ?? raw.id ?? raw.name);
+    if (!key) throw new Error(`Review table option ${index + 1} requires a key.`);
+    if (seen.has(key)) throw new Error(`Review table option key is duplicated: ${key}`);
+    seen.add(key);
+    return {
+      key,
+      label: cleanText(raw.label) || titleFromKey(key),
+      checked: raw.checked === true,
+      hint: cleanText(raw.hint ?? raw.description),
+    };
+  });
+}
+
 export function normalizeReviewTableOptions(options = {}) {
   const sourceRows = Array.isArray(options.rows) ? options.rows : [];
   const columns = normalizeReviewTableColumns(options.columns, sourceRows);
@@ -156,6 +174,9 @@ export function normalizeReviewTableOptions(options = {}) {
     message: toText(options.message ?? options.summary).trim(),
     columns,
     rows,
+    // Caller-defined footer checkboxes; their final states travel back with
+    // the completion result as `optionStates`, keyed by each option's key.
+    options: normalizeReviewTableChoices(options.options),
     searchPlaceholder: cleanText(options.searchPlaceholder ?? options.search_placeholder) || "Search actions",
     acceptLabel: cleanText(options.acceptLabel ?? options.accept_label) || "Accept Selected",
     cancelLabel: cleanText(options.cancelLabel ?? options.cancel_label) || "Cancel",
@@ -317,6 +338,21 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   body.append(message, toolbar);
 
   const footer = element(doc, "div", "reviewTableFooter");
+  const optionInputs = new Map();
+  let optionsBox = null;
+  if (model.options.length) {
+    optionsBox = element(doc, "div", "reviewTableOptions");
+    for (const option of model.options) {
+      const label = element(doc, "label", "reviewTableOption");
+      if (option.hint) label.title = option.hint;
+      const input = element(doc, "input");
+      input.type = "checkbox";
+      input.checked = option.checked;
+      label.append(input, element(doc, "span", "", option.label));
+      optionsBox.appendChild(label);
+      optionInputs.set(option.key, input);
+    }
+  }
   const selectionStatus = element(doc, "span", "reviewTableSelectionStatus");
   selectionStatus.setAttribute("aria-live", "polite");
   const actions = element(doc, "div", "reviewTableActions");
@@ -325,6 +361,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   const acceptButton = element(doc, "button", "reviewTableButton primary", model.acceptLabel);
   acceptButton.type = "button";
   actions.append(cancelButton, acceptButton);
+  if (optionsBox) footer.appendChild(optionsBox);
   footer.append(selectionStatus, actions);
   container.append(body, footer);
 
@@ -362,9 +399,12 @@ export function createReviewTablePanel(options = {}, settings = {}) {
     if (settled) return;
     settled = true;
     view?.destroy();
+    const optionStates = {};
+    for (const [key, input] of optionInputs) optionStates[key] = !!input.checked;
     settings.onComplete?.({
       accepted: !!accepted,
       selectedRowIds: accepted ? selectedReviewTableRowIds(model.rows, selectedIds) : [],
+      optionStates,
       reason,
     });
   }

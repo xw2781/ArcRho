@@ -10,12 +10,12 @@
  *   - origin/development boundary months      -> project_settings_general_settings.js
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
-import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260820psskel1";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260820psskel1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260820psskel1";
-import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260820psskel1";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260820psskel1";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260820psskel1";
+import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260821pstree1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260821pstree1";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260821pstree1";
+import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260821pstree1";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260821pstree1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260821pstree1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -23,17 +23,17 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260820psskel1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260821pstree1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260820psskel1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260820psskel1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260820psskel1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260820psskel1";
-import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260820psskel1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260820psskel1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260821pstree1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260821pstree1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260821pstree1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260821pstree1";
+import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260821pstree1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260821pstree1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -48,7 +48,6 @@ const detailView = document.getElementById("detailView");
 const detailTitle = document.getElementById("detailTitle");
 const detailForm = document.getElementById("detailForm");
 const openProjectFolderBtn = document.getElementById("openProjectFolderBtn");
-const openInTabBtn = document.getElementById("openInTabBtn");
 const treePanel = document.getElementById("treePanel");
 const resizeHandle = document.getElementById("resizeHandle");
 const treeHeader = document.querySelector(".tree-header");
@@ -412,7 +411,6 @@ const treeViewFeature = createTreeViewFeature({
   getTreeData: () => projectMapStore.getTreeData(),
   getSelectedProject: () => selectedProject,
   selectProject: (...args) => selectProject(...args),
-  openProjectInNewTab: (...args) => openProjectInNewTab(...args),
   openProjectInstanceTab: (...args) => openProjectInstanceTab(...args),
   moveProjectToFolder: (...args) => projectOpsFeature.moveProjectToFolder(...args),
   moveFolderToFolder: (...args) => projectOpsFeature.moveFolderToFolder(...args),
@@ -1253,20 +1251,7 @@ async function loadTableSummary(projectName = "", options = {}) {
   }
 }
 
-// ============ Open in New Tab ============
-function openProjectInNewTab(project) {
-  // Send message to parent to open project in new tab
-  window.parent.postMessage({
-    type: "arcrho:open-project",
-    project: {
-      name: project.name,
-      folder: project.folder
-    }
-  }, "*");
-
-  setStatus(`Opening: ${project.name}`);
-}
-
+// ============ Open Project Instance ============
 function openProjectInstanceTab(project) {
   window.parent.postMessage({
     type: "arcrho:open-project-instance",
@@ -1332,12 +1317,6 @@ document.addEventListener("mouseup", () => {
 });
 
 // ============ Event Handlers ============
-openInTabBtn?.addEventListener("click", () => {
-  if (selectedProject) {
-    openProjectInNewTab(selectedProject);
-  }
-});
-
 openProjectFolderBtn?.addEventListener("click", async () => {
   if (!selectedProject) return;
   await openProjectFolderInExplorer(selectedProject);

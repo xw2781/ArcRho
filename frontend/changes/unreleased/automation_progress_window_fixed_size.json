@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Progress windows such as Refresh Source Table now keep a fixed size.",
+  "details": [
+    "The window no longer grows or shrinks when the main app window is resized; it only moves to stay fully visible.",
+    "The corner resize handle was removed; the window can still be dragged by its title bar.",
+    "The default width is wider, so a reserving-class path plus a dataset name fits without truncation."
+  ]
+}

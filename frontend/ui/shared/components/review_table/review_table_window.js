@@ -5,7 +5,7 @@
 // through `arcrho:review-table-window-init`, and reports the user's decision back
 // with `arcrho:review-table-window-complete`. The parent Project Instance page owns
 // the automation dialog lifecycle and the window frame.
-import { createReviewTablePanel } from "./review_table.js?v=20260819a";
+import { createReviewTablePanel } from "./review_table.js?v=20260821b";
 
 const inst = new URLSearchParams(window.location.search).get("inst") || "";
 let panel = null;
@@ -28,6 +28,9 @@ window.addEventListener("message", (event) => {
         postToParent("arcrho:review-table-window-complete", {
           accepted: !!result?.accepted,
           selectedRowIds: Array.isArray(result?.selectedRowIds) ? result.selectedRowIds : [],
+          optionStates: result?.optionStates && typeof result.optionStates === "object"
+            ? result.optionStates
+            : {},
           reason: String(result?.reason || ""),
         });
       },

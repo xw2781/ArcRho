@@ -448,7 +448,7 @@ input, textarea, select, option, [contenteditable="true"] {
   display: flex;
   align-items: center;
   line-height: 1;
-  gap: 18px;
+  gap: 0;
 
   padding: 6px 10px;
   height: 28px;
@@ -492,7 +492,25 @@ input, textarea, select, option, [contenteditable="true"] {
   pointer-events: none;
 }
 
+/* Tab type icon. The artwork and the type-to-icon mapping belong to
+   /ui/shell/tab-type-icons/tab_type_icons.css; the tab owns only the box it sits in.
+   It paints in `currentColor`, so it follows every theme's tab text color without a rule of
+   its own, and separates from the label by its own margin rather than the row gap, which
+   still measures the distance between the label and the close button. */
+.tab .tabTypeIcon {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+}
+.tab:hover .tabTypeIcon,
+.tab.active .tabTypeIcon {
+  opacity: 1;
+}
+
 .tab .x {
+  margin-left: 18px;
   border:none;
   background:transparent;
   cursor:pointer;

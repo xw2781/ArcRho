@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcRho Tab Type Icon Preview</title>
+  <link rel="stylesheet" href="../../ui/shell/tab-type-icons/tab_type_icons.css?v=20260821a"/>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --strip: #f4f7fa;
+      --text: #202327;
+      --muted: #667085;
+      --border: #d8dde3;
+      --accent: #2b6df6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1080px, calc(100vw - 32px));
+      margin: 26px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+
+    h1 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.2; }
+    h2 { margin: 0 0 10px 0; font-size: 11px; font-weight: 700; color: var(--muted); }
+    p.lede { margin: 4px 0 0 0; color: var(--muted); }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 14px 16px 16px;
+    }
+
+    /* Mock tab strip, kept at the shell's real tab metrics. */
+    .stripFrame {
+      background: var(--strip);
+      padding: 10px 10px 0;
+      border: 1px solid var(--border);
+      border-radius: 4px 4px 0 0;
+    }
+    .strip { display: flex; align-items: flex-end; height: 34px; overflow-x: auto; }
+    .canvas { height: 46px; background: #ffffff; border: 1px solid #c8c8c8; border-top: none; border-radius: 0 0 4px 4px; }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      line-height: 1;
+      padding: 6px 10px;
+      height: 28px;
+      background: #f3f3f3;
+      border: 1px solid #d0d0d0;
+      font-size: 13px;
+      color: #333;
+      white-space: nowrap;
+      cursor: default;
+      box-shadow: inset 0 2px 0 var(--strip);
+      transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .tab:hover { background: #ececec; }
+    .tab.active { background: #ffffff; font-weight: 600; border-color: #c8c8c8; box-shadow: inset 0 2px 0 var(--accent); }
+
+    .tab .tabTypeIcon { width: 14px; height: 14px; margin-right: 6px; opacity: 0.7; transition: opacity 120ms ease; }
+    .tab:hover .tabTypeIcon,
+    .tab.active .tabTypeIcon { opacity: 1; }
+
+    .tab .x {
+      margin-left: 18px;
+      width: 14px;
+      height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(0, 0, 0, 0.15);
+    }
+    .tab .x svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; fill: none; }
+
+    /* Specimen grid. */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+    .cell { background: var(--panel); padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+    .sizes { display: flex; align-items: center; gap: 10px; color: #475569; }
+    .sizes .s14 { width: 14px; height: 14px; }
+    .sizes .s20 { width: 20px; height: 20px; }
+    .sizes .s34 { width: 34px; height: 34px; }
+    .cell .name { font-weight: 700; }
+    .cell .type { color: var(--muted); font-family: Consolas, "Courier New", monospace; font-size: 11px; }
+
+    /* State row. */
+    .states { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+    .state { display: flex; align-items: center; gap: 8px; }
+    .state .tabTypeIcon { width: 14px; height: 14px; color: #333333; }
+    .state.resting .tabTypeIcon { opacity: 0.7; }
+    .state.active .tabTypeIcon { opacity: 1; }
+    .state.dark { background: #1f2733; padding: 8px 12px; border-radius: 4px; }
+    .state.dark .tabTypeIcon { color: #e6ebf2; opacity: 0.7; }
+    .state.dark span { color: #9aa5b4; }
+    .state span { color: var(--muted); }
+
+    .note { color: var(--muted); margin: 10px 0 0 0; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tab Type Icon Preview</h1>
+    <p class="lede">
+      The glyphs that sit at the left edge of every tab in the main tab bar. The artwork and the
+      type-to-icon mapping live in <code>ui/shell/tab-type-icons/</code>; this page only renders them.
+    </p>
+  </header>
+
+  <section class="panel">
+    <h2>In The Tab Bar</h2>
+    <div class="stripFrame">
+      <div class="strip" id="strip"></div>
+    </div>
+    <div class="canvas"></div>
+    <p class="note">Real metrics: a 14px icon, 6px of air before the label, 28px tab height.</p>
+  </section>
+
+  <section class="panel">
+    <h2>States</h2>
+    <div class="states" id="states"></div>
+    <p class="note">
+      One monochrome file per type. The icon takes the tab's own text color and only changes
+      opacity between resting and active, so every theme is covered without a second drawing.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Every Icon</h2>
+    <div class="grid" id="grid"></div>
+    <p class="note">
+      Shown at 14px as the tab bar draws it, then at 20px and 34px so the drawing can be checked.
+      A type with no icon of its own falls back to the generic page glyph.
+    </p>
+  </section>
+</main>
+
+<script>
+  // This page's own inventory of what to render. The shell decides which tabs exist, and
+  // tab_type_icons.css decides which drawing belongs to a type.
+  const TYPES = [
+    ["home", "Home"],
+    ["project_instance", "Project Instance"],
+    ["project_settings", "Project Explorer"],
+    ["file_explorer", "My Workspace"],
+    ["dataset", "Dataset View"],
+    ["dfm", "DFM"],
+    ["bornhuetter_ferguson", "Bornhuetter Ferguson"],
+    ["cape_cod", "Cape Cod"],
+    ["result_selection", "Result Selection"],
+    ["workflow", "Workflow"],
+    ["scripting", "Arcode"],
+    ["agent_guide", "ArcBot Guide"],
+    ["browsing_history", "Browsing History"],
+    ["task_designer", "Task Designer"],
+    ["default", "Fallback"],
+  ];
+
+  function icon(type, sizeClass) {
+    const el = document.createElement("span");
+    el.className = sizeClass ? "tabTypeIcon " + sizeClass : "tabTypeIcon";
+    if (type !== "default") el.dataset.tabType = type;
+    el.setAttribute("aria-hidden", "true");
+    return el;
+  }
+
+  function closeGlyph() {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 10 10");
+    svg.innerHTML = '<line x1="2.5" y1="2.5" x2="7.5" y2="7.5"/><line x1="7.5" y1="2.5" x2="2.5" y2="7.5"/>';
+    return svg;
+  }
+
+  const strip = document.getElementById("strip");
+  TYPES.filter(entry => entry[0] !== "default").forEach(([type, label], index) => {
+    const tab = document.createElement("div");
+    tab.className = index === 3 ? "tab active" : "tab";
+    tab.appendChild(icon(type));
+    const text = document.createElement("span");
+    text.textContent = label;
+    tab.appendChild(text);
+    if (type !== "home") {
+      const x = document.createElement("span");
+      x.className = "x";
+      x.appendChild(closeGlyph());
+      tab.appendChild(x);
+    }
+    strip.appendChild(tab);
+  });
+
+  const states = document.getElementById("states");
+  [["resting", "Resting"], ["active", "Active"], ["dark", "Dark theme"]].forEach(([cls, label]) => {
+    const row = document.createElement("div");
+    row.className = "state " + cls;
+    ["dfm", "workflow", "dataset", "scripting", "project_instance"].forEach(type => row.appendChild(icon(type)));
+    const span = document.createElement("span");
+    span.textContent = label;
+    row.appendChild(span);
+    states.appendChild(row);
+  });
+
+  const grid = document.getElementById("grid");
+  TYPES.forEach(([type, label]) => {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+
+    const sizes = document.createElement("div");
+    sizes.className = "sizes";
+    sizes.appendChild(icon(type, "s34"));
+    sizes.appendChild(icon(type, "s20"));
+    sizes.appendChild(icon(type, "s14"));
+
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = label;
+    const file = document.createElement("div");
+    file.className = "type";
+    file.textContent = type + ".svg";
+    const meta = document.createElement("div");
+    meta.appendChild(name);
+    meta.appendChild(file);
+
+    cell.appendChild(sizes);
+    cell.appendChild(meta);
+    grid.appendChild(cell);
+  });
+</script>
+</body>
+</html>

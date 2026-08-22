@@ -223,13 +223,19 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   assert.match(automation, /return \{ dialogId \}/u);
   assert.match(automation, /status: "completed"/u);
   assert.match(automation, /selectedRowIds/u);
-  assert.match(index, /review_table\/review_table\.css\?v=20260819a/u);
+  // Footer option checkboxes travel back to the automation caller with the
+  // completion status, in both the modal and nested-window hosts.
+  assert.match(automation, /optionStates/u);
+  assert.match(component, /normalizeReviewTableChoices/u);
+  assert.match(component, /optionStates/u);
+  assert.match(styles, /\.reviewTableOption\b/u);
+  assert.match(index, /review_table\/review_table\.css\?v=20260821b/u);
   // The modal host renders the same pi-table the nested window does, so it
   // loads the shared table sheet the grid is dressed by.
   assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
-  assert.match(index, /ui_shell\.js\?v=20260819a/u);
+  assert.match(index, /ui_shell\.js\?v=20260821e/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260820a/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260821e/u);
   }
   // Payload text reaches the DOM as text, never as markup, in both modules.
   assert.match(view, /textContent = toText\(text\)/u);
@@ -277,8 +283,11 @@ test("a projectInstance-hosted review table runs as a nested pi-window", async (
   assert.match(piWindows, /windowKind === "review_table"\) return null/u);
 
   // The nested-window page embeds the same shared panel the modal uses.
-  assert.match(windowPage, /review_table\.css\?v=20260819a/u);
-  assert.match(windowPage, /review_table_window\.js\?v=20260819a/u);
+  assert.match(windowPage, /review_table\.css\?v=20260821b/u);
+  assert.match(windowPage, /review_table_window\.js\?v=20260821b/u);
+  // The nested window relays the footer option states with its completion.
+  assert.match(windowScript, /optionStates/u);
+  assert.match(piReviewTable, /optionStates/u);
   // The nested window is dressed by the shared pi-table sheet and the theme
   // sheets that already target those class names.
   assert.match(windowPage, /shared\/styles\/pi_table\.css\?v=20260819a/u);

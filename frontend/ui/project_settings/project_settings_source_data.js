@@ -21,7 +21,7 @@ import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js";
 import {
   SKELETON_BAR_CLASS,
   SKELETON_ROW_COUNT,
-} from "./project_settings_skeleton.js?v=20260820psskel1";
+} from "./project_settings_skeleton.js?v=20260821pstree1";
 
 const COLUMN_MIN_WIDTH = { name: 120, type: 74 };
 const DETAILS_CLOSE_DELAY_MS = 160;

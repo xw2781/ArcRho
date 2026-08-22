@@ -2,7 +2,7 @@ import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js";
 import {
   clearTableSkeletonRows,
   renderTableSkeletonRows,
-} from "./project_settings_skeleton.js?v=20260820psskel1";
+} from "./project_settings_skeleton.js?v=20260821pstree1";
 
 const RULES_FORMAT = "arcrho-data-processing-rules-v1";
 

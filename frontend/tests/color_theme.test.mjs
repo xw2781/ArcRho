@@ -339,7 +339,7 @@ test("Project Settings and Project Instance override light-only child paint in D
   const projectSettingsHtml = read("../ui/project_settings/project_settings.html");
   assert.match(datasetTypesCss, /\.datasetTypesRecalcOverlay\s*\{/);
   assert.doesNotMatch(datasetTypesJs, /datasetTypesRecalcDialogStyles|createElement\("style"\)/);
-  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260820psskel1/);
+  assert.match(projectSettingsHtml, /project_settings_dataset_types\.css\?v=20260821pstree1/);
 });
 
 test("theme runtime validates, persists per user, applies, notifies frames, and updates Monaco live", async () => {
@@ -674,8 +674,8 @@ test("changed theme and chart owners are reached through current cache-version c
     ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260820b"],
     ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260820b"],
     ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260820b"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260820psskel1"],
-    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260820psskel1"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260821pstree1"],
+    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260821pstree1"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260818a"],
     ["../ui/arcode/code-editor/index.js", "shared/editor_framework.js?v=20260818a"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],

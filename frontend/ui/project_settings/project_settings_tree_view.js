@@ -74,7 +74,6 @@ function countFolderProjects(node) {
  * @param {Function} deps.getTreeData
  * @param {Function} deps.getSelectedProject
  * @param {Function} deps.selectProject
- * @param {Function} deps.openProjectInNewTab
  * @param {Function} deps.openProjectInstanceTab
  * @param {Function} deps.moveProjectToFolder
  * @param {Function} deps.moveFolderToFolder
@@ -88,7 +87,6 @@ export function createTreeViewFeature(deps) {
     getTreeData,
     getSelectedProject,
     selectProject,
-    openProjectInNewTab,
     openProjectInstanceTab,
     moveProjectToFolder,
     moveFolderToFolder,
@@ -430,7 +428,6 @@ export function createTreeViewFeature(deps) {
     const nameEl = document.createElement("div");
     nameEl.className = "tree-project-name";
     nameEl.textContent = project.name;
-    nameEl.title = project.name;
 
     const viewDatasetsBtn = document.createElement("button");
     viewDatasetsBtn.type = "button";
@@ -451,7 +448,7 @@ export function createTreeViewFeature(deps) {
     });
 
     el.addEventListener("dblclick", () => {
-      openProjectInNewTab(project);
+      openProjectInstanceTab(project);
     });
 
     el.addEventListener("dragstart", (e) => {

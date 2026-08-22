@@ -19,7 +19,7 @@ import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_depend
 import {
   clearTableSkeletonRows,
   renderTableSkeletonRows,
-} from "./project_settings_skeleton.js?v=20260820psskel1";
+} from "./project_settings_skeleton.js?v=20260821pstree1";
 
 export function createDatasetTypesFeature(deps = {}) {
   const {

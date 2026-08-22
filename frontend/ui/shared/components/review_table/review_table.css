@@ -271,6 +271,30 @@
   background: #f8fafc;
 }
 
+.reviewTableOptions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.reviewTableOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* The dialog and the nested-window page both set the theme text color, so
+     the option label follows the host theme without a per-theme override. */
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.reviewTableOption input {
+  margin: 0;
+  cursor: pointer;
+}
+
 .reviewTableSelectionStatus {
   min-width: 0;
   flex: 1 1 auto;

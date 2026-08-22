@@ -3,7 +3,7 @@ import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
 } from "../macro/macro_window.js?v=20260817a";
-import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260819a";
+import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260821b";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -55,7 +55,10 @@ function installAutomationStyles() {
       overflow: hidden;
     }
     .uiAutomationOverlay.floating .uiAutomationDialog {
-      width: min(360px, calc(100vw - 40px));
+      /* This outranks any per-dialog width below, so floating windows such as
+         the progress dialog are sized here. Wide enough for a reserving-class
+         path plus a dataset name without truncating the label. */
+      width: min(450px, calc(100vw - 40px));
       pointer-events: auto;
     }
     .uiAutomationDialogHeader {
@@ -167,16 +170,12 @@ function installAutomationStyles() {
       cursor: move !important;
       user-select: none !important;
     }
-    .uiAutomationOverlay.resizing,
-    .uiAutomationOverlay.resizing * {
-      cursor: nwse-resize !important;
-      user-select: none !important;
-    }
     .uiAutomationProgressDialog {
-      width: 440px;
+      /* Width comes from the floating-overlay rule above, which outranks any
+         width set here. */
       height: 232px;
-      min-width: min(320px, calc(100vw - 40px));
-      min-height: 112px;
+      /* Fixed-size window: the max clamps only keep it inside a very small
+         app window, they are not a resize affordance. */
       max-width: calc(100vw - 40px);
       max-height: calc(100vh - 40px);
       display: flex;
@@ -256,14 +255,6 @@ function installAutomationStyles() {
         transform: none;
         opacity: 0.5;
       }
-    }
-    .uiAutomationDialogResizeHandle {
-      position: absolute;
-      right: 0;
-      bottom: 0;
-      width: 16px;
-      height: 16px;
-      cursor: nwse-resize;
     }
   `;
   document.head.appendChild(style);
@@ -347,78 +338,6 @@ function enableDialogDrag(overlay, dialog) {
     stopDrag();
     header.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("resize", onResize);
-  };
-}
-
-function enableDialogResize(overlay, dialog) {
-  const handle = dialog.querySelector(".uiAutomationDialogResizeHandle");
-  if (!handle) return () => {};
-  const margin = 12;
-  let resize = null;
-
-  const minDialogWidth = () => Math.min(320, Math.max(120, window.innerWidth - margin * 2));
-  const minDialogHeight = () => Math.min(112, Math.max(80, window.innerHeight - margin * 2));
-  const clampSize = (width, height, left, top) => ({
-    width: Math.min(Math.max(minDialogWidth(), width), Math.max(minDialogWidth(), window.innerWidth - left - margin)),
-    height: Math.min(Math.max(minDialogHeight(), height), Math.max(minDialogHeight(), window.innerHeight - top - margin)),
-  });
-
-  const applySize = (width, height, left, top) => {
-    const next = clampSize(width, height, left, top);
-    dialog.style.width = `${Math.round(next.width)}px`;
-    dialog.style.height = `${Math.round(next.height)}px`;
-    const pos = clampDialogPosition(dialog, left, top);
-    dialog.style.left = `${pos.left}px`;
-    dialog.style.top = `${pos.top}px`;
-  };
-
-  const onPointerMove = (event) => {
-    if (!resize) return;
-    event.preventDefault();
-    applySize(
-      resize.width + event.clientX - resize.x,
-      resize.height + event.clientY - resize.y,
-      resize.left,
-      resize.top
-    );
-  };
-  const stopResize = () => {
-    if (!resize) return;
-    resize = null;
-    overlay.classList.remove("resizing");
-    window.removeEventListener("pointermove", onPointerMove, true);
-    window.removeEventListener("pointerup", stopResize, true);
-    window.removeEventListener("pointercancel", stopResize, true);
-  };
-  const onPointerDown = (event) => {
-    if (event.button !== 0) return;
-    const rect = dialog.getBoundingClientRect();
-    resize = {
-      x: event.clientX,
-      y: event.clientY,
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    };
-    overlay.classList.add("resizing");
-    window.addEventListener("pointermove", onPointerMove, true);
-    window.addEventListener("pointerup", stopResize, true);
-    window.addEventListener("pointercancel", stopResize, true);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  const onWindowResize = () => {
-    const rect = dialog.getBoundingClientRect();
-    applySize(rect.width, rect.height, rect.left, rect.top);
-  };
-
-  handle.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("resize", onWindowResize);
-  return () => {
-    stopResize();
-    handle.removeEventListener("pointerdown", onPointerDown);
-    window.removeEventListener("resize", onWindowResize);
   };
 }
 
@@ -529,6 +448,9 @@ export function openAutomationReviewTable(args = {}) {
       entry.result = {
         accepted: !!result?.accepted,
         selectedRowIds: Array.isArray(result?.selectedRowIds) ? result.selectedRowIds : [],
+        optionStates: result?.optionStates && typeof result.optionStates === "object"
+          ? result.optionStates
+          : {},
       };
     },
   });
@@ -550,6 +472,9 @@ export function getAutomationReviewTableStatus(args = {}) {
     pending: false,
     accepted: !!entry.result?.accepted,
     selectedRowIds: Array.isArray(entry.result?.selectedRowIds) ? [...entry.result.selectedRowIds] : [],
+    optionStates: entry.result?.optionStates && typeof entry.result.optionStates === "object"
+      ? { ...entry.result.optionStates }
+      : {},
   };
 }
 
@@ -610,7 +535,7 @@ async function routeReviewTableFollowUp(command, isClose) {
     reviewTableHostTabs.delete(dialogId);
     return isClose
       ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
-      : { ok: true, result: { dialogId, status: "completed", pending: false, accepted: false, selectedRowIds: [] } };
+      : { ok: true, result: { dialogId, status: "completed", pending: false, accepted: false, selectedRowIds: [], optionStates: {} } };
   }
   const outcome = await sendCommandToProjectInstance(command, {
     tab: hostTab,
@@ -705,13 +630,10 @@ export function openAutomationProgress(args = {}) {
           <div class="uiAutomationProgressFill"></div>
         </div>
       </div>
-      <div class="uiAutomationDialogResizeHandle" role="presentation" title="Resize"></div>
     </section>
   `;
   document.body.appendChild(overlay);
   const dialog = overlay.querySelector(".uiAutomationDialog");
-  dialog.style.width = "440px";
-  dialog.style.height = "232px";
   const rect = dialog.getBoundingClientRect();
   const left = Math.round(window.innerWidth - rect.width - 28);
   const top = 72;
@@ -719,8 +641,7 @@ export function openAutomationProgress(args = {}) {
   dialog.style.left = `${next.left}px`;
   dialog.style.top = `${next.top}px`;
   const cleanupDrag = enableDialogDrag(overlay, dialog);
-  const cleanupResize = enableDialogResize(overlay, dialog);
-  const entry = { overlay, cleanupDrag: () => { cleanupResize(); cleanupDrag(); }, total: 0, completed: 0, label: "" };
+  const entry = { overlay, cleanupDrag, total: 0, completed: 0, label: "" };
   progressWindows.set(progressId, entry);
   const closeButton = overlay.querySelector(".uiAutomationDialogClose");
   closeButton?.addEventListener("pointerdown", (event) => event.stopPropagation());

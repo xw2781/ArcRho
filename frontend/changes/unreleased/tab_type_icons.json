@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Every tab in the main tab bar now shows a small icon for what it is.",
+  "details": [
+    "Home, Project Instance, Project Explorer, My Workspace, Dataset View, DFM, Bornhuetter Ferguson, Cape Cod, Result Selection, Workflow, Arcode, ArcBot Guide, Browsing History, and Task Designer each have their own icon.",
+    "The icon sits at the left of the tab title and brightens on the tab you are working in.",
+    "A tab with no icon of its own shows a plain page instead, so nothing is ever blank."
+  ]
+}

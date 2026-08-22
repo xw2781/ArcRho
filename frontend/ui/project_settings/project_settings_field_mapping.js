@@ -1,7 +1,7 @@
 import {
   clearTableSkeletonRows,
   renderTableSkeletonRows,
-} from "./project_settings_skeleton.js?v=20260820psskel1";
+} from "./project_settings_skeleton.js?v=20260821pstree1";
 
 export function createFieldMappingFeature(deps = {}) {
   const {

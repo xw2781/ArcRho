@@ -1,4 +1,4 @@
-import { normalizeReviewTableOptions } from "/ui/shared/components/review_table/review_table.js?v=20260819a";
+import { normalizeReviewTableOptions } from "/ui/shared/components/review_table/review_table.js?v=20260821b";
 
 export function installProjectInstanceReviewTable(ctx) {
   const { api, state } = ctx;
@@ -32,7 +32,7 @@ export function installProjectInstanceReviewTable(ctx) {
   function settleEntryIfWindowClosed(entry) {
     if (entry.status === "pending" && !entry.frame?.isConnected) {
       entry.status = "completed";
-      entry.result = { accepted: false, selectedRowIds: [] };
+      entry.result = { accepted: false, selectedRowIds: [], optionStates: {} };
     }
   }
 
@@ -122,6 +122,9 @@ export function installProjectInstanceReviewTable(ctx) {
         pending: false,
         accepted: !!entry.result?.accepted,
         selectedRowIds: Array.isArray(entry.result?.selectedRowIds) ? [...entry.result.selectedRowIds] : [],
+        optionStates: entry.result?.optionStates && typeof entry.result.optionStates === "object"
+          ? { ...entry.result.optionStates }
+          : {},
       },
     });
     return true;
@@ -175,6 +178,11 @@ export function installProjectInstanceReviewTable(ctx) {
         selectedRowIds: Array.isArray(message.selectedRowIds)
           ? message.selectedRowIds.map((value) => toText(value)).filter(Boolean)
           : [],
+        optionStates: message.optionStates && typeof message.optionStates === "object"
+          ? Object.fromEntries(
+            Object.entries(message.optionStates).map(([key, value]) => [toText(key), !!value]),
+          )
+          : {},
       };
       if (entry.frame?.isConnected) {
         closeDatasetWindow(entry.frame, { status: false, skipChildCloseRequest: true });
