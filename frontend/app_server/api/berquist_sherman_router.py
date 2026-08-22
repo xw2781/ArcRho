@@ -4,11 +4,27 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
-from app_server.schemas.berquist_sherman import BerquistShermanLoadRequest
+from app_server.schemas.berquist_sherman import (
+    BerquistShermanLoadRequest,
+    BerquistShermanSaveRequest,
+)
 from app_server.services import berquist_sherman_service, workspace_read_client
 
 
 router = APIRouter()
+
+
+@router.post("/berquist-sherman/save")
+def save_berquist_sherman(req: BerquistShermanSaveRequest) -> Dict[str, Any]:
+    return berquist_sherman_service.save_berquist_sherman_method(
+        req.project_name,
+        req.reserving_class,
+        req.method_type,
+        req.method_name,
+        req.method,
+        csv_file=req.csv_file,
+        output_csv=req.output_csv,
+    )
 
 
 @router.post("/berquist-sherman/load")

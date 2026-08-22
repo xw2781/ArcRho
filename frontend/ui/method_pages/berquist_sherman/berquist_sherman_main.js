@@ -1,7 +1,7 @@
 import { ensureDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
-import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
+import { sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
@@ -327,19 +327,6 @@ function withProgrammatic(callback) {
   } finally {
     programmatic = false;
   }
-}
-
-function getHostApi() {
-  if (window.ADAHost) return window.ADAHost;
-  try {
-    let current = window.parent;
-    while (current && current !== window) {
-      if (current.ADAHost) return current.ADAHost;
-      if (current === current.parent) break;
-      current = current.parent;
-    }
-  } catch {}
-  return null;
 }
 
 function postStatus(message, tone = "") {
@@ -1687,26 +1674,20 @@ async function syncRecordedSourceNumberFormats() {
 }
 
 async function rewriteRecordedNumberFormats() {
-  const hostApi = getHostApi();
-  if (!hostApi?.readJsonFile || !hostApi?.saveJsonFile) return;
-  let path = "";
+  const details = getDetails();
+  if (!state.project || !state.reservingClass || !details.name) return;
   try {
-    path = await getMethodPath();
-  } catch {
-    return;
-  }
-  try {
-    const existing = await hostApi.readJsonFile({ path });
-    if (!existing?.exists || !existing.data || typeof existing.data !== "object") return;
-    const methodTab = existing.data.method_tab;
+    const existing = await requestMethodAndSidecar(details.name);
+    const data = existing?.method;
+    if (!existing?.exists || !data || typeof data !== "object") return;
+    const methodTab = data.method_tab;
     if (!methodTab || typeof methodTab !== "object") return;
     const record = buildNumberFormatsRecord();
     if (JSON.stringify(methodTab.number_formats ?? null) === JSON.stringify(record)) return;
     // The stored payload is rewritten in place, so `method_metadata.last_modified`
     // and every other saved field stay exactly as the last real save left them.
-    await hostApi.saveJsonFile({
-      path,
-      data: { ...existing.data, method_tab: { ...methodTab, number_formats: record } },
+    await requestMethodSave({
+      method: { ...data, method_tab: { ...methodTab, number_formats: record } },
     });
   } catch (error) {
     postStatus(`Could not sync the recorded number formats: ${text(error?.message || error)}`, "warn");
@@ -1913,71 +1894,9 @@ async function openPicker(roleKey, anchorElement) {
   });
 }
 
-async function getWorkspacePathsConfig() {
-  const response = await fetch("/workspace_paths", { cache: "no-store" });
-  if (!response.ok) throw new Error(`Workspace paths failed (${response.status}).`);
-  const payload = await response.json().catch(() => ({}));
-  const config = payload?.config && typeof payload.config === "object" ? payload.config : {};
-  const paths = config.paths && typeof config.paths === "object" ? config.paths : {};
-  return {
-    root: text(config.workspace_root) || "E:\\ArcRho Server",
-    projectsDir: text(paths.projects_dir) || "projects",
-  };
-}
-
-function isAbsolutePath(value) {
-  return /^[A-Za-z]:[\\/]/.test(text(value)) || /^\\\\/.test(text(value));
-}
-
-function joinPath(...parts) {
-  return parts
-    .map((part, index) => {
-      const value = text(part);
-      if (!value) return "";
-      return index === 0
-        ? value.replace(/[\\/]+$/g, "")
-        : value.replace(/^[\\/]+|[\\/]+$/g, "");
-    })
-    .filter(Boolean)
-    .join("\\");
-}
-
-async function getProjectDataDir() {
-  const config = await getWorkspacePathsConfig();
-  const projectsRoot = isAbsolutePath(config.projectsDir)
-    ? config.projectsDir
-    : joinPath(config.root, config.projectsDir);
-  return joinPath(
-    projectsRoot,
-    sanitizeFileNamePart(state.project, "UnknownProject"),
-    "data",
-    sanitizeDataFolderPart(state.reservingClass, "ReservingClass"),
-  );
-}
-
-async function getMethodsDir() {
-  return joinPath(await getProjectDataDir(), "methods");
-}
-
-async function getDatasetDir() {
-  return joinPath(await getProjectDataDir(), "datasets");
-}
-
-function getMethodFilename() {
-  return `${contract.filenamePrefix}${sanitizeFileNamePart(getDetails().name || contract.methodType, "Name")}.json`;
-}
-
-async function getMethodPath() {
-  return joinPath(await getMethodsDir(), getMethodFilename());
-}
-
 function getCsvFilename() {
   const name = sanitizeFileNamePart(getDetails().name || contract.methodType, "Dataset");
   return `${name}@${ANNUAL_PERIOD_LENGTH}@${ANNUAL_PERIOD_LENGTH}@cum@dev.csv`;
-}
-
-async function getCsvPath() {
-  return joinPath(await getDatasetDir(), getCsvFilename());
 }
 
 function cloneMatrix(values) {
@@ -2108,6 +2027,33 @@ async function requestMethodAndSidecar(methodName) {
   return payload;
 }
 
+// The save is the write half of the same pairing: `/berquist-sherman/save`
+// writes the method JSON and, on a full save, the output CSV, so the on-disk
+// text is produced by the app server's canonical writer rather than by the
+// renderer. The page still owns the payload it sends.
+async function requestMethodSave({ method, csv_file = null, output_csv = null }) {
+  const response = await fetch("/berquist-sherman/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_name: state.project,
+      reserving_class: state.reservingClass,
+      method_type: contract.methodType,
+      method_name: getDetails().name,
+      method,
+      csv_file,
+      output_csv,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(
+      payload?.detail || payload?.error || `${contract.displayLabel} save failed (${response.status}).`,
+    );
+  }
+  return payload;
+}
+
 // Both halves are optional: a method that has never been saved has neither, and
 // the page then opens fresh from its Project Instance arguments. The sidecar is
 // applied first and the method second, so a saved Details number format still
@@ -2228,7 +2174,7 @@ async function loadSidecar() {
   }
 }
 
-function buildSidecarSaveBody(csvPath) {
+function buildSidecarSaveBody(csvFile) {
   const details = getDetails();
   return {
     project_name: state.project,
@@ -2248,7 +2194,7 @@ function buildSidecarSaveBody(csvPath) {
     number_format: derivedNumberFormat().number_format,
     decimal_places: derivedNumberFormat().decimal_places,
     origin_labels: state.originLabels.map(String),
-    csv_file: csvBaseName(csvPath),
+    csv_file: csvFile,
     notes: notesController.getValue(),
     precedents: getPrecedentNames(),
   };
@@ -2318,29 +2264,17 @@ async function runBerquistShermanSave(progress) {
     postStatus(`${contract.displayLabel} output is blank. Check the selected sources.`, "error");
     return { ok: false };
   }
-  const hostApi = getHostApi();
-  if (!hostApi?.saveJsonFile || !hostApi?.saveTextFile) {
-    postStatus(`${contract.displayLabel} save requires the desktop app.`, "error");
-    return { ok: false };
-  }
-  const methodPath = await getMethodPath();
-  const csvPath = await getCsvPath();
-  const sidecarBody = buildSidecarSaveBody(csvPath);
+  const csvFile = getCsvFilename();
+  const sidecarBody = buildSidecarSaveBody(csvFile);
   progress.writing();
-  const jsonResult = await hostApi.saveJsonFile({
-    path: methodPath,
-    suggestedName: getMethodFilename(),
-    startDir: await getMethodsDir(),
-    data: buildMethodPayload(),
+  // The method JSON and the output CSV are written by the app server, so the
+  // on-disk text comes from the one canonical writer (`arcrho_api.io`) rather
+  // than from the renderer; the sidecar save that follows queues dependents.
+  await requestMethodSave({
+    method: buildMethodPayload(),
+    csv_file: csvFile,
+    output_csv: matrixCsv(output),
   });
-  if (!jsonResult?.path || jsonResult?.error) {
-    throw new Error(jsonResult?.error || "Method JSON save failed.");
-  }
-  const csvResult = await hostApi.saveTextFile({
-    path: csvPath,
-    data: matrixCsv(output),
-  });
-  if (csvResult?.error) throw new Error(csvResult.error);
   const sidecar = await saveSidecar(sidecarBody);
   await Promise.all([
     loadCachedRows(true).catch(() => {}),

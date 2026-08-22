@@ -1,9 +1,10 @@
-"""The one-round-trip B&S page open: method JSON plus output sidecar."""
+"""The one-round-trip B&S page open, and the app-server save that pairs with it."""
 
 from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -168,6 +169,85 @@ class LoadTests(unittest.TestCase):
                 berquist_sherman_service.load_berquist_sherman_method("Demo", "COL", CRA_TYPE, "M")
         self.assertEqual(caught.exception.status_code, 500)
         self.assertIn("BSCRA@M.json", str(caught.exception.detail))
+
+
+class SaveTests(unittest.TestCase):
+    """The method JSON and output CSV are written by the app server, not the renderer."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.method_path = self.root / "methods" / "BSCRA@M.json"
+        patchers = (
+            patch.object(
+                berquist_sherman_service,
+                "berquist_sherman_method_path",
+                return_value=str(self.method_path),
+            ),
+            patch.object(
+                berquist_sherman_service.config,
+                "get_project_dataset_cache_dir",
+                return_value=str(self.root / "datasets"),
+            ),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _method(self, name: str = "M") -> dict:
+        return {
+            "json_format": "berquist_sherman_cra.v1",
+            "details_tab": {"name": name, "method_type": CRA_TYPE},
+            "method_tab": {"selected_adjustment": [[1, 2], [3]], "loess_span": 7},
+        }
+
+    def _save(self, method: dict, **kwargs) -> dict:
+        return berquist_sherman_service.save_berquist_sherman_method(
+            "Demo", "COL", CRA_TYPE, "M", method, **kwargs
+        )
+
+    def test_the_method_text_is_the_canonical_persisted_json(self) -> None:
+        from arcrho_api.io import persisted_json_text
+
+        method = self._method()
+        result = self._save(method, csv_file="M@12@12@cum@dev.csv", output_csv="1,2\n3\n")
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.method_path.read_bytes(), persisted_json_text(method).encode("utf-8"))
+        csv_path = self.root / "datasets" / "M@12@12@cum@dev.csv"
+        self.assertEqual(csv_path.read_bytes(), b"1,2\n3\n")
+        self.assertEqual(result["csv_file"], "M@12@12@cum@dev.csv")
+        self.assertEqual(
+            {Path(path) for path in result["changed_paths"]}, {self.method_path, csv_path}
+        )
+        # The payload is stored as the page built it; nothing is normalized away.
+        self.assertEqual(json.loads(self.method_path.read_text(encoding="utf-8")), method)
+
+    def test_an_unchanged_file_is_not_rewritten(self) -> None:
+        self._save(self._method(), csv_file="M@12@12@cum@dev.csv", output_csv="1\n")
+        again = self._save(self._method(), csv_file="M@12@12@cum@dev.csv", output_csv="1\n")
+        self.assertEqual(again["changed_paths"], [])
+
+    def test_a_method_only_write_leaves_the_csv_alone(self) -> None:
+        csv_path = self.root / "datasets" / "M@12@12@cum@dev.csv"
+        csv_path.parent.mkdir(parents=True)
+        csv_path.write_text("old\n", encoding="utf-8")
+        result = self._save(self._method())
+        self.assertEqual(result["csv_path"], "")
+        self.assertEqual(csv_path.read_text(encoding="utf-8"), "old\n")
+        self.assertTrue(self.method_path.is_file())
+
+    def test_the_payload_must_name_the_method_being_saved(self) -> None:
+        with self.assertRaises(HTTPException) as caught:
+            self._save(self._method("Other"))
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertFalse(self.method_path.exists())
+
+    def test_the_csv_name_cannot_carry_a_path(self) -> None:
+        for csv_file in ("..\\M.csv", "sub/M.csv", "M.txt", ""):
+            with self.subTest(csv_file=csv_file), self.assertRaises(HTTPException) as caught:
+                self._save(self._method(), csv_file=csv_file, output_csv="1\n")
+            self.assertEqual(caught.exception.status_code, 400)
 
 
 if __name__ == "__main__":

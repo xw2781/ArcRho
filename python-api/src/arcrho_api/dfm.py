@@ -15,17 +15,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
 from .dfm_contract import (
-    LEGACY_DFM_JSON_FORMAT,
     build_dfm_output_sidecar,
-    dependency_entries,
     default_average_formulas,
+    dependency_entries,
     dfm_output_variants,
     dfm_precedent_names,
+    LEGACY_DFM_JSON_FORMAT,
     normalize_dfm_method,
+    persisted_projection,
     recalculate_dfm_method,
 )
 from .exceptions import DfmDataError, InvalidDfmJsonError, ReadOnlyError
-from .io import format_json_for_save, read_json
+from .io import persisted_json_text, read_json
 from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
 from .sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 
@@ -267,7 +268,18 @@ def _now_iso() -> str:
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
-    return f"{format_json_for_save(payload)}\n".encode("utf-8")
+    return persisted_json_text(payload).encode("utf-8")
+
+
+def _method_json_bytes(payload: dict[str, Any]) -> bytes:
+    """The on-disk bytes of a DFM method.
+
+    Every DFM method writer -- this public API, the bundled app server, and the
+    ResQ migration -- serializes through ``persisted_projection`` so the same
+    logical method lands on disk as the same bytes whichever component saved it.
+    """
+
+    return _json_bytes(persisted_projection(payload))
 
 
 def _commit_bytes_atomic(files: dict[Path, bytes], *, last_paths: Iterable[Path] = ()) -> None:
@@ -774,7 +786,7 @@ class DfmMethod:
             if not automatic or published_output_changed:
                 files.update(output_files)
             files.update({
-                self.file_path: _json_bytes(self.payload),
+                self.file_path: _method_json_bytes(self.payload),
                 sidecar_path: _json_bytes(sidecar),
             })
             _commit_bytes_atomic(files, last_paths=(sidecar_path,))

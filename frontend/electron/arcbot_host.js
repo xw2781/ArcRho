@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { StringDecoder } = require("string_decoder");
+const { formatJsonForSave } = require("./persisted_json_text");
 const {
   buildCodexModelCatalog,
   getFallbackCodexModelCatalog,
@@ -1820,50 +1821,6 @@ function sha256Text(text) {
   return crypto.createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
-function formatJsonForSave(data) {
-  const text = formatJsonWithCompactRowArrays(data);
-  return text.endsWith("\n") ? text : `${text}\n`;
-}
-
-function isRowArray(value) {
-  return Array.isArray(value) && value.every((row) => Array.isArray(row));
-}
-
-function formatJsonWithCompactRowArrays(value, indent = "") {
-  if (isRowArray(value)) {
-    if (!value.length) return "[]";
-    return `[\n${formatRowArrayLines(value, `${indent}  `)}\n${indent}]`;
-  }
-  if (Array.isArray(value)) {
-    if (!value.length) return "[]";
-    const childIndent = `${indent}  `;
-    const lines = value.map((item, index) => {
-      const rendered = `${childIndent}${formatJsonWithCompactRowArrays(item, childIndent)}`;
-      return index < value.length - 1 ? `${rendered},` : rendered;
-    });
-    return `[\n${lines.join("\n")}\n${indent}]`;
-  }
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value);
-    if (!keys.length) return "{}";
-    const childIndent = `${indent}  `;
-    const lines = keys.map((key, index) => {
-      const rendered = `${childIndent}${JSON.stringify(key)}: ${formatJsonWithCompactRowArrays(value[key], childIndent)}`;
-      return index < keys.length - 1 ? `${rendered},` : rendered;
-    });
-    return `{\n${lines.join("\n")}\n${indent}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function formatRowArrayLines(rows, indent) {
-  return rows
-    .map((row) => {
-      const vals = row.map((v) => JSON.stringify(v)).join(", ");
-      return `${indent}[${vals}]`;
-    })
-    .join(",\n");
-}
 
 function formatJsonForArcBot(data) {
   return formatJsonForSave(data);

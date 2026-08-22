@@ -1,6 +1,6 @@
 # Persisted JSON Contract v4: One Naming Convention, Fewer Fields, One Audit Policy
 
-Status: In progress — Step 1 landed 2026-08-22
+Status: In progress — Steps 1-2 landed 2026-08-22
 Last updated: 2026-08-22
 
 ## Progress Checklist
@@ -17,11 +17,11 @@ One box per task, in the order the work must land. Each step is its own commit; 
 
 ### Step 2 — Reconcile the two method writers · Fable 5 · `xhigh`
 
-- [ ] Make `dfm_service._publish` write through `persisted_projection`, so both DFM writers emit one shape.
-- [ ] Check BF, CC, Bootstrap, RS and B&S for the same split (service writer vs contract projection) and close any found.
-- [ ] Route the browser-side Berquist Sherman save (`berquist_sherman_main.js` → `save-json-file` IPC) through the app server instead of `fs.writeFileSync` (Trap 3).
-- [ ] Collapse the four JSON text writers onto the canonical `arcrho_api/io.py` behaviour (Bridge, `host_support.js`, `arcbot_host.js`).
-- [ ] Commit.
+- [x] Make `dfm_service._publish` write through `persisted_projection`, so both DFM writers emit one shape.
+- [x] Check BF, CC, Bootstrap, RS and B&S for the same split (service writer vs contract projection) and close any found.
+- [x] Route the browser-side Berquist Sherman save (`berquist_sherman_main.js` → `save-json-file` IPC) through the app server instead of `fs.writeFileSync` (Trap 3).
+- [x] Collapse the four JSON text writers onto the canonical `arcrho_api/io.py` behaviour (Bridge, `host_support.js`, `arcbot_host.js`).
+- [x] Commit.
 
 ### Step 3 — Audit log and shared sidecar validator · Fable 5 · `high`
 

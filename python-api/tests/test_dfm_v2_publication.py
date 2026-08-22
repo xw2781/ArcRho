@@ -280,10 +280,13 @@ class DfmV2PropagationTests(unittest.TestCase):
         self.assertEqual(result.refreshed_outputs, ("Paid DFM",))
         self.assertEqual(result.warnings, ())
         refreshed = json.loads(self.method_path.read_text(encoding="utf-8"))
+        # The file holds the persisted projection -- trailing nulls trimmed and
+        # no mask -- exactly as the app server writes it.
         self.assertEqual(
             refreshed["data tab"]["input data triangle values"],
-            [[100, 200, 260], [200, 400, None], [400, None, None]],
+            [[100, 200, 260], [200, 400], [400]],
         )
+        self.assertNotIn("input data triangle mask", refreshed["data tab"])
         self.assertEqual(
             refreshed["results tab"]["ratio basis values"],
             [1100, 2200, 3300],

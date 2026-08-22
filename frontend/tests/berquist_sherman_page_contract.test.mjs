@@ -256,7 +256,7 @@ test("the Details format governs the calculated triangles and syncs silently", (
     .replace(/^\s*\/\/.*$/gmu, "");
   assert.match(
     rewriteBody,
-    /data: \{ \.\.\.existing\.data, method_tab: \{ \.\.\.methodTab, number_formats: record \} \}/u,
+    /method: \{ \.\.\.data, method_tab: \{ \.\.\.methodTab, number_formats: record \} \}/u,
   );
   for (const forbidden of ["markDirty", "last_modified", "saveSidecar", "status"]) {
     assert.doesNotMatch(rewriteBody, new RegExp(forbidden, "u"), forbidden);
@@ -343,4 +343,19 @@ test("the nested calculation strip encloses its client area like ResQ", () => {
   }
   // Two stacked grids share the client area evenly, as the ResQ tab does.
   assert.match(css, /\.bsGridPane \{[^}]*flex: 1 1 0;/u);
+});
+
+test("B&S never writes a persisted project file from the renderer", () => {
+  // The method JSON and output CSV go through `/berquist-sherman/save`, so the
+  // on-disk text comes from the app server's canonical writer; a host-API
+  // write would bypass it and could not even reproduce a `1.0`.
+  assert.match(main, /fetch\("\/berquist-sherman\/save"/u);
+  assert.doesNotMatch(main, /saveJsonFile|saveTextFile|readJsonFile/u);
+  // The in-place number-format sync reads and writes through the same routes.
+  assert.match(
+    main,
+    /async function rewriteRecordedNumberFormats\(\) \{[\s\S]*?requestMethodAndSidecar\([\s\S]*?requestMethodSave\(/u,
+  );
+  // No renderer-side workspace path resolution is left to drift from the server's.
+  assert.doesNotMatch(main, /\/workspace_paths|function joinPath|getMethodPath|getCsvPath/u);
 });
