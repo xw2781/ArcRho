@@ -7,9 +7,10 @@ Don't clear the section headers. Ignore empty sections and don't guess a bug.
 ## Temporary View Mode
 
 # PI
-- On client pc, deleted multiple dataset, it takes a very long time to get a response. Maybe it's better to add a progressbar (use the exsiting msgbox shell from ui aotumation module) while waiting for the backgroud processing instead of letting user waiting and seeing the stale dataset table. 
-
 
 ## pi-hidden-tabs-menu
 
 # DFM
+
+# "ArcRho Server" Root
+- If some modules are still using hard-coded "E:\ArcRho Server", they need to use the value same as that in app main menu Settings -> Server Connection -> Root Path

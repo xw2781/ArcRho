@@ -27,5 +27,5 @@
 
 
 # Phase 3 - 8/24
-- In-app assistant ArcBot
-- Arcode editor
+- AI assisted workflow
+- Link across projects (Prior Vectors)
