@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Typing a number over a selected range of editable Dataset cells now fills the whole range.",
+  "details": [
+    "Select any range in the Data tab of an editable dataset and start typing: every editable cell in the selection takes the number as you type it, matching how the Result Selection Method grid fills highlighted weights.",
+    "Successive keystrokes build one number, a decimal point and a leading minus sign are accepted, and noneditable cells such as masked triangle cells and Total are skipped.",
+    "Selecting a single cell still opens the inline editor as before."
+  ]
+}

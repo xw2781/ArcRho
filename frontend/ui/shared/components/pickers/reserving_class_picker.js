@@ -7,10 +7,9 @@ const FILTER_SPEC_CACHE = new Map();
 const FILTER_PREFS_CACHE = new Map();
 const TREE_FILTER_PREFERENCE_DEFAULTS = Object.freeze({
   autoExpandSingleChild: true,
-  hideSegmentLabels: false,
+  hideSegmentLabels: true,
 });
 const WINDOW_FRAME_MARGIN_PX = 8;
-const HIDDEN_PATHS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/></svg>';
 const COLLAPSE_DEEPEST_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="12" x2="18" y2="12"/></svg>';
 const FILTER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>';
 const SETTINGS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>';
@@ -1350,7 +1349,6 @@ let activeFilterWindow = null;
 let activePreferencesWindow = null;
 let activeTreeNodeMenu = null;
 let activeFilterValuesMenu = null;
-let activeHiddenPathsWindow = null;
 
 function setPreferencesButtonsActive(doc, active) {
   const root = doc || window.document;
@@ -1383,21 +1381,41 @@ function ensureFilterWindowStyles(doc) {
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      resize: both;
       overscroll-behavior: contain;
     }
-    .rcf-window::after {
-      content: "";
+    .rcf-resize-handle {
       position: absolute;
-      right: 5px;
-      bottom: 5px;
-      width: 10px;
-      height: 10px;
-      border-right: 2px solid transparent;
-      border-bottom: 2px solid transparent;
-      opacity: 0;
-      pointer-events: none;
+      z-index: 5301;
     }
+    .rcf-resize-n,
+    .rcf-resize-s {
+      left: 10px;
+      right: 10px;
+      height: 6px;
+      cursor: ns-resize;
+    }
+    .rcf-resize-n { top: 0; }
+    .rcf-resize-s { bottom: 0; }
+    .rcf-resize-e,
+    .rcf-resize-w {
+      top: 10px;
+      bottom: 10px;
+      width: 6px;
+      cursor: ew-resize;
+    }
+    .rcf-resize-w { left: 0; }
+    .rcf-resize-e { right: 0; }
+    .rcf-resize-nw,
+    .rcf-resize-ne,
+    .rcf-resize-sw,
+    .rcf-resize-se {
+      width: 12px;
+      height: 12px;
+    }
+    .rcf-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+    .rcf-resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
+    .rcf-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+    .rcf-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
     .rcf-titlebar {
       display: flex;
       align-items: center;
@@ -1607,11 +1625,20 @@ function ensureFilterWindowStyles(doc) {
       border-color: #2a66f5;
       box-shadow: 0 0 0 2px rgba(42, 102, 245, 0.12);
     }
-    .rcf-placeholder {
-      color: #9b9b9b;
+    .rcf-search {
+      flex: 1 1 80px;
+      min-width: 80px;
+      border: none;
+      outline: none;
+      background: transparent;
       font-size: 12px;
-      font-style: italic;
+      color: #323232;
       line-height: 24px;
+      padding: 0;
+    }
+    .rcf-search::placeholder {
+      color: #9b9b9b;
+      font-style: italic;
     }
     .rcf-values {
       margin-top: 6px;
@@ -1719,6 +1746,64 @@ function ensureFilterWindowStyles(doc) {
       background: #fbfbfb;
       cursor: not-allowed;
     }
+    .rcf-hidden-section {
+      border-top: 1px solid #ececec;
+      padding-top: 10px;
+      margin-top: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .rcf-hidden-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .rcf-hidden-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4f4f4f;
+    }
+    .rcf-hidden-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .rcf-hidden-list {
+      max-height: 140px;
+      overflow: auto;
+      border: 1px solid #efefef;
+      border-radius: 6px;
+      padding: 4px;
+      background: #fafafa;
+      overscroll-behavior: contain;
+    }
+    .rcf-hidden-empty {
+      color: #777;
+      font-size: 12px;
+      padding: 6px 4px;
+    }
+    .rcf-hidden-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #222;
+    }
+    .rcf-hidden-row:hover { background: #eef3ff; }
+    .rcf-hidden-row input {
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+    .rcf-hidden-path {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
   `;
   doc.head.appendChild(style);
 }
@@ -1780,123 +1865,6 @@ function ensureTreeNodeMenuStyles(doc) {
     .rctm-item:disabled:hover {
       background: transparent;
     }
-    .rchp-window {
-      position: fixed;
-      top: 144px;
-      left: 50%;
-      width: min(460px, 92vw);
-      max-height: min(420px, 82vh);
-      background: #fff;
-      border: 1px solid #cfcfcf;
-      border-radius: 8px;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
-      z-index: 5450;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .rchp-titlebar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 8px 10px 8px 12px;
-      background: #f6f6f6;
-      border-bottom: 1px solid #e1e1e1;
-      cursor: grab;
-      user-select: none;
-    }
-    .rchp-titlebar:active { cursor: grabbing; }
-    .rchp-title {
-      font-weight: 600;
-      font-size: 13px;
-      color: #2e2e2e;
-      min-width: 0;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-    .rchp-close {
-      width: 26px;
-      height: 26px;
-      border: none;
-      border-radius: 4px;
-      background: transparent;
-      color: #666;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-    }
-    .rchp-close:hover { background: #e8e8e8; }
-    .rchp-close svg {
-      width: 18px;
-      height: 18px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .rchp-body {
-      min-height: 120px;
-      overflow: auto;
-      padding: 8px;
-    }
-    .rchp-empty {
-      color: #777;
-      font-size: 12px;
-      padding: 8px 4px;
-    }
-    .rchp-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 5px 6px;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #222;
-    }
-    .rchp-row:hover { background: #eef3ff; }
-    .rchp-row input {
-      margin-top: 2px;
-      flex-shrink: 0;
-    }
-    .rchp-path {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      line-height: 1.35;
-    }
-    .rchp-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 8px;
-      border-top: 1px solid #e5e5e5;
-      background: #fafafa;
-    }
-    .rchp-btn {
-      border: 1px solid #cfcfcf;
-      border-radius: 6px;
-      background: #fff;
-      color: #222;
-      font-size: 12px;
-      padding: 4px 10px;
-      cursor: pointer;
-    }
-    .rchp-btn:hover { background: #f2f2f2; }
-    .rchp-btn.primary {
-      border-color: #8db5ff;
-      background: #eef4ff;
-      color: #174ea6;
-    }
-    .rchp-btn:disabled {
-      color: #999;
-      border-color: #e0e0e0;
-      background: #fbfbfb;
-      cursor: not-allowed;
-    }
   `;
   doc.head.appendChild(style);
 }
@@ -1934,6 +1902,84 @@ function makeFloatingWindowDraggable(doc, win, handle, ignoreSelector = "") {
     doc.addEventListener("mouseup", onUp);
     e.preventDefault();
   });
+}
+
+function makeFloatingWindowResizable(doc, win, options = {}) {
+  const minWidth = Number(options?.minWidth) || 200;
+  const minHeight = Number(options?.minHeight) || 150;
+  const maxWidth = Number(options?.maxWidth) || Infinity;
+  const maxHeight = Number(options?.maxHeight) || Infinity;
+  const clampNum = (value, min, max) => Math.max(min, Math.min(max, value));
+
+  const DIRECTIONS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+
+  for (const dir of DIRECTIONS) {
+    const handle = doc.createElement("div");
+    handle.className = `rcf-resize-handle rcf-resize-${dir}`;
+    let dragging = null;
+
+    const onMove = (e) => {
+      if (!dragging || e.pointerId !== dragging.pointerId) return;
+      const { startX, startY, startWidth, startHeight, startLeft, startTop } = dragging;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let width = startWidth;
+      let height = startHeight;
+      let left = startLeft;
+      let top = startTop;
+
+      if (dir.includes("e")) {
+        width = clampNum(startWidth + dx, minWidth, maxWidth);
+      }
+      if (dir.includes("w")) {
+        const right = startLeft + startWidth;
+        width = clampNum(startWidth - dx, minWidth, maxWidth);
+        left = right - width;
+      }
+      if (dir.includes("s")) {
+        height = clampNum(startHeight + dy, minHeight, maxHeight);
+      }
+      if (dir.includes("n")) {
+        const bottom = startTop + startHeight;
+        height = clampNum(startHeight - dy, minHeight, maxHeight);
+        top = bottom - height;
+      }
+
+      win.style.width = `${width}px`;
+      win.style.height = `${height}px`;
+      if (dir.includes("w") || dir.includes("n")) {
+        applyWindowPositionWithinFrame(doc, win, left, top);
+      }
+    };
+
+    const endDrag = (e) => {
+      if (!dragging || (e && e.pointerId !== dragging.pointerId)) return;
+      try { handle.releasePointerCapture(dragging.pointerId); } catch {}
+      dragging = null;
+    };
+
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = win.getBoundingClientRect();
+      dragging = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startWidth: rect.width,
+        startHeight: rect.height,
+        startLeft: rect.left,
+        startTop: rect.top,
+      };
+      try { handle.setPointerCapture(e.pointerId); } catch {}
+    });
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", endDrag);
+    handle.addEventListener("pointercancel", endDrag);
+
+    win.appendChild(handle);
+  }
 }
 
 function isVerticallyScrollable(el) {
@@ -2019,6 +2065,12 @@ function closeReservingClassFilterWindow(reason = "programmatic") {
   activeFilterWindow = null;
   if (typeof onClose === "function") {
     try { onClose(reason); } catch {}
+  }
+}
+
+function refreshReservingClassFilterWindow() {
+  if (typeof activeFilterWindow?.refresh === "function") {
+    try { activeFilterWindow.refresh(); } catch {}
   }
 }
 
@@ -2170,159 +2222,6 @@ function closeReservingClassTreeNodeMenu(reason = "programmatic") {
   if (doc && onContextMenu) doc.removeEventListener("contextmenu", onContextMenu, true);
   if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
   activeTreeNodeMenu = null;
-}
-
-function closeHiddenPathsWindow(reason = "programmatic") {
-  if (!activeHiddenPathsWindow) return;
-  const { doc, win, onEsc, onWheelGuard } = activeHiddenPathsWindow;
-  if (doc && onEsc) doc.removeEventListener("keydown", onEsc, true);
-  if (typeof onWheelGuard === "function") {
-    try { onWheelGuard(); } catch {}
-  }
-  if (win && win.parentNode) win.parentNode.removeChild(win);
-  activeHiddenPathsWindow = null;
-}
-
-function refreshHiddenPathsWindow() {
-  if (typeof activeHiddenPathsWindow?.refresh === "function") {
-    try { activeHiddenPathsWindow.refresh(); } catch {}
-  }
-}
-
-function openHiddenPathsWindow(options = {}) {
-  const doc = options?.document || window.document;
-  ensureTreeNodeMenuStyles(doc);
-  closeHiddenPathsWindow("replaced");
-
-  const readPaths = () => {
-    const rawPaths = typeof options?.getPaths === "function"
-      ? options.getPaths()
-      : options?.paths;
-    return Array.isArray(rawPaths)
-      ? rawPaths.map((path) => splitPath(path, "\\").join("\\")).filter(Boolean)
-      : [];
-  };
-  let paths = readPaths();
-  const selected = new Set();
-
-  const win = doc.createElement("div");
-  win.className = "rchp-window";
-
-  const bar = doc.createElement("div");
-  bar.className = "rchp-titlebar";
-  const title = doc.createElement("div");
-  title.className = "rchp-title";
-  title.textContent = `Hidden Paths${paths.length ? ` (${paths.length})` : ""}`;
-  const closeBtn = doc.createElement("button");
-  closeBtn.type = "button";
-  closeBtn.className = "rchp-close";
-  closeBtn.title = "Close";
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
-  closeBtn.addEventListener("click", () => closeHiddenPathsWindow("close_button"));
-  bar.append(title, closeBtn);
-  win.appendChild(bar);
-
-  const body = doc.createElement("div");
-  body.className = "rchp-body";
-  const footer = doc.createElement("div");
-  footer.className = "rchp-footer";
-  const unhideSelectedBtn = doc.createElement("button");
-  unhideSelectedBtn.type = "button";
-  unhideSelectedBtn.className = "rchp-btn primary";
-  unhideSelectedBtn.textContent = "Unhide Selected";
-  unhideSelectedBtn.disabled = true;
-  const unhideAllBtn = doc.createElement("button");
-  unhideAllBtn.type = "button";
-  unhideAllBtn.className = "rchp-btn";
-  unhideAllBtn.textContent = "Unhide All";
-  unhideAllBtn.disabled = paths.length < 1;
-  const updateButtons = () => {
-    unhideSelectedBtn.disabled = selected.size < 1;
-    unhideAllBtn.disabled = paths.length < 1;
-  };
-
-  const renderBody = () => {
-    paths = readPaths();
-    const pathSet = new Set(paths);
-    for (const path of Array.from(selected.values())) {
-      if (!pathSet.has(path)) selected.delete(path);
-    }
-    title.textContent = `Hidden Paths${paths.length ? ` (${paths.length})` : ""}`;
-    body.innerHTML = "";
-    if (!paths.length) {
-      const empty = doc.createElement("div");
-      empty.className = "rchp-empty";
-      empty.textContent = "No hidden paths.";
-      body.appendChild(empty);
-      updateButtons();
-      return;
-    }
-    paths.forEach((path) => {
-      const row = doc.createElement("label");
-      row.className = "rchp-row";
-      const chk = doc.createElement("input");
-      chk.type = "checkbox";
-      chk.value = path;
-      chk.checked = selected.has(path);
-      chk.addEventListener("change", () => {
-        if (chk.checked) selected.add(path);
-        else selected.delete(path);
-        updateButtons();
-      });
-      const text = doc.createElement("span");
-      text.className = "rchp-path";
-      text.textContent = path;
-      row.append(chk, text);
-      body.appendChild(row);
-    });
-    updateButtons();
-  };
-
-  unhideSelectedBtn.addEventListener("click", async () => {
-    if (!selected.size || typeof options?.onUnhideSelected !== "function") return;
-    const selectedPaths = Array.from(selected.values());
-    try { await options.onUnhideSelected(selectedPaths); } catch {}
-    renderBody();
-  });
-  unhideAllBtn.addEventListener("click", async () => {
-    if (!paths.length || typeof options?.onUnhideAll !== "function") return;
-    try { await options.onUnhideAll(); } catch {}
-    renderBody();
-  });
-
-  footer.append(unhideSelectedBtn, unhideAllBtn);
-  win.append(body, footer);
-  doc.body.appendChild(win);
-  makeFloatingWindowDraggable(doc, win, bar, ".rchp-close, .rchp-btn, input, label");
-
-  const anchor = options?.anchorElement;
-  const view = doc.defaultView || window;
-  if (anchor && typeof anchor.getBoundingClientRect === "function") {
-    const anchorRect = anchor.getBoundingClientRect();
-    const winRect = win.getBoundingClientRect();
-    const viewportW = Number(view?.innerWidth || doc.documentElement.clientWidth || 0);
-    const viewportH = Number(view?.innerHeight || doc.documentElement.clientHeight || 0);
-    let left = anchorRect.right + 10;
-    if (left + winRect.width > viewportW - 8) left = Math.max(8, anchorRect.left - winRect.width - 10);
-    let top = Math.max(8, anchorRect.top);
-    if (top + winRect.height > viewportH - 8) top = Math.max(8, viewportH - winRect.height - 8);
-    applyWindowPositionWithinFrame(doc, win, left, top);
-  } else {
-    const winRect = win.getBoundingClientRect();
-    const viewportW = Number(view?.innerWidth || doc.documentElement.clientWidth || 0);
-    applyWindowPositionWithinFrame(doc, win, Math.max(8, (viewportW - winRect.width) / 2), 144);
-  }
-
-  const onEsc = (evt) => {
-    if (String(evt?.key || "") !== "Escape") return;
-    evt.preventDefault();
-    evt.stopPropagation();
-    closeHiddenPathsWindow("escape");
-  };
-  doc.addEventListener("keydown", onEsc, true);
-  const onWheelGuard = isolateWheelScroll(doc, win);
-  activeHiddenPathsWindow = { doc, win, onEsc, onWheelGuard, refresh: renderBody };
-  renderBody();
 }
 
 function closeReservingClassFilterValuesMenu(reason = "programmatic") {
@@ -2813,59 +2712,23 @@ function openReservingClassFilterWindow(options = {}) {
       return count;
     };
 
-    const rerender = () => {
-      inputBox.innerHTML = "";
-      const selectedKeys = Array.from(selected);
-      selectedKeys.sort((a, b) => {
-        const da = toText(valueMetaMap.get(a)?.name || a);
-        const db = toText(valueMetaMap.get(b)?.name || b);
-        return da.localeCompare(db, undefined, { sensitivity: "base", numeric: true });
-      });
-      if (!selectedKeys.length) {
-        const ph = doc.createElement("div");
-        ph.className = "rcf-placeholder";
-        ph.textContent = "Drag values here";
-        inputBox.appendChild(ph);
-      } else {
-        for (const key of selectedKeys) {
-          const chip = doc.createElement("span");
-          chip.className = "rcf-chip selected";
-          chip.draggable = true;
-          chip.title = "Drag back to values to remove";
-          const meta = valueMetaMap.get(key) || { name: key, isAggregate: false };
-          if (meta.isAggregate) chip.appendChild(createCalculatedChipIcon());
-          const txt = doc.createElement("span");
-          txt.textContent = toText(meta.name || key);
-          chip.appendChild(txt);
+    let searchText = "";
+    const matchesSearchText = (item) => {
+      if (!searchText) return true;
+      return toText(item?.name || item?.key || "").toLowerCase().includes(searchText.toLowerCase());
+    };
 
-          chip.addEventListener("dragstart", (evt) => {
-            if (!evt.dataTransfer) return;
-            const payload = JSON.stringify({ level_number: levelNum, key });
-            evt.dataTransfer.effectAllowed = "move";
-            try { evt.dataTransfer.setData("application/json", payload); } catch {}
-            try { evt.dataTransfer.setData("text/plain", payload); } catch {}
-          });
-
-          const removeBtn = doc.createElement("button");
-          removeBtn.type = "button";
-          removeBtn.className = "rcf-chip-remove";
-          removeBtn.textContent = "\u00D7";
-          removeBtn.title = "Remove";
-          removeBtn.addEventListener("click", (evt) => {
-            evt.preventDefault();
-            evt.stopPropagation();
-            selected.delete(key);
-            rerender();
-            emitApply();
-          });
-          chip.appendChild(removeBtn);
-          inputBox.appendChild(chip);
-        }
-      }
-
+    const renderValues = () => {
       valuesBox.innerHTML = "";
-      for (const item of values) {
-        if (selected.has(item.key)) continue;
+      const matches = values.filter((item) => !selected.has(item.key) && matchesSearchText(item));
+      if (!matches.length && searchText) {
+        const empty = doc.createElement("div");
+        empty.className = "rcf-empty";
+        empty.textContent = "No matching values.";
+        valuesBox.appendChild(empty);
+        return;
+      }
+      for (const item of matches) {
         const chip = doc.createElement("span");
         chip.className = "rcf-chip";
         if (item.isAggregate) chip.appendChild(createCalculatedChipIcon());
@@ -2889,6 +2752,67 @@ function openReservingClassFilterWindow(options = {}) {
         });
         valuesBox.appendChild(chip);
       }
+    };
+
+    const searchInput = doc.createElement("input");
+    searchInput.type = "text";
+    searchInput.className = "rcf-search";
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchInput.addEventListener("mousedown", (evt) => evt.stopPropagation());
+    searchInput.addEventListener("input", () => {
+      searchText = searchInput.value;
+      renderValues();
+    });
+
+    const rerender = () => {
+      inputBox.innerHTML = "";
+      const selectedKeys = Array.from(selected);
+      selectedKeys.sort((a, b) => {
+        const da = toText(valueMetaMap.get(a)?.name || a);
+        const db = toText(valueMetaMap.get(b)?.name || b);
+        return da.localeCompare(db, undefined, { sensitivity: "base", numeric: true });
+      });
+      for (const key of selectedKeys) {
+        const chip = doc.createElement("span");
+        chip.className = "rcf-chip selected";
+        chip.draggable = true;
+        chip.title = "Drag back to values to remove";
+        const meta = valueMetaMap.get(key) || { name: key, isAggregate: false };
+        if (meta.isAggregate) chip.appendChild(createCalculatedChipIcon());
+        const txt = doc.createElement("span");
+        txt.textContent = toText(meta.name || key);
+        chip.appendChild(txt);
+
+        chip.addEventListener("dragstart", (evt) => {
+          if (!evt.dataTransfer) return;
+          const payload = JSON.stringify({ level_number: levelNum, key });
+          evt.dataTransfer.effectAllowed = "move";
+          try { evt.dataTransfer.setData("application/json", payload); } catch {}
+          try { evt.dataTransfer.setData("text/plain", payload); } catch {}
+        });
+
+        const removeBtn = doc.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "rcf-chip-remove";
+        removeBtn.textContent = "\u00D7";
+        removeBtn.title = "Remove";
+        removeBtn.addEventListener("click", (evt) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          selected.delete(key);
+          rerender();
+          emitApply();
+        });
+        chip.appendChild(removeBtn);
+        inputBox.appendChild(chip);
+      }
+
+      searchInput.placeholder = selectedKeys.length ? "Type to search..." : "Drag values here, or type to search...";
+      searchInput.value = searchText;
+      inputBox.appendChild(searchInput);
+
+      renderValues();
     };
 
     inputBox.addEventListener("dragover", (evt) => {
@@ -3002,6 +2926,91 @@ function openReservingClassFilterWindow(options = {}) {
     fields.forEach(registerFieldRow);
   }
 
+  let renderHiddenPathsSection = null;
+  if (typeof options?.getHiddenPaths === "function") {
+    const hiddenSection = doc.createElement("div");
+    hiddenSection.className = "rcf-hidden-section";
+
+    const hiddenHeader = doc.createElement("div");
+    hiddenHeader.className = "rcf-hidden-header";
+    const hiddenTitle = doc.createElement("span");
+    hiddenTitle.className = "rcf-hidden-title";
+    hiddenHeader.appendChild(hiddenTitle);
+
+    const hiddenActions = doc.createElement("div");
+    hiddenActions.className = "rcf-hidden-actions";
+    const unhideSelectedBtn = doc.createElement("button");
+    unhideSelectedBtn.type = "button";
+    unhideSelectedBtn.className = "rcf-btn";
+    unhideSelectedBtn.textContent = "Unhide Selected";
+    unhideSelectedBtn.disabled = true;
+    const unhideAllBtn = doc.createElement("button");
+    unhideAllBtn.type = "button";
+    unhideAllBtn.className = "rcf-btn";
+    unhideAllBtn.textContent = "Unhide All";
+    hiddenActions.append(unhideSelectedBtn, unhideAllBtn);
+    hiddenHeader.appendChild(hiddenActions);
+
+    const hiddenList = doc.createElement("div");
+    hiddenList.className = "rcf-hidden-list";
+
+    const hiddenSelected = new Set();
+
+    const renderHiddenPaths = () => {
+      const rawPaths = options.getHiddenPaths();
+      const paths = Array.isArray(rawPaths) ? rawPaths : [];
+      for (const path of Array.from(hiddenSelected)) {
+        if (!paths.includes(path)) hiddenSelected.delete(path);
+      }
+      hiddenTitle.textContent = `Hidden Paths${paths.length ? ` (${paths.length})` : ""}`;
+      hiddenList.innerHTML = "";
+      if (!paths.length) {
+        const empty = doc.createElement("div");
+        empty.className = "rcf-hidden-empty";
+        empty.textContent = "No hidden paths.";
+        hiddenList.appendChild(empty);
+      } else {
+        paths.forEach((path) => {
+          const row = doc.createElement("label");
+          row.className = "rcf-hidden-row";
+          const chk = doc.createElement("input");
+          chk.type = "checkbox";
+          chk.value = path;
+          chk.checked = hiddenSelected.has(path);
+          chk.addEventListener("change", () => {
+            if (chk.checked) hiddenSelected.add(path);
+            else hiddenSelected.delete(path);
+            unhideSelectedBtn.disabled = hiddenSelected.size < 1;
+          });
+          const text = doc.createElement("span");
+          text.className = "rcf-hidden-path";
+          text.textContent = path;
+          row.append(chk, text);
+          hiddenList.appendChild(row);
+        });
+      }
+      unhideSelectedBtn.disabled = hiddenSelected.size < 1;
+      unhideAllBtn.disabled = paths.length < 1;
+    };
+
+    unhideSelectedBtn.addEventListener("click", async () => {
+      if (!hiddenSelected.size || typeof options?.onUnhideSelected !== "function") return;
+      const selectedPaths = Array.from(hiddenSelected);
+      try { await options.onUnhideSelected(selectedPaths); } catch {}
+      renderHiddenPaths();
+    });
+    unhideAllBtn.addEventListener("click", async () => {
+      if (typeof options?.onUnhideAll !== "function") return;
+      try { await options.onUnhideAll(); } catch {}
+      renderHiddenPaths();
+    });
+
+    hiddenSection.append(hiddenHeader, hiddenList);
+    body.appendChild(hiddenSection);
+    renderHiddenPathsSection = renderHiddenPaths;
+    renderHiddenPaths();
+  }
+
   win.appendChild(body);
 
   const footer = doc.createElement("div");
@@ -3040,6 +3049,7 @@ function openReservingClassFilterWindow(options = {}) {
   updateSummary();
 
   makeFloatingWindowDraggable(doc, win, bar, ".rcf-tools, .rcf-btn, .rcf-chip, .rcf-chip-remove");
+  makeFloatingWindowResizable(doc, win, { minWidth: 360, minHeight: 260, maxWidth: 2400, maxHeight: 1800 });
 
   const onEsc = (evt) => {
     if (evt.key !== "Escape") return;
@@ -3079,6 +3089,7 @@ function openReservingClassFilterWindow(options = {}) {
     onWheelGuard,
     onBeforeClose: options?.onBeforeClose,
     onClose: options?.onClose,
+    refresh: renderHiddenPathsSection,
   };
 
   return {
@@ -3116,7 +3127,6 @@ export async function openReservingClassPicker(options = {}) {
     if (!workflowRootNode) return null;
 
     closeReservingClassTreeNodeMenu("reopen");
-    closeHiddenPathsWindow("reopen");
     closeReservingClassFilterWindow("reopen");
     closeReservingClassPreferencesWindow("reopen");
     closeFloatingPathTreePicker("reopen");
@@ -3140,14 +3150,12 @@ export async function openReservingClassPicker(options = {}) {
       allowBranchSelect: false,
       onSelect: (path, node) => {
         closeReservingClassTreeNodeMenu("selected");
-        closeHiddenPathsWindow("selected");
         closeReservingClassFilterWindow("selected");
         closeReservingClassPreferencesWindow("selected");
         if (onSelect) onSelect(toText(path), node);
       },
       onClose: (reason) => {
         closeReservingClassTreeNodeMenu(reason || "tree_closed");
-        closeHiddenPathsWindow(reason || "tree_closed");
         closeReservingClassFilterWindow(reason || "tree_closed");
         closeReservingClassPreferencesWindow(reason || "tree_closed");
         if (onClose) onClose(reason);
@@ -3167,7 +3175,6 @@ export async function openReservingClassPicker(options = {}) {
   }
 
   closeReservingClassTreeNodeMenu("reopen");
-  closeHiddenPathsWindow("reopen");
   closeReservingClassFilterWindow("reopen");
   closeReservingClassPreferencesWindow("reopen");
   closeFloatingPathTreePicker("reopen");
@@ -3321,7 +3328,7 @@ export async function openReservingClassPicker(options = {}) {
       hiddenPathMap.clear();
       for (const raw of saved) addHiddenPath(raw);
       if (cacheKey) HIDDEN_PATHS_CACHE.set(cacheKey, Array.from(hiddenPathMap.values()));
-      refreshHiddenPathsWindow();
+      refreshReservingClassFilterWindow();
       return Array.from(hiddenPathMap.values());
     };
     const getHiddenPathsList = () => Array.from(hiddenPathMap.values())
@@ -3359,15 +3366,6 @@ export async function openReservingClassPicker(options = {}) {
       }
       openTreeWindow({ smoothReplaceExisting: true });
       return true;
-    };
-    const openHiddenPathsPanel = (anchorElement = null) => {
-      openHiddenPathsWindow({
-        document: window.document,
-        anchorElement,
-        getPaths: getHiddenPathsList,
-        onUnhideSelected: (paths) => unhideSelectedPaths(paths),
-        onUnhideAll: () => unhideAllHiddenPaths(),
-      });
     };
     const persistFilterSpec = (rawSpec) => {
       const normalized = normalizeReservingClassFilterSpec(rawSpec);
@@ -3598,16 +3596,8 @@ export async function openReservingClassPicker(options = {}) {
         return false;
       }
 
-      const handleHiddenPathsClick = (ctx) => {
-        closeReservingClassTreeNodeMenu("open_hidden_paths");
-        closeReservingClassFilterWindow("open_hidden_paths");
-        closeReservingClassPreferencesWindow("open_hidden_paths");
-        treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
-        openHiddenPathsPanel(ctx?.buttonElement || ctx?.pickerElement || null);
-      };
       const handleFilterClick = (ctx) => {
         closeReservingClassTreeNodeMenu("open_filter");
-        closeHiddenPathsWindow("open_filter");
         closeReservingClassPreferencesWindow("open_filter");
         treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
         openReservingClassFilterWindow({
@@ -3617,6 +3607,9 @@ export async function openReservingClassPicker(options = {}) {
           anchorElement: ctx?.buttonElement || ctx?.pickerElement || null,
           initialSize: filterWindowSize,
           getMatchCount: () => model.getActiveMatchCount(),
+          getHiddenPaths: getHiddenPathsList,
+          onUnhideSelected: (paths) => unhideSelectedPaths(paths),
+          onUnhideAll: () => unhideAllHiddenPaths(),
           onApply: (spec) => {
             const normalizedSpec = persistFilterSpec(spec);
             model.applyFilters(normalizedSpec);
@@ -3640,7 +3633,6 @@ export async function openReservingClassPicker(options = {}) {
       };
       const handlePreferencesClick = (ctx) => {
         closeReservingClassTreeNodeMenu("open_preferences");
-        closeHiddenPathsWindow("open_preferences");
         closeReservingClassFilterWindow("open_preferences");
         treeWindowPosition = readWindowPosition(ctx?.pickerElement || treeWindowElement) || treeWindowPosition;
         openReservingClassPreferencesWindow({
@@ -3694,13 +3686,6 @@ export async function openReservingClassPicker(options = {}) {
             onClick: () => {
               void treeWindowPicker?.collapseDeepest?.();
             },
-          },
-          {
-            title: "Hidden Paths",
-            className: "ptree-hidden-paths",
-            active: hiddenPathMap.size > 0,
-            icon: HIDDEN_PATHS_ICON,
-            onClick: handleHiddenPathsClick,
           },
           {
             title: "Filter",
@@ -3788,10 +3773,6 @@ export async function openReservingClassPicker(options = {}) {
           refreshFavoritesInTreeWindow();
         },
         allowBranchSelect: !!options?.allowBranchSelect,
-        showHiddenPathsButton: true,
-        hiddenPathsButtonTitle: "Hidden Paths",
-        hiddenPathsButtonActive: hiddenPathMap.size > 0,
-        onHiddenPathsClick: handleHiddenPathsClick,
         showFilterButton: true,
         filterButtonTitle: "Filter",
         filterButtonActive: model.hasActiveFilters(),
@@ -3832,7 +3813,7 @@ export async function openReservingClassPicker(options = {}) {
               void unhideAllHiddenPaths();
             },
             onHiddenPaths: () => {
-              openHiddenPathsPanel(pickerEl);
+              handleFilterClick({ pickerElement: pickerEl });
             },
             onHide: () => {
               addHiddenPath(hidePath);
@@ -3866,7 +3847,6 @@ export async function openReservingClassPicker(options = {}) {
         onSelect: (path, node) => {
           activePath = toText(path);
           closeReservingClassTreeNodeMenu("selected");
-          closeHiddenPathsWindow("selected");
           closeReservingClassFilterWindow("selected");
           closeReservingClassPreferencesWindow("selected");
           if (onSelect) onSelect(toText(path), node);
@@ -3892,7 +3872,6 @@ export async function openReservingClassPicker(options = {}) {
           if (reason !== internalCloseReason) {
             persistTreeWindowSize(treeWindowSize);
             closeReservingClassTreeNodeMenu(reason || "tree_closed");
-            closeHiddenPathsWindow(reason || "tree_closed");
             closeReservingClassFilterWindow(reason || "tree_closed");
             closeReservingClassPreferencesWindow(reason || "tree_closed");
             if (onClose) onClose(reason);
@@ -3941,7 +3920,6 @@ export async function openReservingClassPicker(options = {}) {
   } catch (err) {
     const statusCode = Number(err?.status || 0);
     closeReservingClassTreeNodeMenu("error");
-    closeHiddenPathsWindow("error");
     closeReservingClassFilterWindow("error");
     closeReservingClassPreferencesWindow("error");
     if (statusCode === 404) {

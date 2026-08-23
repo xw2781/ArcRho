@@ -30,6 +30,10 @@ On dense Details tabs, size every label column from the longest rendered label a
 
 A resizable floating window should grow and shrink from one corner while its opposite edges stay put. Give it a small invisible corner hit-area with a resize cursor rather than the native CSS `resize` property, which cannot anchor an edge and paints the platform grip glyph over the app's quiet chrome. A window centered with `left: 50%` plus a translate transform must first convert to real pixel `left`/`top` and drop the transform: while the transform applies, `left` names the window's midpoint, so any width change moves both edges outward. Keep CSS the owner of the minimum size and read it back when clamping the drag.
 
+### L16 - Pointer capture for drag and resize handles
+
+Wire a custom drag or resize handle with Pointer Events and `setPointerCapture` on the handle itself, not `mousedown`/`mousemove`/`mouseup` listeners attached to `document`. Without capture, a fast drag can outrun the browser's hit-testing and the gesture silently stops tracking partway through; capture keeps every subsequent `pointermove`/`pointerup` routed to the handle no matter what the cursor ends up over or how quickly it got there.
+
 ## Atlas Components
 
 ### L06 - Title bar

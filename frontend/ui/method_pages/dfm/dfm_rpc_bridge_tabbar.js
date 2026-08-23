@@ -3,10 +3,8 @@ import { startDfmRpcBridgeSync } from "/ui/method_pages/dfm/dfm_rpc_bridge_clien
 const STYLE_ID = "dfm-rpc-bridge-tabbar-style";
 
 const SYNC_ICON_SVG = `
-    <svg class="dfmRpcSyncIcon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-      <path d="M21 3v5h-5"/>
+    <svg class="dfmRpcSyncIcon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <use href="/ui/shared/icons/sync.svg?v=20260823c#sync"></use>
     </svg>
   `;
 
@@ -35,10 +33,12 @@ function ensureStyles() {
     }
     .dfmTabBar .dfmRpcSyncBtn .dfmRpcSyncIcon {
       flex: 0 0 auto;
-      transition: transform 0.35s ease;
+      opacity: 0.45;
+      transition: transform 0.35s ease, opacity 0.2s ease;
     }
     .dfmTabBar .dfmRpcSyncBtn:hover:not(:disabled) .dfmRpcSyncIcon {
       transform: rotate(180deg);
+      opacity: 1;
     }
     @keyframes dfmRpcSyncIconSpin {
       to { transform: rotate(360deg); }

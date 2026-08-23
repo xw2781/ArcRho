@@ -26,6 +26,9 @@ export function wireDatasetGridInteractions(deps) {
     getExternalLinkCellInfo = () => null,
   } = deps;
 
+  // Digits typed against a multi-cell selection accumulate here until the selection changes.
+  let rangeFillSession = null;
+
   const formulaHover = createFormulaHoverEditor({
     onCommit: commitHoveredExternalFormula,
     onDismiss: () => document.getElementById("keySink")?.focus?.({ preventScroll: true }),
@@ -49,6 +52,7 @@ export function wireDatasetGridInteractions(deps) {
       state.activeCell = activeCell;
       state.selectionAnchor = anchorCell;
     },
+    onAfterWrite: resetRangeFillSession,
     cellSelector: "td[data-r][data-c]",
     rowHeaderSelector: "th.rowhdr[data-r]",
     columnHeaderSelector: "th.colhdr[data-c]",
@@ -386,14 +390,18 @@ export function wireDatasetGridInteractions(deps) {
     return getTopLeftRangeCell(ranges) || state.activeCell;
   }
 
-  function zeroSelectedCells() {
+  function selectedRanges() {
+    if (Array.isArray(state.selRanges) && state.selRanges.length) return state.selRanges;
+    if (!state.activeCell) return [];
+    return [normalizeRange(state.activeCell.r, state.activeCell.c, state.activeCell.r, state.activeCell.c)];
+  }
+
+  function fillSelectedCells(value, describe) {
     if (isReadOnly()) {
       setStatus("Generated datasets are read-only.");
       return 0;
     }
-    const ranges = Array.isArray(state.selRanges) && state.selRanges.length
-      ? state.selRanges
-      : (state.activeCell ? [normalizeRange(state.activeCell.r, state.activeCell.c, state.activeCell.r, state.activeCell.c)] : []);
+    const ranges = selectedRanges();
     if (!ranges.length) return 0;
 
     const seen = new Set();
@@ -407,8 +415,8 @@ export function wireDatasetGridInteractions(deps) {
           const actual = canEditDisplayCell(r, c, { silent: true });
           if (!actual) continue;
           hardCodeExternalLinkCells([actual]);
-          state.model.values[actual.r][actual.c] = 0;
-          state.dirty.set(`${actual.r},${actual.c}`, 0);
+          state.model.values[actual.r][actual.c] = value;
+          state.dirty.set(`${actual.r},${actual.c}`, value);
           applied += 1;
         }
       }
@@ -418,8 +426,55 @@ export function wireDatasetGridInteractions(deps) {
     renderTable();
     notifyDatasetUpdated();
     applySelectionFromState();
-    setStatus(`Set ${applied} cell${applied === 1 ? "" : "s"} to 0.`);
+    setStatus(describe(applied));
     return applied;
+  }
+
+  function zeroSelectedCells() {
+    return fillSelectedCells(0, (applied) => `Set ${applied} cell${applied === 1 ? "" : "s"} to 0.`);
+  }
+
+  function selectionSignature() {
+    return selectedRanges().map((range) => `${range.r0}:${range.c0}:${range.r1}:${range.c1}`).join("|");
+  }
+
+  function selectionSpansManyCells() {
+    let count = 0;
+    for (const range of selectedRanges()) {
+      count += (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
+      if (count > 1) return true;
+    }
+    return false;
+  }
+
+  function resetRangeFillSession() {
+    rangeFillSession = null;
+  }
+
+  function nextRangeFillText(current, key) {
+    if (key === "-") return current ? null : "-";
+    if (key !== ".") return `${current}${key}`;
+    if (current.includes(".")) return null;
+    return current === "" || current === "-" ? `${current}0.` : `${current}.`;
+  }
+
+  function typeIntoSelectedRange(key) {
+    const signature = selectionSignature();
+    if (!signature) return false;
+    const current = rangeFillSession?.signature === signature ? rangeFillSession.text : "";
+    const text = nextRangeFillText(current, key);
+    if (text === null) return false;
+    rangeFillSession = { signature, text };
+    const parsed = parseEditableCellValue(text);
+    // A lone leading sign holds the session open until the first digit arrives.
+    if (!parsed.ok) return true;
+    const applied = fillSelectedCells(
+      parsed.value,
+      (count) => `Set ${count} cell${count === 1 ? "" : "s"} to ${text}.`,
+    );
+    if (applied) return true;
+    resetRangeFillSession();
+    return false;
   }
 
   function parseClipboardRows(text) {
@@ -545,6 +600,7 @@ export function wireDatasetGridInteractions(deps) {
   function focusCellInput(displayR, displayC, initialText = null) {
     const actual = canEditDisplayCell(displayR, displayC);
     if (!actual) return false;
+    resetRangeFillSession();
     formulaHover.hide?.();
     cancelExternalReference();
     const dirtyKey = `${actual.r},${actual.c}`;
@@ -788,7 +844,19 @@ export function wireDatasetGridInteractions(deps) {
 
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
+        resetRangeFillSession();
         zeroSelectedCells();
+        return;
+      }
+
+      if (e.key === "Enter" && rangeFillSession) {
+        e.preventDefault();
+        resetRangeFillSession();
+        return;
+      }
+
+      if (/^[0-9.-]$/.test(e.key || "") && selectionSpansManyCells()) {
+        if (typeIntoSelectedRange(e.key)) e.preventDefault();
         return;
       }
 

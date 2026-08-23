@@ -70,7 +70,7 @@ import {
   cancelDfmMethodAsyncTasks,
 } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260820b";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260820a";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260820b";
+import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260823c";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260820b";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260722a";
 import {
