@@ -1,5 +1,7 @@
 # Memory Index
 
+- [Pointer-capture drag fix](pointer-capture-drag-fix.md) — mousemove-on-document drag/resize loses control on fast drags; fix is setPointerCapture, confirmed working, not documented anywhere in repo
+
 - [Persisted JSON v4 progress](persisted-json-v4-progress.md) — steps 1-5 committed 2026-08-23; next is the step 6 conversion script, and /code-review ultra was deferred rather than run
 - [Agent memory lives in the repo](agent-memory-in-repo.md) — memories are tracked in agent-memory/ and reach the harness path through a directory junction created by tools/link_agent_memory.ps1
 - [Dev PC and Client PC identity](dev-pc-and-client-pc-identity.md) — this machine (L-H2MQ6280FVP) is a Client PC holding the main repo; NE7SASWPN02 is the Server PC (formerly Dev PC) and every E:\ path is a mapped drive onto it
