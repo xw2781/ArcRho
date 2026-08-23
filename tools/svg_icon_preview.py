@@ -9,9 +9,15 @@ can be resized, recolored, filtered, and inspected side by side.
     python tools/svg_icon_preview.py frontend/ui/shell/tab-type-icons
     python tools/svg_icon_preview.py frontend/ui assets --out tmp_data/icons.html
     python tools/svg_icon_preview.py --no-open
+    python tools/svg_icon_preview.py --serve
 
 With no path the whole repository is scanned, minus dependency and build directories. The page is
 written under `tmp_data/`, which is git-ignored, so regenerating it never dirties the tree.
+
+With --serve the gallery is served from a small local server instead of written as a static file.
+Every page load re-scans the SVGs on disk, so the page's own Refresh button (or the browser's
+reload) always shows the current file contents - no need to rerun the tool after each edit.
+Stop it with Ctrl+C.
 """
 
 from __future__ import annotations
@@ -70,6 +76,15 @@ def find_svg_files(roots: list[Path]) -> list[Path]:
             seen.add(resolved)
             found.append(path)
     return sorted(found, key=lambda p: (str(p.parent).lower(), p.name.lower()))
+
+
+def scan(roots: list[Path]) -> tuple[list[Path], list[dict]]:
+    """Re-read every SVG under `roots` from disk. Cheap enough to call on every page load."""
+    files = find_svg_files(roots)
+    entries: list[dict] = []
+    for index, path in enumerate(files):
+        entries.extend(read_icons(path, index))
+    return files, entries
 
 
 # ---------------------------------------------------------------------------- svg handling
@@ -228,7 +243,7 @@ def render_card(entry: dict, index: int) -> str:
     )
 
 
-def build_page(entries: list[dict], roots: list[Path]) -> str:
+def build_page(entries: list[dict], roots: list[Path], live: bool = False) -> str:
     groups: dict[str, list[tuple[int, dict]]] = {}
     for index, entry in enumerate(entries):
         groups.setdefault(entry["group"], []).append((index, entry))
@@ -258,11 +273,17 @@ def build_page(entries: list[dict], roots: list[Path]) -> str:
         for entry in entries
     ]
     scanned = ", ".join(str(root.relative_to(REPO_ROOT)) if root != REPO_ROOT else "." for root in roots)
+    mode_note = (
+        " &middot; live: Refresh shows current disk contents"
+        if live
+        else " &middot; static snapshot: rerun the tool (or use --serve) to update"
+    )
 
     return PAGE_TEMPLATE.format(
         count=len(entries),
         group_count=len(groups),
         scanned=html.escape(scanned),
+        mode_note=mode_note,
         sections="\n".join(sections),
         meta=json.dumps(meta).replace("</", "<\\/"),
     )
@@ -489,7 +510,8 @@ PAGE_TEMPLATE = """<!doctype html>
 <header>
   <div class="titleRow">
     <h1>SVG Icon Preview</h1>
-    <span class="sub"><strong id="shown">{count}</strong> of {count} icons in {group_count} folders &middot; scanned <code>{scanned}</code></span>
+    <span class="sub"><strong id="shown">{count}</strong> of {count} icons in {group_count} folders &middot; scanned <code>{scanned}</code>{mode_note}</span>
+    <button type="button" class="chip" id="refreshBtn" title="Reload this page">&#8635; Refresh</button>
   </div>
   <div class="toolbar">
     <div class="tool">
@@ -597,6 +619,8 @@ function applyBg(mode) {{
   document.querySelectorAll(".bg").forEach(b => b.classList.toggle("on", b.dataset.bg === mode));
   save();
 }}
+
+document.getElementById("refreshBtn").addEventListener("click", () => location.reload());
 
 document.getElementById("size").addEventListener("input", e => applySize(Number(e.target.value)));
 document.querySelectorAll(".preset").forEach(b => b.addEventListener("click", () => applySize(Number(b.dataset.size))));
@@ -724,6 +748,43 @@ applyBg(state.bg);
 """
 
 
+# ---------------------------------------------------------------------------- live server
+
+
+def run_server(roots: list[Path], port: int, open_browser: bool) -> None:
+    import http.server
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - required override name
+            if self.path.startswith("/favicon"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            _files, entries = scan(roots)
+            body = build_page(entries, roots, live=True).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A002 - stdlib signature
+            pass  # keep the console quiet; errors still show via exceptions
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    print(f"Serving live at {url} - edit an SVG, then press Refresh in the page. Ctrl+C to stop.")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
 # ---------------------------------------------------------------------------- cli
 
 
@@ -740,6 +801,13 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--out", default=str(DEFAULT_OUT), help=f"output HTML file (default: {DEFAULT_OUT})")
     parser.add_argument("--no-open", action="store_true", help="write the page but do not open a browser")
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="serve the gallery live instead of writing a static file, so its Refresh button "
+        "always shows the current SVGs on disk (Ctrl+C to stop)",
+    )
+    parser.add_argument("--port", type=int, default=0, help="port for --serve (default: pick any free port)")
     args = parser.parse_args(argv)
 
     roots: list[Path] = []
@@ -752,14 +820,14 @@ def main(argv: list[str]) -> int:
             return 2
         roots.append(path.resolve())
 
-    files = find_svg_files(roots)
+    files, entries = scan(roots)
     if not files:
         print("No SVG files found under: " + ", ".join(str(r) for r in roots), file=sys.stderr)
         return 1
 
-    entries: list[dict] = []
-    for index, path in enumerate(files):
-        entries.extend(read_icons(path, index))
+    if args.serve:
+        run_server(roots, args.port, open_browser=not args.no_open)
+        return 0
 
     out = Path(args.out)
     if not out.is_absolute():
