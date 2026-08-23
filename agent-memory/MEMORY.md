@@ -32,3 +32,4 @@
 - [SMB stat metadata alternation](smb-stat-metadata-alternation.md) — os.stat on E: alternates between fresh and ~9s-stale metadata after a server-side write, so a stat-only baseline taken right after a hosted save can miss it
 - [Standalone DSV/DFM tabs are legacy](standalone-dsv-dfm-tabs-legacy.md) — the shell's standalone Dataset Viewer and DFM tabs are being dropped; PI windows and Workflow steps are the only live hosts to design for
 - [Hung app-server request diagnosis](hung-app-server-request-diagnosis.md) — uvicorn logs an access line only on response, so a route missing from the log may still be running; corroborate with file mtimes and the audit log
+- [Build listener request read race](build-listener-request-read-race.md) — deploy.py failing at once with "build request could not be read: Permission denied" is a share write/watch race; one retry succeeds
