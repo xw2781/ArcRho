@@ -1,6 +1,6 @@
 # Persisted JSON Contract v4: One Naming Convention, Fewer Fields, One Audit Policy
 
-Status: In progress — Steps 1-5 landed (1-3 on 2026-08-22, 4 and 5 on 2026-08-23 as `d432ae8` and `fcbfaeb`). `/code-review ultra` is still to be run and is a person's to start; Step 6 writes the conversion script (see Handoff under Step 4)
+Status: In progress — Steps 1-5 landed (1-3 on 2026-08-22, 4 and 5 on 2026-08-23 as `d432ae8` and `fcbfaeb`). Step 6 is next and converts `NJ_Annual_Prod_202605_Fake` only; `/code-review ultra` is deferred to after Step 7 and is a person's to start (see Handoff under Step 4)
 Last updated: 2026-08-23
 
 ## Progress Checklist
@@ -61,7 +61,7 @@ One box per task, in the order the work must land. Each step is its own commit; 
 - [x] Re-create the Step 1 proof harness against every method file, with the upgrade in front of it: **554 of 554 convertible methods convert, and all 554 are fixed points** — writing the converted payload with `persisted_json_text`, reading that text back and normalizing again reproduces it byte for byte. By kind: 345 DFM, 116 Result Selection, 63 BF, 16 Cape Cod, 8 BSSR, 6 BSCRA. The other 4 are the retired-format BF files, left alone with their notes read out. Bootstrap has no instance in this project, so its contract is proved by its unit tests only.
 - [x] Verify no reader of the old shape remains (grep for every old key across `python-api/`, `frontend/`, `data-engine/`). Last readers removed: `sync_session.py` and `export_reserving_class_to_resq.py` (macro 1.1.0, 1.0.0 archived) now derive ResQ codes from `method_type` / `data_format`; `dataset_service.py` hydrates a dependent's formula from the Dataset Type only; `dataset_service` / `result_selection_service` no longer write `user` or `data_format_code`; `catalog.py` no longer reads `formula` off sidecars. Remaining hits are in-memory ResQ payloads, archived macro backups, and UI labels.
 - [x] Commit. Landed as `d432ae8` on `main`, 2026-08-23.
-- [ ] Run `/code-review ultra` on the branch. **Deliberately out of order:** the review is user-triggered and no agent can start it, so Steps 4 and 5 were committed first and whatever the review finds becomes a follow-up commit before Step 6 begins.
+- [ ] Run `/code-review ultra`. **Deferred 2026-08-23 to after Steps 6 and 7,** so one review covers the whole change including the conversion script. It is user-triggered and no agent can start it. There is no branch to diff — every v4 commit sits on `main` and is already pushed — so it needs an explicit path target, contracts under `python-api/src/arcrho_api/` first.
 
 ### Handoff — how steps 4 and 5 were built (2026-08-22 to 2026-08-23)
 
@@ -107,7 +107,7 @@ Steps 1–3 are commits c2ed598, 2de7263, cdcea68; Step 4 is `d432ae8` and Step 
 
 **What is left before Step 6**
 
-1. `/code-review ultra` on the branch — user-triggered, cannot be launched by an agent. Steps 4 and 5 are already committed (`d432ae8`, `fcbfaeb`), so the review runs against the committed branch and its findings become a follow-up commit.
+Nothing — Steps 4 and 5 are committed (`d432ae8`, `fcbfaeb`) and the review is deferred to after Step 7. Step 6 starts now, on the Server PC.
 
 **Proof harness used in Step 1 (re-created for Step 6, and run 2026-08-23):** load each real method file under `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\<rc>\methods`, run `normalize_*` (DFM: `require_complete=False` then `_validate_complete`) → `persisted_projection` (DFM) → `persisted_json_text`, and diff against the file bytes; before Step 4 every DFM/BF/CC file was byte-identical except fingerprint values. After Step 4 the same harness must first pass the file through `persisted_json_v4_upgrade.upgrade_method`.
 
@@ -126,15 +126,16 @@ Steps 1–3 are commits c2ed598, 2de7263, cdcea68; Step 4 is `d432ae8` and Step 
 
 ### Step 6 — Conversion script and server rehearsal · Fable 5 · `max` for the verify/rollback path · run on the Server PC
 
-- [ ] Write `tools/migrate_persisted_json_v4.py` in the `migrate_eex_formulas.py` style: `--dry-run` / `--apply`, per-file backup, rollback.
-- [ ] Walk `projects/*/data/*/{methods,sidecars}`, the project root files, `.arcrho-cache-provenance/`, and `.arcrho-resq-import-staging/` (Trap 5) — decide rewrite vs delete for the staging root.
-- [ ] Rewrite only through the canonical contract modules; verify each converted file by re-normalising it and asserting it is unchanged.
-- [ ] **Convert each reserving class methods-first, then its sidecars.** An output sidecar's `publication_revision` has to be taken from the converted method (`upgrade_dataset_sidecar(..., publication_revision=...)`), not from the value on disk: step 1 made the hash vocabulary spelling-independent, so a v4 method computes a different number and a sidecar left holding the old one reports the method as saved but never republished. Pair the two by the method's `details_tab.output_dataset` against the sidecar's `dataset_name`, matched case-insensitively.
-- [ ] **Handle a method the app already refused, rather than failing on it.** `upgrade_method` raises `UnsupportedMethodFormatError` for the stamps in `UNCONVERTIBLE_METHOD_FORMATS` (BF v2, DFM v1). Rescue the notes with `stranded_method_notes` into the output dataset's sidecar, leave the method file untouched, and list every such file in the run report — 4 in `NJ_Annual_Prod_202605_Fake`, three of them holding the only copy of their commentary. A stamp that is neither current nor on that list is a stop, not a skip.
-- [ ] Dry run on `NJ_Annual_Prod_202605_Fake`; compare file counts and sizes against the Measured Impact table.
-- [ ] Apply to `NJ_Annual_Prod_202605_Fake`; open DFM, BF, CC, Bootstrap, RS and B&S methods and a plain dataset in the app; save one of each and confirm the byte-identical round trip.
-- [ ] Apply to the remaining 36 projects on the Server PC, not across the mapped drive.
-- [ ] Commit the script.
+- [x] Write `tools/migrate_persisted_json_v4.py` in the `migrate_eex_formulas.py` style: `--dry-run` / `--apply`, per-file backup, rollback. Landed as `d8b4baf`.
+- [x] Walk `projects/*/data/*/{methods,sidecars}`, the project root files, `.arcrho-cache-provenance/`, and `.arcrho-resq-import-staging/` (Trap 5). **Staging is rewritten, not deleted** — three abandoned import sessions, 111 files, cheaper to convert than to reason about. `dataset_number_formats.json` turned out to be workspace-wide (`config/`), not per project, so it is converted once per run whatever project is named.
+- [x] Rewrite only through the canonical contract modules; verify each converted file by re-normalising it and asserting it is unchanged. Result Selection normalizes through the app-server service; Berquist Sherman has no Python contract, so the upgrade module is its whole conversion.
+- [x] **Convert each reserving class methods-first, then its sidecars.** An output sidecar's `publication_revision` has to be taken from the converted method (`upgrade_dataset_sidecar(..., publication_revision=...)`), not from the value on disk: step 1 made the hash vocabulary spelling-independent, so a v4 method computes a different number and a sidecar left holding the old one reports the method as saved but never republished. Pair the two by the method's `details_tab.output_dataset` against the sidecar's `dataset_name`, matched case-insensitively. **Two corrections found in the dry run:** only DFM carries `output_dataset` — every other kind calls it `name` — and the sidecar's *file name* is an escaped form of its dataset name, so pairing has to read the name out of the file. Pairing by file name silently matched 128 of 424.
+- [x] **Handle a method the app already refused, rather than failing on it.** `upgrade_method` raises `UnsupportedMethodFormatError` for the stamps in `UNCONVERTIBLE_METHOD_FORMATS` (BF v2, DFM v1). Rescue the notes with `stranded_method_notes` into the output dataset's sidecar, leave the method file untouched, and list every such file in the run report — 4 in `NJ_Annual_Prod_202605_Fake`, three of them holding the only copy of their commentary. A stamp that is neither current nor on that list is a stop, not a skip.
+- [x] Dry run on `NJ_Annual_Prod_202605_Fake`; compare file counts and sizes against the Measured Impact table. Clean on 2026-08-23: **2,738 files convert, 0 failures**, 12 retired-format methods left alone, 424 publication revisions carried across and all 3 stranded notes placed. 9,811,057 -> 8,303,787 bytes (-15.4%); sidecars -30.1% against the table's -36.4%, the difference being the core defaults added after the table was measured, plus the staging files this run also covers.
+- [x] Apply to `NJ_Annual_Prod_202605_Fake`. **Done 2026-08-23: 2,738 files converted, 0 failures,** and a re-run now reports every one of them unchanged, so the whole project is a stable fixed point. The four services had to stop first — they were still the pre-v4 build and would have written the old shape back — so `tools/arcrho_service_control.ps1` was added to stop and start them. One fault came out of the apply that the dry run could not see: the backup mirror adds its own root on top of an already long staged-import path and crossed the Windows 260-character limit, so every path the conversion touches is now asked for in the extended form.
+- [ ] Open DFM, BF, CC, Bootstrap, RS and B&S methods and a plain dataset in the app; save one of each and confirm the byte-identical round trip. Needs Step 7 first — the services are down and the deployed builds are still pre-v4.
+- [~] ~~Apply to the remaining 36 projects on the Server PC, not across the mapped drive.~~ **Dropped 2026-08-23 by decision:** only `NJ_Annual_Prod_202605_Fake` is converted. The other 36 are left untouched and will be deleted and re-imported from ResQ by hand later, so they stop opening the moment Step 7 forces the release.
+- [x] Commit the script. Landed as `d8b4baf` on `main`, 2026-08-23, together with two ordering fixes in the upgrade module that the dry run exposed and four tests that compare the persisted text rather than the payload.
 
 ### Step 7 — Release every component together · Opus 5 · `high` · person-driven
 

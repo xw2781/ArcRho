@@ -150,8 +150,24 @@ class ConversionFailure(RuntimeError):
     """A file the conversion refuses to guess at."""
 
 
+def _long(path: Path) -> str:
+    """The path in the form Windows accepts beyond 260 characters.
+
+    The backup mirror adds its own root on top of a path that is already long
+    -- a staged ResQ import nests a session id and an escaped reserving class
+    under the project -- and Windows refuses the copy unless it is asked in
+    the extended form. Everything the conversion touches goes through here so
+    the length of a workspace path is never what stops a run.
+    """
+
+    text = str(path)
+    if os.name != "nt" or text.startswith("\\\\?\\"):
+        return text
+    return "\\\\?\\" + str(Path(text).resolve())
+
+
 def _read_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as handle:
+    with open(_long(path), "r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -233,8 +249,8 @@ class Migration:
         except ValueError:
             relative = Path(path.name)
         target = self.backup_root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
+        os.makedirs(_long(target.parent), exist_ok=True)
+        shutil.copy2(_long(path), _long(target))
         self.backups.append({"source": str(path), "backup": str(target)})
 
     def _write(self, path: Path, text: str) -> None:
@@ -243,12 +259,12 @@ class Migration:
         self._backup(path)
         temp = path.with_name(f"{path.name}.v4tmp")
         try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
+            with open(_long(temp), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
-            os.replace(temp, path)
+            os.replace(_long(temp), _long(path))
         except OSError:
             try:
-                temp.unlink(missing_ok=True)
+                os.unlink(_long(temp))
             except OSError:
                 pass
             raise
@@ -282,7 +298,7 @@ class Migration:
             self._fail(path, kind, error, before)
             return None
 
-        current = path.read_text(encoding="utf-8")
+        current = open(_long(path), "r", encoding="utf-8").read()
         if current == text:
             self.outcomes.append(
                 Outcome(path, kind, STATUS_UNCHANGED, "already v4", before, before)
@@ -539,11 +555,11 @@ def rollback(workspace: Path, run_id: str) -> int:
     for entry in payload.get("files") or []:
         source = Path(entry["source"])
         backup = Path(entry["backup"])
-        if not backup.is_file():
+        if not os.path.isfile(_long(backup)):
             print(f"  missing backup, skipped: {backup}", file=sys.stderr)
             continue
-        source.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(backup, source)
+        os.makedirs(_long(source.parent), exist_ok=True)
+        shutil.copy2(_long(backup), _long(source))
         restored += 1
     print(f"Restored {restored} of {len(payload.get('files') or [])} files from run {run_id}.")
     return 0
