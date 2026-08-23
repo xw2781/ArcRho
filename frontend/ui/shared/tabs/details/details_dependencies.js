@@ -116,8 +116,8 @@ export async function loadDetailsDependencies({
   return {
     exists: true,
     formula: String(payload.formula || "").trim(),
-    precedents: normalizeDependencyEntries(payload.Precedents),
-    dependents: normalizeDependencyEntries(payload.Dependents),
+    precedents: normalizeDependencyEntries(payload.precedents),
+    dependents: normalizeDependencyEntries(payload.dependents),
   };
 }
 
@@ -588,8 +588,8 @@ export function createDetailsDependenciesController({
       sequence += 1;
       return paint({
         formula: String(payload?.formula || "").trim(),
-        precedents: normalizeDependencyEntries(payload?.Precedents ?? payload?.precedents),
-        dependents: normalizeDependencyEntries(payload?.Dependents ?? payload?.dependents),
+        precedents: normalizeDependencyEntries(payload?.precedents),
+        dependents: normalizeDependencyEntries(payload?.dependents),
       });
     },
 

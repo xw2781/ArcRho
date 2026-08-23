@@ -24,12 +24,12 @@ class BerquistShermanIndexContractTests(unittest.TestCase):
     def test_method_json_formats_build_canonical_triangle_entries(self) -> None:
         cases = (
             (
-                "arcrho-berquist-sherman-sr-method-by-tab-v1",
+                "arcrho-berquist-sherman-sr-v4",
                 "B&S Settlement Rate Adjustment",
                 "berquist_sherman_sr",
             ),
             (
-                "arcrho-berquist-sherman-cra-method-by-tab-v1",
+                "arcrho-berquist-sherman-cra-v4",
                 "B&S Case Reserve Adequacy Adjustment",
                 "berquist_sherman_cra",
             ),
@@ -117,7 +117,7 @@ class BerquistShermanIndexContractTests(unittest.TestCase):
             method_path.write_text(
                 json.dumps(
                     {
-                        "json_format": "arcrho-berquist-sherman-sr-method-by-tab-v1",
+                        "json_format": "arcrho-berquist-sherman-sr-v4",
                         "details_tab": {
                             "name": "Adjusted SR",
                             "output_type": "D Gross Loss",

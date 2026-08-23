@@ -87,8 +87,8 @@ def _merge_cell_note_dicts(remote_notes: dict, local_notes: dict) -> dict:
 
 
 def _average_formula_user_entry_index(average_formulas: dict) -> int | None:
-    settings = average_formulas.get("custom average formula settings")
-    average_types = settings.get("averageType") if isinstance(settings, dict) else None
+    settings = average_formulas.get("custom_average_formula_settings")
+    average_types = settings.get("average_type") if isinstance(settings, dict) else None
     if isinstance(average_types, list):
         for index, average_type in enumerate(average_types):
             if _clean_name(average_type).lower() == "user_entry":
@@ -104,8 +104,8 @@ def _average_formula_user_entry_index(average_formulas: dict) -> int | None:
 
 
 def _dfm_ratio_development_labels(payload: dict) -> list[str]:
-    ratio_triangle = _dict_path(payload, ("ratios tab", "ratio triangle"))
-    labels = ratio_triangle.get("development labels")
+    ratio_triangle = _dict_path(payload, ("ratios_tab", "ratio_triangle"))
+    labels = ratio_triangle.get("development_labels")
     return [_clean_name(label) for label in labels] if isinstance(labels, list) else []
 
 
@@ -118,8 +118,8 @@ def _ensure_matrix_row(matrix: list, row_index: int) -> list:
 
 
 def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> bool:
-    remote_avg = _dict_path(remote_payload, ("ratios tab", "average formulas"))
-    local_avg = _dict_path(local_payload, ("ratios tab", "average formulas"))
+    remote_avg = _dict_path(remote_payload, ("ratios_tab", "average_formulas"))
+    local_avg = _dict_path(local_payload, ("ratios_tab", "average_formulas"))
     remote_user_row = _average_formula_user_entry_index(remote_avg)
     local_user_row = _average_formula_user_entry_index(local_avg)
     if remote_user_row is None or local_user_row is None:
@@ -156,7 +156,7 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
         remote_values = []
         remote_avg["values"] = remote_values
     remote_value_row = _ensure_matrix_row(remote_values, remote_user_row)
-    local_display_inputs = local_avg.get("display inputs")
+    local_display_inputs = local_avg.get("display_inputs")
     local_display_input_row = (
         local_display_inputs[local_user_row]
         if isinstance(local_display_inputs, list)
@@ -164,10 +164,10 @@ def _copy_local_user_entry_inputs(remote_payload: dict, local_payload: dict) -> 
         and isinstance(local_display_inputs[local_user_row], list)
         else []
     )
-    remote_display_inputs = remote_avg.get("display inputs")
+    remote_display_inputs = remote_avg.get("display_inputs")
     if not isinstance(remote_display_inputs, list):
         remote_display_inputs = []
-        remote_avg["display inputs"] = remote_display_inputs
+        remote_avg["display_inputs"] = remote_display_inputs
     remote_display_input_row = _ensure_matrix_row(remote_display_inputs, remote_user_row)
 
     remote_dev_labels = _dfm_ratio_development_labels(remote_payload)
@@ -206,52 +206,52 @@ def _preserve_local_dfm_data(remote_payload: dict, local_payload: dict) -> tuple
     if not isinstance(local_payload, dict):
         return remote_payload, preserved
 
-    if local_payload.get("json format") == DFM_JSON_FORMAT:
+    if local_payload.get("json_format") == DFM_JSON_FORMAT:
         base = deepcopy(remote_payload)
-        remote_details = _dict_child(base, "details tab")
-        local_details = _dict_path(local_payload, ("details tab",))
-        if _clean_name(local_details.get("input triangle")) != _clean_name(remote_details.get("input triangle")):
-            base["data tab"] = deepcopy(_dict_path(local_payload, ("data tab",)))
+        remote_details = _dict_child(base, "details_tab")
+        local_details = _dict_path(local_payload, ("details_tab",))
+        if _clean_name(local_details.get("input_triangle")) != _clean_name(remote_details.get("input_triangle")):
+            base["data_tab"] = deepcopy(_dict_path(local_payload, ("data_tab",)))
             preserved.add("input selection and snapshot")
-        remote_results = _dict_child(base, "results tab")
-        local_results = _dict_path(local_payload, ("results tab",))
-        if _clean_name(local_results.get("ratio basis dataset")) != _clean_name(
-            remote_results.get("ratio basis dataset")
+        remote_results = _dict_child(base, "results_tab")
+        local_results = _dict_path(local_payload, ("results_tab",))
+        if _clean_name(local_results.get("ratio_basis_dataset")) != _clean_name(
+            remote_results.get("ratio_basis_dataset")
         ):
             for key in (
-                "ratio basis origin labels",
-                "ratio basis values",
-                "ratio basis data format",
-                "ratio basis number format",
-                "ratio basis decimal places",
-                "ratio basis source revision",
+                "ratio_basis_origin_labels",
+                "ratio_basis_values",
+                "ratio_basis_data_format",
+                "ratio_basis_number_format",
+                "ratio_basis_decimal_places",
+                "ratio_basis_source_revision",
             ):
                 remote_results[key] = deepcopy(local_results.get(key))
             preserved.add("ratio basis selection and snapshot")
-        refreshed_at = _dict_path(remote_payload, ("method metadata",)).get("data refreshed")
+        refreshed_at = _dict_path(remote_payload, ("method_metadata",)).get("data_refreshed")
         rebased = apply_owned_patch(base, local_payload, timestamp=refreshed_at)
-        local_last_modified = _dict_path(local_payload, ("method metadata",)).get("last modified")
+        local_last_modified = _dict_path(local_payload, ("method_metadata",)).get("last_modified")
         if local_last_modified:
-            _dict_child(rebased, "method metadata")["last modified"] = local_last_modified
+            _dict_child(rebased, "method_metadata")["last_modified"] = local_last_modified
         preserved.update({
             "exclusions",
             "formula definitions and selections",
             "stored user values",
-            "cell notes",
+            "cell_notes",
         })
         return rebased, preserved
 
     # Legacy files have no complete owned-state contract. Preserve the two
     # historically local fields until their transactional v2 upgrade succeeds.
-    remote_ratios = _dict_child(remote_payload, "ratios tab")
-    remote_notes = remote_ratios.get("cell notes")
-    local_notes = _dict_path(local_payload, ("ratios tab", "cell notes"))
+    remote_ratios = _dict_child(remote_payload, "ratios_tab")
+    remote_notes = remote_ratios.get("cell_notes")
+    local_notes = _dict_path(local_payload, ("ratios_tab", "cell_notes"))
     if isinstance(local_notes, dict) and local_notes:
-        remote_ratios["cell notes"] = _merge_cell_note_dicts(
+        remote_ratios["cell_notes"] = _merge_cell_note_dicts(
             remote_notes if isinstance(remote_notes, dict) else {},
             local_notes,
         )
-        preserved.add("cell notes")
+        preserved.add("cell_notes")
 
     if _copy_local_user_entry_inputs(remote_payload, local_payload):
         preserved.add("user entry formulas")
@@ -268,9 +268,9 @@ def _infer_avg_settings(label: str) -> dict:
     norm = " ".join(label.split()).strip()
     lower = norm.lower()
     if lower.startswith("user"):
-        return {"averageType": "user_entry", "base": "simple", "periods": "all", "exclude": 0}
+        return {"average_type": "user_entry", "base": "simple", "periods": "all", "exclude": 0}
     if "benchmark" in lower:
-        return {"averageType": "custom", "base": "benchmark", "periods": "all", "exclude": 0}
+        return {"average_type": "custom", "base": "benchmark", "periods": "all", "exclude": 0}
     m = re.match(
         r"^(volume|simple)\s*-\s*(all|[1-9]\d*)(\s+ex\s+hi/lo(?:\s*x\s*([1-9]\d*))?)?$",
         norm, re.I,
@@ -282,8 +282,8 @@ def _infer_avg_settings(label: str) -> dict:
         ex = int(m.group(4) or 0)
         if m.group(3) and ex == 0:
             ex = 1
-        return {"averageType": "custom", "base": base, "periods": periods, "exclude": ex}
-    return {"averageType": "custom", "base": "simple", "periods": "all", "exclude": 0}
+        return {"average_type": "custom", "base": base, "periods": periods, "exclude": ex}
+    return {"average_type": "custom", "base": "simple", "periods": "all", "exclude": 0}
 
 def _ratio_label_endpoints(label: str) -> tuple[int | None, int | None]:
     text = re.sub(r"^\(?\s*\d+\s*\)?\s*", "", label).strip()
@@ -318,7 +318,7 @@ def _parse_cell_notes(raw: str, origin_labels: list[str], avg_labels: list[str])
     If <row> matches an origin label → ratio main table.
     If <row> matches an average formula label → ratio summary table.
     """
-    result: dict = {"ratio main table": {}, "ratio summary table": {}}
+    result: dict = {"ratio_main_table": {}, "ratio_summary_table": {}}
     if not raw:
         return result
 
@@ -335,11 +335,11 @@ def _parse_cell_notes(raw: str, origin_labels: list[str], avg_labels: list[str])
         dev_part, row_part = parts
         row_lower = row_part.lower()
         if row_lower in origin_lower or any(row_lower in ol for ol in origin_lower):
-            table = "ratio main table"
+            table = "ratio_main_table"
         elif row_lower in avg_lower or any(row_lower in al for al in avg_lower):
-            table = "ratio summary table"
+            table = "ratio_summary_table"
         else:
-            table = "ratio summary table"  # default
+            table = "ratio_summary_table"  # default
         result[table].setdefault(dev_part, {})[row_part] = note_text
 
     return result
@@ -447,7 +447,7 @@ def export_dfm(
     input_triangle = _dfm_attr(dfm, "InputTriangle", None, strict=strict, context=name or "method")
     output_vector = _dfm_attr(dfm, "OutputVector", None, strict=strict, context=name or "method")
     input_tri_name = _normalize_import_name(
-        _dfm_attr(input_triangle, "Name", "", strict=strict, context="input triangle")
+        _dfm_attr(input_triangle, "Name", "", strict=strict, context="input_triangle")
     )
     output_vec_name = _normalize_import_name(
         _dfm_attr(output_vector, "Name", "", strict=strict, context="output vector")
@@ -463,7 +463,7 @@ def export_dfm(
     )
     output_category = (
         _normalize_import_name(
-            _dfm_attr(output_category_obj, "Name", "", strict=strict, context="output category")
+            _dfm_attr(output_category_obj, "Name", "", strict=strict, context="output_category")
         )
         if output_category_obj is not None
         else ""
@@ -616,10 +616,10 @@ def export_dfm(
         values.append(row)
 
     # Custom average formula settings
-    avg_settings: dict = {"averageType": [], "base": [], "periods": [], "exclude": []}
+    avg_settings: dict = {"average_type": [], "base": [], "periods": [], "exclude": []}
     for label in formula_labels:
         s = _infer_avg_settings(label)
-        avg_settings["averageType"].append(s["averageType"])
+        avg_settings["average_type"].append(s["average_type"])
         avg_settings["base"].append(s["base"])
         avg_settings["periods"].append(s["periods"])
         avg_settings["exclude"].append(s["exclude"])
@@ -634,58 +634,58 @@ def export_dfm(
     cell_notes = _parse_cell_notes(cell_notes_raw, origin_labels, formula_labels)
 
     base_payload = {
-        "json format": DFM_JSON_FORMAT,
-        "details tab": {
+        "json_format": DFM_JSON_FORMAT,
+        "details_tab": {
             "name": name,
-            "output type": output_dataset_type,
-            "output dataset": output_vec_name,
-            "output category": output_category,
-            "input triangle": input_tri_name,
-            "origin length": origin_length,
-            "development length": dev_length,
-            "decimal places": decimal_places,
+            "output_type": output_dataset_type,
+            "output_dataset": output_vec_name,
+            "output_category": output_category,
+            "input_triangle": input_tri_name,
+            "origin_length": origin_length,
+            "development_length": dev_length,
+            "decimal_places": decimal_places,
         },
-        "data tab": {
-            "origin labels": origin_labels,
-            "development labels": data_dev_labels,
-            "input data triangle values": input_values,
-            "input data triangle mask": input_mask,
-            "data format": "Triangle",
-            "number format": dataset_type_number_format(rc_path, input_dataset_type),
-            "decimal places": dataset_type_decimal_places(rc_path, input_dataset_type),
-            "source revision": _iso_or_text(input_payload.get("modified")),
+        "data_tab": {
+            "origin_labels": origin_labels,
+            "development_labels": data_dev_labels,
+            "input_data_triangle_values": input_values,
+            "input_data_triangle_mask": input_mask,
+            "data_format": "Triangle",
+            "number_format": dataset_type_number_format(rc_path, input_dataset_type),
+            "decimal_places": dataset_type_decimal_places(rc_path, input_dataset_type),
+            "source_revision": _iso_or_text(input_payload.get("modified")),
         },
-        "ratios tab": {
-            "ratio triangle": {
-                "origin labels": origin_labels,
-                "development labels": ratio_dev_labels,
-                "ratio values": ratio_values,
+        "ratios_tab": {
+            "ratio_triangle": {
+                "origin_labels": origin_labels,
+                "development_labels": ratio_dev_labels,
+                "ratio_values": ratio_values,
                 "excluded": excluded,
             },
-            "average formulas": {
+            "average_formulas": {
                 "label": formula_labels,
-                "custom average formula settings": avg_settings,
+                "custom_average_formula_settings": avg_settings,
                 "selected": selected,
                 "values": values,
                 "inputs": [[""] * dev_count for _ in range(n_formulas)],
-                "display inputs": [[""] * dev_count for _ in range(n_formulas)],
+                "display_inputs": [[""] * dev_count for _ in range(n_formulas)],
             },
-            "cell notes": cell_notes,
+            "cell_notes": cell_notes,
         },
-        "results tab": {
-            "ratio basis dataset": ratio_basis,
-            "ratio basis origin labels": [],
-            "ratio basis values": [],
-            "ratio basis data format": "Vector",
-            "ratio basis number format": "#,##0",
-            "ratio basis decimal places": 0,
-            "ratio basis source revision": "",
-            "ultimate ratio decimal places": ultimate_dp,
-            "ultimate vector": [],
+        "results_tab": {
+            "ratio_basis_dataset": ratio_basis,
+            "ratio_basis_origin_labels": [],
+            "ratio_basis_values": [],
+            "ratio_basis_data_format": "Vector",
+            "ratio_basis_number_format": "#,##0",
+            "ratio_basis_decimal_places": 0,
+            "ratio_basis_source_revision": "",
+            "ultimate_ratio_decimal_places": ultimate_dp,
+            "ultimate_vector": [],
         },
-        "method metadata": {
-            "last modified": last_modified,
-            "data refreshed": last_modified,
+        "method_metadata": {
+            "last_modified": last_modified,
+            "data_refreshed": last_modified,
         },
     }
     input_snapshot = {
@@ -796,17 +796,17 @@ def export_dfm_output_dataset(
     if ratio_basis_snapshot is not None:
         export_kwargs["ratio_basis_snapshot"] = ratio_basis_snapshot
     payload = export_dfm(dfm, rc_path, project_data_dir, **export_kwargs)
-    details_tab = payload.get("details tab") if isinstance(payload.get("details tab"), dict) else {}
-    output_dataset_name = _normalize_import_name(details_tab.get("output dataset")) or output_dataset_name
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    output_dataset_name = _normalize_import_name(details_tab.get("output_dataset")) or output_dataset_name
     debug_log(
         "dfm_export_payload",
         project_name=project_name,
         reserving_class=rc_path,
-        method_name=payload.get("details tab", {}).get("name") if isinstance(payload.get("details tab"), dict) else dfm_name,
-        input_triangle=payload.get("details tab", {}).get("input triangle") if isinstance(payload.get("details tab"), dict) else "",
-        origin_length=payload.get("details tab", {}).get("origin length") if isinstance(payload.get("details tab"), dict) else "",
-        development_length=payload.get("details tab", {}).get("development length") if isinstance(payload.get("details tab"), dict) else "",
-        input_source_revision=payload.get("data tab", {}).get("source revision") if isinstance(payload.get("data tab"), dict) else "",
+        method_name=payload.get("details_tab", {}).get("name") if isinstance(payload.get("details_tab"), dict) else dfm_name,
+        input_triangle=payload.get("details_tab", {}).get("input_triangle") if isinstance(payload.get("details_tab"), dict) else "",
+        origin_length=payload.get("details_tab", {}).get("origin_length") if isinstance(payload.get("details_tab"), dict) else "",
+        development_length=payload.get("details_tab", {}).get("development_length") if isinstance(payload.get("details_tab"), dict) else "",
+        input_source_revision=payload.get("data_tab", {}).get("source_revision") if isinstance(payload.get("data_tab"), dict) else "",
     )
     existing_payload = _safe_read_json(out_path)
     preserved: set[str] = set()
@@ -814,16 +814,16 @@ def export_dfm_output_dataset(
         payload, preserved = _preserve_local_dfm_data(payload, existing_payload)
     payload = recalculate_dfm_method(
         payload,
-        timestamp=payload.get("method metadata", {}).get("data refreshed")
-        if isinstance(payload.get("method metadata"), dict)
+        timestamp=payload.get("method_metadata", {}).get("data_refreshed")
+        if isinstance(payload.get("method_metadata"), dict)
         else None,
         update_refresh_timestamp=False,
     )
     ultimate_payload = export_dfm_ultimate_vector(
         dfm,
-        payload["data tab"]["origin labels"],
-        payload["details tab"]["origin length"],
-        payload["details tab"]["development length"],
+        payload["data_tab"]["origin_labels"],
+        payload["details_tab"]["origin_length"],
+        payload["details_tab"]["development_length"],
     )
     if strict and any(
         not isinstance(row, list) or not row or row[0] is None
@@ -834,19 +834,19 @@ def export_dfm_output_dataset(
         detail = _unknown_dataset_type_skip_detail("DFM", output_dataset_name, ultimate_payload.get("dataset_type"))
         log(verbose, detail)
         return output_dataset_name, detail, True
-    ultimate_payload["origin_labels"] = list(payload["data tab"]["origin labels"])
-    ultimate_payload["origin_count"] = len(payload["data tab"]["origin labels"])
-    ultimate_payload["values"] = [[value] for value in payload["results tab"]["ultimate vector"]]
-    ultimate_payload["method_name"] = payload["details tab"]["name"]
+    ultimate_payload["origin_labels"] = list(payload["data_tab"]["origin_labels"])
+    ultimate_payload["origin_count"] = len(payload["data_tab"]["origin_labels"])
+    ultimate_payload["values"] = [[value] for value in payload["results_tab"]["ultimate_vector"]]
+    ultimate_payload["method_name"] = payload["details_tab"]["name"]
     ultimate_payload["precedents"] = [
         value
         for value in (
-            payload["details tab"].get("input triangle"),
-            payload["results tab"].get("ratio basis dataset"),
+            payload["details_tab"].get("input_triangle"),
+            payload["results_tab"].get("ratio_basis_dataset"),
         )
         if _clean_name(value)
     ]
-    ultimate_payload["publication_revision"] = payload["method metadata"]["publication revision"]
+    ultimate_payload["publication_revision"] = payload["method_metadata"]["publication_revision"]
     ultimate_csv_path, publication_files, sidecar_path = build_dfm_ultimate_publication(
         ultimate_payload,
         payload,

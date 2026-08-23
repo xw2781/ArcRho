@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -131,7 +132,7 @@ def save_field_mapping(
     payload = {
         "project_name": project_name,
         "table_path": (table_path or "").strip(),
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
         "rows": normalized_rows,
     }
 

@@ -197,7 +197,7 @@ class CalculatedDependencyFolderScanTests(unittest.TestCase):
             name = f"DFM Output {index}"
             (self.method_dir / f"DFM@{name}.json").write_text(
                 json.dumps({
-                    "details tab": {"name": f"Method {index}", "output type": name},
+                    "details_tab": {"name": f"Method {index}", "output_type": name},
                 }),
                 encoding="utf-8",
             )

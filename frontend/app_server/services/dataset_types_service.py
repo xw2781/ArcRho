@@ -13,6 +13,7 @@ from openpyxl.utils import get_column_letter
 from fastapi import HTTPException
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name, _parse_calculated_flag
 from app_server.services import file_read_cache
@@ -789,7 +790,7 @@ def build_dataset_types_payload(persisted_rows: List[List[Any]]) -> Dict[str, An
     return {
         "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
         "rows": list(persisted_rows),
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
     }
 
 
@@ -815,7 +816,7 @@ def _graph_projection(rows: List[List[Any]]) -> Dict[str, Tuple[str, bool, str, 
 
     Category and row order are presentation. A type's data format, whether it
     is calculated, its formula and whether it is engine-generated are not: each
-    one changes what a sidecar's ``Precedents``/``Dependents`` mean, or which
+    one changes what a sidecar's ``precedents``/``dependents`` mean, or which
     instances the type can still describe.
     """
 

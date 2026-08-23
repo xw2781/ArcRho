@@ -56,25 +56,25 @@ class DfmServiceTests(unittest.TestCase):
     def method_payload() -> dict:
         return recalculate_dfm_method(
             {
-                "details tab": {
+                "details_tab": {
                     "name": "Development",
-                    "output type": "Selected Ultimate",
-                    "output dataset": "Development Output",
-                    "input triangle": "Paid",
-                    "origin length": 12,
-                    "development length": 12,
+                    "output_type": "Selected Ultimate",
+                    "output_dataset": "Development Output",
+                    "input_triangle": "Paid",
+                    "origin_length": 12,
+                    "development_length": 12,
                 },
-                "ratios tab": {
-                    "average formulas": {
+                "ratios_tab": {
+                    "average_formulas": {
                         "label": ["User Entry"],
-                        "custom average formula settings": {"averageType": ["user_entry"]},
+                        "custom_average_formula_settings": {"average_type": ["user_entry"]},
                         "selected": [[1, 1]],
                         "values": [[1.5, 1]],
                         "inputs": [["1.5", "1"]],
                     },
-                    "cell notes": {"ratio main table": {"2024": {"(1) 12-24": "keep"}}},
+                    "cell_notes": {"ratio_main_table": {"2024": {"(1) 12-24": "keep"}}},
                 },
-                "results tab": {"ratio basis dataset": "Premium"},
+                "results_tab": {"ratio_basis_dataset": "Premium"},
             },
             input_snapshot={
                 "name": "Paid",
@@ -116,12 +116,12 @@ class DfmServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Development Output@12.csv",
             "origin_labels": ["2024", "2025"],
-            "Precedents": [{"dataset_type_name": "Paid"}, {"dataset_type_name": "Premium"}],
-            "Dependents": [],
+            "precedents": [{"dataset_name": "Paid"}, {"dataset_name": "Premium"}],
+            "dependents": [],
             "status": status,
             "notes": "method note",
             "audit_log": [],
-            "publication_revision": revisions["publication revision"],
+            "publication_revision": revisions["publication_revision"],
             "updated_at": "2026-01-01T00:00:00Z",
         }
 
@@ -160,9 +160,9 @@ class DfmServiceTests(unittest.TestCase):
             "number_format": "#,##0",
             "decimal_places": 0,
             "status": status,
-            "Precedents": [],
-            "Dependents": [
-                {"dataset_type_name": item} for item in (dependents or [])
+            "precedents": [],
+            "dependents": [
+                {"dataset_name": item} for item in (dependents or [])
             ],
         })
 
@@ -327,53 +327,13 @@ class DfmServiceTests(unittest.TestCase):
             str(self.sidecars / "Development Output.json"),
         ])
 
-    def test_legacy_upgrade_preserves_distinct_supplied_output_identity(self) -> None:
-        legacy = self.method_payload()
-        legacy["json format"] = "arcrho-dfm-method-by-tab-v1"
-        legacy["details tab"].pop("output dataset", None)
-        for key in (
-            "input data triangle values",
-            "input data triangle mask",
-            "source revision",
-        ):
-            legacy["data tab"].pop(key, None)
-        for key in (
-            "ratio basis origin labels",
-            "ratio basis values",
-            "ratio basis source revision",
-            "ultimate vector",
-        ):
-            legacy["results tab"].pop(key, None)
-        self.write_json(self.methods / "DFM@Development.json", legacy)
-        sidecar = self.output_sidecar(self.method_payload(), status=2)
-        sidecar.pop("publication_revision", None)
-        self.write_json(self.sidecars / "Development Output.json", sidecar)
-        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
-        self.write_source("Premium", "1000\n1100\n", data_format="Vector")
-
-        result = dfm_service.load_dfm_method(
-            "Project",
-            "Class",
-            "Development",
-            output_dataset="Development Output",
-        )
-
-        self.assertTrue(result["upgraded"])
-        self.assertEqual(result["method"]["details tab"]["output dataset"], "Development Output")
-        self.assertFalse((self.sidecars / "Development.json").exists())
-        saved_sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved_sidecar["method_name"], "Development")
-        self.assertEqual(
-            saved_sidecar["publication_revision"],
-            method_revisions(result["method"])["publication revision"],
-        )
-
-    def test_legacy_upgrade_without_declared_or_supplied_output_is_rejected_without_mutation(self) -> None:
-        legacy = self.method_payload()
-        legacy["json format"] = "arcrho-dfm-method-by-tab-v1"
-        legacy["details tab"].pop("output dataset", None)
+    def test_load_without_output_sidecar_is_rejected_without_mutation(self) -> None:
+        # With no declared output the method's own name stands in for it, and
+        # no sidecar of that name exists here.
+        method = self.method_payload()
+        method["details_tab"].pop("output_dataset", None)
         method_path = self.methods / "DFM@Development.json"
-        self.write_json(method_path, legacy)
+        self.write_json(method_path, method)
         before = method_path.read_bytes()
 
         with self.assertRaises(HTTPException) as raised:
@@ -384,8 +344,8 @@ class DfmServiceTests(unittest.TestCase):
 
     def test_existing_save_rebases_owned_patch_without_precedent_reads(self) -> None:
         method = self.write_method_pair(status=2)
-        method["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"] = "updated"
-        owned_revision = method_revisions(self.method_payload())["owned revision"]
+        method["ratios_tab"]["cell_notes"]["ratio_main_table"]["2024"]["(1) 12-24"] = "updated"
+        owned_revision = method_revisions(self.method_payload())["owned_revision"]
         with (
             mock.patch.object(dfm_service, "_load_source_snapshot", side_effect=AssertionError("source read")),
             mock.patch.object(
@@ -413,7 +373,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertTrue(result["propagation_ok"])
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(
-            saved["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"],
+            saved["ratios_tab"]["cell_notes"]["ratio_main_table"]["2024"]["(1) 12-24"],
             "updated",
         )
 
@@ -436,7 +396,7 @@ class DfmServiceTests(unittest.TestCase):
                 "Project",
                 "Class",
                 method,
-                expected_owned_revision=method_revisions(method)["owned revision"],
+                expected_owned_revision=method_revisions(method)["owned_revision"],
             )
 
         self.assertTrue(result["ok"])
@@ -446,14 +406,14 @@ class DfmServiceTests(unittest.TestCase):
 
     def test_dataset_formula_save_registers_graph_and_source_change_marks_review(self) -> None:
         method = self.write_method_pair()
-        expected_owned_revision = method_revisions(method)["owned revision"]
+        expected_owned_revision = method_revisions(method)["owned_revision"]
         for name, data_format, csv_text in (
             ("Paid", "Triangle", "100,150\n200,\n"),
             ("Premium", "Vector", "1000\n1100\n"),
             ("Accounting Cutoff", "Vector", "1.01\n1.02\n"),
         ):
             self.write_source(name, csv_text, data_format=data_format)
-        method["ratios tab"]["average formulas"]["inputs"][0][0] = \
+        method["ratios_tab"]["average_formulas"]["inputs"][0][0] = \
             '=[Accounting Cutoff][-1]'
 
         with mock.patch.object(
@@ -468,19 +428,19 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            result["sidecar"]["Precedents"],
+            result["sidecar"]["precedents"],
             [
-                {"dataset_type_name": "Paid"},
-                {"dataset_type_name": "Premium"},
-                {"dataset_type_name": "Accounting Cutoff"},
+                {"dataset_name": "Paid"},
+                {"dataset_name": "Premium"},
+                {"dataset_name": "Accounting Cutoff"},
             ],
         )
         formula_source = json.loads(
             (self.sidecars / "Accounting Cutoff.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            formula_source["Dependents"],
-            [{"dataset_type_name": "Development Output"}],
+            formula_source["dependents"],
+            [{"dataset_name": "Development Output"}],
         )
 
         with mock.patch(
@@ -514,11 +474,11 @@ class DfmServiceTests(unittest.TestCase):
             (self.methods / "DFM@Development.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            saved_method["ratios tab"]["average formulas"]["values"][0][0],
+            saved_method["ratios_tab"]["average_formulas"]["values"][0][0],
             1.02,
         )
         self.assertEqual(
-            saved_method["results tab"]["ultimate vector"],
+            saved_method["results_tab"]["ultimate_vector"],
             [150, 204],
         )
         published = (self.datasets / "Development Output@12.csv").read_text(encoding="utf-8")
@@ -529,7 +489,7 @@ class DfmServiceTests(unittest.TestCase):
 
     def test_blank_dataset_reference_aborts_refresh_and_preserves_publication(self) -> None:
         method = self.method_payload()
-        method["ratios tab"]["average formulas"]["inputs"][0][0] = \
+        method["ratios_tab"]["average_formulas"]["inputs"][0][0] = \
             '=[Accounting Cutoff][2]'
         method = recalculate_dfm_method(method, timestamp="2026-01-01T00:00:00Z")
         method = self.write_method_pair(method)
@@ -579,7 +539,7 @@ class DfmServiceTests(unittest.TestCase):
             path: path.read_bytes()
             for path in (method_path, sidecar_path, output_path)
         }
-        method["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"] = "conflict"
+        method["ratios_tab"]["cell_notes"]["ratio_main_table"]["2024"]["(1) 12-24"] = "conflict"
 
         with self.assertRaises(HTTPException) as raised:
             dfm_service.save_dfm_method(
@@ -622,16 +582,16 @@ class DfmServiceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["data tab"]["origin labels"], method["data tab"]["origin labels"])
+        self.assertEqual(saved["data_tab"]["origin_labels"], method["data_tab"]["origin_labels"])
         self.assertEqual(
-            saved["data tab"]["development labels"],
-            method["data tab"]["development labels"],
+            saved["data_tab"]["development_labels"],
+            method["data_tab"]["development_labels"],
         )
         # Persisted rows drop the trailing nulls that sit outside the triangle.
-        self.assertEqual(saved["data tab"]["input data triangle values"], [[100, 175], [200]])
-        self.assertNotIn("input data triangle mask", saved["data tab"])
+        self.assertEqual(saved["data_tab"]["input_data_triangle_values"], [[100, 175], [200]])
+        self.assertNotIn("input_data_triangle_mask", saved["data_tab"])
         self.assertEqual(
-            normalize_dfm_method(saved)["data tab"]["input data triangle values"],
+            normalize_dfm_method(saved)["data_tab"]["input_data_triangle_values"],
             [[100, 175], [200, None]],
         )
 
@@ -654,11 +614,14 @@ class DfmServiceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        # The basis axis is not persisted; reading the file re-derives it from
+        # the method's own origin labels rather than the sidecar's numeric ones.
+        self.assertNotIn("ratio_basis_origin_labels", saved["results_tab"])
         self.assertEqual(
-            saved["results tab"]["ratio basis origin labels"],
-            method["data tab"]["origin labels"],
+            normalize_dfm_method(saved)["results_tab"]["ratio_basis_origin_labels"],
+            method["data_tab"]["origin_labels"],
         )
-        self.assertEqual(saved["results tab"]["ratio basis values"], [2000, 2200])
+        self.assertEqual(saved["results_tab"]["ratio_basis_values"], [2000, 2200])
 
     def test_snapshot_cache_is_scoped_by_saved_method_axes(self) -> None:
         method = self.method_payload()
@@ -678,7 +641,7 @@ class DfmServiceTests(unittest.TestCase):
             snapshot_cache=snapshot_cache,
         )
         second_method = json.loads(json.dumps(method))
-        second_method["data tab"]["origin labels"] = ["2022", "2023"]
+        second_method["data_tab"]["origin_labels"] = ["2022", "2023"]
         second, _ = dfm_service._source_snapshots(
             "Project",
             "Class",
@@ -729,9 +692,9 @@ class DfmServiceTests(unittest.TestCase):
 
     def test_output_csv_variants_are_projected_by_the_canonical_contract(self) -> None:
         method = self.write_method_pair()
-        method["details tab"]["origin length"] = 3
-        method["data tab"]["origin labels"] = ["2024 Q1", "2024 Q2", "2024 Q3", "2024 Q4"]
-        method["results tab"]["ultimate vector"] = [10, 20, 30, 40]
+        method["details_tab"]["origin_length"] = 3
+        method["data_tab"]["origin_labels"] = ["2024 Q1", "2024 Q2", "2024 Q3", "2024 Q4"]
+        method["results_tab"]["ultimate_vector"] = [10, 20, 30, 40]
 
         files = dfm_service._output_files("Project", "Class", method)
         actual = {
@@ -774,8 +737,8 @@ class DfmServiceTests(unittest.TestCase):
             }],
         )
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["results tab"]["ultimate vector"], method["results tab"]["ultimate vector"])
-        self.assertEqual(saved["data tab"]["origin labels"], method["data tab"]["origin labels"])
+        self.assertEqual(saved["results_tab"]["ultimate_vector"], method["results_tab"]["ultimate_vector"])
+        self.assertEqual(saved["data_tab"]["origin_labels"], method["data_tab"]["origin_labels"])
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
         self.assertEqual(sidecar["audit_log"], [])
 
@@ -783,7 +746,7 @@ class DfmServiceTests(unittest.TestCase):
         method = self.write_method_pair(status=0)
         sidecar_path = self.sidecars / "Development Output.json"
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        sidecar["Dependents"] = [{"dataset_type_name": "Unrelated Downstream DFM"}]
+        sidecar["dependents"] = [{"dataset_name": "Unrelated Downstream DFM"}]
         self.write_json(sidecar_path, sidecar)
         self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
         self.write_source(
@@ -800,10 +763,10 @@ class DfmServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(output_path.read_bytes(), before_output)
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["results tab"]["ratio basis values"], [2000, 2200])
-        self.assertEqual(saved["results tab"]["ultimate vector"], method["results tab"]["ultimate vector"])
+        self.assertEqual(saved["results_tab"]["ratio_basis_values"], [2000, 2200])
+        self.assertEqual(saved["results_tab"]["ultimate_vector"], method["results_tab"]["ultimate_vector"])
         self.assertEqual(
-            saved["ratios tab"]["cell notes"]["ratio main table"]["2024"]["(1) 12-24"],
+            saved["ratios_tab"]["cell_notes"]["ratio_main_table"]["2024"]["(1) 12-24"],
             "keep",
         )
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
@@ -896,7 +859,7 @@ class DfmServiceTests(unittest.TestCase):
         first = self.write_method_pair(status=2)
         first_sidecar_path = self.sidecars / "Development Output.json"
         first_sidecar = json.loads(first_sidecar_path.read_text(encoding="utf-8"))
-        first_sidecar["Dependents"] = [{"dataset_type_name": "Second Output"}]
+        first_sidecar["dependents"] = [{"dataset_name": "Second Output"}]
         self.write_json(first_sidecar_path, first_sidecar)
         self.write_source(
             "Paid",
@@ -908,24 +871,24 @@ class DfmServiceTests(unittest.TestCase):
         self.write_source("Incurred", "80,120\n160,\n", data_format="Triangle")
         second = recalculate_dfm_method(
             {
-                "details tab": {
+                "details_tab": {
                     "name": "Second",
-                    "output type": "Second Ultimate",
-                    "output dataset": "Second Output",
-                    "input triangle": "Incurred",
-                    "origin length": 12,
-                    "development length": 12,
+                    "output_type": "Second Ultimate",
+                    "output_dataset": "Second Output",
+                    "input_triangle": "Incurred",
+                    "origin_length": 12,
+                    "development_length": 12,
                 },
-                "ratios tab": {
-                    "average formulas": {
+                "ratios_tab": {
+                    "average_formulas": {
                         "label": ["User Entry"],
-                        "custom average formula settings": {"averageType": ["user_entry"]},
+                        "custom_average_formula_settings": {"average_type": ["user_entry"]},
                         "selected": [[1, 1]],
                         "values": [[1.5, 1]],
                         "inputs": [["1.5", "1"]],
                     },
                 },
-                "results tab": {"ratio basis dataset": "Development Output"},
+                "results_tab": {"ratio_basis_dataset": "Development Output"},
             },
             input_snapshot={
                 "name": "Incurred",
@@ -940,7 +903,7 @@ class DfmServiceTests(unittest.TestCase):
                 "name": "Development Output",
                 "data_format": "Vector",
                 "origin_labels": ["2024", "2025"],
-                "values": first["results tab"]["ultimate vector"],
+                "values": first["results_tab"]["ultimate_vector"],
                 "revision": "first-r1",
             },
             timestamp="2026-01-01T00:00:00Z",
@@ -952,11 +915,11 @@ class DfmServiceTests(unittest.TestCase):
             "dataset_type": "Second Ultimate",
             "method_name": "Second",
             "csv_file": "Second Output@12.csv",
-            "Precedents": [
-                {"dataset_type_name": "Incurred"},
-                {"dataset_type_name": "Development Output"},
+            "precedents": [
+                {"dataset_name": "Incurred"},
+                {"dataset_name": "Development Output"},
             ],
-            "publication_revision": method_revisions(second)["publication revision"],
+            "publication_revision": method_revisions(second)["publication_revision"],
         }
         self.write_json(self.sidecars / "Second Output.json", second_sidecar)
         (self.datasets / "Second Output@12.csv").write_text("120\n240\n", encoding="utf-8")
@@ -970,8 +933,8 @@ class DfmServiceTests(unittest.TestCase):
         first_saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         second_saved = json.loads((self.methods / "DFM@Second.json").read_text(encoding="utf-8"))
         self.assertEqual(
-            second_saved["results tab"]["ratio basis values"],
-            first_saved["results tab"]["ultimate vector"],
+            second_saved["results_tab"]["ratio_basis_values"],
+            first_saved["results_tab"]["ultimate_vector"],
         )
 
     def test_calculated_cascade_refreshes_dfm_before_calculated_and_rs(self) -> None:

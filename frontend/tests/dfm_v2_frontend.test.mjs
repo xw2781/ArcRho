@@ -58,11 +58,11 @@ test("aggregate DFM API sends method and output identities with revision-aware s
       method_name: "Method",
       output_dataset: "Output",
     });
-    await api.previewDfmMethod({ "json format": api.DFM_METHOD_JSON_FORMAT_V2 });
+    await api.previewDfmMethod({ "json_format": api.DFM_METHOD_JSON_FORMAT });
     await api.saveDfmMethod({
       project_name: "Project",
       reserving_class: "RC",
-      method: { "json format": api.DFM_METHOD_JSON_FORMAT_V2 },
+      method: { "json_format": api.DFM_METHOD_JSON_FORMAT },
       notes: "keep",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
@@ -86,7 +86,7 @@ test("aggregate DFM API sends method and output identities with revision-aware s
     assert.deepEqual(requests[2].body, {
       project_name: "Project",
       reserving_class: "RC",
-      method: { "json format": api.DFM_METHOD_JSON_FORMAT_V2 },
+      method: { "json_format": api.DFM_METHOD_JSON_FORMAT },
       notes: "keep",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
@@ -202,22 +202,22 @@ test("v2 payload and PI restore preserve distinct method/output identities", () 
     "function normalizeRatioMatrixCellValue",
   );
   for (const field of [
-    "input data triangle values",
-    "input data triangle mask",
-    "input source revision",
-    "output dataset",
-    "ultimate vector",
-    "owned revision",
-    "derived revision",
-    "publication revision",
+    "input_data_triangle_values",
+    "input_data_triangle_mask",
+    "input_source_revision",
+    "output_dataset",
+    "ultimate_vector",
+    "owned_revision",
+    "derived_revision",
+    "publication_revision",
   ]) {
     assert.match(builder, new RegExp(field, "u"));
   }
   for (const field of [
-    "ratio basis origin labels",
-    "ratio basis values",
-    "ratio basis data format",
-    "ratio basis source revision",
+    "ratio_basis_origin_labels",
+    "ratio_basis_values",
+    "ratio_basis_data_format",
+    "ratio_basis_source_revision",
   ]) {
     assert.match(resultsSource, new RegExp(field, "u"));
   }
@@ -239,7 +239,7 @@ test("v2 payload and PI restore preserve distinct method/output identities", () 
 });
 
 test("the built payload carries the owned output category through", () => {
-  // 'output category' is an owned field the DFM page never edits, so a payload
+  // 'output_category' is an owned field the DFM page never edits, so a payload
   // that drops it hashes to a different owned revision and is rejected wherever
   // the method is validated as complete -- the macro handoff, for one.
   const builder = functionSlice(
@@ -247,17 +247,17 @@ test("the built payload carries the owned output category through", () => {
     "export function buildDfmMethodPayload",
     "function normalizeRatioMatrixCellValue",
   );
-  assert.match(builder, /"output category": currentDfmOutputCategory/u);
+  assert.match(builder, /"output_category": currentDfmOutputCategory/u);
   const grouped = functionSlice(
     persistenceSource,
     "function buildDfmGroupedMethodPayload",
     "function recordCleanDfmMethodPayload",
   );
-  assert.match(grouped, /"output category",/u);
+  assert.match(grouped, /"output_category",/u);
   // Captured from the applied method, and omitted when unknown so a Save cannot
   // clear the category held on disk.
   assert.match(persistenceSource, /currentDfmOutputCategory = String\(/u);
-  assert.match(builder, /currentDfmOutputCategory \? \{ "output category"/u);
+  assert.match(builder, /currentDfmOutputCategory \? \{ "output_category"/u);
 });
 
 test("DFM Save As rekeys and restores the new method/output identity", () => {
@@ -303,9 +303,9 @@ test("preview/save and Excel freshness retain owned and stored-value semantics",
     "function scheduleDfmExcelFreshnessCheck",
     "export async function loadRatioSelectionIfExists",
   );
-  assert.match(freshnessSchedule, /currentOwnedRevision \|\| metadata\["owned revision"\]/u);
-  assert.match(freshnessSchedule, /currentDerivedRevision \|\| metadata\["derived revision"\]/u);
-  assert.match(freshnessSchedule, /currentPublicationRevision \|\| metadata\["publication revision"\]/u);
+  assert.match(freshnessSchedule, /currentOwnedRevision \|\| metadata\["owned_revision"\]/u);
+  assert.match(freshnessSchedule, /currentDerivedRevision \|\| metadata\["derived_revision"\]/u);
+  assert.match(freshnessSchedule, /currentPublicationRevision \|\| metadata\["publication_revision"\]/u);
 
   const check = functionSlice(
     summaryValidationSource,

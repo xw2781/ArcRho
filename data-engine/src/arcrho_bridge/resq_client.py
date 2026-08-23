@@ -2,6 +2,7 @@
 from pathlib import Path
 import math
 import threading
+from datetime import timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pythoncom
@@ -13,8 +14,8 @@ from arcrho_bridge.bridge_utils import read_json, write_json, write_json_with_co
 
 CONNECTION_NAME = "JGO_CO1SQLWPV22"
 RESQ_CONFIG_SECTION = "resq"
-DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v1"
-RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
+DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v4"
+RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-v4"
 
 
 def resq_connection_settings():
@@ -169,34 +170,34 @@ class ResQClient:
                 average_data.get("label", []),
             )
             payload = {
-                "payload format": DFM_OWNED_PATCH_FORMAT,
-                "details tab": {
+                "payload_format": DFM_OWNED_PATCH_FORMAT,
+                "details_tab": {
                     "name": self._clean_label(request.get("MethodName") or self._optional_value(dfm, "Name", "")),
-                    "output type": output_type or output_dataset,
-                    "output dataset": output_dataset,
+                    "output_type": output_type or output_dataset,
+                    "output_dataset": output_dataset,
                     "output dataset_category": output_category,
-                    "output category": output_category,
-                    "input triangle": self._nested_name(dfm, "InputTriangle"),
-                    "origin length": self._optional_value(dfm, "OriginLength", ""),
-                    "development length": self._optional_value(dfm, "DevelopmentLength", ""),
-                    "decimal places": self._optional_value(dfm, "RatioDecimalPlaces", request.get("DecimalPlaces", 4)),
+                    "output_category": output_category,
+                    "input_triangle": self._nested_name(dfm, "InputTriangle"),
+                    "origin_length": self._optional_value(dfm, "OriginLength", ""),
+                    "development_length": self._optional_value(dfm, "DevelopmentLength", ""),
+                    "decimal_places": self._optional_value(dfm, "RatioDecimalPlaces", request.get("DecimalPlaces", 4)),
                 },
-                "ratios tab": {
-                    "ratio triangle": {
-                        "origin labels": origin_labels,
-                        "development labels": ratio_development_labels,
+                "ratios_tab": {
+                    "ratio_triangle": {
+                        "origin_labels": origin_labels,
+                        "development_labels": ratio_development_labels,
                         "excluded": self._excluded_ratio_pattern(dfm),
                     },
-                    "average formulas": average_data,
-                    "cell notes": cell_notes,
+                    "average_formulas": average_data,
+                    "cell_notes": cell_notes,
                 },
-                "results tab": {
-                    "ratio basis dataset": self._nested_name(dfm, "SummaryRatioBasis"),
-                    "ultimate ratio decimal places": self._optional_value(dfm, "SummaryRatioDecimalPlaces", 2),
+                "results_tab": {
+                    "ratio_basis_dataset": self._nested_name(dfm, "SummaryRatioBasis"),
+                    "ultimate_ratio_decimal_places": self._optional_value(dfm, "SummaryRatioDecimalPlaces", 2),
                 },
-                "method metadata": {
-                    "last modified": self._dfm_last_modified(dfm),
-                    "method notes": self._method_notes(dfm),
+                "method_metadata": {
+                    "last_modified": self._output_vector_modified(dfm),
+                    "method_notes": self._method_notes(dfm),
                 },
             }
             write_json_with_compact_rows(request["DataPath"], payload)
@@ -223,8 +224,8 @@ class ResQClient:
                     "excluded ratios": excluded_count,
                     "selected ratios": selected_count,
                     "user entry values": user_entry_count,
-                    "cell notes": cell_notes_changed,
-                    "method notes": method_notes_changed,
+                    "cell_notes": cell_notes_changed,
+                    "method_notes": method_notes_changed,
                 },
                 # The save above gave this method a new ResQ ``Modified``.
                 # Report it so ArcRho can record the same instant against its
@@ -232,7 +233,7 @@ class ResQClient:
                 # this the next sync review calls the remote newer and offers
                 # to pull back what was just pushed. Read after Save() and in
                 # the same spelling the DFM export uses.
-                "last modified": self._dfm_last_modified(dfm),
+                "last_modified": self._output_vector_modified(dfm),
             }
             write_json(request["DataPath"], payload)
             return payload
@@ -303,10 +304,8 @@ class ResQClient:
                     "selected_ultimate": selected_ultimate,
                     "ultimate_overrides": ultimate_overrides,
                 },
-                "results_tab": {},
-                "validation_tab": {},
                 "method_metadata": {
-                    "last_modified": self._result_selection_last_modified(result_selection),
+                    "last_modified": self._output_vector_modified(result_selection),
                 },
             }
             write_json(request["DataPath"], payload)
@@ -328,7 +327,7 @@ class ResQClient:
                 "status": "passed",
                 "message": "Remote Result Selection updated",
                 "updated": {
-                    "origin length": origin_length_changed,
+                    "origin_length": origin_length_changed,
                     "weights": weight_count,
                     "ultimate overrides": ultimate_count,
                 },
@@ -338,7 +337,7 @@ class ResQClient:
                 # would invalidate an open editor's save token until that
                 # revision stops covering the timestamp. Sent now because the
                 # field costs nothing and a Bridge deploy is expensive.
-                "last modified": self._result_selection_last_modified(result_selection),
+                "last_modified": self._output_vector_modified(result_selection),
             }
             write_json(request["DataPath"], status_payload)
             return status_payload
@@ -737,7 +736,7 @@ class ResQClient:
         return pattern
 
     def _sync_excluded_ratios(self, dfm, payload):
-        ratio_triangle = self._dict_path(payload, ("ratios tab", "ratio triangle"))
+        ratio_triangle = self._dict_path(payload, ("ratios_tab", "ratio_triangle"))
         pattern = ratio_triangle.get("excluded") if isinstance(ratio_triangle, dict) else None
         if not isinstance(pattern, list):
             return 0
@@ -766,7 +765,7 @@ class ResQClient:
         return None
 
     def _sync_selected_ratios(self, dfm, payload):
-        average_formulas = self._dict_path(payload, ("ratios tab", "average formulas"))
+        average_formulas = self._dict_path(payload, ("ratios_tab", "average_formulas"))
         labels = average_formulas.get("label") if isinstance(average_formulas, dict) else None
         selected = average_formulas.get("selected") if isinstance(average_formulas, dict) else None
         if not isinstance(labels, list) or not isinstance(selected, list):
@@ -787,7 +786,7 @@ class ResQClient:
         return updates
 
     def _sync_user_entry_values(self, dfm, payload):
-        average_formulas = self._dict_path(payload, ("ratios tab", "average formulas"))
+        average_formulas = self._dict_path(payload, ("ratios_tab", "average_formulas"))
         labels = average_formulas.get("label") if isinstance(average_formulas, dict) else None
         values = average_formulas.get("values") if isinstance(average_formulas, dict) else None
         if not isinstance(labels, list) or not isinstance(values, list):
@@ -814,8 +813,8 @@ class ResQClient:
         return updates
 
     def _user_entry_payload_row_index(self, average_formulas, labels):
-        settings = average_formulas.get("custom average formula settings")
-        average_types = settings.get("averageType") if isinstance(settings, dict) else None
+        settings = average_formulas.get("custom_average_formula_settings")
+        average_types = settings.get("average_type") if isinstance(settings, dict) else None
         if isinstance(average_types, list):
             for index, average_type in enumerate(average_types):
                 if str(average_type or "").strip().lower() == "user_entry":
@@ -878,7 +877,7 @@ class ResQClient:
         return ""
 
     def _sync_cell_notes(self, dfm, payload):
-        cell_notes = self._dict_path(payload, ("ratios tab", "cell notes"))
+        cell_notes = self._dict_path(payload, ("ratios_tab", "cell_notes"))
         if not cell_notes:
             return False
         # ResQ exposes DFM CellNotes as a read-side formatted string. The current
@@ -912,8 +911,8 @@ class ResQClient:
 
         return {
             "label": [row["name"] for row in formula_rows],
-            "custom average formula settings": {
-                "averageType": [row["averageType"] for row in formula_rows],
+            "custom_average_formula_settings": {
+                "average_type": [row["average_type"] for row in formula_rows],
                 "base": [row["base"] for row in formula_rows],
                 "periods": [row["periods"] for row in formula_rows],
                 "exclude": [row["exclude"] for row in formula_rows],
@@ -951,8 +950,8 @@ class ResQClient:
         origin_label_set = {self._label_key(label) for label in origin_labels}
         average_label_set = {self._label_key(label) for label in average_labels}
         out = {
-            "ratio main table": {},
-            "ratio summary table": {},
+            "ratio_main_table": {},
+            "ratio_summary_table": {},
         }
         for line in lines:
             parsed = self._parse_cell_note_line(line)
@@ -964,7 +963,7 @@ class ResQClient:
             if not col_label or not row_label or not note:
                 continue
             row_key = self._label_key(row_label)
-            table_key = "ratio summary table" if row_key in average_label_set and row_key not in origin_label_set else "ratio main table"
+            table_key = "ratio_summary_table" if row_key in average_label_set and row_key not in origin_label_set else "ratio_main_table"
             out.setdefault(table_key, {}).setdefault(row_label, {})[col_label] = note
         return out
 
@@ -1061,7 +1060,7 @@ class ResQClient:
     def _formula_metadata(self, name, is_user_entry):
         if is_user_entry:
             return {
-                "averageType": "user_entry",
+                "average_type": "user_entry",
                 "base": "simple",
                 "periods": "all",
                 "exclude": 0,
@@ -1071,14 +1070,14 @@ class ResQClient:
         if match:
             periods = match.group(2).lower()
             return {
-                "averageType": "custom",
+                "average_type": "custom",
                 "base": match.group(1).lower(),
                 "periods": "all" if periods == "all" else int(periods),
                 "exclude": 1 if "ex hi/lo" in name.lower() else 0,
             }
 
         return {
-            "averageType": "custom",
+            "average_type": "custom",
             "base": self._formula_metadata_base(name),
             "periods": "all",
             "exclude": 0,
@@ -1175,29 +1174,22 @@ class ResQClient:
         except Exception:
             return default
 
-    def _dfm_last_modified(self, dfm):
-        try:
-            modified = dfm.OutputVector.Modified
-        except Exception:
-            return ""
-        if hasattr(modified, "replace") and hasattr(modified, "isoformat"):
-            try:
-                return modified.replace(tzinfo=None).isoformat()
-            except Exception:
-                pass
-        normalized = self._json_value(modified)
-        if self._has_json_value(normalized):
-            return normalized
-        return ""
+    def _output_vector_modified(self, method):
+        """The ``Modified`` ResQ stamped on a method's output vector, as an instant.
 
-    def _result_selection_last_modified(self, result_selection):
+        COM hands the DATE back as a datetime labelled UTC although ResQ keeps
+        a local wall-clock reading, so the label is dropped and the value is
+        converted from this machine's zone. The app server persists what comes
+        back through ``arcrho_api.timestamps``, and the next sync review then
+        compares two absolute times rather than a clock reading with an instant.
+        """
         try:
-            modified = result_selection.OutputVector.Modified
+            modified = method.OutputVector.Modified
         except Exception:
             return ""
         if hasattr(modified, "replace") and hasattr(modified, "isoformat"):
             try:
-                return modified.replace(tzinfo=None).isoformat()
+                return modified.replace(tzinfo=None).astimezone(timezone.utc).isoformat()
             except Exception:
                 pass
         normalized = self._json_value(modified)

@@ -199,23 +199,75 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaises(SidecarContractError):
             validate_sidecar_core(sidecar)
 
-    def test_a_half_method_sidecar_is_refused(self) -> None:
+    def test_a_named_method_output_is_always_calculated(self) -> None:
         sidecar = dict(_engine_sidecar())
         sidecar = with_audit_log_last({**sidecar, "method_name": "M"})
         with self.assertRaises(SidecarContractError):
-            validate_sidecar_core(sidecar)
-        sidecar = with_audit_log_last({**sidecar, "publication_revision": "sha256:0000000000000000"})
-        with self.assertRaises(SidecarContractError):
-            validate_sidecar_core(sidecar)  # still not calculated
+            validate_sidecar_core(sidecar)  # not calculated
         sidecar = with_audit_log_last({**sidecar, "calculated": True})
         validate_sidecar_core(sidecar)
 
-    def test_with_audit_log_last_moves_and_normalizes(self) -> None:
-        payload = {"audit_log": [{"event_date": "d", "action": "insert", "user": "u"}], "a": 1}
+    def test_a_method_output_may_publish_no_revision(self) -> None:
+        # Berquist Sherman has no contract module and computes no publication
+        # fingerprint, so its output sidecars name a method and stop there.
+        sidecar = with_audit_log_last({**_engine_sidecar(), "method_name": "B&S", "calculated": True})
+
+        validate_sidecar_core(sidecar)
+
+    def test_a_revision_without_a_method_name_is_refused(self) -> None:
+        sidecar = with_audit_log_last({**_engine_sidecar(), "publication_revision": "sha256:0000000000000000"})
+
+        with self.assertRaises(SidecarContractError):
+            validate_sidecar_core(sidecar)
+
+    def test_finalize_stamps_first_moves_the_log_last_and_drops_retired_fields(self) -> None:
+        payload = {
+            "audit_log": [{"event_date": "d", "action": "insert", "user": "u"}],
+            "a": 1,
+            "user": "u",
+            "Precedents": [],
+            "processing_by_csv": {},
+        }
         ordered = with_audit_log_last(payload)
-        self.assertEqual(list(ordered), ["a", "audit_log"])
+        self.assertEqual(list(ordered), ["json_format", "a", "audit_log"])
+        self.assertEqual(ordered["json_format"], "arcrho-dataset-sidecar-v4")
         self.assertEqual(ordered["audit_log"][0]["action"], "Insert")
         self.assertEqual(with_audit_log_last({"a": 1})["audit_log"], [])
+
+    def test_dependency_entries_have_one_shape(self) -> None:
+        from arcrho_api.sidecar_core_contract import dependency_entries, dependency_names
+
+        entries = dependency_entries([
+            "Paid",
+            {"dataset_name": "paid"},
+            {"dataset_name": "Ultimate", "method_type": "DFM", "path": r"C:\x.json", "mtime": 1},
+            {"dataset_name": "Plain", "method_type": "None"},
+            {"dataset_name": "Far", "reserving_class": "Other", "project": ""},
+            {"name": "ignored"},
+            "",
+        ], method_types={"plain": "Result Selection"})
+        self.assertEqual(entries, [
+            {"dataset_name": "Paid"},
+            {"dataset_name": "Ultimate", "method_type": "DFM"},
+            {"dataset_name": "Plain", "method_type": "Result Selection"},
+            {"dataset_name": "Far", "reserving_class": "Other"},
+        ])
+        self.assertEqual(dependency_names(entries), ["Paid", "Ultimate", "Plain", "Far"])
+        self.assertEqual(dependency_names(None), [])
+
+    def test_retired_fields_and_pathed_entries_are_refused(self) -> None:
+        sidecar = _engine_sidecar()
+        for field in ("method_type_code", "data_format_code", "origin_count", "user", "formula", "processing_by_csv"):
+            with self.subTest(field=field):
+                bad = with_audit_log_last({**sidecar, field: 1})
+                bad[field] = 1
+                bad["audit_log"] = bad.pop("audit_log")
+                with self.assertRaises(SidecarContractError):
+                    validate_sidecar_core(bad)
+        pathed = dict(sidecar)
+        pathed["precedents"] = [{"dataset_name": "Paid", "path": r"C:\paid.csv"}]
+        with self.assertRaises(SidecarContractError):
+            validate_sidecar_core(pathed)
 
 
 if __name__ == "__main__":

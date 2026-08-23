@@ -51,8 +51,8 @@ class DatasetSidecarStatusServiceTests(unittest.TestCase):
                 "method_type": method_type,
                 "source_kind": source_kind,
                 "status": status,
-                "Precedents": [],
-                "Dependents": status_service.name_entries(dependents),
+                "precedents": [],
+                "dependents": status_service.name_entries(dependents),
             },
         )
 

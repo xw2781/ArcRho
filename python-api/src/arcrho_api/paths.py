@@ -10,7 +10,7 @@ from .dataset_index_contract import (
     INDEX_FILE_NAME,
     canonical_existing_directory,
 )
-from .dfm_contract import DFM_JSON_FORMAT, LEGACY_DFM_JSON_FORMAT
+from .dfm_contract import DFM_JSON_FORMAT
 
 
 RESERVING_CLASS_INDEX_FILE_NAME = INDEX_FILE_NAME

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.services import source_table_service
 
@@ -31,7 +32,7 @@ class SourceTableChangedError(RuntimeError):
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def _lock_for_path(path: str) -> threading.Lock:

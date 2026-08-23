@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -40,7 +39,6 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
         self.data_path.parent.mkdir(parents=True)
         self.data_path.write_text("2\n", encoding="utf-8")
         self.dependency_path.write_text("1\n", encoding="utf-8")
-        dependency_stat = self.dependency_path.stat()
         self.pairs = [
             ("Function", "ArcRhoTri"),
             ("Path", "Example RC"),
@@ -66,21 +64,13 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
             "project_name": "Example Project",
             "source_kind": "calculated",
             "data_format": "Triangle",
-            "formula": '"Paid Loss" * 2',
-            "Precedents": [
-                {
-                    "dataset_type_name": "Paid Loss",
-                    "path": str(self.dependency_path),
-                    "mtime_ns": dependency_stat.st_mtime_ns,
-                    "size": dependency_stat.st_size,
-                    "sha256": hashlib.sha256(self.dependency_path.read_bytes()).hexdigest(),
-                }
-            ],
+            "precedents": [{"dataset_name": "Paid Loss"}],
         }
         self.sidecar_path.write_text(
             json.dumps(self.sidecar_payload),
             encoding="utf-8",
         )
+        self._record_dependencies()
         contracts = {
             "calculated loss": {
                 "name": "Calculated Loss",
@@ -105,6 +95,44 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.contract_patcher.stop()
         self.temp_dir.cleanup()
+
+    def _record_dependencies(
+        self,
+        *,
+        data_path: Path | None = None,
+        dataset_name: str = "Calculated Loss",
+        formula: str = '"Paid Loss" * 2',
+        dependency_path: Path | None = None,
+        dependency_name: str = "Paid Loss",
+        extra: dict | None = None,
+    ) -> None:
+        """Write the technical record beside a calculated CSV.
+
+        The sidecar names the precedent only; the file it was read from and
+        its fingerprint live in the reserving class's provenance folder.
+        """
+        target = data_path or self.data_path
+        source = dependency_path or self.dependency_path
+        runtime_cache_provenance_service.record_calculated(
+            str(target),
+            identity=runtime_cache_provenance_service.calculated_cache_identity(
+                str(target),
+                project_name="Example Project",
+                reserving_class="Example RC",
+                dataset_name=dataset_name,
+                dataset_type=dataset_name,
+            ),
+            formula=formula,
+            dependencies=[
+                {
+                    "dataset_type": dependency_name,
+                    "dataset_name": dependency_name,
+                    "path": str(source),
+                    **runtime_cache_provenance_service.file_fingerprint(str(source)),
+                    **(extra or {}),
+                }
+            ],
+        )
 
     def test_changed_dependency_rejects_the_calculated_cache(self) -> None:
         self.assertTrue(
@@ -230,17 +258,7 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
             )
 
     def test_current_dependency_contract_overrides_stored_source_ownership(self) -> None:
-        payload = {
-            **self.sidecar_payload,
-            "Precedents": [
-                {
-                    **self.sidecar_payload["Precedents"][0],
-                    "source_kind": "input",
-                    "data_format": "Triangle",
-                }
-            ],
-        }
-        self.sidecar_path.write_text(json.dumps(payload), encoding="utf-8")
+        self._record_dependencies(extra={"source_kind": "input", "data_format": "Triangle"})
         with patch.object(
             calculated_dataset_service,
             "calculated_dataset_contract",
@@ -269,20 +287,7 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
     def test_precedent_path_outside_reserving_class_roots_is_rejected(self) -> None:
         outside_path = self.root / "outside.csv"
         outside_path.write_text("1\n", encoding="utf-8")
-        outside_stat = outside_path.stat()
-        payload = {
-            **self.sidecar_payload,
-            "Precedents": [
-                {
-                    "dataset_type_name": "Paid Loss",
-                    "path": str(outside_path),
-                    "mtime_ns": outside_stat.st_mtime_ns,
-                    "size": outside_stat.st_size,
-                    "sha256": hashlib.sha256(outside_path.read_bytes()).hexdigest(),
-                }
-            ],
-        }
-        self.sidecar_path.write_text(json.dumps(payload), encoding="utf-8")
+        self._record_dependencies(dependency_path=outside_path)
 
         self.assertFalse(
             arcrho_runtime_service.arcrho_tri_cache_matches(
@@ -359,7 +364,6 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
         upstream_path = self.dependency_path
         raw_path = upstream_path.with_name("Raw Loss@12@12@cum@dev.csv")
         raw_path.write_text("1\n", encoding="utf-8")
-        raw_stat = raw_path.stat()
         upstream_pairs = [
             (
                 key,
@@ -382,19 +386,17 @@ class CalculatedDependencyCacheFreshnessTests(unittest.TestCase):
                     "project_name": "Example Project",
                     "source_kind": "calculated",
                     "data_format": "Triangle",
-                    "formula": '"Raw Loss" * 2',
-                    "Precedents": [
-                        {
-                            "dataset_type_name": "Raw Loss",
-                            "path": str(raw_path),
-                            "mtime_ns": raw_stat.st_mtime_ns,
-                            "size": raw_stat.st_size,
-                            "sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
-                        }
-                    ],
+                    "precedents": [{"dataset_name": "Raw Loss"}],
                 }
             ),
             encoding="utf-8",
+        )
+        self._record_dependencies(
+            data_path=upstream_path,
+            dataset_name="Paid Loss",
+            formula='"Raw Loss" * 2',
+            dependency_path=raw_path,
+            dependency_name="Raw Loss",
         )
         raw_path.write_text("100\n", encoding="utf-8")
         self.assertFalse(

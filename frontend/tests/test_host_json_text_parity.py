@@ -35,7 +35,7 @@ MODULE = FRONTEND_ROOT / "electron" / "persisted_json_text.js"
 
 _PAYLOADS = (
     {
-        "json_format": "arcrho-dfm-owned-patch-v1",
+        "json_format": "arcrho-dfm-owned-patch-v4",
         "data_tab": {
             "input_data_triangle_values": [[100, 150, 180], [200, 300], [400]],
             "origin_labels": ["2020", "2021", "2022"],

@@ -7,7 +7,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List
 
 import pandas as pd
@@ -19,6 +19,7 @@ from arcrho_api.dataset_index_contract import (
 )
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
 from arcrho_engine_calculation_contract import OUTPUT_VARIANT_TEMPORARY_VIEW
 
 from app_server import config
@@ -67,7 +68,7 @@ def _runtime_cache_provenance_path(data_path: str) -> str:
 
 
 def _utc_timestamp_from_stat(value: float) -> str:
-    return datetime.utcfromtimestamp(value).isoformat(timespec="seconds") + "Z"
+    return format_persisted_timestamp(datetime.fromtimestamp(value, timezone.utc))
 
 
 def _pair_int_value(pairs: list, key: str, default: int) -> int:
@@ -110,33 +111,6 @@ def _safe_read_json(path: str) -> Dict[str, Any]:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def _read_existing_cache_json(path: str, project_name: str) -> Dict[str, Any]:
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError as error:
-        raise HTTPException(
-            500,
-            f"Calculated dataset metadata is invalid for '{project_name}': {str(error)}",
-        ) from error
-    except OSError as error:
-        raise HTTPException(
-            503,
-            (
-                f"Calculated dataset metadata is unavailable for '{project_name}'. "
-                "The existing dataset cache was left unchanged."
-            ),
-        ) from error
-    if not isinstance(data, dict):
-        raise HTTPException(
-            500,
-            f"Calculated dataset metadata must contain a JSON object: {path}",
-        )
-    return data
 
 
 def _request_dataset_name(pairs: list) -> str:
@@ -244,7 +218,7 @@ def _calculated_precedent_sidecar(
 ) -> Dict[str, Any]:
     dataset_name = _clean_cache_text(
         precedent.get("dataset_name")
-        or precedent.get("dataset_type_name")
+        or precedent.get("dataset_type")
     )
     if not dataset_name:
         return {}
@@ -277,7 +251,7 @@ def _calculated_precedent_request_pairs(
     sidecar: Dict[str, Any],
 ) -> list:
     dataset_type = _clean_cache_text(
-        precedent.get("dataset_type_name")
+        precedent.get("dataset_type")
         or sidecar.get("dataset_type")
         or sidecar.get("dataset_name")
     )
@@ -372,7 +346,7 @@ def _calculated_dependencies_match(
         return False
     active_stack.add(cache_key)
 
-    precedents = payload.get("Precedents")
+    precedents = payload.get("precedents")
     project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
     dataset_type = _clean_cache_text(
         payload.get("dataset_type")
@@ -388,28 +362,37 @@ def _calculated_dependencies_match(
     if contract is None:
         memo[cache_key] = False
         return False
-    stored_formula = _clean_cache_text(payload.get("formula"))
     current_formula = _clean_cache_text(contract.get("formula"))
     stored_names = [
-        _canon_dataset_name(item.get("dataset_type_name"))
+        _canon_dataset_name(item.get("dataset_name"))
         for item in precedents or []
-        if isinstance(item, dict) and _canon_dataset_name(item.get("dataset_type_name"))
+        if isinstance(item, dict) and _canon_dataset_name(item.get("dataset_name"))
     ]
     current_names = [
         _canon_dataset_name(name)
         for name in contract.get("precedents") or []
         if _canon_dataset_name(name)
     ]
-    if stored_formula != current_formula or stored_names != current_names:
+    if stored_names != current_names:
+        memo[cache_key] = False
+        return False
+    # The sidecar names the precedents and nothing else: it is shared,
+    # location-independent data. What this cache was built from -- the formula
+    # and each input's file and fingerprint -- is the technical record beside
+    # the CSV, and a cache without one has no evidence to offer.
+    record = _calculated_cache_record(data_path, pairs)
+    if record is None or _clean_cache_text(record.get("formula")) != current_formula:
         memo[cache_key] = False
         return False
     if not current_names:
         memo[cache_key] = True
         return True
 
-    if not isinstance(precedents, list) or not precedents:
-        memo[cache_key] = False
-        return False
+    recorded_dependencies = {
+        _canon_dataset_name(item.get("dataset_type") or item.get("dataset_name")): item
+        for item in record.get("dependencies") or []
+        if isinstance(item, dict)
+    }
     dataset_folder = os.path.dirname(data_path)
     if (
         os.path.basename(dataset_folder).lower()
@@ -438,7 +421,8 @@ def _calculated_dependencies_match(
         else {}
     )
     get_fingerprint = file_fingerprint_getter or _file_fingerprint_getter()
-    for precedent in precedents:
+    for name in current_names:
+        precedent = recorded_dependencies.get(name)
         if not isinstance(precedent, dict):
             memo[cache_key] = False
             return False
@@ -485,9 +469,7 @@ def _calculated_dependencies_match(
                 stored_source_kind
                 or _clean_cache_text(dependency_sidecar.get("source_kind")).lower()
             )
-            dependency_definition = current_precedent_contracts.get(
-                _canon_dataset_name(precedent.get("dataset_type_name"))
-            )
+            dependency_definition = current_precedent_contracts.get(name)
             if isinstance(dependency_definition, dict):
                 current_data_format = _clean_cache_text(
                     dependency_definition.get("data_format")
@@ -588,10 +570,7 @@ def _processing_config_matches(
         return True
     processing: Any = None
     filename = os.path.basename(str(data_path or "").strip())
-    processing_by_csv = payload.get("processing_by_csv")
-    if filename and isinstance(processing_by_csv, dict):
-        processing = processing_by_csv.get(filename)
-    elif filename:
+    if filename:
         csv_file = _clean_cache_text(payload.get("csv_file"))
         if not csv_file or os.path.basename(csv_file) != filename:
             return False
@@ -610,6 +589,44 @@ def _runtime_cache_identity(data_path: str, pairs: list) -> Dict[str, str]:
         "project_name": _pair_value(pairs, "ProjectName"),
         "function": _pair_value(pairs, "Function"),
     }
+
+
+def _calculated_cache_identity(data_path: str, pairs: list) -> Dict[str, str]:
+    return runtime_cache_provenance_service.calculated_cache_identity(
+        data_path,
+        project_name=_pair_value(pairs, "ProjectName"),
+        reserving_class=_pair_value(pairs, "Path"),
+        dataset_name=_request_dataset_name(pairs),
+        dataset_type=_pair_value(pairs, "DatasetName") or _pair_value(pairs, "TriangleName"),
+    )
+
+
+def _calculated_cache_record(
+    data_path: str,
+    pairs: list,
+    *,
+    bind_to_csv: bool = True,
+) -> Dict[str, Any] | None:
+    """The technical record of what built this calculated CSV, or None.
+
+    A read that fails for any reason other than absence is a retryable error:
+    the existing cache is never called stale because the share hiccuped.
+    """
+    try:
+        return runtime_cache_provenance_service.calculated_record(
+            data_path,
+            expected_identity=_calculated_cache_identity(data_path, pairs),
+            bind_to_csv=bind_to_csv,
+        )
+    except OSError as error:
+        project_name = _pair_value(pairs, "ProjectName") or "(unknown)"
+        raise HTTPException(
+            503,
+            (
+                f"Unable to validate calculated dataset inputs for '{project_name}'. "
+                "The existing calculated cache was left unchanged."
+            ),
+        ) from error
 
 
 def _runtime_cache_provenance_matches(
@@ -1113,13 +1130,7 @@ def _set_processing_provenance(
     project_name: str,
     data_path: str,
 ) -> None:
-    provenance = get_processing_provenance(project_name)
-    payload["processing"] = provenance
-    processing_by_csv = payload.get("processing_by_csv")
-    if not isinstance(processing_by_csv, dict):
-        processing_by_csv = {}
-    processing_by_csv[os.path.basename(data_path)] = provenance
-    payload["processing_by_csv"] = processing_by_csv
+    payload["processing"] = get_processing_provenance(project_name)
 
 
 def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
@@ -1133,7 +1144,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     is_vector = _pair_value(pairs, "Function").strip().lower() == "arcrhovec"
     data_format = "Vector" if is_vector else "Triangle"
     user_name = user_identity_service.get_current_display_name() or getpass.getuser()
-    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    updated_at = utc_now_text()
     if os.path.exists(sidecar_path):
         payload = dataset_sidecar_status_service.read_sidecar(sidecar_path)
         if not payload:
@@ -1145,9 +1156,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         # ResQ-import source_modified stamp no longer describes its content.
         payload.pop("source_modified", None)
         payload["modified_by"] = user_name
-        payload["user"] = user_name
         payload["data_format"] = data_format
-        payload["data_format_code"] = 1 if is_vector else 0
         payload["show_subtotal"] = normalize_show_subtotal(payload.get("show_subtotal"))
         if _clean_cache_text(payload.get("source_kind")).lower() == "engine":
             _set_processing_provenance(payload, project_name, data_path)
@@ -1163,7 +1172,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
             [instance_name, dataset_type],
         )
         return
-    created = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    created = utc_now_text()
     try:
         created = _utc_timestamp_from_stat(os.stat(data_path).st_ctime)
     except OSError:
@@ -1810,15 +1819,19 @@ def _recalculate_requested_app_dataset(
             for item in contract.get("precedents") or []
             if str(item).strip()
         ]
-        requested_sidecar = _read_existing_cache_json(
-            _dataset_sidecar_path(requested_data_path, pairs),
-            project_name,
-        )
+        # Which files built the previous output -- the exact DFM method and its
+        # input in particular -- is read from the technical record beside the
+        # CSV. The cache is being rebuilt, so the record is read unbound.
+        record = _calculated_cache_record(
+            requested_data_path,
+            pairs,
+            bind_to_csv=False,
+        ) or {}
         stored_precedents = {
-            _canon_dataset_name(item.get("dataset_type_name")): item
-            for item in requested_sidecar.get("Precedents") or []
+            _canon_dataset_name(item.get("dataset_type") or item.get("dataset_name")): item
+            for item in record.get("dependencies") or []
             if isinstance(item, dict)
-            and _canon_dataset_name(item.get("dataset_type_name"))
+            and _canon_dataset_name(item.get("dataset_type") or item.get("dataset_name"))
         }
         dependency_descriptors = [
             {

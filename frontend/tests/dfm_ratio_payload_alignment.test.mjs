@@ -156,7 +156,7 @@ test("a stored null ratio renders as the grey placeholder, not a ratio of 0", ()
   const snapshot = loadPersistedSnapshotReader();
   // A persisted row keeps interior nulls: this is the shape a saved method holds
   // for an origin whose first development period is zero.
-  snapshot.applyPersistedRatioDerivedSnapshot({ "ratio values": [[null, 1, 1.25]] });
+  snapshot.applyPersistedRatioDerivedSnapshot({ "ratio_values": [[null, 1, 1.25]] });
   assert.deepEqual(snapshot.read(), [[null, 1, 1.25]]);
 
   // renderRatioTable keeps a persisted ratio only while it is finite, so the null

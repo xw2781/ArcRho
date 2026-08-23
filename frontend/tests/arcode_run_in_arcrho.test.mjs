@@ -86,8 +86,8 @@ test("ArcRho automation error dialogs render the close mark as SVG", () => {
 test("ArcRho macro validation ignores volatile timestamps but detects live DFM edits", () => {
   const initial = {
     activeJson: {
-      "method metadata": { "last modified": "2026-07-22T12:00:00.000Z" },
-      "ratios tab": { "ratio values": [[1.1, 1.2]], "cell notes": {} },
+      "method_metadata": { "last_modified": "2026-07-22T12:00:00.000Z" },
+      "ratios_tab": { "ratio_values": [[1.1, 1.2]], "cell_notes": {} },
     },
     dirty: true,
     fields: { methodName: "Paid Ultimate", project: "Example" },
@@ -97,7 +97,7 @@ test("ArcRho macro validation ignores volatile timestamps but detects live DFM e
     ...initial,
     activeJson: {
       ...initial.activeJson,
-      "method metadata": { "last modified": "2026-07-22T12:00:05.000Z" },
+      "method_metadata": { "last_modified": "2026-07-22T12:00:05.000Z" },
     },
     dirty: false,
     fields: { project: "Example", methodName: "Paid Ultimate" },
@@ -106,14 +106,14 @@ test("ArcRho macro validation ignores volatile timestamps but detects live DFM e
     ...recaptured,
     activeJson: {
       ...recaptured.activeJson,
-      "ratios tab": { "ratio values": [[1.1, 1.2]], "cell notes": { Summary: { Paid: "Changed" } } },
+      "ratios_tab": { "ratio_values": [[1.1, 1.2]], "cell_notes": { Summary: { Paid: "Changed" } } },
     },
   };
 
   assert.equal(macroContextFingerprint(initial), macroContextFingerprint(recaptured));
   assert.notEqual(macroContextFingerprint(initial), macroContextFingerprint(edited));
-  assert.equal(canonicalizeMacroContext(initial).activeJson["method metadata"]["last modified"], undefined);
-  assert.equal(initial.activeJson["method metadata"]["last modified"], "2026-07-22T12:00:00.000Z");
+  assert.equal(canonicalizeMacroContext(initial).activeJson["method_metadata"]["last_modified"], undefined);
+  assert.equal(initial.activeJson["method_metadata"]["last_modified"], "2026-07-22T12:00:00.000Z");
 });
 
 test("standalone Arcode packages the first-party ArcRho API", () => {

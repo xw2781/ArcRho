@@ -195,9 +195,9 @@ class CapeCodServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": csv_file,
             "status": status,
-            "Precedents": [],
-            "Dependents": [
-                {"dataset_type_name": item} for item in (dependents or [])
+            "precedents": [],
+            "dependents": [
+                {"dataset_name": item} for item in (dependents or [])
             ],
         }
         if include_origin_labels:
@@ -342,7 +342,7 @@ class CapeCodServiceTests(unittest.TestCase):
             cape_cod_service.load_cape_cod_method("Project", "Class", "CC Method")
 
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertIn("origin labels", str(raised.exception.detail))
+        self.assertIn("origin labels do not match", str(raised.exception.detail))
 
     def test_save_rebases_owned_settings_over_newer_disk_derived_snapshot(self) -> None:
         stale = self.method_payload()
@@ -626,9 +626,9 @@ class CapeCodServiceTests(unittest.TestCase):
     def test_refresh_report_order_is_deterministic(self) -> None:
         self.write_json(self.sidecars / "Paid.json", {
             "dataset_name": "Paid",
-            "Dependents": [
-                {"dataset_type_name": "CC Z"},
-                {"dataset_type_name": "CC A"},
+            "dependents": [
+                {"dataset_name": "CC Z"},
+                {"dataset_name": "CC A"},
             ],
         })
         for name in ("CC Z", "CC A"):
@@ -637,7 +637,7 @@ class CapeCodServiceTests(unittest.TestCase):
                 "method_name": name,
                 "method_type": "Cape Cod",
                 "source_kind": "cape_cod",
-                "Dependents": [],
+                "dependents": [],
                 "status": 0,
             })
 
@@ -981,8 +981,8 @@ class CapeCodServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Gross Incurred@12.csv",
             "status": 0,
-            "Precedents": [],
-            "Dependents": [{"dataset_type_name": "CC D53"}],
+            "precedents": [],
+            "dependents": [{"dataset_name": "CC D53"}],
         }
         self.write_json(self.sidecars / "Gross Incurred.json", latest_sidecar)
         (self.datasets / "Gross Incurred@12.csv").write_text(

@@ -1,5 +1,5 @@
 const VOLATILE_METHOD_METADATA_KEYS = new Set([
-  "last modified",
+  "last_modified",
 ]);
 
 function canonicalizeJsonValue(value, path = []) {
@@ -10,7 +10,7 @@ function canonicalizeJsonValue(value, path = []) {
 
   const isMethodMetadata = path.length === 2
     && path[0] === "activeJson"
-    && path[1] === "method metadata";
+    && path[1] === "method_metadata";
   const out = {};
   Object.keys(value).sort().forEach((key) => {
     if (isMethodMetadata && VOLATILE_METHOD_METADATA_KEYS.has(key)) return;

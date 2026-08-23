@@ -99,7 +99,7 @@ class ResqBornhuetterFergusonV3Tests(unittest.TestCase):
         configure_number_formats_path(self.root)
         extractors.configure_extractors(
             project_name="Demo",
-            rs_json_format="arcrho-result-selection-method-by-tab-v2",
+            rs_json_format="arcrho-result-selection-v4",
             bf_json_format=BF_JSON_FORMAT,
             method_data_dir="methods",
         )

@@ -23,10 +23,15 @@ from .sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from .sidecar_core_contract import validate_sidecar_core
+from .sidecar_core_contract import (
+    DATASET_SIDECAR_JSON_FORMAT,
+    dependency_entries,
+    validate_sidecar_core,
+)
+from .timestamps import persisted_timestamp as _timestamp
 
 
-BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-method-by-tab-v3"
+BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-v4"
 BF_METHOD_TYPE = "Bornhuetter Ferguson"
 BF_SOURCE_KIND = "bornhuetter_ferguson"
 BF_METHOD_TYPE_CODE = 2
@@ -43,13 +48,6 @@ BfContractError = BornhuetterFergusonContractError
 
 def _clean(value: Any) -> str:
     return " ".join(str(value if value is not None else "").split()).strip()
-
-
-def _timestamp(value: Any = None) -> str:
-    cleaned = str(value if value is not None else "").strip()
-    if cleaned:
-        return cleaned
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _integer(value: Any, default: int, *, minimum: int = 0, maximum: int | None = None) -> int:
@@ -367,8 +365,6 @@ def normalize_bornhuetter_ferguson_method(
             "selected_prior_values": _fit(_numbers(method_source.get("selected_prior_values")), row_count, None),
             "new_ultimate": _fit(_numbers(method_source.get("new_ultimate")), row_count, None),
         },
-        "chart_tab": {},
-        "audit_log_tab": {},
         "method_metadata": {
             "method_type": BF_METHOD_TYPE,
             "source_kind": BF_SOURCE_KIND,
@@ -432,12 +428,8 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
             raise BornhuetterFergusonContractError(f"BF {key} does not match the embedded source snapshots.")
 
 
-def _snapshot_field(snapshot: Mapping[str, Any], snake: str, spaced: str) -> Any:
-    return snapshot.get(snake) if snake in snapshot else snapshot.get(spaced)
-
-
 def _snapshot_vector(snapshot: Mapping[str, Any], *, latest: bool) -> tuple[list[str], list[Any]]:
-    labels = _labels(_snapshot_field(snapshot, "origin_labels", "origin labels"))
+    labels = _labels(snapshot.get("origin_labels"))
     raw_values = snapshot.get("values") if isinstance(snapshot.get("values"), list) else []
     raw_mask = snapshot.get("mask") if isinstance(snapshot.get("mask"), list) else []
     values: list[Any] = []
@@ -669,23 +661,6 @@ def bornhuetter_ferguson_output_variants(
     return variants
 
 
-def _dependency_entries(entries: Any) -> list[dict[str, str]]:
-    if not isinstance(entries, list):
-        entries = list(entries) if isinstance(entries, tuple) else []
-    names: list[str] = []
-    seen: set[str] = set()
-    for item in entries:
-        if isinstance(item, Mapping):
-            name = _clean(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
-        else:
-            name = _clean(item)
-        key = name.casefold()
-        if name and key not in seen:
-            seen.add(key)
-            names.append(name)
-    return [{"dataset_type_name": name} for name in names]
-
-
 def build_bornhuetter_ferguson_output_sidecar(
     payload: Mapping[str, Any],
     *,
@@ -715,7 +690,7 @@ def build_bornhuetter_ferguson_output_sidecar(
     actor = _clean(user)
     if not output_changed and record_exists:
         published_at = str(prior.get("updated_at") or "").strip() or published_at
-        actor = _clean(prior.get("modified_by") or prior.get("user")) or actor
+        actor = _clean(prior.get("modified_by")) or actor
     created = str(prior.get("created") or "").strip() or published_at
     sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
     if append_audit:
@@ -728,6 +703,7 @@ def build_bornhuetter_ferguson_output_sidecar(
     else:
         audits = normalize_audit_log(prior.get("audit_log"))
     return validate_sidecar_core({
+        "json_format": DATASET_SIDECAR_JSON_FORMAT,
         "dataset_name": details["name"],
         "dataset_type": details["output_type"] or details["name"],
         "dataset_category": details.get("dataset_category", ""),
@@ -735,12 +711,9 @@ def build_bornhuetter_ferguson_output_sidecar(
         "project_name": _clean(project_name),
         "source_kind": BF_SOURCE_KIND,
         "calculated": True,
-        "formula": "",
         "method_name": details["name"],
         "method_type": BF_METHOD_TYPE,
-        "method_type_code": BF_METHOD_TYPE_CODE,
         "data_format": "Vector",
-        "data_format_code": 1,
         "period_length": details["origin_length"],
         "transposed": False,
         "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
@@ -748,15 +721,13 @@ def build_bornhuetter_ferguson_output_sidecar(
         "decimal_places": details["statistic_decimal_places"],
         "csv_file": _clean(csv_file),
         "notes": sidecar_notes,
-        "origin_count": len(tab["origin_labels"]),
         "origin_labels": deepcopy(tab["origin_labels"]),
         "development_labels": ["Ultimate"],
-        "Precedents": _dependency_entries(bornhuetter_ferguson_precedent_names(method)),
-        "Dependents": _dependency_entries(prior.get("Dependents") if dependents is None else dependents),
+        "precedents": dependency_entries(bornhuetter_ferguson_precedent_names(method)),
+        "dependents": dependency_entries(prior.get("dependents") if dependents is None else dependents),
         "created": created,
         "updated_at": published_at,
         "modified_by": actor,
-        "user": actor,
         "status": _integer(status, 0, minimum=0),
         "publication_revision": metadata["publication_revision"],
         "audit_log": audits,

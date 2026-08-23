@@ -1,4 +1,4 @@
-export const DFM_METHOD_JSON_FORMAT_V2 = "arcrho-dfm-method-by-tab-v2";
+export const DFM_METHOD_JSON_FORMAT = "arcrho-dfm-v4";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -22,7 +22,7 @@ async function requestJson(path, body, options = {}) {
 }
 
 export function isDfmV2Method(method) {
-  return text(method?.["json format"]) === DFM_METHOD_JSON_FORMAT_V2;
+  return text(method?.["json_format"]) === DFM_METHOD_JSON_FORMAT;
 }
 
 export function readDfmMethodIdentityFromPage() {

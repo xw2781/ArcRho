@@ -1962,7 +1962,6 @@ function buildMethodPayload() {
       development_length: ANNUAL_PERIOD_LENGTH,
     },
     method_tab: methodTab,
-    audit_log_tab: {},
     method_metadata: {
       method_type: contract.methodType,
       source_kind: contract.sourceKind,

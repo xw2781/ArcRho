@@ -41,8 +41,8 @@ _TEST_TEMP_ROOT = FRONTEND_ROOT / "tests" / "logs" / "tmp"
 _FIXED_MTIME_NS = 1_767_225_600_000_000_000
 _FIXTURE_FORBIDDEN_FIELDS = {
     "origin_labels",
-    "Precedents",
-    "Dependents",
+    "precedents",
+    "dependents",
     "audit_log",
     "external_links",
     "calculated",
@@ -79,7 +79,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         catalog.configure_catalog(
             server_root=self.server_root,
             project_name=self.project_name,
-            rs_json_format="arcrho-result-selection-method-by-tab-v2",
+            rs_json_format="arcrho-result-selection-v4",
             method_data_dir="methods",
         )
 
@@ -149,8 +149,8 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
     def _write_index_source_fixture(self) -> None:
         common_forbidden_metadata = {
             "origin_labels": ["2024", "2025"],
-            "Precedents": ["Written Premium"],
-            "Dependents": ["Selected Ultimate"],
+            "precedents": ["Written Premium"],
+            "dependents": ["Selected Ultimate"],
             "audit_log": [{"action": "migration"}],
             "external_links": [{"label": "Source workbook", "target": "book.xlsx"}],
             "calculated": False,
@@ -202,15 +202,15 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "DFM@Paid Development Method.json",
             {
-                "json format": "arcrho-dfm-method-by-tab-v1",
-                "details tab": {
+                "json_format": "arcrho-dfm-method-by-tab-v1",
+                "details_tab": {
                     "name": "Paid Development Method",
-                    "output dataset": "Paid DFM Ultimate",
-                    "output type": "Ultimate Loss",
-                    "output category": "Ultimate",
+                    "output_dataset": "Paid DFM Ultimate",
+                    "output_type": "Ultimate Loss",
+                    "output_category": "Ultimate",
                 },
-                "data tab": {
-                    "origin labels": ["2024", "2025"],
+                "data_tab": {
+                    "origin_labels": ["2024", "2025"],
                 },
             },
         )
@@ -234,17 +234,17 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             self._write_json(
                 self.methods_dir / f"DFM@{method_name}.json",
                 {
-                    "json format": "arcrho-dfm-method-by-tab-v1",
-                    "details tab": {
+                    "json_format": "arcrho-dfm-method-by-tab-v1",
+                    "details_tab": {
                         "name": method_name,
-                        "output type": "Ultimate Loss",
+                        "output_type": "Ultimate Loss",
                     },
                 },
             )
         self._write_json(
             self.methods_dir / "RS@Selected Ultimate.json",
             {
-                "json_format": "arcrho-result-selection-method-by-tab-v2",
+                "json_format": "arcrho-result-selection-v4",
                 "details_tab": {
                     "name": "Selected Ultimate",
                     "output_type": "Selected Ultimate",
@@ -258,7 +258,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "BF@BF Ultimate.json",
             {
-                "json_format": "arcrho-bornhuetter-ferguson-method-by-tab-v3",
+                "json_format": "arcrho-bornhuetter-ferguson-v4",
                 "details_tab": {
                     "name": "BF Ultimate",
                     "output_type": "BF Ultimate",
@@ -272,7 +272,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "CC@CC Ultimate.json",
             {
-                "json_format": "arcrho-cape-cod-method-by-tab-v1",
+                "json_format": "arcrho-cape-cod-v4",
                 "details_tab": {
                     "name": "CC Ultimate",
                     "output_type": "CC Ultimate",
@@ -286,7 +286,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "BST@BST Ultimate.json",
             {
-                "json_format": "arcrho-bootstrap-method-by-tab-v1",
+                "json_format": "arcrho-bootstrap-v4",
                 "details_tab": {
                     "name": "BST Ultimate",
                     "output_type": "BST Ultimate",
@@ -300,7 +300,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         self._write_json(
             self.methods_dir / "BSSR@Adjusted Paid.json",
             {
-                "json_format": "arcrho-berquist-sherman-sr-method-by-tab-v1",
+                "json_format": "arcrho-berquist-sherman-sr-v4",
                 "details_tab": {
                     "name": "Adjusted Paid",
                     "output_type": "Adjusted Paid",

@@ -97,7 +97,7 @@ class DependentPropagationEngineTests(unittest.TestCase):
     def test_walk_failure_summary_names_dataset_and_method_failures(self) -> None:
         message = dependent_propagation._summarize_walk_failure(
             {
-                "skipped": [{"dataset_type_name": "C 61 Reported - CWOP"}],
+                "skipped": [{"dataset_name": "C 61 Reported - CWOP"}],
                 "result_selection_updates": {
                     "ok": False,
                     "errors": [

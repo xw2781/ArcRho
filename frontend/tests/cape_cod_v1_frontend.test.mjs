@@ -137,7 +137,7 @@ test("Cape Cod v1 payload is self-contained with canonical identity labels", () 
   });
 
   assert.equal(payload.json_format, CC_JSON_FORMAT);
-  assert.equal(CC_JSON_FORMAT, "arcrho-cape-cod-method-by-tab-v1");
+  assert.equal(CC_JSON_FORMAT, "arcrho-cape-cod-v4");
   assert.equal(payload.details_tab.method_type, CC_METHOD_TYPE);
   assert.equal(CC_METHOD_TYPE, "Cape Cod");
   assert.equal(payload.method_metadata.source_kind, CC_SOURCE_KIND);
@@ -147,9 +147,15 @@ test("Cape Cod v1 payload is self-contained with canonical identity labels", () 
   assert.equal(payload.method_tab.scaling_type, "percentage");
   assert.equal(payload.method_tab.auto_trend_fit, true);
   assert.deepEqual(payload.method_tab.trend_factor_overrides, new Array(fixture.origin_labels.length).fill(null));
-  assert.deepEqual(payload.ultimates_tab, {});
-  assert.deepEqual(payload.ratios_tab, {});
-  assert.deepEqual(payload.audit_log_tab, {});
+  // v4 persists only the four sections the python contract normalizes: the
+  // always-empty placeholder tabs and the audit log are gone from method files.
+  assert.deepEqual(
+    Object.keys(payload),
+    ["json_format", "details_tab", "method_tab", "method_metadata"],
+  );
+  for (const retired of ["ultimates_tab", "ratios_tab", "audit_log_tab", "audit_log"]) {
+    assert.equal(retired in payload, false, `${retired} must not be persisted`);
+  }
   assert.equal(payload.method_metadata.owned_revision, "owned-in-method");
   assert.equal(payload.method_metadata.derived_revision, "derived-in-method");
 });

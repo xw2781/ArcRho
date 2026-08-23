@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from arcrho_api.io import persisted_json_text
 from arcrho_api.revision_contract import fingerprint
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.schemas.data_processing_rules import DataProcessingRulesData
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -61,7 +62,7 @@ class RulesValidationError(ValueError):
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def _current_user() -> str:
@@ -1318,19 +1319,8 @@ def _count_stale_generated_sidecars(project_name: str, expected_hash: str) -> in
                 continue
             if is_imported_snapshot_payload(payload):
                 continue
-            processing_by_csv = payload.get("processing_by_csv")
-            if isinstance(processing_by_csv, dict) and processing_by_csv:
-                stale_entries = 0
-                for entry in processing_by_csv.values():
-                    entry_hash = (
-                        str(entry.get("config_hash") or "").strip()
-                        if isinstance(entry, dict)
-                        else ""
-                    )
-                    if not entry_hash or entry_hash != expected_hash:
-                        stale_entries += 1
-                count += stale_entries
-                continue
+            # One sidecar is one cached CSV, so the flat ``processing`` copy is
+            # the whole provenance; the per-CSV map it used to duplicate is gone.
             processing = payload.get("processing")
             stored_hash = (
                 str(processing.get("config_hash") or "").strip()

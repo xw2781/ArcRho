@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
+from .sidecar_core_contract import dependency_entries
 from .dfm_contract import (
     build_dfm_output_sidecar,
     default_average_formulas,
     dependency_entries,
     dfm_output_variants,
     dfm_precedent_names,
-    LEGACY_DFM_JSON_FORMAT,
     normalize_dfm_method,
     persisted_projection,
     recalculate_dfm_method,
@@ -30,6 +30,7 @@ from .io import persisted_json_text, read_json
 from .paths import DFM_JSON_FORMAT, clean_text, sanitize_file_name_part
 from .sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 from .sidecar_core_contract import with_audit_log_last
+from .timestamps import utc_now_text
 
 if TYPE_CHECKING:
     from .reserving_class import ReservingClass
@@ -204,15 +205,15 @@ def _display_average_label(value: Any) -> str:
 def _cell_note_table_name(table: str) -> str:
     key = clean_text(table).lower().replace("_", " ").replace("-", " ")
     aliases = {
-        "main": "ratio main table",
-        "ratio": "ratio main table",
-        "ratio main": "ratio main table",
-        "ratio main table": "ratio main table",
-        "summary": "ratio summary table",
-        "average": "ratio summary table",
-        "average formulas": "ratio summary table",
-        "ratio summary": "ratio summary table",
-        "ratio summary table": "ratio summary table",
+        "main": "ratio_main_table",
+        "ratio": "ratio_main_table",
+        "ratio main": "ratio_main_table",
+        "ratio_main_table": "ratio_main_table",
+        "summary": "ratio_summary_table",
+        "average": "ratio_summary_table",
+        "average_formulas": "ratio_summary_table",
+        "ratio summary": "ratio_summary_table",
+        "ratio_summary_table": "ratio_summary_table",
     }
     if key in aliases:
         return aliases[key]
@@ -265,7 +266,7 @@ def _as_legacy_index(index: int) -> int:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat()
+    return utc_now_text()
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
@@ -368,12 +369,12 @@ class DfmMethod:
         if not path.exists():
             raise InvalidDfmJsonError(f"DFM method JSON not found: {path}")
         payload = read_json(path)
-        details = _get_tab(payload, "details tab")
+        details = _get_tab(payload, "details_tab")
         name = clean_text(details.get("name")) or path.stem
 
         class _StandaloneProject:
             def __init__(self, method_path: Path, read_only_value: bool) -> None:
-                self.name = clean_text(_get_tab(payload, "method metadata").get("project")) or ""
+                self.name = clean_text(_get_tab(payload, "method_metadata").get("project")) or ""
                 if method_path.parent.name.lower() == "methods" and method_path.parent.parent.parent.name.lower() == "data":
                     self.path = method_path.parent.parent.parent.parent
                     self.data_dir = method_path.parent.parent.parent
@@ -425,48 +426,48 @@ class DfmMethod:
     ) -> "DfmMethod":
         method_name = clean_text(name)
         payload: dict[str, Any] = {
-            "json format": DFM_JSON_FORMAT,
-            "details tab": {
+            "json_format": DFM_JSON_FORMAT,
+            "details_tab": {
                 "name": method_name,
-                "output type": clean_text(output_vector),
-                "output dataset": method_name,
-                "output category": "",
-                "input triangle": clean_text(input_triangle),
-                "origin length": int(origin_length),
-                "development length": int(development_length),
-                "decimal places": int(decimal_places),
+                "output_type": clean_text(output_vector),
+                "output_dataset": method_name,
+                "output_category": "",
+                "input_triangle": clean_text(input_triangle),
+                "origin_length": int(origin_length),
+                "development_length": int(development_length),
+                "decimal_places": int(decimal_places),
             },
-            "data tab": {
-                "origin labels": [],
-                "development labels": [],
-                "input data triangle values": [],
-                "input data triangle mask": [],
-                "number format": "#,##0",
-                "decimal places": 0,
-                "source revision": "",
+            "data_tab": {
+                "origin_labels": [],
+                "development_labels": [],
+                "input_data_triangle_values": [],
+                "input_data_triangle_mask": [],
+                "number_format": "#,##0",
+                "decimal_places": 0,
+                "source_revision": "",
             },
-            "ratios tab": {
-                "ratio triangle": {
-                    "origin labels": [],
-                    "development labels": [],
-                    "ratio values": [],
+            "ratios_tab": {
+                "ratio_triangle": {
+                    "origin_labels": [],
+                    "development_labels": [],
+                    "ratio_values": [],
                     "excluded": [],
                 },
-                "average formulas": default_average_formulas(),
+                "average_formulas": default_average_formulas(),
             },
-            "results tab": {
-                "ratio basis dataset": "",
-                "ratio basis origin labels": [],
-                "ratio basis values": [],
-                "ratio basis number format": "#,##0",
-                "ratio basis decimal places": 0,
-                "ratio basis source revision": "",
-                "ultimate ratio decimal places": 2,
-                "ultimate vector": [],
+            "results_tab": {
+                "ratio_basis_dataset": "",
+                "ratio_basis_origin_labels": [],
+                "ratio_basis_values": [],
+                "ratio_basis_number_format": "#,##0",
+                "ratio_basis_decimal_places": 0,
+                "ratio_basis_source_revision": "",
+                "ultimate_ratio_decimal_places": 2,
+                "ultimate_vector": [],
             },
-            "method metadata": {
-                "last modified": _now_iso(),
-                "data refreshed": _now_iso(),
+            "method_metadata": {
+                "last_modified": _now_iso(),
+                "data_refreshed": _now_iso(),
             },
         }
         if extra:
@@ -553,9 +554,9 @@ class DfmMethod:
         path = self._source_csv_path(dataset_name, sidecar, legacy_path=legacy_path)
         matrix = _read_csv_matrix(path)
         fallback_origins = (
-            self.results_tab.get("ratio basis origin labels")
+            self.results_tab.get("ratio_basis_origin_labels")
             if vector
-            else self.data_tab.get("origin labels")
+            else self.data_tab.get("origin_labels")
         )
         origin_labels = sidecar.get("origin_labels")
         if not isinstance(origin_labels, list) or len(origin_labels) != len(matrix):
@@ -576,11 +577,11 @@ class DfmMethod:
         else:
             development_labels = sidecar.get("development_labels") if isinstance(sidecar.get("development_labels"), list) else []
             if not development_labels:
-                existing = self.data_tab.get("development labels")
+                existing = self.data_tab.get("development_labels")
                 if isinstance(existing, list) and len(existing) == max((len(row) for row in matrix), default=0):
                     development_labels = [str(item) for item in existing]
             if not development_labels:
-                development_length = int(self.details.get("development length") or 12)
+                development_length = int(self.details.get("development_length") or 12)
                 development_labels = [
                     f"{development_length * (index + 1)}m"
                     for index in range(max((len(row) for row in matrix), default=0))
@@ -604,28 +605,17 @@ class DfmMethod:
         return snapshot
 
     def _upgrade_or_hydrate_v2(self) -> None:
-        json_format = self.payload.get("json format")
-        if json_format == LEGACY_DFM_JSON_FORMAT:
-            legacy = deepcopy(self.payload)
-            legacy["json format"] = DFM_JSON_FORMAT
-            details = _tab(legacy, "details tab")
-            details["output dataset"] = clean_text(details.get("output dataset")) or self.name
-            details["output category"] = clean_text(
-                details.get("output category") or details.get("output dataset_category")
-            )
-            self.payload = legacy
-        input_name = clean_text(self.details.get("input triangle"))
+        input_name = clean_text(self.details.get("input_triangle"))
         if not input_name:
             raise DfmDataError("DFM input triangle is required before save.")
-        input_values = self.data_tab.get("input data triangle values")
+        input_values = self.data_tab.get("input_data_triangle_values")
         if not isinstance(input_values, list) or not input_values:
-            legacy_path = self.data_tab.get("input data triangle csv path")
             self.payload = recalculate_dfm_method(
                 self.payload,
-                input_snapshot=self._source_snapshot(input_name, vector=False, legacy_path=legacy_path),
+                input_snapshot=self._source_snapshot(input_name, vector=False),
             )
-        basis_name = clean_text(self.results_tab.get("ratio basis dataset"))
-        basis_values = self.results_tab.get("ratio basis values")
+        basis_name = clean_text(self.results_tab.get("ratio_basis_dataset"))
+        basis_values = self.results_tab.get("ratio_basis_values")
         if basis_name and (not isinstance(basis_values, list) or not basis_values):
             self.payload = recalculate_dfm_method(
                 self.payload,
@@ -633,8 +623,8 @@ class DfmMethod:
             )
 
     def _output_csv_files(self) -> tuple[Path, dict[Path, bytes]]:
-        output_dataset = clean_text(self.details.get("output dataset")) or self.name
-        origin_length = int(self.details.get("origin length") or 12)
+        output_dataset = clean_text(self.details.get("output_dataset")) or self.name
+        origin_length = int(self.details.get("origin_length") or 12)
         data_dir = self.project.reserving_class_data_dir(self.reserving_class) / "datasets"
         files: dict[Path, bytes] = {}
         for period_length, values in dfm_output_variants(self.payload).items():
@@ -678,8 +668,8 @@ class DfmMethod:
     ) -> dict[Path, bytes]:
         sidecar_dir = self.project.reserving_class_data_dir(self.reserving_class) / "sidecars"
         old_precedents = [
-            item["dataset_type_name"]
-            for item in dependency_entries(existing_output_sidecar.get("Precedents"))
+            item["dataset_name"]
+            for item in dependency_entries(existing_output_sidecar.get("precedents"))
         ]
         new_precedents = dfm_precedent_names(self.payload)
         old_by_key = {clean_text(name).casefold(): clean_text(name) for name in old_precedents if clean_text(name)}
@@ -688,8 +678,8 @@ class DfmMethod:
         if graph_changed:
             targets = set(new_by_key)
             queue = [
-                item["dataset_type_name"]
-                for item in dependency_entries(existing_output_sidecar.get("Dependents"))
+                item["dataset_name"]
+                for item in dependency_entries(existing_output_sidecar.get("dependents"))
             ]
             visited: set[str] = set()
             while queue:
@@ -707,8 +697,8 @@ class DfmMethod:
                     continue
                 dependent_sidecar = read_json(dependent_path)
                 queue.extend(
-                    item["dataset_type_name"]
-                    for item in dependency_entries(dependent_sidecar.get("Dependents"))
+                    item["dataset_name"]
+                    for item in dependency_entries(dependent_sidecar.get("dependents"))
                 )
         files: dict[Path, bytes] = {}
         for key in sorted(set(old_by_key) | set(new_by_key)):
@@ -722,8 +712,8 @@ class DfmMethod:
                 continue
             source = read_json(path)
             dependents = [
-                item["dataset_type_name"]
-                for item in dependency_entries(source.get("Dependents"))
+                item["dataset_name"]
+                for item in dependency_entries(source.get("dependents"))
             ]
             next_dependents = [
                 item for item in dependents if clean_text(item).casefold() != output_dataset.casefold()
@@ -731,9 +721,9 @@ class DfmMethod:
             if key in new_by_key:
                 next_dependents.append(output_dataset)
             normalized = dependency_entries(next_dependents)
-            if normalized == dependency_entries(source.get("Dependents")):
+            if normalized == dependency_entries(source.get("dependents")):
                 continue
-            source["Dependents"] = normalized
+            source["dependents"] = normalized
             files[path] = _json_bytes(with_audit_log_last(source))
         return files
 
@@ -744,7 +734,7 @@ class DfmMethod:
         self._upgrade_or_hydrate_v2()
         modified_at = _now_iso()
         if not automatic:
-            _tab(self.payload, "method metadata")["last modified"] = modified_at
+            _tab(self.payload, "method_metadata")["last_modified"] = modified_at
         try:
             self.payload = recalculate_dfm_method(
                 self.payload,
@@ -755,7 +745,7 @@ class DfmMethod:
             raise DfmDataError(str(err)) from err
         csv_path, output_files = self._output_csv_files()
         sidecar_path = self._sidecar_path()
-        output_dataset = clean_text(self.details.get("output dataset")) or self.name
+        output_dataset = clean_text(self.details.get("output_dataset")) or self.name
         rc_data_dir = self.project.reserving_class_data_dir(self.reserving_class)
         published_output_changed = True
         with _dfm_publish_lock(rc_data_dir):
@@ -771,7 +761,7 @@ class DfmMethod:
                 bool(output_changed)
                 if output_changed is not None
                 else clean_text(existing_sidecar.get("publication_revision"))
-                != clean_text(self.metadata.get("publication revision"))
+                != clean_text(self.metadata.get("publication_revision"))
             )
             sidecar = self._output_sidecar_payload(
                 csv_path,
@@ -820,7 +810,7 @@ class DfmMethod:
 
     @property
     def output_vector(self) -> str:
-        return clean_text(self.details.get("output type"))
+        return clean_text(self.details.get("output_type"))
 
     def output_vector_dataset_type(self) -> Any | None:
         lookup = getattr(self.project, "dataset_type", None)
@@ -834,19 +824,19 @@ class DfmMethod:
 
     @property
     def input_triangle(self) -> str:
-        return clean_text(self.details.get("input triangle"))
+        return clean_text(self.details.get("input_triangle"))
 
     @property
     def origin_length(self) -> int | None:
-        return _int_or_none(self.details.get("origin length"))
+        return _int_or_none(self.details.get("origin_length"))
 
     @property
     def development_length(self) -> int | None:
-        return _int_or_none(self.details.get("development length"))
+        return _int_or_none(self.details.get("development_length"))
 
     @property
     def decimal_places(self) -> int | None:
-        return _int_or_none(self.details.get("decimal places"))
+        return _int_or_none(self.details.get("decimal_places"))
 
     @property
     def notes(self) -> str:
@@ -859,49 +849,49 @@ class DfmMethod:
 
     @property
     def last_modified(self) -> str:
-        return clean_text(self.metadata.get("last modified"))
+        return clean_text(self.metadata.get("last_modified"))
 
     @property
     def details(self) -> dict[str, Any]:
-        return _tab(self.payload, "details tab")
+        return _tab(self.payload, "details_tab")
 
     @property
     def data_tab(self) -> dict[str, Any]:
-        return _tab(self.payload, "data tab")
+        return _tab(self.payload, "data_tab")
 
     @property
     def ratios_tab(self) -> dict[str, Any]:
-        return _tab(self.payload, "ratios tab")
+        return _tab(self.payload, "ratios_tab")
 
     @property
     def ratio_triangle(self) -> dict[str, Any]:
-        return _tab(self.ratios_tab, "ratio triangle")
+        return _tab(self.ratios_tab, "ratio_triangle")
 
     @property
     def average_formulas(self) -> dict[str, Any]:
-        return _tab(self.ratios_tab, "average formulas")
+        return _tab(self.ratios_tab, "average_formulas")
 
     @property
     def cell_notes(self) -> dict[str, Any]:
-        return _tab(self.ratios_tab, "cell notes")
+        return _tab(self.ratios_tab, "cell_notes")
 
     @property
     def results_tab(self) -> dict[str, Any]:
-        return _tab(self.payload, "results tab")
+        return _tab(self.payload, "results_tab")
 
     @property
     def metadata(self) -> dict[str, Any]:
-        return _tab(self.payload, "method metadata")
+        return _tab(self.payload, "method_metadata")
 
     def update_details(self, **fields: Any) -> "DfmMethod":
         mapping = {
             "name": "name",
-            "output_vector": "output type",
-            "output_type": "output type",
-            "input_triangle": "input triangle",
-            "origin_length": "origin length",
-            "development_length": "development length",
-            "decimal_places": "decimal places",
+            "output_vector": "output_type",
+            "output_type": "output_type",
+            "input_triangle": "input_triangle",
+            "origin_length": "origin_length",
+            "development_length": "development_length",
+            "decimal_places": "decimal_places",
         }
         for key, value in fields.items():
             target = mapping.get(key, key.replace("_", " "))
@@ -937,7 +927,7 @@ class DfmMethod:
         selected = _coerce_matrix(self.average_formulas.get("selected"))
         selected_by_dev: list[dict[str, Any]] = []
         col_count = self._average_col_count()
-        dev_labels = self.ratio_triangle.get("development labels") or []
+        dev_labels = self.ratio_triangle.get("development_labels") or []
         for col in range(col_count):
             row_index = None
             for row, selected_row in enumerate(selected):
@@ -956,53 +946,48 @@ class DfmMethod:
             "name": self.name,
             "file path": str(self.file_path),
             "details": self.info(),
-            "data tab": {
-                "origin labels": self.data_tab.get("origin labels") or [],
-                "development labels": self.data_tab.get("development labels") or [],
-                "source revision": self.data_tab.get("source revision") or "",
+            "data_tab": {
+                "origin_labels": self.data_tab.get("origin_labels") or [],
+                "development_labels": self.data_tab.get("development_labels") or [],
+                "source_revision": self.data_tab.get("source_revision") or "",
             },
-            "ratios tab": {
-                "origin labels": self.ratio_triangle.get("origin labels") or [],
-                "development labels": self.ratio_triangle.get("development labels") or [],
+            "ratios_tab": {
+                "origin_labels": self.ratio_triangle.get("origin_labels") or [],
+                "development_labels": self.ratio_triangle.get("development_labels") or [],
                 "ratio shape": list(_matrix_shape(ratio_values)),
-                "average formulas": labels,
+                "average_formulas": labels,
                 "selected by development": selected_by_dev,
             },
-            "results tab": {
-                "ratio basis dataset": self.results_tab.get("ratio basis dataset") or "",
-                "ratio basis source revision": self.results_tab.get("ratio basis source revision") or "",
-                "publication revision": self.metadata.get("publication revision") or "",
+            "results_tab": {
+                "ratio_basis_dataset": self.results_tab.get("ratio_basis_dataset") or "",
+                "ratio_basis_source_revision": self.results_tab.get("ratio_basis_source_revision") or "",
+                "publication_revision": self.metadata.get("publication_revision") or "",
             },
             "notes preview": self.notes[:500],
         }
 
     def input_data_triangle(self) -> list[list[Any]]:
-        embedded = self.data_tab.get("input data triangle values")
+        embedded = self.data_tab.get("input_data_triangle_values")
         if isinstance(embedded, list):
             return deepcopy(_coerce_matrix(embedded))
-        if self.payload.get("json format") != LEGACY_DFM_JSON_FORMAT:
-            return []
-        path = self._resolve_data_path(self.data_tab.get("input data triangle csv path"))
-        if not path:
-            return []
-        return _read_csv_matrix(path)
+        return []
 
     def ratio_values(self) -> list[list[Any]]:
-        return _coerce_matrix(self.ratio_triangle.get("ratio values"))
+        return _coerce_matrix(self.ratio_triangle.get("ratio_values"))
 
     def ratio_row(self, row: int | str) -> dict[str, Any]:
         row_index = self._resolve_row(row)
         values = self.ratio_values()
         excluded = _coerce_matrix(self.ratio_triangle.get("excluded"))
         origin_labels = self._origin_labels()
-        dev_labels = self.ratio_triangle.get("development labels") or []
+        dev_labels = self.ratio_triangle.get("development_labels") or []
         row_values = values[row_index] if row_index < len(values) else []
         row_excluded = excluded[row_index] if row_index < len(excluded) else []
         return {
             "api method": "DfmMethod.ratio_row",
             "origin index": row_index + 1,
             "origin label": origin_labels[row_index] if row_index < len(origin_labels) else str(row_index + 1),
-            "development labels": dev_labels,
+            "development_labels": dev_labels,
             "values": row_values,
             "excluded": row_excluded,
         }
@@ -1023,17 +1008,17 @@ class DfmMethod:
                 "values": self.input_data_triangle(),
             }
         if "ratio-triangle" in include_items:
-            components["ratio triangle"] = {
+            components["ratio_triangle"] = {
                 "api method": "DfmMethod.ratio_values",
-                "origin labels": self.ratio_triangle.get("origin labels") or [],
-                "development labels": self.ratio_triangle.get("development labels") or [],
+                "origin_labels": self.ratio_triangle.get("origin_labels") or [],
+                "development_labels": self.ratio_triangle.get("development_labels") or [],
                 "values": self.ratio_values(),
                 "excluded": self.ratio_triangle.get("excluded") or [],
             }
         if "average-formulas" in include_items:
-            components["average formulas"] = self.average_formula_summary()
+            components["average_formulas"] = self.average_formula_summary()
         if "ultimate-vector" in include_items:
-            components["ultimate vector"] = {
+            components["ultimate_vector"] = {
                 "api method": "DfmMethod.ultimate_vector",
                 "values": self.ultimate_vector(),
             }
@@ -1050,7 +1035,7 @@ class DfmMethod:
         return {
             "api method": "DfmMethod.average_formula_summary",
             "label": self.average_formulas.get("label") or [],
-            "custom average formula settings": self.average_formulas.get("custom average formula settings") or {},
+            "custom_average_formula_settings": self.average_formulas.get("custom_average_formula_settings") or {},
             "selected": self.average_formulas.get("selected") or [],
             "values": self.average_formulas.get("values") or [],
             "inputs": self.average_formulas.get("inputs") or [],
@@ -1062,7 +1047,7 @@ class DfmMethod:
         development: int | str,
         note: str,
         *,
-        table: str = "ratio summary table",
+        table: str = "ratio_summary_table",
     ) -> "DfmMethod":
         table_name = _cell_note_table_name(table)
         column_label = self._cell_note_development_label(development)
@@ -1085,7 +1070,7 @@ class DfmMethod:
         self,
         development: int | str,
         *,
-        table: str = "ratio summary table",
+        table: str = "ratio_summary_table",
     ) -> "DfmMethod":
         table_name = _cell_note_table_name(table)
         column_label = self._cell_note_development_label(development)
@@ -1311,7 +1296,7 @@ class DfmMethod:
     ) -> "DfmMethod":
         reference = self._resolve_source_dfm(source)
         if copy_values:
-            self.ratios_tab["average formulas"] = deepcopy(reference.average_formulas)
+            self.ratios_tab["average_formulas"] = deepcopy(reference.average_formulas)
             return self
         self._copy_average_selection(reference, col_index, skip_user_entry_values=skip_user_entry_values)
         return self
@@ -1399,7 +1384,7 @@ class DfmMethod:
         row = self._ensure_average_label(label)
         settings = self._average_settings()
         self._ensure_settings_len(settings, len(self._average_labels()))
-        settings["averageType"][row] = "custom"
+        settings["average_type"][row] = "custom"
         settings["base"][row] = str(weight_type).lower()
         settings["periods"][row] = periods_included
         settings["exclude"][row] = int(ex_hi_lo or 0)
@@ -1418,7 +1403,7 @@ class DfmMethod:
         return running
 
     def dev_period(self, index: int | Sequence[int], format: int | str = 0) -> str:
-        labels = self.ratio_triangle.get("development labels") or self.data_tab.get("development labels") or []
+        labels = self.ratio_triangle.get("development_labels") or self.data_tab.get("development_labels") or []
         if not isinstance(index, (str, bytes)) and isinstance(index, Sequence):
             items = list(index)
             if not items:
@@ -1439,7 +1424,7 @@ class DfmMethod:
         return _number(digits[-1])
 
     def ratio(self, row: int, column: int) -> Any:
-        values = _coerce_matrix(self.ratio_triangle.get("ratio values"))
+        values = _coerce_matrix(self.ratio_triangle.get("ratio_values"))
         row_index = self._resolve_row(row)
         col_index = _as_col_index(column)
         try:
@@ -1456,16 +1441,10 @@ class DfmMethod:
             raise DfmDataError(f"Ultimate value not found at row={row}.") from err
 
     def ultimate_vector(self) -> list[Any]:
-        embedded = self.results_tab.get("ultimate vector")
+        embedded = self.results_tab.get("ultimate_vector")
         if isinstance(embedded, list):
             return deepcopy(embedded)
-        if self.payload.get("json format") != LEGACY_DFM_JSON_FORMAT:
-            return []
-        path = self._resolve_data_path(self.results_tab.get("ultimate vector csv path"))
-        if not path:
-            return []
-        matrix = _read_csv_matrix(path)
-        return [row[0] if row else None for row in matrix]
+        return []
 
     def ultimates(self, row: int | str | None = None) -> Any:
         if row is None:
@@ -1544,23 +1523,23 @@ class DfmMethod:
 
     def set_summary_ratio_basis(self, basis_object: Any, data_type: str = "Vector") -> "DfmMethod":
         name = getattr(basis_object, "name", None) or getattr(basis_object, "Name", None) or str(basis_object)
-        self.results_tab["ratio basis dataset"] = clean_text(name)
-        self.results_tab["ratio basis data format"] = clean_text(data_type) or "Vector"
-        self.results_tab["ratio basis origin labels"] = []
-        self.results_tab["ratio basis values"] = []
-        self.results_tab["ratio basis source revision"] = ""
+        self.results_tab["ratio_basis_dataset"] = clean_text(name)
+        self.results_tab["ratio_basis_data_format"] = clean_text(data_type) or "Vector"
+        self.results_tab["ratio_basis_origin_labels"] = []
+        self.results_tab["ratio_basis_values"] = []
+        self.results_tab["ratio_basis_source_revision"] = ""
         return self
 
     def reset_ratio_basis(self, source: "DfmMethod" | str | None = None) -> "DfmMethod":
         reference = self._resolve_source_dfm(source)
         for key in (
-            "ratio basis dataset",
-            "ratio basis origin labels",
-            "ratio basis values",
-            "ratio basis data format",
-            "ratio basis number format",
-            "ratio basis decimal places",
-            "ratio basis source revision",
+            "ratio_basis_dataset",
+            "ratio_basis_origin_labels",
+            "ratio_basis_values",
+            "ratio_basis_data_format",
+            "ratio_basis_number_format",
+            "ratio_basis_decimal_places",
+            "ratio_basis_source_revision",
         ):
             self.results_tab[key] = deepcopy(reference.results_tab.get(key))
         return self
@@ -1570,8 +1549,8 @@ class DfmMethod:
             "api method": "DfmMethod.extended_ratio_data",
             "values": self.ratio_values(),
             "excluded": deepcopy(self.ratio_triangle.get("excluded") or []),
-            "origin labels": self._origin_labels(),
-            "development labels": self.ratio_triangle.get("development labels") or [],
+            "origin_labels": self._origin_labels(),
+            "development_labels": self.ratio_triangle.get("development_labels") or [],
         }
 
     def view(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -1625,50 +1604,44 @@ class DfmMethod:
     def _ensure_grouped_payload(self) -> None:
         if not isinstance(self.payload, dict):
             raise InvalidDfmJsonError("DFM payload must be a JSON object.")
-        self.payload.setdefault("json format", DFM_JSON_FORMAT)
-        json_format = self.payload.get("json format")
-        if json_format not in {DFM_JSON_FORMAT, LEGACY_DFM_JSON_FORMAT}:
+        self.payload.setdefault("json_format", DFM_JSON_FORMAT)
+        json_format = self.payload.get("json_format")
+        if json_format != DFM_JSON_FORMAT:
             raise InvalidDfmJsonError(
-                f"Unsupported DFM JSON format: {self.payload.get('json format')!r}. "
-                f"Expected {DFM_JSON_FORMAT!r} or {LEGACY_DFM_JSON_FORMAT!r}."
+                f"Unsupported DFM JSON format: {self.payload.get('json_format')!r}. "
+                f"Expected {DFM_JSON_FORMAT!r}."
             )
-        if json_format == DFM_JSON_FORMAT:
-            try:
-                self.payload = normalize_dfm_method(
-                    self.payload,
-                    require_complete=self.file_path.is_file(),
-                )
-            except ValueError as err:
-                raise InvalidDfmJsonError(str(err)) from err
-        _tab(self.payload, "details tab")
-        _tab(self.payload, "data tab")
-        ratios = _tab(self.payload, "ratios tab")
-        _tab(ratios, "ratio triangle")
-        _tab(ratios, "average formulas")
-        ratios.pop("percent developed curve", None)
-        _tab(self.payload, "results tab")
-        self.payload.pop("notes tab", None)
-        _tab(self.payload, "method metadata")
-        if json_format == LEGACY_DFM_JSON_FORMAT:
-            self.data_tab.pop("input data triangle values", None)
-            self.results_tab.pop("ultimate vector", None)
+        try:
+            self.payload = normalize_dfm_method(
+                self.payload,
+                require_complete=self.file_path.is_file(),
+            )
+        except ValueError as err:
+            raise InvalidDfmJsonError(str(err)) from err
+        _tab(self.payload, "details_tab")
+        _tab(self.payload, "data_tab")
+        ratios = _tab(self.payload, "ratios_tab")
+        _tab(ratios, "ratio_triangle")
+        _tab(ratios, "average_formulas")
+        _tab(self.payload, "results_tab")
+        _tab(self.payload, "method_metadata")
         self._sync_details_identity()
 
     def _sidecar_path(self) -> Path:
         data_dir = self.project.reserving_class_data_dir(self.reserving_class)
-        output_dataset = clean_text(self.details.get("output dataset")) or self.name
+        output_dataset = clean_text(self.details.get("output_dataset")) or self.name
         return data_dir / "sidecars" / f"{sanitize_file_name_part(output_dataset, 'Dataset')}.json"
 
     def _trim_saved_triangle_arrays(self) -> None:
-        input_values = self.data_tab.get("input data triangle values")
+        input_values = self.data_tab.get("input_data_triangle_values")
         if isinstance(input_values, list):
-            self.data_tab["input data triangle values"] = _trim_trailing_nulls_in_matrix(input_values)
+            self.data_tab["input_data_triangle_values"] = _trim_trailing_nulls_in_matrix(input_values)
 
-        ratio_values_source = self.ratio_triangle.get("ratio values")
+        ratio_values_source = self.ratio_triangle.get("ratio_values")
         ratio_values: list[list[Any]] = []
         if isinstance(ratio_values_source, list):
             ratio_values = _trim_trailing_nulls_in_matrix(ratio_values_source)
-            self.ratio_triangle["ratio values"] = ratio_values
+            self.ratio_triangle["ratio_values"] = ratio_values
 
         excluded_source = self.ratio_triangle.get("excluded")
         if isinstance(excluded_source, list):
@@ -1692,8 +1665,7 @@ class DfmMethod:
         self.details.setdefault("name", self.name)
         self.details["name"] = clean_text(self.details.get("name")) or self.name
         self.name = clean_text(self.details.get("name"))
-        if self.payload.get("json format") == DFM_JSON_FORMAT:
-            self.details["output dataset"] = clean_text(self.details.get("output dataset")) or self.name
+        self.details["output_dataset"] = clean_text(self.details.get("output_dataset")) or self.name
 
     def _ratio_values(self) -> list[list[Any]]:
         return self.ratio_values()
@@ -1883,9 +1855,9 @@ class DfmMethod:
         return self.dev_period(index, part)
 
     def _origin_labels(self) -> list[Any]:
-        labels = self.data_tab.get("origin labels")
+        labels = self.data_tab.get("origin_labels")
         if not isinstance(labels, list):
-            labels = self.ratio_triangle.get("origin labels")
+            labels = self.ratio_triangle.get("origin_labels")
         return labels if isinstance(labels, list) else []
 
     def _resolve_row(self, row: int | str) -> int:
@@ -1922,7 +1894,7 @@ class DfmMethod:
         if text.isdigit():
             return _as_col_index(int(text))
         wanted = _label_key(text)
-        labels = self.ratio_triangle.get("development labels") or self.data_tab.get("development labels") or []
+        labels = self.ratio_triangle.get("development_labels") or self.data_tab.get("development_labels") or []
         for index, label in enumerate(labels if isinstance(labels, list) else []):
             label_text = clean_text(label)
             if _label_key(label_text) == wanted or wanted in _label_key(label_text):
@@ -1944,7 +1916,7 @@ class DfmMethod:
         return value
 
     def _cell_note_row_label(self, row_label: Any, table_name: str) -> str:
-        if table_name == "ratio summary table":
+        if table_name == "ratio_summary_table":
             text = _display_average_label(row_label)
         else:
             text = _normalize_label(row_label)
@@ -1993,18 +1965,18 @@ class DfmMethod:
         return [_normalize_label(label) for label in labels]
 
     def _average_settings(self) -> dict[str, list[Any]]:
-        settings = self.average_formulas.get("custom average formula settings")
+        settings = self.average_formulas.get("custom_average_formula_settings")
         if not isinstance(settings, dict):
             settings = {}
-            self.average_formulas["custom average formula settings"] = settings
-        for key in ("averageType", "base", "periods", "exclude"):
+            self.average_formulas["custom_average_formula_settings"] = settings
+        for key in ("average_type", "base", "periods", "exclude"):
             if not isinstance(settings.get(key), list):
                 settings[key] = []
         return settings  # type: ignore[return-value]
 
     def _ensure_settings_len(self, settings: dict[str, list[Any]], length: int) -> None:
         defaults = {
-            "averageType": "custom",
+            "average_type": "custom",
             "base": "",
             "periods": "all",
             "exclude": 0,
@@ -2027,7 +1999,7 @@ class DfmMethod:
     def _set_average_row_user_entry(self, row_index: int) -> None:
         settings = self._average_settings()
         self._ensure_settings_len(settings, row_index + 1)
-        settings["averageType"][row_index] = "user_entry"
+        settings["average_type"][row_index] = "user_entry"
         settings["base"][row_index] = "simple"
         settings["periods"][row_index] = "all"
         settings["exclude"][row_index] = 0
@@ -2044,7 +2016,7 @@ class DfmMethod:
         self._ensure_settings_len(settings, len(labels))
         inferred = _infer_average_settings(label)
         if inferred:
-            settings["averageType"][row] = "custom"
+            settings["average_type"][row] = "custom"
             settings["base"][row] = inferred["base"]
             settings["periods"][row] = inferred["periods"]
             settings["exclude"][row] = inferred["exclude"]
@@ -2056,7 +2028,7 @@ class DfmMethod:
         values = _coerce_matrix(self.average_formulas.get("values"))
         inputs = _coerce_matrix(self.average_formulas.get("inputs"))
         ratio_rows, ratio_cols = self._ratio_shape()
-        labels = self.ratio_triangle.get("development labels")
+        labels = self.ratio_triangle.get("development_labels")
         label_count = len(labels) if isinstance(labels, list) else 0
         return max(_matrix_shape(selected)[1], _matrix_shape(values)[1], _matrix_shape(inputs)[1], ratio_cols, label_count, 1)
 

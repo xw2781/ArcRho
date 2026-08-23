@@ -218,7 +218,7 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
             project_name="Demo",
             reserving_class=r"Auto\PP",
             csv_file="BF Ultimate@3.csv",
-            existing={"dataset_category": "Old Category", "Dependents": ["Downstream"]},
+            existing={"dataset_category": "Old Category", "dependents": ["Downstream"]},
             notes="BF note",
             timestamp="2026-01-02T00:00:00Z",
             user="tester",
@@ -226,10 +226,10 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
         self.assertEqual(sidecar["dataset_category"], "Loss")
         self.assertEqual(sidecar["publication_revision"], method["method_metadata"]["publication_revision"])
         self.assertEqual(
-            sidecar["Precedents"],
-            [{"dataset_type_name": name} for name in bornhuetter_ferguson_precedent_names(method)],
+            sidecar["precedents"],
+            [{"dataset_name": name} for name in bornhuetter_ferguson_precedent_names(method)],
         )
-        self.assertEqual(sidecar["Dependents"], [{"dataset_type_name": "Downstream"}])
+        self.assertEqual(sidecar["dependents"], [{"dataset_name": "Downstream"}])
 
 
 if __name__ == "__main__":

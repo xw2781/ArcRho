@@ -20,7 +20,7 @@ The job runs two stages:
             rows, resolves each row's Source/Generated, and writes the JSON and
             its XLSX companion.
 ``graphs``  the canonical ``calculated_dataset_service`` re-derives every
-            sidecar's Precedents/Dependents from the new table, recalculates
+            sidecar's precedents/dependents from the new table, recalculates
             the calculated datasets whose formula or kind changed, and walks
             each affected reserving class's dependents.
 

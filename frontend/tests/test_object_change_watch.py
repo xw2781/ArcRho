@@ -191,7 +191,7 @@ class ObjectChangeWatchServiceTests(unittest.TestCase):
 
     def test_attribution_falls_back_to_the_method_stamp_then_to_nothing(self) -> None:
         (self.methods / "DFM@Development.json").write_text(
-            json.dumps({"method metadata": {"last modified": "2026-08-20T14:24:11Z"}}),
+            json.dumps({"method_metadata": {"last_modified": "2026-08-20T14:24:11Z"}}),
             encoding="utf-8",
         )
         attribution = self._attribution(

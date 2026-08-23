@@ -15,6 +15,7 @@ from openpyxl.utils import get_column_letter
 from fastapi import HTTPException
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.config import (
     RESERVING_CLASS_TYPES_SHEET_NAME,
@@ -100,7 +101,7 @@ def _write_reserving_class_tree_preferences(project_name: str, preferences: Any)
     update_project_user_preferences(project_name, {
         PROJECT_USER_RESERVING_CLASS_TREE_KEY: {
             "preferences": preferences_norm,
-            "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "updated_at": utc_now_text(),
         },
     })
     return preferences_norm
@@ -113,7 +114,7 @@ def _read_reserving_class_tree_filter_spec(project_name: str) -> Tuple[Dict[str,
 
 def _write_reserving_class_tree_filter_spec(project_name: str, filter_spec: Any) -> Tuple[Dict[str, List[str]], str]:
     filter_spec_norm = _normalize_reserving_filter_spec(filter_spec)
-    now_iso = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now_iso = utc_now_text()
     out = update_project_user_preferences(project_name, {
         PROJECT_USER_RESERVING_CLASS_TREE_KEY: {
             "filterSpec": filter_spec_norm,
@@ -143,7 +144,7 @@ def save_hidden_paths_for_project(project_name: str, hidden_paths: Any) -> Dict[
         raise ValueError("project_name is required")
 
     hidden_paths_norm = _normalize_reserving_hidden_path_list(hidden_paths)
-    now_iso = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now_iso = utc_now_text()
     out = update_project_user_preferences(project_name, {
         PROJECT_USER_RESERVING_CLASS_TREE_KEY: {
             "hiddenPaths": hidden_paths_norm,
@@ -1030,7 +1031,7 @@ def refresh_reserving_class_types_json(
     payload = {
         "columns": list(RESERVING_CLASS_TYPES_FILE_COLUMNS),
         "rows": file_rows,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
     }
 
     output_xlsx_path = _get_reserving_class_types_xlsx_path(output_path)
@@ -1382,7 +1383,7 @@ def _refresh_reserving_class_combinations_cache(
     payload = {
         "project_name": project_name,
         "table_path": table_path,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
         "source_csv_mtime": source_csv_mtime,
         "source_csv_size": source_csv_size,
         "field_signature": field_signature,
@@ -1579,7 +1580,7 @@ def refresh_reserving_class_values(
     payload = {
         "project_name": project_name,
         "table_path": table_path,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
         "source_csv_mtime": source_csv_mtime,
         "source_csv_size": source_csv_size,
         "field_signature": field_signature,
@@ -2263,7 +2264,7 @@ def get_reserving_class_path_tree_children(
         "project_name": project_name_clean,
         "mode": "lazy",
         "table_path": table_path,
-        "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "updated_at": utc_now_text(),
         "source_csv_mtime": source_csv_mtime,
         "source_csv_size": source_csv_size,
         "field_signature": field_signature,
@@ -2329,7 +2330,7 @@ def get_reserving_class_path_tree_children(
                 "project_name": project_name_clean,
                 "mode": "lazy",
                 "table_path": table_path,
-                "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "updated_at": utc_now_text(),
                 "source_csv_mtime": source_csv_mtime,
                 "source_csv_size": source_csv_size,
                 "field_signature": field_signature,

@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
-from .dfm_contract import DFM_JSON_FORMAT, dependency_entries, recalculate_dfm_method
+from .dfm_contract import DFM_JSON_FORMAT, recalculate_dfm_method
+from .sidecar_core_contract import dependency_entries
 from .io import persisted_json_text
 from .sidecar_core_contract import with_audit_log_last
 from .paths import clean_text, sanitize_file_name_part
@@ -119,8 +120,8 @@ def _refresh_dfm_dependents_for_sources_locked(
                 warnings.append(f"Could not inspect dependents of '{source_name}': {exc}")
                 continue
             dependent_names = [
-                entry["dataset_type_name"]
-                for entry in dependency_entries(source_sidecar.get("Dependents"))
+                entry["dataset_name"]
+                for entry in dependency_entries(source_sidecar.get("dependents"))
             ]
             for output_name in dependent_names:
                 output_key = _key(output_name)
@@ -172,10 +173,10 @@ def _refresh_dfm_dependents_for_sources_locked(
                 if not method_name:
                     raise ValueError("DFM output sidecar does not identify its method")
                 method = reserving_class.dfm(method_name)
-                if method.payload.get("json format") != DFM_JSON_FORMAT:
+                if method.payload.get("json_format") != DFM_JSON_FORMAT:
                     raise ValueError("automatic propagation requires a canonical DFM v2 method")
-                input_name = clean_text(method.details.get("input triangle"))
-                basis_name = clean_text(method.results_tab.get("ratio basis dataset"))
+                input_name = clean_text(method.details.get("input_triangle"))
+                basis_name = clean_text(method.results_tab.get("ratio_basis_dataset"))
                 input_key = _key(input_name)
                 basis_key = _key(basis_name)
                 source_keys = {_key(source_name) for source_name in source_names}
@@ -183,9 +184,9 @@ def _refresh_dfm_dependents_for_sources_locked(
                 matches_basis = bool(basis_key) and basis_key in source_keys
                 if any(key not in {input_key, basis_key} for key in source_keys):
                     raise ValueError("dependency graph does not match the DFM precedent identities")
-                old_publication = clean_text(method.metadata.get("publication revision"))
+                old_publication = clean_text(method.metadata.get("publication_revision"))
                 input_snapshot = method._source_snapshot(input_name, vector=False) if matches_input else None
-                embedded_origins = [str(item) for item in method.data_tab.get("origin labels", [])]
+                embedded_origins = [str(item) for item in method.data_tab.get("origin_labels", [])]
                 refreshed_origins = [
                     str(item)
                     for item in (input_snapshot or {}).get("origin_labels", [])
@@ -204,13 +205,13 @@ def _refresh_dfm_dependents_for_sources_locked(
                     ratio_basis_snapshot=basis_snapshot,
                     changed_precedents=source_names,
                 )
-                output_changed = clean_text(method.metadata.get("publication revision")) != old_publication
+                output_changed = clean_text(method.metadata.get("publication_revision")) != old_publication
                 method.save(automatic=True, output_changed=output_changed)
                 if output_key not in refreshed_keys:
                     refreshed_keys.add(output_key)
                     refreshed.append(output_name)
                 if output_changed:
-                    publication_revision = clean_text(method.metadata.get("publication revision"))
+                    publication_revision = clean_text(method.metadata.get("publication_revision"))
                     next_frontier.append(
                         (output_name, False, f"publication:{publication_revision}")
                     )

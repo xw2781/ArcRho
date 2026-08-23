@@ -76,7 +76,7 @@ import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag
 let persistedRatioTriangleValues = null;
 
 export function applyPersistedRatioDerivedSnapshot(ratioTriangle = {}) {
-  const values = ratioTriangle?.["ratio values"];
+  const values = ratioTriangle?.["ratio_values"];
   persistedRatioTriangleValues = Array.isArray(values)
     ? values.map((row) => (
       Array.isArray(row)

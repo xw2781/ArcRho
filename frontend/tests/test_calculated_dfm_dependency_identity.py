@@ -33,18 +33,18 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
         self.input_path.write_text("100\n", encoding="utf-8")
         self.method_path = self.method_folder / "DFM@Selected.json"
         self.method_payload = {
-            "details tab": {
+            "details_tab": {
                 "name": "Selected DFM",
-                "output type": "Ultimate Loss",
-                "input triangle": "Paid Loss",
+                "output_type": "Ultimate Loss",
+                "input_triangle": "Paid Loss",
             },
-            "data tab": {
+            "data_tab": {
                 "input data triangle csv path": str(self.input_path),
-                "development labels": ["12"],
-                "origin labels": ["2025"],
+                "development_labels": ["12"],
+                "origin_labels": ["2025"],
             },
-            "ratios tab": {
-                "average formulas": {
+            "ratios_tab": {
+                "average_formulas": {
                     "selected": [[1]],
                     "values": [[1]],
                 }
@@ -58,8 +58,8 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
             json.dumps(
                 {
                     **self.method_payload,
-                    "details tab": {
-                        **self.method_payload["details tab"],
+                    "details_tab": {
+                        **self.method_payload["details_tab"],
                         "name": "Other DFM",
                     },
                 }
@@ -186,8 +186,8 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
         old_input_path = old_root / "datasets" / self.input_path.name
         relocated_payload = {
             **self.method_payload,
-            "data tab": {
-                **self.method_payload["data tab"],
+            "data_tab": {
+                **self.method_payload["data_tab"],
                 "input data triangle csv path": str(old_input_path),
             },
         }
@@ -231,12 +231,12 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
         current_input_path.write_text("250\n", encoding="utf-8")
         current_payload = {
             **self.method_payload,
-            "details tab": {
-                **self.method_payload["details tab"],
-                "input triangle": "Reported Loss",
+            "details_tab": {
+                **self.method_payload["details_tab"],
+                "input_triangle": "Reported Loss",
             },
-            "data tab": {
-                **self.method_payload["data tab"],
+            "data_tab": {
+                **self.method_payload["data_tab"],
                 "input data triangle csv path": str(current_input_path),
             },
         }
@@ -290,10 +290,14 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
             ("Cumulative", "True"),
             ("Calendar", "False"),
         ]
-        requested_sidecar = {
-            "Precedents": [
+        # The technical record beside the previous output names the exact DFM
+        # method and input it was rebuilt from; the sidecar holds the name only.
+        requested_record = {
+            "formula": '"Ultimate Loss"',
+            "dependencies": [
                 {
-                    "dataset_type_name": "Ultimate Loss",
+                    "dataset_type": "Ultimate Loss",
+                    "dataset_name": "Ultimate Loss",
                     "source_kind": "dfm_method",
                     "path": str(self.method_path),
                     "input_path": str(self.input_path),
@@ -327,8 +331,8 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
             ),
             patch.object(
                 arcrho_runtime_service,
-                "_read_existing_cache_json",
-                return_value=requested_sidecar,
+                "_calculated_cache_record",
+                return_value=requested_record,
             ),
             patch.object(
                 arcrho_runtime_service,
@@ -401,10 +405,14 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
                 }
             },
         }
-        requested_sidecar = {
-            "Precedents": [
+        # The technical record beside the previous output names the exact DFM
+        # method and input it was rebuilt from; the sidecar holds the name only.
+        requested_record = {
+            "formula": '"Ultimate Loss"',
+            "dependencies": [
                 {
-                    "dataset_type_name": "Ultimate Loss",
+                    "dataset_type": "Ultimate Loss",
+                    "dataset_name": "Ultimate Loss",
                     "source_kind": "dfm_method",
                     "path": str(self.method_path),
                     "input_path": str(self.input_path),
@@ -420,8 +428,8 @@ class CalculatedDfmDependencyIdentityTests(unittest.TestCase):
             ),
             patch.object(
                 arcrho_runtime_service,
-                "_read_existing_cache_json",
-                return_value=requested_sidecar,
+                "_calculated_cache_record",
+                return_value=requested_record,
             ),
             patch.object(
                 arcrho_runtime_service,

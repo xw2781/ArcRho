@@ -54,13 +54,13 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
 
     def test_apply_validates_owned_patch_and_uses_aggregate_save(self) -> None:
         patch = {
-            "payload format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
-            "ratios tab": {"ratio triangle": {"excluded": [[1]]}},
-            "method metadata": {"method notes": "Remote ResQ note"},
+            "payload_format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
+            "ratios_tab": {"ratio_triangle": {"excluded": [[1]]}},
+            "method_metadata": {"method_notes": "Remote ResQ note"},
         }
-        local = {"json format": "arcrho-dfm-method-by-tab-v2"}
-        preview = {"json format": "arcrho-dfm-method-by-tab-v2", "preview": True}
-        saved_method = {"json format": "arcrho-dfm-method-by-tab-v2", "saved": True}
+        local = {"json_format": "arcrho-dfm-v4"}
+        preview = {"json_format": "arcrho-dfm-v4", "preview": True}
+        saved_method = {"json_format": "arcrho-dfm-v4", "saved": True}
         with (
             mock.patch.object(dfm_rpc_bridge_service, "build_paths", return_value=self.paths()),
             mock.patch.object(dfm_rpc_bridge_service.os.path, "exists", return_value=True),
@@ -99,15 +99,15 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
     def test_apply_method_notes_absent_keeps_and_present_empty_clears(self) -> None:
         for metadata, expected_notes in (
             ({}, None),
-            ({"method notes": ""}, ""),
-            ({"method notes": "   "}, ""),
+            ({"method_notes": ""}, ""),
+            ({"method_notes": "   "}, ""),
         ):
             patch = {
-                "payload format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
-                "ratios tab": {"ratio triangle": {"excluded": [[1]]}},
-                "method metadata": metadata,
+                "payload_format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
+                "ratios_tab": {"ratio_triangle": {"excluded": [[1]]}},
+                "method_metadata": metadata,
             }
-            local = {"json format": "arcrho-dfm-method-by-tab-v2"}
+            local = {"json_format": "arcrho-dfm-v4"}
             with (
                 mock.patch.object(dfm_rpc_bridge_service, "build_paths", return_value=self.paths()),
                 mock.patch.object(dfm_rpc_bridge_service.os.path, "exists", return_value=True),
@@ -139,19 +139,19 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
 
     def test_snapshot_reports_remote_method_notes_and_local_sidecar_notes(self) -> None:
         remote_payload = {
-            "payload format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
-            "method metadata": {"last modified": "2026-01-01T00:00:00Z", "method notes": "ResQ note"},
+            "payload_format": dfm_rpc_bridge_service.DFM_OWNED_PATCH_FORMAT,
+            "method_metadata": {"last_modified": "2026-01-01T00:00:00Z", "method_notes": "ResQ note"},
         }
         self.assertEqual(
             dfm_rpc_bridge_service._extract_method_notes_snapshot(remote_payload),
             {"exists": True, "text": "ResQ note"},
         )
         self.assertEqual(
-            dfm_rpc_bridge_service._extract_method_notes_snapshot({"method metadata": {}}),
+            dfm_rpc_bridge_service._extract_method_notes_snapshot({"method_metadata": {}}),
             {"exists": False, "text": ""},
         )
 
-        local_payload = {"details tab": {"name": "Development", "output dataset": "Development Output"}}
+        local_payload = {"details_tab": {"name": "Development", "output_dataset": "Development Output"}}
         with (
             mock.patch(
                 "app_server.services.dataset_sidecar_status_service.sidecar_path",
@@ -228,7 +228,7 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
         with (
             mock.patch.object(dfm_rpc_bridge_service, "build_paths", return_value=self.paths()),
             mock.patch.object(dfm_rpc_bridge_service.os.path, "exists", return_value=True),
-            mock.patch.object(dfm_rpc_bridge_service, "_read_json", return_value={"json format": "v1"}),
+            mock.patch.object(dfm_rpc_bridge_service, "_read_json", return_value={"json_format": "v1"}),
         ):
             with self.assertRaises(HTTPException) as raised:
                 dfm_rpc_bridge_service.apply_remote_to_local(self.request())
@@ -253,7 +253,7 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
         client._dfm_method = lambda _request: method
         client._average_data = lambda _method: {
             "label": ["Simple - all"],
-            "custom average formula settings": {"averageType": ["custom"]},
+            "custom_average_formula_settings": {"average_type": ["custom"]},
             "selected": [[1]],
             "values": [[1.5]],
             "inputs": [[""]],
@@ -271,13 +271,13 @@ class DfmRpcOwnedPatchTests(unittest.TestCase):
                 "DataPath": "unused.json",
             })
 
-        self.assertEqual(payload["payload format"], resq_client.DFM_OWNED_PATCH_FORMAT)
-        self.assertNotIn("json format", payload)
-        self.assertNotIn("data tab", payload)
-        self.assertNotIn("ratio values", payload["ratios tab"]["ratio triangle"])
-        self.assertNotIn("ultimate vector", payload["results tab"])
+        self.assertEqual(payload["payload_format"], resq_client.DFM_OWNED_PATCH_FORMAT)
+        self.assertNotIn("json_format", payload)
+        self.assertNotIn("data_tab", payload)
+        self.assertNotIn("ratio_values", payload["ratios_tab"]["ratio_triangle"])
+        self.assertNotIn("ultimate_vector", payload["results_tab"])
         self.assertEqual(
-            payload["method metadata"]["method notes"],
+            payload["method_metadata"]["method_notes"],
             "Excluded 2020 LDFs.\r\nSelected low LDF.",
         )
         write.assert_called_once()

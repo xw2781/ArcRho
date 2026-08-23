@@ -37,6 +37,8 @@ from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variant
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_UPDATE
+from arcrho_api.sidecar_core_contract import dependency_entries
+from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
 from .core import (
@@ -80,6 +82,7 @@ from .core import (
     _vector_cache_csv_file_name,
     _write_csv_matrix,
     _write_json,
+    _write_sidecar_json,
 )
 from .number_formats import (
     dataset_type_decimal_places,
@@ -89,7 +92,7 @@ from .number_formats import (
 
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
+RS_JSON_FORMAT = "arcrho-result-selection-v4"
 METHOD_DATA_DIR = "methods"
 RS_JSON_VALUE_DECIMAL_PLACES = 6
 
@@ -204,8 +207,8 @@ def _apply_graph_meta_best_effort(meta: dict, dataset_type: str, rc_dir: Path, *
     try:
         _apply_sidecar_graph_meta(meta, dataset_type, rc_dir, **kwargs)
     except Exception as exc:
-        meta.setdefault("Precedents", [])
-        meta.setdefault("Dependents", [])
+        meta.setdefault("precedents", [])
+        meta.setdefault("dependents", [])
         meta["graph_metadata_error"] = str(exc)
 
 
@@ -572,7 +575,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
 
-    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    updated_at = payload.get("modified") or utc_now_text()
     method_source_kind = _clean_name(payload.get("source_kind"))
     is_berquist_sherman = method_source_kind in {BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}
     source_kind = method_source_kind if is_berquist_sherman else _triangle_source_kind(name, dataset_type)
@@ -594,10 +597,8 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
             else "resq_triangle"
         ),
         "data_format": "Triangle",
-        "data_format_code": payload.get("data_format", 0),
         "origin_length": origin_length,
         "development_length": dev_length,
-        "origin_count": payload.get("origin_count", 0),
         "development_count": payload.get("development_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
@@ -607,7 +608,6 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "number_format": dataset_type_number_format(rc_path, dataset_type),
         "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
-        "user": payload.get("user", ""),
         "created": payload.get("created", ""),
         "modified_by": payload.get("user", ""),
         "notes": str(payload.get("notes") or ""),
@@ -616,21 +616,17 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     if is_berquist_sherman:
         meta["method_name"] = _normalize_import_name(payload.get("method_name")) or name
         meta["method_type"] = _method_type_name(payload.get("method_type"))
-        meta["method_type_code"] = payload.get(
-            "method_type_code",
-            _method_type_code(payload.get("method_type"), METHOD_TYPE_NONE_CODE),
-        )
-        meta["Precedents"] = [
+        meta["precedents"] = dependency_entries([
             _normalize_import_name(item)
             for item in payload.get("precedents", [])
             if _normalize_import_name(item)
-        ]
-        meta["Dependents"] = []
+        ])
+        meta["dependents"] = []
         meta["status"] = normalize_method_status(payload.get("status"))
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir, preserve_precedents=True)
     else:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    _write_json(meta_path, meta)
+    _write_sidecar_json(meta_path, meta)
     return csv_path
 
 
@@ -854,7 +850,7 @@ def export_berquist_sherman(
     notes = _clean_name(
         _extract_attr(method, "Notes", "", context=f"Berquist Sherman method {name!r}")
     )
-    modified = output_payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    modified = output_payload.get("modified") or utc_now_text()
     output_triangle = _extract_attr(
         method,
         "OutputTriangle",
@@ -880,7 +876,6 @@ def export_berquist_sherman(
                 context=f"Berquist Sherman method {name!r} OutputTriangle",
             )
         ),
-        "audit_log_tab": {},
         "method_metadata": {
             "method_type": method_type,
             "source_kind": source_kind,
@@ -935,7 +930,7 @@ def _backfill_berquist_sherman_precedent_origin_labels(
         if existing_labels not in (None, []):
             continue
         sidecar["origin_labels"] = canonical_labels
-        _write_json(sidecar_path, sidecar)
+        _write_sidecar_json(sidecar_path, sidecar)
 
 
 def _dataset_number_format_entry(rc_dir: Path, dataset_name: object) -> dict:
@@ -1242,7 +1237,7 @@ def write_vector_export(
     is_method_output = is_bornhuetter_ferguson or is_cape_cod
     is_engine_generated = (not is_result_selection) and (not is_method_output) and _is_generated_dataset_type(dataset_type)
     formula = "" if is_engine_generated or is_method_output else raw_formula
-    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    updated_at = payload.get("modified") or utc_now_text()
     if is_result_selection:
         source_kind = "result_selection"
     elif is_bornhuetter_ferguson:
@@ -1265,7 +1260,6 @@ def write_vector_export(
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
         "calculated": bool((formula and not is_engine_generated) or is_result_selection or is_method_output),
-        "formula": formula,
         "source": (
             "resq_result_selection_vector"
             if is_result_selection
@@ -1276,18 +1270,14 @@ def write_vector_export(
             else "resq_vector"
         ),
         "method_type": meta_method_type,
-        "method_type_code": meta_method_type_code,
         "data_format": "Vector",
-        "data_format_code": payload.get("data_format", 1),
         "period_length": period_length,
         "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
-        "origin_count": payload.get("origin_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
         "number_format": dataset_type_number_format(rc_path, dataset_type),
         "decimal_places": dataset_type_decimal_places(rc_path, dataset_type),
         "csv_file": csv_name,
-        "user": payload.get("user", ""),
         "created": payload.get("created", ""),
         "modified_by": payload.get("user", ""),
         "notes": str(payload.get("notes") or ""),
@@ -1338,27 +1328,24 @@ def write_vector_export(
         # ordinary imported dataset, not a method publication. Preserve the
         # legacy fallback rather than manufacturing an incomplete canonical
         # method sidecar.
-        meta.pop("formula", None)
         meta["status"] = normalize_method_status(payload.get("status"))
-        source_names = [
+        meta["precedents"] = dependency_entries([
             _normalize_import_name(item)
             for item in payload.get("precedents", [])
             if _normalize_import_name(item)
-        ]
-        meta["Precedents"] = source_names
-        meta["Dependents"] = []
+        ])
+        meta["dependents"] = []
     elif is_result_selection:
         meta["status"] = normalize_method_status(payload.get("status"))
-        source_names = [
+        meta["precedents"] = dependency_entries([
             _normalize_import_name(item)
             for item in payload.get("precedents", [])
             if _normalize_import_name(item)
-        ]
-        meta["Precedents"] = source_names
-        meta["Dependents"] = []
+        ])
+        meta["dependents"] = []
     else:
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    _write_json(meta_path, meta)
+    _write_sidecar_json(meta_path, meta)
     return csv_path
 
 
@@ -1368,7 +1355,7 @@ def _engine_cache_created_at(csv_path: Path, fallback: str) -> str:
         ctime = csv_path.stat().st_ctime
     except OSError:
         return fallback
-    return datetime.utcfromtimestamp(ctime).isoformat(timespec="seconds") + "Z"
+    return format_persisted_timestamp(datetime.fromtimestamp(ctime, timezone.utc))
 
 
 def write_engine_generated_export(
@@ -1393,7 +1380,7 @@ def write_engine_generated_export(
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     user = getpass.getuser()
-    updated_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    updated_at = utc_now_text()
     created = _engine_cache_created_at(csv_path, "")
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     existing = _safe_read_json(meta_path)
@@ -1422,7 +1409,7 @@ def write_engine_generated_export(
     )
 
     _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
-    _write_json(meta_path, meta)
+    _write_sidecar_json(meta_path, meta)
     return csv_path
 
 def _result_selection_dataset_count(result_selection) -> int:
@@ -1754,7 +1741,7 @@ def export_result_selection(result_selection, *, strict: bool = False) -> dict:
     except Exception as exc:
         if _STRICT_RESQ_EXTRACTION.get():
             _strict_failure(f"Could not read Result Selection {name!r} OutputVector.Modified.", exc)
-        modified = datetime.now(timezone.utc).astimezone().isoformat()
+        modified = utc_now_text()
 
     return {
         "json_format": RS_JSON_FORMAT,
@@ -1776,8 +1763,6 @@ def export_result_selection(result_selection, *, strict: bool = False) -> dict:
             "selected_ultimate": selected_ultimate,
             "ultimate_overrides": ultimate_overrides,
         },
-        "results_tab": {},
-        "validation_tab": {},
         "_sidecar_notes": notes,
         "_sidecar_status": normalize_method_status(
             _extract_attr(
@@ -2029,7 +2014,7 @@ def export_bornhuetter_ferguson(method, *, strict: bool = False) -> dict:
                 f"Could not read Bornhuetter Ferguson {name!r} OutputVector.Modified.",
                 exc,
             )
-        modified = datetime.now(timezone.utc).astimezone().isoformat()
+        modified = utc_now_text()
 
     owned = {
         "json_format": BF_JSON_FORMAT,
@@ -2060,9 +2045,7 @@ def export_bornhuetter_ferguson(method, *, strict: bool = False) -> dict:
             "selected_prior_values": [],
             "new_ultimate": [],
         },
-        "chart_tab": {},
         "_sidecar_notes": notes,
-        "audit_log_tab": {},
         "method_metadata": {
             "method_type": BF_METHOD_TYPE,
             "source_kind": BF_SOURCE_KIND,
@@ -2317,7 +2300,7 @@ def export_cape_cod(method, *, strict: bool = False) -> dict:
     except Exception as exc:
         if _STRICT_RESQ_EXTRACTION.get():
             _strict_failure(f"Could not read Cape Cod {name!r} OutputVector.Modified.", exc)
-        modified = datetime.now(timezone.utc).astimezone().isoformat()
+        modified = utc_now_text()
 
     owned = {
         "json_format": CC_JSON_FORMAT,
@@ -2361,9 +2344,6 @@ def export_cape_cod(method, *, strict: bool = False) -> dict:
             "trend_factor_overrides": trend_factor_overrides,
             "origin_labels": origin_labels,
         },
-        "ultimates_tab": {},
-        "ratios_tab": {},
-        "audit_log_tab": {},
         "method_metadata": {
             "method_type": CC_METHOD_TYPE,
             "source_kind": CC_SOURCE_KIND,
@@ -2711,12 +2691,12 @@ def build_dfm_ultimate_publication(
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     existing = _safe_read_json(meta_path)
     publication_revision = _clean_name(
-        method_payload.get("method metadata", {}).get("publication revision")
-        if isinstance(method_payload.get("method metadata"), dict)
+        method_payload.get("method_metadata", {}).get("publication_revision")
+        if isinstance(method_payload.get("method_metadata"), dict)
         else ""
     )
     output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
-    updated_at = payload.get("modified") or datetime.now(timezone.utc).astimezone().isoformat()
+    updated_at = payload.get("modified") or utc_now_text()
     sidecar = build_dfm_output_sidecar(
         method_payload,
         project_name=PROJECT_NAME,

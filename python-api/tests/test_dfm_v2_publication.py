@@ -89,7 +89,7 @@ class DfmV2PublicationTests(unittest.TestCase):
         self.rc = _ReservingClass(self.project)
         self.sidecars = self.project.rc_data / "sidecars"
         for name in ("Paid Loss", "Premium", "Premium 2"):
-            self._write_sidecar(name, {"dataset_name": name, "Dependents": [{"dataset_type_name": "Keep"}]})
+            self._write_sidecar(name, {"dataset_name": name, "dependents": [{"dataset_name": "Keep"}]})
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -120,8 +120,8 @@ class DfmV2PublicationTests(unittest.TestCase):
         for name in ("Paid Loss", "Premium"):
             sidecar = json.loads(self._sidecar_path(name).read_text(encoding="utf-8"))
             self.assertEqual(
-                sidecar["Dependents"],
-                [{"dataset_type_name": "Keep"}, {"dataset_type_name": "Paid DFM"}],
+                sidecar["dependents"],
+                [{"dataset_name": "Keep"}, {"dataset_name": "Paid DFM"}],
             )
         method.set_summary_ratio_basis("Premium 2")
         method.set_ratio_basis_snapshot(_basis_snapshot("Premium 2"))
@@ -129,15 +129,15 @@ class DfmV2PublicationTests(unittest.TestCase):
 
         old_basis = json.loads(self._sidecar_path("Premium").read_text(encoding="utf-8"))
         new_basis = json.loads(self._sidecar_path("Premium 2").read_text(encoding="utf-8"))
-        self.assertEqual(old_basis["Dependents"], [{"dataset_type_name": "Keep"}])
+        self.assertEqual(old_basis["dependents"], [{"dataset_name": "Keep"}])
         self.assertEqual(
-            new_basis["Dependents"],
-            [{"dataset_type_name": "Keep"}, {"dataset_type_name": "Paid DFM"}],
+            new_basis["dependents"],
+            [{"dataset_name": "Keep"}, {"dataset_name": "Paid DFM"}],
         )
 
     def test_save_as_rejects_an_output_sidecar_owned_by_another_method(self) -> None:
         method = self._new_method("New DFM")
-        method.details["output dataset"] = "Shared Ultimate"
+        method.details["output_dataset"] = "Shared Ultimate"
         conflict_path = self._sidecar_path("Shared Ultimate")
         conflict = {"dataset_name": "Shared Ultimate", "method_name": "Other DFM", "notes": "keep"}
         self._write_sidecar("Shared Ultimate", conflict)
@@ -195,7 +195,7 @@ class DfmV2PropagationTests(unittest.TestCase):
             "development_labels": ["12m", "24m", "36m"],
             "number_format": "#,##0",
             "decimal_places": 0,
-            "Dependents": [],
+            "dependents": [],
         }), encoding="utf-8")
         (self.sidecars / "Premium.json").write_text(json.dumps({
             "dataset_name": "Premium",
@@ -204,7 +204,7 @@ class DfmV2PropagationTests(unittest.TestCase):
             "origin_labels": common_labels,
             "number_format": "$#,##0",
             "decimal_places": 0,
-            "Dependents": [],
+            "dependents": [],
         }), encoding="utf-8")
         method = self.rc.new_dfm(
             "Paid DFM",
@@ -215,9 +215,9 @@ class DfmV2PropagationTests(unittest.TestCase):
         )
         method.set_input_snapshot(_input_snapshot())
         method.set_ratio_basis_snapshot(_basis_snapshot())
-        method.ratios_tab["cell notes"] = {
-            "ratio main table": {"2020": {"(1) 12-24": "preserve"}},
-            "ratio summary table": {},
+        method.ratios_tab["cell_notes"] = {
+            "ratio_main_table": {"2020": {"(1) 12-24": "preserve"}},
+            "ratio_summary_table": {},
         }
         method.save()
         self.method_path = method.file_path
@@ -248,12 +248,12 @@ class DfmV2PropagationTests(unittest.TestCase):
         self.assertEqual(result.refreshed_dfm_outputs, ("Paid DFM",))
         self.assertEqual(result.propagation_warnings, ())
         self.assertNotEqual(
-            after["method metadata"]["derived revision"],
-            before["method metadata"]["derived revision"],
+            after["method_metadata"]["derived_revision"],
+            before["method_metadata"]["derived_revision"],
         )
         self.assertEqual(
-            after["ratios tab"]["cell notes"],
-            before["ratios tab"]["cell notes"],
+            after["ratios_tab"]["cell_notes"],
+            before["ratios_tab"]["cell_notes"],
         )
         sidecar = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
         self.assertEqual(sidecar["status"], 0)
@@ -266,7 +266,7 @@ class DfmV2PropagationTests(unittest.TestCase):
         self.assertEqual(result.refreshed_dfm_outputs, ("Paid DFM",))
         self.assertEqual(result.propagation_warnings, ())
         refreshed = json.loads(self.method_path.read_text(encoding="utf-8"))
-        self.assertEqual(refreshed["results tab"]["ratio basis values"], [1000, 2000, 3000])
+        self.assertEqual(refreshed["results_tab"]["ratio_basis_values"], [1000, 2000, 3000])
 
     def test_batched_input_and_basis_refresh_applies_both_latest_snapshots(self) -> None:
         self.input_path.write_text("100,200,260\n200,400,\n400,,\n", encoding="utf-8")
@@ -283,18 +283,18 @@ class DfmV2PropagationTests(unittest.TestCase):
         # The file holds the persisted projection -- trailing nulls trimmed and
         # no mask -- exactly as the app server writes it.
         self.assertEqual(
-            refreshed["data tab"]["input data triangle values"],
+            refreshed["data_tab"]["input_data_triangle_values"],
             [[100, 200, 260], [200, 400], [400]],
         )
-        self.assertNotIn("input data triangle mask", refreshed["data tab"])
+        self.assertNotIn("input_data_triangle_mask", refreshed["data_tab"])
         self.assertEqual(
-            refreshed["results tab"]["ratio basis values"],
+            refreshed["results_tab"]["ratio_basis_values"],
             [1100, 2200, 3300],
         )
 
     def test_failed_branch_keeps_publication_and_marks_dfm_descendants_review_needed(self) -> None:
         parent_sidecar = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
-        parent_sidecar["Dependents"] = [{"dataset_type_name": "Blocked Child"}]
+        parent_sidecar["dependents"] = [{"dataset_name": "Blocked Child"}]
         self.output_sidecar.write_text(json.dumps(parent_sidecar), encoding="utf-8")
         blocked_child = self.sidecars / "Blocked Child.json"
         blocked_child.write_text(json.dumps({
@@ -303,7 +303,7 @@ class DfmV2PropagationTests(unittest.TestCase):
             "method_type": "DFM",
             "source_kind": "dfm",
             "status": 0,
-            "Dependents": [],
+            "dependents": [],
         }), encoding="utf-8")
         method_before = self.method_path.read_bytes()
         output_before = (self.datasets / "Paid DFM@12.csv").read_bytes()
@@ -328,7 +328,7 @@ class DfmV2PropagationTests(unittest.TestCase):
             "development_labels": ["12m", "24m", "36m"],
             "number_format": "#,##0",
             "decimal_places": 0,
-            "Dependents": [],
+            "dependents": [],
         }), encoding="utf-8")
         upstream = self.rc.dfm("Paid DFM")
         downstream = self.rc.new_dfm(
@@ -342,7 +342,7 @@ class DfmV2PropagationTests(unittest.TestCase):
         downstream.set_ratio_basis_snapshot({
             "name": "Paid DFM",
             "origin_labels": ["2020", "2021", "2022"],
-            "values": upstream.results_tab["ultimate vector"],
+            "values": upstream.results_tab["ultimate_vector"],
             "data_format": "Vector",
             "number_format": "#,##0",
             "decimal_places": 2,
@@ -356,14 +356,14 @@ class DfmV2PropagationTests(unittest.TestCase):
         self.assertEqual(upstream.refreshed_dfm_outputs, ("Downstream DFM",))
         refreshed = self.rc.dfm("Downstream DFM")
         self.assertEqual(
-            refreshed.results_tab["ratio basis values"],
-            upstream.results_tab["ultimate vector"],
+            refreshed.results_tab["ratio_basis_values"],
+            upstream.results_tab["ultimate_vector"],
         )
         upstream.set_summary_ratio_basis("Downstream DFM")
         upstream.set_ratio_basis_snapshot({
             "name": "Downstream DFM",
             "origin_labels": ["2020", "2021", "2022"],
-            "values": refreshed.results_tab["ultimate vector"],
+            "values": refreshed.results_tab["ultimate_vector"],
             "data_format": "Vector",
             "number_format": "#,##0",
             "decimal_places": 2,

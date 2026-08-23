@@ -252,7 +252,7 @@ class SyncSessionExportGuardTests(unittest.TestCase):
             "name": "Paid Loss",
             "kind": "Dataset",
             "arcrho": {
-                "payload": {"data_format_code": 0, "data_format": "Triangle"},
+                "payload": {"data_format": "Triangle"},
             },
         }
 
@@ -271,7 +271,7 @@ class SyncSessionExportGuardTests(unittest.TestCase):
         exporter._triangle_row_width.return_value = 1
         row = {
             "name": "Paid Loss",
-            "arcrho": {"payload": {"data_format_code": 0}},
+            "arcrho": {"payload": {"data_format": "Triangle"}},
         }
 
         with self.assertRaisesRegex(RuntimeError, "retained a value in ArcRho blank cell"):

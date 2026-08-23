@@ -80,9 +80,9 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         dfm_path = self.methods_dir / "DFM@Selected DFM.json"
         dfm_input = str(self.datasets_dir / "Paid Loss@12@12@cum@dev.csv")
         dfm_path.write_text(json.dumps({
-            "json format": self.module.DFM_JSON_FORMAT,
-            "details tab": {"name": "Selected DFM", "output type": "DFM Ultimate"},
-            "data tab": {"input data triangle csv path": dfm_input},
+            "json_format": self.module.DFM_JSON_FORMAT,
+            "details_tab": {"name": "Selected DFM", "output_type": "DFM Ultimate"},
+            "data_tab": {"input data triangle csv path": dfm_input},
         }), encoding="utf-8")
         (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
             "dataset_name": "Loaded Ultimate",
@@ -93,16 +93,14 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         graph = self.catalog._dataset_type_graph_fields("Net Ultimate", self.rc_dir)
 
-        precedents = {item["dataset_type_name"]: item for item in graph["Precedents"]}
-        self.assertEqual(set(precedents), {"Paid Loss", "DFM Ultimate"})
-        self.assertEqual(precedents["Paid Loss"]["source_kind"], "engine")
-        self.assertTrue(precedents["Paid Loss"]["path"].endswith("Paid Loss@12@12@cum@dev.csv"))
-        self.assertEqual(precedents["DFM Ultimate"]["source_kind"], "dfm_method")
-        self.assertEqual(precedents["DFM Ultimate"]["method_type"], "DFM")
-        self.assertEqual(precedents["DFM Ultimate"]["input_path"], dfm_input)
-
-        self.assertEqual(graph["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
-        self.assertEqual(graph["Dependents"][0]["formula"], "\"Net Ultimate\" * 1.1")
+        # v4 keeps the persisted graph location-independent: an entry names the
+        # dataset and nothing else, even though the inventory could resolve its
+        # file, source kind, method input, or formula.
+        self.assertEqual(
+            graph["precedents"],
+            [{"dataset_name": "Paid Loss"}, {"dataset_name": "DFM Ultimate"}],
+        )
+        self.assertEqual(graph["dependents"], [{"dataset_name": "Loaded Ultimate"}])
 
     def test_formula_graph_omits_absent_rc_dependents(self) -> None:
         (self.sidecars_dir / "Net Ultimate.json").write_text(json.dumps({
@@ -114,7 +112,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         graph = self.catalog._dataset_type_graph_fields("Net Ultimate", self.rc_dir)
 
-        self.assertEqual(graph["Dependents"], [])
+        self.assertEqual(graph["dependents"], [])
 
     def test_bulk_graph_refresh_scans_physical_inventory_once(self) -> None:
         (self.datasets_dir / "Paid Loss@12@12@cum@dev.csv").write_text(
@@ -151,11 +149,11 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertEqual(scan.call_count, 1)
         payload = json.loads(net_path.read_text(encoding="utf-8"))
         self.assertEqual(
-            [item["dataset_type_name"] for item in payload["Precedents"]],
+            [item["dataset_name"] for item in payload["precedents"]],
             ["Paid Loss", "DFM Ultimate"],
         )
         self.assertEqual(
-            [item["dataset_type_name"] for item in payload["Dependents"]],
+            [item["dataset_name"] for item in payload["dependents"]],
             ["Loaded Ultimate"],
         )
 
@@ -185,17 +183,17 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         sidecar_path = self.sidecars_dir / "Net Ultimate.json"
         deferred = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        self.assertNotIn("Precedents", deferred)
-        self.assertNotIn("Dependents", deferred)
+        self.assertNotIn("precedents", deferred)
+        self.assertNotIn("dependents", deferred)
 
         self.catalog.refresh_sidecar_graphs_for_rc(self.rc_dir)
 
         refreshed = json.loads(sidecar_path.read_text(encoding="utf-8"))
         self.assertEqual(
-            [item["dataset_type_name"] for item in refreshed["Precedents"]],
+            [item["dataset_name"] for item in refreshed["precedents"]],
             ["Paid Loss", "DFM Ultimate"],
         )
-        self.assertEqual(refreshed["Dependents"], [])
+        self.assertEqual(refreshed["dependents"], [])
 
     def test_deferred_graph_enrichment_scope_restores_after_error(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "stop"):
@@ -239,7 +237,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         payload = json.loads((self.sidecars_dir / "Generated Premium.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["source_kind"], "engine")
         self.assertFalse(payload["calculated"])
-        self.assertEqual(payload["formula"], "")
+        self.assertNotIn("formula", payload)
         self.assertEqual(payload["period_length"], 12)
         self.assertNotIn("origin_length", payload)
         self.assertNotIn("development_length", payload)
@@ -322,23 +320,23 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
     def test_dfm_ultimate_vector_sidecar_uses_period_length(self) -> None:
         contract = importlib.import_module("arcrho_api.dfm_contract")
         method_payload = contract.recalculate_dfm_method({
-            "json format": contract.DFM_JSON_FORMAT,
-            "details tab": {
+            "json_format": contract.DFM_JSON_FORMAT,
+            "details_tab": {
                 "name": "Paid DFM",
-                "output type": "DFM Ultimate",
-                "output dataset": "Ultimate",
-                "input triangle": "Paid Loss",
-                "origin length": 6,
-                "development length": 6,
-                "decimal places": 4,
+                "output_type": "DFM Ultimate",
+                "output_dataset": "Ultimate",
+                "input_triangle": "Paid Loss",
+                "origin_length": 6,
+                "development_length": 6,
+                "decimal_places": 4,
             },
-            "data tab": {},
-            "ratios tab": {
-                "ratio triangle": {"excluded": [[0]]},
-                "average formulas": {
+            "data_tab": {},
+            "ratios_tab": {
+                "ratio_triangle": {"excluded": [[0]]},
+                "average_formulas": {
                     "label": ["Simple - all"],
-                    "custom average formula settings": {
-                        "averageType": ["custom"],
+                    "custom_average_formula_settings": {
+                        "average_type": ["custom"],
                         "base": ["simple"],
                         "periods": ["all"],
                         "exclude": [0],
@@ -347,12 +345,12 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                     "values": [[1]],
                     "inputs": [[""]],
                 },
-                "cell notes": {"ratio main table": {}, "ratio summary table": {}},
+                "cell_notes": {"ratio_main_table": {}, "ratio_summary_table": {}},
             },
-            "results tab": {},
-            "method metadata": {
-                "last modified": "2026-01-02T00:00:00",
-                "data refreshed": "2026-01-02T00:00:00",
+            "results_tab": {},
+            "method_metadata": {
+                "last_modified": "2026-01-02T00:00:00",
+                "data_refreshed": "2026-01-02T00:00:00",
             },
         }, input_snapshot={
             "name": "Paid Loss",
@@ -400,8 +398,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "dataset_type": "Net Ultimate",
             "source_kind": "result_selection",
             "method_type": "Result Selection",
-            "Precedents": ["Paid Loss"],
-            "Dependents": [],
+            "precedents": ["Paid Loss"],
+            "dependents": [],
         }), encoding="utf-8")
         (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
             "dataset_name": "Loaded Ultimate",
@@ -414,8 +412,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertGreaterEqual(updated, 1)
-        self.assertEqual(payload["Precedents"], ["Paid Loss"])
-        self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
+        self.assertEqual(payload["precedents"], ["Paid Loss"])
+        self.assertEqual(payload["dependents"][0]["dataset_name"], "Loaded Ultimate")
 
     def test_refresh_preserves_bf_precedents_and_refreshes_method_status(self) -> None:
         (self.sidecars_dir / "Paid Loss.json").write_text(json.dumps({
@@ -426,9 +424,9 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         }), encoding="utf-8")
         path = self.sidecars_dir / "Net Ultimate.json"
         precedents = [
-            {"dataset_type_name": "Paid Loss"},
-            {"dataset_type_name": "Selected DFM"},
-            {"dataset_type_name": "Prior Ultimate"},
+            {"dataset_name": "Paid Loss"},
+            {"dataset_name": "Selected DFM"},
+            {"dataset_name": "Prior Ultimate"},
         ]
         path.write_text(json.dumps({
             "dataset_name": "Net Ultimate",
@@ -437,8 +435,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "method_type": "Bornhuetter Ferguson",
             "updated_at": "2026-07-01T00:00:00Z",
             "status": 0,
-            "Precedents": precedents,
-            "Dependents": [],
+            "precedents": precedents,
+            "dependents": [],
         }), encoding="utf-8")
         (self.sidecars_dir / "Loaded Ultimate.json").write_text(json.dumps({
             "dataset_name": "Loaded Ultimate",
@@ -451,8 +449,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertGreaterEqual(updated, 1)
-        self.assertEqual(payload["Precedents"], precedents)
-        self.assertEqual(payload["Dependents"][0]["dataset_type_name"], "Loaded Ultimate")
+        self.assertEqual(payload["precedents"], precedents)
+        self.assertEqual(payload["dependents"][0]["dataset_name"], "Loaded Ultimate")
         self.assertEqual(payload["status"], 2)
 
     def test_fresh_engine_cache_of_unchanged_data_keeps_method_status_ok(self) -> None:
@@ -474,8 +472,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "method_type": "Bornhuetter Ferguson",
             "updated_at": "2026-07-01T00:00:00Z",
             "status": 0,
-            "Precedents": [{"dataset_type_name": "Paid Loss"}],
-            "Dependents": [],
+            "precedents": [{"dataset_name": "Paid Loss"}],
+            "dependents": [],
         }), encoding="utf-8")
 
         self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
@@ -499,8 +497,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "method_type": "Bornhuetter Ferguson",
             "updated_at": "2026-07-01T00:00:00Z",
             "status": 0,
-            "Precedents": [{"dataset_type_name": "Paid Loss"}],
-            "Dependents": [],
+            "precedents": [{"dataset_name": "Paid Loss"}],
+            "dependents": [],
         }), encoding="utf-8")
 
         self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
@@ -523,8 +521,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "method_type": "Result Selection",
             "updated_at": "2026-07-02T00:00:00Z",
             "status": 2,
-            "Precedents": ["Paid Loss"],
-            "Dependents": [],
+            "precedents": ["Paid Loss"],
+            "dependents": [],
         }), encoding="utf-8")
 
         self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
@@ -540,8 +538,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "source_kind": "dfm",
             "method_type": "DFM",
             "updated_at": "2026-07-01T14:51:31Z",
-            "Precedents": [{"dataset_type_name": "Paid Loss"}],
-            "Dependents": [],
+            "precedents": [{"dataset_name": "Paid Loss"}],
+            "dependents": [],
         }), encoding="utf-8")
         dependent_path = self.sidecars_dir / "Current Selection.json"
         dependent_path.write_text(json.dumps({
@@ -551,8 +549,8 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "method_type": "Result Selection",
             "updated_at": "2026-06-18T17:11:12Z",
             "status": 0,
-            "Precedents": ["DFM Ultimate"],
-            "Dependents": [],
+            "precedents": ["DFM Ultimate"],
+            "dependents": [],
         }), encoding="utf-8")
 
         updated = self.module.refresh_sidecar_graphs_for_rc(self.rc_dir)
@@ -561,7 +559,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         dependent_payload = json.loads(dependent_path.read_text(encoding="utf-8"))
         self.assertGreaterEqual(updated, 1)
         self.assertEqual(
-            [item["dataset_type_name"] for item in source_payload["Dependents"]],
+            [item["dataset_name"] for item in source_payload["dependents"]],
             ["Current Selection"],
         )
         self.assertEqual(dependent_payload["status"], 2)
@@ -789,7 +787,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         for path in files:
             path.write_text("{}", encoding="utf-8")
         (self.methods_dir / "DFM@Output Lookup.json").write_text(json.dumps({
-            "details tab": {"name": "Output Lookup", "output dataset": "Selected"},
+            "details_tab": {"name": "Output Lookup", "output_dataset": "Selected"},
         }), encoding="utf-8")
         kept = [
             self.datasets_dir / "Other@12@12@cum@dev.csv",
@@ -820,7 +818,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         dataset.write_text("1\n", encoding="utf-8")
         sidecar.write_text("{}", encoding="utf-8")
         unrelated_method.write_text(json.dumps({
-            "details tab": {"name": "Paid DFM", "output dataset": "Paid Ultimate"},
+            "details_tab": {"name": "Paid DFM", "output_dataset": "Paid Ultimate"},
         }), encoding="utf-8")
 
         removed, _dirs = self.module.cleanup_target_dataset_artifacts(
@@ -906,23 +904,23 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         )
         live_method = live_rc / "methods" / "DFM@Selected DFM.json"
         live_method.write_text(json.dumps({
-            "json format": self.module.DFM_JSON_FORMAT,
-            "details tab": {
+            "json_format": self.module.DFM_JSON_FORMAT,
+            "details_tab": {
                 "name": "Selected DFM",
-                "output dataset": "DFM Ultimate",
-                "output type": "DFM Ultimate",
+                "output_dataset": "DFM Ultimate",
+                "output_type": "DFM Ultimate",
             },
-            "method metadata": {"last modified": "2026-08-04T00:00:00Z"},
+            "method_metadata": {"last_modified": "2026-08-04T00:00:00Z"},
         }), encoding="utf-8")
         staged_method = staged_rc / "methods" / live_method.name
         staged_method.write_text(json.dumps({
-            "json format": self.module.DFM_JSON_FORMAT,
-            "details tab": {
+            "json_format": self.module.DFM_JSON_FORMAT,
+            "details_tab": {
                 "name": "Selected DFM",
-                "output dataset": "DFM Ultimate",
-                "output type": "DFM Ultimate",
+                "output_dataset": "DFM Ultimate",
+                "output_type": "DFM Ultimate",
             },
-            "method metadata": {"last modified": "2026-08-03T00:00:00Z"},
+            "method_metadata": {"last_modified": "2026-08-03T00:00:00Z"},
         }), encoding="utf-8")
 
         snapshot_rc = self.project_dir / "snapshots" / "live"

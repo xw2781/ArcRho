@@ -51,10 +51,15 @@ from .sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from .sidecar_core_contract import validate_sidecar_core
+from .sidecar_core_contract import (
+    DATASET_SIDECAR_JSON_FORMAT,
+    dependency_entries,
+    validate_sidecar_core,
+)
+from .timestamps import persisted_timestamp as _timestamp
 
 
-BST_JSON_FORMAT = "arcrho-bootstrap-method-by-tab-v1"
+BST_JSON_FORMAT = "arcrho-bootstrap-v4"
 BST_METHOD_TYPE = "Bootstrap"
 BST_SOURCE_KIND = "bootstrap"
 BST_METHOD_TYPE_CODE = 6
@@ -77,13 +82,6 @@ BstContractError = BootstrapContractError
 
 def _clean(value: Any) -> str:
     return " ".join(str(value if value is not None else "").split()).strip()
-
-
-def _timestamp(value: Any = None) -> str:
-    cleaned = str(value if value is not None else "").strip()
-    if cleaned:
-        return cleaned
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _integer(value: Any, default: int, *, minimum: int = 0, maximum: int | None = None) -> int:
@@ -171,25 +169,25 @@ def dfm_snapshot_from_method(dfm_payload: Mapping[str, Any]) -> dict[str, Any]:
 
     if not isinstance(dfm_payload, Mapping):
         raise BootstrapContractError("Bootstrap DFM snapshot requires a DFM method payload.")
-    data = _tab(dfm_payload, "data tab")
-    ratios_tab = _tab(dfm_payload, "ratios tab")
-    details = _tab(dfm_payload, "details tab")
-    ratio_triangle = ratios_tab.get("ratio triangle")
+    data = _tab(dfm_payload, "data_tab")
+    ratios_tab = _tab(dfm_payload, "ratios_tab")
+    details = _tab(dfm_payload, "details_tab")
+    ratio_triangle = ratios_tab.get("ratio_triangle")
     ratio_triangle = dict(ratio_triangle) if isinstance(ratio_triangle, Mapping) else {}
-    formulas = ratios_tab.get("average formulas")
+    formulas = ratios_tab.get("average_formulas")
     formulas = dict(formulas) if isinstance(formulas, Mapping) else {}
 
-    origin_labels = _labels(data.get("origin labels"))
-    development_labels = _labels(data.get("development labels"))
-    triangle = observed_triangle(data.get("input data triangle values"))
+    origin_labels = _labels(data.get("origin_labels"))
+    development_labels = _labels(data.get("development_labels"))
+    triangle = observed_triangle(data.get("input_data_triangle_values"))
     if not origin_labels or not development_labels or not triangle:
         raise BootstrapContractError("Bootstrap DFM snapshot requires a populated DFM data tab.")
 
-    ratio_columns = len(_labels(ratio_triangle.get("development labels"))) or len(development_labels)
+    ratio_columns = len(_labels(ratio_triangle.get("development_labels"))) or len(development_labels)
     selected_rows = formulas.get("selected") if isinstance(formulas.get("selected"), list) else []
-    settings = formulas.get("custom average formula settings")
+    settings = formulas.get("custom_average_formula_settings")
     settings = dict(settings) if isinstance(settings, Mapping) else {}
-    average_types = _labels(settings.get("averageType"))
+    average_types = _labels(settings.get("average_type"))
     bases = _labels(settings.get("base"))
     periods_setting = settings.get("periods") if isinstance(settings.get("periods"), list) else []
     exclude_setting = settings.get("exclude") if isinstance(settings.get("exclude"), list) else []
@@ -227,13 +225,13 @@ def dfm_snapshot_from_method(dfm_payload: Mapping[str, Any]) -> dict[str, Any]:
         [bool(cell) for cell in row] if isinstance(row, (list, tuple)) else []
         for row in excluded
     ]
-    results = _tab(dfm_payload, "results tab")
+    results = _tab(dfm_payload, "results_tab")
     return {
         "name": _clean(details.get("name")),
         "origin_labels": origin_labels,
         "development_labels": development_labels,
-        "origin_length": _integer(details.get("origin length"), 12, minimum=1),
-        "development_length": _integer(details.get("development length"), 12, minimum=1),
+        "origin_length": _integer(details.get("origin_length"), 12, minimum=1),
+        "development_length": _integer(details.get("development_length"), 12, minimum=1),
         "total_development_periods": len(development_labels) + 1,
         "observed_triangle": [list(row) for row in triangle],
         "selected_ratios": selected_ratios,
@@ -242,7 +240,7 @@ def dfm_snapshot_from_method(dfm_payload: Mapping[str, Any]) -> dict[str, Any]:
         "ratio_average_periods": periods,
         "ratio_exclude_high_low": exclude_high_low,
         "excluded_ratios": excluded_ratios,
-        "dfm_ultimate_values": _numbers(results.get("ultimate vector")),
+        "dfm_ultimate_values": _numbers(results.get("ultimate_vector")),
     }
 
 
@@ -602,8 +600,6 @@ def normalize_bootstrap_method(
             ),
             "total_reserve_ranks": bool(output_source.get("total_reserve_ranks", True)),
         },
-        "notes_tab": {},
-        "audit_log_tab": {},
         "method_metadata": {
             "method_type": BST_METHOD_TYPE,
             "source_kind": BST_SOURCE_KIND,
@@ -808,7 +804,7 @@ def recalculate_bootstrap_method(
 
     if target_snapshot is not None:
         labels = _labels(
-            target_snapshot.get("origin_labels") or target_snapshot.get("origin labels")
+            target_snapshot.get("origin_labels") or target_snapshot.get("origin_labels")
         )
         raw = _numbers(target_snapshot.get("values"))
         lookup = {label: raw[index] if index < len(raw) else None for index, label in enumerate(labels)}
@@ -967,23 +963,6 @@ def bootstrap_output_variants(
     return variants
 
 
-def _dependency_entries(entries: Any) -> list[dict[str, str]]:
-    if not isinstance(entries, list):
-        entries = list(entries) if isinstance(entries, tuple) else []
-    names: list[str] = []
-    seen: set[str] = set()
-    for item in entries:
-        if isinstance(item, Mapping):
-            name = _clean(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
-        else:
-            name = _clean(item)
-        key = name.casefold()
-        if name and key not in seen:
-            seen.add(key)
-            names.append(name)
-    return [{"dataset_type_name": name} for name in names]
-
-
 def build_bootstrap_output_sidecar(
     payload: Mapping[str, Any],
     *,
@@ -1021,7 +1000,7 @@ def build_bootstrap_output_sidecar(
     actor = _clean(user)
     if not output_changed and record_exists:
         published_at = str(prior.get("updated_at") or "").strip() or published_at
-        actor = _clean(prior.get("modified_by") or prior.get("user")) or actor
+        actor = _clean(prior.get("modified_by")) or actor
     created = str(prior.get("created") or "").strip() or published_at
     sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
     if append_audit:
@@ -1035,6 +1014,7 @@ def build_bootstrap_output_sidecar(
         audits = normalize_audit_log(prior.get("audit_log"))
     graph_precedents = bootstrap_precedent_names(method) if precedents is None else precedents
     return validate_sidecar_core({
+        "json_format": DATASET_SIDECAR_JSON_FORMAT,
         "dataset_name": details["name"],
         "dataset_type": details["output_type"] or details["name"],
         "dataset_category": details.get("dataset_category", ""),
@@ -1042,12 +1022,9 @@ def build_bootstrap_output_sidecar(
         "project_name": _clean(project_name),
         "source_kind": BST_SOURCE_KIND,
         "calculated": True,
-        "formula": "",
         "method_name": details["name"],
         "method_type": BST_METHOD_TYPE,
-        "method_type_code": BST_METHOD_TYPE_CODE,
         "data_format": "Vector",
-        "data_format_code": 1,
         "period_length": details["origin_length"],
         "transposed": False,
         "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
@@ -1055,15 +1032,13 @@ def build_bootstrap_output_sidecar(
         "decimal_places": _integer(prior.get("decimal_places"), 0, minimum=0, maximum=8),
         "csv_file": _clean(csv_file),
         "notes": sidecar_notes,
-        "origin_count": len(results["origin_labels"]),
         "origin_labels": deepcopy(results["origin_labels"]),
         "development_labels": ["Ultimate"],
-        "Precedents": _dependency_entries(graph_precedents),
-        "Dependents": _dependency_entries(prior.get("Dependents") if dependents is None else dependents),
+        "precedents": dependency_entries(graph_precedents),
+        "dependents": dependency_entries(prior.get("dependents") if dependents is None else dependents),
         "created": created,
         "updated_at": published_at,
         "modified_by": actor,
-        "user": actor,
         "status": _integer(status, 0, minimum=0),
         "publication_revision": metadata["publication_revision"],
         "audit_log": audits,

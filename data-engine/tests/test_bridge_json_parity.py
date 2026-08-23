@@ -24,17 +24,17 @@ from arcrho_bridge.bridge_utils import persisted_json_text as bridge_text  # noq
 
 _PAYLOADS = (
     {
-        "json format": "arcrho-dfm-owned-patch-v1",
-        "data tab": {
-            "input data triangle values": [[100, 150, 180], [200, 300], [400]],
-            "origin labels": ["2020", "2021", "2022"],
+        "json_format": "arcrho-dfm-owned-patch-v4",
+        "data_tab": {
+            "input_data_triangle_values": [[100, 150, 180], [200, 300], [400]],
+            "origin_labels": ["2020", "2021", "2022"],
         },
-        "ratios tab": {
-            "ratio triangle": {
-                "ratio values": [[1.5, 1.2], [1.5], []],
+        "ratios_tab": {
+            "ratio_triangle": {
+                "ratio_values": [[1.5, 1.2], [1.5], []],
                 "excluded": [[0, 1], [0], []],
             },
-            "average formulas": {"selected": [[1, 0]], "values": [[1.35, 1.2]], "inputs": []},
+            "average_formulas": {"selected": [[1, 0]], "values": [[1.35, 1.2]], "inputs": []},
         },
     },
     {"empty": {}, "nothing": [], "scalar": 1.5, "flag": True, "absent": None},

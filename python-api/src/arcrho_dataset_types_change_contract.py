@@ -3,8 +3,8 @@
 A project's dataset-type table is the definition every dataset instance, every
 formula and every dependency edge in that project is derived from. Changing it
 is therefore not a settings edit that happens to touch one file: adding,
-removing, renaming or re-formulating a type re-derives the ``Precedents`` and
-``Dependents`` of every sidecar in the project and can invalidate calculated
+removing, renaming or re-formulating a type re-derives the ``precedents`` and
+``dependents`` of every sidecar in the project and can invalidate calculated
 datasets in any reserving class.
 
 Doing that from a Client PC meant walking every reserving class's sidecars over

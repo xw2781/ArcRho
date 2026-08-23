@@ -1,4 +1,4 @@
-export const BORN_HUETTER_FERGUSON_JSON_FORMAT_V3 = "arcrho-bornhuetter-ferguson-method-by-tab-v3";
+export const BORN_HUETTER_FERGUSON_JSON_FORMAT = "arcrho-bornhuetter-ferguson-v4";
 export const BORN_HUETTER_FERGUSON_METHOD_TYPE = "Bornhuetter Ferguson";
 export const BORN_HUETTER_FERGUSON_SOURCE_KIND = "bornhuetter_ferguson";
 
@@ -71,7 +71,7 @@ function normalizedPriorSources(priorSources, rowCount) {
 }
 
 export function isBornhuetterFergusonV3Method(method) {
-  return text(method?.json_format) === BORN_HUETTER_FERGUSON_JSON_FORMAT_V3;
+  return text(method?.json_format) === BORN_HUETTER_FERGUSON_JSON_FORMAT;
 }
 
 export function buildBornhuetterFergusonMethodPayload({
@@ -97,7 +97,7 @@ export function buildBornhuetterFergusonMethodPayload({
     ? { ...methodMetadata }
     : {};
   return {
-    json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT_V3,
+    json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT,
     details_tab: {
       name: text(safeDetails.name),
       method_type: BORN_HUETTER_FERGUSON_METHOD_TYPE,
@@ -125,8 +125,6 @@ export function buildBornhuetterFergusonMethodPayload({
       selected_prior_values: fitVector(selectedPriorValues, rowCount),
       new_ultimate: fitVector(newUltimate, rowCount),
     },
-    chart_tab: {},
-    audit_log_tab: {},
     method_metadata: {
       ...metadata,
       method_type: BORN_HUETTER_FERGUSON_METHOD_TYPE,

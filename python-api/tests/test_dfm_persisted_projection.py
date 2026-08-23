@@ -50,20 +50,20 @@ _EXPECTED_TRIMMED = [
 
 def _owned() -> dict:
     return {
-        "json format": DFM_JSON_FORMAT,
-        "details tab": {
+        "json_format": DFM_JSON_FORMAT,
+        "details_tab": {
             "name": "Paid DFM",
-            "output type": "Paid Ultimate",
-            "output dataset": "Paid Selected",
-            "output category": "Loss",
-            "input triangle": "Paid Loss",
-            "origin length": 12,
-            "development length": 12,
-            "decimal places": 2,
+            "output_type": "Paid Ultimate",
+            "output_dataset": "Paid Selected",
+            "output_category": "Loss",
+            "input_triangle": "Paid Loss",
+            "origin_length": 12,
+            "development_length": 12,
+            "decimal_places": 2,
         },
-        "ratios tab": {"ratio triangle": {"excluded": [[1, 0, 0], [0, 0], [0], []]}},
-        "results tab": {"ratio basis dataset": "Premium", "ultimate ratio decimal places": 2},
-        "method metadata": {"last modified": "t0", "data refreshed": "t0"},
+        "ratios_tab": {"ratio_triangle": {"excluded": [[1, 0, 0], [0, 0], [0], []]}},
+        "results_tab": {"ratio_basis_dataset": "Premium", "ultimate_ratio_decimal_places": 2},
+        "method_metadata": {"last_modified": "t0", "data_refreshed": "t0"},
     }
 
 
@@ -104,12 +104,12 @@ def _canonical() -> dict:
 class PersistedProjectionTests(unittest.TestCase):
     def test_persisted_form_omits_mask_and_trims_trailing_nulls(self) -> None:
         persisted = persisted_projection(_canonical())
-        data = persisted["data tab"]
-        self.assertNotIn("input data triangle mask", data)
-        self.assertEqual(data["input data triangle values"], _EXPECTED_TRIMMED)
+        data = persisted["data_tab"]
+        self.assertNotIn("input_data_triangle_mask", data)
+        self.assertEqual(data["input_data_triangle_values"], _EXPECTED_TRIMMED)
 
     def test_interior_null_survives_trimming(self) -> None:
-        row = persisted_projection(_canonical())["data tab"]["input data triangle values"][2]
+        row = persisted_projection(_canonical())["data_tab"]["input_data_triangle_values"][2]
         # Missing inside the triangle stays explicit; only the trailing null goes.
         self.assertEqual(row, [400, None, 460])
 
@@ -137,9 +137,9 @@ class PersistedProjectionTests(unittest.TestCase):
         # A file written before this change carries the mask and full-width rows.
         canonical = _canonical()
         legacy = json.loads(json.dumps(canonical))
-        self.assertIn("input data triangle mask", legacy["data tab"])
+        self.assertIn("input_data_triangle_mask", legacy["data_tab"])
         self.assertTrue(
-            all(len(row) == len(_DEVS) for row in legacy["data tab"]["input data triangle values"])
+            all(len(row) == len(_DEVS) for row in legacy["data_tab"]["input_data_triangle_values"])
         )
         new_form = json.loads(json.dumps(persisted_projection(canonical)))
         self.assertEqual(normalize_dfm_method(legacy), normalize_dfm_method(new_form))
@@ -156,7 +156,7 @@ class CrossProducerParityTests(unittest.TestCase):
 
     def test_the_triangles_are_stored_one_row_per_line(self) -> None:
         lines = app_dfm_service._method_json_text(_canonical()).splitlines()
-        for key in ("input data triangle values", "ratio values", "excluded"):
+        for key in ("input_data_triangle_values", "ratio_values", "excluded"):
             with self.subTest(key=key):
                 opened = next(i for i, line in enumerate(lines) if line.strip() == f'"{key}": [')
                 # The line after the key is a whole row, not the row's first cell.
@@ -168,9 +168,9 @@ class CrossProducerParityTests(unittest.TestCase):
             app_dfm_service._method_json_text(canonical),
             persisted_json_text(persisted_projection(canonical)),
         ):
-            data = json.loads(text)["data tab"]
-            self.assertNotIn("input data triangle mask", data)
-            self.assertEqual(data["input data triangle values"], _EXPECTED_TRIMMED)
+            data = json.loads(text)["data_tab"]
+            self.assertNotIn("input_data_triangle_mask", data)
+            self.assertEqual(data["input_data_triangle_values"], _EXPECTED_TRIMMED)
 
     def test_unchanged_method_is_not_rewritten(self) -> None:
         # An already-persisted file must compare equal to its own re-projection,

@@ -33,8 +33,10 @@ from arcrho_api.bootstrap_contract import (
     recalculate_bootstrap_method,
     snapshot_revision,
 )
+from arcrho_api.dfm_contract import DFM_JSON_FORMAT
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
@@ -51,10 +53,7 @@ _ROLE_LABELS = {
     "dfm": "DFM",
     "target_ultimate": "Target Ultimate",
 }
-DFM_JSON_FORMATS = (
-    "arcrho-dfm-method-by-tab-v2",
-    "arcrho-dfm-method-by-tab-v1",
-)
+DFM_JSON_FORMATS = (DFM_JSON_FORMAT,)
 SnapshotCacheKey = Tuple[str, str, int, Tuple[str, ...]]
 _READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=READ_MAX_WORKERS,
@@ -71,7 +70,7 @@ def _key(value: Any) -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return utc_now_text()
 
 
 def _lock(project_name: str, reserving_class: str) -> threading.RLock:
@@ -277,7 +276,7 @@ def _read_dfm_payload(project_name: str, reserving_class: str, dfm_method_name: 
     payload = _read_json(_dfm_method_path(project_name, reserving_class, dfm_method_name))
     if not payload:
         raise HTTPException(404, f"Bootstrap DFM precedent is missing: {dfm_method_name}")
-    json_format = _clean(payload.get("json format") or payload.get("json_format")).lower()
+    json_format = _clean(payload.get("json_format") or payload.get("json_format")).lower()
     if json_format not in DFM_JSON_FORMATS:
         raise HTTPException(
             422,
@@ -288,9 +287,9 @@ def _read_dfm_payload(project_name: str, reserving_class: str, dfm_method_name: 
 
 
 def _dfm_output_dataset(dfm_payload: Mapping[str, Any]) -> str:
-    details = dfm_payload.get("details tab") if isinstance(dfm_payload, Mapping) else None
+    details = dfm_payload.get("details_tab") if isinstance(dfm_payload, Mapping) else None
     details = details if isinstance(details, Mapping) else {}
-    return _clean(details.get("output dataset")) or _clean(details.get("name"))
+    return _clean(details.get("output_dataset")) or _clean(details.get("name"))
 
 
 def _resolve_dfm_output_dataset(
@@ -302,7 +301,7 @@ def _resolve_dfm_output_dataset(
 ) -> str:
     """Resolve a DFM method name to the dataset name the graph knows it by.
 
-    The Bootstrap stores a *method* name, but every reverse `Dependents` edge,
+    The Bootstrap stores a *method* name, but every reverse `dependents` edge,
     cycle check, and Review Needed lookup in the reserving class is keyed by
     dataset name.  A DFM that publishes under its own name resolves to itself.
     """
@@ -672,8 +671,8 @@ def _build_sidecar(
             "reserving_class": reserving_class,
             "source_kind": "bootstrap",
             "method_type": dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP,
-            "Precedents": dataset_sidecar_status_service.name_entries(graph_precedents),
-            "Dependents": [],
+            "precedents": dataset_sidecar_status_service.name_entries(graph_precedents),
+            "dependents": [],
         }
         calculated_dataset_service.apply_sidecar_graph_fields(
             graph_seed,
@@ -690,7 +689,7 @@ def _build_sidecar(
         precedents=graph_precedents,
         existing=canonical_existing,
         existing_record=bool(existing),
-        dependents=canonical_existing.get("Dependents"),
+        dependents=canonical_existing.get("dependents"),
         notes=notes,
         timestamp=_now(),
         user=user_identity_service.get_current_display_name() or getpass.getuser(),
@@ -731,7 +730,7 @@ def _publish(
         output_changed=output_changed,
         automatic=automatic,
     )
-    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("Precedents"))
+    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("precedents"))
     graph_changed = {_key(item) for item in old_precedents} != {_key(item) for item in new_precedents}
     graph_updated = False
     try:
@@ -823,7 +822,7 @@ def _validate_pair(
         )
     }
     sidecar_precedents = {
-        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
+        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("precedents"))
     }
     if method_precedents != sidecar_precedents:
         raise HTTPException(409, "Bootstrap method and output sidecar precedents do not match.")
@@ -1430,7 +1429,7 @@ def refresh_dependents(
             for source_name in allowed_frontier:
                 source_sidecar = source_sidecars.get(source_name) or {}
                 for dependent_name in dataset_sidecar_status_service.entry_names(
-                    source_sidecar.get("Dependents")
+                    source_sidecar.get("dependents")
                 ):
                     dependent_sources.setdefault(dependent_name, {})[source_name] = source_sidecar
             if not dependent_sources:

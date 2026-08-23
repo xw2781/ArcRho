@@ -164,9 +164,9 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": csv_file,
             "status": status,
-            "Precedents": [],
-            "Dependents": [
-                {"dataset_type_name": item} for item in (dependents or [])
+            "precedents": [],
+            "dependents": [
+                {"dataset_name": item} for item in (dependents or [])
             ],
         }
         if include_origin_labels:
@@ -264,7 +264,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertIn("origin labels", str(raised.exception.detail))
+        self.assertIn("origin labels do not match", str(raised.exception.detail))
 
     def test_save_rebases_owned_weights_over_newer_disk_derived_snapshot(self) -> None:
         stale = self.method_payload()
@@ -603,9 +603,9 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
     def test_refresh_report_order_is_deterministic(self) -> None:
         self.write_json(self.sidecars / "Paid.json", {
             "dataset_name": "Paid",
-            "Dependents": [
-                {"dataset_type_name": "BF Z"},
-                {"dataset_type_name": "BF A"},
+            "dependents": [
+                {"dataset_name": "BF Z"},
+                {"dataset_name": "BF A"},
             ],
         })
         for name in ("BF Z", "BF A"):
@@ -614,7 +614,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 "method_name": name,
                 "method_type": "Bornhuetter Ferguson",
                 "source_kind": "bornhuetter_ferguson",
-                "Dependents": [],
+                "dependents": [],
                 "status": 0,
             })
 
@@ -744,7 +744,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
     def test_rs_report_exposes_nested_calculated_and_dfm_outputs_for_bf(self) -> None:
         self.write_json(self.sidecars / "Paid.json", {
             "dataset_name": "Paid",
-            "Dependents": [{"dataset_type_name": "RS Output"}],
+            "dependents": [{"dataset_name": "RS Output"}],
         })
         rs_sidecar = {
             "dataset_name": "RS Output",
@@ -753,7 +753,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             "method_type": "Result Selection",
             "source_kind": "result_selection",
             "status": 0,
-            "Dependents": [],
+            "dependents": [],
         }
         self.write_json(self.sidecars / "RS Output.json", rs_sidecar)
         nested = {

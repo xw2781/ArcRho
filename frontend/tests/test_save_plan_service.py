@@ -77,8 +77,8 @@ class SavePlanGraphTests(unittest.TestCase):
                 "source_kind": source_kind,
                 "status": status_service.STATUS_CURRENT,
                 "updated_at": updated_at,
-                "Precedents": status_service.name_entries(precedents),
-                "Dependents": status_service.name_entries(dependents),
+                "precedents": status_service.name_entries(precedents),
+                "dependents": status_service.name_entries(dependents),
             },
         )
 

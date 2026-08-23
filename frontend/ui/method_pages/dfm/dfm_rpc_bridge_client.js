@@ -128,16 +128,16 @@ function normalizeBinaryCell(value, missingValue = 0) {
 }
 
 function extractPatternSnapshot(payload) {
-  const ratiosTab = jsonTab(payload, "ratios tab");
-  const ratioTriangle = jsonTab(ratiosTab, "ratio triangle");
-  const dataTab = jsonTab(payload, "data tab");
+  const ratiosTab = jsonTab(payload, "ratios_tab");
+  const ratioTriangle = jsonTab(ratiosTab, "ratio_triangle");
+  const dataTab = jsonTab(payload, "data_tab");
   const pattern = ratioTriangle.excluded;
-  const originLabels = Array.isArray(ratioTriangle["origin labels"])
-    ? ratioTriangle["origin labels"]
-    : dataTab["origin labels"];
-  const developmentLabels = Array.isArray(ratioTriangle["development labels"])
-    ? ratioTriangle["development labels"]
-    : dataTab["development labels"];
+  const originLabels = Array.isArray(ratioTriangle["origin_labels"])
+    ? ratioTriangle["origin_labels"]
+    : dataTab["origin_labels"];
+  const developmentLabels = Array.isArray(ratioTriangle["development_labels"])
+    ? ratioTriangle["development_labels"]
+    : dataTab["development_labels"];
   const previewOriginLabels = Array.isArray(originLabels) ? originLabels.map(cleanText) : [];
   const previewDevelopmentLabels = Array.isArray(developmentLabels) ? developmentLabels.map(cleanText) : [];
   if (!Array.isArray(pattern)) {
@@ -174,15 +174,15 @@ function extractPatternSnapshot(payload) {
 }
 
 function extractAverageFormulaSnapshot(payload) {
-  const ratiosTab = jsonTab(payload, "ratios tab");
-  const formulaPayload = jsonTab(ratiosTab, "average formulas");
-  const ratioTriangle = jsonTab(ratiosTab, "ratio triangle");
-  const dataTab = jsonTab(payload, "data tab");
+  const ratiosTab = jsonTab(payload, "ratios_tab");
+  const formulaPayload = jsonTab(ratiosTab, "average_formulas");
+  const ratioTriangle = jsonTab(ratiosTab, "ratio_triangle");
+  const dataTab = jsonTab(payload, "data_tab");
   const labels = Array.isArray(formulaPayload.label) ? formulaPayload.label : [];
   const selected = Array.isArray(formulaPayload.selected) ? formulaPayload.selected : null;
-  const developmentLabels = Array.isArray(ratioTriangle["development labels"])
-    ? ratioTriangle["development labels"]
-    : dataTab["development labels"];
+  const developmentLabels = Array.isArray(ratioTriangle["development_labels"])
+    ? ratioTriangle["development_labels"]
+    : dataTab["development_labels"];
   if (!selected) {
     return {
       exists: false,
@@ -217,8 +217,8 @@ function extractAverageFormulaSnapshot(payload) {
 }
 
 function extractCellNotesSnapshot(payload) {
-  const ratiosTab = jsonTab(payload, "ratios tab");
-  const cellNotes = jsonTab(ratiosTab, "cell notes");
+  const ratiosTab = jsonTab(payload, "ratios_tab");
+  const cellNotes = jsonTab(ratiosTab, "cell_notes");
   const entries = [];
   Object.entries(cellNotes).forEach(([tableKey, tableNotes]) => {
     if (!tableNotes || typeof tableNotes !== "object" || Array.isArray(tableNotes)) return;
@@ -248,16 +248,16 @@ function extractCellNotesSnapshot(payload) {
 }
 
 function extractMethodNotesSnapshot(payload) {
-  const metadata = jsonTab(payload, "method metadata");
-  if (!Object.prototype.hasOwnProperty.call(metadata, "method notes")) {
+  const metadata = jsonTab(payload, "method_metadata");
+  if (!Object.prototype.hasOwnProperty.call(metadata, "method_notes")) {
     return { exists: false, text: "" };
   }
-  return { exists: true, text: String(metadata["method notes"] ?? "") };
+  return { exists: true, text: String(metadata["method_notes"] ?? "") };
 }
 
 function buildJsonSnapshot(payload) {
   const safePayload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
-  const formulaPayload = jsonTab(jsonTab(safePayload, "ratios tab"), "average formulas");
+  const formulaPayload = jsonTab(jsonTab(safePayload, "ratios_tab"), "average_formulas");
   const formulas = Array.isArray(formulaPayload.label) ? formulaPayload.label : [];
   return {
     available: !!Object.keys(safePayload).length,
@@ -267,12 +267,12 @@ function buildJsonSnapshot(payload) {
     cell_notes: extractCellNotesSnapshot(safePayload),
     method_notes: extractMethodNotesSnapshot(safePayload),
     average_formulas: formulas.map((item) => String(item)),
-    last_modified: cleanText(jsonTab(safePayload, "method metadata")["last modified"]),
+    last_modified: cleanText(jsonTab(safePayload, "method_metadata")["last_modified"]),
   };
 }
 
 function buildApprovalMeta(payload, fallbackLabel, timestamp) {
-  const metadataTime = cleanText(jsonTab(payload, "method metadata")["last modified"]);
+  const metadataTime = cleanText(jsonTab(payload, "method_metadata")["last_modified"]);
   return {
     exists: !!payload && typeof payload === "object" && !Array.isArray(payload),
     last_modified: metadataTime || fallbackLabel,

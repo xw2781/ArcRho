@@ -10,7 +10,6 @@ import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -18,6 +17,7 @@ import pandas as pd
 from fastapi import HTTPException
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import persisted_timestamp, utc_now_text
 from app_server import config
 from app_server.helpers import (
     build_dataset_cache_file_name,
@@ -31,8 +31,7 @@ from app_server.services import (
 )
 
 
-RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
-LEGACY_RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
+RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-v4"
 VALUE_DECIMAL_PLACES = 6
 MAX_RATIO_BASIS_COUNT = 3
 READ_MAX_WORKERS = 6
@@ -62,7 +61,7 @@ def _key(value: Any) -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
+    return utc_now_text()
 
 
 def _current_user_name() -> str:
@@ -126,20 +125,6 @@ def _revision_projection(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _method_revision(payload: Dict[str, Any]) -> str:
     digest = hashlib.sha256(_json_text(_revision_projection(payload)).encode("utf-8")).hexdigest()
-    return f"sha256:{digest}"
-
-
-def _legacy_method_revision(payload: Dict[str, Any]) -> str:
-    """The whole-file revision minted before ``last_modified`` was excluded.
-
-    A revision is minted where the method is loaded -- a Client PC's own app
-    server, or the Gateway -- and checked where it is saved, which is always
-    ArcRho Engine. Those upgrade separately, so a save is accepted against
-    either form until every installed app has this change. Remove this and its
-    use in :func:`save_result_selection` once that is true.
-    """
-
-    digest = hashlib.sha256(_json_text(payload).encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
 
 
@@ -354,8 +339,6 @@ def normalize_method_payload(payload: Dict[str, Any], *, require_complete_basis:
             "selected_ultimate": _round_vector(method.get("selected_ultimate")),
             "ultimate_overrides": _round_vector(method.get("ultimate_overrides")),
         },
-        "results_tab": payload.get("results_tab") if isinstance(payload.get("results_tab"), dict) else {},
-        "validation_tab": payload.get("validation_tab") if isinstance(payload.get("validation_tab"), dict) else {},
         "method_metadata": {
             "last_modified": _clean(
                 (payload.get("method_metadata") or {}).get("last_modified")
@@ -550,7 +533,7 @@ def _validate_method_sidecar_pair(method_name: str, method: Dict[str, Any], side
     method_precedents = {_key(item) for item in _precedent_names(method)}
     sidecar_precedents = {
         _key(item)
-        for item in dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
+        for item in dataset_sidecar_status_service.entry_names(sidecar.get("precedents"))
     }
     if method_precedents != sidecar_precedents:
         raise HTTPException(409, "Result Selection method and sidecar precedents do not match.")
@@ -580,26 +563,9 @@ def load_result_selection(
             raise HTTPException(409, "Result Selection requires both its method JSON and output sidecar.")
         if include_method and method:
             json_format = _clean(method.get("json_format"))
-            if json_format == RESULT_SELECTION_JSON_FORMAT:
-                method = normalize_method_payload(method, require_complete_basis=True)
-                _validate_method_sidecar_pair(name, method, sidecar)
-            elif json_format != LEGACY_RESULT_SELECTION_JSON_FORMAT:
+            if json_format != RESULT_SELECTION_JSON_FORMAT:
                 raise HTTPException(422, f"Unsupported Result Selection JSON format: {json_format or '(missing)' }.")
-    if include_method and method and _clean(method.get("json_format")) == LEGACY_RESULT_SELECTION_JSON_FORMAT:
-        with _lock(project, reserving), dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
-            method = _read_json(method_path)
-            sidecar = _read_json(sidecar_path)
-            if not method or not sidecar:
-                raise HTTPException(409, "Result Selection requires both its method JSON and output sidecar.")
-            json_format = _clean(method.get("json_format"))
-            if json_format == LEGACY_RESULT_SELECTION_JSON_FORMAT:
-                method = upgrade_legacy_method(project, reserving, name, method, sidecar)
-                sidecar = _read_json(sidecar_path)
-                upgraded = True
-            elif json_format == RESULT_SELECTION_JSON_FORMAT:
-                method = normalize_method_payload(method, require_complete_basis=True)
-            else:
-                raise HTTPException(422, f"Unsupported Result Selection JSON format: {json_format or '(missing)' }.")
+            method = normalize_method_payload(method, require_complete_basis=True)
             _validate_method_sidecar_pair(name, method, sidecar)
     return {
         "ok": True,
@@ -651,8 +617,7 @@ def save_result_selection(
             current_method = normalize_method_payload(current_method, require_complete_basis=True)
             old_precedents = _precedent_names(current_method)
             current_revision = _method_revision(current_method)
-            accepted_revisions = {current_revision, _legacy_method_revision(current_method)}
-            if expected_revision is not None and _clean(expected_revision) not in accepted_revisions:
+            if expected_revision is not None and _clean(expected_revision) != current_revision:
                 raise HTTPException(409, "Result Selection changed on disk; reload the latest values before saving.")
             if dataset_sidecar_status_service.normalize_status(current_sidecar.get("status")) \
                     == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED:
@@ -1036,7 +1001,7 @@ def _dependency_subgraph(
                     adjacency[key] = []
                     continue
                 raise RuntimeError(f"Dependency graph sidecar is missing for '{name}'.")
-            dependents = dataset_sidecar_status_service.entry_names(sidecar.get("Dependents"))
+            dependents = dataset_sidecar_status_service.entry_names(sidecar.get("dependents"))
             adjacency[key] = []
             for dependent_name in dependents:
                 dependent_key = _key(dependent_name)
@@ -1140,11 +1105,10 @@ def _persist_refreshed_method(
         latest_sidecar = _read_json(sidecar_path) or sidecar
         updated_sidecar = dict(latest_sidecar)
         if precedent_names is not None:
-            updated_sidecar["Precedents"] = list(precedent_names)
+            updated_sidecar["precedents"] = dataset_sidecar_status_service.name_entries(precedent_names)
         updated_sidecar["updated_at"] = timestamp
         user_name = _current_user_name()
         updated_sidecar["modified_by"] = user_name
-        updated_sidecar["user"] = user_name
         updated_sidecar["status"] = (
             dataset_sidecar_status_service.compute_status(
                 project_name,
@@ -1191,7 +1155,6 @@ def _mark_refreshed_sidecar_current(
         user_name = _current_user_name()
         updated_sidecar["updated_at"] = timestamp
         updated_sidecar["modified_by"] = user_name
-        updated_sidecar["user"] = user_name
         updated_sidecar["status"] = dataset_sidecar_status_service.compute_status(
             project_name,
             reserving_class,
@@ -1241,10 +1204,7 @@ def _refresh_one_method(
     if not payload:
         return {"ok": False, "dataset_name": output_name, "reason": "method_json_missing"}
     json_format = _clean(payload.get("json_format"))
-    if json_format == LEGACY_RESULT_SELECTION_JSON_FORMAT:
-        payload = upgrade_legacy_method(project_name, reserving_class, output_name, payload, output_sidecar)
-        output_sidecar = _read_json(_sidecar_path(project_name, reserving_class, output_name))
-    elif json_format != RESULT_SELECTION_JSON_FORMAT:
+    if json_format != RESULT_SELECTION_JSON_FORMAT:
         raise RuntimeError(f"Unsupported Result Selection JSON format: {json_format or '(missing)' }.")
     payload = normalize_method_payload(payload, require_complete_basis=True)
     method = payload["method_tab"]
@@ -1474,7 +1434,7 @@ def refresh_dependents(
             dependent_sources: Dict[str, Dict[str, Dict[str, Any]]] = {}
             for source_name in frontier:
                 source_sidecar = source_sidecars.get(source_name) or {}
-                for dependent_name in dataset_sidecar_status_service.entry_names(source_sidecar.get("Dependents")):
+                for dependent_name in dataset_sidecar_status_service.entry_names(source_sidecar.get("dependents")):
                     dependent_sources.setdefault(dependent_name, {})[source_name] = source_sidecar
             if not dependent_sources:
                 continue
@@ -1584,7 +1544,7 @@ def refresh_dependents(
                             rebuild_index=False,
                         )
                         calculated_names = [
-                            item.get("dataset_type_name")
+                            _clean(item.get("dataset_type_name"))
                             for item in calculated.get("updated", [])
                             if _clean(item.get("dataset_type_name"))
                         ]
@@ -1693,100 +1653,6 @@ def refresh_dependents(
     }
 
 
-def upgrade_legacy_method(
-    project_name: str,
-    reserving_class: str,
-    output_name: str,
-    method: Dict[str, Any],
-    sidecar: Dict[str, Any],
-) -> Dict[str, Any]:
-    payload = normalize_method_payload(method, require_complete_basis=False)
-    method_tab = payload["method_tab"]
-    details = payload["details_tab"]
-    origin_length = int(details["origin_length"])
-    source_names = [item["name"] for item in method_tab.get("loaded_datasets", [])]
-    basis_names = list(details.get("ratio_basis_datasets", []))
-    dependency_names = _unique_names([*source_names, *basis_names])
-    dependency_sidecars = _read_sidecars(project_name, reserving_class, dependency_names)
-    tasks: Dict[Tuple[str, bool], Any] = {}
-    for name in source_names:
-        tasks[(name, False)] = _READ_EXECUTOR.submit(
-            _dependency_values,
-            project_name,
-            reserving_class,
-            name,
-            dependency_sidecars.get(name) or {},
-            origin_length,
-            exact=False,
-        )
-    for name in basis_names:
-        tasks[(name, True)] = _READ_EXECUTOR.submit(
-            _dependency_values,
-            project_name,
-            reserving_class,
-            name,
-            dependency_sidecars.get(name) or {},
-            origin_length,
-            exact=True,
-        )
-    row_count = len(method_tab.get("origin_labels", []))
-    for source in method_tab.get("loaded_datasets", []):
-        values = tasks[(source["name"], False)].result()
-        if len(values) != row_count:
-            raise HTTPException(
-                422,
-                f"Source '{source['name']}' returned {len(values)} values; expected {row_count} during v1 upgrade.",
-            )
-        source["values"] = values
-        source["weights"] = _fit_vector(source.get("weights"), row_count, fill=0.0)
-        source["origin_length"] = _source_period(dependency_sidecars.get(source["name"]) or {}) or origin_length
-    basis_values = []
-    for name in basis_names:
-        values = tasks[(name, True)].result()
-        if len(values) != row_count:
-            raise HTTPException(
-                422,
-                f"Ratio Basis '{name}' returned {len(values)} values; expected {row_count} during v1 upgrade.",
-            )
-        basis_values.append({"name": name, "values": values})
-    method_tab["ratio_basis_values"] = basis_values
-    _recalculate_method(payload)
-    payload = normalize_method_payload(payload, require_complete_basis=True)
-    old_precedents = dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
-    new_precedents = _precedent_names(payload)
-    dataset_sidecar_status_service.update_precedent_dependents(
-        project_name,
-        reserving_class,
-        output_name,
-        old_precedents,
-        new_precedents,
-        require_new_precedents=True,
-    )
-    updated_sidecar = dict(sidecar)
-    updated_sidecar["Precedents"] = list(new_precedents)
-    updated_sidecar["method_type"] = dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION
-    try:
-        _persist_refreshed_method(
-            project_name,
-            reserving_class,
-            payload,
-            updated_sidecar,
-            allow_status_current=True,
-            precedent_names=new_precedents,
-        )
-    except Exception:
-        dataset_sidecar_status_service.update_precedent_dependents(
-            project_name,
-            reserving_class,
-            output_name,
-            new_precedents,
-            old_precedents,
-            require_new_precedents=bool(old_precedents),
-        )
-        raise
-    return payload
-
-
 def record_rpc_sync_last_modified(
     project_name: str,
     reserving_class: str,
@@ -1814,6 +1680,9 @@ def record_rpc_sync_last_modified(
         raise HTTPException(400, "project_name, reserving_class and method_name are required.")
     if not stamped:
         raise HTTPException(400, "last_modified is required.")
+    # The bridge reports the instant ResQ stamped; persist it in the one
+    # timestamp form so the file compares equal to what ResQ reports next time.
+    stamped = persisted_timestamp(stamped)
     # A propagation walk rewrites whole method files in this class from another
     # process, and this is a read-modify-write of one of them. Stand aside while
     # it owns the class rather than risk reverting what it wrote.

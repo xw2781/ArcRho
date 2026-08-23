@@ -46,6 +46,7 @@ from arcrho_api.source_table_contract import (
 )
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.services import mssql_odbc
 from app_server.services.audit_service import safe_append_project_audit_log
@@ -89,7 +90,7 @@ def _require_project_name(project_name: str) -> str:
 
 
 def _utc_now_text() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def _read_json_object(path: str) -> Dict[str, Any]:

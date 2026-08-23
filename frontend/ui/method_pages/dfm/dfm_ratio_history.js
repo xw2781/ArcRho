@@ -74,7 +74,7 @@ function queueTempStep(snapshot, reason) {
   const hostApi = getHostApi();
   if (typeof hostApi?.saveDfmRatioUndoStep !== "function") return;
   const payload = {
-    "json format": HISTORY_FORMAT,
+    "json_format": HISTORY_FORMAT,
     reason: String(reason || ""),
     created: new Date().toISOString(),
     state: snapshot,

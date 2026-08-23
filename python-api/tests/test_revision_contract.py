@@ -67,7 +67,7 @@ class MethodContractFingerprintTests(unittest.TestCase):
         method = self._dfm_method()
         for value in dfm_contract.method_revisions(method).values():
             self.assertTrue(is_fingerprint(value), value)
-        self.assertTrue(is_fingerprint(method["data tab"]["source revision"]))
+        self.assertTrue(is_fingerprint(method["data_tab"]["source_revision"]))
 
     def test_dfm_hashed_vocabulary_is_snake_case_whatever_the_persisted_spelling(self):
         method = self._dfm_method()
@@ -82,13 +82,13 @@ class MethodContractFingerprintTests(unittest.TestCase):
     def test_dfm_source_revision_is_independent_of_snapshot_key_spelling(self):
         spaced = {
             "name": "Paid Loss",
-            "origin labels": ["2023", "2024"],
-            "development labels": ["12", "24"],
+            "origin_labels": ["2023", "2024"],
+            "development_labels": ["12", "24"],
             "values": [[10, 20], [30, None]],
             "mask": [[True, True], [True, False]],
-            "data format": "Triangle",
-            "number format": "#,##0",
-            "decimal places": 0,
+            "data_format": "Triangle",
+            "number_format": "#,##0",
+            "decimal_places": 0,
         }
         snake = {
             "name": "Paid Loss",
@@ -105,24 +105,25 @@ class MethodContractFingerprintTests(unittest.TestCase):
             dfm_contract.source_snapshot_revision(snake),
         )
 
-    def test_dfm_hashed_vocabulary_never_echoes_a_persisted_spaced_key(self):
-        # The projections read spaced keys today; none of those spellings may
-        # reach the digest, or the rename to snake_case would move every revision.
+    def test_dfm_hashed_vocabulary_is_fixed(self):
+        # The digest covers exactly these keys. A persisted field may be
+        # renamed freely; the vocabulary here may not change without moving
+        # every stored revision, which is a deliberate breaking change.
         method = self._dfm_method()
-        note_tables = ("ratio main table", "ratio summary table")
-        persisted_keys = {
-            key
-            for key in _field_keys(method, skip_under=note_tables)
-            if " " in key or key != key.lower()
-        }
-        self.assertTrue(persisted_keys)
-        for projection in (
-            dfm_contract.owned_projection(method),
-            dfm_contract.derived_projection(method),
-            dfm_contract.publication_projection(method),
-        ):
-            hashed_keys = set(_field_keys(projection, skip_under=("ratio_main_table", "ratio_summary_table")))
-            self.assertFalse(persisted_keys & hashed_keys)
+        self.assertEqual(
+            set(dfm_contract.owned_projection(method)),
+            {"details", "excluded_cells", "average_formulas", "cell_notes",
+             "ratio_basis_dataset", "ultimate_ratio_decimal_places"},
+        )
+        self.assertEqual(
+            set(dfm_contract.derived_projection(method)),
+            {"input", "ratio_triangle", "average_formula_values", "ratio_basis", "ultimate_vector"},
+        )
+        self.assertEqual(
+            set(dfm_contract.publication_projection(method)),
+            {"output_dataset", "output_type", "output_category", "origin_length",
+             "decimal_places", "origin_labels", "ultimate_vector"},
+        )
 
     def test_every_method_family_stores_the_shared_form(self):
         for module in (bornhuetter_ferguson_contract, cape_cod_contract, bootstrap_contract):

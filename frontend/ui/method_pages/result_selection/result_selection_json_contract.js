@@ -1,4 +1,4 @@
-export const RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2";
+export const RESULT_SELECTION_JSON_FORMAT = "arcrho-result-selection-v4";
 export const RESULT_SELECTION_VALUE_DECIMAL_PLACES = 6;
 
 function text(value) {
@@ -156,8 +156,6 @@ export function buildResultSelectionMethodPayload({
       selected_ultimate: roundResultSelectionVector(selectedUltimate),
       ultimate_overrides: roundResultSelectionVector(ultimateOverrides),
     },
-    results_tab: {},
-    validation_tab: {},
     method_metadata: {
       last_modified: text(lastModified) || new Date().toISOString(),
     },

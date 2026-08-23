@@ -4,6 +4,7 @@ import csv
 import json
 import re
 from pathlib import Path
+from typing import Any, Mapping
 
 from arcrho_api.dataset_index_contract import (
     DATASET_INDEX_VERSION,
@@ -20,6 +21,8 @@ from arcrho_api.dataset_index_contract import (
 # The one owner of persisted JSON layout, shared with the app server and the
 # Python API so a migrated file and a re-saved file are byte-identical.
 from arcrho_api.io import persisted_json_text
+from arcrho_api.sidecar_core_contract import finalize_sidecar
+from arcrho_api.timestamps import format_persisted_timestamp
 
 
 # ResQ owns the numeric `MethodType` codes, so this module is their one ArcRho
@@ -45,8 +48,8 @@ BS_SR_METHOD_TYPE = METHOD_TYPE_BS_SR
 BS_CRA_METHOD_TYPE = METHOD_TYPE_BS_CRA
 BS_SR_SOURCE_KIND = "berquist_sherman_sr"
 BS_CRA_SOURCE_KIND = "berquist_sherman_cra"
-BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
-BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
+BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-v4"
+BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-v4"
 BS_SR_FILE_PREFIX = "BSSR@"
 BS_CRA_FILE_PREFIX = "BSCRA@"
 METHOD_TYPE_NAMES = {
@@ -80,11 +83,18 @@ def _bool_value(value: object) -> bool:
 
 
 def _iso_or_text(value) -> str:
+    """A ResQ ``Modified`` as the persisted timestamp, or other text unchanged.
+
+    COM hands the DATE back as a datetime labelled UTC although ResQ keeps a
+    local wall-clock reading; the label is dropped and the value is converted
+    from this machine's zone (``arcrho_api.timestamps``), which is why the
+    migration runs on the Server PC.
+    """
     if value is None:
         return ""
     if hasattr(value, "replace") and hasattr(value, "isoformat"):
         try:
-            return value.replace(tzinfo=None).isoformat()
+            return format_persisted_timestamp(value.replace(tzinfo=None))
         except Exception:
             return value.isoformat()
     return str(value)
@@ -176,6 +186,16 @@ def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
         fh.write(persisted_json_text(payload))
+
+
+def _write_sidecar_json(path: Path, meta: Mapping[str, Any]) -> None:
+    """Write a dataset sidecar through the shared core.
+
+    Every sidecar writer lands the file stamped first, stripped of retired
+    fields and with ``audit_log`` last (``arcrho_api.sidecar_core_contract``);
+    the migration's hand-built metadata is no exception.
+    """
+    _write_json(path, finalize_sidecar(meta))
 
 
 def _csv_cell(value) -> str:

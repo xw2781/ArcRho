@@ -67,10 +67,15 @@ test("the Dataset Viewer and every method page render Precedents and Dependents 
     assert.match(source, /shared\/tabs\/details\/details_dependencies\.js/u, path);
     assert.match(source, new RegExp(`precedentsList: "${precedentsId}"`, "u"), path);
     assert.match(source, new RegExp(`dependentsList: "${dependentsId}"`, "u"), path);
+    // Only the owner reads the sidecar graph: no page picks the v4 lower-case
+    // `precedents` / `dependents` off a payload itself, and none still reads
+    // the retired Title Case keys.
+    assert.doesNotMatch(source, /\.(?:Precedents|Dependents|precedents|dependents)\b/u, path);
   }
 
   // The markup has to carry the ids the controllers name, and the shared chip
-  // classes rather than page-local copies.
+  // classes rather than page-local copies. These are element ids, so the role
+  // half stays camelCase; the sidecar keys are the lower-case ones above.
   const markup = [
     ["../ui/dataset_viewer/dataset_viewer_view.js", "ds"],
     ["../ui/method_pages/dfm/dfm.html", "dfm"],
@@ -97,8 +102,8 @@ test("a method page reads its graph for the dataset it publishes, not for the me
   // its own method name would silently render an empty pair of rows.
   assert.match(dependenciesSource, /export async function loadDetailsDependencies/u);
   assert.match(dependenciesSource, /"\/dataset\/sidecar\/load"/u);
-  assert.match(dependenciesSource, /precedents: normalizeDependencyEntries\(payload\.Precedents\)/u);
-  assert.match(dependenciesSource, /dependents: normalizeDependencyEntries\(payload\.Dependents\)/u);
+  assert.match(dependenciesSource, /precedents: normalizeDependencyEntries\(payload\.precedents\)/u);
+  assert.match(dependenciesSource, /dependents: normalizeDependencyEntries\(payload\.dependents\)/u);
 
   const dfmSource = await readFile(
     new URL("../ui/method_pages/dfm/dfm_details_dependencies.js", import.meta.url),

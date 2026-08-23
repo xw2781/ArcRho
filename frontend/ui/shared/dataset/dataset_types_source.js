@@ -58,7 +58,7 @@ export function normalizeDatasetTypesPayload(rawPayload) {
   const outRows = [];
 
   const idxName = indexByName.has("name") ? Number(indexByName.get("name")) : -1;
-  const idxDataFormat = indexByName.has("data format") ? Number(indexByName.get("data format")) : -1;
+  const idxDataFormat = indexByName.has("data_format") ? Number(indexByName.get("data_format")) : -1;
   const idxCategory = indexByName.has("category") ? Number(indexByName.get("category")) : -1;
   const idxCalculated = indexByName.has("calculated") ? Number(indexByName.get("calculated")) : -1;
   const idxFormula = indexByName.has("formula") ? Number(indexByName.get("formula")) : -1;

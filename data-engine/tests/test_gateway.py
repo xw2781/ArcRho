@@ -197,12 +197,12 @@ class GatewayTests(unittest.TestCase):
 
     def _dfm_request(self, request_id: str = "dfm-request-123") -> dict:
         method = {
-            "json format": "arcrho-dfm-method-by-tab-v2",
-            "details tab": {
+            "json_format": "arcrho-dfm-v4",
+            "details_tab": {
                 "name": "C 22 - CWOP DFM w/ Selected LDFs",
-                "output dataset": "CWOP Ultimate",
+                "output_dataset": "CWOP Ultimate",
             },
-            "data tab": {"values": [[100.0, 120.0], [90.0]]},
+            "data_tab": {"values": [[100.0, 120.0], [90.0]]},
         }
         return build_save_job_request(
             request_id=request_id,

@@ -23,8 +23,8 @@ class DatasetSidecarParallelLoadTests(unittest.TestCase):
             "dataset_type": "Output",
             "data_format": "Vector",
             "period_length": 12,
-            "Precedents": ["Input A", "Input B", "Input C", "Input D"],
-            "Dependents": ["Dependent"],
+            "precedents": ["Input A", "Input B", "Input C", "Input D"],
+            "dependents": ["Dependent"],
         }
         active = 0
         max_active = 0
@@ -82,10 +82,10 @@ class DatasetSidecarParallelLoadTests(unittest.TestCase):
         self.assertEqual(method_lookup.call_count, 1)
         self.assertGreater(max_active, 1)
         self.assertEqual(
-            [item["method_type"] for item in result["Precedents"]],
+            [item["method_type"] for item in result["precedents"]],
             ["DFM", "DFM", "DFM", "DFM"],
         )
-        self.assertEqual(result["Dependents"][0]["formula"], "Input A + Input B")
+        self.assertEqual(result["dependents"][0]["formula"], "Input A + Input B")
 
 
 if __name__ == "__main__":

@@ -391,7 +391,7 @@ METHOD_DATA_DIR = "methods"
 DATASET_SIDECAR_DIR = "sidecars"
 TEMPORARY_VIEW_DATASET_CACHE_DIR = ".temporary-view"
 RUNTIME_CACHE_PROVENANCE_DIR = ".arcrho-cache-provenance"
-RUNTIME_CACHE_PROVENANCE_FORMAT = "arcrho-runtime-cache-provenance-v1"
+RUNTIME_CACHE_PROVENANCE_FORMAT = "arcrho-runtime-cache-provenance-v4"
 
 # ---------------------------------------------------------------------------
 # Thread locks

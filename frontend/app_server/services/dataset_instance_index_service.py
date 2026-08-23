@@ -9,6 +9,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
 from arcrho_api.dataset_index_contract import (
+    RS_JSON_FORMAT,
     BF_JSON_FORMAT,
     BST_JSON_FORMAT,
     CC_JSON_FORMAT,
@@ -40,10 +41,7 @@ INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
 DFM_METHOD_TYPE = "DFM"
 RESULT_SELECTION_METHOD_TYPE = "Result Selection"
-RESULT_SELECTION_JSON_FORMATS = {
-    "arcrho-result-selection-method-by-tab-v1",
-    "arcrho-result-selection-method-by-tab-v2",
-}
+RESULT_SELECTION_JSON_FORMATS = {RS_JSON_FORMAT}
 BF_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON
 BF_JSON_FORMATS = {BF_JSON_FORMAT}
 CAPE_COD_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_CAPE_COD
@@ -51,12 +49,12 @@ CAPE_COD_JSON_FORMATS = {CC_JSON_FORMAT}
 BOOTSTRAP_METHOD_TYPE = dataset_sidecar_status_service.METHOD_TYPE_BOOTSTRAP
 BOOTSTRAP_JSON_FORMATS = {BST_JSON_FORMAT}
 BERQUIST_SHERMAN_METHOD_CONTRACTS = {
-    "arcrho-berquist-sherman-sr-method-by-tab-v1": {
+    "arcrho-berquist-sherman-sr-v4": {
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
         "source_kind": dataset_sidecar_status_service.SOURCE_KIND_BERQUIST_SHERMAN_SR,
         "filename_prefix": "BSSR@",
     },
-    "arcrho-berquist-sherman-cra-method-by-tab-v1": {
+    "arcrho-berquist-sherman-cra-v4": {
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_CRA,
         "source_kind": dataset_sidecar_status_service.SOURCE_KIND_BERQUIST_SHERMAN_CRA,
         "filename_prefix": "BSCRA@",
@@ -296,12 +294,11 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
         details_tab = _json_tab(payload, "details_tab")
         _add_cached_dataset_name(names, _normalize_cached_dataset_name(details_tab.get("name")))
         return names
-    details_tab = _json_tab(payload, "details tab")
+    details_tab = _json_tab(payload, "details_tab")
     _add_cached_dataset_name(
         names,
         _normalize_cached_dataset_name(
-            details_tab.get("output dataset")
-            or details_tab.get("output vector")
+            details_tab.get("output_dataset")
             or details_tab.get("name")
         ),
     )
@@ -309,7 +306,7 @@ def _cached_dataset_names_from_payload(payload: Dict[str, Any]) -> Set[str]:
 
 
 def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None:
-    json_format = _clean_text(payload.get("json_format") or payload.get("json format")).lower()
+    json_format = _clean_text(payload.get("json_format") or payload.get("json_format")).lower()
     if json_format in RESULT_SELECTION_JSON_FORMATS:
         details_tab = _json_tab(payload, "details_tab")
         dataset_name = _normalize_cached_dataset_name(details_tab.get("name"))
@@ -393,15 +390,14 @@ def _method_entry_from_payload(payload: Dict[str, Any]) -> Dict[str, Any] | None
             "development_length": details_tab.get("development_length"),
             "status": dataset_sidecar_status_service.STATUS_CURRENT,
         }
-    details_tab = _json_tab(payload, "details tab")
+    details_tab = _json_tab(payload, "details_tab")
     method_name = _normalize_cached_dataset_name(details_tab.get("name"))
     dataset_name = _normalize_cached_dataset_name(
-        details_tab.get("output dataset")
-        or details_tab.get("output vector")
+        details_tab.get("output_dataset")
         or method_name
     )
-    dataset_type = _normalize_cached_dataset_name(details_tab.get("output type"))
-    dataset_category = _clean_text(details_tab.get("output dataset_category") or details_tab.get("output category"))
+    dataset_type = _normalize_cached_dataset_name(details_tab.get("output_type"))
+    dataset_category = _clean_text(details_tab.get("output_category"))
     if not dataset_name:
         return None
     entry = {
@@ -886,7 +882,7 @@ def _surviving_dependents(
 
     An upstream object may only be deleted once nothing consumes it, so this
     reads the requested datasets' own sidecars and reports their direct
-    ``Dependents`` edges. Only direct dependents matter: a deeper descendant
+    ``dependents`` edges. Only direct dependents matter: a deeper descendant
     reaches this dataset through one of them, so clearing the direct edge is
     always the user's next step and listing the whole closure would name
     objects the user cannot act on yet.
@@ -912,7 +908,7 @@ def _surviving_dependents(
         [
             name
             for payload in payloads.values()
-            for name in dataset_sidecar_status_service.entry_names(payload.get("Dependents"))
+            for name in dataset_sidecar_status_service.entry_names(payload.get("dependents"))
             if _canon_dataset_name(name) not in canon_requested
         ],
     )
@@ -925,7 +921,7 @@ def _surviving_dependents(
         if not payload:
             continue
         dependents: List[Dict[str, str]] = []
-        for dependent_name in dataset_sidecar_status_service.entry_names(payload.get("Dependents")):
+        for dependent_name in dataset_sidecar_status_service.entry_names(payload.get("dependents")):
             dependent_key = _canon_dataset_name(dependent_name)
             if not dependent_key or dependent_key in canon_requested:
                 continue
@@ -1058,13 +1054,13 @@ def get_percent_developed_curve(project_name: str, reserving_class: str, method_
         )
 
     payload = _safe_load_required_json(path)
-    data_tab = _json_tab(payload, "data tab")
-    ratios_tab = _json_tab(payload, "ratios tab")
-    ratio_triangle = _json_tab(ratios_tab, "ratio triangle")
-    average = _json_tab(ratios_tab, "average formulas")
-    data_labels = data_tab.get("development labels")
+    data_tab = _json_tab(payload, "data_tab")
+    ratios_tab = _json_tab(payload, "ratios_tab")
+    ratio_triangle = _json_tab(ratios_tab, "ratio_triangle")
+    average = _json_tab(ratios_tab, "average_formulas")
+    data_labels = data_tab.get("development_labels")
     data_labels = data_labels if isinstance(data_labels, list) else []
-    ratio_labels = ratio_triangle.get("development labels")
+    ratio_labels = ratio_triangle.get("development_labels")
     ratio_labels = ratio_labels if isinstance(ratio_labels, list) else []
     formulas = average.get("label")
     selected = average.get("selected")

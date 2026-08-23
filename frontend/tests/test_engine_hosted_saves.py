@@ -174,8 +174,8 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                     "Demo Project",
                     "HPPREF\\HO+DF\\NJ",
                     {
-                        "json format": "dfm",
-                        "details tab": {
+                        "json_format": "dfm",
+                        "details_tab": {
                             "name": "C 22 - CWOP DFM w/ Selected LDFs"
                         },
                     },
@@ -189,7 +189,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             "the request file itself must be the queued state",
         )
         self.assertEqual(result["propagation"]["refreshed_datasets"], ["C 61", "C 91"])
-        self.assertEqual(result["echo_args"][2]["json format"], "dfm")
+        self.assertEqual(result["echo_args"][2]["json_format"], "dfm")
         # Terminal artifacts are consumed so the queue folders stay clean —
         # in the background, off the response's critical path, so wait for it.
         save_jobs = self.root / "requests" / "save_jobs"
@@ -364,13 +364,13 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             "allow_insecure_http": True,
         }
         method = {
-            "json format": "arcrho-dfm-method-by-tab-v2",
-            "details tab": {
+            "json_format": "arcrho-dfm-v4",
+            "details_tab": {
                 "name": "C 22 - CWOP DFM w/ Selected LDFs",
-                "output dataset": "CWOP Ultimate",
+                "output_dataset": "CWOP Ultimate",
             },
-            "data tab": {"values": [[100.0, 120.0], [90.0]]},
-            "ratios tab": {"selected": [[True], []]},
+            "data_tab": {"values": [[100.0, 120.0], [90.0]]},
+            "ratios_tab": {"selected": [[True], []]},
         }
         kwargs = {
             "notes": "transport parity",

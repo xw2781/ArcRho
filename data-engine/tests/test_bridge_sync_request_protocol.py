@@ -344,8 +344,8 @@ class SyncDfmSaveTimeTests(unittest.TestCase):
         self.assertTrue(dfm.saved)
         # Read after Save(), so it is the new value rather than the one the
         # method carried when the upload started.
-        self.assertEqual(returned["last modified"], "2026-08-19T10:05:30.500000")
-        self.assertEqual(written["last modified"], returned["last modified"])
+        self.assertEqual(returned["last_modified"], "2026-08-19T10:05:30.500000")
+        self.assertEqual(written["last_modified"], returned["last_modified"])
         self.assertTrue(written["ok"])
 
     def test_a_method_without_a_readable_modified_reports_an_empty_value(self):
@@ -362,7 +362,7 @@ class SyncDfmSaveTimeTests(unittest.TestCase):
         dfm.Save = lambda: None
         request = {"MethodJsonPath": "method.json", "DataPath": "status.json", "MethodName": "M"}
         returned, _ = self._run(client, dfm, request)
-        self.assertEqual(returned["last modified"], "")
+        self.assertEqual(returned["last_modified"], "")
 
 
 class BridgeWorkerWakeUpTests(unittest.TestCase):

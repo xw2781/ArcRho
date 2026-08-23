@@ -25,10 +25,10 @@ from arcrho_api.io import format_json_for_save, persisted_json_text  # noqa: E40
 
 
 _TRIANGLE = {
-    "ratios tab": {
-        "ratio triangle": {
-            "origin labels": ["2020", "2021"],
-            "ratio values": [[1.5, 1.25], [1.4]],
+    "ratios_tab": {
+        "ratio_triangle": {
+            "origin_labels": ["2020", "2021"],
+            "ratio_values": [[1.5, 1.25], [1.4]],
             "excluded": [[False, True], [False]],
         }
     }
@@ -38,12 +38,12 @@ _TRIANGLE = {
 class LayoutTests(unittest.TestCase):
     def test_two_dimensional_arrays_render_one_row_per_line(self) -> None:
         text = persisted_json_text(_TRIANGLE)
-        self.assertIn('      "ratio values": [\n        [1.5, 1.25],\n        [1.4]\n      ],', text)
+        self.assertIn('      "ratio_values": [\n        [1.5, 1.25],\n        [1.4]\n      ],', text)
 
     def test_one_dimensional_arrays_keep_one_value_per_line(self) -> None:
         # Only the 2D case is compacted; a plain vector stays in the familiar form.
-        text = persisted_json_text({"origin labels": ["2020", "2021"]})
-        self.assertEqual(text, '{\n  "origin labels": [\n    "2020",\n    "2021"\n  ]\n}\n')
+        text = persisted_json_text({"origin_labels": ["2020", "2021"]})
+        self.assertEqual(text, '{\n  "origin_labels": [\n    "2020",\n    "2021"\n  ]\n}\n')
 
     def test_empty_containers_render_inline(self) -> None:
         self.assertEqual(persisted_json_text({"a": [], "b": {}}), '{\n  "a": [],\n  "b": {}\n}\n')

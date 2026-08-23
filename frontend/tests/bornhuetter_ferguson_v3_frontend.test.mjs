@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
-  BORN_HUETTER_FERGUSON_JSON_FORMAT_V3,
+  BORN_HUETTER_FERGUSON_JSON_FORMAT,
   buildBornhuetterFergusonMethodPayload,
   rebaseBornhuetterFergusonWeightsByOriginLabel,
   roundBornhuetterFergusonNumber,
@@ -63,7 +63,7 @@ function logicalMethod(overrides = {}) {
 test("BF v3 payload is self-contained and preserves effective-weight and revision metadata", () => {
   const payload = buildBornhuetterFergusonMethodPayload(logicalMethod());
 
-  assert.equal(payload.json_format, BORN_HUETTER_FERGUSON_JSON_FORMAT_V3);
+  assert.equal(payload.json_format, BORN_HUETTER_FERGUSON_JSON_FORMAT);
   assert.equal(payload.method_tab.show_effective_weights, true);
   assert.equal(payload.details_tab.dataset_category, "Claims");
   assert.deepEqual(payload.method_tab.latest_values, [10.123457, 20]);
@@ -119,7 +119,7 @@ test("BF aggregate API sends identity and revision-aware save requests", async (
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ok: true, method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT_V3 } }),
+      json: async () => ({ ok: true, method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT } }),
     };
   };
   try {
@@ -131,7 +131,7 @@ test("BF aggregate API sends identity and revision-aware save requests", async (
     await saveBornhuetterFergusonMethod({
       project_name: "Project",
       reserving_class: "RC",
-      method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT_V3 },
+      method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT },
       notes: "keep",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
@@ -152,7 +152,7 @@ test("BF aggregate API sends identity and revision-aware save requests", async (
     body: {
       project_name: "Project",
       reserving_class: "RC",
-      method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT_V3 },
+      method: { json_format: BORN_HUETTER_FERGUSON_JSON_FORMAT },
       notes: "keep",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",

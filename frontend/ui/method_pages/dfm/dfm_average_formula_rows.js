@@ -14,7 +14,7 @@ function makeRowId(base, periods, exclude) {
   return `${base}_${periodPart}_ex_hi_lo${exclude > 1 ? `_x${exclude}` : ""}`;
 }
 
-const AVERAGE_FORMULA_SETTINGS_KEY = "custom average formula settings";
+const AVERAGE_FORMULA_SETTINGS_KEY = "custom_average_formula_settings";
 
 function cloneSummaryRow(row) {
   const next = { ...(row || {}) };
@@ -30,7 +30,7 @@ export function buildDfmAverageFormulaObject(summaryRows, matrix, values) {
   const out = {
     label: [],
     [AVERAGE_FORMULA_SETTINGS_KEY]: {
-      averageType: [],
+      average_type: [],
       base: [],
       periods: [],
       exclude: [],
@@ -43,7 +43,7 @@ export function buildDfmAverageFormulaObject(summaryRows, matrix, values) {
   let hasDisplayInputs = false;
   rows.forEach((row) => {
     out.label.push(normalizeLabel(row?.label || row?.id));
-    settings.averageType.push(row?.averageType ?? "");
+    settings.average_type.push(row?.averageType ?? "");
     settings.base.push(row?.base ?? "");
     settings.periods.push(row?.periods ?? "");
     settings.exclude.push(row?.exclude ?? 0);
@@ -64,7 +64,7 @@ export function buildDfmAverageFormulaObject(summaryRows, matrix, values) {
   if (Array.isArray(matrix)) out.selected = matrix;
   if (Array.isArray(values)) out.values = values;
   if (hasInputs) out.inputs = inputs;
-  if (hasDisplayInputs) out["display inputs"] = displayInputs;
+  if (hasDisplayInputs) out["display_inputs"] = displayInputs;
   return out;
 }
 
@@ -100,8 +100,8 @@ export function getDfmAverageFormulaInputs(averageFormulas) {
 }
 
 export function getDfmAverageFormulaDisplayInputs(averageFormulas) {
-  if (averageFormulas && typeof averageFormulas === "object" && Array.isArray(averageFormulas["display inputs"])) {
-    return averageFormulas["display inputs"];
+  if (averageFormulas && typeof averageFormulas === "object" && Array.isArray(averageFormulas["display_inputs"])) {
+    return averageFormulas["display_inputs"];
   }
   return [];
 }
@@ -124,7 +124,7 @@ export function buildDfmSummaryRowsFromAverageFormulaObject(averageFormulas) {
     const row = {
       ...inferred,
       label: normalized,
-      averageType: settings.averageType?.[index] ?? inferred.averageType ?? "custom",
+      averageType: settings.average_type?.[index] ?? inferred.averageType ?? "custom",
       base: settings.base?.[index] ?? inferred.base ?? "",
       periods: settings.periods?.[index] ?? inferred.periods ?? "all",
       exclude: settings.exclude?.[index] ?? inferred.exclude ?? 0,

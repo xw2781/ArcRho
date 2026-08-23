@@ -6,7 +6,7 @@ from typing import Any, Mapping, Sequence
 
 from .dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
 from .sidecar_audit_contract import AUDIT_ACTION_INSERT, append_audit_entry
-from .sidecar_core_contract import validate_sidecar_core
+from .sidecar_core_contract import DATASET_SIDECAR_JSON_FORMAT, dependency_entries, validate_sidecar_core
 
 
 ENGINE_SOURCE_KIND = "engine"
@@ -60,22 +60,20 @@ def build_engine_dataset_sidecar(
 
     vector = str(data_format or "").strip().casefold() == "vector"
     payload: dict[str, Any] = {
+        "json_format": DATASET_SIDECAR_JSON_FORMAT,
         "dataset_name": str(dataset_name or "").strip(),
         "dataset_type": str(dataset_type or dataset_name or "").strip(),
         "reserving_class": str(reserving_class or "").strip(),
         "project_name": str(project_name or "").strip(),
         "source_kind": ENGINE_SOURCE_KIND,
         "calculated": False,
-        "formula": "",
         "data_format": "Vector" if vector else "Triangle",
-        "data_format_code": 1 if vector else 0,
         "method_type": ENGINE_METHOD_TYPE,
         "status": ENGINE_STATUS_CURRENT,
         "number_format": str(number_format or "").strip(),
         "decimal_places": int(decimal_places),
         "show_subtotal": normalize_show_subtotal(show_subtotal),
         "csv_file": str(csv_file or "").strip(),
-        "user": str(user or "").strip(),
         "created": str(created or "").strip(),
         "modified_by": str(user or "").strip(),
         "updated_at": str(updated_at or "").strip(),
@@ -93,19 +91,15 @@ def build_engine_dataset_sidecar(
         })
 
     if processing:
-        canonical_processing = deepcopy(dict(processing))
-        payload["processing"] = canonical_processing
-        payload["processing_by_csv"] = {
-            payload["csv_file"]: deepcopy(canonical_processing),
-        }
+        payload["processing"] = deepcopy(dict(processing))
 
-    payload["Precedents"] = deepcopy(list(precedents))
-    payload["Dependents"] = deepcopy(list(dependents))
+    payload["precedents"] = dependency_entries(precedents)
+    payload["dependents"] = dependency_entries(dependents)
     payload["audit_log"] = append_audit_entry(
         audit_log,
         event_date=payload["updated_at"],
         action=str(audit_action or AUDIT_ACTION_INSERT),
-        user=payload["user"],
+        user=str(user or "").strip(),
         change_info="",
     )
     return validate_sidecar_core(payload)

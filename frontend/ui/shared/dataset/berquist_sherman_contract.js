@@ -8,7 +8,7 @@ const CONTRACTS = Object.freeze({
     displayLabel: "Berquist Sherman SR",
     sourceKind: "berquist_sherman_sr",
     filenamePrefix: "BSSR@",
-    jsonFormat: "arcrho-berquist-sherman-sr-method-by-tab-v1",
+    jsonFormat: "arcrho-berquist-sherman-sr-v4",
   }),
   cra: Object.freeze({
     variant: "cra",
@@ -16,7 +16,7 @@ const CONTRACTS = Object.freeze({
     displayLabel: "Berquist Sherman CRA",
     sourceKind: "berquist_sherman_cra",
     filenamePrefix: "BSCRA@",
-    jsonFormat: "arcrho-berquist-sherman-cra-method-by-tab-v1",
+    jsonFormat: "arcrho-berquist-sherman-cra-v4",
   }),
 });
 

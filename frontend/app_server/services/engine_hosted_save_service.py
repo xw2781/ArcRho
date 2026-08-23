@@ -109,9 +109,9 @@ def _save_object_name(args: Sequence[Any]) -> str:
     """Return one safe logical label without recording the save payload."""
 
     candidate = args[2] if len(args) > 2 and isinstance(args[2], Mapping) else {}
-    details = candidate.get("details tab")
+    details = candidate.get("details_tab")
     if isinstance(details, Mapping):
-        for key in ("name", "output dataset"):
+        for key in ("name", "output_dataset"):
             value = str(details.get(key) or "").strip()
             if value:
                 return value

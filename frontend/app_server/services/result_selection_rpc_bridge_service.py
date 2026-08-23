@@ -28,7 +28,7 @@ RESULT_SELECTION_FUNCTION_NAME = "ResultSelection"
 SYNC_RESULT_SELECTION_FUNCTION_NAME = "SyncResultSelection"
 # The status field carrying the ``Modified`` value ResQ stamped on the method it
 # just saved, in the same spelling the DFM bridge uses for it.
-SYNC_LAST_MODIFIED_FIELD = "last modified"
+SYNC_LAST_MODIFIED_FIELD = "last_modified"
 
 
 def _clean_text(value: Any) -> str:
@@ -282,7 +282,7 @@ def _build_json_snapshot(parsed: ParsedJson) -> Dict[str, Any]:
     json_format = _clean_text(payload.get("json_format"))
     status = _clean_text(payload.get("status"))
     message = _clean_text(payload.get("message"))
-    if json_format != "arcrho-result-selection-method-by-tab-v2":
+    if json_format != "arcrho-result-selection-v4":
         if status or message or payload.get("ok") is False:
             detail = message or status or "Bridge returned a status JSON instead of Result Selection method JSON."
             return {

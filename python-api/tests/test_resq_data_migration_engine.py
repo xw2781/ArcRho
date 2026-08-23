@@ -161,7 +161,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual(payload["source_kind"], "engine")
         self.assertNotIn("source", payload)  # no resq_* marker -> not an imported snapshot
         self.assertFalse(payload["calculated"])
-        self.assertEqual(payload["formula"], "")
+        self.assertNotIn("formula", payload)
         self.assertEqual(payload["data_format"], "Triangle")
         self.assertEqual(payload["origin_length"], 12)
         self.assertEqual(payload["development_length"], 6)
@@ -172,7 +172,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertNotIn("origin_labels", payload)  # engine determines shape
         self.assertEqual(payload["csv_file"], csv_name)
         self.assertEqual(payload["processing"], self.provenance)
-        self.assertEqual(payload["processing_by_csv"], {csv_name: self.provenance})
+        self.assertNotIn("processing_by_csv", payload)
         self.assertEqual(payload["audit_log"][0]["action"], "Insert")
 
     def test_engine_vector_sidecar_uses_period_length(self) -> None:
@@ -204,7 +204,8 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertNotIn("origin_length", payload)
         self.assertNotIn("development_length", payload)
         self.assertNotIn("cumulative", payload)
-        self.assertEqual(payload["processing_by_csv"][csv_name]["config_hash"], "sha256:deadbeef")
+        self.assertEqual(payload["processing"]["config_hash"], "sha256:deadbeef")
+        self.assertNotIn("processing_by_csv", payload)
 
     # -- orchestration: period preservation + no fallback ---------------------
 

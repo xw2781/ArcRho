@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
@@ -49,7 +50,7 @@ def _bool_value(value: Any) -> bool:
 
 
 def _now_utc_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def _current_user_name() -> str:
@@ -213,7 +214,7 @@ def _direct_dependent_names(project_name: str, dataset_type_name: str) -> List[s
 
 
 def _name_entries(names: List[str]) -> List[Dict[str, str]]:
-    return [{"dataset_type_name": name} for name in names if _clean_text(name)]
+    return dataset_sidecar_status_service.name_entries(names)
 
 
 def _precedent_entries(
@@ -221,21 +222,54 @@ def _precedent_entries(
     dataset_type_name: str,
     dependency_info: List[Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
-    info_by_key = {
-        _canon_dataset_name(item.get("dataset_type_name")): item
-        for item in (dependency_info or [])
-        if _canon_dataset_name(item.get("dataset_type_name"))
-    }
+    # The persisted graph is location-independent: a precedent is named, never
+    # pathed. ``dependency_info`` (paths, stats) is runtime state for the
+    # calculation that produced the output and is not written to the sidecar.
+    return _name_entries(_direct_precedent_names(project_name, dataset_type_name))
+
+
+_DEPENDENCY_RECORD_FIELDS = (
+    "source_kind",
+    "data_format",
+    "origin_length",
+    "development_length",
+    "period_length",
+    "cumulative",
+    "calendar",
+    "size",
+    "mtime_ns",
+    "sha256",
+    "input_path",
+    "input_size",
+    "input_mtime_ns",
+    "input_sha256",
+)
+
+
+def _dependency_fingerprints(dependency_info: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Project the components a calculation read into its technical record.
+
+    Each entry names the dependency and the exact file it was read from with
+    that file's fingerprint, plus the input a DFM method output was rebuilt
+    from. A live-preview component has no file and is left out.
+    """
     entries: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
-    for name in _direct_precedent_names(project_name, dataset_type_name):
-        key = _canon_dataset_name(name)
-        if not key or key in seen:
+    for item in dependency_info:
+        if not isinstance(item, dict):
             continue
-        seen.add(key)
-        item = dict(info_by_key.get(key) or {})
-        item["dataset_type_name"] = item.get("dataset_type_name") or name
-        entries.append(item)
+        path = _clean_text(item.get("path"))
+        if not path:
+            continue
+        entry: Dict[str, Any] = {
+            "dataset_type": _clean_text(item.get("dataset_type_name")),
+            "dataset_name": _clean_text(item.get("dataset_name") or item.get("dataset_type_name")),
+            "path": path,
+        }
+        for key in _DEPENDENCY_RECORD_FIELDS:
+            value = item.get(key)
+            if value not in (None, ""):
+                entry[key] = value
+        entries.append(entry)
     return entries
 
 
@@ -255,8 +289,8 @@ def sidecar_graph_fields(
             if _canon_dataset_name(name) in existing_keys
         ]
     return {
-        "Precedents": _precedent_entries(project_name, dataset_type_name, dependency_info),
-        "Dependents": _name_entries(dependent_names),
+        "precedents": _precedent_entries(project_name, dataset_type_name, dependency_info),
+        "dependents": _name_entries(dependent_names),
     }
 
 
@@ -273,8 +307,8 @@ def apply_sidecar_graph_fields(
         or payload.get("dataset_name")
     )
     if not project or not dataset_type:
-        payload["Precedents"] = []
-        payload["Dependents"] = []
+        payload["precedents"] = []
+        payload["dependents"] = []
         payload.pop("dependencies", None)
         return payload
 
@@ -286,12 +320,10 @@ def apply_sidecar_graph_fields(
     row = rows_by_key.get(_canon_dataset_name(dataset_type))
     if row:
         formula = _clean_text(row.get("formula"))
-        is_calculated = bool(row.get("calculated") and not row.get("generated") and formula)
-        payload["formula"] = formula if is_calculated else ""
-        payload["calculated"] = is_calculated
+        payload["calculated"] = bool(row.get("calculated") and not row.get("generated") and formula)
 
-    existing_dependent_names = dataset_sidecar_status_service.entry_names(payload.get("Dependents"))
-    existing_precedents = payload.get("Precedents")
+    existing_dependent_names = dataset_sidecar_status_service.entry_names(payload.get("dependents"))
+    existing_precedents = payload.get("precedents")
     owning_method_type = dataset_sidecar_status_service.normalize_method_type(
         payload.get("method_type"),
         payload.get("source_kind"),
@@ -319,12 +351,12 @@ def apply_sidecar_graph_fields(
                 dependent.get("source_kind"),
             ) != dataset_sidecar_status_service.METHOD_TYPE_NONE:
                 preserved_method_dependents.append(name)
-    graph_fields["Dependents"] = dataset_sidecar_status_service.merge_name_entries(
-        graph_fields.get("Dependents"),
+    graph_fields["dependents"] = dataset_sidecar_status_service.merge_name_entries(
+        graph_fields.get("dependents"),
         dataset_sidecar_status_service.name_entries(preserved_method_dependents),
     )
     if owning_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE:
-        graph_fields["Precedents"] = existing_precedents if isinstance(existing_precedents, list) else []
+        graph_fields["precedents"] = existing_precedents if isinstance(existing_precedents, list) else []
     payload.update(graph_fields)
     payload.pop("dependencies", None)
     return payload
@@ -456,7 +488,13 @@ class _MethodFolderScan(NamedTuple):
 
 
 def _scan_dataset_cache_folder(project_name: str, reserving_class: str) -> _DatasetCacheScan:
-    folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
+    return _scan_dataset_cache_folder_at(
+        config.get_project_dataset_cache_dir(project_name, reserving_class)
+    )
+
+
+def _scan_dataset_cache_folder_at(folder: str) -> _DatasetCacheScan:
+    """Observe one cached CSV folder given its path (the runtime derives it from a CSV)."""
     exists, csv_entries = class_folder_scan_cache.scan_files_with_stats(folder, ".csv")
     if not exists:
         return _DatasetCacheScan(exists=False, csv_files=(), sidecars={}, csv_stats={})
@@ -488,7 +526,13 @@ def _scan_dataset_cache_folder(project_name: str, reserving_class: str) -> _Data
 
 
 def _scan_dfm_method_folder(project_name: str, reserving_class: str) -> _MethodFolderScan:
-    folder = config.get_project_method_data_dir(project_name, reserving_class)
+    return _scan_dfm_method_folder_at(
+        config.get_project_method_data_dir(project_name, reserving_class)
+    )
+
+
+def _scan_dfm_method_folder_at(folder: str) -> _MethodFolderScan:
+    """Observe one DFM method folder given its path."""
     exists, method_entries = class_folder_scan_cache.scan_files_with_stats(
         folder, ".json", name_prefix="DFM@"
     )
@@ -520,8 +564,8 @@ def _json_tab(source: Dict[str, Any], key: str) -> Dict[str, Any]:
 
 def _method_output_names(payload: Dict[str, Any], path: str = "") -> Set[str]:
     names: Set[str] = set()
-    details = _json_tab(payload, "details tab")
-    for key in ("output type", "name"):
+    details = _json_tab(payload, "details_tab")
+    for key in ("output_type", "name"):
         text = _clean_text(details.get(key))
         if text:
             names.add(text)
@@ -561,8 +605,8 @@ def _candidate_dfm_methods(
         names = _method_output_names(payload, path)
         if dep_key not in {_canon_dataset_name(name) for name in names}:
             return
-        details = _json_tab(payload, "details tab")
-        output_type = _clean_text(details.get("output type"))
+        details = _json_tab(payload, "details_tab")
+        output_type = _clean_text(details.get("output_type"))
         method_name = _clean_text(details.get("name"))
         score = 0
         if _canon_dataset_name(output_type) == dep_key:
@@ -636,8 +680,8 @@ def _read_dfm_input_triangle(
     exact_input_path: str = "",
     scan: _DatasetCacheScan | None = None,
 ) -> Tuple[np.ndarray | None, str, str]:
-    data_tab = _json_tab(payload, "data tab")
-    details = _json_tab(payload, "details tab")
+    data_tab = _json_tab(payload, "data_tab")
+    details = _json_tab(payload, "details_tab")
     dataset_folder = config.get_project_dataset_cache_dir(project_name, reserving_class)
     if exact_input_path:
         if (
@@ -657,7 +701,7 @@ def _read_dfm_input_triangle(
         except Exception as exc:
             return None, path, str(exc)
 
-    input_name = _clean_text(details.get("input triangle"))
+    input_name = _clean_text(details.get("input_triangle"))
     if not input_name:
         return None, "", "DFM method is missing an input triangle name."
     candidates = _candidate_csvs(project_name, reserving_class, input_name, target_settings, scan=scan)
@@ -673,8 +717,8 @@ def _read_dfm_input_triangle(
 
 
 def _selected_dfm_ratio_values(payload: Dict[str, Any], dev_count: int) -> List[float]:
-    ratios_tab = _json_tab(payload, "ratios tab")
-    formulas = _json_tab(ratios_tab, "average formulas")
+    ratios_tab = _json_tab(payload, "ratios_tab")
+    formulas = _json_tab(ratios_tab, "average_formulas")
     selected = formulas.get("selected") if isinstance(formulas.get("selected"), list) else []
     values = formulas.get("values") if isinstance(formulas.get("values"), list) else []
     ratio_count = max(0, int(dev_count or 0))
@@ -726,7 +770,7 @@ def _build_dfm_method_vector(
     exact_input_path: str = "",
     scan: _DatasetCacheScan | None = None,
 ) -> Tuple[np.ndarray | None, str, str]:
-    data_tab = _json_tab(payload, "data tab")
+    data_tab = _json_tab(payload, "data_tab")
     input_values, input_path, error = _read_dfm_input_triangle(
         project_name,
         reserving_class,
@@ -740,8 +784,8 @@ def _build_dfm_method_vector(
     if input_values is None or input_values.ndim != 2:
         return None, input_path, "DFM input triangle could not be loaded."
 
-    dev_labels = data_tab.get("development labels") if isinstance(data_tab.get("development labels"), list) else []
-    origin_labels = data_tab.get("origin labels") if isinstance(data_tab.get("origin labels"), list) else []
+    dev_labels = data_tab.get("development_labels") if isinstance(data_tab.get("development_labels"), list) else []
+    origin_labels = data_tab.get("origin_labels") if isinstance(data_tab.get("origin_labels"), list) else []
     dev_count = len(dev_labels) or input_values.shape[1]
     if dev_count <= 0:
         return None, input_path, "DFM method is missing development periods."
@@ -959,8 +1003,8 @@ def _load_components(
             }
             if resolved_method_path and method_output_matches:
                 if exact_method_input_path:
-                    data_tab = _json_tab(method_payload, "data tab")
-                    details = _json_tab(method_payload, "details tab")
+                    data_tab = _json_tab(method_payload, "data_tab")
+                    details = _json_tab(method_payload, "details_tab")
                     current_input_path = _clean_text(
                         data_tab.get("input data triangle csv path")
                     )
@@ -980,7 +1024,7 @@ def _load_components(
                     ):
                         validated_method_input_path = resolved_current_input
                     elif resolved_recorded_input and not current_input_path:
-                        input_name = _clean_text(details.get("input triangle"))
+                        input_name = _clean_text(details.get("input_triangle"))
                         input_sidecar = _sidecar_for_csv(resolved_recorded_input, dataset_scan)
                         exact_input_names = {
                             _canon_dataset_name(input_sidecar.get("dataset_name")),
@@ -1465,7 +1509,6 @@ def _recalculate_dataset_impl(
         "project_name": project_name,
         "source_kind": "calculated",
         "data_format": row.get("data_format") or "Triangle",
-        "data_format_code": 1 if str(row.get("data_format") or "").strip().lower() == "vector" else 0,
         "origin_length": settings.get("origin_length") or 12,
         "development_length": settings.get("development_length") or 12,
         "cumulative": bool(settings.get("cumulative", True)),
@@ -1475,12 +1518,10 @@ def _recalculate_dataset_impl(
         "created": created,
         "updated_at": now,
         "modified_by": user_name,
-        "user": user_name,
         "calculated": True,
-        "formula": row.get("formula") or "",
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
-        "Dependents": existing_sidecar.get("Dependents", []),
+        "dependents": existing_sidecar.get("dependents", []),
         "number_format": number_format,
         "decimal_places": dataset_number_format_service.normalize_decimal_places(
             decimal_places,
@@ -1498,6 +1539,21 @@ def _recalculate_dataset_impl(
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
     _write_dataset_csv_and_sidecar(pd.DataFrame(arr), csv_path, sidecar_path, payload)
+    # The sidecar names the precedents and nothing else. What this output was
+    # built from -- the formula and each dependency's file and fingerprint --
+    # is the technical record beside the CSV, which the exact-cache check reads.
+    runtime_cache_provenance_service.record_calculated(
+        csv_path,
+        identity=runtime_cache_provenance_service.calculated_cache_identity(
+            csv_path,
+            project_name=project_name,
+            reserving_class=reserving_class,
+            dataset_name=row["name"],
+            dataset_type=row["name"],
+        ),
+        formula=row["formula"],
+        dependencies=_dependency_fingerprints(precedents),
+    )
     status_updates = (
         dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
             project_name,
@@ -1514,8 +1570,8 @@ def _recalculate_dataset_impl(
         "dataset_type_name": row["name"],
         "path": csv_path,
         "sidecar_path": sidecar_path,
-        "Precedents": payload.get("Precedents", []),
-        "Dependents": payload.get("Dependents", []),
+        "precedents": payload.get("precedents", []),
+        "dependents": payload.get("dependents", []),
         "status_updates": status_updates,
     }
 
@@ -2448,7 +2504,7 @@ def find_dataset_type_removal_blockers(
         leaving = departing_keys_by_class.get(class_dir, set())
         dependents: List[Dict[str, str]] = []
         for dependent_name in dataset_sidecar_status_service.entry_names(
-            payload.get("Dependents")
+            payload.get("dependents")
         ):
             dependent_key = _canon_dataset_name(dependent_name)
             if not dependent_key or dependent_key in leaving:

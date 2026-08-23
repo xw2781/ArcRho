@@ -107,7 +107,7 @@ test("existing Result Selection apply uses persisted values without source or ba
 
 test("calculated update reports identify only affected Result Selection outputs", () => {
   const report = {
-    updated: [{ dataset_type_name: "Calculated Loss" }],
+    updated: [{ dataset_name: "Calculated Loss" }],
     result_selection_updates: {
       updated: [{ dataset_name: "Selection A" }],
       status_refreshed: [{ dataset_name: "Selection B" }],
@@ -120,7 +120,7 @@ test("calculated update reports identify only affected Result Selection outputs"
     ["Selection A", "Selection B", "Selection C"],
   );
   assert.equal(hasResultSelectionUpdates(report), true);
-  assert.equal(hasResultSelectionUpdates({ updated: [{ dataset_type_name: "Calculated Loss" }] }), false);
+  assert.equal(hasResultSelectionUpdates({ updated: [{ dataset_name: "Calculated Loss" }] }), false);
   assert.deepEqual(resultSelectionUpdateContexts({
     project_name: "Project A",
     reserving_class: "Class A",

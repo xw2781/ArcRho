@@ -1983,8 +1983,8 @@ function setJsonValueAtPath(root, keyPath = [], value) {
 
 function getKnownDfmCsvPathFields() {
   return [
-    ["data tab", "input data triangle csv path"],
-    ["results tab", "ultimate vector csv path"],
+    ["data_tab", "input data triangle csv path"],
+    ["results_tab", "ultimate vector csv path"],
   ];
 }
 

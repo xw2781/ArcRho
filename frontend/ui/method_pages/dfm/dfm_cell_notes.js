@@ -10,8 +10,8 @@ const NOTE_TABLES = {
 };
 
 const NOTE_PAYLOAD_KEYS = {
-  main: "ratio main table",
-  summary: "ratio summary table",
+  main: "ratio_main_table",
+  summary: "ratio_summary_table",
 };
 
 const notesByTable = new Map([

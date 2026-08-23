@@ -164,7 +164,7 @@ class ResultSelectionCrossProducerContractTests(unittest.TestCase):
         self.assertEqual(bridge_payload, migration_payload)
         self.assertEqual(frontend_payload, migration_payload)
         self.assertEqual(backend_payload, migration_payload)
-        self.assertEqual(bridge_payload["json_format"], "arcrho-result-selection-method-by-tab-v2")
+        self.assertEqual(bridge_payload["json_format"], "arcrho-result-selection-v4")
         self.assertEqual(
             bridge_payload["method_tab"]["ratio_basis_values"],
             [{"name": "Premium", "values": [1000.123457, -1000.123457]}],

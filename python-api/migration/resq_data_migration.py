@@ -192,7 +192,7 @@ PASSWORD = ""
 
 SERVER_ROOT = Path(r"E:\ArcRho Server")
 PROJECT_DATA_DIR = SERVER_ROOT / "projects" / PROJECT_NAME / "data"
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
+RS_JSON_FORMAT = "arcrho-result-selection-v4"
 INDEX_FILE_NAME = DATASET_INDEX_FILE_NAME
 INDEX_VERSION = DATASET_INDEX_VERSION
 METHOD_DATA_DIR = "methods"
@@ -337,8 +337,8 @@ def _method_payload_dataset_names(path: Path) -> set[str]:
 
     names: set[str] = set()
     if path.name.startswith("DFM@"):
-        details = _dict_field(payload, "details tab")
-        for key in ("output dataset", "output vector", "output type"):
+        details = _dict_field(payload, "details_tab")
+        for key in ("output_dataset", "output_type"):
             name = _normalize_import_name(details.get(key))
             if name:
                 names.add(name)

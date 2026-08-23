@@ -147,7 +147,7 @@ function getDatasetTypeColumnIndexes(columns) {
   }
   return {
     name: indexByName.name,
-    dataFormat: indexByName["data format"],
+    dataFormat: indexByName["data_format"],
     calculated: indexByName.calculated,
   };
 }
@@ -339,22 +339,22 @@ function clonePersistedNumber(value) {
  */
 export function applyPersistedResultsSnapshot(resultsTab = {}) {
   const source = resultsTab && typeof resultsTab === "object" ? resultsTab : {};
-  const datasetName = toText(source["ratio basis dataset"]);
-  const originLabels = Array.isArray(source["ratio basis origin labels"])
-    ? source["ratio basis origin labels"].map((label) => String(label ?? ""))
+  const datasetName = toText(source["ratio_basis_dataset"]);
+  const originLabels = Array.isArray(source["ratio_basis_origin_labels"])
+    ? source["ratio_basis_origin_labels"].map((label) => String(label ?? ""))
     : [];
-  const values = Array.isArray(source["ratio basis values"])
-    ? source["ratio basis values"].map(clonePersistedNumber)
+  const values = Array.isArray(source["ratio_basis_values"])
+    ? source["ratio_basis_values"].map(clonePersistedNumber)
     : [];
   const input = getRatioBasisInputEl();
   ratioBasisEmbeddedSnapshot = true;
   ratioBasisSelectedName = datasetName;
-  ratioBasisSelectedFormat = toText(source["ratio basis data format"] || "vector").toLowerCase();
-  ratioBasisNumberFormat = toText(source["ratio basis number format"]);
-  ratioBasisDecimalPlaces = Number.isFinite(Number(source["ratio basis decimal places"]))
-    ? Number(source["ratio basis decimal places"])
+  ratioBasisSelectedFormat = toText(source["ratio_basis_data_format"] || "vector").toLowerCase();
+  ratioBasisNumberFormat = toText(source["ratio_basis_number_format"]);
+  ratioBasisDecimalPlaces = Number.isFinite(Number(source["ratio_basis_decimal_places"]))
+    ? Number(source["ratio_basis_decimal_places"])
     : null;
-  ratioBasisSourceRevision = toText(source["ratio basis source revision"]);
+  ratioBasisSourceRevision = toText(source["ratio_basis_source_revision"]);
   if (input) input.value = datasetName;
 
   const valuesByOrigin = new Map();
@@ -374,8 +374,8 @@ export function applyPersistedResultsSnapshot(resultsTab = {}) {
     originLabels,
     error: "",
   };
-  persistedUltimateVector = Array.isArray(source["ultimate vector"])
-    ? source["ultimate vector"].map(clonePersistedNumber)
+  persistedUltimateVector = Array.isArray(source["ultimate_vector"])
+    ? source["ultimate_vector"].map(clonePersistedNumber)
     : null;
   setRatioBasisStatus("", "");
 }
@@ -388,13 +388,13 @@ export function getResultsRatioBasisSnapshot() {
     ? ratioBasisColumnState.valuesByIndex.slice()
     : [];
   return {
-    "ratio basis dataset": toText(ratioBasisSelectedName),
-    "ratio basis data format": toText(ratioBasisSelectedFormat),
-    "ratio basis origin labels": origins,
-    "ratio basis values": values,
-    "ratio basis number format": ratioBasisNumberFormat,
-    "ratio basis decimal places": ratioBasisDecimalPlaces,
-    "ratio basis source revision": ratioBasisSourceRevision,
+    "ratio_basis_dataset": toText(ratioBasisSelectedName),
+    "ratio_basis_data_format": toText(ratioBasisSelectedFormat),
+    "ratio_basis_origin_labels": origins,
+    "ratio_basis_values": values,
+    "ratio_basis_number_format": ratioBasisNumberFormat,
+    "ratio_basis_decimal_places": ratioBasisDecimalPlaces,
+    "ratio_basis_source_revision": ratioBasisSourceRevision,
   };
 }
 
@@ -449,7 +449,7 @@ export async function ensureResultsRatioBasisAligned() {
     }
   }
   const origins = getDfmOriginLabels();
-  const snapshotOrigins = getResultsRatioBasisSnapshot()["ratio basis origin labels"];
+  const snapshotOrigins = getResultsRatioBasisSnapshot()["ratio_basis_origin_labels"];
   if (origins.length && !matchesOriginLabels(snapshotOrigins, origins)) {
     const detail = toText(ratioBasisColumnState.error)
       || "Reselect or clear it in the Results tab, then save.";

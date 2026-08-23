@@ -8,7 +8,6 @@ calculated cache is current. These tests pin the trust short-circuit in
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import sys
 import tempfile
@@ -33,6 +32,7 @@ from app_server import config
 from app_server.services import (
     arcrho_runtime_service,
     calculated_dataset_service,
+    runtime_cache_provenance_service,
 )
 
 
@@ -48,7 +48,6 @@ class ReadPathTrustTests(unittest.TestCase):
         self.data_path.parent.mkdir(parents=True)
         self.data_path.write_text("2\n", encoding="utf-8")
         self.dependency_path.write_text("1\n", encoding="utf-8")
-        dependency_stat = self.dependency_path.stat()
         self.pairs = [
             ("Function", "ArcRhoTri"),
             ("Path", "Example RC"),
@@ -72,18 +71,10 @@ class ReadPathTrustTests(unittest.TestCase):
             "source_kind": "calculated",
             "data_format": "Triangle",
             "status": 0,
-            "formula": '"Paid Loss" * 2',
-            "Precedents": [
-                {
-                    "dataset_type_name": "Paid Loss",
-                    "path": str(self.dependency_path),
-                    "mtime_ns": dependency_stat.st_mtime_ns,
-                    "size": dependency_stat.st_size,
-                    "sha256": hashlib.sha256(self.dependency_path.read_bytes()).hexdigest(),
-                }
-            ],
+            "precedents": [{"dataset_name": "Paid Loss"}],
         }
         self._write_sidecar()
+        self._record_dependencies()
         contracts = {
             "calculated loss": {
                 "name": "Calculated Loss",
@@ -106,6 +97,29 @@ class ReadPathTrustTests(unittest.TestCase):
     def _write_sidecar(self) -> None:
         self.sidecar_path.write_text(
             json.dumps(self.sidecar_payload), encoding="utf-8"
+        )
+
+    def _record_dependencies(self, formula: str = '"Paid Loss" * 2') -> None:
+        # The sidecar names the precedent only; the file it was read from and
+        # its fingerprint are the technical record beside the CSV.
+        runtime_cache_provenance_service.record_calculated(
+            str(self.data_path),
+            identity=runtime_cache_provenance_service.calculated_cache_identity(
+                str(self.data_path),
+                project_name="Example Project",
+                reserving_class="Example RC",
+                dataset_name="Calculated Loss",
+                dataset_type="Calculated Loss",
+            ),
+            formula=formula,
+            dependencies=[
+                {
+                    "dataset_type": "Paid Loss",
+                    "dataset_name": "Paid Loss",
+                    "path": str(self.dependency_path),
+                    **runtime_cache_provenance_service.file_fingerprint(str(self.dependency_path)),
+                }
+            ],
         )
 
     def _write_current_index(self) -> None:
@@ -178,18 +192,15 @@ class ReadPathTrustTests(unittest.TestCase):
         # A Dataset Type formula change is config drift the folder signature
         # cannot see; the drift check stays ahead of the trust short-circuit.
         self._write_current_index()
-        self.sidecar_payload["formula"] = '"Paid Loss" * 3'
-        # Restore the file bytes after the signature was recorded so only the
-        # in-memory payload drifts: simulate by pointing the contract elsewhere.
-        self._write_sidecar()
-        self._write_current_index()
+        # The record beside the CSV says the cache was built with "* 2"; the
+        # Dataset Type now says "* 3". Nothing in the class folder moved.
         with patch.object(
             calculated_dataset_service,
             "calculated_dataset_contract",
             return_value={
                 "name": "Calculated Loss",
                 "data_format": "Triangle",
-                "formula": '"Paid Loss" * 2',
+                "formula": '"Paid Loss" * 3',
                 "precedents": ["Paid Loss"],
             },
         ):

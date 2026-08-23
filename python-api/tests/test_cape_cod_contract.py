@@ -349,21 +349,20 @@ class CapeCodContractTests(unittest.TestCase):
             project_name="NJ_Annual_Prod_202605_Fake",
             reserving_class=r"PRNJ - PA\PA\All States\Direct Group\COL",
             csv_file="D 53 - Cape Cod Gross Loss Incurred@12.csv",
-            existing={"Dependents": ["Downstream"]},
+            existing={"dependents": ["Downstream"]},
             notes="CC note",
             timestamp="2026-01-02T00:00:00Z",
             user="tester",
         )
         self.assertEqual(sidecar["source_kind"], "cape_cod")
         self.assertEqual(sidecar["method_type"], "Cape Cod")
-        self.assertEqual(sidecar["method_type_code"], 3)
         self.assertEqual(sidecar["data_format"], "Vector")
         self.assertEqual(sidecar["publication_revision"], method["method_metadata"]["publication_revision"])
         self.assertEqual(
-            sidecar["Precedents"],
-            [{"dataset_type_name": name} for name in cape_cod_precedent_names(method)],
+            sidecar["precedents"],
+            [{"dataset_name": name} for name in cape_cod_precedent_names(method)],
         )
-        self.assertEqual(sidecar["Dependents"], [{"dataset_type_name": "Downstream"}])
+        self.assertEqual(sidecar["dependents"], [{"dataset_name": "Downstream"}])
 
     def test_ultimates_triangle_rejects_irregular_rows(self) -> None:
         method = complete_method()

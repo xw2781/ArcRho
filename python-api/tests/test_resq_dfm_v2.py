@@ -34,23 +34,23 @@ _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
 
 def _owned_payload() -> dict:
     return {
-        "json format": DFM_JSON_FORMAT,
-        "details tab": {
+        "json_format": DFM_JSON_FORMAT,
+        "details_tab": {
             "name": "Paid DFM",
-            "output type": "Paid Ultimate",
-            "output dataset": "Paid Selected",
-            "output category": "Loss",
-            "input triangle": "Paid Loss",
-            "origin length": 12,
-            "development length": 12,
-            "decimal places": 2,
+            "output_type": "Paid Ultimate",
+            "output_dataset": "Paid Selected",
+            "output_category": "Loss",
+            "input_triangle": "Paid Loss",
+            "origin_length": 12,
+            "development_length": 12,
+            "decimal_places": 2,
         },
-        "ratios tab": {
-            "ratio triangle": {"excluded": [[1, 0], [0], []]},
-            "average formulas": {
+        "ratios_tab": {
+            "ratio_triangle": {"excluded": [[1, 0], [0], []]},
+            "average_formulas": {
                 "label": ["Simple - all", "User Entry"],
-                "custom average formula settings": {
-                    "averageType": ["custom", "user_entry"],
+                "custom_average_formula_settings": {
+                    "average_type": ["custom", "user_entry"],
                     "base": ["simple", "simple"],
                     "periods": ["all", "all"],
                     "exclude": [0, 0],
@@ -58,15 +58,15 @@ def _owned_payload() -> dict:
                 "selected": [[1, 1, 1], [0, 0, 0]],
                 "values": [[1, 1, 1], [1.2, 1.3, 1]],
                 "inputs": [["", "", ""], ["=1.2", "='[Book.xlsx]S'!A1", ""]],
-                "display inputs": [["", "", ""], ["=[Premium][2025 Q4]", "", ""]],
+                "display_inputs": [["", "", ""], ["=[Premium][2025 Q4]", "", ""]],
             },
-            "cell notes": {
-                "ratio main table": {"2020": {"(1) 12-24": "keep"}},
-                "ratio summary table": {},
+            "cell_notes": {
+                "ratio_main_table": {"2020": {"(1) 12-24": "keep"}},
+                "ratio_summary_table": {},
             },
         },
-        "results tab": {"ratio basis dataset": "Premium", "ultimate ratio decimal places": 2},
-        "method metadata": {"last modified": "owned", "data refreshed": "old"},
+        "results_tab": {"ratio_basis_dataset": "Premium", "ultimate_ratio_decimal_places": 2},
+        "method_metadata": {"last_modified": "owned", "data_refreshed": "old"},
     }
 
 
@@ -105,7 +105,7 @@ class ResqDfmV2Tests(unittest.TestCase):
         (self.rc_dir / "methods").mkdir()
         extractors.configure_extractors(
             project_name="Demo",
-            rs_json_format="arcrho-result-selection-method-by-tab-v2",
+            rs_json_format="arcrho-result-selection-v4",
             method_data_dir="methods",
         )
 
@@ -127,20 +127,20 @@ class ResqDfmV2Tests(unittest.TestCase):
         self.assertEqual(owned_projection(rebased), owned_projection(local))
         self.assertIn("exclusions", preserved)
         self.assertEqual(
-            rebased["ratios tab"]["average formulas"]["values"][1][1],
-            local["ratios tab"]["average formulas"]["values"][1][1],
+            rebased["ratios_tab"]["average_formulas"]["values"][1][1],
+            local["ratios_tab"]["average_formulas"]["values"][1][1],
         )
         self.assertEqual(
-            rebased["ratios tab"]["average formulas"]["display inputs"],
-            local["ratios tab"]["average formulas"]["display inputs"],
+            rebased["ratios_tab"]["average_formulas"]["display_inputs"],
+            local["ratios_tab"]["average_formulas"]["display_inputs"],
         )
         self.assertNotEqual(
-            rebased["data tab"]["input data triangle values"],
-            local["data tab"]["input data triangle values"],
+            rebased["data_tab"]["input_data_triangle_values"],
+            local["data_tab"]["input_data_triangle_values"],
         )
         self.assertEqual(
-            rebased["method metadata"]["last modified"],
-            local["method metadata"]["last modified"],
+            rebased["method_metadata"]["last_modified"],
+            local["method_metadata"]["last_modified"],
         )
 
     def _publish_dfm_authority_fixture(
@@ -154,10 +154,10 @@ class ResqDfmV2Tests(unittest.TestCase):
             ratio_basis_snapshot=_basis(),
             timestamp="resq-modified",
         )
-        remote["method metadata"]["last modified"] = "resq-modified"
-        remote["method metadata"]["data refreshed"] = "resq-modified"
+        remote["method_metadata"]["last_modified"] = "resq-modified"
+        remote["method_metadata"]["data_refreshed"] = "resq-modified"
         local = deepcopy(remote)
-        local["method metadata"]["last modified"] = "arcrho-modified"
+        local["method_metadata"]["last_modified"] = "arcrho-modified"
         captured: list[dict] = []
 
         def capture_publication(_ultimate, method_payload, _rc_path, rc_dir):
@@ -221,7 +221,7 @@ class ResqDfmV2Tests(unittest.TestCase):
 
         preserve.assert_called_once()
         self.assertEqual(
-            published["method metadata"]["last modified"],
+            published["method_metadata"]["last_modified"],
             "arcrho-modified",
         )
 
@@ -232,11 +232,11 @@ class ResqDfmV2Tests(unittest.TestCase):
 
         preserve.assert_not_called()
         self.assertEqual(
-            published["method metadata"]["last modified"],
+            published["method_metadata"]["last_modified"],
             "resq-modified",
         )
         self.assertEqual(
-            published["method metadata"]["data refreshed"],
+            published["method_metadata"]["data_refreshed"],
             "resq-modified",
         )
 
@@ -298,10 +298,10 @@ class ResqDfmV2Tests(unittest.TestCase):
     def test_migrated_benchmark_setting_stays_frozen(self) -> None:
         self.assertEqual(migration_dfm._infer_avg_settings("Benchmark")["base"], "benchmark")
         payload = _owned_payload()
-        formulas = payload["ratios tab"]["average formulas"]
+        formulas = payload["ratios_tab"]["average_formulas"]
         formulas["label"].insert(1, "Benchmark")
-        settings = formulas["custom average formula settings"]
-        settings["averageType"].insert(1, "custom")
+        settings = formulas["custom_average_formula_settings"]
+        settings["average_type"].insert(1, "custom")
         settings["base"].insert(1, "benchmark")
         settings["periods"].insert(1, "all")
         settings["exclude"].insert(1, 0)
@@ -311,12 +311,12 @@ class ResqDfmV2Tests(unittest.TestCase):
         method = recalculate_dfm_method(
             payload, input_snapshot=_input(), ratio_basis_snapshot=_basis()
         )
-        row = method["ratios tab"]["average formulas"]["label"].index("Benchmark")
-        self.assertEqual(method["ratios tab"]["average formulas"]["values"][row], [1.8, 1.7, 1.0])
+        row = method["ratios_tab"]["average_formulas"]["label"].index("Benchmark")
+        self.assertEqual(method["ratios_tab"]["average_formulas"]["values"][row], [1.8, 1.7, 1.0])
 
     def test_migration_sidecar_exactly_matches_canonical_projection(self) -> None:
         owned = _owned_payload()
-        owned["ratios tab"]["average formulas"]["inputs"][1][0] = \
+        owned["ratios_tab"]["average_formulas"]["inputs"][1][0] = \
             '=[Accounting Cutoff][-1]'
         method = recalculate_dfm_method(
             owned, input_snapshot=_input(), ratio_basis_snapshot=_basis(), timestamp="method-time"
@@ -324,7 +324,7 @@ class ResqDfmV2Tests(unittest.TestCase):
         existing = {
             "notes": "Method Notes",
             "audit_log": [{"event_date": "old", "action": "Insert", "change_info": "", "user": "a"}],
-            "Dependents": [{"dataset_type_name": "RS Ultimate"}],
+            "dependents": [{"dataset_name": "RS Ultimate"}],
             "created": "old",
             "number_format": "$#,##0",
             "publication_revision": "old-revision",
@@ -356,11 +356,11 @@ class ResqDfmV2Tests(unittest.TestCase):
         )
         self.assertEqual(actual, expected)
         self.assertEqual(
-            actual["Precedents"],
+            actual["precedents"],
             [
-                {"dataset_type_name": "Paid Loss"},
-                {"dataset_type_name": "Premium"},
-                {"dataset_type_name": "Accounting Cutoff"},
+                {"dataset_name": "Paid Loss"},
+                {"dataset_name": "Premium"},
+                {"dataset_name": "Accounting Cutoff"},
             ],
         )
 
@@ -381,7 +381,7 @@ class ResqDfmV2Tests(unittest.TestCase):
         project = _Project(self.rc_dir)
         rc = types.SimpleNamespace(project=project, path=r"Auto\PP")
         base_payload = _owned_payload()
-        base_payload["results tab"]["ratio basis dataset"] = ""
+        base_payload["results_tab"]["ratio_basis_dataset"] = ""
         app_input = {**_input(), "revision": "app timestamp", "csv_path": r"Z:\alias\paid.csv"}
         public_input = {**_input(), "revision": "public timestamp", "csv_path": r"Y:\alias\paid.csv"}
         migration_input = {**_input(), "revision": "resq timestamp", "csv_path": r"X:\alias\paid.csv"}

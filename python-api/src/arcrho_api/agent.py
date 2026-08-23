@@ -37,9 +37,9 @@ def cmd_component(args: argparse.Namespace) -> int:
     elif name in {"ratio", "ratio-triangle", "ratio-values"}:
         payload = {
             "api method": "DfmMethod.ratio_values",
-            "component": "ratio triangle",
-            "origin labels": dfm.ratio_triangle.get("origin labels") or [],
-            "development labels": dfm.ratio_triangle.get("development labels") or [],
+            "component": "ratio_triangle",
+            "origin_labels": dfm.ratio_triangle.get("origin_labels") or [],
+            "development_labels": dfm.ratio_triangle.get("development_labels") or [],
             "values": dfm.ratio_values(),
             "excluded": dfm.ratio_triangle.get("excluded") or [],
         }
@@ -48,7 +48,7 @@ def cmd_component(args: argparse.Namespace) -> int:
     elif name in {"ultimate", "ultimate-vector", "results"}:
         payload = {
             "api method": "DfmMethod.ultimate_vector",
-            "component": "ultimate vector",
+            "component": "ultimate_vector",
             "values": dfm.ultimate_vector(),
         }
     else:

@@ -91,7 +91,7 @@ def run_macro(active_dfm, active_context):
             result = scripting_macro_service.run_macro_source(
                 source,
                 "feature.py",
-                {"activeJson": {"details tab": {}}, "label": "live"},
+                {"activeJson": {"details_tab": {}}, "label": "live"},
                 source_path=r"E:\work\feature.py",
             )
 
@@ -121,7 +121,7 @@ def main():
             result = scripting_macro_service.run_macro_source(
                 "print('inspection only')",
                 "inspect_only.py",
-                {"activeJson": {"details tab": {}}},
+                {"activeJson": {"details_tab": {}}},
             )
 
         self.assertTrue(result["success"])
@@ -131,7 +131,7 @@ def main():
     def test_macro_update_notes_carried_in_payload_metadata(self) -> None:
         class _NotesDfm:
             def __init__(self) -> None:
-                self.payload = {"details tab": {"name": "Development"}}
+                self.payload = {"details_tab": {"name": "Development"}}
                 self._pending_notes = None
 
             def to_dict(self):
@@ -154,33 +154,33 @@ def run_macro(active_dfm, active_context=None):
             result = scripting_macro_service.run_macro_source(
                 source,
                 "notes_macro.py",
-                {"activeJson": {"details tab": {}}},
+                {"activeJson": {"details_tab": {}}},
             )
 
         self.assertTrue(result["success"], result)
         # Even though the method payload itself is unchanged, the pending notes
         # ride in the transient `method metadata.method notes` carrier so the
         # DFM tab can deliver them to the Notes tab on apply.
-        self.assertEqual(result["payload"]["method metadata"]["method notes"], "Generated adjustment note")
-        self.assertEqual(result["payload"]["details tab"], {"name": "Development"})
+        self.assertEqual(result["payload"]["method_metadata"]["method_notes"], "Generated adjustment note")
+        self.assertEqual(result["payload"]["details_tab"], {"name": "Development"})
 
     def test_build_active_dfm_accepts_dirty_ui_payload_with_stale_revisions(self) -> None:
         from arcrho_api.dfm_contract import recalculate_dfm_method
 
         saved = recalculate_dfm_method(
             {
-                "details tab": {
+                "details_tab": {
                     "name": "Development",
-                    "output type": "Selected Ultimate",
-                    "output dataset": "Development Output",
-                    "input triangle": "Paid",
-                    "origin length": 12,
-                    "development length": 12,
+                    "output_type": "Selected Ultimate",
+                    "output_dataset": "Development Output",
+                    "input_triangle": "Paid",
+                    "origin_length": 12,
+                    "development_length": 12,
                 },
-                "ratios tab": {
-                    "average formulas": {
+                "ratios_tab": {
+                    "average_formulas": {
                         "label": ["User Entry"],
-                        "custom average formula settings": {"averageType": ["user_entry"]},
+                        "custom_average_formula_settings": {"average_type": ["user_entry"]},
                         "selected": [[1, 1]],
                         "values": [[1.5, 1]],
                         "inputs": [["1.5", "1"]],
@@ -204,7 +204,7 @@ def run_macro(active_dfm, active_context=None):
         formula = '= "Simple - 2" * [Accounting Cutoff][-1]'
         # Simulate an unsaved UI edit: the owned content changes while the
         # payload still carries the revision stamps of the last save.
-        dirty["ratios tab"]["average formulas"]["inputs"][0][0] = formula
+        dirty["ratios_tab"]["average_formulas"]["inputs"][0][0] = formula
 
         with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
             scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
@@ -215,7 +215,7 @@ def run_macro(active_dfm, active_context=None):
 
         # The UI stamps its live Notes tab text on the transient carrier so the
         # macro reads the dirty notes instead of the persisted sidecar.
-        dirty.setdefault("method metadata", {})["method notes"] = "Unsaved UI note"
+        dirty.setdefault("method_metadata", {})["method_notes"] = "Unsaved UI note"
         with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
             scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
         ):
@@ -223,12 +223,12 @@ def run_macro(active_dfm, active_context=None):
 
         self.assertEqual(seeded_dfm.notes, "Unsaved UI note")
         self.assertEqual(seeded_dfm._macro_seeded_notes, "Unsaved UI note")
-        self.assertNotIn("method notes", seeded_dfm.payload.get("method metadata", {}))
+        self.assertNotIn("method_notes", seeded_dfm.payload.get("method_metadata", {}))
 
     def test_untouched_seeded_notes_are_not_re_emitted_as_a_payload_carrier(self) -> None:
         class _SeededNotesDfm:
             def __init__(self) -> None:
-                self.payload = {"details tab": {"name": "Development"}}
+                self.payload = {"details_tab": {"name": "Development"}}
                 self._pending_notes = "Unsaved UI note"
                 self._macro_seeded_notes = "Unsaved UI note"
 
@@ -247,7 +247,7 @@ def run_macro(active_dfm, active_context=None):
             result = scripting_macro_service.run_macro_source(
                 "print('inspection only')",
                 "read_notes.py",
-                {"activeJson": {"details tab": {}}},
+                {"activeJson": {"details_tab": {}}},
             )
 
         self.assertTrue(result["success"], result)
@@ -266,11 +266,11 @@ def run_macro(active_dfm, active_context=None):
             result = scripting_macro_service.run_macro_source(
                 source,
                 "notes_macro.py",
-                {"activeJson": {"details tab": {}}},
+                {"activeJson": {"details_tab": {}}},
             )
 
         self.assertEqual(
-            result["payload"]["method metadata"]["method notes"],
+            result["payload"]["method_metadata"]["method_notes"],
             "Unsaved UI note\n\nGenerated adjustment note",
         )
 
@@ -359,7 +359,7 @@ print(f"restored={sys.gettrace() is trace_before}")
         capture = {
             "ok": True,
             "result": {
-                "activeContext": {"activeJson": {"details tab": {}}},
+                "activeContext": {"activeJson": {"details_tab": {}}},
                 "target": {"token": "capture-token", "tabId": "dfm-1"},
             },
         }

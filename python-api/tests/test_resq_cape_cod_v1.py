@@ -259,7 +259,7 @@ class ResqCapeCodV1Tests(unittest.TestCase):
         configure_number_formats_path(self.root)
         extractors.configure_extractors(
             project_name="Demo",
-            rs_json_format="arcrho-result-selection-method-by-tab-v2",
+            rs_json_format="arcrho-result-selection-v4",
             cc_json_format=CC_JSON_FORMAT,
             method_data_dir="methods",
         )
@@ -405,7 +405,7 @@ class ResqCapeCodV1Tests(unittest.TestCase):
         self.assertEqual(written_sidecar, expected_sidecar)
         self.assertEqual(written_sidecar["source_kind"], CC_SOURCE_KIND)
         self.assertEqual(written_sidecar["method_type"], CC_METHOD_TYPE)
-        self.assertEqual(written_sidecar["method_type_code"], CC_METHOD_TYPE_CODE)
+        self.assertNotIn("method_type_code", written_sidecar)
         self.assertEqual(
             written_sidecar["publication_revision"],
             written_method["method_metadata"]["publication_revision"],

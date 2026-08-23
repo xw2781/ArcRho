@@ -2,7 +2,7 @@
 // Every formula here is the ResQ Generalised Cape Cod calculation; keep this
 // module in exact lockstep with the canonical python contract.
 
-export const CC_JSON_FORMAT = "arcrho-cape-cod-method-by-tab-v1";
+export const CC_JSON_FORMAT = "arcrho-cape-cod-v4";
 export const CC_METHOD_TYPE = "Cape Cod";
 export const CC_SOURCE_KIND = "cape_cod";
 
@@ -450,9 +450,6 @@ export function buildCapeCodMethodPayload({
       cape_cod_ultimate: columns.capeCodUltimate,
       cape_cod_ultimate_ratios: columns.capeCodUltimateRatios,
     },
-    ultimates_tab: {},
-    ratios_tab: {},
-    audit_log_tab: {},
     method_metadata: {
       ...metadata,
       method_type: CC_METHOD_TYPE,

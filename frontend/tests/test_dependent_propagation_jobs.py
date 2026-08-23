@@ -230,7 +230,7 @@ class DependentPropagationJobTests(unittest.TestCase):
             return_value={
                 "ok": False,
                 "steps": [],
-                "skipped": [{"dataset_type_name": "Broken Calc"}],
+                "skipped": [{"dataset_name": "Broken Calc"}],
                 "index_error": "",
             },
         ):

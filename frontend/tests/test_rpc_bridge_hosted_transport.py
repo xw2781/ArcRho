@@ -360,13 +360,13 @@ class CompareReadCountTests(unittest.TestCase):
     def _method_payload(self, spaced: bool) -> dict:
         if spaced:
             return {
-                "json format": "arcrho-dfm-method-by-tab-v2",
-                "details tab": {"name": "M", "output dataset": "Out"},
-                "ratios tab": {"ratio triangle": {"excluded": [[0, 1]]}, "average formulas": {"label": ["Straight"]}},
-                "method metadata": {"last modified": "2026-08-18T10:00:00Z"},
+                "json_format": "arcrho-dfm-v4",
+                "details_tab": {"name": "M", "output_dataset": "Out"},
+                "ratios_tab": {"ratio_triangle": {"excluded": [[0, 1]]}, "average_formulas": {"label": ["Straight"]}},
+                "method_metadata": {"last_modified": "2026-08-18T10:00:00Z"},
             }
         return {
-            "json_format": "arcrho-result-selection-method-by-tab-v2",
+            "json_format": "arcrho-result-selection-v4",
             "details_tab": {"name": "M", "output_type": "Ultimate", "origin_length": 12},
             "method_tab": {"loaded_datasets": []},
             "method_metadata": {"last_modified": "2026-08-18T10:00:00Z"},

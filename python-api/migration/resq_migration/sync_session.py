@@ -135,6 +135,9 @@ def _parsed_timestamp(parser, value: object) -> float | None:
 
 def _method_kind(method_type: object) -> str:
     normalized = str(method_type or "").strip().casefold().replace("_", " ")
+    if normalized in {"", "none"}:
+        # A plain dataset's sidecar says ``method_type: "None"``.
+        return KIND_DATASET
     if normalized == "dfm":
         return KIND_DFM
     if normalized in {"bornhuetter ferguson", "bf"}:
@@ -152,6 +155,11 @@ def _method_kind(method_type: object) -> str:
     return str(method_type or "").strip() or KIND_DATASET
 
 
+def _payload_is_triangle(payload: Mapping[str, Any]) -> bool:
+    """A sidecar names its shape in ``data_format``; there is no numeric twin."""
+    return str(payload.get("data_format") or "").strip().casefold() == "triangle"
+
+
 def _kind_from_code(code: object, fallback: object = "") -> str:
     value = _safe_int(code, -1)
     return {
@@ -167,10 +175,10 @@ def _kind_from_code(code: object, fallback: object = "") -> str:
 
 
 def _method_modified(payload: Mapping[str, Any]) -> str:
-    for key in ("method metadata", "method_metadata"):
+    for key in ("method_metadata", "method_metadata"):
         metadata = payload.get(key)
         if isinstance(metadata, Mapping):
-            value = _first_text(metadata, "last modified", "last_modified", "modified_at", "modified", "updated_at")
+            value = _first_text(metadata, "last_modified", "last_modified", "modified_at", "modified", "updated_at")
             if value:
                 return value
     return ""
@@ -249,10 +257,9 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
         if not key:
             continue
         sidecar_keys.add(key)
-        method_code = _safe_int(payload.get("method_type_code"), 0)
         if key in method_keys:
             continue
-        kind = _kind_from_code(method_code, payload.get("method_type"))
+        kind = _method_kind(payload.get("method_type"))
         modified_text = _sidecar_modified(payload)
         timestamp_source = "Dataset metadata"
         if not modified_text:
@@ -603,13 +610,8 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
     before["_skipped"] = dict(exporter.skipped)
     if kind == KIND_DATASET:
         expected_values = _preflight_dataset_export(exporter, row)
-        payload = item.get("payload") or {}
-        format_code = payload.get("data_format_code") if isinstance(payload, Mapping) else None
-        is_triangle = (
-            int(format_code) == 0
-            if format_code is not None
-            else str(payload.get("data_format") or "").strip().casefold() == "triangle"
-        )
+        payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+        is_triangle = _payload_is_triangle(payload)
         target = exporter._find_triangle(str(row.get("name") or "")) if is_triangle else None
         if target is not None:
             # The general exporter historically tolerates ClearData failures.
@@ -683,12 +685,7 @@ def _preflight_dataset_export(exporter, row: Mapping[str, Any]) -> list[list[flo
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
     values = _dataset_export_values(exporter, row)
-    format_code = payload.get("data_format_code")
-    is_triangle = (
-        int(format_code) == 0
-        if format_code is not None
-        else str(payload.get("data_format") or "").strip().casefold() == "triangle"
-    )
+    is_triangle = _payload_is_triangle(payload)
     if is_triangle:
         return values
     flat = [source[0] if source else None for source in values]
@@ -712,12 +709,7 @@ def _verify_dataset_export(
 ) -> None:
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
-    format_code = payload.get("data_format_code")
-    is_triangle = (
-        int(format_code) == 0
-        if format_code is not None
-        else str(payload.get("data_format") or "").strip().casefold() == "triangle"
-    )
+    is_triangle = _payload_is_triangle(payload)
     name = str(row.get("name") or "")
     if is_triangle:
         target = exporter._find_triangle(name)
@@ -794,26 +786,26 @@ def _preflight_method_export(exporter, row: Mapping[str, Any]) -> None:
         return triangle if triangle is not None else exporter._find_vector(name)
 
     if kind == KIND_DFM:
-        details = payload.get("details tab") if isinstance(payload.get("details tab"), Mapping) else {}
+        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
         method_name = str(details.get("name") or item.get("method_name") or row.get("name") or "").strip()
         target = exporter._find_in("dfm_methods", exporter.reserving_class.DFMMethods, method_name)
-        require_present(details.get("input triangle"), exporter._find_triangle, "DFM input triangle")
+        require_present(details.get("input_triangle"), exporter._find_triangle, "DFM input triangle")
         if target is None:
             return
-        expected_input = str(details.get("input triangle") or "").strip().casefold()
+        expected_input = str(details.get("input_triangle") or "").strip().casefold()
         actual_input = str(getattr(getattr(target, "InputTriangle"), "Name") or "").strip().casefold()
         if actual_input != expected_input:
             raise RuntimeError(
                 "Existing ResQ DFM input triangle differs from ArcRho; safe retargeting is not supported."
             )
-        expected_origin_length = int(details.get("origin length") or 0)
-        expected_development_length = int(details.get("development length") or 0)
+        expected_origin_length = int(details.get("origin_length") or 0)
+        expected_development_length = int(details.get("development_length") or 0)
         if expected_origin_length and int(getattr(target, "OriginLength")) != expected_origin_length:
             raise RuntimeError("Existing ResQ DFM origin length differs from ArcRho.")
         if expected_development_length and int(getattr(target, "DevelopmentLength")) != expected_development_length:
             raise RuntimeError("Existing ResQ DFM development length differs from ArcRho.")
-        ratios_tab = payload.get("ratios tab") if isinstance(payload.get("ratios tab"), Mapping) else {}
-        ratio_triangle = ratios_tab.get("ratio triangle") if isinstance(ratios_tab.get("ratio triangle"), Mapping) else {}
+        ratios_tab = payload.get("ratios_tab") if isinstance(payload.get("ratios_tab"), Mapping) else {}
+        ratio_triangle = ratios_tab.get("ratio_triangle") if isinstance(ratios_tab.get("ratio_triangle"), Mapping) else {}
         excluded = ratio_triangle.get("excluded") if isinstance(ratio_triangle.get("excluded"), list) else []
         origin_count = int(getattr(target, "OriginCount", 0) or 0)
         for origin_index, source_row in enumerate(excluded, start=1):
@@ -831,7 +823,7 @@ def _preflight_method_export(exporter, row: Mapping[str, Any]) -> None:
             if max(meaningful) > ratio_count:
                 raise RuntimeError("ResQ DFM has fewer ratio columns than the ArcRho exclusion pattern.")
 
-        averages = ratios_tab.get("average formulas") if isinstance(ratios_tab.get("average formulas"), Mapping) else {}
+        averages = ratios_tab.get("average_formulas") if isinstance(ratios_tab.get("average_formulas"), Mapping) else {}
         labels = averages.get("label") if isinstance(averages.get("label"), list) else []
         selected = averages.get("selected") if isinstance(averages.get("selected"), list) else []
         available = exporter._average_formula_display_indexes(target)
@@ -940,14 +932,14 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
             raise RuntimeError(f"ResQ {role} link did not match ArcRho after the write.")
 
     if kind == KIND_DFM:
-        details = payload.get("details tab") if isinstance(payload.get("details tab"), Mapping) else {}
+        details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
         name = str(details.get("name") or item.get("method_name") or row.get("name") or "").strip()
         target = exporter._find_in("dfm_methods", exporter.reserving_class.DFMMethods, name)
         if target is None:
             raise RuntimeError("ResQ did not expose the DFM after the write.")
         _preflight_method_export(exporter, row)
-        ratios_tab = payload.get("ratios tab") if isinstance(payload.get("ratios tab"), Mapping) else {}
-        ratio_triangle = ratios_tab.get("ratio triangle") if isinstance(ratios_tab.get("ratio triangle"), Mapping) else {}
+        ratios_tab = payload.get("ratios_tab") if isinstance(payload.get("ratios_tab"), Mapping) else {}
+        ratio_triangle = ratios_tab.get("ratio_triangle") if isinstance(ratios_tab.get("ratio_triangle"), Mapping) else {}
         excluded = ratio_triangle.get("excluded") if isinstance(ratio_triangle.get("excluded"), list) else []
         for origin_index, source_row in enumerate(excluded, start=1):
             if not isinstance(source_row, list):
@@ -962,7 +954,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
                         f"ResQ DFM exclusion verification failed at ({origin_index}, {development_index})."
                     )
 
-        averages = ratios_tab.get("average formulas") if isinstance(ratios_tab.get("average formulas"), Mapping) else {}
+        averages = ratios_tab.get("average_formulas") if isinstance(ratios_tab.get("average_formulas"), Mapping) else {}
         labels = averages.get("label") if isinstance(averages.get("label"), list) else []
         selected = averages.get("selected") if isinstance(averages.get("selected"), list) else []
         available = exporter._average_formula_display_indexes(target)

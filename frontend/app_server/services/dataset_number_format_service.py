@@ -12,10 +12,11 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 
 
-JSON_FORMAT = "arcrho.dataset-number-formats.v1"
+JSON_FORMAT = "arcrho-dataset-number-formats-v4"
 DEFAULT_NUMBER_FORMAT = "0,000"
 DEFAULT_DECIMAL_PLACES = 0
 _WRITE_LOCK = threading.Lock()
@@ -185,7 +186,7 @@ def save_preferences(
             candidate = _normalize_document({
                 "revision": current_revision + 1,
                 "default_number_format": default_number_format,
-                "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "updated_at": utc_now_text(),
                 "updated_by": getpass.getuser() or "unknown",
                 "overrides": overrides,
             }, strict=True)

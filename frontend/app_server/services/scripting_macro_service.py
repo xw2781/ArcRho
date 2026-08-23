@@ -488,7 +488,7 @@ def _restamp_active_dfm_revisions(active_json: Dict[str, Any]) -> Dict[str, Any]
     """
     from arcrho_api.dfm_contract import DFM_JSON_FORMAT, normalize_dfm_method
 
-    if str(active_json.get("json format") or "") != DFM_JSON_FORMAT:
+    if str(active_json.get("json_format") or "") != DFM_JSON_FORMAT:
         return active_json
     try:
         return normalize_dfm_method(active_json, require_complete=False)
@@ -506,19 +506,19 @@ def _build_active_dfm(active_context: Dict[str, Any]):
     # The UI stamps the live Notes tab text onto the transient
     # `method metadata.method notes` carrier; normalization strips it, so read
     # it first and seed it as pending notes below.
-    captured_metadata = active_json.get("method metadata")
+    captured_metadata = active_json.get("method_metadata")
     ui_method_notes = (
-        captured_metadata.get("method notes")
-        if isinstance(captured_metadata, dict) and "method notes" in captured_metadata
+        captured_metadata.get("method_notes")
+        if isinstance(captured_metadata, dict) and "method_notes" in captured_metadata
         else None
     )
     active_json = _restamp_active_dfm_revisions(copy.deepcopy(active_json))
-    restamped_metadata = active_json.get("method metadata")
+    restamped_metadata = active_json.get("method_metadata")
     if isinstance(restamped_metadata, dict):
-        restamped_metadata.pop("method notes", None)
+        restamped_metadata.pop("method_notes", None)
     fields = active_context.get("fields") if isinstance(active_context.get("fields"), dict) else {}
-    details = active_json.get("details tab") if isinstance(active_json.get("details tab"), dict) else {}
-    metadata = active_json.get("method metadata") if isinstance(active_json.get("method metadata"), dict) else {}
+    details = active_json.get("details_tab") if isinstance(active_json.get("details_tab"), dict) else {}
+    metadata = active_json.get("method_metadata") if isinstance(active_json.get("method_metadata"), dict) else {}
 
     project_name = str(fields.get("project") or metadata.get("project") or "").strip()
     reserving_class = str(fields.get("reservingClass") or details.get("reserving class") or "").strip()
@@ -1008,9 +1008,9 @@ def run_macro_source(
                 payload if payload is not None else execution.get("after_payload")
             )
             if isinstance(notes_payload, dict):
-                metadata = notes_payload.setdefault("method metadata", {})
+                metadata = notes_payload.setdefault("method_metadata", {})
                 if isinstance(metadata, dict):
-                    metadata["method notes"] = str(pending_method_notes)
+                    metadata["method_notes"] = str(pending_method_notes)
                     payload = notes_payload
         preview = (
             runner_result.get("preview")

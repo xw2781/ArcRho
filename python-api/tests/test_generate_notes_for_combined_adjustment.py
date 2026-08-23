@@ -31,8 +31,8 @@ DEV_LABELS = ["12-24", "24-36", "36-48", "48-60"]
 class FakeDfm:
     def __init__(self, formulas, notes=""):
         self.ratios_tab = {
-            "average formulas": formulas,
-            "ratio triangle": {"development labels": DEV_LABELS},
+            "average_formulas": formulas,
+            "ratio_triangle": {"development_labels": DEV_LABELS},
         }
         self._notes = notes
         self.project_name = "Project"
@@ -40,7 +40,7 @@ class FakeDfm:
 
     @property
     def average_formulas(self):
-        return self.ratios_tab["average formulas"]
+        return self.ratios_tab["average_formulas"]
 
     def _average_col_count(self):
         selected = self.average_formulas.get("selected") or []

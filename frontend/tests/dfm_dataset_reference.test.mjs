@@ -73,7 +73,7 @@ test("DFM average formula persistence round-trips display-only inputs", () => {
     },
   ], [[1]], [[1.2]]);
 
-  assert.deepEqual(averageFormulas["display inputs"], [["=[Premium][2025 Q4]"]]);
+  assert.deepEqual(averageFormulas["display_inputs"], [["=[Premium][2025 Q4]"]]);
   assert.deepEqual(
     buildDfmSummaryRowsFromAverageFormulaObject(averageFormulas)[0].displayInputs,
     ["=[Premium][2025 Q4]"],

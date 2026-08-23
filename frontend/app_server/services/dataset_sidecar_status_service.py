@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Set
 
 from arcrho_api.io import persisted_json_text
-from arcrho_api.sidecar_core_contract import with_audit_log_last
+from arcrho_api.sidecar_core_contract import dependency_entries, dependency_names, finalize_sidecar
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
 
@@ -84,34 +85,13 @@ def normalize_status(value: Any) -> int:
 
 
 def name_entries(names: Iterable[Any]) -> List[Dict[str, str]]:
-    out: List[Dict[str, str]] = []
-    seen: Set[str] = set()
-    for raw in names or []:
-        name = _clean_text(raw)
-        key = _canon_dataset_name(name)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        out.append({"dataset_type_name": name})
-    return out
+    """Persisted dependency entries for plain names (``arcrho_api.sidecar_core_contract``)."""
+    return dependency_entries(list(names or []))
 
 
 def entry_names(entries: Any) -> List[str]:
-    if not isinstance(entries, list):
-        return []
-    out: List[str] = []
-    seen: Set[str] = set()
-    for item in entries:
-        if isinstance(item, dict):
-            name = _clean_text(item.get("dataset_type_name") or item.get("dataset_name") or item.get("name"))
-        else:
-            name = _clean_text(item)
-        key = _canon_dataset_name(name)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        out.append(name)
-    return out
+    """The dataset names of persisted dependency entries, in order."""
+    return dependency_names(entries)
 
 
 def review_needed_precedent_names(
@@ -219,7 +199,7 @@ def write_sidecar(path: str, payload: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         try:
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(persisted_json_text(with_audit_log_last(payload)))
+                fh.write(persisted_json_text(finalize_sidecar(payload)))
             os.replace(tmp_path, path)
         finally:
             try:
@@ -259,7 +239,7 @@ def sidecar_timestamp(path: str, payload: Dict[str, Any]) -> float:
 
 
 def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def compute_status(project_name: str, reserving_class: str, dataset_name: str, payload: Dict[str, Any], path: str = "") -> int:
@@ -270,7 +250,7 @@ def compute_status(project_name: str, reserving_class: str, dataset_name: str, p
     current_ts = sidecar_timestamp(sidecar_file, payload)
     if current_ts <= 0:
         return normalize_status(payload.get("status"))
-    for precedent_name in entry_names(payload.get("Precedents")):
+    for precedent_name in entry_names(payload.get("precedents")):
         dep_path = sidecar_path(project_name, reserving_class, precedent_name)
         dep_payload = read_sidecar(dep_path)
         if not dep_payload:
@@ -307,21 +287,21 @@ def apply_status_fields(
 
 
 def _remove_dependent(payload: Dict[str, Any], dependent_name: str) -> bool:
-    old = entry_names(payload.get("Dependents"))
+    old = entry_names(payload.get("dependents"))
     key = _canon_dataset_name(dependent_name)
     next_names = [name for name in old if _canon_dataset_name(name) != key]
     if len(next_names) == len(old):
         return False
-    payload["Dependents"] = name_entries(next_names)
+    payload["dependents"] = name_entries(next_names)
     return True
 
 
 def _add_dependent(payload: Dict[str, Any], dependent_name: str) -> bool:
-    old = entry_names(payload.get("Dependents"))
+    old = entry_names(payload.get("dependents"))
     key = _canon_dataset_name(dependent_name)
     if not key or key in {_canon_dataset_name(name) for name in old}:
         return False
-    payload["Dependents"] = name_entries([*old, dependent_name])
+    payload["dependents"] = name_entries([*old, dependent_name])
     return True
 
 
@@ -390,7 +370,7 @@ def update_precedent_dependents(
                     backups[path] = fh.read()
                 temporary = f"{path}.{uuid.uuid4()}.tmp"
                 with open(temporary, "w", encoding="utf-8", newline="\n") as fh:
-                    fh.write(persisted_json_text(with_audit_log_last(payload)))
+                    fh.write(persisted_json_text(finalize_sidecar(payload)))
                 staged[path] = temporary
             for path in sorted(updates, key=os.path.normcase):
                 os.replace(staged.pop(path), path)
@@ -455,7 +435,7 @@ def dependent_closure(
 ) -> List[Dict[str, str]]:
     """Name every object reachable from the changed roots, nearest tier first.
 
-    Walks the same sidecar ``Dependents`` edges as
+    Walks the same sidecar ``dependents`` edges as
     ``_refresh_method_statuses_for_dependents_unlocked`` below, but reads only
     — it takes no write locks and marks nothing, so the two-step save can show
     the user what a save would reach before anything is written. Each tier is
@@ -484,7 +464,7 @@ def dependent_closure(
             payload = payloads.get(_canon_dataset_name(source_name))
             if not payload:
                 continue
-            for dependent_name in entry_names(payload.get("Dependents")):
+            for dependent_name in entry_names(payload.get("dependents")):
                 key = _canon_dataset_name(dependent_name)
                 if not key or key in reported:
                     continue
@@ -529,11 +509,11 @@ def graph_signature(
                 normalize_method_type(payload.get("method_type"), payload.get("source_kind")),
                 sorted(
                     _canon_dataset_name(name)
-                    for name in entry_names(payload.get("Precedents"))
+                    for name in entry_names(payload.get("precedents"))
                 ),
                 sorted(
                     _canon_dataset_name(name)
-                    for name in entry_names(payload.get("Dependents"))
+                    for name in entry_names(payload.get("dependents"))
                 ),
             ]
             for key, payload in payloads.items()
@@ -574,7 +554,7 @@ def _refresh_method_statuses_for_dependents_unlocked(
             source_payload = read_sidecar(source_path)
         if not source_payload:
             continue
-        for dependent_name in entry_names(source_payload.get("Dependents")):
+        for dependent_name in entry_names(source_payload.get("dependents")):
             dep_key = _canon_dataset_name(dependent_name)
             if not dep_key:
                 continue

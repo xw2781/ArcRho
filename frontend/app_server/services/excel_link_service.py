@@ -275,12 +275,12 @@ def _dataset_usages(
 
 
 def _dfm_input_matrices(payload: Mapping[str, Any]) -> List[List[Any]]:
-    ratios = payload.get("ratios tab")
-    formulas = ratios.get("average formulas") if isinstance(ratios, Mapping) else None
+    ratios = payload.get("ratios_tab")
+    formulas = ratios.get("average_formulas") if isinstance(ratios, Mapping) else None
     if not isinstance(formulas, Mapping):
         return []
     matrices = []
-    for field in ("inputs", "display inputs"):
+    for field in ("inputs", "display_inputs"):
         matrix = formulas.get(field)
         if isinstance(matrix, list):
             matrices.append(matrix)
@@ -296,16 +296,16 @@ def _dfm_usages(
         if payload is None:
             errors.append({"file": os.path.basename(path), "error": error})
             continue
-        if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
+        if _clean(payload.get("json_format")) != DFM_JSON_FORMAT:
             continue
-        details = payload.get("details tab")
+        details = payload.get("details_tab")
         name = _clean(details.get("name")) if isinstance(details, Mapping) else ""
         name = name or os.path.splitext(os.path.basename(path))[0]
         by_book: Dict[str, Dict[str, Any]] = {}
         # ``display inputs`` mirrors ``inputs``; inventory counts only the
         # calculation-owning ``inputs`` matrix so a formula is one link.
-        ratios = payload.get("ratios tab")
-        formulas = ratios.get("average formulas") if isinstance(ratios, Mapping) else None
+        ratios = payload.get("ratios_tab")
+        formulas = ratios.get("average_formulas") if isinstance(ratios, Mapping) else None
         inputs = formulas.get("inputs") if isinstance(formulas, Mapping) else None
         for row in inputs if isinstance(inputs, list) else []:
             if not isinstance(row, list):
@@ -535,8 +535,8 @@ def _js_number_text(value: Any) -> str:
 
 
 def _dfm_user_entry_rows(formulas: Mapping[str, Any]) -> List[bool]:
-    settings = formulas.get("custom average formula settings")
-    kinds = settings.get("averageType") if isinstance(settings, Mapping) else None
+    settings = formulas.get("custom_average_formula_settings")
+    kinds = settings.get("average_type") if isinstance(settings, Mapping) else None
     labels = formulas.get("label") if isinstance(formulas.get("label"), list) else []
     flags = []
     for index in range(len(labels)):
@@ -583,7 +583,7 @@ def _collect_refresh_read_items(
                     add(new_book_path, references[0]["sheet"], cell)
 
     for _path, payload, _error in method_payloads:
-        if not payload or _clean(payload.get("json format")) != DFM_JSON_FORMAT:
+        if not payload or _clean(payload.get("json_format")) != DFM_JSON_FORMAT:
             continue
         matrices = _dfm_input_matrices(payload)
         inputs = matrices[0] if matrices else []
@@ -751,13 +751,13 @@ def _apply_dfm_refresh(
 ) -> Tuple[int, int, int, List[str]]:
     """Refresh merged user-entry values in place; mirrors refreshAllExcelLinks."""
 
-    formulas = merged["ratios tab"]["average formulas"]
+    formulas = merged["ratios_tab"]["average_formulas"]
     labels = formulas["label"]
     inputs = formulas["inputs"]
-    display_inputs = formulas["display inputs"]
+    display_inputs = formulas["display_inputs"]
     values = formulas["values"]
     user_entry_flags = _dfm_user_entry_rows(formulas)
-    column_count = len(merged["ratios tab"]["ratio triangle"]["development labels"])
+    column_count = len(merged["ratios_tab"]["ratio_triangle"]["development_labels"])
     refreshed = 0
     changed = 0
     failed = 0
@@ -875,7 +875,7 @@ def _dataset_name(path: str, payload: Mapping[str, Any]) -> str:
 
 
 def _dfm_name(path: str, payload: Mapping[str, Any]) -> str:
-    details = payload.get("details tab")
+    details = payload.get("details_tab")
     name = _clean(details.get("name")) if isinstance(details, Mapping) else ""
     return name or os.path.splitext(os.path.basename(path))[0]
 
@@ -893,7 +893,7 @@ def _dataset_links_workbook(payload: Mapping[str, Any], key: str) -> bool:
 
 
 def _dfm_inputs_reference_workbook(payload: Mapping[str, Any], key: str) -> bool:
-    if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
+    if _clean(payload.get("json_format")) != DFM_JSON_FORMAT:
         return False
     matrices = _dfm_input_matrices(payload)
     inputs = matrices[0] if matrices else []
@@ -1028,7 +1028,7 @@ def _retarget_dfm(
 
     from app_server.services import dfm_service
 
-    if _clean(payload.get("json format")) != DFM_JSON_FORMAT:
+    if _clean(payload.get("json_format")) != DFM_JSON_FORMAT:
         return None
     name = _dfm_name(path, payload)
     try:
@@ -1056,7 +1056,7 @@ def _retarget_dfm(
         project,
         reserving,
         merged,
-        expected_owned_revision=method_revisions(current)["owned revision"],
+        expected_owned_revision=method_revisions(current)["owned_revision"],
     )
     output_dataset, output_type = dfm_service.save_propagation_roots(project, reserving, merged)[0]
     dfm_service._mark_review_needed(project, reserving, output_dataset)

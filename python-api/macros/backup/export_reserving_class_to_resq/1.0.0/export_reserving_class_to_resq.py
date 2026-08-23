@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 1.1.0
-# Release Note: Read the v4 persisted JSON: snake_case DFM keys, and a sidecar's method_type and data_format names instead of the retired numeric codes.
+# Version: 1.0.0
+# Release Note: Initial release: export reserving-class datasets and supported methods from ArcRho into the ResQ database.
 # Description: Export all ArcRho datasets and supported methods (DFM, BF, Cape Cod, Result Selection) for the reserving-class path selected in the active Project Instance page into the ResQ database.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -27,24 +27,6 @@ RESQ_METHOD_TYPE_DFM = 1
 RESQ_METHOD_TYPE_BF = 2
 RESQ_METHOD_TYPE_CAPE_COD = 3
 RESQ_METHOD_TYPE_RESULT_SELECTION = 4
-
-# A v4 sidecar names its owning method in ``method_type``; the numeric twin is
-# gone from the file, so the ResQ code is derived here from that name.
-_SIDECAR_METHOD_TYPE_CODES = {
-    "": 0,
-    "none": 0,
-    "dfm": RESQ_METHOD_TYPE_DFM,
-    "bornhuetter ferguson": RESQ_METHOD_TYPE_BF,
-    "cape cod": RESQ_METHOD_TYPE_CAPE_COD,
-    "result selection": RESQ_METHOD_TYPE_RESULT_SELECTION,
-}
-
-
-def _sidecar_method_code(sidecar) -> int:
-    """ResQ's code for the method that owns a sidecar: 0 for a plain dataset,
-    -1 for a method kind ResQ cannot receive through this macro."""
-    name = str(sidecar.get("method_type") or "").strip().casefold().replace("_", " ")
-    return _SIDECAR_METHOD_TYPE_CODES.get(name, -1)
 RESQ_DATA_FORMAT_TRIANGLE = 0
 RESQ_DATA_FORMAT_ORIGIN_VECTOR = 1
 RESQ_PERC_DEVELOPED_PATTERN = 1
@@ -370,7 +352,7 @@ class ResQReservingClassExporter:
         exportable = []
         for sidecar in sidecars:
             name = _clean_label(sidecar.get("dataset_name"))
-            method_code = _sidecar_method_code(sidecar)
+            method_code = int(sidecar.get("method_type_code") or 0)
             if method_code in (1, 2, 3, 4):
                 # Owned by the ResQ method that produces it; exported with the method.
                 continue
@@ -396,7 +378,8 @@ class ResQReservingClassExporter:
 
     def _export_dataset_values(self, sidecar, name):
         data_format = _clean_label(sidecar.get("data_format"))
-        is_triangle = data_format.casefold() == "triangle"
+        format_code = sidecar.get("data_format_code")
+        is_triangle = (int(format_code) == 0) if format_code is not None else data_format.casefold() == "triangle"
 
         csv_file = str(sidecar.get("csv_file") or "").strip()
         csv_path = (
@@ -528,7 +511,7 @@ class ResQReservingClassExporter:
         for entry in dfm_entries:
             self._completed += 1
             payload = entry["payload"]
-            details = _dict_path(payload, ("details_tab",))
+            details = _dict_path(payload, ("details tab",))
             name = _clean_label(details.get("name")) or entry["name"]
             try:
                 self._export_dfm(name, details, payload)
@@ -561,16 +544,16 @@ class ResQReservingClassExporter:
     def _create_dfm(self, name, details):
         if self.dry_run:
             raise ExportSkipped("dry_run_would_create", "DFM method does not exist in ResQ yet")
-        input_triangle_name = _clean_label(details.get("input_triangle"))
+        input_triangle_name = _clean_label(details.get("input triangle"))
         input_triangle = self._find_triangle(input_triangle_name) if input_triangle_name else None
         if input_triangle is None:
             raise ExportSkipped(
                 "missing_input_triangle",
                 f"input triangle not found in ResQ: {input_triangle_name or '<unset>'}",
             )
-        output_dataset = _clean_label(details.get("output_dataset")) or name
-        output_type = _clean_label(details.get("output_type")) or output_dataset
-        output_category = _clean_label(details.get("output_category"))
+        output_dataset = _clean_label(details.get("output dataset")) or name
+        output_type = _clean_label(details.get("output type")) or output_dataset
+        output_category = _clean_label(details.get("output category"))
         dataset_type = self._ensure_dataset_type(output_type, output_category, RESQ_DATA_FORMAT_ORIGIN_VECTOR)
 
         dfm = self.reserving_class.AddMethod(RESQ_METHOD_TYPE_DFM)
@@ -578,8 +561,8 @@ class ResQReservingClassExporter:
         dfm.InputTriangle = input_triangle
         dfm.OutputVector.Name = output_dataset
         dfm.OutputVector.DatasetType = dataset_type
-        origin_length = int(details.get("origin_length") or 0)
-        development_length = int(details.get("development_length") or 0)
+        origin_length = int(details.get("origin length") or 0)
+        development_length = int(details.get("development length") or 0)
         if origin_length:
             dfm.OriginLength = origin_length
         if development_length:
@@ -601,7 +584,7 @@ class ResQReservingClassExporter:
         return max(widths, default=0)
 
     def _sync_dfm_excluded_ratios(self, dfm, payload):
-        pattern = _dict_path(payload, ("ratios_tab", "ratio_triangle")).get("excluded")
+        pattern = _dict_path(payload, ("ratios tab", "ratio triangle")).get("excluded")
         if not isinstance(pattern, list):
             return 0
         origin_count = int(getattr(dfm, "OriginCount", 0) or 0)
@@ -644,8 +627,8 @@ class ResQReservingClassExporter:
         return out
 
     def _user_entry_payload_row_index(self, average_formulas):
-        settings = average_formulas.get("custom_average_formula_settings")
-        average_types = settings.get("average_type") if isinstance(settings, dict) else None
+        settings = average_formulas.get("custom average formula settings")
+        average_types = settings.get("averageType") if isinstance(settings, dict) else None
         if isinstance(average_types, list):
             for index, average_type in enumerate(average_types):
                 if str(average_type or "").strip().casefold() == "user_entry":
@@ -659,7 +642,7 @@ class ResQReservingClassExporter:
         return None
 
     def _sync_dfm_user_entry_values(self, dfm, payload):
-        average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))
+        average_formulas = _dict_path(payload, ("ratios tab", "average formulas"))
         values = average_formulas.get("values")
         if not isinstance(values, list):
             return 0
@@ -688,7 +671,7 @@ class ResQReservingClassExporter:
         return updates
 
     def _sync_dfm_selected_ratios(self, dfm, payload):
-        average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))
+        average_formulas = _dict_path(payload, ("ratios tab", "average formulas"))
         labels = average_formulas.get("label")
         selected = average_formulas.get("selected")
         if not isinstance(labels, list) or not isinstance(selected, list):
@@ -1023,7 +1006,7 @@ class ResQReservingClassExporter:
         plain_datasets = [
             sidecar
             for sidecar in sidecars
-            if _sidecar_method_code(sidecar) == 0
+            if int(sidecar.get("method_type_code") or 0) == 0
         ]
         self._total = (
             len(plain_datasets)

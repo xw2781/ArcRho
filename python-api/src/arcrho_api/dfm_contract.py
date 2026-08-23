@@ -24,11 +24,16 @@ from .sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from .sidecar_core_contract import validate_sidecar_core
+from .sidecar_core_contract import (
+    DATASET_SIDECAR_JSON_FORMAT,
+    dependency_entries,
+    dependency_names,
+    validate_sidecar_core,
+)
+from .timestamps import persisted_timestamp as _timestamp
 
 
-DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v2"
-LEGACY_DFM_JSON_FORMAT = "arcrho-dfm-method-by-tab-v1"
+DFM_JSON_FORMAT = "arcrho-dfm-v4"
 DFM_VALUE_DECIMAL_PLACES = 6
 _QUANTUM = Decimal("0.000001")
 _EXCEL_REFERENCE_RE = re.compile(
@@ -45,13 +50,6 @@ class DfmContractError(ValueError):
 
 def _clean(value: Any) -> str:
     return " ".join(str(value if value is not None else "").split()).strip()
-
-
-def _timestamp(value: Any = None) -> str:
-    cleaned = str(value if value is not None else "").strip()
-    if cleaned:
-        return cleaned
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _integer(value: Any, default: int, *, minimum: int = 0, maximum: int | None = None) -> int:
@@ -163,18 +161,18 @@ def aggregate_vector_values(
 def dfm_output_variants(payload: Mapping[str, Any]) -> dict[int, list[float | int | None]]:
     """Return primary and supported 3/6/12-period ultimate vector variants."""
 
-    details = _tab(payload, "details tab")
-    data = _tab(payload, "data tab")
-    results = _tab(payload, "results tab")
-    base_length = _integer(details.get("origin length"), 12, minimum=1)
-    values = _numbers(results.get("ultimate vector"))
+    details = _tab(payload, "details_tab")
+    data = _tab(payload, "data_tab")
+    results = _tab(payload, "results_tab")
+    base_length = _integer(details.get("origin_length"), 12, minimum=1)
+    values = _numbers(results.get("ultimate_vector"))
     variants = {base_length: values}
     for target_length in (3, 6, 12):
         if target_length <= base_length or target_length % base_length:
             continue
         aggregate = aggregate_vector_values(
             values,
-            data.get("origin labels") if isinstance(data.get("origin labels"), list) else [],
+            data.get("origin_labels") if isinstance(data.get("origin_labels"), list) else [],
             base_length,
             target_length,
         )
@@ -256,19 +254,19 @@ def _trim_trailing_nulls(row: list[Any]) -> list[Any]:
 
 def _settings(raw: Any, row_count: int) -> dict[str, list[Any]]:
     source = raw if isinstance(raw, dict) else {}
-    average_types = _labels(source.get("averageType"))
+    average_types = _labels(source.get("average_type"))
     bases = _labels(source.get("base"))
     periods = list(source.get("periods")) if isinstance(source.get("periods"), list) else []
     excludes = list(source.get("exclude")) if isinstance(source.get("exclude"), list) else []
     out: dict[str, list[Any]] = {
-        "averageType": [],
+        "average_type": [],
         "base": [],
         "periods": [],
         "exclude": [],
     }
     for index in range(row_count):
         average_type = average_types[index].lower() if index < len(average_types) else "custom"
-        out["averageType"].append("user_entry" if average_type == "user_entry" else "custom")
+        out["average_type"].append("user_entry" if average_type == "user_entry" else "custom")
         base = bases[index].lower() if index < len(bases) else "simple"
         out["base"].append(base if base in {"simple", "volume", "benchmark"} else "simple")
         period = periods[index] if index < len(periods) else "all"
@@ -283,8 +281,8 @@ def default_average_formulas() -> dict[str, Any]:
     labels = ["Volume - all", "Simple - all", "User Entry"]
     return {
         "label": labels,
-        "custom average formula settings": {
-            "averageType": ["custom", "custom", "user_entry"],
+        "custom_average_formula_settings": {
+            "average_type": ["custom", "custom", "user_entry"],
             "base": ["volume", "simple", "simple"],
             "periods": ["all", "all", "all"],
             "exclude": [0, 0, 0],
@@ -292,18 +290,18 @@ def default_average_formulas() -> dict[str, Any]:
         "selected": [[], [], []],
         "values": [[], [], []],
         "inputs": [[], [], []],
-        "display inputs": [[], [], []],
+        "display_inputs": [[], [], []],
     }
 
 
 def _notes(raw: Any) -> dict[str, Any]:
     source = raw if isinstance(raw, dict) else {}
     return {
-        "ratio main table": deepcopy(source.get("ratio main table"))
-        if isinstance(source.get("ratio main table"), dict)
+        "ratio_main_table": deepcopy(source.get("ratio_main_table"))
+        if isinstance(source.get("ratio_main_table"), dict)
         else {},
-        "ratio summary table": deepcopy(source.get("ratio summary table"))
-        if isinstance(source.get("ratio summary table"), dict)
+        "ratio_summary_table": deepcopy(source.get("ratio_summary_table"))
+        if isinstance(source.get("ratio_summary_table"), dict)
         else {},
     }
 
@@ -321,8 +319,8 @@ def source_snapshot_revision(snapshot: Mapping[str, Any]) -> str:
     one read from a snake_case file fingerprint identically.
     """
 
-    origins = _labels(_snapshot_field(snapshot, "origin labels", "origin_labels"))
-    developments = _labels(_snapshot_field(snapshot, "development labels", "development_labels"))
+    origins = _labels(snapshot.get("origin_labels"))
+    developments = _labels(snapshot.get("development_labels"))
     raw_values = snapshot.get("values")
     is_matrix = isinstance(raw_values, list) and any(isinstance(row, list) for row in raw_values)
     values: Any = _number_matrix(raw_values) if is_matrix else _numbers(raw_values)
@@ -334,10 +332,10 @@ def source_snapshot_revision(snapshot: Mapping[str, Any]) -> str:
         "development_labels": developments,
         "values": values,
         "mask": mask,
-        "data_format": _clean(_snapshot_field(snapshot, "data format", "data_format")),
-        "number_format": _clean(_snapshot_field(snapshot, "number format", "number_format")),
+        "data_format": _clean(snapshot.get("data_format")),
+        "number_format": _clean(snapshot.get("number_format")),
         "decimal_places": _integer(
-            _snapshot_field(snapshot, "decimal places", "decimal_places"),
+            snapshot.get("decimal_places"),
             0,
             minimum=0,
             maximum=8,
@@ -369,32 +367,32 @@ def normalize_dfm_method(
 
     if not isinstance(payload, Mapping):
         raise DfmContractError("DFM method payload must be a JSON object.")
-    json_format = str(payload.get("json format") or "").strip()
+    json_format = str(payload.get("json_format") or "").strip()
     if json_format not in {"", DFM_JSON_FORMAT}:
         raise DfmContractError(f"Unsupported DFM JSON format: {json_format!r}.")
 
-    details_source = _tab(payload, "details tab")
-    data_source = _tab(payload, "data tab")
-    ratios_source = _tab(payload, "ratios tab")
-    ratio_source = _tab(ratios_source, "ratio triangle")
-    formulas_source = _tab(ratios_source, "average formulas")
-    results_source = _tab(payload, "results tab")
-    metadata_source = _tab(payload, "method metadata")
+    details_source = _tab(payload, "details_tab")
+    data_source = _tab(payload, "data_tab")
+    ratios_source = _tab(payload, "ratios_tab")
+    ratio_source = _tab(ratios_source, "ratio_triangle")
+    formulas_source = _tab(ratios_source, "average_formulas")
+    results_source = _tab(payload, "results_tab")
+    metadata_source = _tab(payload, "method_metadata")
     provided_revisions = {
         key: str(metadata_source.get(key) or "").strip()
-        for key in ("owned revision", "derived revision", "publication revision")
+        for key in ("owned_revision", "derived_revision", "publication_revision")
     }
 
     name = _clean(details_source.get("name"))
-    output_type = _clean(details_source.get("output type"))
-    output_dataset = _clean(details_source.get("output dataset")) or name
-    input_name = _clean(details_source.get("input triangle"))
-    origin_labels = _labels(data_source.get("origin labels"))
-    development_labels = _labels(data_source.get("development labels"))
+    output_type = _clean(details_source.get("output_type"))
+    output_dataset = _clean(details_source.get("output_dataset")) or name
+    input_name = _clean(details_source.get("input_triangle"))
+    origin_labels = _labels(data_source.get("origin_labels"))
+    development_labels = _labels(data_source.get("development_labels"))
     row_count = len(origin_labels)
     dev_count = len(development_labels)
-    input_values = _fit_matrix(_number_matrix(data_source.get("input data triangle values")), row_count, dev_count, None)
-    raw_mask = _bool_matrix(data_source.get("input data triangle mask"))
+    input_values = _fit_matrix(_number_matrix(data_source.get("input_data_triangle_values")), row_count, dev_count, None)
+    raw_mask = _bool_matrix(data_source.get("input_data_triangle_mask"))
     if not raw_mask:
         raw_mask = [[value is not None for value in row] for row in input_values]
     input_mask = _fit_matrix(raw_mask, row_count, dev_count, False)
@@ -405,9 +403,9 @@ def normalize_dfm_method(
             elif input_values[row][col] is None:
                 input_mask[row][col] = False
 
-    ratio_origin_labels = _labels(ratio_source.get("origin labels")) or list(origin_labels)
-    ratio_dev_labels = _labels(ratio_source.get("development labels"))
-    ratio_values = [_trim_trailing_nulls(row) for row in _number_matrix(ratio_source.get("ratio values"))]
+    ratio_origin_labels = _labels(ratio_source.get("origin_labels")) or list(origin_labels)
+    ratio_dev_labels = _labels(ratio_source.get("development_labels"))
+    ratio_values = [_trim_trailing_nulls(row) for row in _number_matrix(ratio_source.get("ratio_values"))]
     excluded = _int_matrix(ratio_source.get("excluded"))
 
     formula_labels = _labels(formulas_source.get("label"))
@@ -419,7 +417,7 @@ def normalize_dfm_method(
     formula_cols = len(ratio_dev_labels) or dev_count or max(
         (
             len(row)
-            for key in ("selected", "values", "inputs", "display inputs")
+            for key in ("selected", "values", "inputs", "display_inputs")
             for row in (formulas_source.get(key) if isinstance(formulas_source.get(key), list) else [])
             if isinstance(row, list)
         ),
@@ -429,106 +427,107 @@ def normalize_dfm_method(
     formula_values = _fit_matrix(_number_matrix(formulas_source.get("values")), formula_count, formula_cols, None)
     formula_inputs = _fit_matrix(_text_matrix(formulas_source.get("inputs")), formula_count, formula_cols, "")
     formula_display_inputs = _fit_matrix(
-        _text_matrix(formulas_source.get("display inputs")), formula_count, formula_cols, ""
+        _text_matrix(formulas_source.get("display_inputs")), formula_count, formula_cols, ""
     )
 
-    basis_name = _clean(results_source.get("ratio basis dataset"))
-    basis_origin_labels = _labels(results_source.get("ratio basis origin labels"))
-    basis_values = _numbers(results_source.get("ratio basis values"))
+    basis_name = _clean(results_source.get("ratio_basis_dataset"))
+    # The basis labels are a forced copy of the input origin labels (the
+    # validation below rejects anything else), so they are not persisted; a
+    # stored file supplies none and the copy is re-derived here.
+    basis_origin_labels = _labels(results_source.get("ratio_basis_origin_labels")) or list(origin_labels)
+    basis_values = _numbers(results_source.get("ratio_basis_values"))
     if not basis_name:
         basis_origin_labels = []
         basis_values = []
 
-    input_data_format = _clean(data_source.get("data format")) or "Triangle"
-    input_number_format = _clean(data_source.get("number format")) or "#,##0"
-    input_decimal_places = _integer(data_source.get("decimal places"), 0, minimum=0, maximum=8)
+    input_data_format = _clean(data_source.get("data_format")) or "Triangle"
+    input_number_format = _clean(data_source.get("number_format")) or "#,##0"
+    input_decimal_places = _integer(data_source.get("decimal_places"), 0, minimum=0, maximum=8)
     input_source_revision = source_snapshot_revision({
         "name": input_name,
-        "origin labels": origin_labels,
-        "development labels": development_labels,
+        "origin_labels": origin_labels,
+        "development_labels": development_labels,
         "values": input_values,
         "mask": input_mask,
-        "data format": input_data_format,
-        "number format": input_number_format,
-        "decimal places": input_decimal_places,
+        "data_format": input_data_format,
+        "number_format": input_number_format,
+        "decimal_places": input_decimal_places,
     }) if origin_labels and development_labels else ""
-    basis_data_format = _clean(results_source.get("ratio basis data format")) or "Vector"
-    basis_number_format = _clean(results_source.get("ratio basis number format")) or "#,##0"
+    basis_data_format = _clean(results_source.get("ratio_basis_data_format")) or "Vector"
+    basis_number_format = _clean(results_source.get("ratio_basis_number_format")) or "#,##0"
     basis_decimal_places = _integer(
-        results_source.get("ratio basis decimal places"), 0, minimum=0, maximum=8
+        results_source.get("ratio_basis_decimal_places"), 0, minimum=0, maximum=8
     )
     basis_source_revision = source_snapshot_revision({
         "name": basis_name,
-        "origin labels": basis_origin_labels,
+        "origin_labels": basis_origin_labels,
         "values": basis_values,
-        "data format": basis_data_format,
-        "number format": basis_number_format,
-        "decimal places": basis_decimal_places,
+        "data_format": basis_data_format,
+        "number_format": basis_number_format,
+        "decimal_places": basis_decimal_places,
     }) if basis_name and basis_origin_labels else ""
 
     default_time = _timestamp(timestamp)
     normalized = {
-        "json format": DFM_JSON_FORMAT,
-        "details tab": {
+        "json_format": DFM_JSON_FORMAT,
+        "details_tab": {
             "name": name,
-            "output type": output_type,
-            "output dataset": output_dataset,
-            "output category": _clean(
-                details_source.get("output category") or details_source.get("output dataset_category")
-            ),
-            "input triangle": input_name,
-            "origin length": _integer(details_source.get("origin length"), 12, minimum=1),
-            "development length": _integer(details_source.get("development length"), 12, minimum=1),
-            "decimal places": _integer(details_source.get("decimal places"), 4, minimum=0, maximum=8),
+            "output_type": output_type,
+            "output_dataset": output_dataset,
+            "output_category": _clean(details_source.get("output_category")),
+            "input_triangle": input_name,
+            "origin_length": _integer(details_source.get("origin_length"), 12, minimum=1),
+            "development_length": _integer(details_source.get("development_length"), 12, minimum=1),
+            "decimal_places": _integer(details_source.get("decimal_places"), 4, minimum=0, maximum=8),
         },
-        "data tab": {
-            "origin labels": origin_labels,
-            "development labels": development_labels,
-            "input data triangle values": input_values,
-            "input data triangle mask": input_mask,
-            "data format": input_data_format,
-            "number format": input_number_format,
-            "decimal places": input_decimal_places,
-            "source revision": input_source_revision,
+        "data_tab": {
+            "origin_labels": origin_labels,
+            "development_labels": development_labels,
+            "input_data_triangle_values": input_values,
+            "input_data_triangle_mask": input_mask,
+            "data_format": input_data_format,
+            "number_format": input_number_format,
+            "decimal_places": input_decimal_places,
+            "source_revision": input_source_revision,
         },
-        "ratios tab": {
-            "ratio triangle": {
-                "origin labels": ratio_origin_labels,
-                "development labels": ratio_dev_labels,
-                "ratio values": ratio_values,
+        "ratios_tab": {
+            "ratio_triangle": {
+                "origin_labels": ratio_origin_labels,
+                "development_labels": ratio_dev_labels,
+                "ratio_values": ratio_values,
                 "excluded": excluded,
             },
-            "average formulas": {
+            "average_formulas": {
                 "label": formula_labels,
-                "custom average formula settings": _settings(
-                    formulas_source.get("custom average formula settings"), formula_count
+                "custom_average_formula_settings": _settings(
+                    formulas_source.get("custom_average_formula_settings"), formula_count
                 ),
                 "selected": selected,
                 "values": formula_values,
                 "inputs": formula_inputs,
-                "display inputs": formula_display_inputs,
+                "display_inputs": formula_display_inputs,
             },
-            "cell notes": _notes(ratios_source.get("cell notes")),
+            "cell_notes": _notes(ratios_source.get("cell_notes")),
         },
-        "results tab": {
-            "ratio basis dataset": basis_name,
-            "ratio basis origin labels": basis_origin_labels,
-            "ratio basis values": basis_values,
-            "ratio basis data format": basis_data_format,
-            "ratio basis number format": basis_number_format,
-            "ratio basis decimal places": basis_decimal_places,
-            "ratio basis source revision": basis_source_revision,
-            "ultimate ratio decimal places": _integer(
-                results_source.get("ultimate ratio decimal places"), 2, minimum=0, maximum=8
+        "results_tab": {
+            "ratio_basis_dataset": basis_name,
+            "ratio_basis_origin_labels": basis_origin_labels,
+            "ratio_basis_values": basis_values,
+            "ratio_basis_data_format": basis_data_format,
+            "ratio_basis_number_format": basis_number_format,
+            "ratio_basis_decimal_places": basis_decimal_places,
+            "ratio_basis_source_revision": basis_source_revision,
+            "ultimate_ratio_decimal_places": _integer(
+                results_source.get("ultimate_ratio_decimal_places"), 2, minimum=0, maximum=8
             ),
-            "ultimate vector": _numbers(results_source.get("ultimate vector")),
+            "ultimate_vector": _numbers(results_source.get("ultimate_vector")),
         },
-        "method metadata": {
-            "last modified": str(metadata_source.get("last modified") or "").strip() or default_time,
-            "data refreshed": str(metadata_source.get("data refreshed") or "").strip() or default_time,
-            "owned revision": "",
-            "derived revision": "",
-            "publication revision": "",
+        "method_metadata": {
+            "last_modified": str(metadata_source.get("last_modified") or "").strip() or default_time,
+            "data_refreshed": str(metadata_source.get("data_refreshed") or "").strip() or default_time,
+            "owned_revision": "",
+            "derived_revision": "",
+            "publication_revision": "",
         },
     }
     _set_revisions(normalized)
@@ -543,37 +542,37 @@ def normalize_dfm_method(
 
 
 def _validate_complete(payload: Mapping[str, Any]) -> None:
-    details = _tab(payload, "details tab")
-    data = _tab(payload, "data tab")
-    results = _tab(payload, "results tab")
-    for key in ("name", "output type", "output dataset", "input triangle"):
+    details = _tab(payload, "details_tab")
+    data = _tab(payload, "data_tab")
+    results = _tab(payload, "results_tab")
+    for key in ("name", "output_type", "output_dataset", "input_triangle"):
         if not _clean(details.get(key)):
             raise DfmContractError(f"DFM details tab.{key} is required.")
-    origins = data.get("origin labels") if isinstance(data.get("origin labels"), list) else []
-    devs = data.get("development labels") if isinstance(data.get("development labels"), list) else []
+    origins = data.get("origin_labels") if isinstance(data.get("origin_labels"), list) else []
+    devs = data.get("development_labels") if isinstance(data.get("development_labels"), list) else []
     if not origins or not devs:
         raise DfmContractError("DFM input snapshot must contain origin and development labels.")
     duplicates = _duplicate_labels(origins)
     if duplicates:
         raise DfmContractError("DFM input origin labels must be unique: " + ", ".join(duplicates))
-    values = data.get("input data triangle values")
-    mask = data.get("input data triangle mask")
+    values = data.get("input_data_triangle_values")
+    mask = data.get("input_data_triangle_mask")
     if not isinstance(values, list) or len(values) != len(origins):
         raise DfmContractError("DFM input values must contain one row per origin label.")
     if not isinstance(mask, list) or len(mask) != len(origins):
         raise DfmContractError("DFM input mask must contain one row per origin label.")
     if any(len(row) != len(devs) for row in values) or any(len(row) != len(devs) for row in mask):
         raise DfmContractError("DFM input values and mask must match the development-label geometry.")
-    if not str(data.get("source revision") or "").strip():
+    if not str(data.get("source_revision") or "").strip():
         raise DfmContractError("DFM input snapshot must contain a source revision.")
-    ratios = _tab(payload, "ratios tab")
-    ratio = _tab(ratios, "ratio triangle")
+    ratios = _tab(payload, "ratios_tab")
+    ratio = _tab(ratios, "ratio_triangle")
     expected_ratio_labels = _ratio_development_labels(list(devs))
-    if ratio.get("origin labels") != origins:
+    if ratio.get("origin_labels") != origins:
         raise DfmContractError("DFM ratio origin labels must equal the input origin labels.")
-    if ratio.get("development labels") != expected_ratio_labels:
+    if ratio.get("development_labels") != expected_ratio_labels:
         raise DfmContractError("DFM ratio development labels do not match the input geometry.")
-    ratio_values = ratio.get("ratio values")
+    ratio_values = ratio.get("ratio_values")
     excluded = ratio.get("excluded")
     if not isinstance(ratio_values, list) or len(ratio_values) != len(origins):
         raise DfmContractError("DFM ratio values must contain one row per origin label.")
@@ -583,24 +582,24 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
         raise DfmContractError("DFM ratio rows exceed the input development geometry.")
     if any(len(excluded[index]) != len(ratio_values[index]) for index in range(len(origins))):
         raise DfmContractError("DFM exclusion rows must match the corresponding ratio-value rows.")
-    formulas = _tab(ratios, "average formulas")
+    formulas = _tab(ratios, "average_formulas")
     formula_labels = formulas.get("label") if isinstance(formulas.get("label"), list) else []
     formula_cols = len(expected_ratio_labels)
-    for key in ("selected", "values", "inputs", "display inputs"):
+    for key in ("selected", "values", "inputs", "display_inputs"):
         matrix = formulas.get(key)
         if not isinstance(matrix, list) or len(matrix) != len(formula_labels):
             raise DfmContractError(f"DFM average formulas.{key} must align to formula labels.")
         if any(not isinstance(row, list) or len(row) != formula_cols for row in matrix):
             raise DfmContractError(f"DFM average formulas.{key} must align to ratio columns.")
-    ultimate = results.get("ultimate vector")
+    ultimate = results.get("ultimate_vector")
     if not isinstance(ultimate, list) or len(ultimate) != len(origins):
         raise DfmContractError("DFM ultimate vector must contain one value per origin label.")
-    if _clean(results.get("ratio basis dataset")):
-        if results.get("ratio basis origin labels") != origins:
+    if _clean(results.get("ratio_basis_dataset")):
+        if results.get("ratio_basis_origin_labels") != origins:
             raise DfmContractError("DFM Ratio Basis labels must align exactly to the DFM origins.")
-        if len(results.get("ratio basis values") or []) != len(origins):
+        if len(results.get("ratio_basis_values") or []) != len(origins):
             raise DfmContractError("DFM Ratio Basis values must align exactly to the DFM origins.")
-        if not str(results.get("ratio basis source revision") or "").strip():
+        if not str(results.get("ratio_basis_source_revision") or "").strip():
             raise DfmContractError("DFM Ratio Basis snapshot must contain a source revision.")
 
 
@@ -710,7 +709,7 @@ def _contains_dataset_reference(value: Any) -> bool:
 def dfm_dataset_reference_tokens(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Return unique dataset-reference tokens across all average-formula inputs."""
 
-    formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
+    formulas = _tab(_tab(payload, "ratios_tab"), "average_formulas")
     inputs = formulas.get("inputs") if isinstance(formulas.get("inputs"), list) else []
     tokens: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -753,10 +752,10 @@ def _substitute_dataset_references(
 
 
 def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
-    formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
+    formulas = _tab(_tab(payload, "ratios_tab"), "average_formulas")
     labels = formulas.get("label") if isinstance(formulas.get("label"), list) else []
-    settings = _tab(formulas, "custom average formula settings")
-    types = settings.get("averageType") if isinstance(settings.get("averageType"), list) else []
+    settings = _tab(formulas, "custom_average_formula_settings")
+    types = settings.get("average_type") if isinstance(settings.get("average_type"), list) else []
     bases = settings.get("base") if isinstance(settings.get("base"), list) else []
     values = formulas.get("values") if isinstance(formulas.get("values"), list) else []
     inputs = formulas.get("inputs") if isinstance(formulas.get("inputs"), list) else []
@@ -808,15 +807,15 @@ def _owned_formula_values(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
 def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     """The person's choices: details, exclusions, formula selections, cell notes."""
 
-    details = _tab(payload, "details tab")
-    ratios = _tab(payload, "ratios tab")
-    ratio = _tab(ratios, "ratio triangle")
-    formulas = _tab(ratios, "average formulas")
-    settings = _tab(formulas, "custom average formula settings")
-    notes = _tab(ratios, "cell notes")
-    results = _tab(payload, "results tab")
-    ratio_origins = ratio.get("origin labels") if isinstance(ratio.get("origin labels"), list) else []
-    ratio_devs = ratio.get("development labels") if isinstance(ratio.get("development labels"), list) else []
+    details = _tab(payload, "details_tab")
+    ratios = _tab(payload, "ratios_tab")
+    ratio = _tab(ratios, "ratio_triangle")
+    formulas = _tab(ratios, "average_formulas")
+    settings = _tab(formulas, "custom_average_formula_settings")
+    notes = _tab(ratios, "cell_notes")
+    results = _tab(payload, "results_tab")
+    ratio_origins = ratio.get("origin_labels") if isinstance(ratio.get("origin_labels"), list) else []
+    ratio_devs = ratio.get("development_labels") if isinstance(ratio.get("development_labels"), list) else []
     excluded = ratio.get("excluded") if isinstance(ratio.get("excluded"), list) else []
     excluded_cells = [
         {
@@ -831,19 +830,19 @@ def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "details": {
             "name": details.get("name"),
-            "output_type": details.get("output type"),
-            "output_dataset": details.get("output dataset"),
-            "output_category": details.get("output category"),
-            "input_triangle": details.get("input triangle"),
-            "origin_length": details.get("origin length"),
-            "development_length": details.get("development length"),
-            "decimal_places": details.get("decimal places"),
+            "output_type": details.get("output_type"),
+            "output_dataset": details.get("output_dataset"),
+            "output_category": details.get("output_category"),
+            "input_triangle": details.get("input_triangle"),
+            "origin_length": details.get("origin_length"),
+            "development_length": details.get("development_length"),
+            "decimal_places": details.get("decimal_places"),
         },
         "excluded_cells": excluded_cells,
         "average_formulas": {
             "label": deepcopy(formulas.get("label") or []),
             "settings": {
-                "average_type": deepcopy(settings.get("averageType") or []),
+                "average_type": deepcopy(settings.get("average_type") or []),
                 "base": deepcopy(settings.get("base") or []),
                 "periods": deepcopy(settings.get("periods") or []),
                 "exclude": deepcopy(settings.get("exclude") or []),
@@ -853,65 +852,65 @@ def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
             "owned_values": _owned_formula_values(payload),
         },
         "cell_notes": {
-            "ratio_main_table": deepcopy(notes.get("ratio main table") or {}),
-            "ratio_summary_table": deepcopy(notes.get("ratio summary table") or {}),
+            "ratio_main_table": deepcopy(notes.get("ratio_main_table") or {}),
+            "ratio_summary_table": deepcopy(notes.get("ratio_summary_table") or {}),
         },
-        "ratio_basis_dataset": results.get("ratio basis dataset", ""),
-        "ultimate_ratio_decimal_places": results.get("ultimate ratio decimal places", 2),
+        "ratio_basis_dataset": results.get("ratio_basis_dataset", ""),
+        "ultimate_ratio_decimal_places": results.get("ultimate_ratio_decimal_places", 2),
     }
 
 
 def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     """The computed numbers and the snapshots they were computed from."""
 
-    data = _tab(payload, "data tab")
-    ratios = _tab(payload, "ratios tab")
-    ratio = _tab(ratios, "ratio triangle")
-    formulas = _tab(ratios, "average formulas")
-    results = _tab(payload, "results tab")
+    data = _tab(payload, "data_tab")
+    ratios = _tab(payload, "ratios_tab")
+    ratio = _tab(ratios, "ratio_triangle")
+    formulas = _tab(ratios, "average_formulas")
+    results = _tab(payload, "results_tab")
     return {
         "input": {
-            "origin_labels": deepcopy(data.get("origin labels")),
-            "development_labels": deepcopy(data.get("development labels")),
-            "values": deepcopy(data.get("input data triangle values")),
-            "mask": deepcopy(data.get("input data triangle mask")),
-            "data_format": data.get("data format"),
-            "number_format": data.get("number format"),
-            "decimal_places": data.get("decimal places"),
-            "source_revision": data.get("source revision"),
+            "origin_labels": deepcopy(data.get("origin_labels")),
+            "development_labels": deepcopy(data.get("development_labels")),
+            "values": deepcopy(data.get("input_data_triangle_values")),
+            "mask": deepcopy(data.get("input_data_triangle_mask")),
+            "data_format": data.get("data_format"),
+            "number_format": data.get("number_format"),
+            "decimal_places": data.get("decimal_places"),
+            "source_revision": data.get("source_revision"),
         },
         "ratio_triangle": {
-            "origin_labels": deepcopy(ratio.get("origin labels") or []),
-            "development_labels": deepcopy(ratio.get("development labels") or []),
-            "values": deepcopy(ratio.get("ratio values") or []),
+            "origin_labels": deepcopy(ratio.get("origin_labels") or []),
+            "development_labels": deepcopy(ratio.get("development_labels") or []),
+            "values": deepcopy(ratio.get("ratio_values") or []),
         },
         "average_formula_values": deepcopy(formulas.get("values") or []),
         "ratio_basis": {
-            "origin_labels": deepcopy(results.get("ratio basis origin labels")),
-            "values": deepcopy(results.get("ratio basis values")),
-            "data_format": results.get("ratio basis data format"),
-            "number_format": results.get("ratio basis number format"),
-            "decimal_places": results.get("ratio basis decimal places"),
-            "source_revision": results.get("ratio basis source revision"),
+            "origin_labels": deepcopy(results.get("ratio_basis_origin_labels")),
+            "values": deepcopy(results.get("ratio_basis_values")),
+            "data_format": results.get("ratio_basis_data_format"),
+            "number_format": results.get("ratio_basis_number_format"),
+            "decimal_places": results.get("ratio_basis_decimal_places"),
+            "source_revision": results.get("ratio_basis_source_revision"),
         },
-        "ultimate_vector": deepcopy(results.get("ultimate vector")),
+        "ultimate_vector": deepcopy(results.get("ultimate_vector")),
     }
 
 
 def publication_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Only what a downstream method can see of this one."""
 
-    details = _tab(payload, "details tab")
-    data = _tab(payload, "data tab")
-    results = _tab(payload, "results tab")
+    details = _tab(payload, "details_tab")
+    data = _tab(payload, "data_tab")
+    results = _tab(payload, "results_tab")
     return {
-        "output_dataset": details.get("output dataset", ""),
-        "output_type": details.get("output type", ""),
-        "output_category": details.get("output category", ""),
-        "origin_length": details.get("origin length", 12),
-        "decimal_places": details.get("decimal places", 0),
-        "origin_labels": deepcopy(data.get("origin labels") or []),
-        "ultimate_vector": deepcopy(results.get("ultimate vector") or []),
+        "output_dataset": details.get("output_dataset", ""),
+        "output_type": details.get("output_type", ""),
+        "output_category": details.get("output_category", ""),
+        "origin_length": details.get("origin_length", 12),
+        "decimal_places": details.get("decimal_places", 0),
+        "origin_labels": deepcopy(data.get("origin_labels") or []),
+        "ultimate_vector": deepcopy(results.get("ultimate_vector") or []),
     }
 
 
@@ -938,13 +937,17 @@ def persisted_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     persisted = deepcopy(dict(payload))
-    data = persisted.get("data tab")
+    results = persisted.get("results_tab")
+    if isinstance(results, dict):
+        # A forced copy of data_tab.origin_labels; re-derived on read.
+        results.pop("ratio_basis_origin_labels", None)
+    data = persisted.get("data_tab")
     if not isinstance(data, dict):
         return persisted
-    data.pop("input data triangle mask", None)
-    values = data.get("input data triangle values")
+    data.pop("input_data_triangle_mask", None)
+    values = data.get("input_data_triangle_values")
     if isinstance(values, list):
-        data["input data triangle values"] = [
+        data["input_data_triangle_values"] = [
             _trim_trailing_nulls(row) if isinstance(row, list) else row
             for row in values
         ]
@@ -953,41 +956,16 @@ def persisted_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     return {
-        "owned revision": fingerprint(owned_projection(payload)),
-        "derived revision": fingerprint(derived_projection(payload)),
-        "publication revision": fingerprint(publication_projection(payload)),
+        "owned_revision": fingerprint(owned_projection(payload)),
+        "derived_revision": fingerprint(derived_projection(payload)),
+        "publication_revision": fingerprint(publication_projection(payload)),
     }
 
 
-def _dependency_names(entries: Any) -> list[str]:
-    if not isinstance(entries, list):
-        return []
-    names: list[str] = []
-    seen: set[str] = set()
-    for item in entries:
-        if isinstance(item, Mapping):
-            name = _clean(
-                item.get("dataset_type_name") or item.get("dataset_name") or item.get("name")
-            )
-        else:
-            name = _clean(item)
-        key = name.casefold()
-        if name and key not in seen:
-            seen.add(key)
-            names.append(name)
-    return names
-
-
-def dependency_entries(entries: Any) -> list[dict[str, str]]:
-    """Normalize sidecar dependency identities to the canonical parsed shape."""
-
-    return [{"dataset_type_name": name} for name in _dependency_names(entries)]
-
-
 def dfm_precedent_names(payload: Mapping[str, Any]) -> list[str]:
-    details = _tab(payload, "details tab")
-    results = _tab(payload, "results tab")
-    formulas = _tab(_tab(payload, "ratios tab"), "average formulas")
+    details = _tab(payload, "details_tab")
+    results = _tab(payload, "results_tab")
+    formulas = _tab(_tab(payload, "ratios_tab"), "average_formulas")
     inputs = formulas.get("inputs") if isinstance(formulas.get("inputs"), list) else []
     formula_datasets = [
         dataset_name
@@ -996,9 +974,9 @@ def dfm_precedent_names(payload: Mapping[str, Any]) -> list[str]:
         for formula in row
         for dataset_name in _dataset_reference_names(formula)
     ]
-    return _dependency_names([
-        details.get("input triangle"),
-        results.get("ratio basis dataset"),
+    return dependency_names([
+        details.get("input_triangle"),
+        results.get("ratio_basis_dataset"),
         *formula_datasets,
     ])
 
@@ -1025,16 +1003,16 @@ def build_dfm_output_sidecar(
     method = normalize_dfm_method(payload, require_complete=True, timestamp=timestamp)
     prior = existing if isinstance(existing, Mapping) else {}
     record_exists = bool(prior) if existing_record is None else bool(existing_record)
-    details = _tab(method, "details tab")
-    data = _tab(method, "data tab")
-    metadata = _tab(method, "method metadata")
+    details = _tab(method, "details_tab")
+    data = _tab(method, "data_tab")
+    metadata = _tab(method, "method_metadata")
     method_name = _clean(details.get("name"))
-    output_dataset = _clean(details.get("output dataset")) or method_name
+    output_dataset = _clean(details.get("output_dataset")) or method_name
     published_at = _timestamp(timestamp)
     actor = _clean(user)
     if not output_changed and record_exists:
         published_at = str(prior.get("updated_at") or "").strip() or published_at
-        actor = _clean(prior.get("modified_by") or prior.get("user")) or actor
+        actor = _clean(prior.get("modified_by")) or actor
     created = str(prior.get("created") or "").strip() or published_at
     sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
     if append_audit:
@@ -1047,63 +1025,55 @@ def build_dfm_output_sidecar(
     else:
         audits = normalize_audit_log(prior.get("audit_log"))
     return validate_sidecar_core({
+        "json_format": DATASET_SIDECAR_JSON_FORMAT,
         "dataset_name": output_dataset,
-        "dataset_type": _clean(details.get("output type")) or output_dataset,
-        "dataset_category": _clean(details.get("output category")),
+        "dataset_type": _clean(details.get("output_type")) or output_dataset,
+        "dataset_category": _clean(details.get("output_category")),
         "reserving_class": _clean(reserving_class),
         "project_name": _clean(project_name),
         "source_kind": "dfm",
         "calculated": True,
-        "formula": "",
         "method_name": method_name,
         "method_type": "DFM",
-        "method_type_code": 1,
         "data_format": "Vector",
-        "data_format_code": 1,
-        "period_length": _integer(details.get("origin length"), 12, minimum=1),
+        "period_length": _integer(details.get("origin_length"), 12, minimum=1),
         "transposed": False,
         "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",
-        "decimal_places": _integer(details.get("decimal places"), 0, minimum=0, maximum=8),
+        "decimal_places": _integer(details.get("decimal_places"), 0, minimum=0, maximum=8),
         "csv_file": _clean(csv_file),
         "notes": sidecar_notes,
-        "origin_count": len(data.get("origin labels") or []),
-        "origin_labels": deepcopy(data.get("origin labels") or []),
+        "origin_labels": deepcopy(data.get("origin_labels") or []),
         "development_labels": ["Ultimate"],
-        "Precedents": dependency_entries(dfm_precedent_names(method)),
-        "Dependents": dependency_entries(prior.get("Dependents") if dependents is None else dependents),
+        "precedents": dependency_entries(dfm_precedent_names(method)),
+        "dependents": dependency_entries(prior.get("dependents") if dependents is None else dependents),
         "created": created,
         "updated_at": published_at,
         "modified_by": actor,
-        "user": actor,
         "status": _integer(status, 0, minimum=0),
-        "publication_revision": str(metadata.get("publication revision") or "").strip(),
+        "publication_revision": str(metadata.get("publication_revision") or "").strip(),
         "audit_log": audits,
     })
 
 
 def _set_revisions(payload: dict[str, Any]) -> None:
-    metadata = payload.setdefault("method metadata", {})
+    metadata = payload.setdefault("method_metadata", {})
     metadata.update(method_revisions(payload))
 
 
-def _snapshot_field(snapshot: Mapping[str, Any], spaced: str, snake: str) -> Any:
-    return snapshot.get(spaced) if spaced in snapshot else snapshot.get(snake)
-
-
 def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
-    details = payload["details tab"]
-    old_ratio = payload["ratios tab"]["ratio triangle"]
-    old_data_devs = _labels(payload["data tab"].get("development labels"))
-    old_origins = _labels(old_ratio.get("origin labels"))
-    old_devs = _labels(old_ratio.get("development labels"))
+    details = payload["details_tab"]
+    old_ratio = payload["ratios_tab"]["ratio_triangle"]
+    old_data_devs = _labels(payload["data_tab"].get("development_labels"))
+    old_origins = _labels(old_ratio.get("origin_labels"))
+    old_devs = _labels(old_ratio.get("development_labels"))
     old_excluded = _int_matrix(old_ratio.get("excluded"))
 
     name = _clean(snapshot.get("name"))
     if name:
-        details["input triangle"] = name
-    origins = _labels(_snapshot_field(snapshot, "origin labels", "origin_labels"))
-    devs = _labels(_snapshot_field(snapshot, "development labels", "development_labels"))
+        details["input_triangle"] = name
+    origins = _labels(snapshot.get("origin_labels"))
+    devs = _labels(snapshot.get("development_labels"))
     duplicates = _duplicate_labels(origins)
     if duplicates:
         raise DfmContractError("DFM input snapshot has duplicate origin labels: " + ", ".join(duplicates))
@@ -1122,31 +1092,31 @@ def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) 
             if not mask[row][col] or values[row][col] is None:
                 values[row][col] = None
                 mask[row][col] = False
-    data = payload["data tab"]
-    data_format = _clean(_snapshot_field(snapshot, "data format", "data_format")) or "Triangle"
-    number_format = _clean(_snapshot_field(snapshot, "number format", "number_format")) or "#,##0"
+    data = payload["data_tab"]
+    data_format = _clean(snapshot.get("data_format")) or "Triangle"
+    number_format = _clean(snapshot.get("number_format")) or "#,##0"
     decimal_places = _integer(
-        _snapshot_field(snapshot, "decimal places", "decimal_places"), 0, minimum=0, maximum=8
+        snapshot.get("decimal_places"), 0, minimum=0, maximum=8
     )
     canonical_snapshot = {
-        "name": details.get("input triangle"),
-        "origin labels": origins,
-        "development labels": devs,
+        "name": details.get("input_triangle"),
+        "origin_labels": origins,
+        "development_labels": devs,
         "values": values,
         "mask": mask,
-        "data format": data_format,
-        "number format": number_format,
-        "decimal places": decimal_places,
+        "data_format": data_format,
+        "number_format": number_format,
+        "decimal_places": decimal_places,
     }
     data.update({
-        "origin labels": origins,
-        "development labels": devs,
-        "input data triangle values": values,
-        "input data triangle mask": mask,
-        "data format": data_format,
-        "number format": number_format,
-        "decimal places": decimal_places,
-        "source revision": source_snapshot_revision(canonical_snapshot),
+        "origin_labels": origins,
+        "development_labels": devs,
+        "input_data_triangle_values": values,
+        "input_data_triangle_mask": mask,
+        "data_format": data_format,
+        "number_format": number_format,
+        "decimal_places": decimal_places,
+        "source_revision": source_snapshot_revision(canonical_snapshot),
     })
     ratio_labels = _ratio_development_labels(devs)
     origin_lookup = {label: index for index, label in enumerate(old_origins)}
@@ -1164,25 +1134,25 @@ def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) 
                     value = source_row[old_col]
             row.append(value)
         remapped.append(row)
-    old_ratio["origin labels"] = origins
-    old_ratio["development labels"] = ratio_labels
+    old_ratio["origin_labels"] = origins
+    old_ratio["development_labels"] = ratio_labels
     old_ratio["excluded"] = remapped
 
 
 def _apply_ratio_basis_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
-    results = payload["results tab"]
+    results = payload["results_tab"]
     name = _clean(snapshot.get("name"))
     if name:
-        results["ratio basis dataset"] = name
-    if not _clean(results.get("ratio basis dataset")):
+        results["ratio_basis_dataset"] = name
+    if not _clean(results.get("ratio_basis_dataset")):
         results.update({
-            "ratio basis origin labels": [],
-            "ratio basis values": [],
-            "ratio basis source revision": "",
+            "ratio_basis_origin_labels": [],
+            "ratio_basis_values": [],
+            "ratio_basis_source_revision": "",
         })
         return
-    method_origins = payload["data tab"]["origin labels"]
-    source_origins = _labels(_snapshot_field(snapshot, "origin labels", "origin_labels"))
+    method_origins = payload["data_tab"]["origin_labels"]
+    source_origins = _labels(snapshot.get("origin_labels"))
     duplicates = _duplicate_labels(source_origins)
     if duplicates:
         raise DfmContractError("DFM Ratio Basis has duplicate origin labels: " + ", ".join(duplicates))
@@ -1200,26 +1170,26 @@ def _apply_ratio_basis_snapshot(payload: dict[str, Any], snapshot: Mapping[str, 
             "DFM Ratio Basis is missing exact origin labels: " + ", ".join(str(label) for label in missing)
         )
     aligned_values = [lookup.get(label) for label in method_origins]
-    data_format = _clean(_snapshot_field(snapshot, "data format", "data_format")) or "Vector"
-    number_format = _clean(_snapshot_field(snapshot, "number format", "number_format")) or "#,##0"
+    data_format = _clean(snapshot.get("data_format")) or "Vector"
+    number_format = _clean(snapshot.get("number_format")) or "#,##0"
     decimal_places = _integer(
-        _snapshot_field(snapshot, "decimal places", "decimal_places"), 0, minimum=0, maximum=8
+        snapshot.get("decimal_places"), 0, minimum=0, maximum=8
     )
     canonical_snapshot = {
-        "name": results.get("ratio basis dataset"),
-        "origin labels": list(method_origins),
+        "name": results.get("ratio_basis_dataset"),
+        "origin_labels": list(method_origins),
         "values": aligned_values,
-        "data format": data_format,
-        "number format": number_format,
-        "decimal places": decimal_places,
+        "data_format": data_format,
+        "number_format": number_format,
+        "decimal_places": decimal_places,
     }
     results.update({
-        "ratio basis origin labels": list(method_origins),
-        "ratio basis values": aligned_values,
-        "ratio basis data format": data_format,
-        "ratio basis number format": number_format,
-        "ratio basis decimal places": decimal_places,
-        "ratio basis source revision": source_snapshot_revision(canonical_snapshot),
+        "ratio_basis_origin_labels": list(method_origins),
+        "ratio_basis_values": aligned_values,
+        "ratio_basis_data_format": data_format,
+        "ratio_basis_number_format": number_format,
+        "ratio_basis_decimal_places": decimal_places,
+        "ratio_basis_source_revision": source_snapshot_revision(canonical_snapshot),
     })
 
 
@@ -1390,20 +1360,20 @@ def _calculate_formula_values(
     payload: dict[str, Any],
     dataset_reference_values: Mapping[str, Any] | None = None,
 ) -> list[list[Any]]:
-    data = payload["data tab"]
-    ratio = payload["ratios tab"]["ratio triangle"]
-    formulas = payload["ratios tab"]["average formulas"]
+    data = payload["data_tab"]
+    ratio = payload["ratios_tab"]["ratio_triangle"]
+    formulas = payload["ratios_tab"]["average_formulas"]
     labels = formulas["label"]
-    settings = formulas["custom average formula settings"]
-    values = data["input data triangle values"]
-    mask = data["input data triangle mask"]
+    settings = formulas["custom_average_formula_settings"]
+    values = data["input_data_triangle_values"]
+    mask = data["input_data_triangle_mask"]
     excluded = ratio["excluded"]
-    old_values = _fit_matrix(_number_matrix(formulas.get("values")), len(labels), len(ratio["development labels"]), None)
-    inputs = _fit_matrix(_text_matrix(formulas.get("inputs")), len(labels), len(ratio["development labels"]), "")
-    col_count = len(ratio["development labels"])
+    old_values = _fit_matrix(_number_matrix(formulas.get("values")), len(labels), len(ratio["development_labels"]), None)
+    inputs = _fit_matrix(_text_matrix(formulas.get("inputs")), len(labels), len(ratio["development_labels"]), "")
+    col_count = len(ratio["development_labels"])
     computed: list[list[Any]] = [[None] * col_count for _ in labels]
     for row, _label in enumerate(labels):
-        average_type = settings["averageType"][row]
+        average_type = settings["average_type"][row]
         if average_type == "user_entry":
             continue
         if settings["base"][row] == "benchmark":
@@ -1413,7 +1383,7 @@ def _calculate_formula_values(
             ]
             continue
         for col in range(col_count):
-            computed[row][col] = 1.0 if col >= len(data["development labels"]) - 1 else canonical_number(
+            computed[row][col] = 1.0 if col >= len(data["development_labels"]) - 1 else canonical_number(
                 _calculate_average(
                     values,
                     mask,
@@ -1434,7 +1404,7 @@ def _calculate_formula_values(
         key = (row, col)
         if key in resolving:
             return stored if stored is not None and stored > 0 else 1.0
-        if col >= len(data["development labels"]) - 1:
+        if col >= len(data["development_labels"]) - 1:
             computed[row][col] = 1.0
             return 1.0
         resolving.add(key)
@@ -1490,7 +1460,7 @@ def _calculate_formula_values(
             resolving.remove(key)
 
     for row, _label in enumerate(labels):
-        if settings["averageType"][row] != "user_entry":
+        if settings["average_type"][row] != "user_entry":
             continue
         for col in range(col_count):
             resolve(row, col)
@@ -1514,14 +1484,14 @@ def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
     """
 
     method = normalize_dfm_method(payload, require_complete=False)
-    data = method["data tab"]
-    ratio = method["ratios tab"]["ratio triangle"]
-    formulas = method["ratios tab"]["average formulas"]
-    settings = formulas["custom average formula settings"]
+    data = method["data_tab"]
+    ratio = method["ratios_tab"]["ratio_triangle"]
+    formulas = method["ratios_tab"]["average_formulas"]
+    settings = formulas["custom_average_formula_settings"]
     selected = formulas["selected"]
     stored = formulas["values"]
-    col_count = len(ratio["development labels"])
-    last_computed_col = len(data["development labels"]) - 1
+    col_count = len(ratio["development_labels"])
+    last_computed_col = len(data["development_labels"]) - 1
 
     ratios: list[float] = []
     for col in range(col_count):
@@ -1533,7 +1503,7 @@ def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
             ),
             0,
         )
-        average_type = settings["averageType"][row] if row < len(settings["averageType"]) else "custom"
+        average_type = settings["average_type"][row] if row < len(settings["average_type"]) else "custom"
         base = settings["base"][row] if row < len(settings["base"]) else "volume"
         if average_type == "user_entry" or base == "benchmark" or col >= last_computed_col:
             value = canonical_number(stored[row][col] if row < len(stored) and col < len(stored[row]) else None)
@@ -1542,8 +1512,8 @@ def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
         ratios.append(
             float(
                 _calculate_average(
-                    data["input data triangle values"],
-                    data["input data triangle mask"],
+                    data["input_data_triangle_values"],
+                    data["input_data_triangle_mask"],
                     ratio["excluded"],
                     col,
                     base=base,
@@ -1556,11 +1526,11 @@ def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
 
 
 def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
-    data = payload["data tab"]
-    formulas = payload["ratios tab"]["average formulas"]
+    data = payload["data_tab"]
+    formulas = payload["ratios_tab"]["average_formulas"]
     values = formulas["values"]
     selected = formulas["selected"]
-    col_count = len(payload["ratios tab"]["ratio triangle"]["development labels"])
+    col_count = len(payload["ratios_tab"]["ratio_triangle"]["development_labels"])
     selected_values: list[float] = []
     for col in range(col_count):
         chosen = 0
@@ -1577,12 +1547,12 @@ def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
         running = value if col == col_count - 1 else (value * running if running is not None else None)
         cumulative[col] = running
     out: list[Any] = []
-    for row, row_values in enumerate(data["input data triangle values"]):
-        row_mask = data["input data triangle mask"][row]
+    for row, row_values in enumerate(data["input_data_triangle_values"]):
+        row_mask = data["input_data_triangle_mask"][row]
         latest_col = next(
             (
                 col
-                for col in range(min(len(row_values), len(row_mask), len(data["development labels"])) - 1, -1, -1)
+                for col in range(min(len(row_values), len(row_mask), len(data["development_labels"])) - 1, -1, -1)
                 if row_mask[col] and canonical_number(row_values[col]) is not None
             ),
             None,
@@ -1622,31 +1592,31 @@ def recalculate_dfm_method(
         _apply_input_snapshot(method, input_snapshot)
     if ratio_basis_snapshot is not None:
         _apply_ratio_basis_snapshot(method, ratio_basis_snapshot)
-    ratio = method["ratios tab"]["ratio triangle"]
-    data = method["data tab"]
-    ratio["origin labels"] = list(data["origin labels"])
-    ratio["development labels"] = _ratio_development_labels(data["development labels"])
-    ratio["ratio values"] = _calculate_ratio_triangle(
-        data["input data triangle values"], data["input data triangle mask"], len(data["development labels"])
+    ratio = method["ratios_tab"]["ratio_triangle"]
+    data = method["data_tab"]
+    ratio["origin_labels"] = list(data["origin_labels"])
+    ratio["development_labels"] = _ratio_development_labels(data["development_labels"])
+    ratio["ratio_values"] = _calculate_ratio_triangle(
+        data["input_data_triangle_values"], data["input_data_triangle_mask"], len(data["development_labels"])
     )
     prior_excluded = _int_matrix(ratio.get("excluded"))
     ratio["excluded"] = [
         (prior_excluded[row] if row < len(prior_excluded) else [])[: len(ratio_values)]
         + [0] * max(0, len(ratio_values) - len(prior_excluded[row] if row < len(prior_excluded) else []))
-        for row, ratio_values in enumerate(ratio["ratio values"])
+        for row, ratio_values in enumerate(ratio["ratio_values"])
     ]
-    formula_count = len(method["ratios tab"]["average formulas"]["label"])
-    ratio_col_count = len(ratio["development labels"])
-    formulas = method["ratios tab"]["average formulas"]
+    formula_count = len(method["ratios_tab"]["average_formulas"]["label"])
+    ratio_col_count = len(ratio["development_labels"])
+    formulas = method["ratios_tab"]["average_formulas"]
     formulas["selected"] = _fit_matrix(_int_matrix(formulas.get("selected")), formula_count, ratio_col_count, 0)
     formulas["inputs"] = _fit_matrix(_text_matrix(formulas.get("inputs")), formula_count, ratio_col_count, "")
-    formulas["display inputs"] = _fit_matrix(
-        _text_matrix(formulas.get("display inputs")), formula_count, ratio_col_count, ""
+    formulas["display_inputs"] = _fit_matrix(
+        _text_matrix(formulas.get("display_inputs")), formula_count, ratio_col_count, ""
     )
     formulas["values"] = _calculate_formula_values(method, dataset_reference_values)
-    method["results tab"]["ultimate vector"] = _calculate_ultimate(method)
+    method["results_tab"]["ultimate_vector"] = _calculate_ultimate(method)
     if update_refresh_timestamp:
-        method["method metadata"]["data refreshed"] = refreshed_at
+        method["method_metadata"]["data_refreshed"] = refreshed_at
     _set_revisions(method)
     _validate_complete(method)
     return method
@@ -1671,42 +1641,42 @@ def preview_dfm_method(
 
 
 _OWNED_PATHS = (
-    ("details tab", "name"),
-    ("details tab", "output type"),
-    ("details tab", "output dataset"),
-    ("details tab", "output category"),
-    ("details tab", "input triangle"),
-    ("details tab", "origin length"),
-    ("details tab", "development length"),
-    ("details tab", "decimal places"),
-    ("ratios tab", "average formulas", "label"),
-    ("ratios tab", "average formulas", "custom average formula settings"),
-    ("ratios tab", "average formulas", "selected"),
-    ("ratios tab", "average formulas", "inputs"),
-    ("ratios tab", "average formulas", "display inputs"),
-    ("ratios tab", "average formulas", "values"),
-    ("ratios tab", "cell notes"),
-    ("results tab", "ratio basis dataset"),
-    ("results tab", "ultimate ratio decimal places"),
+    ("details_tab", "name"),
+    ("details_tab", "output_type"),
+    ("details_tab", "output_dataset"),
+    ("details_tab", "output_category"),
+    ("details_tab", "input_triangle"),
+    ("details_tab", "origin_length"),
+    ("details_tab", "development_length"),
+    ("details_tab", "decimal_places"),
+    ("ratios_tab", "average_formulas", "label"),
+    ("ratios_tab", "average_formulas", "custom_average_formula_settings"),
+    ("ratios_tab", "average_formulas", "selected"),
+    ("ratios_tab", "average_formulas", "inputs"),
+    ("ratios_tab", "average_formulas", "display_inputs"),
+    ("ratios_tab", "average_formulas", "values"),
+    ("ratios_tab", "cell_notes"),
+    ("results_tab", "ratio_basis_dataset"),
+    ("results_tab", "ultimate_ratio_decimal_places"),
 )
 
 
 def _apply_owned_exclusion_patch(base: dict[str, Any], patch: Mapping[str, Any]) -> None:
-    patch_ratio = _tab(_tab(patch, "ratios tab"), "ratio triangle")
+    patch_ratio = _tab(_tab(patch, "ratios_tab"), "ratio_triangle")
     if "excluded" not in patch_ratio:
         return
     patch_excluded = _int_matrix(patch_ratio.get("excluded"))
-    patch_origins = _labels(patch_ratio.get("origin labels"))
-    patch_devs = _labels(patch_ratio.get("development labels"))
+    patch_origins = _labels(patch_ratio.get("origin_labels"))
+    patch_devs = _labels(patch_ratio.get("development_labels"))
     if not patch_origins or not patch_devs:
         raise DfmContractError(
             "A DFM exclusion patch must include its exact ratio origin and development labels."
         )
     if _duplicate_labels(patch_origins) or _duplicate_labels(patch_devs):
         raise DfmContractError("A DFM exclusion patch cannot contain duplicate labels.")
-    base_ratio = base["ratios tab"]["ratio triangle"]
-    base_origins = _labels(base_ratio.get("origin labels"))
-    base_devs = _labels(base_ratio.get("development labels"))
+    base_ratio = base["ratios_tab"]["ratio_triangle"]
+    base_origins = _labels(base_ratio.get("origin_labels"))
+    base_devs = _labels(base_ratio.get("development_labels"))
     base_excluded = _int_matrix(base_ratio.get("excluded"))
     origin_lookup = {label: index for index, label in enumerate(base_origins)}
     dev_lookup = {label: index for index, label in enumerate(base_devs)}
@@ -1763,7 +1733,7 @@ def apply_owned_patch(
         if exists:
             _set_path(method, path, value)
     modified_at = _timestamp(timestamp)
-    method["method metadata"]["last modified"] = modified_at
+    method["method_metadata"]["last_modified"] = modified_at
     return recalculate_dfm_method(
         method,
         timestamp=modified_at,
@@ -1787,11 +1757,11 @@ def stamp_last_modified(payload: Mapping[str, Any], modified_at: Any) -> dict[st
     """
 
     method = deepcopy(dict(payload))
-    metadata = method.get("method metadata")
+    metadata = method.get("method_metadata")
     if not isinstance(metadata, dict):
         metadata = {}
-        method["method metadata"] = metadata
-    metadata["last modified"] = _timestamp(modified_at)
+        method["method_metadata"] = metadata
+    metadata["last_modified"] = _timestamp(modified_at)
     return method
 
 
@@ -1801,7 +1771,6 @@ build_dfm_method_v2 = normalize_dfm_method
 __all__ = [
     "DFM_JSON_FORMAT",
     "DFM_VALUE_DECIMAL_PLACES",
-    "LEGACY_DFM_JSON_FORMAT",
     "DfmContractError",
     "aggregate_vector_values",
     "apply_owned_patch",
@@ -1809,7 +1778,6 @@ __all__ = [
     "build_dfm_output_sidecar",
     "canonical_number",
     "contains_excel_reference",
-    "dependency_entries",
     "derived_projection",
     "dfm_precedent_names",
     "dfm_output_variants",

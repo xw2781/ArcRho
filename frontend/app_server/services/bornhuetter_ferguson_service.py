@@ -27,6 +27,7 @@ from arcrho_api.bornhuetter_ferguson_contract import (
 )
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
@@ -54,7 +55,7 @@ def _key(value: Any) -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return utc_now_text()
 
 
 def _lock(project_name: str, reserving_class: str) -> threading.RLock:
@@ -498,10 +499,10 @@ def _build_sidecar(
             "reserving_class": reserving_class,
             "source_kind": "bornhuetter_ferguson",
             "method_type": dataset_sidecar_status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
-            "Precedents": dataset_sidecar_status_service.name_entries(
+            "precedents": dataset_sidecar_status_service.name_entries(
                 bornhuetter_ferguson_precedent_names(payload)
             ),
-            "Dependents": [],
+            "dependents": [],
         }
         calculated_dataset_service.apply_sidecar_graph_fields(
             graph_seed,
@@ -517,7 +518,7 @@ def _build_sidecar(
         csv_file=os.path.basename(primary),
         existing=canonical_existing,
         existing_record=bool(existing),
-        dependents=canonical_existing.get("Dependents"),
+        dependents=canonical_existing.get("dependents"),
         notes=notes,
         timestamp=_now(),
         user=user_identity_service.get_current_display_name() or getpass.getuser(),
@@ -554,7 +555,7 @@ def _publish(
         output_changed=output_changed,
         automatic=automatic,
     )
-    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("Precedents"))
+    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("precedents"))
     new_precedents = bornhuetter_ferguson_precedent_names(payload)
     graph_changed = {_key(item) for item in old_precedents} != {_key(item) for item in new_precedents}
     graph_updated = False
@@ -638,7 +639,7 @@ def _validate_pair(
         raise HTTPException(409, "BF method and output sidecar origin labels do not match.")
     method_precedents = {_key(item) for item in bornhuetter_ferguson_precedent_names(method)}
     sidecar_precedents = {
-        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
+        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("precedents"))
     }
     if method_precedents != sidecar_precedents:
         raise HTTPException(409, "BF method and output sidecar precedents do not match.")
@@ -1225,7 +1226,7 @@ def refresh_dependents(
             for source_name in allowed_frontier:
                 source_sidecar = source_sidecars.get(source_name) or {}
                 for dependent_name in dataset_sidecar_status_service.entry_names(
-                    source_sidecar.get("Dependents")
+                    source_sidecar.get("dependents")
                 ):
                     dependent_sources.setdefault(dependent_name, {})[source_name] = source_sidecar
             if not dependent_sources:

@@ -265,15 +265,15 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
         self.assertTrue(sidecar["calculated"])
         self.assertEqual(sidecar["source_kind"], "berquist_sherman_sr")
         self.assertEqual(sidecar["method_type"], "B&S Settlement Rate Adjustment")
-        self.assertEqual(sidecar["method_type_code"], 8)
+        self.assertNotIn("method_type_code", sidecar)
         self.assertEqual(sidecar["status"], 2)
         self.assertEqual(sidecar["notes"], "Settlement rate migration note")
         self.assertEqual(
-            sidecar["Precedents"],
+            sidecar["precedents"],
             [
-                "Gross Loss--Paid",
-                "Claim Counts--CWP",
-                "C 92 - Current Qtr Selected",
+                {"dataset_name": "Gross Loss--Paid"},
+                {"dataset_name": "Claim Counts--CWP"},
+                {"dataset_name": "C 92 - Current Qtr Selected"},
             ],
         )
 
@@ -285,7 +285,7 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
                 / "Gross Loss--Paid - B&S Settlement Rate Adjustment.json"
             ).read_text(encoding="utf-8")
         )
-        self.assertEqual(refreshed["Precedents"], sidecar["Precedents"])
+        self.assertEqual(refreshed["precedents"], sidecar["precedents"])
 
     def test_settlement_rate_export_backfills_only_missing_precedent_origin_labels(self):
         paid_path = self.rc_dir / "sidecars" / "Gross Loss--Paid.json"

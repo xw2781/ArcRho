@@ -64,7 +64,7 @@ def _artifact_modified_timestamp(payload: dict, fallback_timestamp: float) -> tu
             return source_modified, True
 
     containers = []
-    for key in ("method_metadata", "method metadata"):
+    for key in ("method_metadata", "method_metadata"):
         value = payload.get(key)
         if isinstance(value, dict):
             containers.append(value)
@@ -72,7 +72,7 @@ def _artifact_modified_timestamp(payload: dict, fallback_timestamp: float) -> tu
     for container in containers:
         for key in (
             "last_modified",
-            "last modified",
+            "last_modified",
             "modified_at",
             "modified",
             "updated_at",

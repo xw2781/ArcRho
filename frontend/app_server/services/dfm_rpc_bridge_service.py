@@ -31,10 +31,10 @@ RPC_BRIDGE_DIR_NAME = "RPC bridge"
 RPC_BRIDGE_TMP_DIR_NAME = "tmp_rpc"
 DFM_FUNCTION_NAME = "DFM"
 SYNC_DFM_FUNCTION_NAME = "SyncDFM"
-DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v1"
+DFM_OWNED_PATCH_FORMAT = "arcrho-dfm-owned-patch-v4"
 # The SyncDFM status field carrying the ``Modified`` value ResQ stamped on the
 # method it just saved, in the same spelling the exported method payload uses.
-SYNC_LAST_MODIFIED_FIELD = "last modified"
+SYNC_LAST_MODIFIED_FIELD = "last_modified"
 
 
 def _clean_text(value: Any) -> str:
@@ -192,7 +192,7 @@ def _json_last_modified_meta(parsed: ParsedJson) -> Dict[str, Any]:
             "last_modified_timestamp": None,
             "last_modified_error": error,
         }
-    raw = _json_tab(payload, "method metadata").get("last modified")
+    raw = _json_tab(payload, "method_metadata").get("last_modified")
     return {
         "last_modified": _clean_text(raw),
         "last_modified_timestamp": parse_method_last_modified_timestamp(raw),
@@ -230,16 +230,16 @@ def _file_meta(path: str, parsed: Optional[ParsedJson] = None) -> Dict[str, Any]
 
 
 def _extract_pattern_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    ratios_tab = _json_tab(payload, "ratios tab")
-    ratio_triangle = _json_tab(ratios_tab, "ratio triangle")
-    data_tab = _json_tab(payload, "data tab")
+    ratios_tab = _json_tab(payload, "ratios_tab")
+    ratio_triangle = _json_tab(ratios_tab, "ratio_triangle")
+    data_tab = _json_tab(payload, "data_tab")
     pattern = ratio_triangle.get("excluded")
-    origin_labels = ratio_triangle.get("origin labels")
+    origin_labels = ratio_triangle.get("origin_labels")
     if not isinstance(origin_labels, list):
-        origin_labels = data_tab.get("origin labels")
-    development_labels = ratio_triangle.get("development labels")
+        origin_labels = data_tab.get("origin_labels")
+    development_labels = ratio_triangle.get("development_labels")
     if not isinstance(development_labels, list):
-        development_labels = data_tab.get("development labels")
+        development_labels = data_tab.get("development_labels")
     preview_origin_labels = [
         _clean_text(label)
         for label in origin_labels
@@ -291,17 +291,17 @@ def _extract_pattern_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract_average_formula_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    ratios_tab = _json_tab(payload, "ratios tab")
-    formula_payload = ratios_tab.get("average formulas", {})
+    ratios_tab = _json_tab(payload, "ratios_tab")
+    formula_payload = ratios_tab.get("average_formulas", {})
     if not isinstance(formula_payload, dict):
         formula_payload = {}
     labels = formula_payload.get("label", [])
     selected = formula_payload.get("selected", [])
-    ratio_triangle = _json_tab(ratios_tab, "ratio triangle")
-    data_tab = _json_tab(payload, "data tab")
-    development_labels = ratio_triangle.get("development labels")
+    ratio_triangle = _json_tab(ratios_tab, "ratio_triangle")
+    data_tab = _json_tab(payload, "data_tab")
+    development_labels = ratio_triangle.get("development_labels")
     if not isinstance(development_labels, list):
-        development_labels = data_tab.get("development labels")
+        development_labels = data_tab.get("development_labels")
     preview_labels = [
         _clean_text(label)
         for label in labels
@@ -348,8 +348,8 @@ def _extract_average_formula_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _extract_cell_notes_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    ratios_tab = _json_tab(payload, "ratios tab")
-    cell_notes = ratios_tab.get("cell notes", {})
+    ratios_tab = _json_tab(payload, "ratios_tab")
+    cell_notes = ratios_tab.get("cell_notes", {})
     if not isinstance(cell_notes, dict):
         cell_notes = {}
     entries = []
@@ -379,10 +379,10 @@ def _extract_cell_notes_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract_method_notes_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    metadata = _json_tab(payload, "method metadata")
-    if "method notes" not in metadata:
+    metadata = _json_tab(payload, "method_metadata")
+    if "method_notes" not in metadata:
         return {"exists": False, "text": ""}
-    raw = metadata.get("method notes")
+    raw = metadata.get("method_notes")
     return {"exists": True, "text": str(raw if raw is not None else "")}
 
 
@@ -390,9 +390,9 @@ def _sidecar_method_notes_snapshot(req: DfmRpcBridgeRequest, payload: Dict[str, 
     """Read local Method Notes from their persisted owner, the output sidecar."""
     from app_server.services import dataset_sidecar_status_service
 
-    details = _json_tab(payload, "details tab")
+    details = _json_tab(payload, "details_tab")
     output_dataset = (
-        _clean_text(details.get("output dataset"))
+        _clean_text(details.get("output_dataset"))
         or _clean_text(details.get("name"))
         or _clean_text(req.method_name)
     )
@@ -435,7 +435,7 @@ def _build_json_snapshot(parsed: ParsedJson, *, method_notes_resolver=None) -> D
     _exists, payload, error = parsed
     if payload is None:
         return _unavailable_json_snapshot(error)
-    formula_payload = _json_tab(payload, "ratios tab").get("average formulas", {})
+    formula_payload = _json_tab(payload, "ratios_tab").get("average_formulas", {})
     formulas = formula_payload.get("label", []) if isinstance(formula_payload, dict) else []
     if not isinstance(formulas, list):
         formulas = []
@@ -450,7 +450,7 @@ def _build_json_snapshot(parsed: ParsedJson, *, method_notes_resolver=None) -> D
         "cell_notes": _extract_cell_notes_snapshot(payload),
         "method_notes": method_notes,
         "average_formulas": [str(item) for item in formulas],
-        "last_modified": _clean_text(_json_tab(payload, "method metadata").get("last modified")),
+        "last_modified": _clean_text(_json_tab(payload, "method_metadata").get("last_modified")),
     }
 
 
@@ -537,7 +537,7 @@ def _patch_component_count(payload: Any) -> int:
     return sum(
         _patch_component_count(value)
         for key, value in payload.items()
-        if key != "payload format"
+        if key != "payload_format"
     )
 
 
@@ -546,7 +546,7 @@ def apply_remote_to_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
     if not os.path.exists(paths["remote_path"]):
         raise HTTPException(404, "Remote DFM JSON is missing.")
     remote_payload = _read_json(paths["remote_path"])
-    if _clean_text(remote_payload.get("payload format")) != DFM_OWNED_PATCH_FORMAT:
+    if _clean_text(remote_payload.get("payload_format")) != DFM_OWNED_PATCH_FORMAT:
         raise HTTPException(422, "Remote DFM payload is not a canonical owned-state patch.")
     from app_server.services import dfm_service
 
@@ -556,7 +556,7 @@ def apply_remote_to_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
         req.method_name,
     )
     local_payload = loaded.get("method") or {}
-    if _clean_text(local_payload.get("json format")) != DFM_JSON_FORMAT:
+    if _clean_text(local_payload.get("json_format")) != DFM_JSON_FORMAT:
         raise HTTPException(409, "Local DFM must be upgraded to v2 before applying an RPC patch.")
     try:
         preview = apply_owned_patch(local_payload, remote_payload)

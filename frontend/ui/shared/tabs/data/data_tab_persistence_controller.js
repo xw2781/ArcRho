@@ -553,7 +553,7 @@ export function registerDataTabPersistenceController(runtime) {
     if (!isCurrent() || notesSynced === false) return false;
     runtime.currentDatasetSidecarSourceKind = data.exists ? String(data.source_kind || "") : (isProjectInstanceDraft ? "input" : "");
     runtime.currentDatasetSidecarDataFormat = data.exists ? String(data.data_format || "") : (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "");
-    runtime.currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.Precedents) : [];
+    runtime.currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.precedents) : [];
     datasetExternalLinksLoaded = !isDfmDataTabHost() && currentDatasetIsManualTriangleOrVector();
     runtime.datasetExternalLinks.load(
       datasetExternalLinksLoaded && data.exists ? data.external_links : [],
@@ -570,7 +570,7 @@ export function registerDataTabPersistenceController(runtime) {
       runtime.currentDatasetPrecedents,
     );
     renderDatasetPrecedents(runtime.currentDatasetPrecedents);
-    renderDatasetDependents(data.exists ? data.Dependents : []);
+    renderDatasetDependents(data.exists ? data.dependents : []);
     runtime.isSidecarReadOnlyDataset = !!data.exists && sourceKindIsReadOnly(runtime.currentDatasetSidecarSourceKind);
     const patchSaveBtn = document.getElementById("saveBtn");
     if (patchSaveBtn && !isReadOnlyDatasetViewer) {
@@ -655,7 +655,7 @@ export function registerDataTabPersistenceController(runtime) {
     lastSavedDatasetSettings = normalizeDatasetSettings(settings);
     runtime.currentDatasetSidecarSourceKind = String(resp.data?.source_kind || (isProjectInstanceDraft ? "input" : runtime.currentDatasetSidecarSourceKind) || "");
     runtime.currentDatasetSidecarDataFormat = String(resp.data?.data_format || settings.data_format || runtime.currentDatasetSidecarDataFormat || "");
-    runtime.currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.Precedents);
+    runtime.currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.precedents);
     if (datasetExternalLinksLoaded) {
       runtime.datasetExternalLinks.markClean(resp.data?.external_links ?? runtime.datasetExternalLinks.serialize());
     }
@@ -682,7 +682,7 @@ export function registerDataTabPersistenceController(runtime) {
       runtime.currentDatasetPrecedents,
     );
     renderDatasetPrecedents(runtime.currentDatasetPrecedents);
-    renderDatasetDependents(resp.data?.Dependents);
+    renderDatasetDependents(resp.data?.dependents);
     invalidateCachedDatasetInstances();
     datasetSettingsDirty = false;
     updateDatasetSaveUi();

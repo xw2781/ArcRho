@@ -10,9 +10,12 @@ from unittest import mock
 from fastapi import HTTPException
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
-if str(FRONTEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(FRONTEND_ROOT))
+PYTHON_API_SRC = FRONTEND_ROOT.parent / "python-api" / "src"
+for path in (FRONTEND_ROOT, PYTHON_API_SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
+from arcrho_api.sidecar_core_contract import finalize_sidecar
 from app_server import config
 from app_server.services import calculated_dataset_service, dataset_service, result_selection_service
 from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
@@ -93,8 +96,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection@12.csv",
             "status": 2,
-            "Precedents": ["Paid", *(["Premium"] if basis else [])],
-            "Dependents": [],
+            "precedents": ["Paid", *(["Premium"] if basis else [])],
+            "dependents": [],
             "audit_log": [],
         })
         (self.datasets / "Selection@12.csv").write_text("10\n99\n", encoding="utf-8")
@@ -113,7 +116,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "data_format": data_format,
             "period_length": 12,
             "csv_file": filename,
-            "Dependents": ["Selection"],
+            "dependents": ["Selection"],
         })
 
     def test_current_open_reads_only_own_method_and_sidecar_json(self) -> None:
@@ -143,7 +146,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_selection()
         sidecar_path = self.sidecars / "Selection.json"
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        sidecar["Precedents"] = []
+        sidecar["precedents"] = []
         self.write_json(sidecar_path, sidecar)
 
         with self.assertRaises(HTTPException) as raised:
@@ -224,37 +227,6 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
 
-    def test_save_accepts_a_revision_minted_before_the_timestamp_was_excluded(self) -> None:
-        # A revision is minted where the method loads -- a Client PC's own app
-        # server or the Gateway -- and checked here on ArcRho Engine. Those
-        # upgrade separately, so the older whole-file form stays acceptable.
-        self.write_selection()
-        self.write_source("Paid", [10, 20])
-        sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        sidecar["status"] = 0
-        self.write_json(self.sidecars / "Selection.json", sidecar)
-        loaded = result_selection_service.load_result_selection("Project", "Class", "Selection")
-        current = result_selection_service.normalize_method_payload(
-            json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8")),
-            require_complete_basis=True,
-        )
-        legacy_revision = result_selection_service._legacy_method_revision(current)
-        self.assertNotEqual(legacy_revision, loaded["method_revision"])
-
-        with (
-            mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
-            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
-            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
-        ):
-            result = result_selection_service.save_result_selection(
-                "Project",
-                "Class",
-                loaded["method"],
-                expected_revision=legacy_revision,
-            )
-
-        self.assertTrue(result["ok"])
-
     def test_review_needed_save_revalidates_only_the_revised_precedent_list(self) -> None:
         self.write_selection()
         current = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
@@ -262,7 +234,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         current["method_tab"]["loaded_datasets"].append(removed)
         self.write_json(self.methods / "RS@Selection.json", current)
         sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        sidecar["Precedents"] = ["Paid", "Removed"]
+        sidecar["precedents"] = ["Paid", "Removed"]
         self.write_json(self.sidecars / "Selection.json", sidecar)
         self.write_source("Paid", [30, 40])
         incoming = self.method_payload()
@@ -288,7 +260,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "30.0\n99\n")
         saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved_sidecar["status"], 0)
-        self.assertEqual(saved_sidecar["Precedents"], ["Paid"])
+        self.assertEqual(saved_sidecar["precedents"], ["Paid"])
 
     def test_review_needed_save_warns_and_still_saves_with_unreviewed_precedent(self) -> None:
         self.write_selection()
@@ -351,7 +323,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_source("Paid", [10, 20])
         paid_path = self.sidecars / "Paid.json"
         paid = json.loads(paid_path.read_text(encoding="utf-8"))
-        paid["Dependents"] = []
+        paid["dependents"] = []
         self.write_json(paid_path, paid)
 
         with (
@@ -370,7 +342,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 )
 
         restored_paid = json.loads(paid_path.read_text(encoding="utf-8"))
-        self.assertEqual(restored_paid["Dependents"], [])
+        self.assertEqual(restored_paid["dependents"], [])
         self.assertFalse((self.methods / "RS@Selection.json").exists())
         self.assertFalse((self.datasets / "Selection@12.csv").exists())
         self.assertFalse((self.sidecars / "Selection.json").exists())
@@ -387,54 +359,6 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertFalse((self.methods / "RS@Selection.json").exists())
         self.assertFalse((self.datasets / "Selection@12.csv").exists())
         self.assertFalse((self.sidecars / "Selection.json").exists())
-
-    def test_v1_open_performs_one_time_refresh_and_repairs_basis_dependency(self) -> None:
-        legacy = self.method_payload(basis=True)
-        legacy["json_format"] = result_selection_service.LEGACY_RESULT_SELECTION_JSON_FORMAT
-        legacy["details_tab"]["ratio_basis"] = "Premium"
-        legacy["details_tab"]["ratio_basis_dataset"] = "Premium"
-        legacy["method_tab"].pop("ratio_basis_values")
-        self.write_json(self.methods / "RS@Selection.json", legacy)
-        self.write_json(self.sidecars / "Selection.json", {
-            "dataset_name": "Selection",
-            "dataset_type": "Selected Ultimate",
-            "project_name": "Project",
-            "reserving_class": "Class",
-            "source_kind": "result_selection",
-            "method_type": "Result Selection",
-            "data_format": "Vector",
-            "period_length": 12,
-            "csv_file": "Selection@12.csv",
-            "status": 2,
-            "Precedents": ["Paid"],
-            "Dependents": [],
-            "audit_log": [],
-        })
-        (self.datasets / "Selection@12.csv").write_text("10\n99\n", encoding="utf-8")
-        self.write_source("Paid", [30, 40])
-        self.write_source("Premium", [300, 400])
-        premium_sidecar = json.loads((self.sidecars / "Premium.json").read_text(encoding="utf-8"))
-        premium_sidecar["Dependents"] = []
-        self.write_json(self.sidecars / "Premium.json", premium_sidecar)
-
-        result = result_selection_service.load_result_selection(
-            "Project",
-            "Class",
-            "Selection",
-        )
-
-        self.assertTrue(result["upgraded"])
-        self.assertEqual(result["method"]["json_format"], result_selection_service.RESULT_SELECTION_JSON_FORMAT)
-        self.assertEqual(
-            result["method"]["method_tab"]["ratio_basis_values"],
-            [{"name": "Premium", "values": [300.0, 400.0]}],
-        )
-        self.assertEqual(
-            json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))["Precedents"],
-            ["Paid", "Premium"],
-        )
-        premium = json.loads((self.sidecars / "Premium.json").read_text(encoding="utf-8"))
-        self.assertEqual(premium["Dependents"], [{"dataset_type_name": "Selection"}])
 
     def test_source_update_refreshes_method_output_and_preserves_override(self) -> None:
         self.write_selection()
@@ -468,7 +392,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_selection()
         first_sidecar_path = self.sidecars / "Selection.json"
         first_sidecar = json.loads(first_sidecar_path.read_text(encoding="utf-8"))
-        first_sidecar["Dependents"] = ["Selection Two"]
+        first_sidecar["dependents"] = ["Selection Two"]
         self.write_json(first_sidecar_path, first_sidecar)
 
         second = self.method_payload()
@@ -495,8 +419,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection Two@12.csv",
             "status": 2,
-            "Precedents": ["Selection"],
-            "Dependents": [],
+            "precedents": ["Selection"],
+            "dependents": [],
             "audit_log": [],
         })
         (self.datasets / "Selection Two@12.csv").write_text("10\n99\n", encoding="utf-8")
@@ -507,7 +431,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             mock.patch.object(
                 calculated_dataset_service,
                 "sidecar_graph_fields",
-                return_value={"Precedents": [], "Dependents": []},
+                return_value={"precedents": [], "dependents": []},
             ),
             mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
             mock.patch.object(
@@ -589,7 +513,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "data_format": "Vector",
             "period_length": 3,
             "csv_file": "Paid@3.csv",
-            "Dependents": ["Selection"],
+            "dependents": ["Selection"],
         })
         with (
             mock.patch("app_server.services.calculated_dataset_service.recalculate_dependents", return_value={"updated": []}),
@@ -614,7 +538,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_json(method_path, method)
         sidecar_path = self.sidecars / "Selection.json"
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        sidecar["Precedents"] = ["Paid A", "Paid B"]
+        sidecar["precedents"] = ["Paid A", "Paid B"]
         sidecar["status"] = 2
         self.write_json(sidecar_path, sidecar)
         self.write_source("Paid A", [30, 50])
@@ -645,7 +569,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_json(method_path, method)
         sidecar_path = self.sidecars / "Selection.json"
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        sidecar["Precedents"] = ["Paid A", "Paid B"]
+        sidecar["precedents"] = ["Paid A", "Paid B"]
         sidecar["status"] = 2
         self.write_json(sidecar_path, sidecar)
         self.write_source("Paid B", [50, 70])
@@ -675,7 +599,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_json(method_path, method)
         sidecar_path = self.sidecars / "Selection.json"
         sidecar_before = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        sidecar_before["Precedents"] = ["Calculated A", "Paid B"]
+        sidecar_before["precedents"] = ["Calculated A", "Paid B"]
         sidecar_before["status"] = 0
         self.write_json(sidecar_path, sidecar_before)
         self.write_source("Calculated A", [10, 20])
@@ -724,8 +648,13 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertIn("Precedent refresh failed: Calculated A", rs_result["errors"][0]["reason"])
         self.assertEqual(method_path.read_bytes(), method_before)
         self.assertEqual((self.datasets / "Selection@12.csv").read_bytes(), output_before)
-        expected_sidecar = {**sidecar_before, "status": 2}
-        self.assertEqual(json.loads(sidecar_path.read_text(encoding="utf-8")), expected_sidecar)
+        # The review mark is the only change, written in the v4 sidecar shape:
+        # the stamp first and the audit log last.
+        expected_sidecar = finalize_sidecar({**sidecar_before, "status": 2})
+        self.assertEqual(
+            list(json.loads(sidecar_path.read_text(encoding="utf-8")).items()),
+            list(expected_sidecar.items()),
+        )
 
     def test_successful_calculated_output_is_not_blocked_as_a_non_rs_edge(self) -> None:
         self.write_selection()
@@ -735,7 +664,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_json(method_path, method)
         selection_sidecar_path = self.sidecars / "Selection.json"
         selection_sidecar = json.loads(selection_sidecar_path.read_text(encoding="utf-8"))
-        selection_sidecar["Precedents"] = ["Calculated A"]
+        selection_sidecar["precedents"] = ["Calculated A"]
         self.write_json(selection_sidecar_path, selection_sidecar)
         self.write_source("Calculated A", [30, 40])
         calculated_sidecar_path = self.sidecars / "Calculated A.json"
@@ -745,7 +674,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_source("Root", [1, 2])
         root_sidecar_path = self.sidecars / "Root.json"
         root_sidecar = json.loads(root_sidecar_path.read_text(encoding="utf-8"))
-        root_sidecar["Dependents"] = ["Calculated A"]
+        root_sidecar["dependents"] = ["Calculated A"]
         self.write_json(root_sidecar_path, root_sidecar)
 
         with (
@@ -786,8 +715,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection@12.csv",
             "status": 2,
-            "Precedents": ["Stale DFM"],
-            "Dependents": [],
+            "precedents": ["Stale DFM"],
+            "dependents": [],
         })
         self.write_json(self.sidecars / "Stale DFM.json", {
             "dataset_name": "Stale DFM",
@@ -800,12 +729,12 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Stale DFM@12.csv",
             "status": 2,
-            "Precedents": ["Root"],
-            "Dependents": ["Selection"],
+            "precedents": ["Root"],
+            "dependents": ["Selection"],
         })
         self.write_source("Root", [30, 40])
         root = json.loads((self.sidecars / "Root.json").read_text(encoding="utf-8"))
-        root["Dependents"] = ["Stale DFM"]
+        root["dependents"] = ["Stale DFM"]
         self.write_json(self.sidecars / "Root.json", root)
         before = (self.methods / "RS@Selection.json").read_bytes()
 
@@ -852,8 +781,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 "period_length": 12,
                 "csv_file": f"{name}@12.csv",
                 "status": 2,
-                "Precedents": [source["name"] for source in sources],
-                "Dependents": dependents,
+                "precedents": [source["name"] for source in sources],
+                "dependents": dependents,
                 "audit_log": [],
             })
             (self.datasets / f"{name}@12.csv").write_text("1\n1\n", encoding="utf-8")
@@ -876,7 +805,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         write_rs("Achild", [source("Z")], [])
         self.write_source("Root", [5, 5])
         root_sidecar = json.loads((self.sidecars / "Root.json").read_text(encoding="utf-8"))
-        root_sidecar["Dependents"] = ["X", "Z"]
+        root_sidecar["dependents"] = ["X", "Z"]
         self.write_json(self.sidecars / "Root.json", root_sidecar)
 
         with (
@@ -899,7 +828,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 "source_kind": "result_selection" if method_type == "Result Selection" else "input",
                 "method_type": method_type,
                 "status": 0,
-                "Dependents": dependents,
+                "dependents": dependents,
             })
 
         write_sidecar("Root", "None", ["Broken", "Healthy"])
@@ -986,14 +915,14 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection Two@12.csv",
             "status": 0,
-            "Precedents": ["Selection"],
-            "Dependents": [],
+            "precedents": ["Selection"],
+            "dependents": [],
             "audit_log": [],
         })
         (self.datasets / "Selection Two@12.csv").write_text("10\n99\n", encoding="utf-8")
         selection_path = self.sidecars / "Selection.json"
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
-        selection["Dependents"] = ["Selection Two"]
+        selection["dependents"] = ["Selection Two"]
         self.write_json(selection_path, selection)
 
         original_read_sidecars = result_selection_service._read_sidecars
@@ -1070,13 +999,13 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection Two@12.csv",
             "status": 2,
-            "Precedents": ["Selection"],
-            "Dependents": [],
+            "precedents": ["Selection"],
+            "dependents": [],
             "audit_log": [],
         })
         (self.datasets / "Selection Two@12.csv").write_text("10\n99\n", encoding="utf-8")
         selection_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        selection_sidecar["Dependents"] = ["Selection Two"]
+        selection_sidecar["dependents"] = ["Selection Two"]
         self.write_json(self.sidecars / "Selection.json", selection_sidecar)
         method_path = self.methods / "RS@Selection.json"
         method_before = method_path.read_bytes()
@@ -1125,8 +1054,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection One@12.csv",
             "status": 2,
-            "Precedents": ["Paid"],
-            "Dependents": ["Selection Two"],
+            "precedents": ["Paid"],
+            "dependents": ["Selection Two"],
             "audit_log": [],
         })
         second = self.method_payload()
@@ -1147,13 +1076,13 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "period_length": 12,
             "csv_file": "Selection Two@12.csv",
             "status": 2,
-            "Precedents": ["Selection One"],
-            "Dependents": [],
+            "precedents": ["Selection One"],
+            "dependents": [],
             "audit_log": [],
         })
         self.write_source("Paid", [50, 60])
         paid = json.loads((self.sidecars / "Paid.json").read_text(encoding="utf-8"))
-        paid["Dependents"] = ["Selection One"]
+        paid["dependents"] = ["Selection One"]
         self.write_json(self.sidecars / "Paid.json", paid)
 
         with (
@@ -1230,7 +1159,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "reserving_class": "Class",
             "dataset_name": "Calculated",
             "dataset_type": "Calculated",
-            "Dependents": [{"dataset_type_name": "Selection"}],
+            "dependents": [{"dataset_name": "Selection"}],
         }
         with (
             mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
@@ -1238,8 +1167,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 calculated_dataset_service,
                 "sidecar_graph_fields",
                 return_value={
-                    "Precedents": [{"dataset_type_name": "Paid"}],
-                    "Dependents": [{"dataset_type_name": "Formula Output"}],
+                    "precedents": [{"dataset_name": "Paid"}],
+                    "dependents": [{"dataset_name": "Formula Output"}],
                 },
             ),
             mock.patch(
@@ -1250,10 +1179,10 @@ class ResultSelectionServiceTests(unittest.TestCase):
             calculated_dataset_service.apply_sidecar_graph_fields(payload)
 
         self.assertEqual(
-            payload["Dependents"],
+            payload["dependents"],
             [
-                {"dataset_type_name": "Formula Output"},
-                {"dataset_type_name": "Selection"},
+                {"dataset_name": "Formula Output"},
+                {"dataset_name": "Selection"},
             ],
         )
 
@@ -1265,8 +1194,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "dataset_type": "Selected Ultimate",
             "source_kind": "result_selection",
             "method_type": "Result Selection",
-            "Precedents": ["Paid", "Premium"],
-            "Dependents": [],
+            "precedents": ["Paid", "Premium"],
+            "dependents": [],
         }
         with (
             mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
@@ -1274,14 +1203,14 @@ class ResultSelectionServiceTests(unittest.TestCase):
                 calculated_dataset_service,
                 "sidecar_graph_fields",
                 return_value={
-                    "Precedents": [{"dataset_type_name": "Formula Input"}],
-                    "Dependents": [],
+                    "precedents": [{"dataset_name": "Formula Input"}],
+                    "dependents": [],
                 },
             ),
         ):
             calculated_dataset_service.apply_sidecar_graph_fields(payload)
 
-        self.assertEqual(payload["Precedents"], ["Paid", "Premium"])
+        self.assertEqual(payload["precedents"], ["Paid", "Premium"])
 
 
 if __name__ == "__main__":

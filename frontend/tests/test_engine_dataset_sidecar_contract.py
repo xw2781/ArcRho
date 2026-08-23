@@ -49,8 +49,8 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
     def _apply_graph(payload, *_args, **_kwargs):
         payload["formula"] = ""
         payload["calculated"] = False
-        payload["Precedents"] = []
-        payload["Dependents"] = [{"name": "Downstream Ratio", "formula": '"Ratio" / "Other"'}]
+        payload["precedents"] = []
+        payload["dependents"] = [{"name": "Downstream Ratio", "formula": '"Ratio" / "Other"'}]
         return payload
 
     def test_runtime_and_migration_emit_the_exact_same_engine_sidecar(self) -> None:

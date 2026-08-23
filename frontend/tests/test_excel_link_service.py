@@ -30,25 +30,25 @@ OLD_REFERENCE = "='C:\\Data\\[Book.xlsx]Sheet 1'!$A$1:$B$1"
 def dfm_method_payload(inputs_first_cell: str) -> dict:
     return recalculate_dfm_method(
         {
-            "details tab": {
+            "details_tab": {
                 "name": "Development",
-                "output type": "Selected Ultimate",
-                "output dataset": "Development Output",
-                "input triangle": "Paid",
-                "origin length": 12,
-                "development length": 12,
+                "output_type": "Selected Ultimate",
+                "output_dataset": "Development Output",
+                "input_triangle": "Paid",
+                "origin_length": 12,
+                "development_length": 12,
             },
-            "ratios tab": {
-                "average formulas": {
+            "ratios_tab": {
+                "average_formulas": {
                     "label": ["User Entry"],
-                    "custom average formula settings": {"averageType": ["user_entry"]},
+                    "custom_average_formula_settings": {"average_type": ["user_entry"]},
                     "selected": [[1, 1]],
                     "values": [[1.5, 1]],
                     "inputs": [[inputs_first_cell, "1"]],
-                    "display inputs": [[inputs_first_cell, "1"]],
+                    "display_inputs": [[inputs_first_cell, "1"]],
                 },
             },
-            "results tab": {},
+            "results_tab": {},
         },
         input_snapshot={
             "name": "Paid",
@@ -205,7 +205,7 @@ class ExcelLinkListingTests(ExcelLinkFixture):
         self.write_json(self.sidecars / "No Links.json", {"dataset_name": "No Links"})
         (self.sidecars / "Broken.json").write_text("{not json", encoding="utf-8")
         self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
-        self.write_json(self.methods / "DFM@Old.json", {"json format": "arcrho-dfm-method-by-tab-v1"})
+        self.write_json(self.methods / "DFM@Old.json", {"json_format": "arcrho-dfm-method-by-tab-v1"})
 
         listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
 
@@ -502,12 +502,12 @@ class ExcelLinkRetargetTests(ExcelLinkFixture):
         self.assertEqual(result["output_dataset"], "Development Output")
         self.dfm_save.assert_called_once()
         merged = self.dfm_save.call_args.args[2]
-        formulas = merged["ratios tab"]["average formulas"]
+        formulas = merged["ratios_tab"]["average_formulas"]
         self.assertEqual(formulas["values"][0][0], 4)
         self.assertIn("Book 2026.xlsx", formulas["inputs"][0][0])
         self.assertEqual(
             self.dfm_save.call_args.kwargs["expected_owned_revision"],
-            method_revisions(method)["owned revision"],
+            method_revisions(method)["owned_revision"],
         )
         # An explicit save resets the output to current; the retarget then
         # flags it, and the output is a walk root even though the mocked save
@@ -532,8 +532,8 @@ class ExcelLinkRetargetTests(ExcelLinkFixture):
         self.assertEqual(result["failed_refresh_count"], 1)
         self.assertIn("greater than 0", result["refresh_errors"][0])
         merged = self.dfm_save.call_args.args[2]
-        self.assertEqual(merged["ratios tab"]["average formulas"]["values"][0][0], 1.5)
-        self.assertIn("Book 2026.xlsx", merged["ratios tab"]["average formulas"]["inputs"][0][0])
+        self.assertEqual(merged["ratios_tab"]["average_formulas"]["values"][0][0], 1.5)
+        self.assertIn("Book 2026.xlsx", merged["ratios_tab"]["average_formulas"]["inputs"][0][0])
         self.mark_review.assert_called_once()
 
     def test_refresh_spills_dfm_ranges_into_literal_non_anchor_cells(self) -> None:
@@ -546,11 +546,11 @@ class ExcelLinkRetargetTests(ExcelLinkFixture):
         self.assertTrue(result["value_changed"])
         self.assertEqual(result["refreshed_cell_count"], 2)
         merged = self.dfm_save.call_args.args[2]
-        formulas = merged["ratios tab"]["average formulas"]
+        formulas = merged["ratios_tab"]["average_formulas"]
         self.assertEqual(formulas["values"][0], [1.1, 1.2])
         self.assertIn("Book 2026.xlsx", formulas["inputs"][0][0])
         self.assertEqual(formulas["inputs"][0][1], "1.2")
-        self.assertEqual(formulas["display inputs"][0][1], "1.2")
+        self.assertEqual(formulas["display_inputs"][0][1], "1.2")
 
     def test_nested_saves_share_one_walk_and_the_index_is_rebuilt_once_after_it(self) -> None:
         # Two datasets and one DFM: three canonical saves, one propagation

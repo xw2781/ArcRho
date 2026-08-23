@@ -45,6 +45,7 @@ from arcrho_api.dataset_index_contract import (
 )
 
 from arcrho_api.io import persisted_json_text
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
     _sanitize_project_dir_name,
@@ -1212,7 +1213,7 @@ def update_general_settings(
         project_folder_name,
         default_auto_generated=_normalize_bool_like(auto_generated, False),
     )
-    payload["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    payload["updated_at"] = utc_now_text()
 
     try:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)

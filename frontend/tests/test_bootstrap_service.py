@@ -29,6 +29,7 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
 from arcrho_api.bootstrap_contract import BST_JSON_FORMAT, normalize_bootstrap_method
 from arcrho_api.dfm_contract import normalize_dfm_method
 from arcrho_api.io import persisted_json_text
+from arcrho_api.sidecar_core_contract import DATASET_SIDECAR_JSON_FORMAT, RETIRED_SIDECAR_FIELDS
 from app_server.services import (
     bootstrap_service,
     calculated_dataset_service,
@@ -118,36 +119,36 @@ class BootstrapServiceTests(unittest.TestCase):
         ratios = list(self.case["selected_ratios"])
         return normalize_dfm_method(
             {
-                "json format": "arcrho-dfm-method-by-tab-v2",
-                "details tab": {
+                "json_format": "arcrho-dfm-v4",
+                "details_tab": {
                     "name": DFM_METHOD_NAME,
-                    "output type": "F 00 - Ultimate Net Loss",
-                    "output dataset": output_dataset,
-                    "output category": "F Net Loss",
-                    "input triangle": "F 10 - Incurred",
-                    "origin length": 12,
-                    "development length": 12,
+                    "output_type": "F 00 - Ultimate Net Loss",
+                    "output_dataset": output_dataset,
+                    "output_category": "F Net Loss",
+                    "input_triangle": "F 10 - Incurred",
+                    "origin_length": 12,
+                    "development_length": 12,
                 },
-                "data tab": {
-                    "origin labels": self.origin_labels,
-                    "development labels": development,
-                    "input data triangle values": triangle,
+                "data_tab": {
+                    "origin_labels": self.origin_labels,
+                    "development_labels": development,
+                    "input_data_triangle_values": triangle,
                 },
-                "ratios tab": {
-                    "ratio triangle": {"development labels": development},
-                    "average formulas": {
+                "ratios_tab": {
+                    "ratio_triangle": {"development_labels": development},
+                    "average_formulas": {
                         "values": [ratios],
                         "selected": [[1] * len(ratios)],
-                        "custom average formula settings": {
-                            "averageType": ["user_entry"],
+                        "custom_average_formula_settings": {
+                            "average_type": ["user_entry"],
                             "base": ["volume"],
                             "periods": ["all"],
                             "exclude": [0],
                         },
                     },
                 },
-                "results tab": {},
-                "method metadata": {},
+                "results_tab": {},
+                "method_metadata": {},
             },
             require_complete=False,
         )
@@ -168,8 +169,8 @@ class BootstrapServiceTests(unittest.TestCase):
                 "csv_file": f"{output_dataset}@12.csv",
                 "status": dataset_sidecar_status_service.STATUS_CURRENT,
                 "origin_labels": self.origin_labels,
-                "Precedents": [],
-                "Dependents": [],
+                "precedents": [],
+                "dependents": [],
             },
         )
 
@@ -202,8 +203,8 @@ class BootstrapServiceTests(unittest.TestCase):
                 "csv_file": f"{TARGET_NAME}@12.csv",
                 "status": dataset_sidecar_status_service.STATUS_CURRENT,
                 "origin_labels": self.origin_labels,
-                "Precedents": [],
-                "Dependents": [],
+                "precedents": [],
+                "dependents": [],
             },
         )
 
@@ -273,8 +274,13 @@ class BootstrapServiceTests(unittest.TestCase):
             len(self.origin_labels),
         )
         sidecar = json.loads(sidecar_file.read_text(encoding="utf-8"))
+        # v4 core: the format stamp opens the file, the audit log closes it, and
+        # the fields v4 retired (method_type_code, path, mtime, ...) stay out.
+        self.assertEqual(list(sidecar)[0], "json_format")
+        self.assertEqual(sidecar["json_format"], DATASET_SIDECAR_JSON_FORMAT)
+        self.assertEqual(list(sidecar)[-1], "audit_log")
+        self.assertEqual(RETIRED_SIDECAR_FIELDS & set(sidecar), set())
         self.assertEqual(sidecar["method_type"], "Bootstrap")
-        self.assertEqual(sidecar["method_type_code"], 6)
         self.assertEqual(sidecar["source_kind"], "bootstrap")
         self.assertEqual(sidecar["data_format"], "Vector")
         self.assertEqual(sidecar["period_length"], 12)
@@ -290,7 +296,7 @@ class BootstrapServiceTests(unittest.TestCase):
             (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            dataset_sidecar_status_service.entry_names(sidecar["Precedents"]),
+            dataset_sidecar_status_service.entry_names(sidecar["precedents"]),
             [DFM_OUTPUT_DATASET, TARGET_NAME],
         )
         self.assertEqual(len(self.graph_updates), 1)
@@ -387,8 +393,8 @@ class BootstrapServiceTests(unittest.TestCase):
                 "method_type": dataset_sidecar_status_service.METHOD_TYPE_CAPE_COD,
                 "source_kind": "cape_cod",
                 "data_format": "Vector",
-                "Precedents": [],
-                "Dependents": [],
+                "precedents": [],
+                "dependents": [],
             },
         )
 
@@ -614,7 +620,7 @@ class BootstrapServiceTests(unittest.TestCase):
             (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            dataset_sidecar_status_service.entry_names(sidecar["Precedents"]),
+            dataset_sidecar_status_service.entry_names(sidecar["precedents"]),
             [DFM_METHOD_NAME, TARGET_NAME],
         )
 

@@ -56,10 +56,10 @@ class DatasetAuditLogPolicyTests(unittest.TestCase):
         merged = {
             "audit_log": [{"event_date": "2026-08-20T14:01:00Z", "action": "Insert", "user": "Dana"}],
             "dataset_name": "Paid",
-            "Precedents": [],
+            "precedents": [],
         }
         ordered = with_audit_log_last(merged)
-        self.assertEqual(list(ordered), ["dataset_name", "Precedents", "audit_log"])
+        self.assertEqual(list(ordered), ["json_format", "dataset_name", "precedents", "audit_log"])
         self.assertEqual(ordered["audit_log"][0]["change_info"], "")
 
 

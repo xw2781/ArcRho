@@ -25,7 +25,8 @@ from arcrho_api.sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from arcrho_api.sidecar_core_contract import with_audit_log_last
+from arcrho_api.sidecar_core_contract import finalize_sidecar
+from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
     atomic_write_csv,
@@ -349,13 +350,6 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
     return dataset_instance_index_service.delete_cached_datasets(project, rc, dataset_names)
 
 
-def _data_format_code(data_format: str) -> int:
-    text = str(data_format or "").strip().lower()
-    if text == "vector":
-        return 1
-    return 0
-
-
 def _normalize_number_format(value: Any) -> str:
     text = str(value or "").replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
     return (text or "0,000")[:64]
@@ -656,7 +650,7 @@ def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(tmp_path, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(persisted_json_text(with_audit_log_last(payload)))
+                fh.write(persisted_json_text(finalize_sidecar(payload)))
             os.replace(tmp_path, path)
         except PermissionError:
             try:
@@ -989,10 +983,8 @@ def _create_empty_cached_dataset_impl(
         "project_name": p,
         "source_kind": "input",
         "data_format": fmt,
-        "data_format_code": _data_format_code(fmt),
         "show_subtotal": DEFAULT_SHOW_SUBTOTAL,
         "csv_file": os.path.basename(csv_path),
-        "user": user_name,
         "created": now,
         "modified_by": user_name,
         "updated_at": now,
@@ -1170,7 +1162,7 @@ def _get_dataset_sidecar_path(
 
 
 def _now_utc_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_text()
 
 
 def _int_or_default(value: Any, default: int) -> int:
@@ -1282,7 +1274,7 @@ def _sidecar_graph_entries(
         _get_dataset_sidecar_path(
             project_name,
             reserving_class,
-            str(item.get("dataset_type_name") or "").strip(),
+            str(item.get("dataset_name") or "").strip(),
             sidecar_dir=sidecar_dir,
         )
         for item in out
@@ -1292,7 +1284,7 @@ def _sidecar_graph_entries(
         for path in sidecar_paths
     ]
     for item, sidecar_future in zip(out, sidecar_futures):
-        name = str(item.get("dataset_type_name") or "").strip()
+        name = str(item.get("dataset_name") or "").strip()
         if not name:
             continue
         try:
@@ -1306,7 +1298,7 @@ def _sidecar_graph_entries(
             dataset_type,
             calculation_map=calculation_map,
         )
-        formula = str(dep_payload.get("formula") or type_formula or "").strip()
+        formula = str(type_formula or "").strip()
         item["dataset_name"] = dataset_name or name
         item["dataset_type"] = dataset_type or name
         if include_method_type:
@@ -1352,7 +1344,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     calculation_map = _dataset_type_calculation_map(p)
     method_type_map = (
         _dataset_index_method_type_map(p, rc)
-        if dataset_sidecar_status_service.entry_names(payload.get("Precedents"))
+        if dataset_sidecar_status_service.entry_names(payload.get("precedents"))
         else {}
     )
     app_calculated, formula = _is_app_calculated_dataset_type(
@@ -1363,7 +1355,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     precedents = _sidecar_graph_entries(
         p,
         rc,
-        payload.get("Precedents"),
+        payload.get("precedents"),
         include_method_type=True,
         calculation_map=calculation_map,
         method_type_map=method_type_map,
@@ -1372,7 +1364,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     dependents = _sidecar_graph_entries(
         p,
         rc,
-        payload.get("Dependents"),
+        payload.get("dependents"),
         include_formula=True,
         calculation_map=calculation_map,
         method_type_map=method_type_map,
@@ -1406,11 +1398,10 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "status": dataset_sidecar_status_service.normalize_status(payload.get("status")),
         "notes": str(payload.get("notes") or ""),
         "calculated": True if app_calculated else payload.get("calculated"),
-        "formula": formula or str(payload.get("formula") or ""),
+        "formula": str(formula or ""),
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
-        "Precedents": precedents,
-        "Dependents": dependents,
-        "user": str(payload.get("user") or ""),
+        "precedents": precedents,
+        "dependents": dependents,
         "modified_by": str(payload.get("modified_by") or ""),
         "created": str(payload.get("created") or ""),
         "updated_at": str(payload.get("updated_at") or ""),
@@ -1647,11 +1638,11 @@ def load_cached_dataset_values(
         "show_subtotal": normalize_show_subtotal(sidecar.get("show_subtotal")),
         "number_format": _normalize_number_format(sidecar.get("number_format") or "0,000"),
         "decimal_places": _normalize_decimal_places(sidecar.get("decimal_places")),
-        "formula": dataset_type_formula or str(sidecar.get("formula") or ""),
+        "formula": dataset_type_formula,
         "calculated": sidecar.get("calculated"),
         "external_links": _normalize_dataset_external_links(sidecar.get("external_links")),
-        "Precedents": sidecar.get("Precedents") if isinstance(sidecar.get("Precedents"), list) else [],
-        "Dependents": sidecar.get("Dependents") if isinstance(sidecar.get("Dependents"), list) else [],
+        "precedents": sidecar.get("precedents") if isinstance(sidecar.get("precedents"), list) else [],
+        "dependents": sidecar.get("dependents") if isinstance(sidecar.get("dependents"), list) else [],
         "audit_log": _normalize_dataset_audit_log(sidecar.get("audit_log")),
         "exists": bool(sidecar),
         "path": csv_path,
@@ -1698,7 +1689,7 @@ def _save_dataset_sidecar_impl(
 
     path = _get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file)
     existing = _read_dataset_sidecar(path)
-    existing_precedents = dataset_sidecar_status_service.entry_names(existing.get("Precedents"))
+    existing_precedents = dataset_sidecar_status_service.entry_names(existing.get("precedents"))
     created = str(existing.get("created") or "") if existing else ""
     if not created:
         created = _now_utc_iso()
@@ -1746,17 +1737,14 @@ def _save_dataset_sidecar_impl(
         "project_name": p,
         "source_kind": source_kind_value,
         "data_format": data_format_value,
-        "data_format_code": _data_format_code(data_format_value),
         "transposed": bool(transposed),
         "show_subtotal": show_subtotal_value,
         "number_format": number_format_value,
         "decimal_places": decimal_places_value,
         "csv_file": csv_file_value,
         "calculated": True if app_calculated or method_calculated else (False if values is not None else existing.get("calculated")),
-        "formula": formula or str(existing.get("formula") or ""),
         "method_type": method_type_value,
         "notes": str(notes if notes is not None else existing.get("notes") or ""),
-        "user": user_name,
         "created": created,
         "modified_by": user_name,
         "updated_at": updated_at,
@@ -1783,13 +1771,13 @@ def _save_dataset_sidecar_impl(
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
     if precedents is not None:
         if method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
-            payload["Precedents"] = _normalize_name_list(precedents)
+            payload["precedents"] = _normalize_name_list(precedents)
         else:
-            payload["Precedents"] = dataset_sidecar_status_service.name_entries(precedents)
+            payload["precedents"] = dataset_sidecar_status_service.name_entries(precedents)
     elif method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
-        payload["Precedents"] = []
+        payload["precedents"] = []
     elif method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE and existing_precedents:
-        payload["Precedents"] = dataset_sidecar_status_service.name_entries(existing_precedents)
+        payload["precedents"] = dataset_sidecar_status_service.name_entries(existing_precedents)
     force_status = status
     if force_status is None and method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE:
         force_status = existing.get("status")
@@ -1835,7 +1823,7 @@ def _save_dataset_sidecar_impl(
     unreviewed_precedents = dataset_sidecar_status_service.review_needed_precedent_names(
         p,
         rc,
-        payload.get("Precedents"),
+        payload.get("precedents"),
     ) if method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE else []
     status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
 
@@ -1873,8 +1861,8 @@ def _save_dataset_sidecar_impl(
         "status": payload["status"],
         "notes": payload["notes"],
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
-        "Precedents": _sidecar_graph_entries(p, rc, payload.get("Precedents"), include_method_type=True),
-        "Dependents": _sidecar_graph_entries(p, rc, payload.get("Dependents"), include_formula=True),
+        "precedents": _sidecar_graph_entries(p, rc, payload.get("precedents"), include_method_type=True),
+        "dependents": _sidecar_graph_entries(p, rc, payload.get("dependents"), include_formula=True),
         "updated_at": payload["updated_at"],
         "audit_log": payload["audit_log"],
         "path": path,
@@ -2009,7 +1997,6 @@ def _patch_dataset_impl(ds_id: str, items: list, file_mtime: float = None) -> Di
             user_name = _current_user_name()
             sidecar_payload["updated_at"] = audit_at
             sidecar_payload["modified_by"] = user_name
-            sidecar_payload["user"] = user_name
             _append_dataset_audit_entry(sidecar_payload, "Update", event_date=audit_at, user_name=user_name)
             dataset_name = str(sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type") or "").strip()
             if dataset_name:

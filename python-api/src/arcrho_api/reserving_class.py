@@ -17,6 +17,7 @@ from .exceptions import DfmDataError, ReadOnlyError
 from .io import persisted_json_text
 from .models import DfmMethodRef, TriangleCacheResult
 from .paths import clean_text, dataset_filename, sanitize_file_name_part, sanitize_reserving_class_folder
+from .timestamps import utc_now_text
 
 if TYPE_CHECKING:
     from .dfm import DfmMethod
@@ -286,9 +287,9 @@ class ReservingClass:
             "development_length": int(development_length),
             "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
             "csv_file": data_path.name,
-            "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            "Precedents": existing.get("Precedents") if isinstance(existing.get("Precedents"), list) else [],
-            "Dependents": existing.get("Dependents") if isinstance(existing.get("Dependents"), list) else [],
+            "updated_at": utc_now_text(),
+            "precedents": existing.get("precedents") if isinstance(existing.get("precedents"), list) else [],
+            "dependents": existing.get("dependents") if isinstance(existing.get("dependents"), list) else [],
         }
         temp_path = sidecar_path.with_name(f"{sidecar_path.name}.{uuid.uuid4()}.tmp")
         try:

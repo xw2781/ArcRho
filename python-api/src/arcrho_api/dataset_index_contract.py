@@ -57,8 +57,6 @@ FORBIDDEN_INDEX_ROW_FIELDS = frozenset(
     {
         "origin_labels",
         "calculated",
-        "Precedents",
-        "Dependents",
         "precedents",
         "dependents",
         "audit_log",
@@ -94,14 +92,12 @@ METHOD_TYPE_BS_CRA = "B&S Case Reserve Adequacy Adjustment"
 STATUS_CURRENT = 0
 STATUS_REVIEW_NEEDED = 2
 
-RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v2"
-LEGACY_RS_JSON_FORMAT = "arcrho-result-selection-method-by-tab-v1"
-BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-method-by-tab-v1"
-BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-method-by-tab-v1"
+RS_JSON_FORMAT = "arcrho-result-selection-v4"
+BS_SR_JSON_FORMAT = "arcrho-berquist-sherman-sr-v4"
+BS_CRA_JSON_FORMAT = "arcrho-berquist-sherman-cra-v4"
 
 _METHOD_CONTRACTS = {
     RS_JSON_FORMAT: (METHOD_TYPE_RESULT_SELECTION, "result_selection", "Vector"),
-    LEGACY_RS_JSON_FORMAT: (METHOD_TYPE_RESULT_SELECTION, "result_selection", "Vector"),
     BF_JSON_FORMAT: (METHOD_TYPE_BF, "bornhuetter_ferguson", "Vector"),
     CC_JSON_FORMAT: (METHOD_TYPE_CAPE_COD, "cape_cod", "Vector"),
     BST_JSON_FORMAT: (METHOD_TYPE_BOOTSTRAP, "bootstrap", "Vector"),
@@ -141,7 +137,6 @@ _CANONICAL_METHOD_TYPES = {
 }
 _MODIFIED_KEYS = (
     "last_modified",
-    "last modified",
     "updated_at",
     "updated",
     "modified_at",
@@ -532,9 +527,7 @@ def _method_contract(
     payload: Mapping[str, Any],
     filename: str,
 ) -> tuple[str, str, str] | None:
-    json_format = _clean_text(
-        payload.get("json_format") or payload.get("json format")
-    ).casefold()
+    json_format = _clean_text(payload.get("json_format")).casefold()
     contract = _METHOD_CONTRACTS.get(json_format)
     if contract:
         return contract
@@ -554,21 +547,17 @@ def _method_entry_from_payload(
         return None
     method_type, source_kind, data_format = contract
     if method_type == METHOD_TYPE_DFM:
-        details = _json_tab(payload, "details tab")
+        details = _json_tab(payload, "details_tab")
         dataset_name = normalize_cached_dataset_name(
-            details.get("output dataset")
-            or details.get("output vector")
+            details.get("output_dataset")
             or details.get("name")
-            or details.get("output type")
+            or details.get("output_type")
         )
-        dataset_type = normalize_cached_dataset_name(details.get("output type"))
+        dataset_type = normalize_cached_dataset_name(details.get("output_type"))
         method_name = normalize_cached_dataset_name(
             details.get("name")
         ) or cached_dataset_name_from_filename(filename)
-        category = _clean_text(
-            details.get("output dataset_category")
-            or details.get("output category")
-        )
+        category = _clean_text(details.get("output_category"))
     else:
         details = _json_tab(payload, "details_tab")
         dataset_name = normalize_cached_dataset_name(details.get("name"))
@@ -600,9 +589,7 @@ def _method_entry_from_payload(
 
 
 def _metadata_dataset_type(metadata: Mapping[str, Any]) -> str:
-    return normalize_cached_dataset_name(
-        metadata.get("dataset_type") or metadata.get("dataset type")
-    )
+    return normalize_cached_dataset_name(metadata.get("dataset_type"))
 
 
 def _metadata_row(

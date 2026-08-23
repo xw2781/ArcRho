@@ -31,7 +31,7 @@ from typing import Any, Dict, Optional
 SOURCE_IMPORT_DIR = "source"
 MASTER_TABLE_FILE = "master_table.csv"
 SOURCE_IMPORT_FILE = "source_import.json"
-SOURCE_IMPORT_VERSION = 1
+SOURCE_IMPORT_JSON_FORMAT = "arcrho-source-import-v4"
 
 # --- Source kinds ---------------------------------------------------------
 SOURCE_TYPE_CSV = "csv"
@@ -210,7 +210,7 @@ def normalize_source_import(payload: Any, project_name: str = "") -> Dict[str, A
     """
     data = payload if isinstance(payload, dict) else {}
     return {
-        "version": SOURCE_IMPORT_VERSION,
+        "json_format": SOURCE_IMPORT_JSON_FORMAT,
         "project_name": _text(data.get("project_name")) or _text(project_name),
         "source_type": normalize_source_type(data.get("source_type")),
         "mssql": normalize_mssql_profile(data.get("mssql")),

@@ -55,7 +55,7 @@ class DatasetInstanceIndexMetadataTests(unittest.TestCase):
                 time.sleep(0.02)
                 with activity_lock:
                     active -= 1
-                return {"details tab": {"output dataset": "Paid Ultimate"}}
+                return {"details_tab": {"output_dataset": "Paid Ultimate"}}
 
             with mock.patch.object(
                 dataset_instance_index_service,

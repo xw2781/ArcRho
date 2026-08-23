@@ -3,17 +3,25 @@
 A dataset sidecar and a method-output sidecar are one schema, not two. A
 method opened in a Dataset Viewer window shows only its output triangle or
 vector, read from the sidecar and CSV like any other dataset, so both must
-carry the same core: identity, formatting, status, the dependency graph, and
-the ``audit_log`` as the last field. A method-output sidecar adds only
-``method_name``, ``method_type``, ``source_kind``, ``calculated`` and
-``publication_revision`` on top; nothing in the core may differ between the
-two kinds.
+carry the same core: the ``json_format`` stamp first, identity, formatting,
+status, the dependency graph, and the ``audit_log`` as the last field. A
+method-output sidecar adds only ``method_name`` on top -- with ``calculated``
+true and its own ``method_type`` / ``source_kind`` values -- and, where the
+method computes one, ``publication_revision``; nothing in the core may differ
+between the two kinds.
 
 Every sidecar builder -- the engine contract and the four method-output
 contracts -- runs its payload through :func:`validate_sidecar_core` before
-returning it, and every app-server write funnel runs the payload it is about
-to serialize through :func:`with_audit_log_last`, so the invariant is enforced
-where the bytes are produced rather than remembered at each call site.
+returning it, and every app-server and public-API write funnel runs the
+payload it is about to serialize through :func:`finalize_sidecar`, so the
+invariants are enforced where the bytes are produced rather than remembered
+at each call site.
+
+The dependency graph is persisted location-independently: an entry is
+``{"dataset_name": ...}`` plus ``method_type`` when the linked dataset is a
+method output, and -- reserved for cross-class and cross-project links --
+``reserving_class`` / ``project`` only when the linked dataset lives outside
+the file's own class or project. No path, no modification time.
 
 Axis labels and notes are not part of the required core on purpose: an engine
 sidecar derives its labels from the project header when the CSV is loaded and
@@ -23,7 +31,8 @@ builder invent values. When present they are checked for shape.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+import re
+from typing import Any, Iterable, Mapping
 
 from .sidecar_audit_contract import normalize_audit_log
 
@@ -32,12 +41,16 @@ class SidecarContractError(ValueError):
     """Raised when a sidecar payload does not satisfy the shared core."""
 
 
+DATASET_SIDECAR_JSON_FORMAT = "arcrho-dataset-sidecar-v4"
+
+SIDECAR_JSON_FORMAT_FIELD = "json_format"
 SIDECAR_AUDIT_LOG_FIELD = "audit_log"
-SIDECAR_PRECEDENTS_FIELD = "Precedents"
-SIDECAR_DEPENDENTS_FIELD = "Dependents"
+SIDECAR_PRECEDENTS_FIELD = "precedents"
+SIDECAR_DEPENDENTS_FIELD = "dependents"
 
 # Fields every sidecar carries, whatever produced it.
 SIDECAR_CORE_FIELDS: tuple[str, ...] = (
+    SIDECAR_JSON_FORMAT_FIELD,
     "dataset_name",
     "dataset_type",
     "reserving_class",
@@ -59,28 +72,124 @@ SIDECAR_CORE_FIELDS: tuple[str, ...] = (
     SIDECAR_AUDIT_LOG_FIELD,
 )
 
-# Fields only a method-output sidecar adds on top of the core.
+# Fields only a method-output sidecar adds on top of the core. ``method_name``
+# is what marks the sidecar as one; ``method_type`` is core, carried by every
+# sidecar, and reads ``None`` on a dataset that no method wrote.
 METHOD_OUTPUT_SIDECAR_FIELDS: tuple[str, ...] = (
     "method_name",
-    "publication_revision",
 )
+
+# A method-output sidecar may also carry the publication fingerprint of the
+# method that wrote it, which is how the app tells "saved but never
+# republished". It is optional because Berquist Sherman publishes no revision:
+# it has no contract module and computes none, so its 14 output sidecars in
+# ``NJ_Annual_Prod_202605_Fake`` name a method and stop there. A revision
+# without a method name is always wrong, and that is what is checked.
+METHOD_OUTPUT_PUBLICATION_FIELD = "publication_revision"
+
+# Fields v4 removed because they restated another field, nothing read them,
+# or they bound a shared file to one machine. A writer may not bring them back.
+RETIRED_SIDECAR_FIELDS: frozenset[str] = frozenset({
+    "method_type_code",
+    "data_format_code",
+    "origin_count",
+    "user",
+    "formula",
+    "processing_by_csv",
+    "Precedents",  # Title Case predecessors of the graph keys
+    "Dependents",
+    "path",
+    "dependencies",
+})
 
 # Optional core fields that, when present, must have this shape.
 _LIST_FIELDS = ("origin_labels", "development_labels")
+_ENTRY_FIELDS = ("dataset_name", "method_type", "reserving_class", "project")
+_SNAKE_CASE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 
-def with_audit_log_last(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Return *payload* with a normalized ``audit_log`` as its last field.
+def _clean(value: Any) -> str:
+    return str(value if value is not None else "").strip()
+
+
+def dependency_names(entries: Any) -> list[str]:
+    """The unique dataset names of persisted dependency entries, in order."""
+
+    names: list[str] = []
+    seen: set[str] = set()
+    items = entries if isinstance(entries, Iterable) and not isinstance(entries, (str, bytes, Mapping)) else ()
+    for item in items:
+        name = _clean(item.get("dataset_name")) if isinstance(item, Mapping) else _clean(item)
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+    return names
+
+
+def dependency_entries(
+    entries: Any,
+    *,
+    method_types: Mapping[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Normalize names or entries to the one persisted dependency-entry shape.
+
+    *entries* may hold plain names or entry mappings. ``method_type`` is kept
+    from an entry that carries one and may be supplied through *method_types*
+    (name -> method type); ``reserving_class`` / ``project`` are kept only
+    when present and non-empty, which is what makes a same-class link small.
+    """
+
+    lookup = {
+        _clean(name).casefold(): _clean(value)
+        for name, value in (method_types or {}).items()
+        if _clean(name)
+    }
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    items = entries if isinstance(entries, Iterable) and not isinstance(entries, (str, bytes, Mapping)) else ()
+    for item in items:
+        source = item if isinstance(item, Mapping) else {"dataset_name": item}
+        name = _clean(source.get("dataset_name"))
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        entry: dict[str, str] = {"dataset_name": name}
+        method_type = _clean(source.get("method_type"))
+        if method_type.casefold() == "none":
+            method_type = ""
+        method_type = method_type or lookup.get(key, "")
+        if method_type and method_type.casefold() != "none":
+            entry["method_type"] = method_type
+        for scope in ("reserving_class", "project"):
+            value = _clean(source.get(scope))
+            if value:
+                entry[scope] = value
+        out.append(entry)
+    return out
+
+
+def finalize_sidecar(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return *payload* stamped ``json_format`` first and ``audit_log`` last.
 
     This is the projection every write funnel applies. Key order otherwise
     follows the payload, so a writer that already builds the canonical order
-    is untouched and one that merged an older file gets the log moved to the
-    end instead of wherever the old file kept it.
+    is untouched and one that merged an older file gets the stamp and the log
+    moved to where the contract keeps them.
     """
 
-    ordered = {key: value for key, value in payload.items() if key != SIDECAR_AUDIT_LOG_FIELD}
+    ordered: dict[str, Any] = {SIDECAR_JSON_FORMAT_FIELD: DATASET_SIDECAR_JSON_FORMAT}
+    for key, value in payload.items():
+        if key in (SIDECAR_JSON_FORMAT_FIELD, SIDECAR_AUDIT_LOG_FIELD) or key in RETIRED_SIDECAR_FIELDS:
+            continue
+        ordered[key] = value
     ordered[SIDECAR_AUDIT_LOG_FIELD] = normalize_audit_log(payload.get(SIDECAR_AUDIT_LOG_FIELD))
     return ordered
+
+
+# Kept for callers that only need the ordering half of finalize_sidecar.
+with_audit_log_last = finalize_sidecar
 
 
 def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -97,35 +206,61 @@ def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
     if missing:
         raise SidecarContractError("Sidecar is missing core fields: " + ", ".join(missing))
     keys = list(payload.keys())
+    if keys[0] != SIDECAR_JSON_FORMAT_FIELD:
+        raise SidecarContractError(f"Sidecar {SIDECAR_JSON_FORMAT_FIELD} must be the first field; found {keys[0]!r}.")
+    if payload[SIDECAR_JSON_FORMAT_FIELD] != DATASET_SIDECAR_JSON_FORMAT:
+        raise SidecarContractError(f"Sidecar json_format must be {DATASET_SIDECAR_JSON_FORMAT!r}.")
     if keys[-1] != SIDECAR_AUDIT_LOG_FIELD:
         raise SidecarContractError(
             f"Sidecar {SIDECAR_AUDIT_LOG_FIELD} must be the last field; found {keys[-1]!r}."
         )
+    retired = [key for key in keys if key in RETIRED_SIDECAR_FIELDS]
+    if retired:
+        raise SidecarContractError("Sidecar carries retired fields: " + ", ".join(retired))
+    bad_keys = [key for key in keys if not _SNAKE_CASE.match(key)]
+    if bad_keys:
+        raise SidecarContractError("Sidecar keys must be snake_case: " + ", ".join(bad_keys))
     for field in (SIDECAR_PRECEDENTS_FIELD, SIDECAR_DEPENDENTS_FIELD, SIDECAR_AUDIT_LOG_FIELD, *_LIST_FIELDS):
         if field in payload and not isinstance(payload[field], list):
             raise SidecarContractError(f"Sidecar {field} must be a list.")
+    for field in (SIDECAR_PRECEDENTS_FIELD, SIDECAR_DEPENDENTS_FIELD):
+        for entry in payload[field]:
+            if not isinstance(entry, Mapping) or not _clean(entry.get("dataset_name")):
+                raise SidecarContractError(f"Sidecar {field} entries must name a dataset.")
+            unknown = [key for key in entry if key not in _ENTRY_FIELDS]
+            if unknown:
+                raise SidecarContractError(
+                    f"Sidecar {field} entries may only carry {', '.join(_ENTRY_FIELDS)}; found {', '.join(unknown)}."
+                )
     audit_log = payload[SIDECAR_AUDIT_LOG_FIELD]
     if normalize_audit_log(audit_log) != audit_log:
         raise SidecarContractError("Sidecar audit_log is not in the canonical policy form.")
     if not isinstance(payload["calculated"], bool):
         raise SidecarContractError("Sidecar calculated must be a boolean.")
-    present_method_fields = [field for field in METHOD_OUTPUT_SIDECAR_FIELDS if field in payload]
-    if present_method_fields and len(present_method_fields) != len(METHOD_OUTPUT_SIDECAR_FIELDS):
-        raise SidecarContractError(
-            "A method-output sidecar carries all of: " + ", ".join(METHOD_OUTPUT_SIDECAR_FIELDS)
-        )
-    if present_method_fields and payload["calculated"] is not True:
+    is_method_output = bool(_clean(payload.get("method_name")))
+    if is_method_output and payload["calculated"] is not True:
         raise SidecarContractError("A method-output sidecar is always calculated.")
+    if _clean(payload.get(METHOD_OUTPUT_PUBLICATION_FIELD)) and not is_method_output:
+        raise SidecarContractError(
+            f"Only a method-output sidecar carries {METHOD_OUTPUT_PUBLICATION_FIELD}."
+        )
     return dict(payload)
 
 
 __all__ = [
+    "DATASET_SIDECAR_JSON_FORMAT",
+    "METHOD_OUTPUT_PUBLICATION_FIELD",
     "METHOD_OUTPUT_SIDECAR_FIELDS",
+    "RETIRED_SIDECAR_FIELDS",
     "SIDECAR_AUDIT_LOG_FIELD",
     "SIDECAR_CORE_FIELDS",
     "SIDECAR_DEPENDENTS_FIELD",
+    "SIDECAR_JSON_FORMAT_FIELD",
     "SIDECAR_PRECEDENTS_FIELD",
     "SidecarContractError",
+    "dependency_entries",
+    "dependency_names",
+    "finalize_sidecar",
     "validate_sidecar_core",
     "with_audit_log_last",
 ]

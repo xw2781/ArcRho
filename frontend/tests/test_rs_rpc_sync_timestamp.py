@@ -3,10 +3,8 @@
 The DFM bridge already does this; Result Selection needed one thing first. Its
 ``method_revision`` hashed the whole method file, timestamp included, so writing
 ResQ's save time against the local copy would have moved the token an open
-editor saves with. The revision now covers content only -- as every other method
-family's already does -- and a save accepts the older whole-file form too, so a
-Client PC running an app built before this change keeps saving while the Engine
-that checks the token runs the new code.
+editor saves with. The revision now covers content only, as every other method
+family's already does.
 """
 
 from __future__ import annotations
@@ -27,6 +25,7 @@ for path in (FRONTEND_ROOT, API_SOURCE):
 
 from fastapi import HTTPException
 
+from arcrho_api.timestamps import persisted_timestamp
 from app_server.helpers import parse_method_last_modified_timestamp
 from app_server.services import (
     dependent_propagation_service,
@@ -37,8 +36,12 @@ from app_server.schemas.result_selection_rpc_bridge import (
     ResultSelectionRpcBridgeUpdateRemoteRequest,
 )
 
-ARCRHO_SAVED_AT = "2026-08-19T14:00:00.000000Z"
+ARCRHO_SAVED_AT = "2026-08-19T14:00:00.000Z"
+# ResQ writes a timezone-less wall-clock value in the machine's own timezone.
 RESQ_SAVED_AT = "2026-08-19T10:05:30.500000"
+# The same instant in the one persisted form (UTC, milliseconds, ``Z``); a
+# bare value is read as local time, so this is computed, not pinned.
+RESQ_SAVED_AT_PERSISTED = persisted_timestamp(RESQ_SAVED_AT)
 
 
 def method_payload(last_modified: str = ARCRHO_SAVED_AT) -> dict:
@@ -77,19 +80,6 @@ class RevisionTests(unittest.TestCase):
             result_selection_service._method_revision(edited),
         )
 
-    def test_the_legacy_revision_is_kept_for_apps_built_before_this_change(self) -> None:
-        # A revision is minted where the method loads and checked on the Engine,
-        # and those upgrade separately; a save must accept either form.
-        payload = method_payload()
-        self.assertNotEqual(
-            result_selection_service._legacy_method_revision(payload),
-            result_selection_service._legacy_method_revision(method_payload(RESQ_SAVED_AT)),
-        )
-        self.assertNotEqual(
-            result_selection_service._legacy_method_revision(payload),
-            result_selection_service._method_revision(payload),
-        )
-
 
 class RecordOnDiskTests(unittest.TestCase):
     def _run(self, payload: dict | None, value: str = RESQ_SAVED_AT, *, busy: bool = False):
@@ -118,7 +108,7 @@ class RecordOnDiskTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "stamped")
         self.assertEqual(result["previous_last_modified"], ARCRHO_SAVED_AT)
-        self.assertEqual(written["method_metadata"]["last_modified"], RESQ_SAVED_AT)
+        self.assertEqual(written["method_metadata"]["last_modified"], RESQ_SAVED_AT_PERSISTED)
         self.assertEqual(written["method_metadata"]["updated_by"], "keep me")
         self.assertEqual(written["method_tab"], method_payload()["method_tab"])
 
@@ -128,7 +118,7 @@ class RecordOnDiskTests(unittest.TestCase):
         self.assertEqual(result_selection_service._method_revision(written), before)
 
     def test_recording_the_same_value_twice_rewrites_nothing(self) -> None:
-        result, _ = self._run(method_payload(RESQ_SAVED_AT))
+        result, _ = self._run(method_payload(RESQ_SAVED_AT_PERSISTED))
         self.assertEqual(result["status"], "unchanged")
 
     def test_a_propagation_walk_owning_the_class_stands_the_record_down(self) -> None:
@@ -137,14 +127,15 @@ class RecordOnDiskTests(unittest.TestCase):
         self.assertEqual(result["status"], "class_busy")
         self.assertEqual(written["method_metadata"]["last_modified"], ARCRHO_SAVED_AT)
 
-    def test_a_missing_or_legacy_method_is_reported_not_created(self) -> None:
+    def test_a_missing_or_unrecognised_method_is_reported_not_created(self) -> None:
         result, written = self._run(None)
         self.assertEqual(result["status"], "missing")
         self.assertIsNone(written)
 
-        legacy = method_payload()
-        legacy["json_format"] = result_selection_service.LEGACY_RESULT_SELECTION_JSON_FORMAT
-        result, written = self._run(legacy)
+        # Only the current stamp is read; any other is left exactly as found.
+        foreign = method_payload()
+        foreign["json_format"] = "not-a-result-selection"
+        result, written = self._run(foreign)
         self.assertEqual(result["status"], "not_v2")
         self.assertEqual(written["method_metadata"]["last_modified"], ARCRHO_SAVED_AT)
 
@@ -163,7 +154,9 @@ class ComparisonAfterUploadTests(unittest.TestCase):
         self.assertEqual(self._compare_state("2026-08-19T10:00:00", RESQ_SAVED_AT), "remote_latest")
 
     def test_with_the_record_the_two_copies_compare_equal(self) -> None:
-        self.assertEqual(self._compare_state(RESQ_SAVED_AT, RESQ_SAVED_AT), "same_time")
+        # The file holds the persisted (UTC) form and ResQ reports its local
+        # wall-clock reading; both parse to the same instant.
+        self.assertEqual(self._compare_state(RESQ_SAVED_AT_PERSISTED, RESQ_SAVED_AT), "same_time")
 
 
 class UpdateRemoteWiringTests(unittest.TestCase):
@@ -173,7 +166,7 @@ class UpdateRemoteWiringTests(unittest.TestCase):
     def test_a_successful_upload_records_the_reported_time(self) -> None:
         with patch.object(result_selection_service, "record_rpc_sync_last_modified", return_value={"ok": True, "status": "stamped"}) as record:
             outcome = result_selection_rpc_bridge_service._record_remote_sync_time(
-                request(), self._status(**{"last modified": RESQ_SAVED_AT})
+                request(), self._status(**{"last_modified": RESQ_SAVED_AT})
             )
         record.assert_called_once_with("Demo", "COL", "M", RESQ_SAVED_AT)
         self.assertTrue(outcome["ok"])
@@ -187,7 +180,7 @@ class UpdateRemoteWiringTests(unittest.TestCase):
     def test_a_failed_record_does_not_turn_a_successful_upload_into_a_failure(self) -> None:
         with patch.object(result_selection_service, "record_rpc_sync_last_modified", side_effect=HTTPException(423, "locked")):
             outcome = result_selection_rpc_bridge_service._record_remote_sync_time(
-                request(), self._status(**{"last modified": RESQ_SAVED_AT})
+                request(), self._status(**{"last_modified": RESQ_SAVED_AT})
             )
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["error"], "locked")

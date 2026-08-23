@@ -111,10 +111,10 @@ def _method_attribution(path: str) -> Dict[str, Any]:
     """
 
     payload = dataset_sidecar_status_service.read_sidecar(path)
-    metadata = payload.get("method metadata")
+    metadata = payload.get("method_metadata")
     at = ""
     if isinstance(metadata, dict):
-        at = str(metadata.get("last modified") or "").strip()
+        at = str(metadata.get("last_modified") or "").strip()
     return {"user": "", "action": "", "at": at, "automatic": False}
 
 

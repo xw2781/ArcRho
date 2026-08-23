@@ -45,7 +45,7 @@ test("Berquist Sherman variants share one canonical frontend contract", () => {
     displayLabel: "Berquist Sherman SR",
     sourceKind: "berquist_sherman_sr",
     filenamePrefix: "BSSR@",
-    jsonFormat: "arcrho-berquist-sherman-sr-method-by-tab-v1",
+    jsonFormat: "arcrho-berquist-sherman-sr-v4",
   });
   assert.deepEqual(getBerquistShermanContract("cra"), {
     variant: "cra",
@@ -53,7 +53,7 @@ test("Berquist Sherman variants share one canonical frontend contract", () => {
     displayLabel: "Berquist Sherman CRA",
     sourceKind: "berquist_sherman_cra",
     filenamePrefix: "BSCRA@",
-    jsonFormat: "arcrho-berquist-sherman-cra-method-by-tab-v1",
+    jsonFormat: "arcrho-berquist-sherman-cra-v4",
   });
   assert.equal(normalizeBerquistShermanVariant("B&S Settlement Rate Adjustment"), "sr");
   assert.equal(normalizeBerquistShermanVariant("berquist_sherman_cra"), "cra");

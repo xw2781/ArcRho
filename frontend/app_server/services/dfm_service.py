@@ -9,7 +9,6 @@ import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 import pandas as pd
@@ -17,7 +16,6 @@ from fastapi import HTTPException
 
 from arcrho_api.dfm_contract import (
     DFM_JSON_FORMAT,
-    LEGACY_DFM_JSON_FORMAT,
     DfmContractError,
     apply_owned_patch,
     build_dfm_output_sidecar,
@@ -33,6 +31,7 @@ from arcrho_api.dfm_contract import (
 )
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
+from arcrho_api.timestamps import persisted_timestamp, utc_now_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
@@ -75,7 +74,7 @@ def _positive_int(value: Any) -> int:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="microseconds") + "Z"
+    return utc_now_text()
 
 
 def _lock(project_name: str, reserving_class: str) -> threading.RLock:
@@ -193,24 +192,24 @@ def _contract_call(func, *args: Any, **kwargs: Any) -> Dict[str, Any]:
 
 
 def _details(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    value = payload.get("details tab") if isinstance(payload, Mapping) else None
+    value = payload.get("details_tab") if isinstance(payload, Mapping) else None
     return value if isinstance(value, dict) else {}
 
 
 def _data_tab(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    value = payload.get("data tab") if isinstance(payload, Mapping) else None
+    value = payload.get("data_tab") if isinstance(payload, Mapping) else None
     return value if isinstance(value, dict) else {}
 
 
 def _results_tab(payload: Mapping[str, Any]) -> Dict[str, Any]:
-    value = payload.get("results tab") if isinstance(payload, Mapping) else None
+    value = payload.get("results_tab") if isinstance(payload, Mapping) else None
     return value if isinstance(value, dict) else {}
 
 
 def _identity(payload: Mapping[str, Any]) -> Tuple[str, str]:
     details = _details(payload)
     method_name = _clean(details.get("name"))
-    output_dataset = _clean(details.get("output dataset")) or method_name
+    output_dataset = _clean(details.get("output_dataset")) or method_name
     if not method_name or not output_dataset:
         raise HTTPException(422, "DFM name and output dataset are required.")
     return method_name, output_dataset
@@ -222,9 +221,9 @@ def _precedent_names(payload: Mapping[str, Any]) -> List[str]:
 
 def _revision_response(payload: Mapping[str, Any]) -> Dict[str, str]:
     revisions = method_revisions(payload)
-    owned = _clean(revisions.get("owned revision"))
-    derived = _clean(revisions.get("derived revision"))
-    publication = _clean(revisions.get("publication revision"))
+    owned = _clean(revisions.get("owned_revision"))
+    derived = _clean(revisions.get("derived_revision"))
+    publication = _clean(revisions.get("publication_revision"))
     return {
         "owned_revision": owned,
         "derived_revision": derived,
@@ -582,12 +581,12 @@ def _source_snapshots(
     details = _details(payload)
     data = _data_tab(payload)
     results = _results_tab(payload)
-    input_name = _clean(details.get("input triangle"))
-    basis_name = _clean(results.get("ratio basis dataset"))
-    method_origin_labels = tuple(_axis_labels(data.get("origin labels")))
-    method_development_labels = tuple(_axis_labels(data.get("development labels")))
-    origin_length = _positive_int(details.get("origin length"))
-    development_length = _positive_int(details.get("development length"))
+    input_name = _clean(details.get("input_triangle"))
+    basis_name = _clean(results.get("ratio_basis_dataset"))
+    method_origin_labels = tuple(_axis_labels(data.get("origin_labels")))
+    method_development_labels = tuple(_axis_labels(data.get("development_labels")))
+    origin_length = _positive_int(details.get("origin_length"))
+    development_length = _positive_int(details.get("development_length"))
     cache = snapshot_cache if snapshot_cache is not None else {}
     futures = {}
     input_cache_key: SnapshotCacheKey = (
@@ -752,7 +751,7 @@ def _csv_text(values: Iterable[Any]) -> str:
 
 def _output_files(project_name: str, reserving_class: str, payload: Mapping[str, Any]) -> Dict[str, str]:
     details = _details(payload)
-    output_dataset = _clean(details.get("output dataset")) or _clean(details.get("name"))
+    output_dataset = _clean(details.get("output_dataset")) or _clean(details.get("name"))
     data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
     safe_name = sanitize_dataset_file_name(output_dataset)
     return {
@@ -775,7 +774,7 @@ def _build_sidecar(
 
     details = _details(payload)
     _method_name, output_dataset = _identity(payload)
-    origin_length = int(details.get("origin length") or 12)
+    origin_length = int(details.get("origin_length") or 12)
     now = _now()
     user_name = user_identity_service.get_current_display_name() or getpass.getuser()
     output_files = _output_files(project_name, reserving_class, payload)
@@ -787,13 +786,13 @@ def _build_sidecar(
     if not existing:
         graph_seed = {
             "dataset_name": output_dataset,
-            "dataset_type": _clean(details.get("output type")) or output_dataset,
+            "dataset_type": _clean(details.get("output_type")) or output_dataset,
             "project_name": project_name,
             "reserving_class": reserving_class,
             "source_kind": "dfm",
             "method_type": dataset_sidecar_status_service.METHOD_TYPE_DFM,
-            "Precedents": dataset_sidecar_status_service.name_entries(_precedent_names(payload)),
-            "Dependents": [],
+            "precedents": dataset_sidecar_status_service.name_entries(_precedent_names(payload)),
+            "dependents": [],
         }
         calculated_dataset_service.apply_sidecar_graph_fields(
             graph_seed,
@@ -809,7 +808,7 @@ def _build_sidecar(
         csv_file=os.path.basename(primary),
         existing=canonical_existing,
         existing_record=bool(existing),
-        dependents=canonical_existing.get("Dependents"),
+        dependents=canonical_existing.get("dependents"),
         notes=notes,
         timestamp=now,
         user=user_name,
@@ -846,7 +845,7 @@ def _publish(
         output_changed=output_changed,
         automatic=automatic,
     )
-    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("Precedents"))
+    old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("precedents"))
     new_precedents = _precedent_names(payload)
     graph_updated = False
     graph_changed = {_key(item) for item in old_precedents} != {_key(item) for item in new_precedents}
@@ -916,7 +915,7 @@ def _validate_pair(
         raise HTTPException(409, "DFM output sidecar does not identify a DFM output.")
     method_precedents = {_key(item) for item in _precedent_names(method)}
     sidecar_precedents = {
-        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("Precedents"))
+        _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("precedents"))
     }
     if method_precedents != sidecar_precedents:
         raise HTTPException(409, "DFM method and output sidecar precedents do not match.")
@@ -975,67 +974,18 @@ def load_dfm_method(
             method = _read_json(method_path)
             if not method:
                 raise HTTPException(404, f"DFM method not found: {name}")
-            if _clean(method.get("json format")) == LEGACY_DFM_JSON_FORMAT \
-                    and not _clean(_details(method).get("output dataset")):
-                raise HTTPException(
-                    409,
-                    "Legacy DFM does not declare its output dataset; output_dataset is required for the one-time upgrade.",
-                )
             _loaded_name, requested_output = _identity(method)
             sidecar_path = _sidecar_path(project, reserving, requested_output)
             with dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
                 sidecar = _read_json(sidecar_path)
     if not method or not sidecar:
         raise HTTPException(409, "DFM requires both its method JSON and output sidecar.")
-    json_format = _clean(method.get("json format"))
-    if json_format == DFM_JSON_FORMAT:
-        normalized = _contract_call(normalize_dfm_method, method, require_complete=True)
-        _validate_pair(name, requested_output, normalized, sidecar)
-        return _method_response(project, reserving, normalized, sidecar)
-    if json_format != LEGACY_DFM_JSON_FORMAT:
+    json_format = _clean(method.get("json_format"))
+    if json_format != DFM_JSON_FORMAT:
         raise HTTPException(422, f"Unsupported DFM JSON format: {json_format or '(missing)'}.")
-    # Exact v1 files take a one-time dependency-reading upgrade path.
-    with _lock(project, reserving), dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
-        method = _read_json(method_path)
-        sidecar = _read_json(sidecar_path)
-        if _clean(method.get("json format")) == LEGACY_DFM_JSON_FORMAT:
-            legacy = json.loads(json.dumps(method))
-            legacy["json format"] = DFM_JSON_FORMAT
-            legacy_details = legacy.setdefault("details tab", {})
-            if isinstance(legacy_details, dict) and not _clean(legacy_details.get("output dataset")):
-                legacy_details["output dataset"] = requested_output
-            normalized = _recalculate_with_sources(
-                project,
-                reserving,
-                legacy,
-                load_input=True,
-                load_basis=True,
-                changed_precedents=_precedent_names(legacy),
-            )
-            previous = list(_results_tab(method).get("ultimate vector") or [])
-            current = list(_results_tab(normalized).get("ultimate vector") or [])
-            sidecar, changed_paths = _publish(
-                project,
-                reserving,
-                normalized,
-                sidecar,
-                notes=None,
-                output_changed=previous != current,
-                automatic=True,
-                write_outputs=previous != current or not previous,
-            )
-            _validate_pair(name, requested_output, normalized, sidecar)
-            return _method_response(
-                project,
-                reserving,
-                normalized,
-                sidecar,
-                upgraded=True,
-                changed_paths=changed_paths,
-            )
-        normalized = _contract_call(normalize_dfm_method, method, require_complete=True)
-        _validate_pair(name, requested_output, normalized, sidecar)
-        return _method_response(project, reserving, normalized, sidecar)
+    normalized = _contract_call(normalize_dfm_method, method, require_complete=True)
+    _validate_pair(name, requested_output, normalized, sidecar)
+    return _method_response(project, reserving, normalized, sidecar)
 
 
 def preview_dfm_method(method: Dict[str, Any]) -> Dict[str, Any]:
@@ -1068,7 +1018,7 @@ def save_dfm_method(
         current = _read_json(method_path)
         existing_sidecar = _read_json(sidecar_path)
         if current:
-            if _clean(current.get("json format")) != DFM_JSON_FORMAT:
+            if _clean(current.get("json_format")) != DFM_JSON_FORMAT:
                 raise HTTPException(409, "DFM changed on disk; reload it before saving.")
             current = _contract_call(normalize_dfm_method, current, require_complete=True)
             current_method_name, current_output = _identity(current)
@@ -1089,10 +1039,10 @@ def save_dfm_method(
                     409,
                     f"Output dataset '{output_dataset}' is already owned by DFM '{owner}'. Choose a unique output dataset.",
                 )
-        current_input = _clean(_details(current).get("input triangle")) if current else ""
-        current_basis = _clean(_results_tab(current).get("ratio basis dataset")) if current else ""
-        next_input = _clean(_details(merged).get("input triangle"))
-        next_basis = _clean(_results_tab(merged).get("ratio basis dataset"))
+        current_input = _clean(_details(current).get("input_triangle")) if current else ""
+        current_basis = _clean(_results_tab(current).get("ratio_basis_dataset")) if current else ""
+        next_input = _clean(_details(merged).get("input_triangle"))
+        next_basis = _clean(_results_tab(merged).get("ratio_basis_dataset"))
         load_input = not current or _key(current_input) != _key(next_input)
         load_basis = bool(next_basis) and (not current or _key(current_basis) != _key(next_basis))
         if load_input and next_basis:
@@ -1150,7 +1100,7 @@ def save_dfm_method(
         _precedent_names(refreshed),
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
-    output_type = _clean(_details(refreshed).get("output type")) or output_dataset
+    output_type = _clean(_details(refreshed).get("output_type")) or output_dataset
     if publication_changed:
         response["propagation"] = _enqueue_propagation_job(
             project, reserving, output_dataset, output_type
@@ -1191,7 +1141,7 @@ def save_propagation_roots(
 
     incoming = _contract_call(normalize_dfm_method, method, require_complete=False)
     _method_name, output_dataset = _identity(incoming)
-    output_type = _clean(_details(incoming).get("output type")) or output_dataset
+    output_type = _clean(_details(incoming).get("output_type")) or output_dataset
     return [(output_dataset, output_type)]
 
 
@@ -1224,11 +1174,11 @@ def _refresh_one(
     )
     if not method:
         raise RuntimeError("DFM method JSON is missing.")
-    if _clean(method.get("json format")) != DFM_JSON_FORMAT:
+    if _clean(method.get("json_format")) != DFM_JSON_FORMAT:
         raise RuntimeError("DFM must be upgraded to v2 before automatic refresh.")
     method = _contract_call(normalize_dfm_method, method, require_complete=True)
-    input_name = _clean(_details(method).get("input triangle"))
-    basis_name = _clean(_results_tab(method).get("ratio basis dataset"))
+    input_name = _clean(_details(method).get("input_triangle"))
+    basis_name = _clean(_results_tab(method).get("ratio_basis_dataset"))
     changed_keys = {_key(item) for item in changed_names if _key(item)}
     load_input = _key(input_name) in changed_keys
     load_basis = bool(basis_name and _key(basis_name) in changed_keys)
@@ -1276,7 +1226,7 @@ def _refresh_one(
         # No persisted derived value changed. Preserve the prior refresh stamp
         # so the method file remains byte-identical and only a Review Needed
         # sidecar status needs restoration.
-        refreshed["method metadata"]["data refreshed"] = method["method metadata"]["data refreshed"]
+        refreshed["method_metadata"]["data_refreshed"] = method["method_metadata"]["data_refreshed"]
     output_changed = (
         before_revisions["publication_revision"]
         != after_revisions["publication_revision"]
@@ -1335,7 +1285,7 @@ def refresh_dfm_method(
             sidecar = _read_json(sidecar_path)
             if not sidecar:
                 raise HTTPException(409, "DFM output sidecar is missing.")
-            if _clean(method.get("json format")) != DFM_JSON_FORMAT:
+            if _clean(method.get("json_format")) != DFM_JSON_FORMAT:
                 raise HTTPException(409, "Open the legacy DFM once to upgrade it before refreshing.")
             was_review_needed = (
                 dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
@@ -1371,7 +1321,7 @@ def refresh_dfm_method(
             project,
             reserving,
             stored_output,
-            _clean(_details(result.get("method") or method).get("output type")) or stored_output,
+            _clean(_details(result.get("method") or method).get("output_type")) or stored_output,
         )
         response["propagation_ok"] = bool(response["propagation"].get("ok"))
         response["calculated_updates"] = response["propagation"]
@@ -1438,7 +1388,7 @@ def refresh_dependents(
             dependent_sources: Dict[str, List[str]] = {}
             for source_name in frontier:
                 source_sidecar = sidecar_cache.get(_key(source_name)) or {}
-                for dependent in dataset_sidecar_status_service.entry_names(source_sidecar.get("Dependents")):
+                for dependent in dataset_sidecar_status_service.entry_names(source_sidecar.get("dependents")):
                     dependent_sources.setdefault(dependent, []).append(source_name)
             dependent_futures = {
                 name: _READ_EXECUTOR.submit(_read_json, _sidecar_path(project, reserving, name))
@@ -1574,6 +1524,9 @@ def record_rpc_sync_last_modified(
         raise HTTPException(400, "project_name, reserving_class and method_name are required.")
     if not stamped:
         raise HTTPException(400, "last_modified is required.")
+    # The bridge reports the instant ResQ stamped; persist it in the one
+    # timestamp form so the file compares equal to what ResQ reports next time.
+    stamped = persisted_timestamp(stamped)
     # A propagation walk rewrites whole method files in this class from another
     # process, and this is a read-modify-write of one of them. Stand aside while
     # it owns the class rather than risk reverting what it wrote; the caller
@@ -1587,9 +1540,9 @@ def record_rpc_sync_last_modified(
         current = _read_json(method_path)
         if not current:
             return {"ok": False, "status": "missing", "last_modified": ""}
-        if _clean(current.get("json format")) != DFM_JSON_FORMAT:
+        if _clean(current.get("json_format")) != DFM_JSON_FORMAT:
             return {"ok": False, "status": "not_v2", "last_modified": ""}
-        previous = _clean((current.get("method metadata") or {}).get("last modified"))
+        previous = _clean((current.get("method_metadata") or {}).get("last_modified"))
         if previous == stamped:
             return {"ok": True, "status": "unchanged", "last_modified": stamped}
         updated = _contract_call(stamp_last_modified, current, stamped)

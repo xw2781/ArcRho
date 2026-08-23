@@ -551,7 +551,7 @@ class DatasetTypeRemovalBlockerTests(unittest.TestCase):
         self._sidecar(
             "HPPREF",
             "Growth Adjustment - Counts",
-            {"dataset_type": "Growth Adjustment - Counts", "reserving_class": "HPPREF", "Dependents": []},
+            {"dataset_type": "Growth Adjustment - Counts", "reserving_class": "HPPREF", "dependents": []},
         )
         self.assertEqual(
             calculated_dataset_service.find_dataset_type_removal_blockers(
@@ -567,7 +567,7 @@ class DatasetTypeRemovalBlockerTests(unittest.TestCase):
             {
                 "dataset_type": "Growth Adjustment - Counts",
                 "reserving_class": "HPPREF",
-                "Dependents": [{"dataset_name": "Selected Ultimate"}],
+                "dependents": [{"dataset_name": "Selected Ultimate"}],
             },
         )
         self._sidecar(
@@ -594,7 +594,7 @@ class DatasetTypeRemovalBlockerTests(unittest.TestCase):
             {
                 "dataset_type": "Growth Adjustment - Counts",
                 "reserving_class": "HPPREF",
-                "Dependents": [{"dataset_name": "Growth Adjustment - Paid"}],
+                "dependents": [{"dataset_name": "Growth Adjustment - Paid"}],
             },
         )
         self._sidecar(
@@ -616,7 +616,7 @@ class DatasetTypeRemovalBlockerTests(unittest.TestCase):
             {
                 "dataset_type": "Paid",
                 "reserving_class": "HPPREF",
-                "Dependents": [{"dataset_name": "Selected Ultimate"}],
+                "dependents": [{"dataset_name": "Selected Ultimate"}],
             },
         )
         self.assertEqual(

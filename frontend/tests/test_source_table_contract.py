@@ -71,9 +71,11 @@ class SourceImportNormalizationTests(unittest.TestCase):
         payload = source_table_contract.normalize_source_import({}, "Demo")
         self.assertEqual(
             sorted(payload.keys()),
-            ["last_import", "mssql", "project_name", "source_type", "version"],
+            ["json_format", "last_import", "mssql", "project_name", "source_type"],
         )
-        self.assertEqual(payload["version"], source_table_contract.SOURCE_IMPORT_VERSION)
+        self.assertEqual(list(payload)[0], "json_format")
+        self.assertEqual(payload["json_format"], source_table_contract.SOURCE_IMPORT_JSON_FORMAT)
+        self.assertTrue(payload["json_format"].endswith("-v4"))
         self.assertEqual(payload["source_type"], source_table_contract.SOURCE_TYPE_CSV)
         self.assertEqual(payload["mssql"]["authentication"], source_table_contract.MSSQL_AUTH_WINDOWS)
 

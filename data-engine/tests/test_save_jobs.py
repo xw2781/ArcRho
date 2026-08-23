@@ -99,7 +99,7 @@ class HostedSaveJobTests(unittest.TestCase):
             save_kind="dfm_method",
             project_name="Demo",
             path="HPPREF\\HOL",
-            args=["Demo", "HPPREF\\HOL", {"json format": "dfm"}],
+            args=["Demo", "HPPREF\\HOL", {"json_format": "dfm"}],
             kwargs={"notes": "note"},
             **overrides,
         )
@@ -125,7 +125,7 @@ class HostedSaveJobTests(unittest.TestCase):
         self.assertTrue(completed)
         self.assertFalse(path.exists(), "the request must be claimed by delete")
         self.assertEqual(
-            calls, [(("Demo", "HPPREF\\HOL", {"json format": "dfm"}), {"notes": "note"})]
+            calls, [(("Demo", "HPPREF\\HOL", {"json_format": "dfm"}), {"notes": "note"})]
         )
         status = read_save_job_status(self.root, self.REQUEST_ID)
         self.assertEqual(status["status"], "success")
@@ -256,7 +256,7 @@ class HostedSavePlanJobTests(unittest.TestCase):
             save_kind="dfm_method",
             project_name="Demo",
             path="HPPREF\\HOL",
-            args=["Demo", "HPPREF\\HOL", {"json format": "dfm"}],
+            args=["Demo", "HPPREF\\HOL", {"json_format": "dfm"}],
             kwargs={"notes": "note"},
             user_name="tester",
             **overrides,

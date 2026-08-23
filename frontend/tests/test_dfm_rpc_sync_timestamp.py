@@ -29,6 +29,7 @@ from arcrho_api.dfm_contract import (
     method_revisions,
     stamp_last_modified,
 )
+from arcrho_api.timestamps import persisted_timestamp
 
 from app_server.helpers import parse_method_last_modified_timestamp
 from app_server.services import (
@@ -37,22 +38,27 @@ from app_server.services import (
     dfm_service,
 )
 
-ARCRHO_SAVED_AT = "2026-08-19T14:00:00.000000Z"
+ARCRHO_SAVED_AT = "2026-08-19T14:00:00.000Z"
 # ResQ writes a timezone-less wall-clock value in the machine's own timezone.
 RESQ_SAVED_AT = "2026-08-19T10:05:30.500000"
+# The same instant once the method file holds it: every persisted ArcRho
+# timestamp is UTC at millisecond precision with a ``Z``, and a bare value is
+# read as this machine's local time, so the expectation is computed rather
+# than pinned to one timezone.
+RESQ_SAVED_AT_PERSISTED = persisted_timestamp(RESQ_SAVED_AT)
 
 
 def method_payload(last_modified: str = ARCRHO_SAVED_AT) -> dict:
     return {
-        "json format": DFM_JSON_FORMAT,
-        "details tab": {"name": "M", "output dataset": "Out"},
-        "data tab": {},
-        "ratios tab": {
-            "ratio triangle": {"excluded": [[0, 1]], "origin labels": ["a"], "development labels": ["x", "y"]},
-            "average formulas": {"label": ["Straight"]},
+        "json_format": DFM_JSON_FORMAT,
+        "details_tab": {"name": "M", "output_dataset": "Out"},
+        "data_tab": {},
+        "ratios_tab": {
+            "ratio_triangle": {"excluded": [[0, 1]], "origin_labels": ["a"], "development_labels": ["x", "y"]},
+            "average_formulas": {"label": ["Straight"]},
         },
-        "results tab": {},
-        "method metadata": {"last modified": last_modified, "refreshed": "keep me"},
+        "results_tab": {},
+        "method_metadata": {"last_modified": last_modified, "refreshed": "keep me"},
     }
 
 
@@ -60,10 +66,10 @@ class StampContractTests(unittest.TestCase):
     def test_the_stamp_touches_only_the_timestamp(self) -> None:
         base = method_payload()
         stamped = stamp_last_modified(base, RESQ_SAVED_AT)
-        self.assertEqual(stamped["method metadata"]["last modified"], RESQ_SAVED_AT)
-        self.assertEqual(stamped["method metadata"]["refreshed"], "keep me")
-        self.assertEqual(base["method metadata"]["last modified"], ARCRHO_SAVED_AT)
-        for tab in ("details tab", "ratios tab", "results tab"):
+        self.assertEqual(stamped["method_metadata"]["last_modified"], RESQ_SAVED_AT_PERSISTED)
+        self.assertEqual(stamped["method_metadata"]["refreshed"], "keep me")
+        self.assertEqual(base["method_metadata"]["last_modified"], ARCRHO_SAVED_AT)
+        for tab in ("details_tab", "ratios_tab", "results_tab"):
             self.assertEqual(stamped[tab], base[tab])
 
     def test_the_stamp_cannot_shift_a_revision(self) -> None:
@@ -104,11 +110,11 @@ class RecordOnDiskTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "stamped")
         self.assertEqual(result["previous_last_modified"], ARCRHO_SAVED_AT)
-        self.assertEqual(written["method metadata"]["last modified"], RESQ_SAVED_AT)
-        self.assertEqual(written["ratios tab"]["ratio triangle"]["excluded"], [[0, 1]])
+        self.assertEqual(written["method_metadata"]["last_modified"], RESQ_SAVED_AT_PERSISTED)
+        self.assertEqual(written["ratios_tab"]["ratio_triangle"]["excluded"], [[0, 1]])
 
     def test_recording_the_same_value_twice_rewrites_nothing(self) -> None:
-        result, _ = self._run(method_payload(RESQ_SAVED_AT))
+        result, _ = self._run(method_payload(RESQ_SAVED_AT_PERSISTED))
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "unchanged")
 
@@ -118,7 +124,7 @@ class RecordOnDiskTests(unittest.TestCase):
         result, written = self._run(method_payload(), busy=True)
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "class_busy")
-        self.assertEqual(written["method metadata"]["last modified"], ARCRHO_SAVED_AT)
+        self.assertEqual(written["method_metadata"]["last_modified"], ARCRHO_SAVED_AT)
 
     def test_a_missing_or_legacy_method_is_reported_not_created(self) -> None:
         result, written = self._run(None)
@@ -127,11 +133,11 @@ class RecordOnDiskTests(unittest.TestCase):
         self.assertIsNone(written)
 
         legacy = method_payload()
-        legacy["json format"] = "arcrho-dfm-method-by-tab-v1"
+        legacy["json_format"] = "arcrho-dfm-method-by-tab-v1"
         result, written = self._run(legacy)
         self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "not_v2")
-        self.assertEqual(written["method metadata"]["last modified"], ARCRHO_SAVED_AT)
+        self.assertEqual(written["method_metadata"]["last_modified"], ARCRHO_SAVED_AT)
 
 
 class ComparisonAfterUploadTests(unittest.TestCase):
@@ -148,7 +154,9 @@ class ComparisonAfterUploadTests(unittest.TestCase):
         self.assertEqual(self._compare_state("2026-08-19T10:00:00", "2026-08-19T10:05:30.500000"), "remote_latest")
 
     def test_with_the_record_the_two_copies_compare_equal(self) -> None:
-        self.assertEqual(self._compare_state(RESQ_SAVED_AT, RESQ_SAVED_AT), "same_time")
+        # The file holds the persisted (UTC) form and ResQ reports its local
+        # wall-clock reading; both parse to the same instant.
+        self.assertEqual(self._compare_state(RESQ_SAVED_AT_PERSISTED, RESQ_SAVED_AT), "same_time")
 
     def test_stamping_this_machine_s_clock_would_not_have_fixed_it(self) -> None:
         # Why the fix copies ResQ's value: a local "now" is a different instant,
@@ -165,7 +173,7 @@ class UpdateRemoteWiringTests(unittest.TestCase):
         request = _request()
         with patch.object(dfm_service, "record_rpc_sync_last_modified", return_value={"ok": True, "status": "stamped"}) as record:
             outcome = dfm_rpc_bridge_service._record_remote_sync_time(
-                request, self._status(**{"last modified": RESQ_SAVED_AT})
+                request, self._status(**{"last_modified": RESQ_SAVED_AT})
             )
         record.assert_called_once_with("Demo", "COL", "M", RESQ_SAVED_AT)
         self.assertTrue(outcome["ok"])
@@ -181,7 +189,7 @@ class UpdateRemoteWiringTests(unittest.TestCase):
 
         with patch.object(dfm_service, "record_rpc_sync_last_modified", side_effect=HTTPException(423, "locked")):
             outcome = dfm_rpc_bridge_service._record_remote_sync_time(
-                _request(), self._status(**{"last modified": RESQ_SAVED_AT})
+                _request(), self._status(**{"last_modified": RESQ_SAVED_AT})
             )
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["status"], "failed")

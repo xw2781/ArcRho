@@ -429,22 +429,19 @@ def test_output_sidecar_matches_the_canonical_dataset_sidecar_shape(method):
         timestamp="2026-08-05T00:00:00Z",
     )
     assert sidecar["method_type"] == "Bootstrap"
-    assert sidecar["method_type_code"] == 6
     assert sidecar["source_kind"] == "bootstrap"
     assert sidecar["data_format"] == "Vector"
-    assert sidecar["data_format_code"] == 1
     assert sidecar["calculated"] is True
     assert sidecar["notes"] == "hello"
     assert sidecar["csv_file"] == "F 72 A@12.csv"
     assert sidecar["period_length"] == method["details_tab"]["origin_length"]
     assert sidecar["development_labels"] == ["Ultimate"]
-    assert sidecar["origin_count"] == len(method["results_tab"]["origin_labels"])
     assert sidecar["publication_revision"] == method["method_metadata"]["publication_revision"]
     # The dependency graph is keyed by dataset name, so precedents are stored in
     # the same {"dataset_type_name": ...} shape every other method writes.
-    assert sidecar["Precedents"] == [
-        {"dataset_type_name": "F 25 - Incurred DFM Bootstrap"},
-        {"dataset_type_name": "F 92 - Current Qtr Selected"},
+    assert sidecar["precedents"] == [
+        {"dataset_name": "F 25 - Incurred DFM Bootstrap"},
+        {"dataset_name": "F 92 - Current Qtr Selected"},
     ]
     assert sidecar["audit_log"][-1]["action"] == "Insert"
 
@@ -459,9 +456,9 @@ def test_output_sidecar_accepts_resolved_graph_precedents(method):
         csv_file="F 72 A@12.csv",
         precedents=["F 25 Ultimate", "F 92 - Current Qtr Selected"],
     )
-    assert sidecar["Precedents"] == [
-        {"dataset_type_name": "F 25 Ultimate"},
-        {"dataset_type_name": "F 92 - Current Qtr Selected"},
+    assert sidecar["precedents"] == [
+        {"dataset_name": "F 25 Ultimate"},
+        {"dataset_name": "F 92 - Current Qtr Selected"},
     ]
 
 

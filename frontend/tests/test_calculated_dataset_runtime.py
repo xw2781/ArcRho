@@ -211,7 +211,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             "dataset_type": "Calculated Output",
             "project_name": "Example Project",
             "reserving_class": "Example RC",
-            "Dependents": [{"dataset_type_name": "Selection"}],
+            "dependents": [{"dataset_name": "Selection"}],
         }), encoding="utf-8")
 
         with (
@@ -232,8 +232,8 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
                 calculated_dataset_service,
                 "sidecar_graph_fields",
                 return_value={
-                    "Precedents": [{"dataset_type_name": "Source"}],
-                    "Dependents": [{"dataset_type_name": "Formula Output"}],
+                    "precedents": [{"dataset_name": "Source"}],
+                    "dependents": [{"dataset_name": "Formula Output"}],
                 },
             ),
             patch.object(
@@ -261,9 +261,9 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
         saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["Dependents"], [
-            {"dataset_type_name": "Formula Output"},
-            {"dataset_type_name": "Selection"},
+        self.assertEqual(saved["dependents"], [
+            {"dataset_name": "Formula Output"},
+            {"dataset_name": "Selection"},
         ])
 
     def test_missing_app_calculated_cache_is_rebuilt_before_engine_request(self) -> None:

@@ -107,7 +107,7 @@ import {
   renderDfmAuditLog,
 } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
 import {
-  DFM_METHOD_JSON_FORMAT_V2,
+  DFM_METHOD_JSON_FORMAT,
   isDfmV2Method,
   loadDfmMethod,
   previewDfmMethod,
@@ -187,7 +187,6 @@ const DFM_INSTANCE_PRESENCE_EVENT = "arcrho:dfm-instance-presence";
 const DFM_LOCAL_LOOKUP_DEBUG_STATUS = true; // Temporary debug aid.
 const DFM_ANALYSIS_DECIMALS = 6;
 const DFM_AVERAGE_FORMULA_DECIMALS = 6;
-const DFM_METHOD_JSON_FORMAT = DFM_METHOD_JSON_FORMAT_V2;
 const DFM_METHOD_FILE_WATCH_INTERVAL_MS = 2000;
 
 function decodeFileNameSegment(value) {
@@ -377,22 +376,22 @@ function getDfmJsonTab(payload, tabKey) {
 }
 
 function getDfmDetailsTab(payload) {
-  return getDfmJsonTab(payload, "details tab");
+  return getDfmJsonTab(payload, "details_tab");
 }
 
 function getDfmDataTab(payload) {
-  return getDfmJsonTab(payload, "data tab");
+  return getDfmJsonTab(payload, "data_tab");
 }
 
 function getDfmRatiosTab(payload) {
-  return getDfmJsonTab(payload, "ratios tab");
+  return getDfmJsonTab(payload, "ratios_tab");
 }
 
 function dfmDatasetFormulaInputs(payload) {
-  const formulas = getDfmJsonTab(getDfmRatiosTab(payload), "average formulas");
+  const formulas = getDfmJsonTab(getDfmRatiosTab(payload), "average_formulas");
   const inputs = Array.isArray(formulas.inputs) ? formulas.inputs : [];
-  const settings = getDfmJsonTab(formulas, "custom average formula settings");
-  const averageTypes = Array.isArray(settings.averageType) ? settings.averageType : [];
+  const settings = getDfmJsonTab(formulas, "custom_average_formula_settings");
+  const averageTypes = Array.isArray(settings.average_type) ? settings.average_type : [];
   const out = [];
   inputs.forEach((row, index) => {
     if (String(averageTypes[index] || "").trim().toLowerCase() !== "user_entry") return;
@@ -419,16 +418,16 @@ function warmDfmDatasetReferenceCache(payload) {
 }
 
 function getDfmRatioTriangleTab(payload) {
-  return getDfmJsonTab(getDfmRatiosTab(payload), "ratio triangle");
+  return getDfmJsonTab(getDfmRatiosTab(payload), "ratio_triangle");
 }
 
 function getDfmResultsTab(payload) {
-  return getDfmJsonTab(payload, "results tab");
+  return getDfmJsonTab(payload, "results_tab");
 }
 
 function getSavedInputTriangleValue(payload) {
   const details = getDfmDetailsTab(payload);
-  if ("input triangle" in details) return String(details["input triangle"] ?? "");
+  if ("input_triangle" in details) return String(details["input_triangle"] ?? "");
   return null;
 }
 
@@ -444,13 +443,13 @@ function readSelectedLengthNumber(id, fallback = 12) {
 
 function getSavedOriginLengthValue(payload) {
   const details = getDfmDetailsTab(payload);
-  if ("origin length" in details) return normalizeSavedLengthValue(details["origin length"]);
+  if ("origin_length" in details) return normalizeSavedLengthValue(details["origin_length"]);
   return null;
 }
 
 function getSavedDevelopmentLengthValue(payload) {
   const details = getDfmDetailsTab(payload);
-  if ("development length" in details) return normalizeSavedLengthValue(details["development length"]);
+  if ("development_length" in details) return normalizeSavedLengthValue(details["development_length"]);
   return null;
 }
 
@@ -493,7 +492,7 @@ function applySavedMethodNameToUi(rawValue) {
 
 function getSavedOutputTypeValue(payload) {
   const details = getDfmDetailsTab(payload);
-  if ("output type" in details) return String(details["output type"] ?? "");
+  if ("output_type" in details) return String(details["output_type"] ?? "");
   return null;
 }
 
@@ -523,7 +522,7 @@ function applySavedInputTriangleToUi(rawValue) {
 
 function getSavedDecimalPlacesValue(payload) {
   const details = getDfmDetailsTab(payload);
-  if ("decimal places" in details) return details["decimal places"];
+  if ("decimal_places" in details) return details["decimal_places"];
   return null;
 }
 
@@ -542,7 +541,7 @@ function applySavedDecimalPlacesToUi(rawValue) {
 
 function getSavedUltimateRatioDecimalPlacesValue(payload) {
   const results = getDfmResultsTab(payload);
-  if ("ultimate ratio decimal places" in results) return results["ultimate ratio decimal places"];
+  if ("ultimate_ratio_decimal_places" in results) return results["ultimate_ratio_decimal_places"];
   return null;
 }
 
@@ -903,54 +902,54 @@ function copyExistingField(source, sourceKey, target, targetKey = sourceKey) {
 function buildDfmGroupedMethodPayload(methodPayload) {
   const data = methodPayload && typeof methodPayload === "object" ? methodPayload : {};
   const dataTab = {};
-  copyExistingField(data, "origin labels", dataTab);
-  copyExistingField(data, "data development labels", dataTab, "development labels");
-  copyExistingField(data, "input data triangle values", dataTab);
-  copyExistingField(data, "input data triangle mask", dataTab);
-  copyExistingField(data, "data format", dataTab);
-  copyExistingField(data, "number format", dataTab);
-  copyExistingField(data, "data decimal places", dataTab, "decimal places");
-  copyExistingField(data, "input source revision", dataTab, "source revision");
+  copyExistingField(data, "origin_labels", dataTab);
+  copyExistingField(data, "data_development_labels", dataTab, "development_labels");
+  copyExistingField(data, "input_data_triangle_values", dataTab);
+  copyExistingField(data, "input_data_triangle_mask", dataTab);
+  copyExistingField(data, "data_format", dataTab);
+  copyExistingField(data, "number_format", dataTab);
+  copyExistingField(data, "data_decimal_places", dataTab, "decimal_places");
+  copyExistingField(data, "input_source_revision", dataTab, "source_revision");
   const ratiosTab = {};
   const ratioTriangle = {};
-  copyExistingField(data, "origin labels", ratioTriangle);
-  copyExistingField(data, "ratio development labels", ratioTriangle, "development labels");
-  copyExistingField(data, "ratio values", ratioTriangle);
+  copyExistingField(data, "origin_labels", ratioTriangle);
+  copyExistingField(data, "ratio_development_labels", ratioTriangle, "development_labels");
+  copyExistingField(data, "ratio_values", ratioTriangle);
   copyExistingField(data, "excluded", ratioTriangle);
-  ratiosTab["ratio triangle"] = ratioTriangle;
-  copyExistingField(data, "average formulas", ratiosTab);
-  copyExistingField(data, "cell notes", ratiosTab);
+  ratiosTab["ratio_triangle"] = ratioTriangle;
+  copyExistingField(data, "average_formulas", ratiosTab);
+  copyExistingField(data, "cell_notes", ratiosTab);
   const grouped = {
-    "json format": DFM_METHOD_JSON_FORMAT,
-    "details tab": copyExistingFields(data, [
+    "json_format": DFM_METHOD_JSON_FORMAT,
+    "details_tab": copyExistingFields(data, [
       "name",
-      "output type",
-      "output dataset",
-      "output category",
-      "input triangle",
-      "origin length",
-      "development length",
-      "decimal places",
+      "output_type",
+      "output_dataset",
+      "output_category",
+      "input_triangle",
+      "origin_length",
+      "development_length",
+      "decimal_places",
     ]),
-    "data tab": dataTab,
-    "ratios tab": ratiosTab,
-    "results tab": copyExistingFields(data, [
-      "ratio basis dataset",
-      "ratio basis data format",
-      "ratio basis origin labels",
-      "ratio basis values",
-      "ratio basis number format",
-      "ratio basis decimal places",
-      "ratio basis source revision",
-      "ultimate ratio decimal places",
-      "ultimate vector",
+    "data_tab": dataTab,
+    "ratios_tab": ratiosTab,
+    "results_tab": copyExistingFields(data, [
+      "ratio_basis_dataset",
+      "ratio_basis_data_format",
+      "ratio_basis_origin_labels",
+      "ratio_basis_values",
+      "ratio_basis_number_format",
+      "ratio_basis_decimal_places",
+      "ratio_basis_source_revision",
+      "ultimate_ratio_decimal_places",
+      "ultimate_vector",
     ]),
-    "method metadata": copyExistingFields(data, [
-      "last modified",
-      "data refreshed",
-      "owned revision",
-      "derived revision",
-      "publication revision",
+    "method_metadata": copyExistingFields(data, [
+      "last_modified",
+      "data_refreshed",
+      "owned_revision",
+      "derived_revision",
+      "publication_revision",
     ]),
   };
   return grouped;
@@ -978,11 +977,11 @@ export async function buildDfmAssistantContextPayload(options = {}) {
   // (same convention as the RPC bridge apply path) so macros and ArcBot read
   // the live, possibly dirty, Notes tab instead of the persisted sidecar.
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const metadata = payload["method metadata"];
+    const metadata = payload["method_metadata"];
     if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
-      metadata["method notes"] = getDfmNotesText();
+      metadata["method_notes"] = getDfmNotesText();
     } else {
-      payload["method metadata"] = { "method notes": getDfmNotesText() };
+      payload["method_metadata"] = { "method_notes": getDfmNotesText() };
     }
   }
   return payload;
@@ -1030,24 +1029,24 @@ function mergePlainObject(target, patch) {
 function projectDfmOwnedPatch(payload) {
   const patch = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const projected = {};
-  const details = getDfmJsonTab(patch, "details tab");
-  if (Object.keys(details).length) projected["details tab"] = cloneJsonValue(details);
-  const ratios = getDfmJsonTab(patch, "ratios tab");
-  const ratioTriangle = getDfmJsonTab(ratios, "ratio triangle");
+  const details = getDfmJsonTab(patch, "details_tab");
+  if (Object.keys(details).length) projected["details_tab"] = cloneJsonValue(details);
+  const ratios = getDfmJsonTab(patch, "ratios_tab");
+  const ratioTriangle = getDfmJsonTab(ratios, "ratio_triangle");
   const projectedRatios = {};
   if (Object.prototype.hasOwnProperty.call(ratioTriangle, "excluded")) {
-    projectedRatios["ratio triangle"] = { excluded: cloneJsonValue(ratioTriangle.excluded) };
+    projectedRatios["ratio_triangle"] = { excluded: cloneJsonValue(ratioTriangle.excluded) };
   }
-  for (const key of ["average formulas", "cell notes"]) {
+  for (const key of ["average_formulas", "cell_notes"]) {
     if (Object.prototype.hasOwnProperty.call(ratios, key)) projectedRatios[key] = cloneJsonValue(ratios[key]);
   }
-  if (Object.keys(projectedRatios).length) projected["ratios tab"] = projectedRatios;
-  const results = getDfmJsonTab(patch, "results tab");
+  if (Object.keys(projectedRatios).length) projected["ratios_tab"] = projectedRatios;
+  const results = getDfmJsonTab(patch, "results_tab");
   const projectedResults = {};
-  for (const key of ["ratio basis dataset", "ultimate ratio decimal places"]) {
+  for (const key of ["ratio_basis_dataset", "ultimate_ratio_decimal_places"]) {
     if (Object.prototype.hasOwnProperty.call(results, key)) projectedResults[key] = cloneJsonValue(results[key]);
   }
-  if (Object.keys(projectedResults).length) projected["results tab"] = projectedResults;
+  if (Object.keys(projectedResults).length) projected["results_tab"] = projectedResults;
   return projected;
 }
 
@@ -1058,8 +1057,8 @@ export async function applyDfmOwnedPatchPayload(payload, options = {}) {
   // Method Notes are sidecar-owned and stripped by canonicalization, so read
   // the transient `method metadata.method notes` carrier (macro results, RPC
   // bridge, ArcBot proposals) from the incoming payload before preview.
-  const incomingMetadata = getDfmJsonTab(payload, "method metadata");
-  const hasMethodNotes = Object.prototype.hasOwnProperty.call(incomingMetadata, "method notes");
+  const incomingMetadata = getDfmJsonTab(payload, "method_metadata");
+  const hasMethodNotes = Object.prototype.hasOwnProperty.call(incomingMetadata, "method_notes");
   try {
     const response = await previewDfmMethod(merged);
     if (!response?.method || !isDfmV2Method(response.method)) {
@@ -1073,7 +1072,7 @@ export async function applyDfmOwnedPatchPayload(payload, options = {}) {
     if (applied?.ok && hasMethodNotes) {
       // Deliver carried Method Notes to the Notes tab; the next normal Save
       // persists them to the output sidecar through the existing notes field.
-      setDfmNotesText(String(incomingMetadata["method notes"] ?? ""));
+      setDfmNotesText(String(incomingMetadata["method_notes"] ?? ""));
     }
     return applied;
   } catch (error) {
@@ -1095,20 +1094,20 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   if (isV2) {
     const appliedDetails = getDfmDetailsTab(payload);
     currentDfmOutputCategory = String(
-      appliedDetails["output category"]
+      appliedDetails["output_category"]
         ?? appliedDetails["output dataset_category"]
         ?? currentDfmOutputCategory,
     ).trim();
     const dataTab = getDfmDataTab(payload);
     const snapshotResult = window.ADA_DFM_APPLY_DATASET_SNAPSHOT?.({
-      origin_labels: dataTab["origin labels"],
-      dev_labels: dataTab["development labels"],
-      values: dataTab["input data triangle values"],
-      mask: dataTab["input data triangle mask"],
-      data_format: dataTab["data format"] || "Triangle",
-      number_format: dataTab["number format"],
-      decimal_places: dataTab["decimal places"],
-      source_revision: dataTab["source revision"],
+      origin_labels: dataTab["origin_labels"],
+      dev_labels: dataTab["development_labels"],
+      values: dataTab["input_data_triangle_values"],
+      mask: dataTab["input_data_triangle_mask"],
+      data_format: dataTab["data_format"] || "Triangle",
+      number_format: dataTab["number_format"],
+      decimal_places: dataTab["decimal_places"],
+      source_revision: dataTab["source_revision"],
       source_kind: "dfm-v2-snapshot",
     });
     if (snapshotResult?.ok === false) {
@@ -1120,8 +1119,8 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   let applied = applyRatioSelectionPattern(pattern);
   if (payload && !Array.isArray(payload)) {
     const cfgKey = getSummaryConfigKey();
-    const averageFormulas = ratiosTab["average formulas"];
-    const cellNotes = ratiosTab["cell notes"];
+    const averageFormulas = ratiosTab["average_formulas"];
+    const cellNotes = ratiosTab["cell_notes"];
     const formulas = getDfmAverageFormulaLabels(averageFormulas);
     const matrix = getDfmAverageFormulaSelectedIndex(averageFormulas);
     const averageFormulaValues = getDfmAverageFormulaValues(averageFormulas);
@@ -1146,7 +1145,7 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     const savedInputTriangle = getSavedInputTriangleValue(payload);
     const savedDecimalPlaces = getSavedDecimalPlacesValue(payload);
     const savedUltimateRatioDecimalPlaces = getSavedUltimateRatioDecimalPlacesValue(payload);
-    const ratioBasisDataset = resultsTab["ratio basis dataset"] ?? "";
+    const ratioBasisDataset = resultsTab["ratio_basis_dataset"] ?? "";
     applySavedOutputTypeToUi(savedOutputType);
     datasetInputsChanged = applySavedInputTriangleToUi(savedInputTriangle) || datasetInputsChanged;
     // Apply saved Name after tri-input restore so custom Names win over
@@ -1185,11 +1184,11 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
   }
   if (applied && isV2 && options.markClean !== false) {
     const details = getDfmDetailsTab(payload);
-    const metadata = getDfmJsonTab(payload, "method metadata");
-    currentDfmOutputDataset = String(details["output dataset"] || currentDfmOutputDataset || details.name || "").trim();
-    currentOwnedRevision = String(metadata["owned revision"] || currentOwnedRevision || "").trim();
-    currentDerivedRevision = String(metadata["derived revision"] || currentDerivedRevision || "").trim();
-    currentPublicationRevision = String(metadata["publication revision"] || currentPublicationRevision || "").trim();
+    const metadata = getDfmJsonTab(payload, "method_metadata");
+    currentDfmOutputDataset = String(details["output_dataset"] || currentDfmOutputDataset || details.name || "").trim();
+    currentOwnedRevision = String(metadata["owned_revision"] || currentOwnedRevision || "").trim();
+    currentDerivedRevision = String(metadata["derived_revision"] || currentDerivedRevision || "").trim();
+    currentPublicationRevision = String(metadata["publication_revision"] || currentPublicationRevision || "").trim();
   }
   if (applied && getCurrentDfmTab() === "audit") {
     void refreshDfmAuditLog();
@@ -1198,16 +1197,16 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
 }
 
 function applyDfmAggregateRevisions(response, method) {
-  const metadata = getDfmJsonTab(method, "method metadata");
-  currentOwnedRevision = String(response?.owned_revision || metadata["owned revision"] || "").trim();
-  currentDerivedRevision = String(response?.derived_revision || metadata["derived revision"] || "").trim();
-  currentPublicationRevision = String(response?.publication_revision || metadata["publication revision"] || "").trim();
+  const metadata = getDfmJsonTab(method, "method_metadata");
+  currentOwnedRevision = String(response?.owned_revision || metadata["owned_revision"] || "").trim();
+  currentDerivedRevision = String(response?.derived_revision || metadata["derived_revision"] || "").trim();
+  currentPublicationRevision = String(response?.publication_revision || metadata["publication_revision"] || "").trim();
 }
 
 function syncDfmIdentityQuery(method) {
   const details = getDfmDetailsTab(method);
   const methodName = String(details.name || "").trim();
-  const outputDataset = String(details["output dataset"] || "").trim();
+  const outputDataset = String(details["output_dataset"] || "").trim();
   if (!methodName) return;
   if (globalThis.history?.replaceState && globalThis.location?.href) {
     try {
@@ -1233,11 +1232,11 @@ function syncDfmIdentityQuery(method) {
 }
 
 function scheduleDfmExcelFreshnessCheck(method) {
-  const metadata = getDfmJsonTab(method, "method metadata");
+  const metadata = getDfmJsonTab(method, "method_metadata");
   const appliedRevision = [
-    currentOwnedRevision || metadata["owned revision"],
-    currentDerivedRevision || metadata["derived revision"],
-    currentPublicationRevision || metadata["publication revision"],
+    currentOwnedRevision || metadata["owned_revision"],
+    currentDerivedRevision || metadata["derived_revision"],
+    currentPublicationRevision || metadata["publication_revision"],
   ]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
@@ -1319,7 +1318,7 @@ async function loadRatioSelectionIfExistsOnce(reason) {
     const applied = await applyDfmMethodPayload(method, { reason: reason || "dfm-open" });
     if (!applied?.ok) throw new Error(applied?.error || "The DFM method could not be applied.");
     const details = getDfmDetailsTab(method);
-    currentDfmOutputDataset = String(details["output dataset"] || identity.output_dataset || details.name || "").trim();
+    currentDfmOutputDataset = String(details["output_dataset"] || identity.output_dataset || details.name || "").trim();
     syncDfmIdentityQuery(method);
     hydrateDfmOutputSidecar(response?.sidecar, {
       hydrateNotes: true,
@@ -1402,43 +1401,43 @@ export function buildDfmMethodPayload(options = {}) {
   const summaryRows = getSummaryRowsForPersistence(cfgKey);
   const data = {
     excluded: pattern,
-    "origin labels": originLabels,
-    "data development labels": dataDevelopmentLabels,
-    "ratio development labels": ratioDevelopmentLabels,
-    "input data triangle values": Array.isArray(state?.model?.values)
+    "origin_labels": originLabels,
+    "data_development_labels": dataDevelopmentLabels,
+    "ratio_development_labels": ratioDevelopmentLabels,
+    "input_data_triangle_values": Array.isArray(state?.model?.values)
       ? state.model.values.map((row) => (Array.isArray(row) ? row.slice() : []))
       : [],
-    "input data triangle mask": Array.isArray(state?.model?.mask)
+    "input_data_triangle_mask": Array.isArray(state?.model?.mask)
       ? state.model.mask.map((row) => (Array.isArray(row) ? row.map(Boolean) : []))
       : [],
-    "data format": String(state?.model?.data_format || "Triangle"),
-    "number format": String(state?.model?.number_format || "Number"),
-    "data decimal places": Number.isFinite(Number(state?.model?.decimal_places))
+    "data_format": String(state?.model?.data_format || "Triangle"),
+    "number_format": String(state?.model?.number_format || "Number"),
+    "data_decimal_places": Number.isFinite(Number(state?.model?.decimal_places))
       ? Number(state.model.decimal_places)
       : decimalPlaces,
-    "input source revision": String(state?.model?.source_revision || state?.model?.revision || ""),
-    "ratio values": calculatedRatioTriangleValues,
-    "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix, averageFormulaValues),
-    "cell notes": cellNotes,
-    "ultimate vector": buildResultsVector(),
+    "input_source_revision": String(state?.model?.source_revision || state?.model?.revision || ""),
+    "ratio_values": calculatedRatioTriangleValues,
+    "average_formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix, averageFormulaValues),
+    "cell_notes": cellNotes,
+    "ultimate_vector": buildResultsVector(),
     name: methodName,
-    "output type": outputVector,
-    "output dataset": outputDataset,
+    "output_type": outputVector,
+    "output_dataset": outputDataset,
     // Omitted rather than sent empty when unknown: Save merges owned fields as a
     // patch, so an empty value would clear the category stored on disk.
-    ...(currentDfmOutputCategory ? { "output category": currentDfmOutputCategory } : {}),
-    "input triangle": inputTriangle,
-    "origin length": originLength,
-    "development length": developmentLength,
-    "decimal places": decimalPlaces,
-    "ultimate ratio decimal places": ultimateRatioDecimalPlaces,
-    "ratio basis dataset": ratioBasisDataset,
+    ...(currentDfmOutputCategory ? { "output_category": currentDfmOutputCategory } : {}),
+    "input_triangle": inputTriangle,
+    "origin_length": originLength,
+    "development_length": developmentLength,
+    "decimal_places": decimalPlaces,
+    "ultimate_ratio_decimal_places": ultimateRatioDecimalPlaces,
+    "ratio_basis_dataset": ratioBasisDataset,
     ...ratioBasisSnapshot,
-    "last modified": new Date().toISOString(),
-    "data refreshed": String(lastCleanDfmMethodPayload?.["method metadata"]?.["data refreshed"] || ""),
-    "owned revision": currentOwnedRevision,
-    "derived revision": currentDerivedRevision,
-    "publication revision": currentPublicationRevision,
+    "last_modified": new Date().toISOString(),
+    "data_refreshed": String(lastCleanDfmMethodPayload?.["method_metadata"]?.["data_refreshed"] || ""),
+    "owned_revision": currentOwnedRevision,
+    "derived_revision": currentDerivedRevision,
+    "publication_revision": currentPublicationRevision,
   };
   return buildDfmGroupedMethodPayload(data);
 }
@@ -1513,13 +1512,13 @@ function buildDfmExternalChangedCells(nextPayload) {
   const prevPattern = buildRatioSelectionPattern();
   const nextPattern = getDfmRatioTriangleTab(nextPayload).excluded;
   const prevAverage = buildAverageSelectionPayload();
-  const nextAverage = getDfmAverageFormulaSelectedIndex(getDfmRatiosTab(nextPayload)["average formulas"]);
+  const nextAverage = getDfmAverageFormulaSelectedIndex(getDfmRatiosTab(nextPayload)["average_formulas"]);
   return {
     ratioCells: buildChangedRatioCells(prevPattern, nextPattern),
     averageCells: buildChangedAverageCells(
       prevAverage.formulas,
       prevAverage.matrix,
-      getDfmAverageFormulaLabels(getDfmRatiosTab(nextPayload)["average formulas"]),
+      getDfmAverageFormulaLabels(getDfmRatiosTab(nextPayload)["average_formulas"]),
       nextAverage,
     ),
   };
@@ -1687,7 +1686,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
   const previousDetails = getDfmDetailsTab(lastCleanDfmMethodPayload || {});
   const previousMethodName = String(previousDetails.name || "").trim();
   const previousOutputDataset = String(
-    previousDetails["output dataset"] || currentDfmOutputDataset || previousMethodName,
+    previousDetails["output_dataset"] || currentDfmOutputDataset || previousMethodName,
   ).trim();
   const currentMethodName = getTrimmedInputValue("dfmMethodName");
   const identityChanged = Boolean(
@@ -1730,7 +1729,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     const applied = await applyDfmMethodPayload(canonicalMethod, { reason: "save", markClean: true });
     if (!applied?.ok) throw new Error(applied?.error || "Saved DFM could not be applied.");
     const details = getDfmDetailsTab(canonicalMethod);
-    currentDfmOutputDataset = String(details["output dataset"] || nextOutputDataset).trim();
+    currentDfmOutputDataset = String(details["output_dataset"] || nextOutputDataset).trim();
     ensureDfmObjectChangeWatch(details.name, response?.sidecar);
     syncDfmIdentityQuery(canonicalMethod);
     hydrateDfmOutputSidecar(response?.sidecar, {
@@ -1802,13 +1801,13 @@ export async function saveDfmTemplate() {
   const summaryRows = getSummaryRowsForPersistence(cfgKey);
 
   const data = {
-    "payload format": "arcrho-dfm-owned-patch-v1",
-    "details tab": {
-      "origin length": readSelectedLengthNumber("originLenSelect"),
-      "development length": readSelectedLengthNumber("devLenSelect"),
+    "payload_format": "arcrho-dfm-owned-patch-v4",
+    "details_tab": {
+      "origin_length": readSelectedLengthNumber("originLenSelect"),
+      "development_length": readSelectedLengthNumber("devLenSelect"),
     },
-    "ratios tab": {
-      "average formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix),
+    "ratios_tab": {
+      "average_formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix),
     },
   };
 
