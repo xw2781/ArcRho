@@ -384,7 +384,7 @@ ResQ COM comparison (`A8`), opt-in and sampled.
 ## Agent Interface
 
 The workflow is invoked as a repo skill, `arcrho-ui-regression`, following the existing
-`.codex/skills/<name>/SKILL.md` convention. The skill's job is orchestration and judgment only:
+`.claude/skills/<name>/SKILL.md` convention. The skill's job is orchestration and judgment only:
 
 1. Verify the app is running and healthy; start it if not.
 2. Run Layer A. If `A5`/`A6`/`A7` fail, stop and report - the build is not release-ready.

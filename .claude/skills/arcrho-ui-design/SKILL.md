@@ -1,6 +1,6 @@
 ---
 name: arcrho-ui-design
-description: ArcRho frontend UI design reference for applying the app's dense, quiet, operational workspace style. Use when Codex is asked to make or fix frontend UI, visual styling, layout, controls, icons, dropdowns, tables, drag/drop areas, empty/loading/error states, or interaction polish in ArcRho; apply these rules during implementation and do not update the skill unless explicitly asked to revise durable design guidance.
+description: ArcRho frontend UI design reference for applying the app's dense, quiet, operational workspace style. Use when asked to make or fix frontend UI, visual styling, layout, controls, icons, dropdowns, tables, drag/drop areas, empty/loading/error states, or interaction polish in ArcRho; apply these rules during implementation and do not update the skill unless explicitly asked to revise durable design guidance.
 ---
 
 # ArcRho UI Design Reference

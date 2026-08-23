@@ -81,6 +81,9 @@ data-engine/src/arcrho_orchestrator/instances/
 # settings.local.json stays ignored — that is the per-machine override file.
 .claude/*
 !.claude/settings.json
+# .claude/skills holds this repo's shared agent skills, so it is tracked too.
+!.claude/skills/
+!.claude/skills/**
 .idea/
 .vscode/
 *.swp

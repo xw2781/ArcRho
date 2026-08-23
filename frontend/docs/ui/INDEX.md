@@ -61,7 +61,7 @@ High-risk files that must follow contracts:
 
 ## Design References
 <!-- MANUAL:BEGIN -->
-- [`ArcRho UI Design skill`](../../../.codex/skills/arcrho-ui-design/SKILL.md) - Atlas-based global UI design reference for future ArcRho interface work.
+- [`ArcRho UI Design skill`](../../../.claude/skills/arcrho-ui-design/SKILL.md) - Atlas-based global UI design reference for future ArcRho interface work.
 - [`global_app_ui_demo.html`](global_app_ui_demo.html) - Standalone UI style demo with Workbench, Atlas, and Assistant Studio concepts.
 <!-- MANUAL:END -->
 

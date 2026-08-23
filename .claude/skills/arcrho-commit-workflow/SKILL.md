@@ -1,6 +1,6 @@
 ---
 name: arcrho-commit-workflow
-description: Prepare, review, stage, and create commits safely in the ArcRho monorepo. Use proactively without asking for permission to use the skill when the user asks Codex to commit changes, prepare a commit plan, stage files, create a commit, push ArcRho repository changes, or otherwise perform git operations that would update the index, refs, or remote state.
+description: Prepare, review, stage, and create commits safely in the ArcRho monorepo. Use proactively without asking for permission to use the skill when the user asks to commit changes, prepare a commit plan, stage files, create a commit, push ArcRho repository changes, or otherwise perform git operations that would update the index, refs, or remote state.
 ---
 
 # ArcRho Commit Workflow

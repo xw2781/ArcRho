@@ -1,3 +1,5 @@
+26/8/23
+
 # Commit and Push Workflow
 
 git pull --ff-only
@@ -17,7 +19,7 @@ If you'd rather not touch this working copy at all, just clone it fresh next to 
 
 Run the commit workflow.
 
-[$arcrho-commit-workflow](E:\\XWSpace\\Repos\\ArcRho\\.codex\\skills\\arcrho-commit-workflow\\SKILL.md)
+[$arcrho-commit-workflow](E:\\XWSpace\\Repos\\ArcRho\\.claude\\skills\\arcrho-commit-workflow\\SKILL.md)
 
 # JSON Contract Validations
 

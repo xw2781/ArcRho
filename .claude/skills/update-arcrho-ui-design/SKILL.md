@@ -7,13 +7,13 @@ description: Update the ArcRho UI Design skill after a completed and user-tested
 
 ## Purpose
 
-Convert a completed, user-tested ArcRho UI fix into concise, reusable guidance in `.codex/skills/arcrho-ui-design/SKILL.md` so future UI work repeats the improved pattern.
+Convert a completed, user-tested ArcRho UI fix into concise, reusable guidance in `.claude/skills/arcrho-ui-design/SKILL.md` so future UI work repeats the improved pattern.
 
 ## Workflow
 
 1. Confirm the user is asking to document a specific UI fix that is already completed and tested by the user. If the fix is still being designed, implemented, or validated, do not use this skill yet.
 2. Read the current request and recent implementation context. Identify the durable design principle behind the verified fix, not just the specific bug.
-3. Read `frontend/AGENTS.md` and `.codex/skills/arcrho-ui-design/SKILL.md` before editing.
+3. Read `frontend/AGENTS.md` and `.claude/skills/arcrho-ui-design/SKILL.md` before editing.
 4. Check the requested lesson against the current ArcRho UI Design rules before making changes:
    - If the requested lesson is already covered, explicitly tell the user which existing rule covers it and do not edit unless the user asks for a wording refinement.
    - If the requested lesson conflicts with an existing rule, explicitly name both the requested lesson and the conflicting rule, explain the conflict, and ask for clarification before editing.
@@ -27,7 +27,7 @@ Convert a completed, user-tested ArcRho UI fix into concise, reusable guidance i
 6. Write one compact future-facing bullet or sentence that names the reusable pattern and expected visual behavior. Keep it app-design-specific and avoid implementation details unless they are essential.
 7. Do not overfit to a single page. Mention a page only when the rule is intentionally page-specific.
 8. Add or update an unreleased fragment when repository rules require it.
-9. Run skill validation with `py -3.10 C:\Users\xwei.PRCINS\.codex\skills\.system\skill-creator\scripts\quick_validate.py .codex\skills\arcrho-ui-design`.
+9. Check the edited skill still opens with valid frontmatter: a `name` that matches its folder name and a one-line `description` that says when to use it.
 10. Run the frontend docs workflow from the repo root: `py -3.10 frontend/tools/docs_index_builder.py --write`, then `py -3.10 frontend/tools/docs_index_builder.py --check`. If a release fragment changed, also run `py -3.10 frontend/build/release/release_notes.py check`.
 
 ## Rule Writing Style
