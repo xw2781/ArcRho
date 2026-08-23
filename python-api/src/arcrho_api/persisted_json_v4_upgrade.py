@@ -94,6 +94,11 @@ SIDECAR_CORE_DEFAULTS: dict[str, Any] = {
     "show_subtotal": False,
 }
 
+# The first of these a sidecar carries is what ``notes`` goes in front of when
+# a rescued note has to be added to a sidecar that had no notes field, so the
+# field lands where every canonical builder writes it.
+_NOTES_FOLLOWED_BY = frozenset({"origin_labels", "development_labels", "precedents", "dependents"})
+
 # Persisted DFM fields that v4 no longer stores (re-derived on read).
 DFM_DROPPED_PATHS = (
     ("results_tab", "ratio_basis_origin_labels"),
@@ -239,6 +244,15 @@ def upgrade_dataset_sidecar(
     precedents = source.pop("Precedents", source.pop("precedents", None))
     dependents = source.pop("Dependents", source.pop("dependents", None))
     renamed = _snake_keys(source)
+    # Fill the core *before* the graph fields go back on. A field the old file
+    # left out is appended at the end, and so are the two graph fields, so
+    # filling afterwards puts ``status`` behind ``precedents`` the first time a
+    # file is converted and in front of it the second time. Converting is then
+    # not a fixed point, and the file does not match what a fresh save writes.
+    if not str(renamed.get("modified_by") or "").strip():
+        renamed["modified_by"] = str(source.get("user") or "").strip()
+    for field, default in SIDECAR_CORE_DEFAULTS.items():
+        renamed.setdefault(field, default)
     renamed["precedents"] = dependency_entries([
         {"dataset_name": item.get("dataset_name") or item.get("dataset_type_name") or item.get("name"), "method_type": item.get("method_type")}
         if isinstance(item, Mapping) else item
@@ -249,10 +263,6 @@ def upgrade_dataset_sidecar(
         if isinstance(item, Mapping) else item
         for item in (dependents or [])
     ])
-    if not str(renamed.get("modified_by") or "").strip():
-        renamed["modified_by"] = str(source.get("user") or "").strip()
-    for field, default in SIDECAR_CORE_DEFAULTS.items():
-        renamed.setdefault(field, default)
     if str(renamed.get("method_name") or "").strip():
         # A sidecar that names the method which wrote it holds derived values
         # by definition, and every canonical builder says so. Two DFM outputs
@@ -280,9 +290,24 @@ def sidecar_with_method_notes(payload: Mapping[str, Any], notes: Any) -> dict[st
     merged = dict(payload)
     incoming = str(notes or "").strip()
     existing = str(merged.get("notes") or "").strip()
-    if incoming and incoming not in existing:
-        merged["notes"] = "\n\n".join(text for text in (existing, incoming) if text)
-    return finalize_sidecar(merged)
+    if not incoming or incoming in existing:
+        return finalize_sidecar(merged)
+    text = "\n\n".join(part for part in (existing, incoming) if part)
+    if "notes" in merged:
+        merged["notes"] = text
+        return finalize_sidecar(merged)
+    # A sidecar with no notes yet gets the field where a canonical builder
+    # writes it, ahead of the labels and the graph, rather than on the end.
+    # Appending would put ``notes`` behind ``precedents`` the first time the
+    # file is converted and in front of it the second, and converting would
+    # not be a fixed point.
+    rebuilt: dict[str, Any] = {}
+    for key, value in merged.items():
+        if key in _NOTES_FOLLOWED_BY and "notes" not in rebuilt:
+            rebuilt["notes"] = text
+        rebuilt[key] = value
+    rebuilt.setdefault("notes", text)
+    return finalize_sidecar(rebuilt)
 
 
 def upgrade_project_audit_log(payload: Mapping[str, Any]) -> dict[str, Any]:

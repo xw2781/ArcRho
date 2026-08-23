@@ -6,6 +6,7 @@ the old spellings, so it is also the only place these rules can be pinned.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -13,6 +14,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 from arcrho_api.dfm_contract import DFM_JSON_FORMAT  # noqa: E402
+from arcrho_api.io import persisted_json_text  # noqa: E402
 from arcrho_api.persisted_json_v4_upgrade import (  # noqa: E402
     DATASET_NUMBER_FORMATS_JSON_FORMAT,
     METHOD_FORMAT_UPGRADES,
@@ -233,6 +235,34 @@ class UpgradeSidecarTests(unittest.TestCase):
 
         self.assertEqual(upgrade_dataset_sidecar(once), once)
 
+    def test_upgrading_twice_writes_the_same_text_when_a_core_field_was_missing(self) -> None:
+        """Comparing the payloads is not enough: two dicts holding the same
+        pairs in a different order are equal, and it is the *text* that is
+        written. A field the old file left out and the two graph fields are
+        all appended, so filling the core after the graph put ``status``
+        behind ``precedents`` on the first pass and in front of it on the
+        second. 314 of the 2,079 sidecars in ``NJ_Annual_Prod_202605_Fake``
+        take this path, and none of them was a fixed point."""
+
+        payload = old_sidecar()
+        payload.pop("status")
+
+        once = persisted_json_text(upgrade_dataset_sidecar(payload))
+        twice = persisted_json_text(upgrade_dataset_sidecar(json.loads(once)))
+
+        self.assertEqual(twice, once)
+
+    def test_every_missing_core_field_survives_a_second_conversion_in_place(self) -> None:
+        for field in ("method_type", "status", "show_subtotal"):
+            with self.subTest(field=field):
+                payload = old_sidecar()
+                payload.pop(field)
+
+                once = persisted_json_text(upgrade_dataset_sidecar(payload))
+                twice = persisted_json_text(upgrade_dataset_sidecar(json.loads(once)))
+
+                self.assertEqual(twice, once)
+
     def test_a_missing_core_field_is_filled_so_the_shared_validator_accepts_it(self) -> None:
         payload = old_sidecar()
         payload.pop("show_subtotal")
@@ -333,6 +363,28 @@ class MigratedNotesTests(unittest.TestCase):
         sidecar = upgrade_dataset_sidecar(old_sidecar())
 
         self.assertEqual(sidecar_with_method_notes(sidecar, ""), sidecar)
+
+    def test_a_rescued_note_goes_in_front_of_the_graph_not_on_the_end(self) -> None:
+        """A sidecar with no notes field yet gets one where a canonical builder
+        writes it. Appended instead, it would sit behind ``precedents`` the
+        first time the file is converted and in front of it the second, and
+        the three sidecars that receive the only surviving copy of a retired
+        method's commentary would never be fixed points."""
+
+        merged = sidecar_with_method_notes(upgrade_dataset_sidecar(old_sidecar()), "Tail from a study.")
+        keys = list(merged)
+
+        self.assertLess(keys.index("notes"), keys.index("precedents"))
+
+    def test_rescuing_the_same_note_twice_writes_the_same_text(self) -> None:
+        note = "Tail based on a competitor study."
+
+        def convert(payload: dict) -> str:
+            return persisted_json_text(sidecar_with_method_notes(upgrade_dataset_sidecar(payload), note))
+
+        once = convert(old_sidecar())
+
+        self.assertEqual(convert(json.loads(once)), once)
 
 
 class UpgradeProjectFilesTests(unittest.TestCase):
