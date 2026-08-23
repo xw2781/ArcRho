@@ -1,6 +1,6 @@
 # Persisted JSON Contract v4: One Naming Convention, Fewer Fields, One Audit Policy
 
-Status: In progress — Steps 1-3 landed 2026-08-22; Steps 4 and 5 are complete in the working tree and uncommitted, waiting only on `/code-review ultra`, which a person has to start (see Handoff under Step 4)
+Status: In progress — Steps 1-5 landed (1-3 on 2026-08-22, 4 and 5 on 2026-08-23 as `d432ae8` and `fcbfaeb`). `/code-review ultra` is still to be run and is a person's to start; Step 6 writes the conversion script (see Handoff under Step 4)
 Last updated: 2026-08-23
 
 ## Progress Checklist
@@ -60,12 +60,12 @@ One box per task, in the order the work must land. Each step is its own commit; 
   - After all of that, **2,079 of 2,079 sidecars convert and pass the shared validator.**
 - [x] Re-create the Step 1 proof harness against every method file, with the upgrade in front of it: **554 of 554 convertible methods convert, and all 554 are fixed points** — writing the converted payload with `persisted_json_text`, reading that text back and normalizing again reproduces it byte for byte. By kind: 345 DFM, 116 Result Selection, 63 BF, 16 Cape Cod, 8 BSSR, 6 BSCRA. The other 4 are the retired-format BF files, left alone with their notes read out. Bootstrap has no instance in this project, so its contract is proved by its unit tests only.
 - [x] Verify no reader of the old shape remains (grep for every old key across `python-api/`, `frontend/`, `data-engine/`). Last readers removed: `sync_session.py` and `export_reserving_class_to_resq.py` (macro 1.1.0, 1.0.0 archived) now derive ResQ codes from `method_type` / `data_format`; `dataset_service.py` hydrates a dependent's formula from the Dataset Type only; `dataset_service` / `result_selection_service` no longer write `user` or `data_format_code`; `catalog.py` no longer reads `formula` off sidecars. Remaining hits are in-memory ResQ payloads, archived macro backups, and UI labels.
-- [ ] Run `/code-review ultra` on the branch.
-- [ ] Commit.
+- [x] Commit. Landed as `d432ae8` on `main`, 2026-08-23.
+- [ ] Run `/code-review ultra` on the branch. **Deliberately out of order:** the review is user-triggered and no agent can start it, so Steps 4 and 5 were committed first and whatever the review finds becomes a follow-up commit before Step 6 begins.
 
-### Handoff — Step 4 is applied but not committed (2026-08-22, session ended mid-step)
+### Handoff — how steps 4 and 5 were built (2026-08-22 to 2026-08-23)
 
-The whole of Step 4 above sits in the **working tree on `main`, uncommitted** (129 modified + 2 new files: `python-api/src/arcrho_api/timestamps.py`, `python-api/src/arcrho_api/persisted_json_v4_upgrade.py`). Steps 1–3 are commits c2ed598, 2de7263, cdcea68. Do not commit Step 4 until the suites are back to their baselines, and do not run `data-engine/deploy.py` from this clone while it is dirty (a working-tree deploy ships it). `git stash` is the only way back to the Step 3 state.
+Steps 1–3 are commits c2ed598, 2de7263, cdcea68; Step 4 is `d432ae8` and Step 5 is `fcbfaeb`, both on `main`. The account below is the working history and is kept because Step 6 depends on most of it.
 
 **What the tree now does**
 
@@ -107,18 +107,17 @@ The whole of Step 4 above sits in the **working tree on `main`, uncommitted** (1
 
 **What is left before Step 6**
 
-1. `/code-review ultra` on the branch — user-triggered, cannot be launched by an agent.
-2. Commit Step 4 and Step 5, as two commits.
+1. `/code-review ultra` on the branch — user-triggered, cannot be launched by an agent. Steps 4 and 5 are already committed (`d432ae8`, `fcbfaeb`), so the review runs against the committed branch and its findings become a follow-up commit.
 
-**Proof harness used in Step 1 (re-create for Step 6):** load each real method file under `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\<rc>\methods`, run `normalize_*` (DFM: `require_complete=False` then `_validate_complete`) → `persisted_projection` (DFM) → `persisted_json_text`, and diff against the file bytes; before Step 4 every DFM/BF/CC file was byte-identical except fingerprint values. After Step 4 the same harness must first pass the file through `persisted_json_v4_upgrade.upgrade_method`.
+**Proof harness used in Step 1 (re-created for Step 6, and run 2026-08-23):** load each real method file under `E:\ArcRho Server\projects\NJ_Annual_Prod_202605_Fake\data\<rc>\methods`, run `normalize_*` (DFM: `require_complete=False` then `_validate_complete`) → `persisted_projection` (DFM) → `persisted_json_text`, and diff against the file bytes; before Step 4 every DFM/BF/CC file was byte-identical except fingerprint values. After Step 4 the same harness must first pass the file through `persisted_json_v4_upgrade.upgrade_method`.
 
 ### Step 5 — Tests and documentation · Opus 5 · `high`
 
 - [x] Rewrite `frontend/docs/ui/dfm_json_format.md` for v4 (not an edit — it is spaced names throughout). Rewritten 2026-08-23: every key in `snake_case`, `arcrho-dfm-v4` and no legacy path, the Decision 6 exception and the dropped `ratio_basis_origin_labels` explained, the fingerprint section says where the one producer lives and why a rename cannot move a stored value, and the output sidecar is described as the shared core plus `method_name` and `publication_revision`.
 - [x] Regenerate the generated docs under `frontend/docs/generated/`. `docs_index_builder.py --write` then `--check`: one line moved in `file_manifest.md` for the new release fragment.
 - [x] Release fragment under `frontend/changes/unreleased/` for the format change and the forced update — `persisted_json_contract_v4.json`, typed `breaking` (the release builder allows only `feature` / `improvement` / `fix` / `breaking`).
-- [ ] Full Python and frontend test suites green (baseline the pre-existing failures first — see agent memory).
-- [ ] Commit.
+- [x] Full Python and frontend test suites green (baseline the pre-existing failures first — see agent memory). Every suite is at its documented baseline; the tallies are under Step 4's handoff.
+- [x] Commit. Landed as `fcbfaeb` on `main`, 2026-08-23.
 
 **New tests written for steps 4 and 5**
 
