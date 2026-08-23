@@ -4,7 +4,7 @@ const STYLE_ID = "dfm-rpc-bridge-tabbar-style";
 
 const SYNC_ICON_SVG = `
     <svg class="dfmRpcSyncIcon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <use href="/ui/shared/icons/sync.svg?v=20260823c#sync"></use>
+      <use href="/ui/shared/icons/sync.svg?v=20260823g#sync"></use>
     </svg>
   `;
 

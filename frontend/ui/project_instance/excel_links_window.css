@@ -33,8 +33,8 @@
 }
 
 .pi-excel-links-icon-btn {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -48,8 +48,9 @@
 
 .pi-excel-links-icon-btn:hover { border-color: #cbd5e1; background: #fff; color: #1e293b; }
 .pi-excel-links-icon-btn:disabled { opacity: .55; cursor: default; }
-/* Same glyph size as the Project Instance dataset toolbar buttons. */
-.pi-excel-links-icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* A step larger than the Project Instance dataset toolbar buttons: this one sits
+   alone at the end of a wide command row, where a 15px glyph reads as small. */
+.pi-excel-links-icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .pi-excel-links-content {
   min-height: 0;

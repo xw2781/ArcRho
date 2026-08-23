@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Refined shared toolbar icons and made developer builds easier to distinguish."
+}

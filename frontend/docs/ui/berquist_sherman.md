@@ -11,8 +11,6 @@ Detected `fetch(...)` targets in key JS files:
 - `/berquist-sherman/load`
 - `/berquist-sherman/save`
 - `/dataset/cache/load`
-- `/dataset/sidecar/load`
-- `/dataset/sidecar/save`
 - `/datasets/cached?${query.toString()}`
 
 Detected `arcrho:*` message types in key JS files:

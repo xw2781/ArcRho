@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- Drawn for a 14-15px slot: six plainly cut teeth on a 17-unit ink box centred
+       in the 24-unit canvas, so the notches stay wider than one screen pixel. The
+       host stylesheet owns the line width; only the colour is fixed here. -->
+  <symbol id="gear" viewBox="0 0 24 24">
+    <path d="M10.02 3.43L13.98 3.43 14.66 5.74 16.09 6.57 18.44 6 20.42 9.43 18.75 11.17 18.75 12.83 20.42 14.57 18.44 18 16.09 17.43 14.66 18.26 13.98 20.57 10.02 20.57 9.34 18.26 7.91 17.43 5.56 18 3.58 14.57 5.25 12.83 5.25 11.17 3.58 9.43 5.56 6 7.91 6.57 9.34 5.74Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>

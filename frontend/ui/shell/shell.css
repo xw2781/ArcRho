@@ -150,9 +150,6 @@ body::after {
   position: fixed;
   inset: 0;
   box-sizing: border-box;
-  box-shadow:
-    inset calc(-1 * var(--shell-frame-border-w)) 0 0 var(--shell-frame-border),
-    inset 0 calc(-1 * var(--shell-frame-border-w)) 0 var(--shell-frame-border);
   pointer-events: none;
   z-index: 2147483647;
 }
