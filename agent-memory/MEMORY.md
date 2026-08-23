@@ -1,6 +1,6 @@
 # Memory Index
 
-- [Persisted JSON v4 progress](persisted-json-v4-progress.md) — steps 1-3 committed; step 4 applied and test-green but uncommitted, waiting on the sample regeneration (server share) and /code-review ultra — read the plan's Handoff section before touching it
+- [Persisted JSON v4 progress](persisted-json-v4-progress.md) — steps 1-5 committed 2026-08-23; next is the step 6 conversion script, and /code-review ultra was deferred rather than run
 - [Agent memory lives in the repo](agent-memory-in-repo.md) — memories are tracked in agent-memory/ and reach the harness path through a directory junction created by tools/link_agent_memory.ps1
 - [Dev PC and Client PC identity](dev-pc-and-client-pc-identity.md) — this machine (L-H2MQ6280FVP) is a Client PC holding the main repo; NE7SASWPN02 is the Server PC (formerly Dev PC) and every E:\ path is a mapped drive onto it
 - [Client PC as primary workstation](client-pc-primary-workstation.md) — Engine, Bridge, and Gateway already deploy to the server from the Client PC because the share maps to the same E: letter; Orchestrator/Admin/Launcher untested
