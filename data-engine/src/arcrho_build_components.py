@@ -40,11 +40,15 @@ SOURCE_SKIP_DIRS = {"__pycache__", "build", "dist", "logs", "spec"}
 
 STALE_FRESHNESS_VALUES = frozenset({"Missing EXE", "Source newer"})
 
-# A clone the build listener is allowed to own carries this file. It is
-# gitignored on purpose: the listener runs ``git clean -fd`` on its clone at
-# the start of every build, which removes untracked files but leaves ignored
-# ones, so the marker survives the reset that is the whole reason it exists.
-BUILD_CLONE_MARKER = ".arcrho-build-clone"
+# A clone the build listener is allowed to own carries this file, inside its
+# own ``.git`` directory. That location is the point: the listener checks out a
+# detached base commit, resets hard and runs ``git clean -fd`` before every
+# build, so anything in the working tree is at the mercy of whichever commit it
+# built from. A first attempt put the marker in the tree and gitignored it, and
+# the first real build removed it -- the base commit predated the ignore rule,
+# so the file was merely untracked. Nothing under ``.git`` is touched by any of
+# those three commands, whatever the commit says.
+BUILD_CLONE_MARKER = "arcrho-build-clone"
 _DRIVE_FIXED = 3
 
 
@@ -90,10 +94,12 @@ def auto_listen_decision(
 
     if not workspace_drive_is_local(deploy_root):
         return False, f"{deploy_root} is reached over the share, so this is not the Server PC"
-    marker = Path(repository_root) / BUILD_CLONE_MARKER
-    if not marker.exists():
+    git_dir = Path(repository_root) / ".git"
+    if not git_dir.is_dir():
+        return False, f"{repository_root} is not a plain git clone"
+    if not (git_dir / BUILD_CLONE_MARKER).exists():
         return False, (
-            f"{repository_root} carries no {BUILD_CLONE_MARKER}, so it may be a clone "
+            f"{repository_root} carries no .git/{BUILD_CLONE_MARKER}, so it may be a clone "
             "someone edits and a build would reset it"
         )
     return True, ""

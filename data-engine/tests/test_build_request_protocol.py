@@ -611,8 +611,10 @@ class AutoListenDecisionTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, True)
 
     def _decide(self, *, local: bool, marked: bool) -> tuple[bool, str]:
+        git_dir = self.root / ".git"
+        git_dir.mkdir(exist_ok=True)
         if marked:
-            (self.root / self.components.BUILD_CLONE_MARKER).write_text("", encoding="utf-8")
+            (git_dir / self.components.BUILD_CLONE_MARKER).write_text("", encoding="utf-8")
         with patch.object(self.components, "workspace_drive_is_local", return_value=local):
             return self.components.auto_listen_decision(self.root, Path(r"E:\ArcRho Server"))
 
@@ -634,9 +636,21 @@ class AutoListenDecisionTests(unittest.TestCase):
         self.assertFalse(allowed)
         self.assertIn("share", reason)
 
-    def test_the_marker_is_gitignored_so_the_listeners_own_clean_keeps_it(self) -> None:
-        # git clean -fd removes untracked files and leaves ignored ones, and
-        # the listener runs it on its clone before every build.
-        ignored = (REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
+    def test_the_marker_lives_under_git_where_a_reset_cannot_reach_it(self) -> None:
+        # The listener checks out a detached base commit, resets hard and runs
+        # git clean -fd before every build. A marker in the working tree is at
+        # the mercy of whichever commit it built from -- an earlier attempt
+        # gitignored one and the first real build deleted it, because that base
+        # commit predated the ignore rule. Nothing under .git is touched.
+        self.assertFalse(self.components.BUILD_CLONE_MARKER.startswith("."))
 
-        self.assertIn(self.components.BUILD_CLONE_MARKER, ignored)
+        allowed, _ = self._decide(local=True, marked=True)
+        self.assertTrue(allowed)
+        self.assertTrue((self.root / ".git" / self.components.BUILD_CLONE_MARKER).exists())
+
+    def test_a_directory_that_is_not_a_plain_clone_is_refused(self) -> None:
+        with patch.object(self.components, "workspace_drive_is_local", return_value=True):
+            allowed, reason = self.components.auto_listen_decision(self.root, Path(r"E:\ArcRho Server"))
+
+        self.assertFalse(allowed)
+        self.assertIn("plain git clone", reason)
