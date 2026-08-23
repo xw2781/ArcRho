@@ -99,6 +99,22 @@ SIDECAR_CORE_DEFAULTS: dict[str, Any] = {
 # field lands where every canonical builder writes it.
 _NOTES_FOLLOWED_BY = frozenset({"origin_labels", "development_labels", "precedents", "dependents"})
 
+# Every canonical sidecar builder writes these five after the graph and before
+# ``audit_log`` (``dfm_contract.build_dfm_output_sidecar`` and its siblings).
+# The converter has to place them explicitly rather than let insertion order
+# decide: a field the old file left out is appended wherever it happens to be
+# filled, which is both unstable across two conversions and -- worse -- a
+# different order from the one the app writes. A sidecar converted in one
+# order and re-saved by the app in another is not one shape, which is the
+# whole point of v4.
+_SIDECAR_FIELDS_AFTER_GRAPH = (
+    "created",
+    "updated_at",
+    "modified_by",
+    "status",
+    "publication_revision",
+)
+
 # Persisted DFM fields that v4 no longer stores (re-derived on read).
 DFM_DROPPED_PATHS = (
     ("results_tab", "ratio_basis_origin_labels"),
@@ -263,6 +279,9 @@ def upgrade_dataset_sidecar(
         if isinstance(item, Mapping) else item
         for item in (dependents or [])
     ])
+    for field in _SIDECAR_FIELDS_AFTER_GRAPH:
+        if field in renamed:
+            renamed[field] = renamed.pop(field)
     if str(renamed.get("method_name") or "").strip():
         # A sidecar that names the method which wrote it holds derived values
         # by definition, and every canonical builder says so. Two DFM outputs

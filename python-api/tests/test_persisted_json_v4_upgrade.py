@@ -252,6 +252,21 @@ class UpgradeSidecarTests(unittest.TestCase):
 
         self.assertEqual(twice, once)
 
+    def test_the_fields_a_builder_writes_after_the_graph_are_written_there(self) -> None:
+        """Being a fixed point of the conversion is not enough -- the order has
+        to be the one the app writes, or a converted sidecar changes shape the
+        first time somebody saves the method that owns it. Every canonical
+        builder emits these five after ``dependents`` and before ``audit_log``
+        (``dfm_contract.build_dfm_output_sidecar``); a live save proved the
+        converter had been putting them in front of the graph instead."""
+
+        keys = list(upgrade_dataset_sidecar(old_sidecar(), publication_revision="sha256:" + "c" * 16))
+        after_graph = ("created", "updated_at", "modified_by", "status", "publication_revision")
+
+        self.assertEqual(keys[-1], "audit_log")
+        self.assertEqual(keys[-len(after_graph) - 1 : -1], list(after_graph))
+        self.assertLess(keys.index("dependents"), keys.index("created"))
+
     def test_every_missing_core_field_survives_a_second_conversion_in_place(self) -> None:
         for field in ("method_type", "status", "show_subtotal"):
             with self.subTest(field=field):
