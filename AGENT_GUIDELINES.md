@@ -52,6 +52,10 @@ Before changing code, configuration, schemas, data contracts, automation, docume
 - Tests may assert canonical behavior, but fixtures, expected values, generated documentation, and inventories must not become competing sources of truth.
 - When the touched area already contains duplication, consolidate it within the task's safe scope and remove obsolete copies. Ask before cleanup that broadens behavior or compatibility risk.
 
+## Minimal Diff and Approval-Gated Patterns (MUST)
+Prefer the minimum-diff solution: implement the goal in its small, direct form. Do not inflate a simple implementation with validations, defensive checks, or try/except handling for situations that rarely occur in practice. The same restraint applies to docs and comments: do not describe rare cases.
+Do not add SHA-256 (or other hash/checksum) validation or legacy fallback logic without the user's explicit approval. If the required task has no alternative solution, stop and ask the user for approval first, explaining why that validation or fallback must be used.
+
 ## Persisted JSON Producer Parity (MUST)
 When more than one ArcRho component can create the same persisted JSON file, all producers must emit the exact same full parsed payload for the same logical inputs.
 - Keep one canonical owner for the schema, version, field projection, inclusion/omission rules, defaults, normalization, timestamp representation, and deterministic list ordering. Frontend, Python API, migration, macro, and other producers must import, generate from, or delegate to that owner; producer-specific enrichment is forbidden.
