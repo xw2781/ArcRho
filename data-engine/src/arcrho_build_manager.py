@@ -25,6 +25,7 @@ from arcrho_build_components import (
     COMPONENTS,
     DEPLOY_ROOT,
     Component,
+    auto_listen_decision,
     build_freshness,
     list_instance_files,
     remove_instance_file,
@@ -54,6 +55,7 @@ class BuildManagerApp(tk.Tk):
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._maybe_auto_listen()
         self.refresh_status()
         self.after(3000, self.auto_refresh_status)
         self.after(150, self._drain_log_queue)
@@ -132,12 +134,31 @@ class BuildManagerApp(tk.Tk):
         selected = set(self.tree.selection())
         return [component for component in COMPONENTS if self.component_rows.get(component.key) in selected]
 
+    def _maybe_auto_listen(self) -> None:
+        """Tick the box for the machine builds belong on.
+
+        On the Server PC, in the clone the listener owns, turning this on was
+        the same action every time and the only thing standing between a
+        queued request and a build. Anywhere else it stays off and says why,
+        because a listener resets the clone it was started from.
+        """
+
+        allowed, reason = auto_listen_decision()
+        if not allowed:
+            self._log(f"Not listening automatically: {reason}.")
+            return
+        self.listen_var.set(True)
+        self.toggle_listener()
+        if self.listen_var.get():
+            self._log("Listening automatically: the Server PC, in the listener's own clone.")
+
     def toggle_listener(self) -> None:
         """Start or stop servicing remote build requests.
 
         This is the one action a client cannot perform for itself, which is why
         the client CLI's only human-facing instruction is to come here and turn
-        it on.
+        it on -- except on the Server PC in the listener's own clone, where
+        :meth:`_maybe_auto_listen` has already done it.
         """
 
         if self.listen_var.get():

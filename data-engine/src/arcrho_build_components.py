@@ -40,6 +40,64 @@ SOURCE_SKIP_DIRS = {"__pycache__", "build", "dist", "logs", "spec"}
 
 STALE_FRESHNESS_VALUES = frozenset({"Missing EXE", "Source newer"})
 
+# A clone the build listener is allowed to own carries this file. It is
+# gitignored on purpose: the listener runs ``git clean -fd`` on its clone at
+# the start of every build, which removes untracked files but leaves ignored
+# ones, so the marker survives the reset that is the whole reason it exists.
+BUILD_CLONE_MARKER = ".arcrho-build-clone"
+_DRIVE_FIXED = 3
+
+
+def workspace_drive_is_local(root: Path = DEPLOY_ROOT) -> bool:
+    """True when this machine physically holds the workspace.
+
+    The Server PC shares its whole workspace drive and the Client PC maps it to
+    the same letter, so a path proves nothing about which machine is reading
+    it. The drive type does: a local disk on the server, a network drive
+    through the share.
+    """
+
+    if os.name != "nt":
+        return False
+    drive = os.path.splitdrive(str(Path(root)))[0]
+    if not drive:
+        return False
+    try:
+        import ctypes
+
+        return ctypes.windll.kernel32.GetDriveTypeW(f"{drive}\\") == _DRIVE_FIXED
+    except Exception:  # noqa: BLE001 - an unreadable drive is not a local one
+        return False
+
+
+def auto_listen_decision(
+    repository_root: Path = REPOSITORY_ROOT,
+    deploy_root: Path = DEPLOY_ROOT,
+) -> tuple[bool, str]:
+    """Whether the Build Manager should start listening unasked, and why not.
+
+    Turning the listener on by hand was the one human step in every remote
+    build, and on the Server PC it is the same step every time. It is only safe
+    to skip when *both* conditions hold, because a listener resets the clone it
+    was started from at the start of every build:
+
+    1. This machine holds the workspace, so it is the machine builds belong on.
+    2. The clone it would own is marked as a clone nobody edits. Without this,
+       starting the Manager from a working clone on the server would quietly
+       revert whoever is editing it -- and doing that automatically, with no
+       one ticking a box, is worse than the manual step it replaces.
+    """
+
+    if not workspace_drive_is_local(deploy_root):
+        return False, f"{deploy_root} is reached over the share, so this is not the Server PC"
+    marker = Path(repository_root) / BUILD_CLONE_MARKER
+    if not marker.exists():
+        return False, (
+            f"{repository_root} carries no {BUILD_CLONE_MARKER}, so it may be a clone "
+            "someone edits and a build would reset it"
+        )
+    return True, ""
+
 
 @dataclass(frozen=True)
 class Component:

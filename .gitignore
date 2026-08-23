@@ -98,3 +98,7 @@ desktop.ini
 
 # Repo-local test tooling installed with pip --target; never committed.
 .pytest-tools/
+
+# Marks a clone the build listener may own and reset. Ignored, not untracked,
+# so the listener's own "git clean -fd" leaves it in place.
+.arcrho-build-clone

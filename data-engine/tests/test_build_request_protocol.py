@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import tempfile
 import time
@@ -595,3 +596,47 @@ class WorkingTreePayloadRoundTripTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoListenDecisionTests(unittest.TestCase):
+    """The listener resets the clone it was started from, so ticking "Listen
+    for build requests" without being asked has to be refused everywhere the
+    reset would land on someone's work."""
+
+    def setUp(self) -> None:
+        import arcrho_build_components
+
+        self.components = arcrho_build_components
+        self.root = Path(tempfile.mkdtemp(prefix="auto-listen-", dir=str(TEST_TMP_ROOT)))
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def _decide(self, *, local: bool, marked: bool) -> tuple[bool, str]:
+        if marked:
+            (self.root / self.components.BUILD_CLONE_MARKER).write_text("", encoding="utf-8")
+        with patch.object(self.components, "workspace_drive_is_local", return_value=local):
+            return self.components.auto_listen_decision(self.root, Path(r"E:\ArcRho Server"))
+
+    def test_the_server_pc_in_the_listeners_own_clone_listens_unasked(self) -> None:
+        allowed, reason = self._decide(local=True, marked=True)
+
+        self.assertTrue(allowed)
+        self.assertEqual(reason, "")
+
+    def test_a_clone_with_no_marker_is_refused_even_on_the_server(self) -> None:
+        allowed, reason = self._decide(local=True, marked=False)
+
+        self.assertFalse(allowed)
+        self.assertIn(self.components.BUILD_CLONE_MARKER, reason)
+
+    def test_a_workspace_reached_over_the_share_is_refused(self) -> None:
+        allowed, reason = self._decide(local=False, marked=True)
+
+        self.assertFalse(allowed)
+        self.assertIn("share", reason)
+
+    def test_the_marker_is_gitignored_so_the_listeners_own_clean_keeps_it(self) -> None:
+        # git clean -fd removes untracked files and leaves ignored ones, and
+        # the listener runs it on its clone before every build.
+        ignored = (REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
+
+        self.assertIn(self.components.BUILD_CLONE_MARKER, ignored)
