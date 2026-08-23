@@ -44,6 +44,24 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Every action here reads or ends a *local* process, and the workspace drive is
+# shared, so the same paths resolve from the Client PC while Get-Process sees
+# none of the server's processes. Run from there, `status` would report every
+# component stopped while it is serving, and `clear-stale-heartbeats` would
+# delete the heartbeats of live components. Refuse rather than answer wrongly.
+# The test is the drive itself -- local disk on the Server PC, network drive
+# through the share -- so no machine name is hardcoded.
+$serverDrive = (Split-Path -Qualifier $ServerRoot)
+$driveInfo = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}'" -f $serverDrive) -ErrorAction SilentlyContinue
+if (-not $driveInfo) {
+    Write-Error ("{0} is not available from {1}." -f $serverDrive, $env:COMPUTERNAME)
+    exit 2
+}
+if ($driveInfo.DriveType -ne 3) {
+    Write-Error ("{0} is a network drive on {1}, so this machine is not the Server PC. Every action here acts on local processes; run it on the machine that holds the workspace." -f $serverDrive, $env:COMPUTERNAME)
+    exit 2
+}
+
 # Stop order is the reverse of start order: the Orchestrator supervises the
 # rest, so it goes down first and comes up last.
 $Components = @(
