@@ -9,15 +9,17 @@ can be resized, recolored, filtered, and inspected side by side.
     python tools/svg_icon_preview.py frontend/ui/shell/tab-type-icons
     python tools/svg_icon_preview.py frontend/ui assets --out tmp_data/icons.html
     python tools/svg_icon_preview.py --no-open
-    python tools/svg_icon_preview.py --serve
+    python tools/svg_icon_preview.py --static
 
-With no path the whole repository is scanned, minus dependency and build directories. The page is
-written under `tmp_data/`, which is git-ignored, so regenerating it never dirties the tree.
+With no path the whole repository is scanned, minus dependency and build directories.
 
-With --serve the gallery is served from a small local server instead of written as a static file.
+By default the gallery is served from a small local server, which keeps running until Ctrl+C.
 Every page load re-scans the SVGs on disk, so the page's own Refresh button (or the browser's
 reload) always shows the current file contents - no need to rerun the tool after each edit.
-Stop it with Ctrl+C.
+
+With --static the page is written as a self-contained file under `tmp_data/` instead, which is
+git-ignored, so regenerating it never dirties the tree. That page is a snapshot: its Refresh
+button only reloads the same file, so the tool has to be rerun after each edit.
 """
 
 from __future__ import annotations
@@ -307,6 +309,7 @@ PAGE_TEMPLATE = """<!doctype html>
     --ink: #333a45;
     --stage: #ffffff;
     --size: 64px;
+    --drawer-w: 430px;
   }}
   body.dark {{
     --bg: #161b22;
@@ -322,6 +325,10 @@ PAGE_TEMPLATE = """<!doctype html>
 
   body {{
     margin: 0;
+    /* The drawer sits beside the gallery rather than over it: opening it narrows the page by
+       exactly the drawer's width, so nothing the drawer describes is hidden behind it. */
+    padding-right: 0;
+    transition: padding-right 160ms ease;
     background: var(--bg);
     color: var(--text);
     font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
@@ -456,10 +463,12 @@ PAGE_TEMPLATE = """<!doctype html>
   }}
 
   /* Detail drawer */
+  body.drawerOpen {{ padding-right: var(--drawer-w); }}
+
   #drawer {{
     position: fixed;
     right: 0; top: 0; bottom: 0;
-    width: min(430px, 92vw);
+    width: var(--drawer-w);
     background: var(--panel);
     border-left: 1px solid var(--border);
     box-shadow: -8px 0 20px rgba(15, 23, 42, 0.08);
@@ -470,6 +479,11 @@ PAGE_TEMPLATE = """<!doctype html>
     flex-direction: column;
   }}
   #drawer.open {{ transform: translateX(0); }}
+  /* Too narrow to give the drawer its own column - let it overlay instead of squeezing the grid. */
+  @media (max-width: 900px) {{
+    :root {{ --drawer-w: min(430px, 92vw); }}
+    body.drawerOpen {{ padding-right: 0; }}
+  }}
   .drawerHead {{
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 12px 14px; border-bottom: 1px solid var(--border);
@@ -658,6 +672,7 @@ let current = -1;
 
 function closeDrawer() {{
   drawer.classList.remove("open");
+  document.body.classList.remove("drawerOpen");
   drawer.setAttribute("aria-hidden", "true");
   cards.forEach(c => c.classList.remove("sel"));
   current = -1;
@@ -700,7 +715,9 @@ function openDrawer(index) {{
   }});
 
   drawer.classList.add("open");
+  document.body.classList.add("drawerOpen");
   drawer.setAttribute("aria-hidden", "false");
+  card.scrollIntoView({{ block: "nearest", behavior: "smooth" }});
 }}
 
 cards.forEach(card => card.addEventListener("click", () => {{
@@ -754,6 +771,10 @@ applyBg(state.bg);
 def run_server(roots: list[Path], port: int, open_browser: bool) -> None:
     import http.server
 
+    # A browser that reloads, navigates away, or closes the tab mid-response drops the socket,
+    # which surfaces here as one of these. Nothing is wrong, so they must not print a traceback.
+    dropped = (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - required override name
             if self.path.startswith("/favicon"):
@@ -762,17 +783,32 @@ def run_server(roots: list[Path], port: int, open_browser: bool) -> None:
                 return
             _files, entries = scan(roots)
             body = build_page(entries, roots, live=True).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except dropped:
+                self.close_connection = True
+
+        def handle_one_request(self) -> None:
+            try:
+                super().handle_one_request()
+            except dropped:
+                self.close_connection = True
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - stdlib signature
-            pass  # keep the console quiet; errors still show via exceptions
+            pass  # keep the console quiet; real errors still show via exceptions
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    class Server(http.server.ThreadingHTTPServer):
+        def handle_error(self, request, client_address) -> None:
+            if isinstance(sys.exc_info()[1], dropped):
+                return  # a client that walked away is not an error worth a page of traceback
+            super().handle_error(request, client_address)
+
+    server = Server(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Serving live at {url} - edit an SVG, then press Refresh in the page. Ctrl+C to stop.")
     if open_browser:
@@ -804,10 +840,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--serve",
         action="store_true",
-        help="serve the gallery live instead of writing a static file, so its Refresh button "
-        "always shows the current SVGs on disk (Ctrl+C to stop)",
+        help="serve the gallery live (the default; kept for compatibility)",
     )
-    parser.add_argument("--port", type=int, default=0, help="port for --serve (default: pick any free port)")
+    parser.add_argument(
+        "--static",
+        action="store_true",
+        help="write a one-off HTML snapshot and exit instead of serving live; the page then shows "
+        "the icons as they were when it was written, and its Refresh button cannot pick up edits",
+    )
+    parser.add_argument("--port", type=int, default=0, help="port for the live server (default: pick any free port)")
     args = parser.parse_args(argv)
 
     roots: list[Path] = []
@@ -825,7 +866,7 @@ def main(argv: list[str]) -> int:
         print("No SVG files found under: " + ", ".join(str(r) for r in roots), file=sys.stderr)
         return 1
 
-    if args.serve:
+    if not args.static:
         run_server(roots, args.port, open_browser=not args.no_open)
         return 0
 

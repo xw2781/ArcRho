@@ -56,7 +56,7 @@ Measure the finished set rather than trusting the eye: bounding box, center, and
 
 ## 5. Reviewing And Verifying
 
-- **Preview before claiming a set looks right.** Run `python tools/svg_icon_preview.py` (or double-click `tools/preview_svg_icons.bat`) to open every SVG in the repository in one browser gallery with size, color, and background controls. Pass a folder to scope it. Output lands in git-ignored `tmp_data/`.
+- **Preview before claiming a set looks right.** Run `python tools/svg_icon_preview.py` (or double-click `tools/preview_svg_icons.bat`) to open every SVG in the repository in one browser gallery with size, color, and background controls. Pass a folder to scope it. It serves the gallery live until Ctrl+C, so the page's Refresh button picks up edits; `--static` writes a one-off snapshot into git-ignored `tmp_data/` instead.
 - **A set with a design decision behind it gets a review page** under `frontend/docs/ui/`, rendering it in its real host at its real size. `frontend/docs/ui/tab_type_icon_preview.html` is the example.
 - **Validate before reporting done.** Every file must parse as XML, declare a `viewBox`, and keep its ink inside that box.
 - **Do not claim an icon renders without seeing it**, in the app or in the gallery. State plainly when verification was by measurement only.
