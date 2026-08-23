@@ -1,0 +1,14 @@
+{
+  "type": "breaking",
+  "scope": "workspace files",
+  "audience": "user",
+  "summary": "Every stored ArcRho file moves to one naming convention and drops the fields that restated other fields. This release must be installed by everyone, and the workspace is converted once before it is opened.",
+  "details": [
+    "Field names in stored files now read the same way everywhere: lower case, words joined by underscores, no spaces and no capitals, however deeply nested. Development factor methods were the last kind still using spaced names.",
+    "Fields that only repeated something already in the file are gone, along with anything that tied a shared file to one computer: no drive paths, no file timestamps, no code numbers beside the name they stood for. A ratio triangle keeps its own row and column headings on purpose, so the method still reads as a complete table.",
+    "Every stored file now states which format it is in, every time is recorded in UTC to the millisecond, and the values used to tell whether something is out of date are much shorter. Stored files are about a fifth smaller overall, and dataset files, which are read on every folder scan, are more than a third smaller.",
+    "History is now kept the same way in every file. Automatic refreshes are no longer thrown away, one dataset keeps its last 200 entries and a project keeps its last 500, and a project's history reads in the same shape as a dataset's.",
+    "There is no reading of the old shape at all. An older copy of ArcRho cannot open a converted workspace, and this version cannot open an unconverted one, so everybody has to update together.",
+    "Notes written inside a method are moved into that method's dataset before the old section is removed, so authored commentary is never lost. A handful of Bornhuetter-Ferguson methods saved in a format ArcRho stopped opening some time ago are left exactly where they are, and their notes are rescued the same way."
+  ]
+}

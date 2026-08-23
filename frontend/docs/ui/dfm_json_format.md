@@ -2,79 +2,89 @@
 
 ## Canonical Method JSON
 
-Current DFM methods use `json format = arcrho-dfm-method-by-tab-v2`. The payload is a complete, location-independent snapshot that can render every DFM tab without reopening an Input Triangle, Ratio Basis dataset, CSV, sidecar, or reserving-class index.
+Current DFM methods use `json_format = arcrho-dfm-v4`. The payload is a complete, location-independent snapshot that can render every DFM tab without reopening an Input Triangle, Ratio Basis dataset, CSV, sidecar, or reserving-class index.
 
-An existing v2 open reads only:
+v4 is the shared contract described in `docs/plans/persisted_json_contract_v4.md`: every key is `snake_case` at every depth, every timestamp is UTC with millisecond precision and a `Z`, and every fingerprint is `sha256:` plus sixteen hex characters. There is no legacy fallback. A file written before v4 — `arcrho-dfm-method-by-tab-v2` or anything else — is rejected outright and must be converted by `tools/migrate_persisted_json_v4.py` before a v4 build opens it.
 
-1. `methods/DFM@<details tab.name>.json`
-2. `sidecars/<details tab.output dataset>.json`
+A v4 open reads only:
 
-Project Instance supplies both identities so the reads can run in parallel. A method-name-only caller reads the method first and then reads the sidecar identity declared by that method. An exact `arcrho-dfm-method-by-tab-v1` file may take the one-time dependency-reading upgrade path; any other incomplete or unknown format is rejected rather than treated as current v2.
+1. `methods/DFM@<details_tab.name>.json`
+2. `sidecars/<details_tab.output_dataset>.json`
+
+Project Instance supplies both identities so the reads can run in parallel. A method-name-only caller reads the method first and then reads the sidecar identity declared by that method.
 
 ## Identity and Ownership
 
-- `details tab.name` is the method identity and owns the `DFM@<name>.json` filename.
-- `details tab.output dataset` is the output CSV/sidecar identity. A new GUI method defaults it to its method name, but migrated methods may keep a different output name.
-- `details tab.output type` is the output Vector Dataset Type.
-- `details tab.input triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel- or dataset-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
+- `details_tab.name` is the method identity and owns the `DFM@<name>.json` filename.
+- `details_tab.output_dataset` is the output CSV/sidecar identity. A new GUI method defaults it to its method name, but migrated methods may keep a different output name.
+- `details_tab.output_type` is the output Vector Dataset Type.
+- `details_tab.input_triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel- or dataset-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
 - Input/basis snapshots, ratio values, standard-average values, non-Excel formula results, and ultimates are derived state.
-- Method Notes, Audit, status, and `Precedents`/`Dependents` live only in the output sidecar. The canonical sidecar precedent projection combines Input Triangle, Ratio Basis, and every case-insensitively unique dataset parsed from Ratios User Entry `inputs`; each source sidecar receives the reverse dependent edge. Ratio-cell notes live only in method JSON.
+- Method Notes, Audit, status, and `precedents`/`dependents` live only in the output sidecar. The canonical sidecar precedent projection combines Input Triangle, Ratio Basis, and every case-insensitively unique dataset parsed from Ratios User Entry `inputs`; each source sidecar receives the reverse dependent edge. Ratio-cell notes live only in method JSON.
 
 The output sidecar registers both the Input Triangle and configured Ratio Basis as precedents. A method save cannot silently reuse an output sidecar owned by another method.
 
+A method file carries no audit log of its own (v4 rule 8). A method's history lives in the sidecar of the dataset its output writes, which is where the app already reads it.
+
 ## Stored Sections
 
-`details tab` stores:
+`details_tab` stores:
 
 - `name`
-- `output type`
-- `output dataset`
-- `output category`
-- `input triangle`
-- `origin length`
-- `development length`
-- `decimal places`
+- `output_type`
+- `output_dataset`
+- `output_category`
+- `input_triangle`
+- `origin_length`
+- `development_length`
+- `decimal_places`
 
-`data tab` stores:
+`data_tab` stores:
 
-- exact `origin labels` and `development labels`
-- `input data triangle values`, with trailing nulls trimmed from each row so a row ends at its last populated development period
-- data format, number format, decimal places, and `source revision`
+- exact `origin_labels` and `development_labels`
+- `input_data_triangle_values`, with trailing nulls trimmed from each row so a row ends at its last populated development period
+- `data_format`, `number_format`, `decimal_places`, and `source_revision`
 
-The persisted file does not store `input data triangle mask`. A cell is inside the triangle if and only if it holds a value, so the mask can only restate the values beside it; loading derives it and refits every row back to the full development geometry. A null *inside* a row still marks a value missing inside the triangle, exactly as `ratio values` and `excluded` already store their rows. The in-memory canonical payload keeps the mask and its rectangular geometry, so revisions and calculations are unaffected, and a file written before this change still loads unchanged.
+The persisted file does not store `input_data_triangle_mask`. A cell is inside the triangle if and only if it holds a value, so the mask can only restate the values beside it; loading derives it and refits every row back to the full development geometry. A null *inside* a row still marks a value missing inside the triangle, exactly as `ratio_values` and `excluded` already store their rows. The in-memory canonical payload keeps the mask and its rectangular geometry, so revisions and calculations are unaffected.
 
-`ratios tab.ratio triangle` stores aligned origin/development labels, calculated `ratio values`, and DFM-owned `excluded` cells. `ratios tab.average formulas` remains the columnar object with `label`, `custom average formula settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display inputs`. A `display inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`, and display metadata never creates a graph edge. `ratios tab.cell notes` remains keyed by visible row label and visible development-column label.
+`ratios_tab.ratio_triangle` stores aligned `origin_labels` and `development_labels`, calculated `ratio_values`, and DFM-owned `excluded` cells. `ratios_tab.average_formulas` remains the columnar object with `label`, `custom_average_formula_settings`, `selected`, `values`, aligned User Entry `inputs`, and aligned display-only `display_inputs`. A `display_inputs` cell stores the same formula with dataset coordinate positions replaced by the labels returned when that formula was resolved; calculation, dependency parsing, and editing continue to use `inputs`, and display metadata never creates a graph edge. `ratios_tab.cell_notes` remains keyed by visible row label and visible development-column label.
 
-Each `excluded` row must be exactly as long as the `ratio values` row beside it; a payload that breaks that alignment is rejected wherever the method is validated as complete, which includes the macro and ArcBot handoffs. Both rows drop their trailing empty cells, so they stay aligned only while they agree on which cells are empty: a cell whose ratio cannot be calculated -- a zero or missing left value, most often a zero origin row -- is null in `ratio values` and 2 in `excluded`, never a calculated ratio of 0.
+The ratio triangle keeps its own axis labels on purpose, even though the contract forces them to agree with `data_tab` (Decision 6 of the v4 plan): a method file is also read as raw text by a person or by ArcBot, and a ratio triangle without headings is not a complete table. The validation that they match `data_tab.origin_labels` and the labels derived from `data_tab.development_labels` still runs, so the two can never drift into carrying different information.
 
-`results tab` stores:
+Each `excluded` row must be exactly as long as the `ratio_values` row beside it; a payload that breaks that alignment is rejected wherever the method is validated as complete, which includes the macro and ArcBot handoffs. Both rows drop their trailing empty cells, so they stay aligned only while they agree on which cells are empty: a cell whose ratio cannot be calculated -- a zero or missing left value, most often a zero origin row -- is null in `ratio_values` and 2 in `excluded`, never a calculated ratio of 0.
 
-- `ratio basis dataset`
-- Ratio Basis data/number format and decimal places
-- aligned Ratio Basis origin labels and values
-- `ratio basis source revision`
-- `ultimate ratio decimal places`
-- the calculated `ultimate vector`
+`results_tab` stores:
 
-`method metadata` stores:
+- `ratio_basis_dataset`
+- `ratio_basis_data_format`, `ratio_basis_number_format`, `ratio_basis_decimal_places`
+- `ratio_basis_values`, aligned to the DFM origins
+- `ratio_basis_source_revision`
+- `ultimate_ratio_decimal_places`
+- the calculated `ultimate_vector`
 
-- `last modified`: changed only by an owned user save
-- `data refreshed`: changed when embedded precedent data is refreshed
-- `owned revision`
-- `derived revision`
-- `publication revision`
+`results_tab.ratio_basis_origin_labels` is **not** stored. It was a forced copy of `data_tab.origin_labels`, so it could never carry information; loading re-derives it.
+
+`method_metadata` stores:
+
+- `last_modified`: changed only by an owned user save
+- `data_refreshed`: changed when embedded precedent data is refreshed
+- `owned_revision`
+- `derived_revision`
+- `publication_revision`
 
 Revisions are deterministic hashes over their canonical projections. They are separate so a dirty window can rebase an owned patch over a newer derived-only disk refresh, while a concurrent owned change produces a conflict.
 
-V2 never stores absolute input or output CSV paths.
+The hash vocabulary is independent of the persisted key spelling, so renaming a stored field cannot shift a stored revision or mark a method Review Needed. `arcrho_api.fingerprints` is the one producer and truncates every value to `sha256:` plus sixteen hex characters, so both sides of every comparison shorten together.
+
+The file never stores absolute input or output CSV paths.
 
 ## On-Disk Text Format
 
 `arcrho_api/io.py::persisted_json_text` owns the file's text, so every producer writes the same bytes for the same payload.
 
-Two-dimensional arrays are stored one row per line: `input data triangle values`, `ratio values`, `excluded`, and the `average formulas` row arrays each read as a triangle rather than one scalar per line. A 40-origin method drops from roughly 1,900 lines to 170, and from about 30 KB to 13 KB, which is what a network-drive read pays for. Every other node keeps the two-space layout.
+Two-dimensional arrays are stored one row per line: `input_data_triangle_values`, `ratio_values`, `excluded`, and the `average_formulas` row arrays each read as a triangle rather than one scalar per line. A 40-origin method drops from roughly 1,900 lines to 170, and from about 30 KB to 13 KB, which is what a network-drive read pays for. Every other node keeps the two-space layout.
 
-Layout never reaches a revision: `owned`, `derived`, and `publication` hash a `separators=(",", ":")` encoding of the canonical projection, so reformatting a file cannot shift a stored revision or mark a method Review Needed.
+Layout never reaches a revision: `owned`, `derived`, and `publication` hash a `separators=(",", ":")` encoding of the canonical projection, so reformatting a file cannot shift a stored revision.
 
 ## Calculation and Numeric Rules
 
@@ -96,7 +106,7 @@ Standalone public-Python and ResQ-migration execution refreshes DFM descendants 
 
 Publication runs under the reserving-class lock and uses staged files, revision checks, rollback, unchanged-file suppression, and sidecar-last replacement. A failed branch retains its last valid publication and blocks only its descendants. The upstream save remains successful and reports the propagation warning separately from the human-review status.
 
-Automatic refresh adds an Audit row only when the ultimate publication changes. Same-output and basis-only refreshes update freshness without Audit noise and do not clear Review Needed.
+Automatic refresh adds an audit record to the output sidecar only when the ultimate publication changes. Same-output and basis-only refreshes update freshness without audit noise and do not clear Review Needed. Every action is kept, including `Auto Refresh`; consecutive automatic records collapse to the most recent, and the log is capped at 200 records.
 
 ## Excel Freshness
 
@@ -106,4 +116,6 @@ Manual refresh from the existing Links or Ratios controls remains mutating. Chan
 
 ## Producer Parity
 
-The app server, public Python API, ResQ migration, and bridge-owned-patch flow delegate to the canonical v2 contract. Sparse RPC, ArcBot, macro, and template payloads are treated as owned-setting patches followed by canonical local calculation; sparse payloads are never persisted directly as v2.
+The app server, public Python API, ResQ migration, and bridge-owned-patch flow delegate to the canonical v4 contract, and both app-server writers go through `persisted_projection`, so every producer emits one shape. Sparse RPC, ArcBot, macro, and template payloads are treated as owned-setting patches followed by canonical local calculation; a sparse payload is never persisted directly. The owned-patch carrier is stamped `arcrho-dfm-owned-patch-v4`.
+
+The output sidecar is the same schema as any other dataset sidecar (v4 rule 9): the shared core — labels, notes, number formatting, `precedents`, `dependents`, and `audit_log` last — plus the method-only fields `method_name` and `publication_revision`. `arcrho_api.sidecar_core_contract` owns that shape and every sidecar writer validates against it.
