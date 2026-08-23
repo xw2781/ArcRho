@@ -60,6 +60,10 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     ),
     "cape_cod_method": ("cape_cod_service", "save_cape_cod_method"),
     "bootstrap_method": ("bootstrap_service", "save_bootstrap_method"),
+    "berquist_sherman_method": (
+        "berquist_sherman_service",
+        "save_berquist_sherman",
+    ),
     "dataset_sidecar": ("dataset_service", "save_dataset_sidecar"),
     # Not a single object's save: repoints every Excel reference in one
     # reserving class and refreshes every affected dataset and DFM from the

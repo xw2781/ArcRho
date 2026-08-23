@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
+from app_server.schemas.dataset import DatasetSidecarSaveRequest
+
 
 class BerquistShermanLoadRequest(BaseModel):
     project_name: str = Field(..., min_length=1)
@@ -22,3 +24,10 @@ class BerquistShermanSaveRequest(BerquistShermanLoadRequest):
     # rewrites the method JSON in place.
     csv_file: Optional[str] = None
     output_csv: Optional[str] = None
+    # The output dataset's sidecar, saved in the same hosted call so the whole
+    # save is one round trip. It is the canonical sidecar-save body rather than
+    # a second copy of that field list; the project and the reserving class it
+    # carries must be the ones this request already names. Omitted by the same
+    # method-JSON-only write as the two fields above, which publishes nothing
+    # and queues no dependent walk.
+    sidecar: Optional[DatasetSidecarSaveRequest] = None

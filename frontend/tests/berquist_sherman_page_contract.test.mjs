@@ -88,11 +88,12 @@ test("the page opens on one Server-hosted read", () => {
   // The sidecar is applied before the method, so a saved Details number format
   // still wins over the output dataset's own.
   assert.match(openBody, /applySidecarPayload\(payload\?\.sidecar\)[\s\S]*applyMethodPayload\(payload\.method\)/u);
-  // One place applies a sidecar, whether it came from the open or a refresh.
+  // One place applies a sidecar, whether it came from the page open, an Audit
+  // refresh, or the save response that already carries the saved one.
   assert.equal(
     Array.from(main.matchAll(/applySidecarPayload\(/gu)).length,
-    3,
-    "one definition and the two callers",
+    4,
+    "one definition and the three callers",
   );
   // The index and the page open are independent reads and must not serialize.
   assert.match(
@@ -258,7 +259,9 @@ test("the Details format governs the calculated triangles and syncs silently", (
     rewriteBody,
     /method: \{ \.\.\.data, method_tab: \{ \.\.\.methodTab, number_formats: record \} \}/u,
   );
-  for (const forbidden of ["markDirty", "last_modified", "saveSidecar", "status"]) {
+  // Carrying a sidecar would publish the output, bump its review status, and
+  // queue a dependent walk for what is only a display-state catch-up.
+  for (const forbidden of ["markDirty", "last_modified", "sidecar:", "status"]) {
     assert.doesNotMatch(rewriteBody, new RegExp(forbidden, "u"), forbidden);
   }
 });
@@ -351,6 +354,35 @@ test("B&S never writes a persisted project file from the renderer", () => {
   // write would bypass it and could not even reproduce a `1.0`.
   assert.match(main, /fetch\("\/berquist-sherman\/save"/u);
   assert.doesNotMatch(main, /saveJsonFile|saveTextFile|readJsonFile/u);
+  // That one Engine-hosted call carries the output sidecar too, so the save is
+  // a single visit to the workspace rather than a share write followed by a
+  // second save. A separate sidecar post would put the share back in the path.
+  assert.doesNotMatch(main, /fetch\("\/dataset\/sidecar\/save"/u);
+  assert.match(main, /requestMethodSave\(\{[\s\S]*?sidecar: sidecarBody,/u);
+});
+
+test("B&S reads its output sidecar only through the registered hosted routes", () => {
+  // Both the save and the Audit tab used to fetch the sidecar on its own, which
+  // reaches the workspace from the renderer's PC and opens the sidecar, the
+  // project's dataset-type rows, the reserving-class index, and one more file
+  // per graph edge — every one of them its own round trip off the server host.
+  assert.doesNotMatch(main, /fetch\("\/dataset\/sidecar\/load"/u);
+  // The Audit tab refreshes through the page-open read, which carries it.
+  assert.match(
+    main,
+    /async function loadSidecar\(\)[\s\S]*?requestMethodAndSidecar\(details\.name\)[\s\S]*?applySidecarPayload\(payload\?\.sidecar\)/u,
+  );
+  // A save applies the sidecar it was just handed instead of loading it back.
+  assert.match(
+    main,
+    /function applySavedOutputSidecar\(payload\)[\s\S]*?applySidecarPayload\(payload\)/u,
+  );
+  const saveStart = main.indexOf("async function runBerquistShermanSave(");
+  assert.ok(saveStart >= 0, "runBerquistShermanSave not found");
+  const saveEnd = /\r?\n\}\r?\n/u.exec(main.slice(saveStart));
+  assert.ok(saveEnd, "runBerquistShermanSave has no closing brace");
+  const saveBody = main.slice(saveStart, saveStart + saveEnd.index);
+  assert.doesNotMatch(saveBody, /loadSidecar\(\)/u);
   // The in-place number-format sync reads and writes through the same routes.
   assert.match(
     main,

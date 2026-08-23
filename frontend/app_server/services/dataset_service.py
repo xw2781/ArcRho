@@ -1863,6 +1863,11 @@ def _save_dataset_sidecar_impl(
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
         "precedents": _sidecar_graph_entries(p, rc, payload.get("precedents"), include_method_type=True),
         "dependents": _sidecar_graph_entries(p, rc, payload.get("dependents"), include_formula=True),
+        # The Details tab renders the same three rows — formula, precedents,
+        # dependents — from whichever of the two answers it holds, so a caller
+        # that just saved never has to load the sidecar back to fill this in.
+        # It is the value the save already derived, not a second reading of it.
+        "formula": str(formula or ""),
         "updated_at": payload["updated_at"],
         "audit_log": payload["audit_log"],
         "path": path,

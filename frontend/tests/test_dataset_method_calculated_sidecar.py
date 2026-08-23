@@ -108,5 +108,74 @@ class DatasetMethodCalculatedSidecarTests(unittest.TestCase):
         self.assertIs(unknown_payload["calculated"], False)
 
 
+class SavedSidecarAnswersTheDetailsTabTests(unittest.TestCase):
+    """A save answers with everything a load would, so nobody reads it back.
+
+    The Details tab renders the formula and the two graph lists from whichever
+    of the two answers it holds. A field only the load carried would force a
+    page that just saved to fetch the sidecar again — and off the server host
+    that costs one round trip per file the load opens.
+    """
+
+    DETAILS_TAB_FIELDS = ("formula", "precedents", "dependents", "audit_log", "notes")
+
+    def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
+
+    def tearDown(self) -> None:
+        self.propagation_workspace.stop()
+
+    def test_the_save_answers_with_the_formula_the_load_answers_with(self) -> None:
+        stored = {}
+
+        with (
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(
+                dataset_service,
+                "_read_dataset_sidecar",
+                side_effect=lambda *_a, **_k: dict(stored),
+            ),
+            patch.object(
+                dataset_service,
+                "_is_app_calculated_dataset_type",
+                return_value=(True, "Input A + Input B"),
+            ),
+            patch.object(dataset_service, "_current_user_name", return_value="tester"),
+            patch.object(
+                dataset_service,
+                "_write_dataset_sidecar_payload",
+                side_effect=lambda _path, payload: stored.update(copy.deepcopy(payload)),
+            ),
+            patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            patch.object(calculated_dataset_service, "recalculate_dependents", return_value=None),
+            patch.object(
+                dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch.object(dataset_service.dataset_instance_index_service, "rebuild_index"),
+            patch.object(dataset_service, "_dataset_type_calculation_map", return_value={}),
+            patch.object(dataset_service, "_dataset_index_method_type_map", return_value={}),
+        ):
+            saved = dataset_service.save_dataset_sidecar(
+                "Project",
+                "Class",
+                "Output",
+                source_kind="berquist_sherman_sr",
+                method_type="B&S Settlement Rate Adjustment",
+                data_format="Triangle",
+                origin_length=12,
+                development_length=12,
+                status=0,
+                notes="a note",
+            )
+            loaded = dataset_service.load_dataset_sidecar("Project", "Class", "Output")
+
+        self.assertEqual(saved["formula"], "Input A + Input B")
+        for field in self.DETAILS_TAB_FIELDS:
+            self.assertIn(field, saved, field)
+            self.assertEqual(saved[field], loaded[field], field)
+
+
 if __name__ == "__main__":
     unittest.main()

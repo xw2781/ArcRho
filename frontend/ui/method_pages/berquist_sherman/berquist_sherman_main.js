@@ -2027,10 +2027,12 @@ async function requestMethodAndSidecar(methodName) {
 }
 
 // The save is the write half of the same pairing: `/berquist-sherman/save`
-// writes the method JSON and, on a full save, the output CSV, so the on-disk
-// text is produced by the app server's canonical writer rather than by the
-// renderer. The page still owns the payload it sends.
-async function requestMethodSave({ method, csv_file = null, output_csv = null }) {
+// writes the method JSON, the output CSV, and the output sidecar in one
+// Engine-hosted call, so the on-disk text is produced by the app server's
+// canonical writer next to the data rather than by the renderer across the
+// share. The page still owns the payloads it sends. `sidecar` is omitted by
+// the in-place number-format rewrite, which publishes nothing.
+async function requestMethodSave({ method, csv_file = null, output_csv = null, sidecar = null }) {
   const response = await fetch("/berquist-sherman/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2042,6 +2044,7 @@ async function requestMethodSave({ method, csv_file = null, output_csv = null })
       method,
       csv_file,
       output_csv,
+      sidecar,
     }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -2150,21 +2153,14 @@ async function loadSidecar() {
   }
   auditLogView.setLoading();
   try {
-    const response = await fetch("/dataset/sidecar/load", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: state.project,
-        reserving_class: state.reservingClass,
-        dataset_name: details.name,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
+    // The registered page-open read carries the sidecar, so an Audit-tab
+    // refresh runs on the server host beside the data. Asking for the sidecar
+    // on its own instead reaches the workspace from here and opens the sidecar,
+    // the project's dataset-type rows, the reserving-class index, and one more
+    // file for every precedent and dependent — each its own round trip.
+    const payload = await requestMethodAndSidecar(details.name);
     if (requestSequence !== sidecarLoadSequence) return null;
-    if (!response.ok || payload?.ok === false) {
-      throw new Error(payload?.detail || payload?.error || `Sidecar load failed (${response.status}).`);
-    }
-    return applySidecarPayload(payload?.sidecar || payload?.data || payload);
+    return applySidecarPayload(payload?.sidecar);
   } catch (error) {
     if (requestSequence !== sidecarLoadSequence) return null;
     auditLogView.setError(`Could not load the audit log. ${text(error?.message || error)}`);
@@ -2199,19 +2195,14 @@ function buildSidecarSaveBody(csvFile) {
   };
 }
 
-async function saveSidecar(body) {
-  const response = await fetch("/dataset/sidecar/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.detail || payload?.error || `Sidecar save failed (${response.status}).`);
-  }
+// The saved output sidecar comes back inside the save response — the audit log
+// the save just appended to, the graph rows it just rewrote, and the notes it
+// just stored. Applying it here is what keeps the save to one visit: loading
+// the sidecar back would re-read what this payload already holds.
+function applySavedOutputSidecar(payload) {
   sidecarLoadSequence += 1;
-  auditLogView.render(payload?.audit_log);
   pendingBsPropagationJobId = String(payload?.calculated_updates?.job_id || "").trim();
+  applySidecarPayload(payload);
   return payload;
 }
 
@@ -2266,19 +2257,19 @@ async function runBerquistShermanSave(progress) {
   const csvFile = getCsvFilename();
   const sidecarBody = buildSidecarSaveBody(csvFile);
   progress.writing();
-  // The method JSON and the output CSV are written by the app server, so the
-  // on-disk text comes from the one canonical writer (`arcrho_api.io`) rather
-  // than from the renderer; the sidecar save that follows queues dependents.
-  await requestMethodSave({
+  // One Engine-hosted call writes the method JSON, the output CSV, and the
+  // output sidecar next to the data, so the on-disk text comes from the one
+  // canonical writer (`arcrho_api.io`) and the whole save costs a single visit
+  // to the workspace. It comes back with the dependent walk queued, or already
+  // run inline on the Engine, which is what `trackSavePropagation` sorts out.
+  const sidecar = applySavedOutputSidecar(await requestMethodSave({
     method: buildMethodPayload(),
     csv_file: csvFile,
     output_csv: matrixCsv(output),
-  });
-  const sidecar = await saveSidecar(sidecarBody);
-  await Promise.all([
-    loadCachedRows(true).catch(() => {}),
-    loadSidecar().catch(() => null),
-  ]);
+    sidecar: sidecarBody,
+  }));
+  // Only the dataset table is refetched; the saved sidecar was applied above.
+  await loadCachedRows(true).catch(() => {});
   markClean();
   try {
     window.parent?.postMessage({
@@ -2311,10 +2302,12 @@ async function runBerquistShermanSave(progress) {
     projectName: state.project,
     reservingClass: state.reservingClass,
   });
+  // The written paths come back from the save route, which is the only place
+  // that resolves them now that the renderer no longer builds workspace paths.
   return {
     ok: true,
-    path: jsonResult.path,
-    csvPath,
+    path: text(sidecar?.method_path),
+    csvPath: text(sidecar?.output_csv_path),
     propagationClean: propagationOutcome !== null,
     refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
   };

@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "berquist-sherman",
+  "audience": "user",
+  "summary": "Saving a Berquist Sherman method now runs on the ArcRho Server instead of the network drive, so the save finishes in a fraction of the time.",
+  "details": [
+    "The method file, its output table, and the output dataset's sidecar are now written in one request that the server carries out beside the data. They used to be two separate trips, the first of which wrote two files across the mapped drive from the user's own PC, where every file opened costs a round trip whatever the file weighs.",
+    "The window no longer reloads the audit log and the Details dependency lists after saving: the save already answers with both, so it applies what it was handed instead of fetching the same thing again.",
+    "Switching to the Audit tab now reads through the same server-side route the window already uses when it opens, rather than opening the sidecar, the project's dataset-type rows, the reserving-class index, and one more file for every precedent and dependent.",
+    "A save is also refused as a whole when the reserving class is busy, so a blocked save can no longer leave the method file written ahead of the sidecar that describes it.",
+    "Berquist Sherman was the last method type still writing its files from the user's PC; it now behaves like DFM, Bornhuetter Ferguson, Cape Cod, Bootstrap, and Result Selection."
+  ]
+}

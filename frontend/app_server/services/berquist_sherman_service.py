@@ -13,13 +13,16 @@ Pairing them here turns the page open into one registered workspace read
 host where the workspace is local disk, exactly as DFM, BF, CC, RS, and
 Bootstrap already do.
 
-The save half writes the method JSON and the output CSV the page computed.
-It exists so that no persisted project file is written from JavaScript: the
-on-disk text of every ArcRho JSON file belongs to ``arcrho_api.io``, and a
-renderer-side write bypassed it. The method payload itself is still taken as
-the page built it — ``ui/method_pages/berquist_sherman`` owns that schema
-together with the ResQ migration, so normalizing or defaulting it here would
-stand up a competing source of truth for a contract this module does not own.
+The save half is the mirror image: one registered hosted save
+(``arcrho_engine_save_contract``) writes the method JSON, the output CSV the
+page computed, and the output sidecar together, so the whole save runs on the
+server host too. It exists so that no persisted project file is written from
+JavaScript: the on-disk text of every ArcRho JSON file belongs to
+``arcrho_api.io``, and a renderer-side write bypassed it. The method payload
+itself is still taken as the page built it — ``ui/method_pages/berquist_sherman``
+owns that schema together with the ResQ migration, so normalizing or defaulting
+it here would stand up a competing source of truth for a contract this module
+does not own.
 """
 
 from __future__ import annotations
@@ -35,7 +38,11 @@ from fastapi import HTTPException
 from arcrho_api.io import persisted_json_text
 
 from app_server import config
-from app_server.services import dataset_sidecar_status_service, dataset_service
+from app_server.services import (
+    dataset_service,
+    dataset_sidecar_status_service,
+    dependent_propagation_service,
+)
 
 
 # The method JSON and the sidecar are independent files, so the two reads
@@ -204,37 +211,12 @@ def _commit_text_files(files: Mapping[str, str]) -> List[str]:
     return changed
 
 
-def save_berquist_sherman_method(
-    project_name: str,
-    reserving_class: str,
-    method_type: str,
-    method_name: str,
-    method: Mapping[str, Any],
-    *,
-    csv_file: Any = None,
-    output_csv: Any = None,
-) -> Dict[str, Any]:
-    """Write a B&S method JSON, and its output CSV when one is supplied.
+def _method_identity(method: Mapping[str, Any], method_name: str) -> str:
+    """Return the method name both the payload and the request agree on."""
 
-    The method text is produced by ``arcrho_api.io.persisted_json_text`` — the
-    one owner of the on-disk JSON layout — so a B&S file on disk is laid out
-    exactly as every other persisted ArcRho JSON file. The payload's own
-    identity must name the method being saved: the path is derived from
-    ``method_name`` and the variant, and a payload that says otherwise would
-    leave a file whose contents disagree with its name.
-
-    The output sidecar is not written here. The page saves it next through the
-    canonical ``/dataset/sidecar/save`` route, which is also what queues the
-    dependent walk.
-    """
-
-    project = _clean(project_name)
-    reserving = _clean(reserving_class)
     name = _clean(method_name)
-    if not project or not reserving or not name:
-        raise HTTPException(
-            400, "project_name, reserving_class, and method_name are required."
-        )
+    if not name:
+        raise HTTPException(400, "method_name is required.")
     if not isinstance(method, Mapping) or not method:
         raise HTTPException(400, "B&S method payload must be a JSON object.")
     details = method.get("details_tab")
@@ -243,19 +225,131 @@ def save_berquist_sherman_method(
         raise HTTPException(409, "B&S method payload does not name the method being saved.")
     if not _clean(method.get("json_format")):
         raise HTTPException(400, "B&S method payload is missing json_format.")
+    return name
 
+
+def _sidecar_call(
+    sidecar: Mapping[str, Any],
+) -> tuple[str, Dict[str, Any]]:
+    """Split the page's sidecar body into the save's positional name and kwargs.
+
+    The body is a ``DatasetSidecarSaveRequest``, so its field names are owned by
+    ``app_server.schemas.dataset`` and are not restated here. The project and
+    the reserving class come from the enclosing save instead, which is the one
+    identity the Engine leased.
+    """
+
+    body = dict(sidecar)
+    for owned_elsewhere in ("project_name", "reserving_class", "plan_fingerprint"):
+        body.pop(owned_elsewhere, None)
+    dataset_name = _clean(body.pop("dataset_name", ""))
+    if not dataset_name:
+        raise HTTPException(400, "The B&S output sidecar must name its dataset.")
+    # The output CSV is the method half's, written from ``output_csv`` under the
+    # name the page chose. Grid values here would write a second CSV under a
+    # name derived differently, leaving the sidecar pointing at whichever won.
+    if body.get("values") is not None or body.get("mask") is not None:
+        raise HTTPException(
+            400, "A B&S output sidecar cannot carry grid values; the method save writes its CSV."
+        )
+    return dataset_name, body
+
+
+def save_berquist_sherman(
+    project_name: str,
+    reserving_class: str,
+    method: Mapping[str, Any],
+    *,
+    method_type: str = "",
+    method_name: str = "",
+    csv_file: Any = None,
+    output_csv: Any = None,
+    sidecar: Mapping[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Write a B&S method JSON, its output CSV, and its output sidecar as one save.
+
+    This runs on ArcRho Engine, where the workspace is local disk. It used to be
+    two calls from the Client PC: this one wrote the method JSON and the CSV
+    across the share, and the page then saved the output sidecar through
+    ``/dataset/sidecar/save``. Each share visit costs a round trip whatever the
+    file weighs, and the two B&S methods were the only ones still paying it —
+    DFM, BF, CC, RS, and Bootstrap have long saved everything in one hosted
+    call. Pairing the two halves here makes B&S behave the same way.
+
+    The method text is produced by ``arcrho_api.io.persisted_json_text`` — the
+    one owner of the on-disk JSON layout — so a B&S file on disk is laid out
+    exactly as every other persisted ArcRho JSON file. The payload's own
+    identity must name the method being saved: the path is derived from
+    ``method_name`` and the variant, and a payload that says otherwise would
+    leave a file whose contents disagree with its name.
+
+    ``sidecar`` is omitted by a write that only rewrites the method JSON in
+    place, such as the page's recorded-number-format sync; nothing is published
+    and no dependent walk is queued for one of those.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    if not project or not reserving:
+        raise HTTPException(400, "project_name and reserving_class are required.")
+    name = _method_identity(method, method_name)
+
+    # Everything both halves need is resolved before either is written, so a
+    # refusal from the second half cannot leave the first half's file behind:
+    # the paths, the sidecar body, and — because dependent propagation runs on
+    # ArcRho Engine — whether a live Engine can pick the walk up at all and no
+    # other walk is still rewriting this reserving class.
     method_path = berquist_sherman_method_path(project, reserving, method_type, name)
     files: Dict[str, str] = {method_path: persisted_json_text(dict(method))}
     csv_path = ""
     if output_csv is not None:
         csv_path = _output_csv_path(project, reserving, csv_file)
         files[csv_path] = str(output_csv)
+    publish = _sidecar_call(sidecar) if sidecar is not None else None
+    if publish is not None:
+        dependent_propagation_service.require_reserving_class_writable(project, reserving)
+
     with dataset_sidecar_status_service.reserving_class_io_lock(project, reserving):
         changed_paths = _commit_text_files(files)
-    return {
-        "ok": True,
-        "method_path": method_path,
-        "csv_path": csv_path,
-        "csv_file": os.path.basename(csv_path) if csv_path else "",
-        "changed_paths": changed_paths,
-    }
+        # Every key here is the method half's own, so merging the two responses
+        # below cannot quietly overwrite a field the sidecar half owns.
+        written = {
+            "ok": True,
+            "method_path": method_path,
+            "output_csv_path": csv_path,
+            "output_csv_file": os.path.basename(csv_path) if csv_path else "",
+            "method_changed_paths": changed_paths,
+        }
+        if publish is None:
+            return written
+        dataset_name, body = publish
+        published = dataset_service.save_dataset_sidecar(
+            project,
+            reserving,
+            dataset_name,
+            **body,
+        )
+    # The sidecar half owns the response the page reads — its audit log, its
+    # graph rows, and the queued dependent walk — so it is returned whole, with
+    # the method half's written paths added beside it.
+    return {**published, **written}
+
+
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    method: Mapping[str, Any],
+    *,
+    sidecar: Mapping[str, Any] | None = None,
+    **_ignored: Any,
+) -> List[tuple[str, str]]:
+    """Return the changed roots ``save_berquist_sherman`` would propagate from.
+
+    The walk starts at the output dataset the sidecar half publishes, so a save
+    that writes no sidecar changes nothing anything downstream can see.
+    """
+
+    if sidecar is None:
+        return []
+    dataset_name, body = _sidecar_call(sidecar)
+    return [(dataset_name, _clean(body.get("dataset_type")) or dataset_name)]

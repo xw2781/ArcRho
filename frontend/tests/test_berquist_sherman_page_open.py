@@ -17,6 +17,11 @@ for path in (FRONTEND_ROOT, API_SOURCE):
 
 from fastapi import HTTPException
 
+from arcrho_engine_save_contract import (
+    SAVE_JOB_KINDS,
+    SAVE_JOB_PLAN_ROOT_FUNCTION,
+)
+from arcrho_hosted_save_http_contract import HTTP_SAVE_KINDS
 from arcrho_workspace_read_contract import (
     HTTP_WORKSPACE_READ_KINDS,
     WORKSPACE_READ_KINDS,
@@ -45,6 +50,20 @@ class ContractRegistrationTests(unittest.TestCase):
         # a client cannot pass, breaks the read only on the Gateway.
         self.assertEqual(set(spec.required), set(signature.parameters))
         self.assertEqual(spec.optional, ())
+
+    def test_the_save_is_registered_and_advertised(self) -> None:
+        # Registering the kind is the whole move: the Engine's bundled modules,
+        # the gateway's advertised kinds, and the plan resolver all derive from
+        # this one table, so B&S reaches the server host the way DFM, BF, CC,
+        # RS, and Bootstrap already do.
+        self.assertEqual(
+            SAVE_JOB_KINDS["berquist_sherman_method"],
+            ("berquist_sherman_service", "save_berquist_sherman"),
+        )
+        self.assertIn("berquist_sherman_method", HTTP_SAVE_KINDS)
+        self.assertTrue(
+            callable(getattr(berquist_sherman_service, SAVE_JOB_PLAN_ROOT_FUNCTION, None))
+        )
 
 
 class MethodPathTests(unittest.TestCase):
@@ -171,8 +190,8 @@ class LoadTests(unittest.TestCase):
         self.assertIn("BSCRA@M.json", str(caught.exception.detail))
 
 
-class SaveTests(unittest.TestCase):
-    """The method JSON and output CSV are written by the app server, not the renderer."""
+class _SaveFixture(unittest.TestCase):
+    """A temporary reserving class for the two halves of the save to write into."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -203,9 +222,13 @@ class SaveTests(unittest.TestCase):
         }
 
     def _save(self, method: dict, **kwargs) -> dict:
-        return berquist_sherman_service.save_berquist_sherman_method(
-            "Demo", "COL", CRA_TYPE, "M", method, **kwargs
+        return berquist_sherman_service.save_berquist_sherman(
+            "Demo", "COL", method, method_type=CRA_TYPE, method_name="M", **kwargs
         )
+
+
+class SaveTests(_SaveFixture):
+    """The method JSON and output CSV are written by the app server, not the renderer."""
 
     def test_the_method_text_is_the_canonical_persisted_json(self) -> None:
         from arcrho_api.io import persisted_json_text
@@ -216,9 +239,10 @@ class SaveTests(unittest.TestCase):
         self.assertEqual(self.method_path.read_bytes(), persisted_json_text(method).encode("utf-8"))
         csv_path = self.root / "datasets" / "M@12@12@cum@dev.csv"
         self.assertEqual(csv_path.read_bytes(), b"1,2\n3\n")
-        self.assertEqual(result["csv_file"], "M@12@12@cum@dev.csv")
+        self.assertEqual(result["output_csv_file"], "M@12@12@cum@dev.csv")
         self.assertEqual(
-            {Path(path) for path in result["changed_paths"]}, {self.method_path, csv_path}
+            {Path(path) for path in result["method_changed_paths"]},
+            {self.method_path, csv_path},
         )
         # The payload is stored as the page built it; nothing is normalized away.
         self.assertEqual(json.loads(self.method_path.read_text(encoding="utf-8")), method)
@@ -226,14 +250,14 @@ class SaveTests(unittest.TestCase):
     def test_an_unchanged_file_is_not_rewritten(self) -> None:
         self._save(self._method(), csv_file="M@12@12@cum@dev.csv", output_csv="1\n")
         again = self._save(self._method(), csv_file="M@12@12@cum@dev.csv", output_csv="1\n")
-        self.assertEqual(again["changed_paths"], [])
+        self.assertEqual(again["method_changed_paths"], [])
 
     def test_a_method_only_write_leaves_the_csv_alone(self) -> None:
         csv_path = self.root / "datasets" / "M@12@12@cum@dev.csv"
         csv_path.parent.mkdir(parents=True)
         csv_path.write_text("old\n", encoding="utf-8")
         result = self._save(self._method())
-        self.assertEqual(result["csv_path"], "")
+        self.assertEqual(result["output_csv_path"], "")
         self.assertEqual(csv_path.read_text(encoding="utf-8"), "old\n")
         self.assertTrue(self.method_path.is_file())
 
@@ -248,6 +272,156 @@ class SaveTests(unittest.TestCase):
             with self.subTest(csv_file=csv_file), self.assertRaises(HTTPException) as caught:
                 self._save(self._method(), csv_file=csv_file, output_csv="1\n")
             self.assertEqual(caught.exception.status_code, 400)
+
+
+class OutputSidecarTests(_SaveFixture):
+    """The output sidecar is published by the same call that writes the method."""
+
+    def _sidecar_body(self, **overrides) -> dict:
+        body = {
+            "project_name": "Demo",
+            "reserving_class": "COL",
+            "dataset_name": "M",
+            "dataset_type": "Gross Loss - ad hoc",
+            "origin_length": 12,
+            "development_length": 12,
+            "csv_file": "M@12@12@cum@dev.csv",
+        }
+        body.update(overrides)
+        return body
+
+    def _patched(self, published=None, writable=None):
+        return (
+            patch.object(
+                berquist_sherman_service.dataset_service,
+                "save_dataset_sidecar",
+                side_effect=published
+                if callable(published)
+                else (lambda *a, **k: {"ok": True, "path": "S", "audit_log": []}),
+            ),
+            patch.object(
+                berquist_sherman_service.dependent_propagation_service,
+                "require_reserving_class_writable",
+                side_effect=writable if callable(writable) else (lambda *a, **k: None),
+            ),
+        )
+
+    def test_one_call_writes_the_method_and_publishes_the_sidecar(self) -> None:
+        seen = {}
+
+        def publish(project, reserving, dataset_name, **kwargs):
+            seen.update(
+                project=project,
+                reserving=reserving,
+                dataset_name=dataset_name,
+                kwargs=kwargs,
+                method_written=self.method_path.is_file(),
+            )
+            return {"ok": True, "path": "S", "audit_log": [], "calculated_updates": {"ok": True}}
+
+        saved, _writable = self._patched(published=publish)
+        with saved, _writable:
+            result = self._save(
+                self._method(),
+                csv_file="M@12@12@cum@dev.csv",
+                output_csv="1\n",
+                sidecar=self._sidecar_body(),
+            )
+        self.assertEqual((seen["project"], seen["reserving"]), ("Demo", "COL"))
+        self.assertEqual(seen["dataset_name"], "M")
+        # The method half lands first, exactly as the two separate calls did.
+        self.assertTrue(seen["method_written"])
+        # The project, the class, the name, and the plan fingerprint are the
+        # enclosing save's, so they never travel twice.
+        for owned_elsewhere in ("project_name", "reserving_class", "dataset_name", "plan_fingerprint"):
+            self.assertNotIn(owned_elsewhere, seen["kwargs"])
+        self.assertEqual(seen["kwargs"]["dataset_type"], "Gross Loss - ad hoc")
+        # The page reads the sidecar half's response, with the written paths beside it.
+        self.assertEqual(result["calculated_updates"], {"ok": True})
+        self.assertEqual(Path(result["method_path"]), self.method_path)
+        self.assertTrue(result["output_csv_path"].endswith("M@12@12@cum@dev.csv"))
+
+    def test_the_method_half_cannot_overwrite_a_sidecar_field(self) -> None:
+        published = {
+            "ok": True,
+            "path": "S",
+            "csv_file": "sidecar-owned.csv",
+            "audit_log": [{"action": "Update"}],
+        }
+        saved, writable = self._patched(published=lambda *a, **k: dict(published))
+        with saved, writable:
+            result = self._save(
+                self._method(),
+                csv_file="M@12@12@cum@dev.csv",
+                output_csv="1\n",
+                sidecar=self._sidecar_body(),
+            )
+        for key, value in published.items():
+            self.assertEqual(result[key], value, key)
+        self.assertEqual(result["output_csv_file"], "M@12@12@cum@dev.csv")
+
+    def test_the_sidecar_half_cannot_write_a_second_output_csv(self) -> None:
+        saved, writable = self._patched()
+        for field in ("values", "mask"):
+            with (
+                self.subTest(field=field),
+                saved,
+                writable,
+                self.assertRaises(HTTPException) as caught,
+            ):
+                self._save(
+                    self._method(),
+                    csv_file="M@12@12@cum@dev.csv",
+                    output_csv="1\n",
+                    sidecar=self._sidecar_body(**{field: [[1.0]]}),
+                )
+            self.assertEqual(caught.exception.status_code, 400)
+            self.assertFalse(self.method_path.exists())
+
+    def test_a_busy_reserving_class_refuses_before_the_method_is_written(self) -> None:
+        def busy(*_args, **_kwargs):
+            raise HTTPException(423, "A dependent update is still running.")
+
+        saved, writable = self._patched(writable=busy)
+        with saved, writable, self.assertRaises(HTTPException) as caught:
+            self._save(
+                self._method(),
+                csv_file="M@12@12@cum@dev.csv",
+                output_csv="1\n",
+                sidecar=self._sidecar_body(),
+            )
+        self.assertEqual(caught.exception.status_code, 423)
+        # Both halves are behind one refusal now, so a busy class can no longer
+        # leave a method file ahead of the sidecar that describes it.
+        self.assertFalse(self.method_path.exists())
+
+    def test_a_method_only_write_publishes_nothing(self) -> None:
+        saved, writable = self._patched()
+        with saved as publish, writable as require_writable:
+            result = self._save(self._method())
+        publish.assert_not_called()
+        require_writable.assert_not_called()
+        self.assertNotIn("calculated_updates", result)
+
+    def test_the_plan_roots_are_the_published_output_dataset(self) -> None:
+        self.assertEqual(
+            berquist_sherman_service.save_propagation_roots(
+                "Demo", "COL", self._method(), sidecar=self._sidecar_body()
+            ),
+            [("M", "Gross Loss - ad hoc")],
+        )
+        # A dataset type the page left blank falls back to the dataset's own name.
+        self.assertEqual(
+            berquist_sherman_service.save_propagation_roots(
+                "Demo", "COL", self._method(), sidecar=self._sidecar_body(dataset_type="")
+            ),
+            [("M", "M")],
+        )
+        # A method-only write changes nothing anything downstream can see.
+        self.assertEqual(
+            berquist_sherman_service.save_propagation_roots("Demo", "COL", self._method()),
+            [],
+        )
 
 
 if __name__ == "__main__":
