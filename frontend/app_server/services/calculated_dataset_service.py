@@ -8,7 +8,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Callable, Dict, List, NamedTuple, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -31,6 +31,9 @@ from app_server.services import (
     runtime_cache_provenance_service,
     user_identity_service,
 )
+
+if TYPE_CHECKING:
+    from app_server.services import dataset_types_plan_service
 
 _METHOD_DEPENDENT_READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=6,
@@ -2358,66 +2361,6 @@ def _dataset_type_name_by_key_from_rows(rows: List[List[Any]]) -> Dict[str, str]
     return out
 
 
-class _ProjectSidecars(NamedTuple):
-    """Every dataset instance of one project, listed before any is read.
-
-    A caller that reports progress needs the denominator before the work
-    starts, and listing the folders is cheap next to reading each payload:
-    one directory enumeration per reserving class either way.
-    """
-
-    paths: List[str]
-    class_count: int
-
-
-def _list_project_sidecars(
-    project_name: str,
-    *,
-    on_class: Callable[[int, int, str], None] | None = None,
-) -> _ProjectSidecars:
-    """List every dataset instance of the project, class by class.
-
-    ``on_class`` receives ``(scanned, total, reserving_class)`` after each
-    class. Listing is the one part of a project-wide job whose own denominator
-    is known from the start, so it is also the only part that can show a bar
-    while the job is still working out how much there is to do.
-    """
-
-    try:
-        data_dir = config.get_project_data_dir(project_name)
-    except ValueError:
-        return _ProjectSidecars([], 0)
-    if not os.path.isdir(data_dir):
-        return _ProjectSidecars([], 0)
-
-    class_dirs = sorted(
-        (entry.path for entry in os.scandir(data_dir) if entry.is_dir()),
-        key=os.path.basename,
-    )
-    total_classes = len(class_dirs)
-    paths: List[str] = []
-    for scanned, rc_path in enumerate(class_dirs, start=1):
-        sidecar_dir = os.path.join(rc_path, config.DATASET_SIDECAR_DIR)
-        if os.path.isdir(sidecar_dir):
-            for entry in os.scandir(sidecar_dir):
-                if entry.is_file() and entry.name.lower().endswith(".json"):
-                    paths.append(entry.path)
-        if on_class is not None:
-            on_class(
-                scanned,
-                total_classes,
-                config.decode_filename_segment(os.path.basename(rc_path)),
-            )
-    return _ProjectSidecars(paths, total_classes)
-
-
-def _iter_project_sidecars(project_name: str):
-    for path in _list_project_sidecars(project_name).paths:
-        payload = _read_sidecar(path)
-        if payload:
-            yield path, payload
-
-
 def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
     payload = dict(payload)
     payload.pop("instance_name", None)
@@ -2425,18 +2368,18 @@ def _write_sidecar_json(path: str, payload: Dict[str, Any]) -> None:
     dataset_sidecar_status_service.write_sidecar(path, payload)
 
 
-def _sidecar_instance_name(path: str) -> str:
-    """The dataset instance a sidecar file describes, decoded from its name."""
-
-    stem = os.path.splitext(os.path.basename(path))[0]
-    return dataset_instance_index_service._normalize_cached_dataset_name(stem)
+def _sidecar_method_type(project_name: str, reserving_class: str, dataset_name: str) -> str:
+    payload = dataset_sidecar_status_service.read_sidecar(
+        dataset_sidecar_status_service.sidecar_path(project_name, reserving_class, dataset_name)
+    )
+    return dataset_sidecar_status_service.normalize_method_type(
+        payload.get("method_type"), payload.get("source_kind")
+    )
 
 
 def find_dataset_type_removal_blockers(
     project_name: str,
-    removed_type_names: Sequence[str],
-    *,
-    on_progress: Callable[[str, str, int, int], None] | None = None,
+    planned: "dataset_types_plan_service.DatasetTypesChangePlan",
 ) -> List[Dict[str, Any]]:
     """Instances of disappearing dataset types that other objects still read.
 
@@ -2446,108 +2389,143 @@ def find_dataset_type_removal_blockers(
     is itself an instance of a type being removed in the same change is not a
     blocker: it is leaving too.
 
+    Only the instances the plan already found are opened: the plan knows which
+    classes hold a departing type, so no other class is visited.
+
     Returns one entry per blocked type, each naming the instances still read
     and, for each, the datasets or methods reading them.
     """
 
     removed_keys = {
         key
-        for key in (_canon_dataset_name(name) for name in removed_type_names or [])
+        for key in (_canon_dataset_name(name) for name in planned.removed_types)
         if key
     }
     if not removed_keys:
         return []
 
-    def report(scanned: int, total: int, reserving_class: str) -> None:
-        if on_progress is None:
-            return
-        try:
-            on_progress(
-                "scanning",
-                f"Checking dataset types in use: {reserving_class}",
-                scanned,
-                total,
-            )
-        except Exception:
-            pass
-
-    listed = _list_project_sidecars(project_name, on_class=report)
-
-    # One pass builds both halves: which instances belong to a departing type,
-    # and what every instance of the class is, so a dependent can be labelled
-    # without a second read of the same folder.
-    payload_by_class: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    departing: List[Tuple[str, str, str, Dict[str, Any]]] = []
-    for path in listed.paths:
-        payload = _read_sidecar(path)
-        if not payload:
-            continue
-        class_dir = os.path.dirname(os.path.dirname(path))
-        instance_name = _sidecar_instance_name(path)
-        instance_key = _canon_dataset_name(instance_name)
-        if instance_key:
-            payload_by_class.setdefault(class_dir, {})[instance_key] = payload
-        dataset_type = _clean_text(
-            payload.get("dataset_type") or payload.get("dataset_name")
-        )
-        if _canon_dataset_name(dataset_type) in removed_keys:
-            departing.append((class_dir, dataset_type, instance_name, payload))
-
-    departing_keys_by_class: Dict[str, Set[str]] = {}
-    for class_dir, _dataset_type, instance_name, _payload in departing:
-        key = _canon_dataset_name(instance_name)
-        if key:
-            departing_keys_by_class.setdefault(class_dir, set()).add(key)
-
     blocked_by_type: Dict[str, Dict[str, Any]] = {}
-    for class_dir, dataset_type, instance_name, payload in departing:
-        leaving = departing_keys_by_class.get(class_dir, set())
-        dependents: List[Dict[str, str]] = []
-        for dependent_name in dataset_sidecar_status_service.entry_names(
-            payload.get("dependents")
-        ):
-            dependent_key = _canon_dataset_name(dependent_name)
-            if not dependent_key or dependent_key in leaving:
+    for affected in planned.classes:
+        departing = [
+            instance
+            for instance in affected.instances
+            if _canon_dataset_name(instance.dataset_type) in removed_keys
+        ]
+        leaving = {_canon_dataset_name(instance.name) for instance in departing}
+        for instance in departing:
+            payload = dataset_sidecar_status_service.read_sidecar(
+                dataset_sidecar_status_service.sidecar_path(
+                    project_name, affected.reserving_class, instance.name
+                )
+            )
+            dependents = [
+                {
+                    "dataset_name": dependent_name,
+                    "method_type": _sidecar_method_type(
+                        project_name, affected.reserving_class, dependent_name
+                    ),
+                }
+                for dependent_name in dataset_sidecar_status_service.entry_names(
+                    payload.get("dependents")
+                )
+                if _canon_dataset_name(dependent_name)
+                and _canon_dataset_name(dependent_name) not in leaving
+            ]
+            if not dependents:
                 continue
-            dependent_payload = payload_by_class.get(class_dir, {}).get(dependent_key, {})
-            dependents.append({
-                "dataset_name": dependent_name,
-                "method_type": dataset_sidecar_status_service.normalize_method_type(
-                    dependent_payload.get("method_type"),
-                    dependent_payload.get("source_kind"),
-                ),
+            entry = blocked_by_type.setdefault(
+                _canon_dataset_name(instance.dataset_type),
+                {"dataset_type": instance.dataset_type, "instances": []},
+            )
+            entry["instances"].append({
+                "reserving_class": affected.reserving_class,
+                "dataset_name": instance.name,
+                "dependents": dependents,
             })
-        if not dependents:
-            continue
-        entry = blocked_by_type.setdefault(
-            _canon_dataset_name(dataset_type),
-            {"dataset_type": dataset_type, "instances": []},
-        )
-        entry["instances"].append({
-            "reserving_class": _clean_text(payload.get("reserving_class"))
-            or config.decode_filename_segment(os.path.basename(class_dir)),
-            "dataset_name": instance_name,
-            "dependents": dependents,
-        })
 
     return [blocked_by_type[key] for key in sorted(blocked_by_type)]
 
 
-def refresh_sidecar_graphs_and_recalculate(
+def _rename_dataset_instance(
     project_name: str,
-    changed_dataset_types: List[str] | None = None,
+    reserving_class: str,
+    sidecar_path: str,
+    payload: Dict[str, Any],
+    new_name: str,
+) -> str:
+    """Move one plain dataset instance to a new name; return its new sidecar path.
+
+    The CSV keeps everything after the name in its file name, the old sidecar
+    file goes, and each precedent's ``dependents`` entry follows the name. The
+    runtime cache provenance is dropped rather than moved: its record is bound
+    to the dataset name, so the next open re-validates the cache exactly as it
+    does for a cache with no record. The caller holds the class I/O lock and
+    writes the returned path itself.
+    """
+
+    old_name = _clean_text(payload.get("dataset_name")) or _sidecar_instance_name(sidecar_path)
+    old_stem = sanitize_dataset_file_name(old_name)
+    new_stem = sanitize_dataset_file_name(new_name)
+
+    csv_file = _clean_text(payload.get("csv_file"))
+    if csv_file:
+        cache_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
+        old_csv = os.path.join(cache_dir, csv_file)
+        if os.path.isfile(old_csv) and csv_file.lower().startswith(old_stem.lower()):
+            new_csv_file = new_stem + csv_file[len(old_stem):]
+            os.replace(old_csv, os.path.join(cache_dir, new_csv_file))
+            runtime_cache_provenance_service.remove(old_csv)
+            payload["csv_file"] = new_csv_file
+
+    new_path = dataset_sidecar_status_service.sidecar_path(project_name, reserving_class, new_name)
+    if os.path.normcase(os.path.abspath(new_path)) != os.path.normcase(os.path.abspath(sidecar_path)):
+        try:
+            os.remove(sidecar_path)
+        except FileNotFoundError:
+            pass
+    payload["dataset_name"] = new_name
+
+    precedents = dataset_sidecar_status_service.entry_names(payload.get("precedents"))
+    for precedent_name in precedents:
+        precedent_path = dataset_sidecar_status_service.sidecar_path(
+            project_name, reserving_class, precedent_name
+        )
+        with dataset_sidecar_status_service.sidecar_write_lock(precedent_path):
+            precedent = _read_sidecar(precedent_path)
+            if not precedent:
+                continue
+            if dataset_sidecar_status_service._remove_dependent(precedent, old_name):
+                dataset_sidecar_status_service._add_dependent(precedent, new_name)
+                _write_sidecar_json(precedent_path, precedent)
+    return new_path
+
+
+def _sidecar_instance_name(path: str) -> str:
+    """The dataset instance a sidecar file describes, decoded from its name."""
+
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return dataset_instance_index_service._normalize_cached_dataset_name(stem)
+
+
+def apply_planned_dataset_types_change(
+    project_name: str,
+    planned: "dataset_types_plan_service.DatasetTypesChangePlan",
     *,
     on_progress: Callable[[str, str, int, int], None] | None = None,
 ) -> Dict[str, Any]:
-    """Re-derive every sidecar's dependency graph, then rebuild what changed.
+    """Rewrite the instances a plan named, then rebuild what changed.
 
-    ``on_progress`` receives ``(stage, label, completed, total)`` for a caller
-    publishing job status. It exists because this walk visits every dataset
-    instance of every reserving class: on any real project it is the long part
-    of a dataset-type change, and a job whose status never moves is
-    indistinguishable from a dead one. The unit is one dataset instance, then
-    one reserving class for each class the change makes the walk revisit, so
-    the count a caller shows is work done rather than stages passed.
+    Runs after the table is written, class by class under each class's I/O
+    lock. Every instance the plan listed has its sidecar re-derived from the
+    new table: a renamed type's instances take the new type name, and the
+    ones the plan marked for renaming move with it. The calculated datasets
+    whose formula or kind changed are then recalculated and one Engine
+    propagation job per class walks their dependents.
+
+    ``on_progress`` receives ``(stage, label, completed, total)``. The unit is
+    one dataset instance, then one reserving class for each class the change
+    makes the walk revisit, so the count a caller shows is work done rather
+    than stages passed.
     """
 
     def report(stage: str, label: str, completed: int, total: int) -> None:
@@ -2562,68 +2540,62 @@ def refresh_sidecar_graphs_and_recalculate(
 
     changed_keys = {
         _canon_dataset_name(name)
-        for name in (changed_dataset_types or [])
+        for name in planned.changed_types
         if _canon_dataset_name(name)
     }
     rows_by_key = _calculated_rows_by_key(project_name)
     sidecars_updated = 0
+    datasets_renamed = 0
     recalc_seeds: Set[Tuple[str, str]] = set()
     errors: List[str] = []
 
-    listed = _list_project_sidecars(
-        project_name,
-        on_class=lambda scanned, total, reserving_class: report(
-            "scanning",
-            f"Scanning reserving classes: {reserving_class}",
-            scanned,
-            total,
-        ),
-    )
-    datasets_total = len(listed.paths)
+    datasets_total = sum(len(affected.instances) for affected in planned.classes)
     total_units = datasets_total
     completed_units = 0
     report("graphs", "Rebuilding dataset dependency graphs", 0, total_units)
 
-    for path in listed.paths:
-        payload = _read_sidecar(path)
-        completed_units += 1
-        if not payload:
-            continue
-        dataset_type = _clean_text(payload.get("dataset_type") or payload.get("dataset_name"))
-        dataset_key = _canon_dataset_name(dataset_type)
-        reserving_class = _clean_text(payload.get("reserving_class"))
-        if not dataset_key:
-            continue
-        try:
-            with (
-                dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class),
-                dataset_sidecar_status_service.sidecar_write_lock(path),
-            ):
-                latest = _read_sidecar(path)
-                if not latest:
-                    raise RuntimeError("Dataset sidecar disappeared during graph refresh.")
-                payload = latest
-                before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-                payload.pop("instance_name", None)
-                payload.pop("dataset_type_name", None)
-                apply_sidecar_graph_fields(payload, project_name, dataset_type)
-                after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-                if before != after:
-                    _write_sidecar_json(path, payload)
-                    sidecars_updated += 1
-        except Exception as exc:
-            errors.append(f"{os.path.basename(path)}: {exc}")
-            continue
-
-        if reserving_class:
-            report(
-                "graphs",
-                f"Rebuilding dependency graphs: {reserving_class}",
-                completed_units,
-                total_units,
-            )
-        if changed_keys and dataset_key in changed_keys and dataset_key in rows_by_key and reserving_class:
-            recalc_seeds.add((reserving_class, rows_by_key[dataset_key]["name"]))
+    for affected in planned.classes:
+        reserving_class = affected.reserving_class
+        with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+            for instance in affected.instances:
+                completed_units += 1
+                path = dataset_sidecar_status_service.sidecar_path(
+                    project_name, reserving_class, instance.name
+                )
+                try:
+                    with dataset_sidecar_status_service.sidecar_write_lock(path):
+                        payload = _read_sidecar(path)
+                        if not payload:
+                            raise RuntimeError("Dataset sidecar is missing.")
+                        before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                        payload.pop("instance_name", None)
+                        payload.pop("dataset_type_name", None)
+                        if instance.new_dataset_type != instance.dataset_type:
+                            payload["dataset_type"] = instance.new_dataset_type
+                        moved = False
+                        if instance.rename_to:
+                            path = _rename_dataset_instance(
+                                project_name, reserving_class, path, payload, instance.rename_to
+                            )
+                            moved = True
+                            datasets_renamed += 1
+                        apply_sidecar_graph_fields(payload, project_name, instance.new_dataset_type)
+                        after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                        if moved or before != after:
+                            _write_sidecar_json(path, payload)
+                            sidecars_updated += 1
+                except Exception as exc:
+                    errors.append(f"{reserving_class} / {instance.name}: {exc}")
+                    continue
+                report(
+                    "graphs",
+                    f"Rebuilding dependency graphs: {reserving_class}",
+                    completed_units,
+                    total_units,
+                )
+                type_key = _canon_dataset_name(instance.new_dataset_type)
+                if type_key in changed_keys and type_key in rows_by_key:
+                    recalc_seeds.add((reserving_class, rows_by_key[type_key]["name"]))
 
     # Recalculate each changed-formula dataset itself (the saved objects),
     # then enqueue one Engine propagation job per reserving class covering all
@@ -2686,30 +2658,28 @@ def refresh_sidecar_graphs_and_recalculate(
         })
         completed_units += 1
 
-    touched_rcs = {
-        _clean_text(chain.get("reserving_class"))
-        for chain in chains
-        if _clean_text(chain.get("reserving_class"))
-    }
-    for reserving_class in touched_rcs:
+    # Every class the plan named had sidecars rewritten -- a type name or a
+    # rename is index content -- so each one's index is rebuilt.
+    for affected in planned.classes:
         report(
             "index",
-            f"Rebuilding the dataset index: {reserving_class}",
+            f"Rebuilding the dataset index: {affected.reserving_class}",
             completed_units,
             total_units,
         )
         try:
-            dataset_instance_index_service.rebuild_index(project_name, reserving_class)
+            dataset_instance_index_service.rebuild_index(project_name, affected.reserving_class)
         except Exception as exc:
-            errors.append(f"{reserving_class} index rebuild: {exc}")
+            errors.append(f"{affected.reserving_class} index rebuild: {exc}")
 
     return {
         "ok": not errors and all(chain.get("ok") for chain in chains),
         "project_name": project_name,
-        "changed_dataset_types": list(changed_dataset_types or []),
+        "changed_dataset_types": list(planned.changed_types),
         "sidecars_updated": sidecars_updated,
+        "datasets_renamed": datasets_renamed,
         "datasets_total": datasets_total,
-        "classes_total": listed.class_count,
+        "classes_total": planned.class_count,
         "chains": chains,
         "errors": errors,
     }

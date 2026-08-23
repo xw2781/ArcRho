@@ -9,11 +9,15 @@ and the auto-saving grid that issued it had no way to tell a slow save from a
 lost one.
 
 This module replaces that with a durable job. The request is published for
-ArcRho Engine, which claims the *project-scope* lease, writes the table and
-rebuilds everything derived from it on local disk, and the client only polls
-the status. While the lease is held every reserving class of the project
-reports the propagation hold that saves already understand, so nothing can
-interleave with the change.
+ArcRho Engine, which claims the *project-scope* lease, confirms the plan,
+writes the table, narrows the lease to the reserving classes the plan named,
+and rebuilds those on local disk while the client only polls the status.
+Every other class of the project is writable again as soon as the table is
+the new one.
+
+The plan itself is built here first, through the hosted read when a Gateway
+is up, so the reserving classes it names are on screen before anything is
+submitted.
 
 Submission is idempotent by ``request_id``: the client generates the id before
 its first POST and reuses it on every retry, so a response lost in flight can
@@ -50,8 +54,10 @@ from arcrho_dependent_propagation_contract import (
 from arcrho_source_refresh_contract import find_source_refresh_hold
 
 from app_server.services import (
+    dataset_types_plan_service,
     dependent_propagation_service,
     user_identity_service,
+    workspace_read_client,
 )
 
 
@@ -120,10 +126,59 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
 
 
+def plan_dataset_types_change(
+    project_name: str,
+    rows: List[List[Any]],
+    renames: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    """Build the plan the confirmation dialog shows, hosted when possible.
+
+    The planner reads one index per reserving class, which from a Client PC
+    is one round trip each over the mapped drive; the Gateway answers from
+    local disk.
+    """
+
+    name = _validated_project(project_name)
+    kwargs = {"project_name": name, "rows": rows, "renames": renames}
+    return workspace_read_client.run_workspace_read(
+        "dataset_types_change_plan",
+        kwargs,
+        local=lambda: dataset_types_plan_service.plan_dataset_types_change_read(
+            name, rows, renames
+        ),
+    )
+
+
+def changed_types_for_submission(
+    project_name: str,
+    rows: List[List[Any]],
+    renames: List[Dict[str, str]],
+) -> List[str]:
+    """The recalculation roots of a confirmed change, from the table alone.
+
+    The confirming POST carries rows the planner already rewrote, so this
+    re-derives only the type-level answer and never scans a class; the Engine
+    recomputes the whole plan before it writes anything.
+    """
+
+    from app_server.services import calculated_dataset_service, dataset_types_service
+
+    name = _validated_project(project_name)
+    previous_rows = dataset_types_service.read_persisted_rows(name)
+    normalized = dataset_types_service.normalize_submitted_rows(rows)
+    mapping = dataset_types_plan_service.rename_map(previous_rows, normalized, renames)
+    return calculated_dataset_service.changed_formula_dataset_type_names(
+        dataset_types_plan_service.previous_rows_as_renamed(previous_rows, mapping),
+        dataset_types_service.resolve_persisted_rows(name, normalized),
+    )
+
+
 def submit_dataset_types_change_job(
     project_name: str,
     rows: List[List[Any]],
+    renames: List[Dict[str, str]],
     changed_types: List[str],
+    plan: Dict[str, Any],
     request_id: str | None = None,
 ) -> Dict[str, Any]:
     """Publish one queued dataset-type change and return its job identity.
@@ -146,7 +201,9 @@ def submit_dataset_types_change_job(
             request_id=request_id if request_id else uuid.uuid4().hex,
             project_name=name,
             rows=rows,
+            renames=renames,
             changed_types=changed_types,
+            plan=plan,
             # The Engine writes the table and re-saves sidecars as this user,
             # so every stamp names the person who changed it.
             user_name=user_identity_service.get_windows_login_name(),

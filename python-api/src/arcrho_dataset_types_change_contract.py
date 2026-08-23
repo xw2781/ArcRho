@@ -16,9 +16,19 @@ rebuilds everything derived from it on local disk.
 
 The job runs under the *project-scope* lease owned by
 ``arcrho_dependent_propagation_contract``, not a per-class one, because the
-table it rewrites belongs to no single reserving class. While that lease is
-held every class of the project reports the propagation hold clients already
-understand, so no save and no other long job can interleave with the change.
+table it rewrites belongs to no single reserving class. That lease holds the
+whole project only while the job confirms the plan and writes the table; it is
+then narrowed to the reserving classes the plan named, and every other class
+of the project is writable again while those are rebuilt.
+
+A change carries the *plan* the user confirmed: the reserving classes the
+change touches, worked out from each class's ``index.json`` without a lock, and
+a digest of the table it was computed against. The Engine recomputes the plan
+under the lease and refuses a change whose plan no longer matches, so the lock
+set a user agreed to is the lock set that is taken, never a silently wider one.
+A change also carries its *renames*: the grid knows which row was renamed, and
+a rename must reach the instances of the old type rather than read as one type
+removed and another added.
 
 Callers identify the work by logical project name only; the Engine derives
 every absolute filesystem path from its own configured server root, exactly as
@@ -51,14 +61,16 @@ from arcrho_project_duplication_contract import (
 
 
 DATASET_TYPES_CHANGE_FUNCTION = "ArcRhoApplyDatasetTypes"
-DATASET_TYPES_CHANGE_CONTRACT_VERSION = 1
+DATASET_TYPES_CHANGE_CONTRACT_VERSION = 2
 DATASET_TYPES_CHANGE_REQUIRED_FIELDS = (
     "Function",
     "ContractVersion",
     "RequestId",
     "ProjectName",
     "Rows",
+    "Renames",
     "ChangedTypes",
+    "Plan",
     "UserName",
 )
 DATASET_TYPES_CHANGE_STATUS_VALUES = ("queued", "processing", "success", "error")
@@ -71,6 +83,7 @@ DATASET_TYPES_CHANGE_SERVICE_MODULES: tuple[str, ...] = (
     "audit_service",
     "calculated_dataset_service",
     "dataset_instance_index_service",
+    "dataset_types_plan_service",
     "dataset_types_service",
     "user_identity_service",
 )
@@ -91,6 +104,24 @@ DATASET_TYPES_CHANGE_ROW_LENGTH = 5
 _ROW_FLAG_INDEX = 3
 _MAX_ROWS = 5000
 _MAX_CHANGED_TYPES = 5000
+_MAX_RENAMES = 5000
+_MAX_AFFECTED_CLASSES = 5000
+
+# One affected reserving class in a plan. ``project`` is carried on every entry
+# so a cross-project change is a longer list rather than a new shape. The
+# counts are what the confirmation dialog shows and what the Engine compares:
+# ``instances`` of the affected types live in the class, of which ``adopting``
+# take a renamed type's new name and ``renaming`` are also renamed themselves.
+PLAN_AFFECTED_FIELDS = (
+    "project",
+    "reserving_class",
+    "instances",
+    "adopting",
+    "renaming",
+    "reason",
+)
+_PLAN_FIELDS = frozenset({"table_digest", "affected"})
+_PLAN_COUNT_FIELDS = ("instances", "adopting", "renaming")
 
 _PROGRESS_FIELDS = frozenset({"stage", "completed", "total", "label"})
 _RESULT_COUNT_FIELDS = (
@@ -98,7 +129,9 @@ _RESULT_COUNT_FIELDS = (
     "types_changed",
     "datasets_total",
     "datasets_updated",
+    "datasets_renamed",
     "classes_total",
+    "classes_affected",
     "classes_walked",
     "datasets_recalculated",
 )
@@ -205,12 +238,147 @@ def normalize_changed_types(value: Any) -> list[str]:
     return normalized
 
 
+def normalize_renames(value: Any) -> list[dict[str, str]]:
+    """Validate the ``[{"from": old, "to": new}]`` list of renamed types.
+
+    Only the transport shape is checked here; whether each ``from`` exists in
+    the previous table and each ``to`` in the submitted one is the planner's
+    question, because it is the one holding both tables.
+    """
+
+    if not isinstance(value, (list, tuple)):
+        raise DatasetTypesChangeContractError(
+            "Renames must be a list of {from, to} objects."
+        )
+    if len(value) > _MAX_RENAMES:
+        raise DatasetTypesChangeContractError(
+            f"Renames must contain at most {_MAX_RENAMES} entries."
+        )
+    normalized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping) or set(item) != {"from", "to"}:
+            raise DatasetTypesChangeContractError(
+                f"Renames[{index}] must be an object with from and to."
+            )
+        source = _required_text(item.get("from"), f"Renames[{index}].from")
+        target = _required_text(item.get("to"), f"Renames[{index}].to")
+        if source.casefold() == target.casefold():
+            raise DatasetTypesChangeContractError(
+                f"Renames[{index}] must change the name."
+            )
+        if source.casefold() in seen:
+            raise DatasetTypesChangeContractError(
+                f"Renames[{index}] renames {source!r} twice."
+            )
+        seen.add(source.casefold())
+        normalized.append({"from": source, "to": target})
+    return normalized
+
+
+def _normalize_affected_entry(entry: Any, index: int) -> dict[str, Any]:
+    if not isinstance(entry, Mapping):
+        raise DatasetTypesChangeContractError(
+            f"Plan.affected[{index}] must be a JSON object."
+        )
+    if set(entry) != set(PLAN_AFFECTED_FIELDS):
+        raise DatasetTypesChangeContractError(
+            f"Plan.affected[{index}] must have exactly: "
+            + ", ".join(PLAN_AFFECTED_FIELDS)
+            + "."
+        )
+    normalized: dict[str, Any] = {
+        "project": validate_project_name(
+            entry.get("project"), f"Plan.affected[{index}].project"
+        ),
+        "reserving_class": _required_text(
+            entry.get("reserving_class"), f"Plan.affected[{index}].reserving_class"
+        ),
+    }
+    for field_name in _PLAN_COUNT_FIELDS:
+        value = entry.get(field_name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise DatasetTypesChangeContractError(
+                f"Plan.affected[{index}].{field_name} must be a non-negative integer."
+            )
+        normalized[field_name] = value
+    reason = entry.get("reason")
+    if not isinstance(reason, str):
+        raise DatasetTypesChangeContractError(
+            f"Plan.affected[{index}].reason must be a string."
+        )
+    normalized["reason"] = reason.strip()
+    return normalized
+
+
+def normalize_plan(value: Any) -> dict[str, Any]:
+    """Validate one plan: the table digest and the affected reserving classes.
+
+    The entries are returned in their submitted order; :func:`plans_match` is
+    what decides whether two plans name the same work.
+    """
+
+    if not isinstance(value, Mapping):
+        raise DatasetTypesChangeContractError("Plan must be a JSON object.")
+    supplied = set(value)
+    missing = sorted(_PLAN_FIELDS - supplied)
+    extra = sorted((str(field) for field in supplied - _PLAN_FIELDS), key=str.casefold)
+    if missing:
+        raise DatasetTypesChangeContractError(
+            "Missing plan field(s): " + ", ".join(missing) + "."
+        )
+    if extra:
+        raise DatasetTypesChangeContractError(
+            "Unexpected plan field(s): " + ", ".join(extra) + "."
+        )
+    affected = value.get("affected")
+    if not isinstance(affected, (list, tuple)):
+        raise DatasetTypesChangeContractError("Plan.affected must be a list.")
+    if len(affected) > _MAX_AFFECTED_CLASSES:
+        raise DatasetTypesChangeContractError(
+            f"Plan.affected must contain at most {_MAX_AFFECTED_CLASSES} entries."
+        )
+    return {
+        "table_digest": _required_text(value.get("table_digest"), "Plan.table_digest"),
+        "affected": [
+            _normalize_affected_entry(entry, index)
+            for index, entry in enumerate(affected)
+        ],
+    }
+
+
+def plans_match(confirmed: Mapping[str, Any], current: Mapping[str, Any]) -> bool:
+    """Whether two plans describe the same table and the same affected classes.
+
+    Order does not matter, and the reason text does not either: the text is
+    for the person reading the dialog, while the classes and the counts are
+    what the user agreed to have locked and changed.
+    """
+
+    def key(plan: Mapping[str, Any]) -> tuple:
+        entries = sorted(
+            (
+                str(entry["project"]).casefold(),
+                str(entry["reserving_class"]).casefold(),
+                int(entry["instances"]),
+                int(entry["adopting"]),
+                int(entry["renaming"]),
+            )
+            for entry in plan["affected"]
+        )
+        return (str(plan["table_digest"]), tuple(entries))
+
+    return key(confirmed) == key(current)
+
+
 def build_dataset_types_change_request(
     *,
     request_id: Any,
     project_name: Any,
     rows: Any,
+    renames: Any,
     changed_types: Any,
+    plan: Any,
     user_name: Any,
 ) -> dict[str, Any]:
     """Build the complete canonical request payload."""
@@ -222,7 +390,9 @@ def build_dataset_types_change_request(
             "RequestId": request_id,
             "ProjectName": project_name,
             "Rows": rows,
+            "Renames": renames,
             "ChangedTypes": changed_types,
+            "Plan": plan,
             "UserName": user_name,
         }
     )
@@ -281,7 +451,9 @@ def validate_dataset_types_change_request(payload: Any) -> dict[str, Any]:
         "RequestId": validate_request_id(payload.get("RequestId")),
         "ProjectName": validate_project_name(payload.get("ProjectName")),
         "Rows": normalize_rows(payload.get("Rows")),
+        "Renames": normalize_renames(payload.get("Renames")),
         "ChangedTypes": normalize_changed_types(payload.get("ChangedTypes")),
+        "Plan": normalize_plan(payload.get("Plan")),
         "UserName": _required_text(payload.get("UserName"), "UserName"),
     }
 

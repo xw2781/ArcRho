@@ -42,6 +42,53 @@ ROWS = [
     ["Paid", "Triangle", "A Loss", False, ""],
     ["Paid Ultimate", "Vector", "A Loss", True, '"Paid" * 2'],
 ]
+CLASS_A = "HPPREF\\NJ"
+CLASS_B = "PRNJ\\PA"
+
+
+def _affected(reserving_class, instances=1, adopting=0, renaming=0, reason=""):
+    return {
+        "project": PROJECT,
+        "reserving_class": reserving_class,
+        "instances": instances,
+        "adopting": adopting,
+        "renaming": renaming,
+        "reason": reason,
+    }
+
+
+PLAN = {"table_digest": "sha256:table", "affected": [_affected(CLASS_A, 3), _affected(CLASS_B, 1)]}
+
+
+class _Instance(SimpleNamespace):
+    pass
+
+
+def _planned(plan, *, rows=None, changed_types=(), removed_types=(), class_count=5):
+    """The planner's answer, shaped like ``DatasetTypesChangePlan``."""
+
+    classes = [
+        SimpleNamespace(
+            reserving_class=entry["reserving_class"],
+            instances=[
+                _Instance(name=f"Dataset {index}", dataset_type="Paid", method_type="None",
+                          new_dataset_type="Paid", rename_to="")
+                for index in range(entry["instances"])
+            ],
+            reason=entry["reason"],
+        )
+        for entry in plan["affected"]
+    ]
+    return SimpleNamespace(
+        plan=plan,
+        rows=list(rows if rows is not None else ROWS),
+        renames=[],
+        rename_map={},
+        changed_types=list(changed_types),
+        removed_types=list(removed_types),
+        classes=classes,
+        class_count=class_count,
+    )
 
 
 def _identity_stub(bound: list):
@@ -91,7 +138,9 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
             request_id=self.REQUEST_ID,
             project_name=PROJECT,
             rows=ROWS,
+            renames=[],
             changed_types=["Paid Ultimate"],
+            plan=PLAN,
             user_name="Test User",
         )
         self.identities: list[str] = []
@@ -99,32 +148,42 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
         self.applied: list[tuple] = []
         self.refreshed: list[tuple] = []
         self.blocker_calls: list[tuple] = []
+        self.narrowed: list[list[str]] = []
+        self.planner_calls: list[tuple] = []
 
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def _services(self, refresh_result=None, blockers=None, previous_rows=None):
+    def _services(self, refresh_result=None, blockers=None, planned=None):
         dataset_types_service = SimpleNamespace(
             apply_dataset_types_rows=lambda project, rows: (
                 self.applied.append((project, rows, list(self.identities)))
                 or {"path": "table.json", "xlsx_path": "table.xlsx", "rows": rows, "count": len(rows)}
             ),
-            read_persisted_rows=lambda project: list(previous_rows or []),
         )
+        answer = planned if planned is not None else _planned(PLAN, changed_types=["Paid Ultimate"])
+
+        def plan(project, rows, renames, on_progress=None):
+            self.planner_calls.append((project, rows, renames))
+            if on_progress:
+                on_progress(1, 5, "HPPREF")
+            return answer
+
+        dataset_types_plan_service = SimpleNamespace(plan_dataset_types_change=plan)
         calculated_dataset_service = SimpleNamespace(
-            find_dataset_type_removal_blockers=lambda project, removed, on_progress=None: (
-                self.blocker_calls.append((project, list(removed)))
-                or (on_progress and on_progress("scanning", "Checking HPPREF", 1, 2))
+            find_dataset_type_removal_blockers=lambda project, planned: (
+                self.blocker_calls.append((project, list(planned.removed_types)))
                 or list(blockers or [])
             ),
-            refresh_sidecar_graphs_and_recalculate=lambda project, changed, on_progress=None: (
-                self.refreshed.append((project, changed, list(self.identities)))
+            apply_planned_dataset_types_change=lambda project, planned, on_progress=None: (
+                self.refreshed.append((project, planned.changed_types, list(self.identities)))
                 or (on_progress and on_progress("graphs", "Rebuilding HPPREF", 6, 12))
                 or (refresh_result if refresh_result is not None else {
                     "ok": True,
                     "sidecars_updated": 4,
+                    "datasets_renamed": 1,
                     "datasets_total": 12,
-                    "classes_total": 3,
+                    "classes_total": 5,
                     "chains": [],
                     "errors": [],
                 })
@@ -132,43 +191,69 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
         )
         return {
             "dataset_types_service": dataset_types_service,
+            "dataset_types_plan_service": dataset_types_plan_service,
             "calculated_dataset_service": calculated_dataset_service,
             "user_identity_service": _identity_stub(self.identities),
         }
 
-    def _execute(self, refresh_result=None, progress=None, blockers=None, previous_rows=None):
-        services = self._services(refresh_result, blockers=blockers, previous_rows=previous_rows)
+    def _execute(self, refresh_result=None, progress=None, blockers=None, planned=None):
+        services = self._services(refresh_result, blockers=blockers, planned=planned)
         with _install_fake_app_server(services, self.audit_calls):
             with patch.object(dataset_types_change, "configure_canonical_runtime"):
                 return dataset_types_change.execute_dataset_types_change(
                     self.root,
                     self.request,
                     progress_callback=(progress.append if progress is not None else None),
+                    narrow_lease=self.narrowed.append,
                 )
 
     def test_the_table_is_written_and_the_graphs_rebuilt_as_the_saving_user(self) -> None:
         result = self._execute()
+        self.assertEqual(self.planner_calls, [(PROJECT, ROWS, [])])
         self.assertEqual(self.applied[0][0], PROJECT)
         self.assertEqual(self.applied[0][1], ROWS)
         # Both canonical steps run bound to the person who asked for the change.
         self.assertEqual(self.applied[0][2], ["Test User"])
         self.assertEqual(self.refreshed[0][1], ["Paid Ultimate"])
         self.assertEqual(self.refreshed[0][2], ["Test User"])
+        # The whole project is let go once the table is the new one.
+        self.assertEqual(self.narrowed, [[CLASS_A, CLASS_B]])
         self.assertEqual(result["rows_written"], 2)
         self.assertEqual(result["types_changed"], 1)
         self.assertEqual(result["datasets_updated"], 4)
+        self.assertEqual(result["datasets_renamed"], 1)
         self.assertEqual(result["datasets_total"], 12)
-        self.assertEqual(result["classes_total"], 3)
+        self.assertEqual(result["classes_total"], 5)
+        self.assertEqual(result["classes_affected"], 2)
         self.assertEqual(result["failures"], [])
         self.assertEqual(
             self.audit_calls,
             [{"project_name": PROJECT, "action": "Saved Dataset Types (2 rows)"}],
         )
 
+    def test_the_table_written_is_the_planners_rewritten_one(self) -> None:
+        rewritten = [ROWS[0], ["Paid Ultimate", "Vector", "A Loss", True, '"Paid" * 3']]
+        self._execute(planned=_planned(PLAN, rows=rewritten))
+        self.assertEqual(self.applied[0][1], rewritten)
+
+    def test_a_plan_that_no_longer_matches_stops_the_change(self) -> None:
+        wider = {"table_digest": PLAN["table_digest"], "affected": PLAN["affected"] + [_affected("New\\Class")]}
+        with self.assertRaises(dataset_types_change.DatasetTypesChangeJobError) as raised:
+            self._execute(planned=_planned(wider))
+        self.assertEqual(str(raised.exception), dataset_types_change.PLAN_CHANGED_MESSAGE)
+        self.assertEqual(self.applied, [])
+        self.assertEqual(self.narrowed, [])
+
+        moved_table = {"table_digest": "sha256:other", "affected": PLAN["affected"]}
+        with self.assertRaises(dataset_types_change.DatasetTypesChangeJobError):
+            self._execute(planned=_planned(moved_table))
+        self.assertEqual(self.applied, [])
+
     def test_progress_reaches_the_publisher_with_countable_units(self) -> None:
         progress: list[dict] = []
         self._execute(progress=progress)
         labels = [item["label"] for item in progress]
+        self.assertIn("Checking reserving classes: HPPREF", labels)
         self.assertIn("Writing the dataset type table", labels)
         self.assertIn("Rebuilding HPPREF", labels)
         self.assertEqual(labels[-1], "Dataset type change complete")
@@ -180,7 +265,8 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
         final = progress[-1]
         self.assertEqual(final["completed"], final["total"])
         self.assertGreater(final["total"], 1)
-        for earlier, later in zip(progress, progress[1:]):
+        table_at = labels.index("Writing the dataset type table")
+        for earlier, later in zip(progress[table_at:], progress[table_at + 1:]):
             self.assertGreaterEqual(later["completed"], earlier["completed"])
 
     def test_a_failed_chain_is_reported_as_a_failure(self) -> None:
@@ -207,9 +293,8 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
         )
 
     def test_a_removed_type_still_read_downstream_stops_the_change(self) -> None:
-        # ROWS defines "Paid" and "Paid Ultimate"; the previous table also had
-        # "Growth Adjustment - Counts", so that type is the one leaving.
-        previous = ROWS + [["Growth Adjustment - Counts", "Vector", "B Exposure", False, ""]]
+        # The planner found "Growth Adjustment - Counts" leaving the table.
+        planned = _planned(PLAN, removed_types=["Growth Adjustment - Counts"])
         blockers = [
             {
                 "dataset_type": "Growth Adjustment - Counts",
@@ -225,7 +310,7 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
             }
         ]
         with self.assertRaises(dataset_types_change.DatasetTypesChangeJobError) as raised:
-            self._execute(blockers=blockers, previous_rows=previous)
+            self._execute(blockers=blockers, planned=planned)
         message = str(raised.exception)
         self.assertIn("Growth Adjustment - Counts", message)
         self.assertIn("Selected Ultimate (DFM)", message)
@@ -235,12 +320,12 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
         self.assertEqual(self.blocker_calls, [(PROJECT, ["Growth Adjustment - Counts"])])
 
     def test_a_change_that_removes_nothing_never_scans_for_readers(self) -> None:
-        self._execute(previous_rows=ROWS)
+        self._execute()
         self.assertEqual(self.blocker_calls, [])
 
     def test_a_removed_type_nothing_reads_is_applied(self) -> None:
-        previous = ROWS + [["Growth Adjustment - Counts", "Vector", "B Exposure", False, ""]]
-        result = self._execute(blockers=[], previous_rows=previous)
+        planned = _planned(PLAN, removed_types=["Growth Adjustment - Counts"])
+        result = self._execute(blockers=[], planned=planned)
         self.assertEqual(result["rows_written"], 2)
         self.assertEqual(self.blocker_calls, [(PROJECT, ["Growth Adjustment - Counts"])])
 
@@ -269,7 +354,9 @@ class DurableDatasetTypesChangeTests(unittest.TestCase):
             request_id=self.REQUEST_ID,
             project_name=PROJECT,
             rows=ROWS,
+            renames=[],
             changed_types=[],
+            plan=PLAN,
             user_name="Test User",
         )
         self.request_path = dataset_types_change_request_path(self.root, self.REQUEST_ID)
@@ -285,32 +372,33 @@ class DurableDatasetTypesChangeTests(unittest.TestCase):
                 self.root, self.request_path, self.request
             )
 
-    def test_the_running_job_holds_every_reserving_class_of_the_project(self) -> None:
+    def test_the_running_job_holds_the_project_then_only_the_planned_classes(self) -> None:
         observed: list = []
 
-        def execute(root, request, *, progress_callback=None):
+        def execute(root, request, *, progress_callback=None, narrow_lease=None):
+            observed.append(find_reserving_class_propagation_hold(root, PROJECT, CLASS_A))
+            observed.append(find_reserving_class_propagation_hold(root, PROJECT, CLASS_B))
             observed.append(
-                find_reserving_class_propagation_hold(root, PROJECT, "HPPREF\\NJ")
+                find_reserving_class_propagation_hold(root, "Other Project", CLASS_A)
             )
-            observed.append(
-                find_reserving_class_propagation_hold(root, "Other Project", "HPPREF\\NJ")
-            )
+            narrow_lease([CLASS_A])
+            observed.append(find_reserving_class_propagation_hold(root, PROJECT, CLASS_A))
+            observed.append(find_reserving_class_propagation_hold(root, PROJECT, CLASS_B))
             return dataset_types_change._empty_result()
 
         self.assertTrue(self._process(execute))
-        self.assertEqual(observed[0], {"reason": "project"})
-        # Another project is untouched by this project's lease.
-        self.assertIsNone(observed[1])
+        # Every class of the project, and no other project's, until the table
+        # is written; then only the classes the plan named.
+        self.assertEqual(observed[:3], [{"reason": "project"}, {"reason": "project"}, None])
+        self.assertEqual(observed[3:], [{"reason": "project"}, None])
         # And the hold is released when the job ends.
-        self.assertIsNone(
-            find_reserving_class_propagation_hold(self.root, PROJECT, "HPPREF\\NJ")
-        )
+        self.assertIsNone(find_reserving_class_propagation_hold(self.root, PROJECT, CLASS_A))
 
     def test_a_completed_job_publishes_success_and_drops_its_queue_file(self) -> None:
         result = dataset_types_change._empty_result()
         result.update({"rows_written": 2, "datasets_updated": 9, "datasets_total": 20})
 
-        def execute(root, request, *, progress_callback=None):
+        def execute(root, request, *, progress_callback=None, narrow_lease=None):
             progress_callback(
                 dataset_types_change._progress("graphs", 1, 2, "Rebuilding graphs")
             )

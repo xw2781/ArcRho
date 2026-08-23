@@ -323,14 +323,28 @@ test("saves for different projects do not share one slot", async () => {
 test("the outcome is reported in datasets, not in dependency graphs", () => {
   assert.equal(
     describeDatasetTypesChangeResult({
-      result: { rows_written: 248, datasets_updated: 258, classes_total: 19 },
+      result: { rows_written: 248, datasets_updated: 258, classes_total: 19, classes_affected: 19 },
     }),
     "248 dataset types saved. 258 datasets updated across 19 reserving classes.",
+  );
+  // A change that reached only some classes says how many were left alone,
+  // and a rename that moved instances with it is counted on its own.
+  assert.equal(
+    describeDatasetTypesChangeResult({
+      result: {
+        rows_written: 248,
+        datasets_updated: 3,
+        datasets_renamed: 2,
+        classes_total: 19,
+        classes_affected: 2,
+      },
+    }),
+    "248 dataset types saved. 3 datasets updated across 2 of 19 reserving classes. 2 datasets renamed with its type.",
   );
   // Singulars read naturally, including the irregular one.
   assert.equal(
     describeDatasetTypesChangeResult({
-      result: { rows_written: 1, datasets_updated: 1, classes_total: 1 },
+      result: { rows_written: 1, datasets_updated: 1, classes_total: 1, classes_affected: 1 },
     }),
     "1 dataset type saved. 1 dataset updated across 1 reserving class.",
   );

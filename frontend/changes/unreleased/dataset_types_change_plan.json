@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "A Dataset Types change now shows which reserving classes it affects before anything is locked, and a renamed type carries its datasets with it.",
+  "details": [
+    "Renaming or removing a dataset type, or changing its Data Format, Calculated flag or Formula, first opens a confirmation listing the reserving classes the change reaches, how many datasets in each and why. Apply runs the change; Cancel puts the saved table back.",
+    "Only the listed reserving classes are locked while the change runs. Every other reserving class in the project stays available, instead of the whole project being held for the duration.",
+    "The affected classes are found by reading each class's dataset index, not by opening every dataset in the project, so the check takes seconds and does not lock anything.",
+    "If someone changes the project between the confirmation and the run, the change stops with a message asking you to review it again rather than locking more than you agreed to.",
+    "Renaming a dataset type now renames it for its existing datasets: they keep their place under the new type instead of dropping into a blank category. A dataset named after the old type, that nothing else reads, is renamed with it.",
+    "The completion message says how many of the project's reserving classes were touched and how many datasets were renamed."
+  ]
+}

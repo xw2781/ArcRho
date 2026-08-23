@@ -10,19 +10,26 @@ inside a request the user is waiting on.
 Requests queue under ``requests/dataset_types_change/requests`` and are retained
 until a validated terminal status exists. Unlike a source refresh, this job
 takes the *project-scope* propagation lease rather than a per-class one: the
-table it rewrites belongs to no single reserving class, and while that lease is
-held every class of the project reports the propagation hold clients already
-understand, so no save and no other long job can interleave with the change.
+table it rewrites belongs to no single reserving class. The whole project is
+held only while the plan is confirmed and the table written; the lease is then
+narrowed to the reserving classes the plan named, and every other class of the
+project is writable again while those are rebuilt.
 
-The job runs two stages:
+The job runs three stages:
 
+``plan``    the canonical ``dataset_types_plan_service`` recomputes, from each
+            class's index, which reserving classes the change reaches, and
+            the job refuses to continue unless that matches the plan the user
+            confirmed -- an edit made while the dialog was open must be
+            reviewed, not silently absorbed into a wider lock.
 ``table``   the canonical ``dataset_types_service`` validates the submitted
             rows, resolves each row's Source/Generated, and writes the JSON and
             its XLSX companion.
-``graphs``  the canonical ``calculated_dataset_service`` re-derives every
-            sidecar's precedents/dependents from the new table, recalculates
-            the calculated datasets whose formula or kind changed, and walks
-            each affected reserving class's dependents.
+``graphs``  the canonical ``calculated_dataset_service`` rewrites the sidecars
+            the plan named -- a renamed type's instances take its new name --
+            re-derives their precedents/dependents from the new table,
+            recalculates the calculated datasets whose formula or kind
+            changed, and walks each affected reserving class's dependents.
 
 Nothing in here is specific to being the Engine: every step calls the same
 canonical ``app_server`` service a Client PC would have called, which is what
@@ -41,6 +48,7 @@ from arcrho_dataset_types_change_contract import (
     DATASET_TYPES_CHANGE_STATUS_HEARTBEAT_SECONDS,
     DatasetTypesChangeContractError,
     dataset_types_change_request_path,
+    plans_match,
     read_dataset_types_change_status,
     validate_dataset_types_change_request,
     validate_request_id,
@@ -49,6 +57,7 @@ from arcrho_dataset_types_change_contract import (
 from arcrho_dependent_propagation_contract import (
     acquire_project_scope_lease,
     find_any_reserving_class_propagation_hold,
+    narrow_project_scope_lease,
     release_project_scope_lease,
     start_project_scope_lease_heartbeat,
     stop_project_scope_lease_heartbeat,
@@ -73,9 +82,15 @@ RESERVING_CLASS_QUIET_WAIT_SECONDS = 120.0
 # Writing the table is one unit; the rebuild that follows contributes one unit
 # per dataset instance it visits and one more per reserving class it revisits,
 # so the caller's bar measures work rather than stages. The rebuild's own total
-# is not known until it has listed the project, which is why the plan below
-# starts at one and grows.
+# is not known until the plan has been recomputed, which is why the count
+# below starts at one and grows.
 _TABLE_UNIT = 1
+
+PLAN_CHANGED_MESSAGE = (
+    "The project changed since you reviewed this change, so the reserving "
+    "classes it affects are no longer the ones you confirmed. Nothing was "
+    "saved. Review the change again."
+)
 
 Progress = dict[str, Any]
 
@@ -123,7 +138,9 @@ def _empty_result() -> dict[str, Any]:
         "types_changed": 0,
         "datasets_total": 0,
         "datasets_updated": 0,
+        "datasets_renamed": 0,
         "classes_total": 0,
+        "classes_affected": 0,
         "classes_walked": 0,
         "datasets_recalculated": 0,
         "failures": [],
@@ -155,24 +172,6 @@ def _require_quiet_project(server_root: Path, project_name: str) -> None:
 
 
 _MAX_LISTED_BLOCKERS = 6
-
-
-def _removed_dataset_type_names(previous_rows, submitted_rows) -> list[str]:
-    """The type names the submitted table no longer defines."""
-
-    def names(rows) -> dict[str, str]:
-        out: dict[str, str] = {}
-        for row in rows or []:
-            if not isinstance(row, (list, tuple)) or not row:
-                continue
-            name = str(row[0] if row[0] is not None else "").strip()
-            if name:
-                out.setdefault(name.casefold(), name)
-        return out
-
-    previous = names(previous_rows)
-    current = names(submitted_rows)
-    return [previous[key] for key in previous if key not in current]
 
 
 def _describe_removal_blockers(blocked: list) -> str:
@@ -214,8 +213,14 @@ def execute_dataset_types_change(
     request: Mapping[str, Any],
     *,
     progress_callback: Callable[[Progress], None] | None = None,
+    narrow_lease: Callable[[list[str]], None] | None = None,
 ) -> dict[str, Any]:
-    """Run one validated dataset-type change and return its result summary."""
+    """Run one validated dataset-type change and return its result summary.
+
+    ``narrow_lease`` is called with the affected reserving classes once the
+    table is written, so the caller holding the project-scope lease can let
+    every other class go while the rebuild runs.
+    """
 
     normalized = validate_dataset_types_change_request(request)
     root = Path(os.fspath(server_root)).expanduser().resolve(strict=False)
@@ -223,20 +228,20 @@ def execute_dataset_types_change(
 
     from app_server.services import (
         calculated_dataset_service,
+        dataset_types_plan_service,
         dataset_types_service,
         user_identity_service,
     )
     from app_server.services.audit_service import safe_append_project_audit_log
 
     project_name = normalized["ProjectName"]
-    changed_types = list(normalized["ChangedTypes"])
     result = _empty_result()
-    result["types_changed"] = len(changed_types)
     started = time.monotonic()
     _log(
         root,
         f"{normalized['RequestId']} start project={project_name!r} "
-        f"rows={len(normalized['Rows'])} changed={len(changed_types)}",
+        f"rows={len(normalized['Rows'])} renames={len(normalized['Renames'])} "
+        f"classes={len(normalized['Plan']['affected'])}",
     )
 
     def notify(stage: str, completed: int, total: int, label: str) -> None:
@@ -245,36 +250,52 @@ def execute_dataset_types_change(
 
     _require_quiet_project(root, project_name)
 
-    # A dataset type may only go once nothing reads its instances, so the
-    # project is scanned before anything is written: a refusal here leaves the
-    # table exactly as it was.
-    removed_types = _removed_dataset_type_names(
-        dataset_types_service.read_persisted_rows(project_name), normalized["Rows"]
+    # The plan the user confirmed was built without a lock. Recompute it now,
+    # under the lease, and refuse if the project moved on: the classes about
+    # to be held must be exactly the ones the user agreed to.
+    notify("scanning", 0, 1, "Checking the reserving classes this change affects")
+    planned = dataset_types_plan_service.plan_dataset_types_change(
+        project_name,
+        normalized["Rows"],
+        normalized["Renames"],
+        on_progress=lambda scanned, total, reserving_class: notify(
+            "scanning", scanned, total, f"Checking reserving classes: {reserving_class}"
+        ),
     )
-    if removed_types:
+    if not plans_match(normalized["Plan"], planned.plan):
+        raise DatasetTypesChangeJobError(PLAN_CHANGED_MESSAGE)
+    result["types_changed"] = len(planned.changed_types)
+
+    # A dataset type may only go once nothing reads its instances, so those
+    # instances are checked before anything is written: a refusal here leaves
+    # the table exactly as it was.
+    if planned.removed_types:
         notify("scanning", 0, 1, "Checking whether the removed types are in use")
         blocked = calculated_dataset_service.find_dataset_type_removal_blockers(
-            project_name,
-            removed_types,
-            on_progress=lambda stage, label, completed, total: notify(
-                stage, completed, total, label
-            ),
+            project_name, planned
         )
         if blocked:
             raise DatasetTypesChangeJobError(_describe_removal_blockers(blocked))
+
+    affected_classes = [affected.reserving_class for affected in planned.classes]
 
     # The job writes the table and re-saves sidecars: act as the user who asked
     # for the change so every stamp names them and not this service.
     with user_identity_service.acting_identity(normalized["UserName"]):
         notify("table", 0, _TABLE_UNIT, "Writing the dataset type table")
         written = dataset_types_service.apply_dataset_types_rows(
-            project_name, normalized["Rows"]
+            project_name, planned.rows
         )
         result["rows_written"] = int(written.get("count") or 0)
         safe_append_project_audit_log(
             project_name=project_name,
             action=f"Saved Dataset Types ({result['rows_written']} rows)",
         )
+
+        # The table is the new one, so a class the plan did not name can only
+        # gain instances of the new names from here on: let it go.
+        if narrow_lease is not None:
+            narrow_lease(affected_classes)
 
         notify("graphs", _TABLE_UNIT, _TABLE_UNIT, "Rebuilding dataset dependency graphs")
 
@@ -283,15 +304,17 @@ def execute_dataset_types_change(
             # bar never moves backwards when the rebuild learns its total.
             notify(stage, _TABLE_UNIT + completed, _TABLE_UNIT + total, label)
 
-        refresh = calculated_dataset_service.refresh_sidecar_graphs_and_recalculate(
+        refresh = calculated_dataset_service.apply_planned_dataset_types_change(
             project_name,
-            changed_types,
+            planned,
             on_progress=on_rebuild_progress,
         )
 
     result["datasets_updated"] = int(refresh.get("sidecars_updated") or 0)
+    result["datasets_renamed"] = int(refresh.get("datasets_renamed") or 0)
     result["datasets_total"] = int(refresh.get("datasets_total") or 0)
     result["classes_total"] = int(refresh.get("classes_total") or 0)
+    result["classes_affected"] = len(affected_classes)
     chains = list(refresh.get("chains") or [])
     result["classes_walked"] = sum(1 for chain in chains if chain.get("ok"))
     result["datasets_recalculated"] = sum(
@@ -315,7 +338,8 @@ def execute_dataset_types_change(
         root,
         f"{normalized['RequestId']} done in {time.monotonic() - started:.2f}s "
         f"rows={result['rows_written']} datasets={result['datasets_updated']} "
-        f"classes={result['classes_walked']}/{result['classes_total']} "
+        f"renamed={result['datasets_renamed']} "
+        f"classes={len(affected_classes)}/{result['classes_total']} "
         f"failed={len(result['failures'])}",
     )
     return result
@@ -492,7 +516,12 @@ def process_durable_dataset_types_change_request(
             status_heartbeat_thread.start()
             try:
                 terminal_result = execute_dataset_types_change(
-                    root, normalized, progress_callback=record_progress
+                    root,
+                    normalized,
+                    progress_callback=record_progress,
+                    narrow_lease=lambda classes: narrow_project_scope_lease(
+                        lease, normalized["ProjectName"], classes
+                    ),
                 )
             finally:
                 heartbeat_stop_event.set()

@@ -139,6 +139,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_table_summary",
         ("project_name",),
     ),
+    # Planning a dataset-type change reads one index per reserving class of
+    # the project; from a Client PC that is one round trip each, so the plan
+    # the confirmation dialog shows is built on the server host when it can be.
+    "dataset_types_change_plan": WorkspaceReadKind(
+        "dataset_types_plan_service",
+        "plan_dataset_types_change_read",
+        ("project_name", "rows", "renames"),
+    ),
     # Polling a source-refresh job over the mapped drive reads a file the
     # server rewrote seconds ago, and Windows' directory cache can keep serving
     # the previous copy for several seconds after a terminal status lands. The

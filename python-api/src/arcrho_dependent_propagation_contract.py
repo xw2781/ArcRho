@@ -30,11 +30,12 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 
 from arcrho_engine_job_lease import (
     EngineJobLease,
     acquire_engine_job_lease,
+    engine_job_lease_is_owned,
     release_engine_job_lease,
     start_engine_job_lease_heartbeat,
     stop_engine_job_lease_heartbeat,
@@ -673,6 +674,75 @@ def acquire_project_scope_lease(
     )
 
 
+def narrow_project_scope_lease(
+    lease: EngineJobLease,
+    project_name: Any,
+    reserving_classes: Iterable[Any],
+) -> None:
+    """Shrink a held project-scope lease to the named reserving classes.
+
+    A dataset-type change needs the whole project only while it confirms its
+    plan and writes the table. Once the table is the new one, any instance
+    created in a class the plan did not name is created against the new names,
+    so that class has nothing to be protected from. Rewriting the lease file
+    with the classes still being rebuilt lets
+    :func:`find_reserving_class_propagation_hold` answer "writable" for every
+    other class, while the lease itself -- its owner token and its heartbeat --
+    stays exactly the claim it was. The whole-project probe keeps reporting the
+    job, so a second project-scope job still cannot start alongside it.
+    """
+
+    if not engine_job_lease_is_owned(lease):
+        raise DependentPropagationLeaseUnavailable(
+            "The project-scope lease is no longer owned."
+        )
+    payload = _lease_payload(lease.path)
+    if payload is None:
+        raise DependentPropagationLeaseUnavailable(
+            "The project-scope lease file could not be read."
+        )
+    narrowed = dict(payload)
+    narrowed["classes"] = sorted(
+        {validate_reserving_class_path(path) for path in reserving_classes},
+        key=str.casefold,
+    )
+    narrowed["project_name"] = validate_project_name(project_name)
+    temporary = lease.path.with_name(f".{lease.path.name}.{lease.owner_token[:8]}.narrow")
+    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(narrowed, stream, ensure_ascii=False, separators=(",", ":"))
+        stream.write("\n")
+    os.replace(temporary, lease.path)
+
+
+def _project_scope_lease_covers(
+    server_root: str | os.PathLike[str],
+    project_name: Any,
+    path: Any,
+) -> bool:
+    """Whether the fresh project-scope lease still holds this one class.
+
+    A lease that was never narrowed has no ``classes`` field and covers every
+    class; a narrowed one covers exactly the classes it lists. The payload is
+    read only when the project lock is fresh, so an ordinary save on a quiet
+    project pays nothing for this.
+    """
+
+    payload = _lease_payload(project_scope_lock_path(server_root, project_name))
+    if payload is None:
+        return True
+    classes = payload.get("classes")
+    if not isinstance(classes, list):
+        return True
+    identity = reserving_class_identity(project_name, path)
+    for entry in classes:
+        try:
+            if reserving_class_identity(project_name, entry) == identity:
+                return True
+        except DependentPropagationContractError:
+            continue
+    return False
+
+
 def release_project_scope_lease(lease: EngineJobLease | None) -> None:
     release_engine_job_lease(lease)
 
@@ -891,7 +961,8 @@ def find_reserving_class_propagation_hold(
 
     A hold exists while any of these is true:
 
-    - a project-scope lease covering every class of the project is fresh
+    - a project-scope lease is fresh and still covers this class -- every class
+      of the project until the job narrows it, then only the classes it named
       (reason ``"project"``);
     - the reserving-class lease file is fresh -- its heartbeat-renewed mtime is
       within ``processing_fresh_seconds`` (reason ``"processing"``);
@@ -910,7 +981,9 @@ def find_reserving_class_propagation_hold(
     observed_at = time.time() if now is None else float(now)
 
     fresh = _scan_fresh_locks(server_root, observed_at, processing_fresh_seconds)
-    if project_scope_lock_path(server_root, project_name).name in fresh:
+    if project_scope_lock_path(
+        server_root, project_name
+    ).name in fresh and _project_scope_lease_covers(server_root, project_name, path):
         return {"reason": "project"}
     if dependent_propagation_lock_path(server_root, project_name, path).name in fresh:
         return {"reason": "processing"}

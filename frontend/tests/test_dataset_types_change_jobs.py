@@ -30,6 +30,7 @@ from arcrho_dataset_types_change_contract import (
     dataset_types_change_request_path,
     dataset_types_change_status_path,
     find_queued_dataset_types_change,
+    plans_match,
     validate_dataset_types_change_request,
     validate_dataset_types_change_status,
 )
@@ -40,6 +41,7 @@ from arcrho_dependent_propagation_contract import (
     find_any_reserving_class_propagation_hold,
     find_project_scope_propagation_hold,
     find_reserving_class_propagation_hold,
+    narrow_project_scope_lease,
     release_project_scope_lease,
     release_reserving_class_lease,
 )
@@ -47,9 +49,11 @@ from arcrho_dependent_propagation_contract import (
 # name, so the module has to be imported explicitly to reach its handlers.
 dataset_types_router = import_module("app_server.api.dataset_types_router")
 from app_server.schemas.dataset_types import DatasetTypesSaveRequest
+from app_server import config
 from app_server.services import (
     calculated_dataset_service,
     dataset_types_change_service,
+    dataset_types_plan_service,
     dataset_types_service,
     dependent_propagation_service,
     source_refresh_service,
@@ -59,6 +63,18 @@ from app_server.services import (
 PROJECT = "Demo Project"
 CLASS_A = "HPPREF\\HO+DF\\NJ"
 CLASS_B = "PRNJ - PA\\PA\\All States"
+EMPTY_PLAN = {"table_digest": "sha256:0", "affected": []}
+
+
+def _affected(reserving_class, instances=1, adopting=0, renaming=0, reason="", project=PROJECT):
+    return {
+        "project": project,
+        "reserving_class": reserving_class,
+        "instances": instances,
+        "adopting": adopting,
+        "renaming": renaming,
+        "reason": reason,
+    }
 
 
 class DatasetTypesChangeContractTests(unittest.TestCase):
@@ -72,7 +88,12 @@ class DatasetTypesChangeContractTests(unittest.TestCase):
                 ["Paid", "Triangle", "A Loss", False, ""],
                 ["Paid Ultimate", "Vector", "A Loss", True, '"Paid" * 2'],
             ],
+            "renames": [],
             "changed_types": ["Paid Ultimate"],
+            "plan": {
+                "table_digest": "sha256:abc",
+                "affected": [_affected(CLASS_A, 3, 2, 1, "3 of a renamed type")],
+            },
             "user_name": "Test User",
         }
         payload.update(overrides)
@@ -106,6 +127,43 @@ class DatasetTypesChangeContractTests(unittest.TestCase):
         request = self._request(changed_types=["Paid", "paid", " Paid ", "Incurred"])
         self.assertEqual(request["ChangedTypes"], ["Paid", "Incurred"])
 
+    def test_renames_keep_their_shape(self) -> None:
+        request = self._request(renames=[{"from": "Paid--Old", "to": "Paid"}])
+        self.assertEqual(request["Renames"], [{"from": "Paid--Old", "to": "Paid"}])
+        for bad in (
+            [{"from": "Paid", "to": "paid"}],  # not a change
+            [{"from": "A", "to": "B"}, {"from": "a", "to": "C"}],  # renamed twice
+            [{"from": "A"}],  # half an entry
+            ["A>B"],  # not an object
+        ):
+            with self.assertRaises(DatasetTypesChangeContractError):
+                self._request(renames=bad)
+
+    def test_plan_shape_is_exact_and_plans_compare_by_content(self) -> None:
+        request = self._request()
+        self.assertEqual(request["Plan"]["affected"][0]["reserving_class"], CLASS_A)
+        for bad in (
+            {"affected": []},  # no digest
+            {"table_digest": "x", "affected": [{"reserving_class": CLASS_A}]},
+            {"table_digest": "x", "affected": [_affected(CLASS_A, instances=-1)]},
+            {"table_digest": "x", "affected": [], "extra": 1},
+        ):
+            with self.assertRaises(DatasetTypesChangeContractError):
+                self._request(plan=bad)
+
+        confirmed = {
+            "table_digest": "x",
+            "affected": [_affected(CLASS_A, 2, 1, 0, "why"), _affected(CLASS_B, 1)],
+        }
+        reordered = {
+            "table_digest": "x",
+            "affected": [_affected(CLASS_B, 1), _affected(CLASS_A.lower(), 2, 1, 0, "")],
+        }
+        self.assertTrue(plans_match(confirmed, reordered))
+        self.assertFalse(plans_match(confirmed, {"table_digest": "y", "affected": confirmed["affected"]}))
+        self.assertFalse(plans_match(confirmed, {"table_digest": "x", "affected": [_affected(CLASS_A, 2, 1, 0)]}))
+        self.assertFalse(plans_match(confirmed, {"table_digest": "x", "affected": [_affected(CLASS_A, 3, 1, 0), _affected(CLASS_B, 1)]}))
+
     def test_status_round_trips(self) -> None:
         status = build_dataset_types_change_status(
             self.REQUEST_ID,
@@ -121,6 +179,7 @@ class DatasetTypesChangeContractTests(unittest.TestCase):
                 "types_changed": 1,
                 "datasets_total": 12,
                 "datasets_updated": 7,
+                "datasets_renamed": 1,
                 "classes_total": 2,
                 "classes_walked": 2,
                 "datasets_recalculated": 3,
@@ -176,6 +235,28 @@ class ProjectScopeLeaseTests(unittest.TestCase):
         finally:
             release_project_scope_lease(lease)
         self.assertIsNone(find_project_scope_propagation_hold(self.root, PROJECT))
+
+    def test_a_narrowed_project_lease_holds_only_the_classes_it_names(self) -> None:
+        lease = acquire_project_scope_lease(self.root, PROJECT)
+        try:
+            narrow_project_scope_lease(lease, PROJECT, [CLASS_A])
+            self.assertEqual(
+                find_reserving_class_propagation_hold(self.root, PROJECT, CLASS_A),
+                {"reason": "project"},
+            )
+            self.assertIsNone(
+                find_reserving_class_propagation_hold(self.root, PROJECT, CLASS_B)
+            )
+            # The job itself is still running, so no second project-wide job
+            # may start and the lease is still the same claim.
+            self.assertEqual(
+                find_project_scope_propagation_hold(self.root, PROJECT),
+                {"reason": "project"},
+            )
+            self.assertIsNone(acquire_project_scope_lease(self.root, PROJECT))
+        finally:
+            release_project_scope_lease(lease)
+        self.assertIsNone(find_reserving_class_propagation_hold(self.root, PROJECT, CLASS_A))
 
     def test_any_class_probe_names_the_class_still_being_walked(self) -> None:
         lease = acquire_reserving_class_lease(self.root, PROJECT, CLASS_A)
@@ -260,12 +341,14 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
     def _seed_table(self, rows) -> None:
         dataset_types_service.apply_dataset_types_rows(PROJECT, rows)
 
-    def _save(self, rows, request_id: str = ""):
+    def _save(self, rows, request_id: str = "", renames=None, plan=None):
         return dataset_types_router.save_dataset_types(
             DatasetTypesSaveRequest(
                 project_name=PROJECT,
                 columns=["Name", "Data Format", "Category", "Calculated", "Formula"],
                 rows=rows,
+                renames=list(renames or []),
+                plan=plan,
                 request_id=request_id or self.REQUEST_ID,
             )
         )
@@ -348,6 +431,55 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
         )
         self.assertEqual(len(saved["rows"]), 2)
 
+    def test_a_rename_is_planned_even_when_no_class_holds_the_type(self) -> None:
+        # The planner rewrites formulas that named the old type, so the grid
+        # must see those rows before they are submitted.
+        self._seed_table(
+            [
+                ["Paid--Old", "Triangle", "A Loss", False, ""],
+                ["Paid Ultimate", "Vector", "A Loss", True, "Paid--Old * 2"],
+            ]
+        )
+        self._write_heartbeat()
+        response = self._save(
+            [
+                ["Paid", "Triangle", "A Loss", False, ""],
+                ["Paid Ultimate", "Vector", "A Loss", True, "Paid--Old * 2"],
+            ],
+            renames=[{"from": "Paid--Old", "to": "Paid"}],
+        )
+        self.assertEqual(response["applied"], "plan")
+        self.assertEqual(response["plan"]["affected"], [])
+        self.assertEqual(response["rows"][1][4], '"Paid" * 2')
+        self.assertEqual(response["changed_types"], [])
+        self.assertFalse(
+            dataset_types_change_request_path(self.root, self.REQUEST_ID).exists()
+        )
+
+        confirmed = self._save(
+            response["rows"],
+            renames=[{"from": "Paid--Old", "to": "Paid"}],
+            plan=response["plan"],
+        )
+        self.assertEqual(confirmed["applied"], "job")
+        request = json.loads(
+            dataset_types_change_request_path(self.root, self.REQUEST_ID).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(request["Renames"], [{"from": "Paid--Old", "to": "Paid"}])
+        self.assertEqual(request["Plan"], response["plan"])
+
+    def test_a_rename_the_table_does_not_support_is_refused(self) -> None:
+        self._seed_table([["Paid", "Triangle", "A Loss", False, ""]])
+        self._write_heartbeat()
+        with self.assertRaises(HTTPException) as raised:
+            self._save(
+                [["Paid", "Triangle", "A Loss", False, ""]],
+                renames=[{"from": "Paid", "to": "Incurred"}],
+            )
+        self.assertEqual(raised.exception.status_code, 400)
+
     def test_formula_change_names_its_recalculation_roots(self) -> None:
         self._seed_table(
             [
@@ -384,7 +516,7 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
     def test_submit_refuses_without_a_live_engine(self) -> None:
         with self.assertRaises(HTTPException) as raised:
             dataset_types_change_service.submit_dataset_types_change_job(
-                PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], []
+                PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN
             )
         self.assertEqual(raised.exception.status_code, 503)
         self.assertEqual(str(raised.exception.detail), ENGINE_UNAVAILABLE_MESSAGE)
@@ -396,7 +528,7 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
         try:
             with self.assertRaises(HTTPException) as raised:
                 dataset_types_change_service.submit_dataset_types_change_job(
-                    PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], []
+                    PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN
                 )
         finally:
             release_reserving_class_lease(lease)
@@ -412,7 +544,7 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
         try:
             with self.assertRaises(HTTPException) as raised:
                 dataset_types_change_service.submit_dataset_types_change_job(
-                    PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], []
+                    PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN
                 )
         finally:
             release_project_scope_lease(lease)
@@ -444,7 +576,9 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
         submitted = dataset_types_change_service.submit_dataset_types_change_job(
             PROJECT,
             [["Paid", "Triangle", "A Loss", False, ""]],
+            [],
             ["Paid"],
+            EMPTY_PLAN,
             request_id=self.REQUEST_ID,
         )
         self.assertEqual(submitted["job_id"], self.REQUEST_ID)
@@ -473,10 +607,10 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
     def test_replaying_a_submitted_id_returns_the_same_job(self) -> None:
         self._write_heartbeat()
         first = dataset_types_change_service.submit_dataset_types_change_job(
-            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], self.REQUEST_ID
+            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN, self.REQUEST_ID
         )
         second = dataset_types_change_service.submit_dataset_types_change_job(
-            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], self.REQUEST_ID
+            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN, self.REQUEST_ID
         )
         self.assertFalse(first["resumed"])
         self.assertTrue(second["resumed"])
@@ -485,11 +619,11 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
     def test_a_second_queued_change_is_refused(self) -> None:
         self._write_heartbeat()
         dataset_types_change_service.submit_dataset_types_change_job(
-            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], self.REQUEST_ID
+            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN, self.REQUEST_ID
         )
         with self.assertRaises(HTTPException) as raised:
             dataset_types_change_service.submit_dataset_types_change_job(
-                PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], "0" * 32
+                PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN, "0" * 32
             )
         self.assertEqual(raised.exception.status_code, 423)
 
@@ -498,7 +632,7 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
     def test_status_reports_the_job_and_whether_the_project_is_held(self) -> None:
         self._write_heartbeat()
         dataset_types_change_service.submit_dataset_types_change_job(
-            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], self.REQUEST_ID
+            PROJECT, [["Paid", "Triangle", "A Loss", False, ""]], [], [], EMPTY_PLAN, self.REQUEST_ID
         )
         status = dataset_types_change_service.get_dataset_types_change_status(
             PROJECT, self.REQUEST_ID
@@ -526,120 +660,246 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 404)
 
 
-class DatasetTypeRemovalBlockerTests(unittest.TestCase):
-    """A dataset type may only go once nothing reads its instances."""
+class DatasetTypesPlanTests(unittest.TestCase):
+    """The plan finds the classes a change reaches from their indexes alone."""
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
-        self.data_dir = Path(self.temp_dir.name) / "data"
-        self.data_dir.mkdir(parents=True)
-        self.patch = patch.object(
-            calculated_dataset_service.config,
-            "get_project_data_dir",
-            side_effect=lambda name: str(self.data_dir),
-        )
-        self.patch.start()
-        self.addCleanup(self.patch.stop)
+        self.root = Path(self.temp_dir.name)
+        self.projects_dir = self.root / "projects"
+        self.project_dir = self.projects_dir / PROJECT
+        self.project_dir.mkdir(parents=True)
+        self.patches = [
+            patch.object(config, "PROJECT_SETTINGS_DIR", str(self.projects_dir)),
+            patch.object(config, "get_root_path", return_value=str(self.root)),
+            patch.object(
+                config,
+                "get_dataset_types_path",
+                side_effect=lambda name: str(self.project_dir / "dataset_types.json"),
+            ),
+            patch.object(dataset_types_service, "_load_dataset_source_map", return_value={}),
+            patch.object(dataset_types_service, "_load_field_mapping_field_names", return_value=[]),
+        ]
+        for item in self.patches:
+            item.start()
+        self.addCleanup(self._stop_patches)
         self.addCleanup(self.temp_dir.cleanup)
 
-    def _sidecar(self, reserving_class: str, name: str, payload: dict) -> None:
-        folder = self.data_dir / reserving_class / "sidecars"
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+    def _stop_patches(self) -> None:
+        for item in reversed(self.patches):
+            item.stop()
 
-    def test_an_instance_nothing_reads_is_not_a_blocker(self) -> None:
-        self._sidecar(
-            "HPPREF",
-            "Growth Adjustment - Counts",
-            {"dataset_type": "Growth Adjustment - Counts", "reserving_class": "HPPREF", "dependents": []},
+    def _class_dir(self, reserving_class: str) -> Path:
+        folder = self.project_dir / "data" / config.sanitize_reserving_class_folder(reserving_class)
+        for sub in ("datasets", "methods", "sidecars"):
+            (folder / sub).mkdir(parents=True, exist_ok=True)
+        return folder
+
+    def _dataset(
+        self,
+        reserving_class: str,
+        name: str,
+        dataset_type: str = "",
+        *,
+        dependents=(),
+        precedents=(),
+        method_type: str = "None",
+        csv: bool = True,
+    ) -> None:
+        folder = self._class_dir(reserving_class)
+        csv_file = f"{name}@12@12@cum@dev.csv"
+        if csv:
+            (folder / "datasets" / csv_file).write_text("Origin,12\n2024,1\n", encoding="utf-8")
+        payload = {
+            "dataset_name": name,
+            "dataset_type": dataset_type or name,
+            "reserving_class": reserving_class,
+            "project_name": PROJECT,
+            "source_kind": "engine" if method_type == "None" else "dfm",
+            "method_type": method_type,
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "csv_file": csv_file,
+            "status": 0,
+            "precedents": [{"dataset_name": item} for item in precedents],
+            "dependents": [{"dataset_name": item} for item in dependents],
+        }
+        (folder / "sidecars" / f"{name}.json").write_text(
+            json.dumps(payload), encoding="utf-8"
         )
+
+    def _seed_table(self, rows) -> None:
+        dataset_types_service.apply_dataset_types_rows(PROJECT, rows)
+
+    def _plan(self, rows, renames=()):
+        return dataset_types_plan_service.plan_dataset_types_change(
+            PROJECT, rows, list(renames)
+        )
+
+    def test_a_rename_names_only_the_classes_holding_the_type(self) -> None:
+        self._seed_table(
+            [
+                ["Growth--Incurred", "Triangle", "B Exposure", False, ""],
+                ["Paid", "Triangle", "A Loss", False, ""],
+            ]
+        )
+        self._dataset(CLASS_A, "Growth--Incurred")
+        self._dataset(CLASS_A, "Paid")
+        self._dataset(CLASS_B, "Paid")
+        self._dataset("Untouched", "Paid")
+
+        planned = self._plan(
+            [
+                ["Growth - Incurred", "Triangle", "B Exposure", False, ""],
+                ["Paid", "Triangle", "A Loss", False, ""],
+            ],
+            [{"from": "Growth--Incurred", "to": "Growth - Incurred"}],
+        )
+        self.assertEqual(planned.class_count, 3)
         self.assertEqual(
-            calculated_dataset_service.find_dataset_type_removal_blockers(
-                PROJECT, ["Growth Adjustment - Counts"]
-            ),
-            [],
+            planned.plan["affected"],
+            [
+                {
+                    "project": PROJECT,
+                    "reserving_class": CLASS_A,
+                    "instances": 1,
+                    "adopting": 1,
+                    "renaming": 1,
+                    "reason": "1 of a renamed type",
+                }
+            ],
         )
-
-    def test_an_instance_a_method_reads_blocks_the_removal(self) -> None:
-        self._sidecar(
-            "HPPREF",
-            "Growth Adjustment - Counts",
-            {
-                "dataset_type": "Growth Adjustment - Counts",
-                "reserving_class": "HPPREF",
-                "dependents": [{"dataset_name": "Selected Ultimate"}],
-            },
-        )
-        self._sidecar(
-            "HPPREF",
-            "Selected Ultimate",
-            {"dataset_type": "Selected Ultimate", "reserving_class": "HPPREF", "method_type": "DFM"},
-        )
-        blocked = calculated_dataset_service.find_dataset_type_removal_blockers(
-            PROJECT, ["Growth Adjustment - Counts"]
-        )
-        self.assertEqual(len(blocked), 1)
-        self.assertEqual(blocked[0]["dataset_type"], "Growth Adjustment - Counts")
-        instance = blocked[0]["instances"][0]
-        self.assertEqual(instance["reserving_class"], "HPPREF")
-        self.assertEqual(instance["dataset_name"], "Growth Adjustment - Counts")
-        self.assertEqual(instance["dependents"][0]["dataset_name"], "Selected Ultimate")
-        self.assertEqual(instance["dependents"][0]["method_type"], "DFM")
-
-    def test_a_dependent_leaving_in_the_same_change_is_not_a_blocker(self) -> None:
-        # Both types are being removed, so the edge between them goes with them.
-        self._sidecar(
-            "HPPREF",
-            "Growth Adjustment - Counts",
-            {
-                "dataset_type": "Growth Adjustment - Counts",
-                "reserving_class": "HPPREF",
-                "dependents": [{"dataset_name": "Growth Adjustment - Paid"}],
-            },
-        )
-        self._sidecar(
-            "HPPREF",
-            "Growth Adjustment - Paid",
-            {"dataset_type": "Growth Adjustment - Paid", "reserving_class": "HPPREF"},
-        )
+        self.assertEqual(planned.changed_types, [])
+        self.assertEqual(planned.removed_types, [])
+        instance = planned.classes[0].instances[0]
+        self.assertEqual(instance.new_dataset_type, "Growth - Incurred")
+        self.assertEqual(instance.rename_to, "Growth - Incurred")
         self.assertEqual(
-            calculated_dataset_service.find_dataset_type_removal_blockers(
-                PROJECT, ["Growth Adjustment - Counts", "Growth Adjustment - Paid"]
+            planned.plan["table_digest"],
+            dataset_types_plan_service.table_digest(
+                dataset_types_service.read_persisted_rows(PROJECT)
             ),
-            [],
         )
 
-    def test_a_type_that_is_not_being_removed_is_never_reported(self) -> None:
-        self._sidecar(
-            "HPPREF",
-            "Paid",
-            {
-                "dataset_type": "Paid",
-                "reserving_class": "HPPREF",
-                "dependents": [{"dataset_name": "Selected Ultimate"}],
-            },
+    def test_an_instance_something_reads_keeps_its_name(self) -> None:
+        self._seed_table([["Growth--Incurred", "Triangle", "B Exposure", False, ""]])
+        self._dataset(CLASS_A, "Growth--Incurred", dependents=["Ultimate DFM"])
+        self._dataset(CLASS_A, "Ultimate DFM", "Growth--Incurred", method_type="DFM")
+        planned = self._plan(
+            [["Growth - Incurred", "Triangle", "B Exposure", False, ""]],
+            [{"from": "Growth--Incurred", "to": "Growth - Incurred"}],
         )
+        entry = planned.plan["affected"][0]
+        self.assertEqual((entry["instances"], entry["adopting"], entry["renaming"]), (2, 2, 0))
+
+    def test_a_formula_change_reaches_precedents_and_dependents(self) -> None:
+        self._seed_table(
+            [
+                ["Paid", "Triangle", "A Loss", False, ""],
+                ["Incurred", "Triangle", "A Loss", False, ""],
+                ["Ultimate", "Vector", "A Loss", True, '"Paid" * 2'],
+                ["Ratio", "Vector", "A Loss", True, '"Ultimate" / 2'],
+                ["Other", "Triangle", "A Loss", False, ""],
+            ]
+        )
+        self._dataset(CLASS_A, "Paid")
+        self._dataset(CLASS_A, "Incurred")
+        self._dataset(CLASS_A, "Ultimate")
+        self._dataset(CLASS_A, "Other")
+        self._dataset(CLASS_B, "Ratio")
+        self._dataset(CLASS_B, "Other")
+        self._dataset("Quiet", "Other")
+
+        planned = self._plan(
+            [
+                ["Paid", "Triangle", "A Loss", False, ""],
+                ["Incurred", "Triangle", "A Loss", False, ""],
+                ["Ultimate", "Vector", "A Loss", True, '"Incurred" * 2'],
+                ["Ratio", "Vector", "A Loss", True, '"Ultimate" / 2'],
+                ["Other", "Triangle", "A Loss", False, ""],
+            ]
+        )
+        by_class = {entry["reserving_class"]: entry for entry in planned.plan["affected"]}
+        self.assertEqual(set(by_class), {CLASS_A, CLASS_B})
+        self.assertEqual(by_class[CLASS_A]["instances"], 3)  # Paid, Incurred, Ultimate
+        self.assertEqual(by_class[CLASS_A]["reason"], "1 of a changed type; 2 feeding a changed type")
+        self.assertEqual(by_class[CLASS_B]["instances"], 1)  # Ratio
+        self.assertEqual(by_class[CLASS_B]["reason"], "1 downstream of the change")
+        self.assertEqual(planned.changed_types, ["Ultimate"])
+
+    def test_a_removed_type_still_read_is_reported_from_the_plan(self) -> None:
+        self._seed_table(
+            [
+                ["Paid", "Triangle", "A Loss", False, ""],
+                ["Counts", "Vector", "B", False, ""],
+            ]
+        )
+        self._dataset(CLASS_A, "Counts", dependents=["Counts DFM"])
+        self._dataset(CLASS_A, "Counts DFM", "Ultimate Counts", method_type="DFM")
+        self._dataset(CLASS_B, "Counts")
+        planned = self._plan([["Paid", "Triangle", "A Loss", False, ""]])
+        self.assertEqual(planned.removed_types, ["Counts"])
+        blocked = calculated_dataset_service.find_dataset_type_removal_blockers(PROJECT, planned)
         self.assertEqual(
-            calculated_dataset_service.find_dataset_type_removal_blockers(PROJECT, []),
-            [],
+            blocked,
+            [
+                {
+                    "dataset_type": "Counts",
+                    "instances": [
+                        {
+                            "reserving_class": CLASS_A,
+                            "dataset_name": "Counts",
+                            "dependents": [{"dataset_name": "Counts DFM", "method_type": "DFM"}],
+                        }
+                    ],
+                }
+            ],
         )
 
-    def test_the_scan_reports_one_step_per_reserving_class(self) -> None:
-        for reserving_class in ("A Class", "B Class", "C Class"):
-            self._sidecar(
-                reserving_class,
-                "Paid",
-                {"dataset_type": "Paid", "reserving_class": reserving_class},
-            )
-        seen: list = []
-        calculated_dataset_service.find_dataset_type_removal_blockers(
-            PROJECT,
-            ["Paid"],
-            on_progress=lambda stage, label, completed, total: seen.append(
-                (stage, completed, total)
-            ),
+    def test_applying_the_plan_renames_the_instance_and_rebuilds_only_its_class(self) -> None:
+        self._seed_table(
+            [
+                ["Growth--Incurred", "Triangle", "B Exposure", False, ""],
+                ["Paid", "Triangle", "A Loss", False, ""],
+            ]
         )
-        self.assertEqual(seen, [("scanning", 1, 3), ("scanning", 2, 3), ("scanning", 3, 3)])
+        self._dataset(CLASS_A, "Growth--Incurred", precedents=["Paid"])
+        self._dataset(CLASS_A, "Paid", dependents=["Growth--Incurred"])
+        self._dataset(CLASS_B, "Paid")
+        next_rows = [
+            ["Growth - Incurred", "Triangle", "B Exposure", False, ""],
+            ["Paid", "Triangle", "A Loss", False, ""],
+        ]
+        planned = self._plan(next_rows, [{"from": "Growth--Incurred", "to": "Growth - Incurred"}])
+        self._seed_table(planned.rows)
+
+        untouched_index = self._class_dir(CLASS_B) / "index.json"
+        untouched_before = untouched_index.read_text(encoding="utf-8")
+        with patch.object(
+            dependent_propagation_service, "enqueue_save_propagation", return_value={"ok": True}
+        ):
+            result = calculated_dataset_service.apply_planned_dataset_types_change(PROJECT, planned)
+
+        self.assertTrue(result["ok"], result["errors"])
+        self.assertEqual(result["datasets_renamed"], 1)
+        sidecars = self._class_dir(CLASS_A) / "sidecars"
+        datasets = self._class_dir(CLASS_A) / "datasets"
+        self.assertFalse((sidecars / "Growth--Incurred.json").exists())
+        moved = json.loads((sidecars / "Growth - Incurred.json").read_text(encoding="utf-8"))
+        self.assertEqual(moved["dataset_name"], "Growth - Incurred")
+        self.assertEqual(moved["dataset_type"], "Growth - Incurred")
+        self.assertEqual(moved["csv_file"], "Growth - Incurred@12@12@cum@dev.csv")
+        self.assertTrue((datasets / "Growth - Incurred@12@12@cum@dev.csv").exists())
+        self.assertFalse((datasets / "Growth--Incurred@12@12@cum@dev.csv").exists())
+        precedent = json.loads((sidecars / "Paid.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            [entry["dataset_name"] for entry in precedent["dependents"]],
+            ["Growth - Incurred"],
+        )
+        index = json.loads((self._class_dir(CLASS_A) / "index.json").read_text(encoding="utf-8"))
+        self.assertIn("Growth - Incurred", {row["name"] for row in index["files"]})
+        self.assertEqual(untouched_index.read_text(encoding="utf-8"), untouched_before)
 
 
 class GraphSignificanceTests(unittest.TestCase):

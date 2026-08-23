@@ -98,18 +98,28 @@ export function describeDatasetTypesChangeResult(status) {
   const result = status?.result || {};
   const rows = Math.max(0, Number(result.rows_written) || 0);
   const updated = Math.max(0, Number(result.datasets_updated) || 0);
+  const renamed = Math.max(0, Number(result.datasets_renamed) || 0);
   const classes = Math.max(0, Number(result.classes_total) || 0);
+  const affected = Math.max(0, Number(result.classes_affected) || 0);
   const recalculated = Math.max(0, Number(result.datasets_recalculated) || 0);
 
   const sentences = [`${plural(rows, "dataset type")} saved.`];
   if (updated > 0) {
+    // The change touched only the classes it named; saying so beside the
+    // project's total is what tells the user the rest were never locked.
+    const where = affected > 0 && classes > affected
+      ? `${affected} of ${plural(classes, "reserving class", "reserving classes")}`
+      : plural(affected || classes, "reserving class", "reserving classes");
     sentences.push(
-      classes > 0
-        ? `${plural(updated, "dataset")} updated across ${plural(classes, "reserving class", "reserving classes")}.`
+      affected > 0 || classes > 0
+        ? `${plural(updated, "dataset")} updated across ${where}.`
         : `${plural(updated, "dataset")} updated.`,
     );
   } else {
     sentences.push("No datasets needed updating.");
+  }
+  if (renamed > 0) {
+    sentences.push(`${plural(renamed, "dataset")} renamed with its type.`);
   }
   if (recalculated > 0) {
     sentences.push(`${plural(recalculated, "calculated dataset")} recalculated.`);

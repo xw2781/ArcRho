@@ -302,9 +302,53 @@ export function createDatasetTypesFeature(deps = {}) {
       datasetTypesByProject.set(key, {
         columns: [...DATASET_TYPES_COLUMNS],
         rows: [],
+        // Name edits since the table was last saved, keyed by the saved name:
+        // the server cannot tell a rename from one type removed and another
+        // added, and a rename has to reach the instances of the old type.
+        renames: new Map(),
       });
     }
     return datasetTypesByProject.get(key);
+  }
+
+  /**
+   * Record one Name edit against the name the saved table knows.
+   *
+   * Renaming A to B and then B to C is one rename, A to C; renaming B back
+   * to A is no rename at all.
+   */
+  function recordDatasetTypeRename(projectName, previousName, nextName) {
+    const state = getProjectDatasetTypesState(projectName);
+    const previousKey = canonDatasetTypeName(previousName);
+    const nextKey = canonDatasetTypeName(nextName);
+    if (!previousKey || !nextKey || previousKey === nextKey) return;
+    let savedName = previousName;
+    for (const [savedKey, entry] of state.renames) {
+      if (canonDatasetTypeName(entry.to) === previousKey) {
+        savedName = entry.from;
+        state.renames.delete(savedKey);
+        break;
+      }
+    }
+    if (canonDatasetTypeName(savedName) === nextKey) return;
+    state.renames.set(canonDatasetTypeName(savedName), { from: savedName, to: nextName });
+  }
+
+  /** Forget the rename that produced a row the grid no longer holds. */
+  function forgetDatasetTypeRenameTo(projectName, name) {
+    const state = getProjectDatasetTypesState(projectName);
+    const key = canonDatasetTypeName(name);
+    for (const [savedKey, entry] of state.renames) {
+      if (canonDatasetTypeName(entry.to) === key) state.renames.delete(savedKey);
+    }
+  }
+
+  function canonDatasetTypeName(value) {
+    return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  function datasetTypeRenames(projectName) {
+    return Array.from(getProjectDatasetTypesState(projectName).renames.values());
   }
 
   function getInvalidFormulaSet(projectName) {
@@ -1088,6 +1132,7 @@ export function createDatasetTypesFeature(deps = {}) {
         parseCalculatedFlag(r[3]),
         String(r[4] ?? ""),
       ]);
+      state.renames = new Map();
       loadedDatasetTypesByProject.add(key);
       return true;
     } catch (err) {
@@ -1224,6 +1269,7 @@ export function createDatasetTypesFeature(deps = {}) {
     }
     if (!Array.isArray(target)) return;
 
+    if (mode === "edit") recordDatasetTypeRename(projectName, target[0], nameValue);
     target[0] = nameValue;
     target[1] = dataFormatValue;
     target[2] = categoryValue;
@@ -1301,6 +1347,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const state = getProjectDatasetTypesState(projectName);
     if (!state.rows.length) return;
     if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= state.rows.length) return;
+    forgetDatasetTypeRenameTo(projectName, state.rows[rowIndex]?.[0]);
     state.rows.splice(rowIndex, 1);
     if (!state.rows.length) {
       state.rows.push(createEmptyDatasetTypesRow());
@@ -1613,6 +1660,114 @@ export function createDatasetTypesFeature(deps = {}) {
     ok.focus();
   }
 
+  /**
+   * Show which reserving classes a change reaches, and let the user decide.
+   *
+   * Apply submits the very same table with the plan attached, which is what
+   * turns it into the Engine job; the Engine checks the plan again under its
+   * lock before it writes anything. Cancel throws the edit away and shows the
+   * saved table, because a change the user declined must not sit in the grid
+   * looking saved.
+   */
+  function showDatasetTypesPlanDialog(projectName, planned) {
+    const affected = Array.isArray(planned?.plan?.affected) ? planned.plan.affected : [];
+    const classesTotal = Math.max(0, Number(planned?.classes_total) || 0);
+    const renamed = Array.isArray(planned?.renames) ? planned.renames : [];
+    const plural = (count, singular, pluralWord = `${singular}s`) =>
+      `${count} ${count === 1 ? singular : pluralWord}`;
+
+    const overlay = document.createElement("div");
+    overlay.className = "datasetTypesRecalcOverlay";
+    const box = document.createElement("div");
+    box.className = "datasetTypesRecalcBox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    const title = document.createElement("div");
+    title.className = "datasetTypesRecalcTitle";
+    title.textContent = "Confirm Dataset Type Change";
+    const summaryEl = document.createElement("div");
+    summaryEl.className = "datasetTypesRecalcSummary";
+    const renameText = renamed.length
+      ? ` ${renamed.map((entry) => `"${entry.from}" becomes "${entry.to}"`).join("; ")}.`
+      : "";
+    summaryEl.textContent =
+      `This change reaches ${plural(affected.length, "reserving class", "reserving classes")}`
+      + (classesTotal ? ` of ${classesTotal}` : "")
+      + ". Only those are locked while it is applied; every other reserving class stays available."
+      + renameText;
+    const list = document.createElement("div");
+    list.className = "datasetTypesRecalcList";
+    affected.forEach((entry) => {
+      const item = document.createElement("div");
+      item.className = "datasetTypesRecalcItem";
+      const name = document.createElement("div");
+      name.className = "datasetTypesRecalcName";
+      name.textContent = String(entry.reserving_class || "");
+      const meta = document.createElement("div");
+      meta.className = "datasetTypesRecalcMeta";
+      const parts = [plural(Number(entry.instances) || 0, "dataset")];
+      if (entry.reason) parts.push(String(entry.reason));
+      const adopting = Number(entry.adopting) || 0;
+      const renaming = Number(entry.renaming) || 0;
+      if (adopting) {
+        parts.push(
+          `${adopting} take the new type name`
+          + (renaming ? `, ${renaming} of them renamed with it` : ""),
+        );
+      }
+      meta.textContent = parts.join(" - ");
+      item.append(name, meta);
+      list.appendChild(item);
+    });
+    const actions = document.createElement("div");
+    actions.className = "datasetTypesRecalcActions rct-row-editor-actions";
+    const cancel = document.createElement("button");
+    cancel.className = "dialog-btn";
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const apply = document.createElement("button");
+    apply.className = "dialog-btn primary";
+    apply.type = "button";
+    apply.textContent = "Apply";
+    actions.append(cancel, apply);
+    box.append(title, summaryEl, list, actions);
+    overlay.appendChild(box);
+
+    const dismiss = () => overlay.remove();
+    cancel.addEventListener("click", async () => {
+      dismiss();
+      await discardDatasetTypesEdits(projectName);
+    });
+    apply.addEventListener("click", async () => {
+      dismiss();
+      // The planner rewrote the formulas that named a renamed type, so the
+      // grid adopts its rows: what the Engine writes is what is on screen.
+      const state = getProjectDatasetTypesState(projectName);
+      state.rows = buildPersistableRows(planned.rows);
+      renderDatasetTypesTable(projectName);
+      await saveDatasetTypes(projectName, {
+        plan: planned.plan,
+        rows: buildPersistableRows(state.rows),
+      });
+    });
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") cancel.click();
+    });
+    document.body.appendChild(overlay);
+    apply.focus();
+  }
+
+  /** Put the saved table back after a declined change. */
+  async function discardDatasetTypesEdits(projectName) {
+    const key = normalizeProjectKey(projectName);
+    loadedDatasetTypesByProject.delete(key);
+    lastSubmissionByProject.delete(key);
+    clearInvalidFormulaSet(projectName);
+    await loadDatasetTypes(projectName);
+    setDatasetTypesStatus("Dataset type change cancelled. The saved table is shown.");
+    setStatus(`Dataset type change cancelled: ${projectName}`);
+  }
+
   /** Whether a project's dataset-type change job is still running. */
   function isDatasetTypesChangeRunning(projectName) {
     return runningChangeJobByProject.has(normalizeProjectKey(projectName));
@@ -1708,6 +1863,9 @@ export function createDatasetTypesFeature(deps = {}) {
       const editedWhileSubmitting = Boolean(submitted)
         && submitted.signature !== datasetTypesRowsSignature(pendingRows);
       lastSubmissionByProject.delete(key);
+      // The renames the job carried have reached every instance; an edit made
+      // while it ran starts its own list from the table the job wrote.
+      getProjectDatasetTypesState(projectName).renames = new Map();
       clearInvalidFormulaSet(projectName);
       const summary = describeDatasetTypesChangeResult(terminal);
 
@@ -1760,20 +1918,25 @@ export function createDatasetTypesFeature(deps = {}) {
    * Save the table, directly or as a project-wide job.
    *
    * The request itself always answers quickly. A change that re-derives
-   * nothing outside the table is written by the app server and confirmed here;
-   * anything that touches names, formulas or formats is applied by ArcRho
-   * Engine under a lock on the whole project, and this call then follows that
-   * job to its end.
+   * nothing outside the table is written by the app server and confirmed here.
+   * Anything that touches names, formulas or formats comes back first as a
+   * plan naming the reserving classes it reaches; the user confirms that
+   * list, the confirming request submits the ArcRho Engine job that holds
+   * exactly those classes, and this module then follows the job to its end.
+   *
+   * ``confirmed`` is the plan the user accepted, passed by the dialog's own
+   * submission; an auto-save never carries one.
    */
-  async function saveDatasetTypes(projectName) {
+  async function saveDatasetTypes(projectName, confirmed = null) {
     if (!projectName) return false;
     if (isDatasetTypesChangeRunning(projectName)) return false;
     const key = normalizeProjectKey(projectName);
     const state = getProjectDatasetTypesState(projectName);
-    const rows = buildPersistableRows(state.rows || []);
+    const rows = confirmed ? confirmed.rows : buildPersistableRows(state.rows || []);
+    const renames = datasetTypeRenames(projectName);
     const { requestId, signature } = requestIdForSubmission(projectName, rows);
 
-    setDatasetTypesStatus("Saving dataset types...");
+    setDatasetTypesStatus(confirmed ? "Submitting dataset type change..." : "Saving dataset types...");
     let res;
     try {
       res = await fetchImpl("/dataset_types", {
@@ -1783,6 +1946,8 @@ export function createDatasetTypesFeature(deps = {}) {
           project_name: projectName,
           columns: [...DATASET_TYPES_COLUMNS],
           rows,
+          renames,
+          plan: confirmed ? confirmed.plan : null,
           request_id: requestId,
         }),
       });
@@ -1823,8 +1988,18 @@ export function createDatasetTypesFeature(deps = {}) {
     const out = await res.json();
     clearInvalidFormulaSet(projectName);
 
+    if (String(out?.applied || "") === "plan") {
+      // Nothing was submitted: the dialog's Apply sends this same request
+      // again with the plan, and Cancel puts the saved table back.
+      lastSubmissionByProject.delete(key);
+      setDatasetTypesStatus("Review the reserving classes this change affects.");
+      showDatasetTypesPlanDialog(projectName, out);
+      return true;
+    }
+
     if (String(out?.applied || "") !== "job") {
       lastSubmissionByProject.delete(key);
+      state.renames = new Map();
       renderDatasetTypesTable(projectName);
       setDatasetTypesStatus(`Saved dataset types to ${out.path}`);
       setStatus(`Saved dataset types: ${projectName}`);
@@ -2051,6 +2226,9 @@ export function createDatasetTypesFeature(deps = {}) {
       }
 
       state.rows = nextRows.length > 0 ? nextRows : [createEmptyDatasetTypesRow()];
+      // An imported table replaces the grid's rows outright; nothing in it is
+      // a rename of a saved row.
+      state.renames = new Map();
       clearInvalidFormulaSet(name);
       renderDatasetTypesTable(name);
 

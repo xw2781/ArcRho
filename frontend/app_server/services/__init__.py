@@ -25,6 +25,7 @@ __all__ = [
     "table_summary_service",
     "dataset_types_service",
     "dataset_types_change_service",
+    "dataset_types_plan_service",
     "calculated_dataset_service",
     "reserving_class_service",
     "field_mapping_service",
