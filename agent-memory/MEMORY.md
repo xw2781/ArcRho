@@ -36,3 +36,4 @@
 - [Standalone DSV/DFM tabs are legacy](standalone-dsv-dfm-tabs-legacy.md) — the shell's standalone Dataset Viewer and DFM tabs are being dropped; PI windows and Workflow steps are the only live hosts to design for
 - [Hung app-server request diagnosis](hung-app-server-request-diagnosis.md) — uvicorn logs an access line only on response, so a route missing from the log may still be running; corroborate with file mtimes and the audit log
 - [Build listener request read race](build-listener-request-read-race.md) — deploy.py failing at once with "build request could not be read: Permission denied" is a share write/watch race; one retry succeeds
+- [Hosted-save fix needs Engine deploy](hosted-save-fix-needs-engine-deploy.md) — method saves run on the Engine's bundled app_server copy, so an app_server fix is not live until Engine + Gateway are redeployed; grep the deployed canonical copy to verify
