@@ -260,7 +260,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "30.0\n99\n")
         saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved_sidecar["status"], 0)
-        self.assertEqual(saved_sidecar["precedents"], ["Paid"])
+        self.assertEqual(saved_sidecar["precedents"], [{"dataset_name": "Paid"}])
 
     def test_review_needed_save_warns_and_still_saves_with_unreviewed_precedent(self) -> None:
         self.write_selection()

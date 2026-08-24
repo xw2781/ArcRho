@@ -177,12 +177,20 @@ def finalize_sidecar(payload: Mapping[str, Any]) -> dict[str, Any]:
     follows the payload, so a writer that already builds the canonical order
     is untouched and one that merged an older file gets the stamp and the log
     moved to where the contract keeps them.
+
+    The two graph fields are normalized to the one dependency-entry shape on
+    the way through, so a writer that assembles its payload by hand -- and so
+    never runs a builder's :func:`validate_sidecar_core` -- cannot land bare
+    names in ``precedents`` while the far side of the same link carries
+    entries in ``dependents``.
     """
 
     ordered: dict[str, Any] = {SIDECAR_JSON_FORMAT_FIELD: DATASET_SIDECAR_JSON_FORMAT}
     for key, value in payload.items():
         if key in (SIDECAR_JSON_FORMAT_FIELD, SIDECAR_AUDIT_LOG_FIELD) or key in RETIRED_SIDECAR_FIELDS:
             continue
+        if key in (SIDECAR_PRECEDENTS_FIELD, SIDECAR_DEPENDENTS_FIELD):
+            value = dependency_entries(value)
         ordered[key] = value
     ordered[SIDECAR_AUDIT_LOG_FIELD] = normalize_audit_log(payload.get(SIDECAR_AUDIT_LOG_FIELD))
     return ordered

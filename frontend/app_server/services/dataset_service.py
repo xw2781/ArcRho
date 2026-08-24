@@ -369,21 +369,6 @@ def _normalize_origin_labels(value: Any) -> List[str]:
     return [str(item) for item in value]
 
 
-def _normalize_name_list(value: Any) -> List[str]:
-    if not isinstance(value, list):
-        return []
-    out: List[str] = []
-    seen: set[str] = set()
-    for item in value:
-        name = str(item or "").strip()
-        key = name.lower()
-        if not name or key in seen:
-            continue
-        seen.add(key)
-        out.append(name)
-    return out
-
-
 def _current_user_name() -> str:
     """Display name stamped onto dataset metadata and audit entries.
 
@@ -1770,10 +1755,10 @@ def _save_dataset_sidecar_impl(
 
     calculated_dataset_service.apply_sidecar_graph_fields(payload, p, dataset_type_value)
     if precedents is not None:
-        if method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
-            payload["precedents"] = _normalize_name_list(precedents)
-        else:
-            payload["precedents"] = dataset_sidecar_status_service.name_entries(precedents)
+        # One entry shape for every method type (``arcrho_api.sidecar_core_contract``):
+        # a Result Selection's precedents are entries like everyone else's, so the
+        # dependents written on the far side of the same link match them.
+        payload["precedents"] = dataset_sidecar_status_service.name_entries(precedents)
     elif method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
         payload["precedents"] = []
     elif method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE and existing_precedents:

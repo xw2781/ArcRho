@@ -234,6 +234,18 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(ordered["audit_log"][0]["action"], "Insert")
         self.assertEqual(with_audit_log_last({"a": 1})["audit_log"], [])
 
+    def test_finalize_gives_both_graph_fields_the_one_entry_shape(self) -> None:
+        from arcrho_api.sidecar_core_contract import finalize_sidecar
+
+        ordered = finalize_sidecar({
+            "precedents": ["Paid", "paid", {"dataset_name": "Premium"}],
+            "dependents": [{"dataset_name": "Selected", "method_type": "Result Selection", "path": "x"}],
+            "audit_log": [],
+        })
+        self.assertEqual(ordered["precedents"], [{"dataset_name": "Paid"}, {"dataset_name": "Premium"}])
+        self.assertEqual(ordered["dependents"], [{"dataset_name": "Selected", "method_type": "Result Selection"}])
+        self.assertEqual(finalize_sidecar({"precedents": None, "dependents": "Paid"})["precedents"], [])
+
     def test_dependency_entries_have_one_shape(self) -> None:
         from arcrho_api.sidecar_core_contract import dependency_entries, dependency_names
 
