@@ -5,6 +5,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { StringDecoder } = require("string_decoder");
 const { formatJsonForSave } = require("./persisted_json_text");
+const { pruneAgedLogFiles } = require("./log_retention");
 const {
   buildCodexModelCatalog,
   getFallbackCodexModelCatalog,
@@ -1648,6 +1649,10 @@ function getArcBotRequestLogsDir() {
   return path.join(ensureLocalArcRhoAssistantRoot(), "ArcBot", "request_logs");
 }
 
+// One request writes one file here, so the folder is pruned on the first
+// request of each host process rather than on every request.
+let requestLogsPruned = false;
+
 function sanitizeLogFilePart(value, fallback = "request") {
   const cleaned = String(value || "")
     .trim()
@@ -1689,6 +1694,10 @@ function createArcBotRequestLogger({ requestId, payload, mode, model, reasoningE
   const sessionId = sanitizeArcBotSessionId(payload?.sessionId || "");
   const logDir = getArcBotRequestLogsDir();
   fs.mkdirSync(logDir, { recursive: true });
+  if (!requestLogsPruned) {
+    requestLogsPruned = true;
+    pruneAgedLogFiles(logDir, { suffixes: [".json"] });
+  }
   const fileName = `${startedAtIso.replace(/[:.]/g, "-")}_${sanitizeLogFilePart(requestId || sessionId)}.json`;
   const filePath = path.join(logDir, fileName);
   let lastMs = startedAtMs;

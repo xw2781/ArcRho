@@ -90,6 +90,15 @@ When designing or maintaining a frontend feature, including its bundled app-serv
 - If a true data dependency requires sequential I/O, document that dependency in the implementation and minimize the number of network operations.
 - Add focused coverage for bounded concurrency, deterministic result ordering, write atomicity, and failure handling whenever this rule changes an I/O workflow.
 
+## Log File Retention (MUST)
+Every log file any ArcRho component writes is kept for 30 days and no longer. No component may define its own retention window, keep-last-N rule, or cleanup routine.
+- `python-api/src/arcrho_log_retention_contract.py` owns the window and the mechanics. `LOG_RETENTION_DAYS` is the only place the number 30 is written; `prune_aged_log_files` deletes aged files, `trim_aged_log_lines` drops the aged leading lines of a log appended under a fixed name, and `apply_log_retention` does both for one folder.
+- A component applies retention once as it starts, before its first log line. A folder whose files are named per launch or per request is pruned; a log whose name never changes must be trimmed by line, because its own file age can never expire it.
+- Never add a log writer without adding its retention call in the same change. This covers diagnostics, request traces, deploy logs, and anything else written to disk to be read by a human later.
+- Retention is best effort and must never change what a component does: swallow every failure, so a locked file or a full disk can only leave an old log in place.
+- Size rotation may bound a single busy log in addition to the 30-day rule, never instead of it.
+- The Electron host cannot import Python, so `frontend/electron/log_retention.js` mirrors the rule and `frontend/tests/log_retention.test.mjs` pins the mirror to the contract. Change the Python constant; the test fails until the mirror follows.
+
 ## Conditional Instruction Entry Points
 
 | Read only this file when triggered | Trigger words |

@@ -53,6 +53,7 @@ from arcrho_build_request_contract import (
     build_component_state,
     build_lock_path,
     build_log_path,
+    build_logs_directory,
     build_payload_path,
     build_request_path,
     build_requests_directory,
@@ -68,6 +69,7 @@ from arcrho_engine_job_lease import (
     start_engine_job_lease_heartbeat,
     stop_engine_job_lease_heartbeat,
 )
+from arcrho_log_retention_contract import prune_aged_log_files
 
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -153,6 +155,8 @@ class BuildListener:
         if self.running:
             return
         ensure_build_protocol_directories(self.server_root)
+        # One build writes one log here, so the folder only ever grows.
+        prune_aged_log_files(build_logs_directory(self.server_root))
         self._stop.clear()
         self._heartbeat_path = listener_heartbeat_path(
             self.server_root, _machine_name(), _user_name()

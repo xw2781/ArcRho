@@ -16,14 +16,31 @@ import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
+from arcrho_log_retention_contract import prune_aged_log_files
+
 RUNTIME_LOG_RELATIVE_DIR = ("runtime", "logs")
 # One megabyte keeps a busy day readable in an editor while still covering far
 # more than the handful of jobs anyone diagnoses at once. One rotation is kept.
 RUNTIME_LOG_MAX_BYTES = 1024 * 1024
 
 
+def runtime_log_directory(server_root: str | os.PathLike[str]) -> Path:
+    return Path(os.fspath(server_root)).joinpath(*RUNTIME_LOG_RELATIVE_DIR)
+
+
 def runtime_log_path(server_root: str | os.PathLike[str], filename: str) -> Path:
-    return Path(os.fspath(server_root)).joinpath(*RUNTIME_LOG_RELATIVE_DIR, filename)
+    return runtime_log_directory(server_root) / filename
+
+
+def prune_runtime_logs(server_root: str | os.PathLike[str]) -> int:
+    """Drop the runtime logs no one has written to inside the retention window.
+
+    Size rotation keeps one live log small; this is what removes the file of a
+    job kind that stopped running months ago. Call it once as a component
+    starts.
+    """
+
+    return prune_aged_log_files(runtime_log_directory(server_root))
 
 
 def append_runtime_log(

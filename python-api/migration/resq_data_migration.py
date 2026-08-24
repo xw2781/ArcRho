@@ -60,6 +60,7 @@ if str(_PYTHON_API_SRC) not in sys.path:
 if str(_MIGRATION_DIR) not in sys.path:
     sys.path.insert(0, str(_MIGRATION_DIR))
 
+from arcrho_log_retention_contract import apply_log_retention  # noqa: E402
 from arcrho_api.bornhuetter_ferguson_contract import BF_JSON_FORMAT  # noqa: E402
 from arcrho_api.cape_cod_contract import CC_JSON_FORMAT  # noqa: E402
 from arcrho_api.dfm_contract import DFM_JSON_FORMAT  # noqa: E402
@@ -237,9 +238,18 @@ _configure_migration_modules()
 
 # ── JSON formatting ────────────────────────────────────────────────────────────
 
+_debug_log_retention_applied = False
+
+
 def _debug_log(event: str, **fields: object) -> None:
+    global _debug_log_retention_applied
     try:
         DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if not _debug_log_retention_applied:
+            _debug_log_retention_applied = True
+            apply_log_retention(
+                DEBUG_LOG_PATH.parent, appended_files=(DEBUG_LOG_PATH,)
+            )
         payload = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
             "event": event,

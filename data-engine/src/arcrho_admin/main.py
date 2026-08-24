@@ -34,11 +34,12 @@ from pathlib import Path
 MODULE_ROOT = Path(__file__).resolve().parent
 SOURCE_ROOT = MODULE_ROOT.parent
 PRODUCT_ROOT = SOURCE_ROOT.parent
+CANONICAL_SOURCE_ROOT = PRODUCT_ROOT.parent / "python-api" / "src"
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", MODULE_ROOT)).resolve()
 EXE_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
 
-for path in (PRODUCT_ROOT, SOURCE_ROOT, BUNDLE_ROOT):
-    if str(path) not in sys.path:
+for path in (PRODUCT_ROOT, SOURCE_ROOT, CANONICAL_SOURCE_ROOT, BUNDLE_ROOT):
+    if str(path) not in sys.path and path.exists():
         sys.path.insert(0, str(path))
 
 try:
@@ -59,6 +60,8 @@ except ModuleNotFoundError:
         write_server_config,
     )
     from utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
+
+from arcrho_log_retention_contract import apply_log_retention
 
 def env_int(name, default):
     try:
@@ -126,6 +129,18 @@ def log_event(message):
                 file.write(line)
         except OSError:
             pass
+
+
+def apply_admin_log_retention():
+    """Keep both Admin Control logs inside the shared retention window.
+
+    Admin Control appends to one log under the server root and one beside its
+    own executable, and neither ever changes name, so the old lines are dropped
+    rather than the files.
+    """
+
+    for log_file in (LOG_FILE, DEPLOY_LOG_FILE):
+        apply_log_retention(log_file.parent, appended_files=(log_file,))
 
 
 def log_unhandled_exception(exc_type, exc_value, exc_traceback):
@@ -1010,6 +1025,7 @@ def main():
     args = parser.parse_args()
 
     server = None
+    apply_admin_log_retention()
     log_event(f"main starting pid={os.getpid()} frozen={getattr(sys, 'frozen', False)} root={PROJECT_ROOT}")
     splash = None if args.no_splash or args.no_browser else StartupSplash(args.port)
     if splash:

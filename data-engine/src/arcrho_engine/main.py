@@ -70,6 +70,7 @@ from arcrho_engine.source_table_refresh import (
     process_durable_source_refresh_request,
 )
 from arcrho_engine.save_jobs import process_hosted_save_request
+from arcrho_engine.runtime_log import prune_runtime_logs
 
 
 class _DurableJobDispatcher:
@@ -650,6 +651,7 @@ def _warm_canonical_runtime() -> None:
 
 
 def start_monitoring(path):
+    prune_runtime_logs(get_project_root())
     event_handler = RequestHandler()
     observer = Observer()
     observer.schedule(event_handler, path, recursive=False)

@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { formatJsonForSave } = require("./persisted_json_text");
+const { pruneAgedLogFiles } = require("./log_retention");
 
 let electronLogPath = "";
 
@@ -17,15 +18,19 @@ function getTimestampForFileName() {
 }
 
 
+// The host log and the app-server log share this folder, so pruning it once
+// per launch — this path is resolved once and remembered — covers both.
 function getElectronLogPath() {
   if (electronLogPath) return electronLogPath;
   try {
     const logDir = path.join(app.getPath("userData"), "logs");
     fs.mkdirSync(logDir, { recursive: true });
+    pruneAgedLogFiles(logDir);
     electronLogPath = path.join(logDir, `electron-main-${getTimestampForFileName()}.log`);
   } catch {
     const fallbackDir = path.join(os.homedir(), "AppData", "Roaming", "arcrho-electron", "logs");
     fs.mkdirSync(fallbackDir, { recursive: true });
+    pruneAgedLogFiles(fallbackDir);
     electronLogPath = path.join(fallbackDir, `electron-main-${getTimestampForFileName()}.log`);
   }
   return electronLogPath;

@@ -10,9 +10,12 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+
+from arcrho_log_retention_contract import prune_aged_log_files
 
 from app_server import config
 from app_server.ui_static import RevalidatedStaticFiles
@@ -63,6 +66,10 @@ LOGGER = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await asyncio.to_thread(
+        prune_aged_log_files,
+        Path(config.get_client_save_latency_log_path()).parent,
+    )
     enrollment = await asyncio.to_thread(
         hosted_save_enrollment_service.auto_enroll_current_user
     )
