@@ -11,12 +11,12 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | --- | --- | --- |
 | `ui/index.html` | 2 external scripts | - |
 | `ui/file_explorer/file_explorer.html` | 2 external scripts | - |
-| `ui/dataset_viewer/dataset_viewer.html` | 1 external script | 1 inline import |
-| `ui/method_pages/dfm/dfm.html` | 1 external script | 2 inline imports |
-| `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 2 external scripts | - |
-| `ui/method_pages/cape_cod/cape_cod.html` | 2 external scripts | - |
-| `ui/method_pages/berquist_sherman/berquist_sherman.html` | 2 external scripts | - |
-| `ui/method_pages/result_selection/result_selection.html` | 6 external scripts | - |
+| `ui/dataset_viewer/dataset_viewer.html` | 2 external scripts | 1 inline import |
+| `ui/method_pages/dfm/dfm.html` | 2 external scripts | 2 inline imports |
+| `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 3 external scripts | - |
+| `ui/method_pages/cape_cod/cape_cod.html` | 3 external scripts | - |
+| `ui/method_pages/berquist_sherman/berquist_sherman.html` | 3 external scripts | - |
+| `ui/method_pages/result_selection/result_selection.html` | 7 external scripts | - |
 | `ui/workflow/workflow.html` | 2 external scripts | - |
 | `ui/project_settings/project_settings.html` | 2 external scripts | - |
 | `ui/project_instance/project_instance.html` | 2 external scripts | - |

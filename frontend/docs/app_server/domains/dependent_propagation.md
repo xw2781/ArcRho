@@ -12,6 +12,7 @@ Engine-hosted dependent propagation job domain: saves write only the saved objec
 | `POST` | `/dependent_propagation/refresh_dependents` | `submit_refresh_dependents_job` | `RefreshDependentsJobRequest` | [`app_server/schemas/dependent_propagation.py`](../../../app_server/schemas/dependent_propagation.py) | `dependent_propagation_service.submit_dependent_propagation_job` |
 | `GET` | `/dependent_propagation/refresh_dependents/status/{request_id}` | `get_refresh_dependents_job_status` | `str` | - | `dependent_propagation_service.get_dependent_propagation_status` |
 | `GET` | `/dependent_propagation/reserving_class_busy` | `get_reserving_class_busy` | `str` | - | `dependent_propagation_service.get_reserving_class_busy` |
+| `GET` | `/hosted-saves/progress/{request_id}` | `get_hosted_save_progress` | `str` | - | `engine_hosted_save_service.get_hosted_save_progress` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
