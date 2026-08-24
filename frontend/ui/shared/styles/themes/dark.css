@@ -1088,6 +1088,24 @@
   background-color: var(--ar-color-accent) !important;
 }
 
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-live {
+  border-color: var(--ar-color-border-strong) !important;
+  background-color: var(--ar-color-surface-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-live-row {
+  border-top-color: var(--ar-color-border) !important;
+  color: var(--ar-color-text-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-live-count {
+  color: var(--ar-color-text-muted) !important;
+}
+
+:root[data-arcrho-theme="dark"] .arcrho-load-popup-live-row.is-current {
+  color: var(--ar-color-text) !important;
+}
+
 /* Shared spreadsheet base. Semantic selection fills intentionally remain unchanged. */
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable {
   border-color: var(--ar-color-border-strong);
@@ -1929,14 +1947,14 @@
   background-color: var(--ar-color-overlay);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-loading-card, .pi-delete-confirm-box, .pi-message-box, .pi-number-formats-window, .pi-excel-links-window) {
+:root[data-arcrho-theme="dark"] :is(.pi-loading-card, .pi-delete-confirm-box, .pi-message-box, .pi-prefs-window, .pi-excel-links-window) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);
   color: var(--ar-color-text);
   box-shadow: var(--ar-shadow-dialog);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-number-formats-header, .pi-number-formats-actions) {
+:root[data-arcrho-theme="dark"] :is(.pi-delete-confirm-header, .pi-message-header, .pi-prefs-header, .pi-prefs-actions) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
 }
@@ -2337,7 +2355,7 @@
   color: var(--ar-color-text-subtle);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-add-picker-overlay, .pi-number-formats-overlay) {
+:root[data-arcrho-theme="dark"] :is(.pi-add-picker-overlay, .pi-prefs-overlay) {
   background: var(--ar-color-overlay);
 }
 
@@ -2413,12 +2431,12 @@
   background: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-body, .pi-excel-links-body) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-body, .pi-excel-links-body) {
   background: var(--ar-color-canvas-subtle);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-path, .pi-number-formats-default-row span, .pi-number-formats-status, .pi-excel-links-path, .pi-excel-links-cue, .pi-excel-links-status) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-path, .pi-prefs-subtitle, .pi-number-formats-default-row span, .pi-prefs-status, .pi-excel-links-path, .pi-excel-links-cue, .pi-excel-links-status) {
   color: var(--ar-color-text-muted);
 }
 
@@ -2436,23 +2454,23 @@
   background: var(--ar-color-input);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-number-formats-actions button) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button, .pi-prefs-actions button, .pi-prefs-reset) {
   border-color: var(--ar-color-border-strong);
   background: var(--ar-color-input);
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-number-formats-actions button:hover) {
+:root[data-arcrho-theme="dark"] :is(.pi-number-formats-tools button:hover, .pi-prefs-actions button:hover, .pi-prefs-reset:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close, .pi-number-formats-remove, .pi-excel-links-icon-btn) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-close, .pi-number-formats-remove, .pi-excel-links-icon-btn) {
   background: transparent;
   color: var(--ar-color-text-muted);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-close:hover, .pi-excel-links-icon-btn:hover) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-close:hover, .pi-excel-links-icon-btn:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
   color: var(--ar-color-text-strong);
@@ -2464,18 +2482,105 @@
   color: var(--ar-color-danger);
 }
 
-:root[data-arcrho-theme="dark"] .pi-number-formats-actions button.primary {
+:root[data-arcrho-theme="dark"] .pi-prefs-actions button.primary {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-accent-soft);
   color: var(--ar-color-text-strong);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-status.error, .pi-excel-links-status.error) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-status.error, .pi-excel-links-status.error) {
   color: var(--ar-color-danger);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-number-formats-status.success, .pi-excel-links-status.success) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-status.success, .pi-excel-links-status.success) {
   color: var(--ar-color-success);
+}
+
+/* Preferences window: the section rail, its scope chips, and the default-tab
+   picker rows. The framed scroll surfaces read their own theme tokens, so no
+   scrollbar rule belongs here. */
+:root[data-arcrho-theme="dark"] .pi-prefs-nav {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-item {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-item:hover {
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-item.is-active {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-scope {
+  background: var(--ar-color-surface-soft);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-scope.is-user {
+  background: var(--ar-color-success-soft);
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-nav-item.is-active .pi-prefs-nav-scope {
+  background: var(--ar-color-surface-soft);
+  color: var(--ar-color-accent-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-panels {
+  background: var(--ar-color-canvas-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-panel-title {
+  color: var(--ar-color-text-strong);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-panel-note {
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tab-kind-hint {
+  color: var(--ar-color-text-subtle);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tab-list {
+  border-color: var(--ar-color-border);
+  background: var(--ar-color-surface);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tab-row {
+  border-color: var(--ar-color-border);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tab-row:hover {
+  background: var(--ar-color-table-row-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tab-kind-name {
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tabchip {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tabchip:hover {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-surface-hover);
+}
+
+:root[data-arcrho-theme="dark"] .pi-prefs-tabchip[aria-checked="true"] {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-text-strong);
 }
 
 :root[data-arcrho-theme="dark"] .pi-window {

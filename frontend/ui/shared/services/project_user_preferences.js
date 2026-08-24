@@ -1,4 +1,5 @@
 const prefsByProject = new Map();
+const prefsPathByProject = new Map();
 const inflightLoadByProject = new Map();
 const pendingSaveByProject = new Map();
 const activeSaveByProject = new Map();
@@ -53,6 +54,7 @@ export async function loadProjectUserPreferences(projectName, options = {}) {
     const payload = await response.json().catch(() => ({}));
     const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
     prefsByProject.set(key, data);
+    prefsPathByProject.set(key, String(payload?.path || ""));
     return data;
   })();
   inflightLoadByProject.set(key, request);
@@ -75,7 +77,16 @@ export async function saveProjectUserPreferences(projectName, patch) {
   const payload = await response.json().catch(() => ({}));
   const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
   prefsByProject.set(projectKey(project), data);
+  prefsPathByProject.set(projectKey(project), String(payload?.path || ""));
   return data;
+}
+
+/* The on-disk location the app server resolved for the project-user
+   preferences file. It is presentation only - the Preferences window shows it
+   so a user can see which file a setting lands in - and is available once the
+   preferences have been loaded or saved at least once. */
+export function getProjectUserPreferencesPath(projectName) {
+  return prefsPathByProject.get(projectKey(projectName)) || "";
 }
 
 function enqueueProjectUserPreferencesSave(project, patch) {

@@ -6,11 +6,12 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance_number_formats.css?v=20260720a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance_preferences.css?v=20260824e"/>
   <link rel="stylesheet" href="/ui/shared/styles/pi_table.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c"/>
+    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e"/>
     <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -74,7 +75,7 @@
               <use href="/ui/shared/icons/reload.svg?v=20260823b#reload"></use>
             </svg>
           </button>
-          <button class="dataset-toolbar-btn" id="datasetNumberFormatsBtn" type="button" aria-label="Edit default number formats" aria-controls="datasetNumberFormatsOverlay">
+          <button class="dataset-toolbar-btn" id="piPrefsBtn" type="button" aria-label="Open preferences" aria-controls="piPrefsOverlay">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <use href="/ui/shared/icons/gear.svg?v=20260823b#gear"></use>
             </svg>
@@ -218,47 +219,75 @@
         </div>
       </div>
     </div>
-    <div class="pi-number-formats-overlay" id="datasetNumberFormatsOverlay" hidden>
-      <section class="pi-number-formats-window" id="datasetNumberFormatsWindow" role="dialog" aria-modal="true" aria-labelledby="datasetNumberFormatsTitle">
-        <header class="pi-number-formats-header" id="datasetNumberFormatsHeader">
-          <div>
-            <div class="pi-number-formats-title" id="datasetNumberFormatsTitle">Default Number Formats</div>
-            <div class="pi-number-formats-path" id="datasetNumberFormatsPath"></div>
+    <div class="pi-prefs-overlay" id="piPrefsOverlay" hidden>
+      <section class="pi-prefs-window" id="piPrefsWindow" role="dialog" aria-modal="true" aria-labelledby="piPrefsTitle">
+        <header class="pi-prefs-header" id="piPrefsHeader">
+          <div class="pi-prefs-heading">
+            <div class="pi-prefs-title" id="piPrefsTitle">Preferences</div>
+            <div class="pi-prefs-subtitle" id="piPrefsSubtitle">Project Instance</div>
           </div>
-          <button class="pi-number-formats-close" id="datasetNumberFormatsClose" type="button" aria-label="Close default number formats">
+          <button class="pi-prefs-close" id="piPrefsClose" type="button" aria-label="Close preferences">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 4 8 8M12 4l-8 8"></path></svg>
           </button>
         </header>
-        <div class="pi-number-formats-body">
-          <div class="pi-number-formats-default-row">
-            <label for="datasetNumberFormatsDefault">Fallback number format</label>
-            <input id="datasetNumberFormatsDefault" type="text" maxlength="64" autocomplete="off" spellcheck="false">
-            <span>Used when no Dataset Type Name override matches.</span>
-          </div>
-          <div class="pi-number-formats-tools">
-            <input id="datasetNumberFormatsFilter" type="search" autocomplete="off" placeholder="Filter Dataset Type Name or format">
-            <button id="datasetNumberFormatsAdd" type="button">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"></path></svg>
-              <span>Add override</span>
+        <div class="pi-prefs-body">
+          <nav class="pi-prefs-nav" id="piPrefsNav" role="tablist" aria-orientation="vertical" aria-label="Preference sections">
+            <button class="pi-prefs-nav-item is-active" id="piPrefsNavFormats" type="button" role="tab" aria-selected="true" aria-controls="piPrefsPanelFormats" data-section="formats">
+              <span class="pi-prefs-nav-label">Number Formats</span>
+              <span class="pi-prefs-nav-scope">Shared</span>
             </button>
+            <button class="pi-prefs-nav-item" id="piPrefsNavTabs" type="button" role="tab" aria-selected="false" aria-controls="piPrefsPanelTabs" data-section="tabs">
+              <span class="pi-prefs-nav-label">Default Tabs</span>
+              <span class="pi-prefs-nav-scope is-user">Yours</span>
+            </button>
+          </nav>
+          <div class="pi-prefs-panels">
+            <section class="pi-prefs-panel" id="piPrefsPanelFormats" role="tabpanel" aria-labelledby="piPrefsNavFormats" tabindex="-1">
+              <div class="pi-prefs-panel-head">
+                <h2 class="pi-prefs-panel-title">Default Number Formats</h2>
+                <p class="pi-prefs-panel-note">Shared by everyone using this ArcRho Server. New datasets take their display format from here.</p>
+                <div class="pi-prefs-path" id="piPrefsFormatsPath"></div>
+              </div>
+              <div class="pi-number-formats-default-row">
+                <label for="piPrefsFormatsDefault">Fallback number format</label>
+                <input id="piPrefsFormatsDefault" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+                <span>Used when no Dataset Type Name override matches.</span>
+              </div>
+              <div class="pi-number-formats-tools">
+                <input id="piPrefsFormatsFilter" type="search" autocomplete="off" placeholder="Filter Dataset Type Name or format">
+                <button id="piPrefsFormatsAdd" type="button">
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"></path></svg>
+                  <span>Add override</span>
+                </button>
+              </div>
+              <div class="pi-number-formats-table-wrap ar-framed-scroll" id="piPrefsFormatsWrap">
+                <table class="pi-number-formats-table">
+                  <colgroup><col class="dataset"><col class="format"><col class="action"></colgroup>
+                  <thead><tr><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
+                  <tbody id="piPrefsFormatsBody"></tbody>
+                </table>
+                <div class="pi-number-formats-empty" id="piPrefsFormatsEmpty" hidden>No matching overrides.</div>
+              </div>
+            </section>
+            <section class="pi-prefs-panel" id="piPrefsPanelTabs" role="tabpanel" aria-labelledby="piPrefsNavTabs" tabindex="-1" hidden>
+              <div class="pi-prefs-panel-head">
+                <h2 class="pi-prefs-panel-title">Default Tab in Dataset Windows</h2>
+                <p class="pi-prefs-panel-note">Yours alone, and only in this project. Pick the tab each kind of window opens on.</p>
+                <div class="pi-prefs-path" id="piPrefsTabsPath"></div>
+                <button class="pi-prefs-reset" id="piPrefsTabsReset" type="button">Reset to app defaults</button>
+              </div>
+              <div class="pi-prefs-tab-list ar-framed-scroll" id="piPrefsTabsList"></div>
+            </section>
           </div>
-          <div class="pi-number-formats-table-wrap">
-            <table class="pi-number-formats-table">
-              <colgroup><col class="dataset"><col class="format"><col class="action"></colgroup>
-              <thead><tr><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
-              <tbody id="datasetNumberFormatsBody"></tbody>
-            </table>
-            <div class="pi-number-formats-empty" id="datasetNumberFormatsEmpty" hidden>No matching overrides.</div>
-          </div>
-          <div class="pi-number-formats-status" id="datasetNumberFormatsStatus" aria-live="polite"></div>
         </div>
-        <footer class="pi-number-formats-actions">
-          <button id="datasetNumberFormatsCancel" type="button">Cancel</button>
-          <button class="primary" id="datasetNumberFormatsSave" type="button">Save</button>
+        <footer class="pi-prefs-actions">
+          <div class="pi-prefs-status" id="piPrefsStatus" aria-live="polite"></div>
+          <button id="piPrefsCancel" type="button">Cancel</button>
+          <button class="primary" id="piPrefsSave" type="button">Save</button>
         </footer>
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260821b"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260824e"></script>
 </body>
 </html>

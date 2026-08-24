@@ -111,6 +111,7 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
     datasetMain,
     dfmHtml,
     dfmConfig,
+    tabCatalog,
     dfmLinks,
     dfmSummary,
     dataController,
@@ -119,6 +120,7 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
     source("ui/dataset_viewer/dataset_viewer_main.js"),
     source("ui/method_pages/dfm/dfm.html"),
     source("ui/method_pages/dfm/dfm_tab_config.js"),
+    source("ui/shared/tabs/window_tab_catalog.js"),
     source("ui/method_pages/dfm/dfm_links_tab.js"),
     Promise.all([
       source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
@@ -127,8 +129,15 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
     runtimeSources("ui/shared/tabs/data/"),
   ]);
 
-  for (const sourceText of [datasetView, datasetMain, dfmHtml, dfmConfig]) {
+  for (const sourceText of [datasetView, datasetMain, dfmHtml]) {
     assert.match(sourceText, /notes[\s\S]*links[\s\S]*(?:auditLog|audit)/u);
+  }
+  // Both tab lists now live in the shared window tab catalog, so the order is
+  // asserted there and the DFM page module only has to read from it.
+  assert.match(dfmConfig, /window_tab_catalog\.js/u);
+  for (const listName of ["DATASET_VIEWER_TAB_DEFS", "DFM_TAB_DEFS"]) {
+    const block = tabCatalog.split(`export const ${listName}`)[1]?.split("]);")[0] || "";
+    assert.match(block, /notes[\s\S]*links[\s\S]*(?:auditLog|audit)/u, `${listName} keeps Links after Notes`);
   }
   assert.match(datasetMain, /shared\/tabs\/links\/links_tab\.js/u);
   assert.match(dfmLinks, /shared\/tabs\/links\/links_tab\.js/u);
@@ -163,10 +172,10 @@ test("DSV and DFM reach the current shared Data validation runtime", async () =>
     source("ui/shared/tabs/data/data_tab_controller.js"),
   ]);
 
-  assert.match(datasetHtml, /dataset_viewer_main\.js\?v=20260820b/u);
-  assert.match(datasetMain, /data_tab_controller\.js\?v=20260820b/u);
-  assert.match(dfmHtml, /dfm_data_tab_adapter\.js\?v=20260820b/u);
-  assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260820b/u);
+  assert.match(datasetHtml, /dataset_viewer_main\.js\?v=20260824e/u);
+  assert.match(datasetMain, /data_tab_controller\.js\?v=20260824e/u);
+  assert.match(dfmHtml, /dfm_data_tab_adapter\.js\?v=20260824e/u);
+  assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260824e/u);
   assert.match(dataController, /data_tab_controls\.js\?v=20260820b/u);
   assert.match(dataController, /data_tab_inputs_controller\.js\?v=20260731b/u);
   assert.match(dataController, /data_tab_request_controller\.js\?v=20260809a/u);

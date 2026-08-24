@@ -1,3 +1,22 @@
+/* A page holding its first paint until its opening tab has finished loading.
+   The body keeps its own paint so the theme's background is what shows; only
+   the content is held, which is why a dark window stays dark instead of
+   flashing white. `initial_tab_paint.js` clears the attribute when the page
+   reports itself ready.
+
+   The animation is the last-resort release: it needs no script at all, so a
+   page whose JavaScript never loads still appears rather than staying blank
+   forever. `initial_tab_paint.js` has its own, shorter watchdog for the
+   ordinary case. */
+body[data-arcrho-page-hold] > * {
+  visibility: hidden;
+  animation: arcrhoPageHoldRelease 0s linear 12s forwards;
+}
+
+@keyframes arcrhoPageHoldRelease {
+  to { visibility: visible; }
+}
+
 .tabbedPageTabBar {
   flex: 0 0 auto;
   display: flex;

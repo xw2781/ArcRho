@@ -254,7 +254,7 @@ test("existing Cape Cod open applies only the aggregate v1 method and sidecar", 
     "async function applyPersistedAggregate",
     "async function fetchPersistedCapeCod",
   );
-  const init = functionSlice(mainSource, "async function init()", "void init();");
+  const init = functionSlice(mainSource, "async function init()", "void init()");
 
   assert.match(load, /fetchPersistedCapeCod\(\)/u);
   assert.match(load, /applyPersistedAggregate\(result\)/u);

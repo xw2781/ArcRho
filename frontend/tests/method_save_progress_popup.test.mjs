@@ -86,8 +86,21 @@ async function source(relativePath) {
 function createStubElement() {
   const parts = new Map();
   const classes = new Set();
+  let text = "";
   return {
     className: "",
+    // Mirrors the DOM: clearing textContent empties the element, which the
+    // live list relies on when it re-renders its rows.
+    get textContent() {
+      return text;
+    },
+    set textContent(value) {
+      text = String(value);
+      if (text === "") {
+        this.children.length = 0;
+        this.lastElementChild = null;
+      }
+    },
     // The popup marks its card when it is sized for countable progress, so a
     // stub element needs the same class bag a real one has.
     classList: {
@@ -102,7 +115,6 @@ function createStubElement() {
       },
     },
     innerHTML: "",
-    textContent: "",
     hidden: false,
     isConnected: false,
     parentNode: null,
@@ -237,6 +249,96 @@ test("save progress names the dataset noun and clears after a failed save", asyn
     // A throwing save must not strand the overlay over a blocked page.
     assert.equal(saveProgress.isVisible(), false);
   });
+});
+
+test("live walk updates render as rows with the newest step current", async () => {
+  const { createArcRhoSaveProgress } = await importSaveProgress();
+  // The shared helper restores the frame stubs synchronously, before the
+  // async run settles, so this test holds the stubs itself.
+  const previousRequest = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+  globalThis.cancelAnimationFrame = () => {};
+  try {
+    const doc = createStubDocument();
+    const saveProgress = createArcRhoSaveProgress({ documentRef: doc, subject: "Result Selection" });
+
+    await saveProgress.run((progress) => {
+      const list = doc.created.at(0).querySelector(".arcrho-load-popup-live");
+      assert.equal(list.hidden, false, "the list markup starts present but empty");
+
+      progress.liveUpdate({ stage: "calculated_datasets", completed: 0, total: 3, label: "G 62" });
+      progress.liveUpdate({ stage: "calculated_datasets", completed: 1, total: 3, label: "G 24" });
+      // A repeated label updates its row in place instead of stuttering.
+      progress.liveUpdate({ stage: "calculated_datasets", completed: 1, total: 3, label: "G 24" });
+      // A phase-level step arrives with no denominator and no count badge.
+      progress.liveUpdate({ stage: "result_selection", completed: 0, total: 0, label: "Refreshing Result Selection methods" });
+      // A blank label must not add an empty row.
+      progress.liveUpdate({ stage: "result_selection", completed: 0, total: 0, label: "  " });
+
+      assert.equal(list.hidden, false);
+      assert.equal(list.children.length, 3);
+      const [first, second, third] = list.children;
+      assert.equal(first.children[0].textContent, "G 62");
+      assert.equal(first.children[1].textContent, "1 of 3");
+      assert.ok(!first.className.includes("is-current"));
+      assert.equal(second.children[0].textContent, "G 24");
+      assert.equal(second.children[1].textContent, "2 of 3");
+      assert.equal(third.children[0].textContent, "Refreshing Result Selection methods");
+      assert.equal(third.children.length, 1, "no count badge without a denominator");
+      assert.ok(third.className.includes("is-current"));
+      // The list keeps its scroll pinned to the newest row.
+      assert.equal(list.scrollTop, list.scrollHeight);
+      return "saved";
+    });
+  } finally {
+    globalThis.requestAnimationFrame = previousRequest;
+    globalThis.cancelAnimationFrame = previousCancel;
+  }
+});
+
+test("tracking a hosted save polls its progress and stops on a terminal status", async () => {
+  const { createArcRhoSaveProgress } = await importSaveProgress();
+  // The shared helper restores the frame stubs synchronously, before an
+  // awaited body finishes; this test out-waits real timers, so it holds the
+  // stubs itself for its whole life.
+  const previousRequest = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+  globalThis.cancelAnimationFrame = () => {};
+  try {
+    const doc = createStubDocument();
+    const saveProgress = createArcRhoSaveProgress({ documentRef: doc, subject: "Result Selection" });
+
+    const answers = [
+      { status: "processing", progress: { stage: "calculated_datasets", completed: 0, total: 2, label: "G 62" } },
+      { status: "processing", progress: { stage: "calculated_datasets", completed: 1, total: 2, label: "G 24" } },
+      { status: "success" },
+    ];
+    const polled = [];
+    const fetchImpl = async (url) => {
+      polled.push(url);
+      const payload = answers[Math.min(polled.length - 1, answers.length - 1)];
+      return { ok: true, json: async () => payload };
+    };
+
+    await saveProgress.run(async (progress) => {
+      progress.trackHostedSave("feedfacefeedfacefeedfacefeedface", { intervalMs: 2, fetchImpl });
+      // Give the poll loop time to reach the terminal answer and stop.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const list = doc.created.at(0).querySelector(".arcrho-load-popup-live");
+      assert.equal(list.children.length, 2, "each polled step became a row");
+      assert.ok(polled[0].endsWith("/hosted-saves/progress/feedfacefeedfacefeedfacefeedface"));
+      const pollsAtTerminal = polled.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.equal(polled.length, pollsAtTerminal, "a terminal status stops the polling");
+      return "saved";
+    });
+    assert.equal(saveProgress.isVisible(), false);
+  } finally {
+    globalThis.requestAnimationFrame = previousRequest;
+    globalThis.cancelAnimationFrame = previousCancel;
+  }
 });
 
 test("a Result Selection save shows the spinner and clears it before the review dialog", async () => {
@@ -408,7 +510,7 @@ test("every method and dataset window saves behind the shared save progress", as
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260816a/u,
+      /save_progress\.js\?v=20260824a/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.

@@ -21,7 +21,7 @@ import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/clos
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
@@ -43,15 +43,14 @@ import {
 import { calculateSettlementRate } from "./settlement_rate_calculation.js";
 import { calculateCaseReserveAdequacy } from "./case_reserve_adequacy_calculation.js";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
+import {
+  BERQUIST_SHERMAN_TAB_DEFS,
+  windowTabIds,
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 const ANNUAL_PERIOD_LENGTH = 12;
-const TABS = [
-  { id: "details", label: "Details" },
-  { id: "method", label: "Method" },
-  { id: "notes", label: "Notes" },
-  { id: "audit", label: "Audit Log" },
-];
-const ALLOWED_TABS = new Set(TABS.map((tab) => tab.id));
+const TABS = BERQUIST_SHERMAN_TAB_DEFS;
+const ALLOWED_TABS = windowTabIds("berquist_sherman");
 const params = new URLSearchParams(window.location.search || "");
 const variant = normalizeBerquistShermanVariant(params.get("variant")) || "sr";
 const contract = getBerquistShermanContract(variant);
@@ -2558,4 +2557,6 @@ async function init() {
   }
 }
 
-void init();
+// The window is held blank until the opening tab is rendered; see
+// ui/shared/tabbed_page/initial_tab_paint.js.
+void init().finally(() => window.arcrhoRevealPage?.());

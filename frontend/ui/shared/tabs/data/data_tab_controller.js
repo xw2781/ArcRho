@@ -40,7 +40,7 @@ import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_i
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
-import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260813e";
+import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260824a";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
 import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260820b";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
@@ -54,6 +54,10 @@ import {
   isPersistedDfmMethodBootstrap,
 } from "/ui/shared/tabs/data/data_tab_context.js";
 import { mountDataTabPageHost } from "/ui/shared/tabs/data/data_tab_page_host_port.js";
+import {
+  appDefaultWindowTab,
+  windowTabIds,
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
@@ -85,11 +89,11 @@ import {
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
 import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260805a";
-import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260820b";
+import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260820a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260824a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -99,7 +103,6 @@ const DEFAULT_PROJECT_DISPLAY = "Default Project";
 const DEFAULT_PATH_DISPLAY = "Default Path";
 const DEFAULT_TOKEN = "__DEFAULT__";
 const BROWSING_HISTORY_MAX_ENTRIES = 15;
-const DATASET_VIEWER_TAB_IDS = new Set(["details", "data", "chart", "notes", "links", "auditLog"]);
 
 const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";
@@ -192,7 +195,8 @@ const runtime = {
   DEFAULT_PATH_DISPLAY,
   DEFAULT_TOKEN,
   BROWSING_HISTORY_MAX_ENTRIES,
-  DATASET_VIEWER_TAB_IDS,
+  DATASET_VIEWER_TAB_IDS: windowTabIds("dataset"),
+  DATASET_VIEWER_APP_DEFAULT_TAB: appDefaultWindowTab("dataset"),
   activeDependencyPreviewKey: "",
   allDatasetTypes: [],
   allProjects: [],

@@ -317,7 +317,9 @@ test("Project Settings and Project Instance override light-only child paint in D
     [".pi-table-header-cell", /background:\s*var\(--ar-color-table-header\)/],
     [".pi-window-titlebar", /background:\s*var\(--ar-popout-header\)/],
     [".pi-window-titlebar-icon", /stroke:\s*currentColor/],
-    [".pi-number-formats-header", /background-color:\s*var\(--ar-color-surface-muted\)/],
+    [".pi-prefs-header", /background-color:\s*var\(--ar-color-surface-muted\)/],
+    [".pi-prefs-nav-item.is-active", /background:\s*var\(--ar-color-accent-soft\)/],
+    [".pi-prefs-tabchip", /background:\s*var\(--ar-color-input\)/],
     [".tree-project", /color:\s*var\(--ar-color-text\)/],
     [".ribbon-label", /color:\s*var\(--ar-color-text-muted\)/],
     [".summary-header", /color:\s*var\(--ar-color-text-strong\)/],
@@ -332,7 +334,7 @@ test("Project Settings and Project Instance override light-only child paint in D
     assert.ok(declarations, `dark theme contains ${selector}`);
     assert.match(declarations, expectedDeclaration, `${selector} uses shared dark-theme paint`);
   }
-  assert.doesNotMatch(dark, /\.pi-number-formats-titlebar/);
+  assert.doesNotMatch(dark, /\.pi-prefs-titlebar/);
 
   const datasetTypesCss = read("../ui/project_settings/project_settings_dataset_types.css");
   const datasetTypesJs = read("../ui/project_settings/project_settings_dataset_types.js");
@@ -638,7 +640,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260817d/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260820c/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260824e/);
   assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
@@ -661,21 +663,21 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260820c/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260824e/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
   const expectedReferences = [
-    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260820b"],
-    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260820b"],
+    ["../ui/dataset_viewer/dataset_viewer.html", "dataset_viewer_main.js?v=20260824e"],
+    ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_viewer_view.js?v=20260824c"],
     ["../ui/dataset_viewer/dataset_viewer_main.js", "dataset_chart_tab.js?v=20260805a"],
     ["../ui/dataset_viewer/tabs/dataset_chart_tab.js", "dataset_chart_renderer.js?v=20260724a"],
-    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260820b"],
-    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260820b"],
-    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260820b"],
-    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260823c"],
-    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260821pstree1"],
-    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260821pstree1"],
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", "bornhuetter_ferguson_main.js?v=20260824e"],
+    ["../ui/method_pages/cape_cod/cape_cod.html", "cape_cod_main.js?v=20260824e"],
+    ["../ui/method_pages/result_selection/result_selection.html", "result_selection_main.js?v=20260824e"],
+    ["../ui/method_pages/dfm/dfm.html", "dfm_main.js?v=20260824e"],
+    ["../ui/project_settings/project_settings.html", "project_settings.js?v=20260824a"],
+    ["../ui/project_settings/project_settings.js", "project_settings_dataset_types.js?v=20260824a"],
     ["../ui/arcode/code-editor/index.html", "code-editor/index.js?v=20260818a"],
     ["../ui/arcode/code-editor/index.js", "shared/editor_framework.js?v=20260818a"],
     ["../ui/arcode/notebook-editor/index.html", "notebook-editor/core.js?v=20260816b"],

@@ -21,7 +21,7 @@ import { startResultSelectionRpcBridgeSync } from "/ui/method_pages/result_selec
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -52,20 +52,16 @@ import {
   ratioBasisValuesForName,
   upsertRatioBasisValueSet,
 } from "/ui/method_pages/result_selection/result_selection_json_contract.js?v=20260725a";
+import {
+  RESULT_SELECTION_TAB_DEFS,
+  windowTabIds,
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 const MAX_RATIO_BASIS_COUNT = 3;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
-const RS_TAB_DEFS = [
-  { id: "details", label: "Details" },
-  { id: "method", label: "Method" },
-  { id: "chart", label: "Chart" },
-  { id: "results", label: "Results" },
-  { id: "validation", label: "Validation" },
-  { id: "notes", label: "Notes" },
-  { id: "audit", label: "Audit Log" },
-];
-const ALLOWED_RS_TABS = new Set(RS_TAB_DEFS.map((tab) => tab.id));
+const RS_TAB_DEFS = RESULT_SELECTION_TAB_DEFS;
+const ALLOWED_RS_TABS = windowTabIds("result_selection");
 const FALLBACK_ORIGIN_LABEL_COUNTS = {
   12: 10,
   6: 20,
@@ -387,7 +383,9 @@ const detailsDependencies = createDetailsDependenciesController({
 });
 ctx.refreshDetailsDependencies = () => detailsDependencies.refresh().catch(() => null);
 
+// The window is held blank until the opening tab is rendered; see
+// ui/shared/tabbed_page/initial_tab_paint.js.
 ctx.init().catch((err) => {
   console.error("Result Selection initialization failed:", err);
   ctx.postStatus(`Result Selection failed to initialize: ${err?.message || err}`, "error");
-});
+}).finally(() => window.arcrhoRevealPage?.());

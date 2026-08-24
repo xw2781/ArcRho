@@ -241,6 +241,18 @@
         return saveProgress.run((progress) => runResultSelectionSave(progress));
       }
 
+      /** 32-hex save-job identity, unique per save attempt. */
+      function newHostedSaveRequestId() {
+        try {
+          if (typeof crypto !== "undefined" && crypto.randomUUID) {
+            return crypto.randomUUID().replace(/-/g, "");
+          }
+        } catch {}
+        let id = "";
+        while (id.length < 32) id += Math.floor(Math.random() * 16).toString(16);
+        return id;
+      }
+
       async function runResultSelectionSave(progress) {
         const details = getDetails();
         if (!details.name || !details.outputType) {
@@ -259,8 +271,13 @@
             method,
             notes: els.notesInput?.value || "",
             expected_revision: state.methodRevision,
+            // The save job's identity is chosen client-side so the saving
+            // card can follow the Engine's dependent walk live (one row per
+            // refreshed object) while this request is still in flight.
+            client_request_id: newHostedSaveRequestId(),
           };
           progress.writing();
+          progress.trackHostedSave?.(saveBody.client_request_id);
           const resp = await fetch("/result-selection/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -301,7 +318,13 @@
           } catch {}
           const aggregateCount = Array.isArray(payload.aggregated_csv_paths) ? payload.aggregated_csv_paths.length : 0;
           if (payload.propagation_ok === false) {
-            postStatus(`Result Selection saved, but its dependent updates could not be scheduled: ${details.name}`, "warn");
+            // The walk ran; some dependents declined or failed. The server
+            // names them, so show that instead of a generic scheduling line.
+            const walkReason = String(payload?.propagation?.message || "").trim();
+            postStatus(
+              `Result Selection saved, but some dependent updates did not complete: ${walkReason || details.name}`,
+              "warn",
+            );
           } else if (payload.index_ok === false) {
             postStatus(`Result Selection saved, but the dataset index could not be refreshed: ${payload.index_error || details.name}`, "warn");
           } else {

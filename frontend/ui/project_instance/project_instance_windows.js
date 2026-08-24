@@ -2,6 +2,7 @@ import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
+import { resolveWindowTab } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 export function installProjectInstanceWindows(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -23,6 +24,11 @@ export function installProjectInstanceWindows(ctx) {
   const toText = (...args) => api.toText(...args);
   const updateHiddenTabsArea = (...args) => api.updateHiddenTabsArea(...args);
   const waitForPathTreeRender = (...args) => api.waitForPathTreeRender(...args);
+
+  /* The tab a window opens on: whatever the caller asked for, then the user's
+     saved default for that window kind, then the app default. `state` holds the
+     saved defaults, which boot reads once from the project-user preferences. */
+  const windowTab = (kind, requestedTab) => resolveWindowTab(kind, requestedTab, state.defaultWindowTabs);
 
 function getDatasetWindowKey(datasetName, path = state.selectedPath, temporaryViewSessionId = "") {
   const baseKey = `${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
@@ -711,7 +717,7 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
 function buildDfmViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
-  const initialTab = toText(options?.initialTab || options?.dfmTab || "ratios") || "ratios";
+  const initialTab = windowTab("dfm", options?.initialTab || options?.dfmTab);
   const methodName = options?.fresh ? "" : toText(options?.methodName || name);
   const outputType = options?.fresh ? "" : toText(options?.outputType || name);
   const outputDataset = options?.fresh
@@ -735,7 +741,7 @@ function buildDfmViewerUrl(datasetName, inst, options = {}) {
 function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
-  const initialTab = toText(options?.initialTab || options?.rsTab || "details") || "details";
+  const initialTab = windowTab("result_selection", options?.initialTab || options?.rsTab);
   const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
   params.set("class", targetPath);
@@ -754,7 +760,7 @@ function buildResultSelectionViewerUrl(datasetName, inst, options = {}) {
 function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
-  const initialTab = toText(options?.initialTab || options?.bfTab || "details") || "details";
+  const initialTab = windowTab("bornhuetter_ferguson", options?.initialTab || options?.bfTab);
   const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
   params.set("class", targetPath);
@@ -773,7 +779,7 @@ function buildBornhuetterFergusonViewerUrl(datasetName, inst, options = {}) {
 function buildCapeCodViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
-  const initialTab = toText(options?.initialTab || options?.ccTab || "details") || "details";
+  const initialTab = windowTab("cape_cod", options?.initialTab || options?.ccTab);
   const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
   params.set("class", targetPath);
@@ -793,7 +799,7 @@ function buildBerquistShermanViewerUrl(datasetName, inst, options = {}) {
   const params = new URLSearchParams();
   const name = toText(datasetName);
   const variant = normalizeBerquistShermanVariant(options?.variant || options?.methodType || options?.sourceKind);
-  const initialTab = toText(options?.initialTab || options?.bsTab || "details") || "details";
+  const initialTab = windowTab("berquist_sherman", options?.initialTab || options?.bsTab);
   const targetPath = normalizePath(options?.path || state.selectedPath);
   params.set("project", projectName);
   params.set("class", targetPath);
@@ -945,18 +951,20 @@ function createFloatingContentWindow(options = {}) {
             : ""
   ));
   if (methodType) frame.dataset.windowMethodType = methodType;
-  if (frame.dataset.windowKind === "dfm") frame.dataset.dfmTab = "ratios";
+  if (frame.dataset.windowKind === "dfm") {
+    frame.dataset.dfmTab = windowTab("dfm", options.dfmTab || options.initialTab);
+  }
   if (frame.dataset.windowKind === "result_selection") {
-    frame.dataset.rsTab = toText(options.rsTab || options.initialTab || "details") || "details";
+    frame.dataset.rsTab = windowTab("result_selection", options.rsTab || options.initialTab);
   }
   if (frame.dataset.windowKind === "bornhuetter_ferguson") {
-    frame.dataset.bfTab = toText(options.bfTab || options.initialTab || "details") || "details";
+    frame.dataset.bfTab = windowTab("bornhuetter_ferguson", options.bfTab || options.initialTab);
   }
   if (frame.dataset.windowKind === "cape_cod") {
-    frame.dataset.ccTab = toText(options.ccTab || options.initialTab || "details") || "details";
+    frame.dataset.ccTab = windowTab("cape_cod", options.ccTab || options.initialTab);
   }
   if (frame.dataset.windowKind === "berquist_sherman") {
-    frame.dataset.bsTab = toText(options.bsTab || options.initialTab || "details") || "details";
+    frame.dataset.bsTab = windowTab("berquist_sherman", options.bsTab || options.initialTab);
     frame.dataset.bsVariant = normalizeBerquistShermanVariant(options.bsVariant || options.variant || methodType);
   }
   frame.setAttribute("aria-label", title);
@@ -1088,6 +1096,7 @@ function openDatasetWindow(datasetName, options = {}) {
       readOnly: options?.readOnly,
       methodType: options?.methodType,
       temporaryViewSessionId,
+      initialTab: windowTab("dataset", options?.initialTab),
     }),
     path: targetPath,
     methodType: options?.methodType,
@@ -1140,6 +1149,8 @@ function openNewDatasetDraftWindow(datasetName, options = {}) {
       dsId: options?.dsId,
       readOnly: options?.readOnly,
       draft: isDraft,
+      // A draft opens on Details whatever the saved default is: its Dataset
+      // Type, lengths and format have to be filled in before there is data.
       initialTab: options?.initialTab || "details",
     }),
     methodType: options?.methodType,
@@ -1162,7 +1173,7 @@ function openDfmWindow(datasetName, options = {}) {
   recordSelectedDfmObject(name);
   const windowKey = getDfmWindowKey(name, targetPath);
   const title = `${targetPath}\\DFM\\${name}`;
-  const initialTab = toText(options.initialTab || options.dfmTab || "ratios") || "ratios";
+  const initialTab = windowTab("dfm", options.initialTab || options.dfmTab);
   const inst = `pi_dfm_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "dfm",
@@ -1173,6 +1184,7 @@ function openDfmWindow(datasetName, options = {}) {
     inst,
     iframeSrc: buildDfmViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
     path: targetPath,
+    initialTab,
     methodType: options.methodType || "DFM",
     outputDataset: toText(options.outputDataset || options.output_dataset || ""),
   });
@@ -1234,7 +1246,7 @@ function openResultSelectionWindow(datasetName, options = {}) {
 
   const windowKey = `rs\u0001${targetPath}\u0001${name.toLowerCase()}`;
   const title = `${targetPath}\\Result Selection\\${name}`;
-  const initialTab = toText(options.initialTab || options.rsTab || "details") || "details";
+  const initialTab = windowTab("result_selection", options.initialTab || options.rsTab);
   const inst = `pi_rs_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "result_selection",
@@ -1261,7 +1273,7 @@ function openBornhuetterFergusonWindow(datasetName, options = {}) {
 
   const windowKey = getBornhuetterFergusonWindowKey(name, targetPath);
   const title = `${targetPath}\\Bornhuetter Ferguson\\${name}`;
-  const initialTab = toText(options.initialTab || options.bfTab || "details") || "details";
+  const initialTab = windowTab("bornhuetter_ferguson", options.initialTab || options.bfTab);
   const inst = `pi_bf_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "bornhuetter_ferguson",
@@ -1288,7 +1300,7 @@ function openCapeCodWindow(datasetName, options = {}) {
 
   const windowKey = getCapeCodWindowKey(name, targetPath);
   const title = `${targetPath}\\Cape Cod\\${name}`;
-  const initialTab = toText(options.initialTab || options.ccTab || "details") || "details";
+  const initialTab = windowTab("cape_cod", options.initialTab || options.ccTab);
   const inst = `pi_cc_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "cape_cod",
@@ -1320,7 +1332,7 @@ function openBerquistShermanWindow(datasetName, options = {}) {
 
   const windowKey = getBerquistShermanWindowKey(name, contract.variant, targetPath);
   const title = `${targetPath}\\${contract.displayLabel}\\${name}`;
-  const initialTab = toText(options.initialTab || options.bsTab || "details") || "details";
+  const initialTab = windowTab("berquist_sherman", options.initialTab || options.bsTab);
   const inst = `pi_bs_${contract.variant}_${Date.now()}_${state.windowSeq++}`;
   return createFloatingContentWindow({
     kind: "berquist_sherman",
@@ -1471,16 +1483,16 @@ async function applyProjectInstanceRestoreState(rawState) {
         outputDataset: toText(item?.outputDataset || item?.output_dataset || ""),
       })
       : kind === "result_selection"
-        ? openResultSelectionWindow(name, { initialTab: item?.rsTab || "method", rsTab: item?.rsTab || "method", methodType })
+        ? openResultSelectionWindow(name, { initialTab: item?.rsTab, rsTab: item?.rsTab, methodType })
         : kind === "bornhuetter_ferguson"
-          ? openBornhuetterFergusonWindow(name, { initialTab: item?.bfTab || "method", bfTab: item?.bfTab || "method", methodType })
+          ? openBornhuetterFergusonWindow(name, { initialTab: item?.bfTab, bfTab: item?.bfTab, methodType })
           : kind === "cape_cod"
-            ? openCapeCodWindow(name, { initialTab: item?.ccTab || "method", ccTab: item?.ccTab || "method", methodType })
+            ? openCapeCodWindow(name, { initialTab: item?.ccTab, ccTab: item?.ccTab, methodType })
             : kind === "berquist_sherman"
               ? openBerquistShermanWindow(name, {
                 path: item?.path,
-                initialTab: item?.bsTab || "method",
-                bsTab: item?.bsTab || "method",
+                initialTab: item?.bsTab,
+                bsTab: item?.bsTab,
                 bsVariant,
                 methodType,
               })

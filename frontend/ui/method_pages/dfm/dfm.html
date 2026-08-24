@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Development Factor Method</title>
-  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d"/>
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b"/>
 <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
@@ -20,11 +20,11 @@
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260812a"/>
   <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
-<body>
+<body data-arcrho-page-hold="1">
   <div class="dfmTabBar tabbedPageTabBar">
     <button class="dfmTab tabbedPageTab active" data-page="details" type="button">Details</button>
     <button class="dfmTab tabbedPageTab" data-page="data" type="button">Data</button>
@@ -34,7 +34,7 @@
     <button class="dfmTab tabbedPageTab" data-page="links" type="button">Links</button>
     <button class="dfmTab tabbedPageTab" data-page="audit" type="button">Audit Log</button>
   </div>
-  <div id="dfmDetailsPage" class="arDetailsRoot">
+  <div id="dfmDetailsPage" data-page="details" class="arDetailsRoot">
     <!-- Identity, then the input this method develops, then the shape and
          precision of its output. Name is the first row and Output Type the
          second, as on every Details tab. -->
@@ -152,7 +152,7 @@
       <input id="formulaBar" placeholder="" />
     </div>
   </div>
-  <div id="dfmDataPage">
+  <div id="dfmDataPage" data-page="data">
     <div class="panel" id="triPanel">
       <div class="panelInner">
         <div class="small" id="tableMeta" style="display:none;"></div>
@@ -163,7 +163,7 @@
     </div>
   </div>
 
-  <div id="dfmRatiosPage">
+  <div id="dfmRatiosPage" data-page="ratios">
     <div class="panel" id="ratioPanel">
       <div class="panelInner">
         <!-- <div class="small"><b>Ratios</b></div> -->
@@ -175,7 +175,7 @@
     </div>
   </div>
 
-  <div id="dfmResultsPage">
+  <div id="dfmResultsPage" data-page="results">
     <div class="panel" id="resultsPanel">
       <div class="panelInner">
         <!-- <div class="small"><b>Results</b></div> -->
@@ -208,13 +208,13 @@
     </div>
   </div>
 
-  <div id="dfmNotesPage"></div>
+  <div id="dfmNotesPage" data-page="notes"></div>
 
-  <div id="dfmLinksPage">
+  <div id="dfmLinksPage" data-page="links">
     <div id="dfmLinksMount"></div>
   </div>
 
-  <div id="dfmAuditPage">
+  <div id="dfmAuditPage" data-page="audit">
     <div id="dfmAuditLogMount"></div>
   </div>
 
@@ -371,15 +371,22 @@
     </div>
   </div>
 
+  <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
   <script type="module">
     (async () => {
-      await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260820b");
+      // The window is held blank until the opening tab is rendered; see
+      // ui/shared/tabbed_page/initial_tab_paint.js.
       try {
-        await window.ADA_DATASET_READY;
-      } catch (err) {
-        console.error("Dataset boot failed before DFM initialization:", err);
+        await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260824e");
+        try {
+          await window.ADA_DATASET_READY;
+        } catch (err) {
+          console.error("Dataset boot failed before DFM initialization:", err);
+        }
+        await import("/ui/method_pages/dfm/dfm_main.js?v=20260824e");
+      } finally {
+        window.arcrhoRevealPage?.();
       }
-      await import("/ui/method_pages/dfm/dfm_main.js?v=20260823c");
     })();
   </script>
 </body>

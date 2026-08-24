@@ -5,21 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Cape Cod</title>
-  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d">
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b">
 <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260819a">
   <link rel="stylesheet" href="/ui/method_pages/cape_cod/cape_cod.css?v=20260820e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
-<body>
+<body data-arcrho-page-hold="1">
   <main class="ccShell">
     <section class="ccTabbed" id="ccTabbedPage">
       <div class="ccPageHost">
-        <section class="ccPage arDetailsRoot" id="ccDetailsPage" role="tabpanel">
+        <section class="ccPage arDetailsRoot" id="ccDetailsPage" data-page="details" role="tabpanel">
           <div class="ccDetailsStack">
             <!-- Identity, then the datasets the method is built from, then the
                  shape of the output. Name is the first row and Output Type the
@@ -125,7 +125,7 @@
           </div>
         </section>
 
-        <section class="ccPage" id="ccMethodPage" role="tabpanel">
+        <section class="ccPage" id="ccMethodPage" data-page="method" role="tabpanel">
           <div class="ccMethodToolbar">
             <div class="ccToolGroup">
               <span class="ccToolTitle">Trend</span>
@@ -188,7 +188,7 @@
           </div>
         </section>
 
-        <section class="ccPage" id="ccUltimatesPage" role="tabpanel">
+        <section class="ccPage" id="ccUltimatesPage" data-page="ultimates" role="tabpanel">
           <div class="ccTableWrap ccUltimatesWrap">
             <table class="ccUltimatesTable arSpreadsheetTable" aria-label="Cape Cod ultimates triangle" tabindex="0">
               <colgroup id="ccUltimatesCols"></colgroup>
@@ -199,7 +199,7 @@
           </div>
         </section>
 
-        <section class="ccPage" id="ccRatiosPage" role="tabpanel">
+        <section class="ccPage" id="ccRatiosPage" data-page="ratios" role="tabpanel">
           <section class="ccChartPanel" aria-labelledby="ccChartTitle">
             <header class="ccChartHeader">
               <div class="ccChartHeading">
@@ -216,11 +216,11 @@
           </section>
         </section>
 
-        <section class="ccPage" id="ccNotesPage" role="tabpanel">
+        <section class="ccPage" id="ccNotesPage" data-page="notes" role="tabpanel">
           <div id="ccNotesMount"></div>
         </section>
 
-        <section class="ccPage" id="ccAuditPage" role="tabpanel">
+        <section class="ccPage" id="ccAuditPage" data-page="audit" role="tabpanel">
           <div id="ccAuditLogMount"></div>
         </section>
       </div>
@@ -241,6 +241,7 @@
     <button type="button" role="menuitem" data-cc-cell-action="remove-highlights">Remove Highlights</button>
   </div>
 
-  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260820b"></script>
+  <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
+  <script type="module" src="/ui/method_pages/cape_cod/cape_cod_main.js?v=20260824e"></script>
 </body>
 </html>

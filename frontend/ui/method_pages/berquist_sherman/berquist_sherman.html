@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Berquist Sherman</title>
-  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a">
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d">
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b">
 <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a">
@@ -17,14 +17,14 @@
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
   <link rel="stylesheet" href="/ui/method_pages/berquist_sherman/berquist_sherman.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e">
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
 </head>
-<body>
+<body data-arcrho-page-hold="1">
   <main class="bsShell">
     <section class="bsTabbed" id="bsTabbedPage">
       <div class="bsPageHost">
-        <section class="bsPage arDetailsRoot" id="bsDetailsPage" role="tabpanel">
+        <section class="bsPage arDetailsRoot" id="bsDetailsPage" data-page="details" role="tabpanel">
           <div class="bsDetailsStack">
             <!-- Identity, then the source triangles of the selected variant, then
                  the shape and precision of the output, then its number format.
@@ -174,7 +174,7 @@
           </div>
         </section>
 
-        <section class="bsPage" id="bsMethodPage" role="tabpanel">
+        <section class="bsPage" id="bsMethodPage" data-page="method" role="tabpanel">
           <div class="bsMethodTabBar tabbedPageTabBar">
             <div class="bsViewButtons" id="bsViewButtons" role="tablist" aria-label="Calculation view"></div>
           </div>
@@ -224,11 +224,11 @@
           </div>
         </section>
 
-        <section class="bsPage" id="bsNotesPage" role="tabpanel">
+        <section class="bsPage" id="bsNotesPage" data-page="notes" role="tabpanel">
           <div id="bsNotesMount"></div>
         </section>
 
-        <section class="bsPage" id="bsAuditPage" role="tabpanel">
+        <section class="bsPage" id="bsAuditPage" data-page="audit" role="tabpanel">
           <div id="bsAuditLogMount"></div>
         </section>
       </div>
@@ -242,6 +242,7 @@
     </footer>
   </main>
 
-  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260820b"></script>
+  <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
+  <script type="module" src="/ui/method_pages/berquist_sherman/berquist_sherman_main.js?v=20260824e"></script>
 </body>
 </html>

@@ -1208,11 +1208,14 @@ function openDfmTabForDataset(record) {
   });
 }
 
+// Opening an existing method names no tab: the window layer applies the user's
+// Default Tabs preference for that kind. Only the add-a-new-method handlers
+// below pin Details, because a fresh method has nothing to show until its
+// inputs are chosen.
 function openResultSelectionTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
   openResultSelectionWindow(datasetName, {
-    initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType"),
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
@@ -1224,7 +1227,6 @@ function openBornhuetterFergusonTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
   openBornhuetterFergusonWindow(datasetName, {
-    initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType") || "Bornhuetter Ferguson",
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
@@ -1236,7 +1238,6 @@ function openCapeCodTabForDataset(record) {
   const datasetName = toText(record?.datasetName);
   if (!datasetName || !state.selectedPath) return;
   openCapeCodWindow(datasetName, {
-    initialTab: "method",
     methodType: getDatasetRecordValue(record, "methodType") || "Cape Cod",
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
@@ -1250,7 +1251,6 @@ function openBerquistShermanTabForDataset(record) {
   if (!datasetName || !variant || !state.selectedPath) return;
   const contract = getBerquistShermanContract(variant);
   openBerquistShermanWindow(datasetName, {
-    initialTab: "method",
     variant,
     methodType: contract?.methodType,
     outputType: getDatasetRecordValue(record, "datasetTypeName"),

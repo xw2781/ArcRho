@@ -6,7 +6,7 @@ import {
   getDatasetTypeColumnFilterValueKeyFromRow,
   isDatasetTypeSelectionFilterActive,
 } from "/ui/shared/dataset/dataset_types_view_model.js";
-import { createArcRhoProgressPopup } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260820dtjob1";
+import { createArcRhoProgressPopup } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import {
   createDatasetTypesChangeRequestId,
   datasetTypesRowsSignature,

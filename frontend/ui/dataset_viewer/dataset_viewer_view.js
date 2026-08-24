@@ -19,7 +19,7 @@ export function mountDatasetViewer(container) {
   <!-- Details tab page: identity first, then what this dataset is computed from
        and what consumes it. Name is the first row and Dataset Type the second,
        so every Details tab in the app opens the same way. -->
-  <div id="dsDetailsPage" class="arDetailsRoot" style="display:none;">
+  <div id="dsDetailsPage" data-page="details" class="arDetailsRoot" style="display:none;">
     <div id="topFrame">
       <div class="arDetailsSection">
         <div class="arDetailsGrid">
@@ -99,7 +99,7 @@ export function mountDatasetViewer(container) {
   </div>
 
   <!-- Data tab page: parameter strip + formula bar + triangle table -->
-  <div id="dsDataPage">
+  <div id="dsDataPage" data-page="data">
     <!-- parameter strip -->
     <div class="topRow">
       <div class="panel" id="datasetTopBar">
@@ -219,7 +219,7 @@ export function mountDatasetViewer(container) {
   </div>
 
   <!-- Chart tab page -->
-  <div id="dsChartPage" style="display:none;">
+  <div id="dsChartPage" data-page="chart" style="display:none;">
     <div class="right">
       <div class="panel" id="chartPanel">
         <div class="panelInner">
@@ -248,7 +248,7 @@ export function mountDatasetViewer(container) {
   </div>
 
   <!-- Notes tab page -->
-  <div id="dsNotesPage" style="display:none;">
+  <div id="dsNotesPage" data-page="notes" style="display:none;">
     <div class="dsNotesEditorWrap">
       <div id="datasetNotesMount"></div>
       <div class="dsNotesToolbar" id="dsNotesToolbar">
@@ -260,12 +260,12 @@ export function mountDatasetViewer(container) {
   </div>
 
   <!-- Links tab page -->
-  <div id="dsLinksPage" style="display:none;">
+  <div id="dsLinksPage" data-page="links" style="display:none;">
     <div id="datasetLinksMount"></div>
   </div>
 
   <!-- Audit Log tab page -->
-  <div id="dsAuditLogPage" style="display:none;">
+  <div id="dsAuditLogPage" data-page="auditLog" style="display:none;">
     <div id="datasetAuditLogMount"></div>
   </div>
 
@@ -307,6 +307,11 @@ export function mountDatasetViewer(container) {
 
   <!-- Same-folder JS entrypoint (no /static) -->
   <!--  -->`;
+  // The Data tab is the panel this markup pre-selects, but the tab system does
+  // not choose the real one until the Data tab's first reads finish. Apply the
+  // requested tab to the fragment first, so the window paints on it once
+  // instead of opening on Data and jumping.
+  window.arcrhoApplyInitialTabbedPage?.(wrapper);
   while (wrapper.firstElementChild) {
     container.appendChild(wrapper.firstElementChild);
   }

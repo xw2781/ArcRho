@@ -1,3 +1,5 @@
+import { appDefaultWindowTabs } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+
 const qs = new URLSearchParams(window.location.search);
 
 export const DATASET_TABLE_COLUMNS = Object.freeze([
@@ -62,20 +64,26 @@ export function createProjectInstanceContext(deps = {}) {
     hiddenTabsLabel: document.getElementById("hiddenTabsLabel"),
     hiddenTabsMenu: document.getElementById("hiddenTabsMenu"),
     datasetRefreshBtn: document.getElementById("datasetRefreshBtn"),
-    datasetNumberFormatsBtn: document.getElementById("datasetNumberFormatsBtn"),
-    datasetNumberFormatsOverlay: document.getElementById("datasetNumberFormatsOverlay"),
-    datasetNumberFormatsWindow: document.getElementById("datasetNumberFormatsWindow"),
-    datasetNumberFormatsHeader: document.getElementById("datasetNumberFormatsHeader"),
-    datasetNumberFormatsClose: document.getElementById("datasetNumberFormatsClose"),
-    datasetNumberFormatsPath: document.getElementById("datasetNumberFormatsPath"),
-    datasetNumberFormatsDefault: document.getElementById("datasetNumberFormatsDefault"),
-    datasetNumberFormatsFilter: document.getElementById("datasetNumberFormatsFilter"),
-    datasetNumberFormatsAdd: document.getElementById("datasetNumberFormatsAdd"),
-    datasetNumberFormatsBody: document.getElementById("datasetNumberFormatsBody"),
-    datasetNumberFormatsEmpty: document.getElementById("datasetNumberFormatsEmpty"),
-    datasetNumberFormatsStatus: document.getElementById("datasetNumberFormatsStatus"),
-    datasetNumberFormatsCancel: document.getElementById("datasetNumberFormatsCancel"),
-    datasetNumberFormatsSave: document.getElementById("datasetNumberFormatsSave"),
+    piPrefsBtn: document.getElementById("piPrefsBtn"),
+    piPrefsOverlay: document.getElementById("piPrefsOverlay"),
+    piPrefsWindow: document.getElementById("piPrefsWindow"),
+    piPrefsHeader: document.getElementById("piPrefsHeader"),
+    piPrefsClose: document.getElementById("piPrefsClose"),
+    piPrefsNav: document.getElementById("piPrefsNav"),
+    piPrefsPanelFormats: document.getElementById("piPrefsPanelFormats"),
+    piPrefsPanelTabs: document.getElementById("piPrefsPanelTabs"),
+    piPrefsFormatsPath: document.getElementById("piPrefsFormatsPath"),
+    piPrefsFormatsDefault: document.getElementById("piPrefsFormatsDefault"),
+    piPrefsFormatsFilter: document.getElementById("piPrefsFormatsFilter"),
+    piPrefsFormatsAdd: document.getElementById("piPrefsFormatsAdd"),
+    piPrefsFormatsBody: document.getElementById("piPrefsFormatsBody"),
+    piPrefsFormatsEmpty: document.getElementById("piPrefsFormatsEmpty"),
+    piPrefsTabsPath: document.getElementById("piPrefsTabsPath"),
+    piPrefsTabsList: document.getElementById("piPrefsTabsList"),
+    piPrefsTabsReset: document.getElementById("piPrefsTabsReset"),
+    piPrefsStatus: document.getElementById("piPrefsStatus"),
+    piPrefsCancel: document.getElementById("piPrefsCancel"),
+    piPrefsSave: document.getElementById("piPrefsSave"),
     // The Excel Link Manager itself lives in its own nested-window page; the
     // Project Instance page owns only the toolbar button that opens it.
     excelLinksBtn: document.getElementById("excelLinksBtn"),
@@ -146,6 +154,7 @@ export function createProjectInstanceContext(deps = {}) {
   };
   const state = {
     selectedPath: "",
+    defaultWindowTabs: appDefaultWindowTabs(),
     reservingClassBusy: false,
     pathPickerController: null,
     pathPickerModel: null,

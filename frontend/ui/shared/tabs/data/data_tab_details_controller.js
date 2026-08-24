@@ -6,7 +6,13 @@ import {
 } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
 
 export function registerDataTabDetailsController(runtime) {
-  const { DATASET_VIEWER_TAB_IDS, instanceId, isProjectInstanceHost, qs } = runtime;
+  const {
+    DATASET_VIEWER_APP_DEFAULT_TAB,
+    DATASET_VIEWER_TAB_IDS,
+    instanceId,
+    isProjectInstanceHost,
+    qs,
+  } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
   const { getDataTabAuditController, getDatasetTypeFormulaByName, getBerquistShermanContract, setStatus, buildDatasetSidecarContextPayload, renderTable } = new Proxy({}, { get: (_target, name) => defer(name) });
   let datasetAuditLog = null;
@@ -78,7 +84,7 @@ export function registerDataTabDetailsController(runtime) {
 
   function getDatasetInitialTab() {
     const requested = String(qs.get("tab") || qs.get("initial_tab") || "").trim();
-    return DATASET_VIEWER_TAB_IDS.has(requested) ? requested : "data";
+    return DATASET_VIEWER_TAB_IDS.has(requested) ? requested : DATASET_VIEWER_APP_DEFAULT_TAB;
   }
 
   function setDatasetTopBarCollapsed(collapsed) {

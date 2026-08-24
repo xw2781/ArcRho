@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Result Selection</title>
-  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260714a"/>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d"/>
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b"/>
 <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
@@ -16,10 +16,10 @@
   <link rel="stylesheet" href="/ui/shared/components/chart_legend/chart_legend.css?v=20260724b"/>
   <link rel="stylesheet" href="/ui/method_pages/result_selection/result_selection.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260820c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
-<body>
+<body data-arcrho-page-hold="1">
   <div class="rsTabBar tabbedPageTabBar" id="rsTabBar">
     <button class="rsTab tabbedPageTab active" data-page="details" type="button">Details</button>
     <button class="rsTab tabbedPageTab" data-page="method" type="button">Method</button>
@@ -32,7 +32,7 @@
     <button id="rsSyncBtn" class="rsButton rsTabSyncBtn" type="button" title="Compare and sync local Result Selection JSON with ResQ">Sync</button>
   </div>
   <div class="rsPageHost">
-    <section id="rsDetailsPage" class="rsPage arDetailsRoot active">
+    <section id="rsDetailsPage" data-page="details" class="rsPage arDetailsRoot active">
       <!-- Identity, then the datasets the selection is built from, then the
            shape of the output. Name is the first row and Output Type the
            second, as on every Details tab. -->
@@ -108,7 +108,7 @@
         </div>
       </div>
     </section>
-    <section id="rsMethodPage" class="rsPage">
+    <section id="rsMethodPage" data-page="method" class="rsPage">
       <div class="rsMethodToolbar">
         <div class="rsToolGroup rsToolGroupWide">
           <span class="rsToolTitle">Weights</span>
@@ -168,7 +168,7 @@
         <table class="rsGrid arSpreadsheetTable" id="rsMethodGrid" aria-label="Result Selection method table"></table>
       </div>
     </section>
-    <section id="rsChartPage" class="rsPage" role="tabpanel">
+    <section id="rsChartPage" data-page="chart" class="rsPage" role="tabpanel">
       <section class="rsChartPanel" aria-labelledby="rsChartTitle">
         <header class="rsChartHeader">
           <h2 class="rsChartTitle" id="rsChartTitle">Dataset Vectors</h2>
@@ -190,18 +190,18 @@
         </div>
       </section>
     </section>
-    <section id="rsResultsPage" class="rsPage">
+    <section id="rsResultsPage" data-page="results" class="rsPage">
       <div class="rsGridHost rsResultsGridHost">
         <table class="rsGrid arSpreadsheetTable" id="rsResultsGrid" aria-label="Result Selection results table"></table>
       </div>
     </section>
-    <section id="rsValidationPage" class="rsPage">
+    <section id="rsValidationPage" data-page="validation" class="rsPage">
       <div class="rsPlaceholder">Validation tab placeholder for Result Selection.</div>
     </section>
-    <section id="rsNotesPage" class="rsPage">
+    <section id="rsNotesPage" data-page="notes" class="rsPage">
       <div id="rsNotesMount"></div>
     </section>
-    <section id="rsAuditPage" class="rsPage" role="tabpanel">
+    <section id="rsAuditPage" data-page="audit" class="rsPage" role="tabpanel">
       <div id="rsAuditLogMount"></div>
     </section>
   </div>
@@ -224,10 +224,11 @@
   <div id="rsRatioBasisContextMenu" class="rsCellContextMenu rsRatioBasisContextMenu" role="menu" aria-hidden="true">
     <button type="button" role="menuitem" data-rs-ratio-basis-action="delete">Delete</button>
   </div>
+  <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
   <script src="/ui/method_pages/result_selection/result_selection_ui.js?v=20260820b"></script>
   <script src="/ui/method_pages/result_selection/result_selection_data.js?v=20260725c"></script>
   <script src="/ui/method_pages/result_selection/result_selection_grids.js?v=20260722a"></script>
-  <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260820b"></script>
-  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260820b"></script>
+  <script src="/ui/method_pages/result_selection/result_selection_model.js?v=20260824a"></script>
+  <script type="module" src="/ui/method_pages/result_selection/result_selection_main.js?v=20260824e"></script>
 </body>
 </html>

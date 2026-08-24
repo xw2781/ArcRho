@@ -171,7 +171,7 @@ test("existing BF open applies only the aggregate v3 method and sidecar", () => 
     "async function applyPersistedAggregate",
     "async function fetchPersistedBornhuetterFerguson",
   );
-  const init = functionSlice(mainSource, "async function init()", "void init();");
+  const init = functionSlice(mainSource, "async function init()", "void init()");
 
   assert.match(load, /fetchPersistedBornhuetterFerguson\(\)/u);
   assert.match(load, /applyPersistedAggregate\(result\)/u);

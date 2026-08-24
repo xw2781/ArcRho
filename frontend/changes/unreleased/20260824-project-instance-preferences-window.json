@@ -1,0 +1,15 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dataset toolbar's gear button now opens a Preferences window that also lets you choose which tab each kind of dataset or method window opens on.",
+  "details": [
+    "Default number formats keep working exactly as before and are still shared with everyone using the same ArcRho Server.",
+    "The new Default Tabs section is yours alone and is remembered per project, so a colleague opening the same project keeps their own choice.",
+    "Each section says whether it is shared or personal and shows the file it writes to.",
+    "Reset to app defaults puts every window kind back to the tab the app opens on.",
+    "Opening an existing method now follows your choice; adding a brand-new one still starts on Details.",
+    "Windows now open straight onto the chosen tab instead of showing another one first and jumping.",
+    "Dataset and method windows stay blank until their opening tab is ready, so the contents appear in one step instead of being assembled on screen."
+  ]
+}

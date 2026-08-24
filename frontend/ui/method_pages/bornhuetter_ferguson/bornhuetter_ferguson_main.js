@@ -24,7 +24,7 @@ import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_fer
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260816a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -47,18 +47,16 @@ import {
   loadBornhuetterFergusonMethod,
   saveBornhuetterFergusonMethod,
 } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_method_api.js?v=20260814b";
+import {
+  BORNHUETTER_FERGUSON_TAB_DEFS,
+  windowTabIds,
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 const BF_METHOD_TYPE = BORN_HUETTER_FERGUSON_METHOD_TYPE;
 const DEFAULT_ORIGIN_LENGTH = 12;
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
-const BF_TABS = [
-  { id: "details", label: "Details" },
-  { id: "method", label: "Method" },
-  { id: "chart", label: "Chart" },
-  { id: "notes", label: "Notes" },
-  { id: "audit", label: "Audit Log" },
-];
-const ALLOWED_BF_TABS = new Set(BF_TABS.map((tab) => tab.id));
+const BF_TABS = BORNHUETTER_FERGUSON_TAB_DEFS;
+const ALLOWED_BF_TABS = windowTabIds("bornhuetter_ferguson");
 
 const params = new URLSearchParams(window.location.search || "");
 const inst = text(params.get("inst")) || `bf_${Date.now()}`;
@@ -1553,7 +1551,9 @@ async function runBornhuetterFergusonSave(progress) {
       : [];
     postStatus(
       result?.propagation_ok === false
-        ? `${BF_METHOD_TYPE} saved, but its dependent updates could not be scheduled: ${details.name}`
+        ? `${BF_METHOD_TYPE} saved, but some dependent updates did not complete: ${
+            String(result?.propagation?.message || "").trim() || details.name
+          }`
         : `${BF_METHOD_TYPE} saved: ${details.name}${aggregatedCsvPaths.length ? ` (+${aggregatedCsvPaths.length} aggregated)` : ""}`,
       result?.propagation_ok === false ? "warn" : "",
     );
@@ -2031,4 +2031,6 @@ async function init() {
   markClean();
 }
 
-void init();
+// The window is held blank until the opening tab is rendered; see
+// ui/shared/tabbed_page/initial_tab_paint.js.
+void init().finally(() => window.arcrhoRevealPage?.());

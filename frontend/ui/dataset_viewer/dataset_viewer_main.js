@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260820b";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260824c";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -31,15 +31,7 @@ import {
 } from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
 import { state as sharedDatasetState } from "/ui/shared/dataset/dataset_state.js";
-
-const DATASET_VIEWER_TABS = [
-  { id: "details", label: "Details" },
-  { id: "data", label: "Data" },
-  { id: "chart", label: "Chart" },
-  { id: "notes", label: "Notes" },
-  { id: "links", label: "Links" },
-  { id: "auditLog", label: "Audit Log" },
-];
+import { DATASET_VIEWER_TAB_DEFS as DATASET_VIEWER_TABS } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 function mountDatasetViewerTabs({
   initialTab,
@@ -145,7 +137,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260820b"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260824e"
 );
 
 const datasetLinksTab = createExternalLinksTab({
@@ -171,3 +163,14 @@ const datasetLinksTab = createExternalLinksTab({
 configureDataTabLinks(datasetLinksTab);
 
 window.ADA_DATASET_READY = datasetDataTab.bootDatasetDataTab();
+
+// The window stays blank until the opening tab has its content, so the grid,
+// the top row and the tab frame all appear together. The rethrow keeps a boot
+// failure reported exactly as it was before.
+void window.ADA_DATASET_READY.then(
+  () => window.arcrhoRevealPage?.(),
+  (err) => {
+    window.arcrhoRevealPage?.();
+    throw err;
+  },
+);

@@ -1,0 +1,102 @@
+/* The ArcRho framed scroll surface: a pale tray that reads as part of the frame
+   around it, one compact arrow at each end of the tray, and a quiet thumb that
+   only strengthens while the surface is being scrolled or the pointer is over
+   the lane.
+
+   Put `ar-framed-scroll` on any element that scrolls inside a framed panel,
+   dialog, or table wrapper. `shared/styles/scrollbars.css` paints the page's
+   plain scroll surfaces; this sheet is the framed variant and wins over it
+   because a class selector outranks a bare pseudo-element rule.
+
+   A host may retint the tray by setting `--ar-framed-scroll-track` on the
+   element or one of its ancestors.
+
+   Older copies of this treatment still live in `shared/styles/pi_table.css`
+   (the Project Instance dataset table, its add-dataset picker and its path
+   tree) and `project_settings/project_settings_scrollbars.css` (a page-wide
+   `*` rule with its own theme tokens). New framed scroll surfaces belong here,
+   and those two are worth folding in when their pages are next touched. */
+
+.ar-framed-scroll {
+  --ar-framed-scroll-track: var(--ar-color-scrollbar-track, #f1f3f5);
+  --ar-framed-scroll-thumb: var(--ar-color-scrollbar-thumb, rgba(182, 182, 182, 0.2));
+  --ar-framed-scroll-thumb-active: var(--ar-color-scrollbar-thumb-active, rgba(120, 120, 120, 0.267));
+  --ar-framed-scroll-button-hover: var(--ar-color-surface-hover, #e5e9ef);
+  --ar-framed-scroll-button-active: var(--ar-color-surface-selected, #d9dee7);
+  overflow: auto;
+  /* No stable gutter: an unscrollable surface must show no tray placeholder,
+     and a reserved gutter shortens a horizontal track short of the frame. */
+  scrollbar-gutter: auto;
+}
+
+.ar-framed-scroll::-webkit-scrollbar {
+  width: 20px;
+  height: 20px;
+}
+
+.ar-framed-scroll::-webkit-scrollbar-track,
+.ar-framed-scroll::-webkit-scrollbar-corner {
+  background-color: var(--ar-framed-scroll-track);
+}
+
+.ar-framed-scroll::-webkit-scrollbar-thumb {
+  min-width: 32px;
+  min-height: 32px;
+  border: 3px solid var(--ar-framed-scroll-track);
+  border-radius: 5px;
+  background-color: var(--ar-framed-scroll-thumb);
+  background-clip: content-box;
+  transition: background-color 150ms ease;
+}
+
+.ar-framed-scroll.isScrolling::-webkit-scrollbar-thumb,
+.ar-framed-scroll.isScrollbarHover::-webkit-scrollbar-thumb,
+.ar-framed-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ar-framed-scroll-thumb-active);
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--ar-framed-scroll-track);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:hover {
+  background-color: var(--ar-framed-scroll-button-hover);
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:active {
+  background-color: var(--ar-framed-scroll-button-active);
+}
+
+/* WebKit offers a companion button at each tray end; collapse the extra pair so
+   exactly one arrow sits at each end. */
+.ar-framed-scroll::-webkit-scrollbar-button:horizontal:start:increment,
+.ar-framed-scroll::-webkit-scrollbar-button:horizontal:end:decrement,
+.ar-framed-scroll::-webkit-scrollbar-button:vertical:start:increment,
+.ar-framed-scroll::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background-image: none;
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+
+.ar-framed-scroll::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}

@@ -1,31 +1,35 @@
 import { fetchProjectDatasetTypes } from "/ui/shared/dataset/dataset_types_source.js";
 import {
+  getProjectUserPreferencesPath,
   loadProjectUserPreferences,
+  saveProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/services/project_user_preferences.js";
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260820a";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260824e";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260821a";
-import { installProjectInstanceNumberFormats } from "./project_instance_number_formats.js?v=20260720b";
+import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824e";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260821a";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260821a";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260824c";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260817a";
-import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260820b";
+import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260824e";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260821b";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260817b";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260824c";
 import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";
 import { installProjectInstanceDeleteGuard } from "./project_instance_delete_guard.js?v=20260817a";
 
 export async function bootProjectInstance() {
   const ctx = createProjectInstanceContext({
     fetchProjectDatasetTypes,
+    getProjectUserPreferencesPath,
     loadProjectUserPreferences,
+    saveProjectUserPreferences,
     scheduleProjectUserPreferencesSave,
     openReservingClassPicker,
   });
@@ -33,7 +37,7 @@ export async function bootProjectInstance() {
   installProjectInstanceUtils(ctx);
   installProjectInstanceLoading(ctx);
   installProjectInstanceDatasetCache(ctx);
-  installProjectInstanceNumberFormats(ctx);
+  installProjectInstancePreferences(ctx);
   installProjectInstanceExcelLinks(ctx);
   installProjectInstanceDatasetTable(ctx);
   installProjectInstanceDatasetAddPicker(ctx);
@@ -49,7 +53,7 @@ export async function bootProjectInstance() {
   await api.applyHostFrameCornerStyle();
   api.initHiddenTabsArea();
   api.initCachedDatasetToolbar();
-  api.initDatasetNumberFormatsEditor();
+  api.initProjectInstancePreferences();
   api.initExcelLinkManager();
   api.initLeftPanelResizer();
   api.initDatasetTableInteractions();
@@ -63,7 +67,7 @@ export async function bootProjectInstance() {
     api.finishPageLoading();
     return;
   }
-  await api.loadDatasetTablePreferences();
+  await Promise.all([api.loadDatasetTablePreferences(), api.loadDefaultWindowTabPreferences()]);
   api.startReservingClassBusyWatch();
   await Promise.all([api.loadPathTree(), api.loadDatasets()]);
   state.projectInstanceBootComplete = true;

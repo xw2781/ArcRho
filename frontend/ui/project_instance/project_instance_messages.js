@@ -610,6 +610,8 @@ function handleAutomationOpenDataset(message, sourceWindow) {
     || indexedDfmMethodName(datasetName, args.datasetTypeName, args.dataset_type_name)
     || datasetName;
   const bsVariant = normalizeBerquistShermanVariant(args.variant || args.bsVariant || args.bs_variant || requestedMethodType);
+  // No branch names a tab: opening an existing method defers to the window
+  // layer, which applies the user's Default Tabs preference for that kind.
   const frame = openMethod && methodType === "dfm"
     ? openDfmWindow(dfmMethodName, {
       path: state.selectedPath,
@@ -620,25 +622,21 @@ function handleAutomationOpenDataset(message, sourceWindow) {
     : openMethod && methodType === "result selection"
       ? openResultSelectionWindow(datasetName, {
         path: state.selectedPath,
-        initialTab: "method",
         methodType: "Result Selection",
       })
       : openMethod && methodType === "bornhuetter ferguson"
         ? openBornhuetterFergusonWindow(datasetName, {
           path: state.selectedPath,
-          initialTab: "method",
           methodType: "Bornhuetter Ferguson",
         })
         : openMethod && methodType === "cape cod"
           ? openCapeCodWindow(datasetName, {
             path: state.selectedPath,
-            initialTab: "method",
             methodType: "Cape Cod",
           })
           : openMethod && bsVariant
             ? openBerquistShermanWindow(datasetName, {
               path: state.selectedPath,
-              initialTab: "method",
               variant: bsVariant,
               methodType: getBerquistShermanContract(bsVariant)?.methodType,
             })
@@ -834,6 +832,7 @@ function handleOpenDependentDataset(message, sourceWindow) {
   const bsVariant = normalizeBerquistShermanVariant(
     message?.variant || message?.bsVariant || message?.bs_variant || resolvedMethodType
   );
+  // As above: the window layer decides the tab from the user's preference.
   let frame = null;
   if (openMethod && methodType === "dfm") {
     frame = openDfmWindow(dfmMethodName, {
@@ -845,25 +844,21 @@ function handleOpenDependentDataset(message, sourceWindow) {
   } else if (openMethod && methodType === "result selection") {
     frame = openResultSelectionWindow(datasetName, {
       path: targetPath,
-      initialTab: "method",
       methodType: "Result Selection",
     });
   } else if (openMethod && methodType === "bornhuetter ferguson") {
     frame = openBornhuetterFergusonWindow(datasetName, {
       path: targetPath,
-      initialTab: "method",
       methodType: "Bornhuetter Ferguson",
     });
   } else if (openMethod && methodType === "cape cod") {
     frame = openCapeCodWindow(datasetName, {
       path: targetPath,
-      initialTab: "method",
       methodType: "Cape Cod",
     });
   } else if (openMethod && bsVariant) {
     frame = openBerquistShermanWindow(datasetName, {
       path: targetPath,
-      initialTab: "method",
       variant: bsVariant,
       methodType: getBerquistShermanContract(bsVariant)?.methodType,
     });
