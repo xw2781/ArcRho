@@ -37,3 +37,4 @@
 - [Hung app-server request diagnosis](hung-app-server-request-diagnosis.md) — uvicorn logs an access line only on response, so a route missing from the log may still be running; corroborate with file mtimes and the audit log
 - [Build listener request read race](build-listener-request-read-race.md) — deploy.py failing at once with "build request could not be read: Permission denied" is a share write/watch race; one retry succeeds
 - [Hosted-save fix needs Engine deploy](hosted-save-fix-needs-engine-deploy.md) — method saves run on the Engine's bundled app_server copy, so an app_server fix is not live until Engine + Gateway are redeployed; grep the deployed canonical copy to verify
+- [Bridge heartbeat false negative](bridge-heartbeat-false-negative.md) — "ArcRho Bridge became unavailable" from the ResQ import macros can be a single-sample SMB false negative; check the statuses folder on E: first, the Bridge usually finished the request
