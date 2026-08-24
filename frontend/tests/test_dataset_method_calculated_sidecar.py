@@ -155,7 +155,7 @@ class SavedSidecarAnswersTheDetailsTabTests(unittest.TestCase):
             ),
             patch.object(dataset_service.dataset_instance_index_service, "rebuild_index"),
             patch.object(dataset_service, "_dataset_type_calculation_map", return_value={}),
-            patch.object(dataset_service, "_dataset_index_method_type_map", return_value={}),
+            patch.object(dataset_service, "_dataset_index_entry_map", return_value={}),
         ):
             saved = dataset_service.save_dataset_sidecar(
                 "Project",

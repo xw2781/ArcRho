@@ -11,7 +11,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, Iterable, Iterator, List, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -76,6 +76,9 @@ _ORIGIN_MONTH_NUMBERS = {
     "december": 12,
 }
 _ORIGIN_KIND_BY_LENGTH = {12: "year", 6: "half", 3: "quarter", 1: "month"}
+# The grid sends an empty cell as a JSON null. ``np.where`` declares both of its
+# branches as array-likes, so the null travels under a plainly typed name.
+_BLANK_CELL: Any = None
 _METHOD_CALCULATED_TYPES = frozenset((
     dataset_sidecar_status_service.METHOD_TYPE_DFM,
     dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION,
@@ -85,11 +88,6 @@ _METHOD_CALCULATED_TYPES = frozenset((
     dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_SR,
     dataset_sidecar_status_service.METHOD_TYPE_BERQUIST_SHERMAN_CRA,
 ))
-_SIDECAR_READ_MAX_WORKERS = 8
-_SIDECAR_READ_EXECUTOR = ThreadPoolExecutor(
-    max_workers=_SIDECAR_READ_MAX_WORKERS,
-    thread_name_prefix="arcrho-sidecar-read",
-)
 _CACHED_LOAD_HYDRATION_MAX_WORKERS = 6
 _CACHED_LOAD_HYDRATION_EXECUTOR = ThreadPoolExecutor(
     max_workers=_CACHED_LOAD_HYDRATION_MAX_WORKERS,
@@ -141,7 +139,9 @@ def _validate_origin_labels(
     kinds = {item[0] for item in parsed if item is not None}
     if len(kinds) != 1:
         return [], "origin labels mix incompatible date formats"
-    expected_kind = _ORIGIN_KIND_BY_LENGTH.get(origin_length)
+    expected_kind = (
+        _ORIGIN_KIND_BY_LENGTH.get(origin_length) if origin_length is not None else None
+    )
     if expected_kind and expected_kind not in kinds:
         return [], f"origin labels do not match the requested {origin_length}-month period length"
     sequence = [item[1] for item in parsed if item is not None]
@@ -522,9 +522,14 @@ def _normalize_dataset_external_links(
                 break
             row = raw_target.get("row")
             column = raw_target.get("column")
-            valid_row = isinstance(row, int) and not isinstance(row, bool) and row >= 0
-            valid_column = isinstance(column, int) and not isinstance(column, bool) and column >= 0
-            if not valid_row or not valid_column:
+            if (
+                not isinstance(row, int)
+                or not isinstance(column, int)
+                or isinstance(row, bool)
+                or isinstance(column, bool)
+                or row < 0
+                or column < 0
+            ):
                 invalid(
                     "External link target row and column must be nonnegative integers.",
                 )
@@ -1054,7 +1059,7 @@ def create_empty_cached_dataset(
         )
 
 
-def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
+def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
@@ -1073,13 +1078,15 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
         "id": ds_id,
         "origin_labels": origin_labels,
         "dev_labels": dev_labels,
-        "values": np.where(np.isnan(values), None, values).tolist(),
+        "values": np.where(np.isnan(values), _BLANK_CELL, values).tolist(),
         "mask": mask.tolist(),
         "mtime": st.st_mtime,
     }
 
 
-def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) -> Dict[str, Any]:
+def get_diagonal(
+    ds_id: str, project_name: str, origin_length: int, k: int = 0
+) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
@@ -1092,7 +1099,9 @@ def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) 
     idx = diagonal_indices(n_origin, n_dev, k=k)
     items = []
     for r, c in idx:
-        v = df.iat[r, c]
+        # A cell reads back as a pandas scalar, which the stubs allow to be a
+        # complex number; a triangle only ever holds real numbers or a blank.
+        v = cast(Any, df.iat[r, c])
         items.append({
             "r": r,
             "c": c,
@@ -1205,38 +1214,36 @@ def _is_app_calculated_dataset_type(
     return resolved.get(name_key, (False, ""))
 
 
-def _dataset_index_method_type_map(project_name: str, reserving_class: str) -> Dict[str, str]:
+def _dataset_index_entry_map(project_name: str, reserving_class: str) -> Dict[str, Dict[str, str]]:
+    """Map every dataset in the reserving class to the fields a chip needs.
+
+    ``index.json`` already records each instance's canonical name, its dataset
+    type and its method type, and the reserving-class index is validated against
+    one folder listing rather than a read per file. Resolving the Details graph
+    from it costs one read instead of one read per precedent and dependent, which
+    over a network share is the difference between a visible wait and none.
+    """
+
     try:
         index = dataset_instance_index_service.get_index(project_name, reserving_class, refresh=False)
     except Exception:
         return {}
-    out: Dict[str, str] = {}
+    out: Dict[str, Dict[str, str]] = {}
     for item in index.get("files") or []:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or "").strip()
         if not name:
             continue
-        out[name.lower()] = dataset_sidecar_status_service.normalize_method_type(item.get("method_type"))
+        out[name.lower()] = {
+            "dataset_name": name,
+            "dataset_type": str(item.get("dataset_type") or "").strip(),
+            "method_type": dataset_sidecar_status_service.normalize_method_type(
+                item.get("method_type"),
+                item.get("source_kind"),
+            ),
+        }
     return out
-
-
-def _method_type_from_dataset_index(
-    project_name: str,
-    reserving_class: str,
-    dataset_name: str,
-    *,
-    method_type_map: Dict[str, str] | None = None,
-) -> str:
-    name_key = str(dataset_name or "").strip().lower()
-    if not name_key:
-        return dataset_sidecar_status_service.METHOD_TYPE_NONE
-    resolved = (
-        method_type_map
-        if method_type_map is not None
-        else _dataset_index_method_type_map(project_name, reserving_class)
-    )
-    return resolved.get(name_key, dataset_sidecar_status_service.METHOD_TYPE_NONE)
 
 
 def _sidecar_graph_entries(
@@ -1247,37 +1254,34 @@ def _sidecar_graph_entries(
     include_formula: bool = False,
     include_method_type: bool = False,
     calculation_map: Dict[str, tuple[bool, str]] | None = None,
-    method_type_map: Dict[str, str] | None = None,
-    sidecar_dir: str = "",
+    index_map: Dict[str, Dict[str, str]] | None = None,
 ) -> List[Dict[str, str]]:
+    """Fill in the chip fields the persisted graph does not carry.
+
+    A sidecar stores its precedents and dependents as bare names, but a chip also
+    needs the neighbour's dataset type - to show the calculated formula on hover -
+    and its method type, which decides what a click opens. Both are read from the
+    reserving-class index rather than from each neighbour's own sidecar, so a
+    graph of any width costs one index read instead of one file read per chip.
+    """
+
     out = dataset_sidecar_status_service.name_entries(
         dataset_sidecar_status_service.entry_names(entries)
     )
     if not include_formula and not include_method_type:
         return out
-    sidecar_paths = [
-        _get_dataset_sidecar_path(
-            project_name,
-            reserving_class,
-            str(item.get("dataset_name") or "").strip(),
-            sidecar_dir=sidecar_dir,
-        )
-        for item in out
-    ]
-    sidecar_futures = [
-        _SIDECAR_READ_EXECUTOR.submit(_read_dataset_sidecar, path)
-        for path in sidecar_paths
-    ]
-    for item, sidecar_future in zip(out, sidecar_futures):
+    resolved_index = (
+        index_map
+        if index_map is not None
+        else _dataset_index_entry_map(project_name, reserving_class)
+    )
+    for item in out:
         name = str(item.get("dataset_name") or "").strip()
         if not name:
             continue
-        try:
-            dep_payload = sidecar_future.result()
-        except Exception:
-            dep_payload = {}
-        dataset_name = str(dep_payload.get("dataset_name") or name).strip()
-        dataset_type = str(dep_payload.get("dataset_type") or name).strip()
+        indexed = resolved_index.get(name.lower()) or {}
+        dataset_name = str(indexed.get("dataset_name") or name).strip()
+        dataset_type = str(indexed.get("dataset_type") or name).strip()
         _, type_formula = _is_app_calculated_dataset_type(
             project_name,
             dataset_type,
@@ -1287,18 +1291,10 @@ def _sidecar_graph_entries(
         item["dataset_name"] = dataset_name or name
         item["dataset_type"] = dataset_type or name
         if include_method_type:
-            method_type = dataset_sidecar_status_service.normalize_method_type(
-                dep_payload.get("method_type"),
-                dep_payload.get("source_kind"),
+            item["method_type"] = str(
+                indexed.get("method_type")
+                or dataset_sidecar_status_service.METHOD_TYPE_NONE
             )
-            if method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
-                method_type = _method_type_from_dataset_index(
-                    project_name,
-                    reserving_class,
-                    dataset_name or name,
-                    method_type_map=method_type_map,
-                )
-            item["method_type"] = method_type
         if formula:
             item["formula"] = formula
     return out
@@ -1307,7 +1303,6 @@ def _sidecar_graph_entries(
 def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     path = _get_dataset_sidecar_path(p, rc, ds)
-    sidecar_dir = os.path.dirname(path)
     payload = _read_dataset_sidecar(path)
     if not payload:
         return {
@@ -1327,11 +1322,13 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     origin_length = period_length if is_vector else payload.get("origin_length")
     development_length = period_length if is_vector else payload.get("development_length")
     calculation_map = _dataset_type_calculation_map(p)
-    method_type_map = (
-        _dataset_index_method_type_map(p, rc)
-        if dataset_sidecar_status_service.entry_names(payload.get("precedents"))
-        else {}
+    # Both chip rows resolve their neighbours from the same index read, so a
+    # graph is one lookup wide however many precedents and dependents it holds.
+    has_graph = bool(
+        dataset_sidecar_status_service.entry_names(payload.get("precedents"))
+        or dataset_sidecar_status_service.entry_names(payload.get("dependents"))
     )
+    index_map = _dataset_index_entry_map(p, rc) if has_graph else {}
     app_calculated, formula = _is_app_calculated_dataset_type(
         p,
         dataset_type,
@@ -1343,8 +1340,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         payload.get("precedents"),
         include_method_type=True,
         calculation_map=calculation_map,
-        method_type_map=method_type_map,
-        sidecar_dir=sidecar_dir,
+        index_map=index_map,
     )
     dependents = _sidecar_graph_entries(
         p,
@@ -1352,8 +1348,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         payload.get("dependents"),
         include_formula=True,
         calculation_map=calculation_map,
-        method_type_map=method_type_map,
-        sidecar_dir=sidecar_dir,
+        index_map=index_map,
     )
     return {
         "ok": True,
@@ -1822,6 +1817,10 @@ def _save_dataset_sidecar_impl(
         dataset_instance_index_service.rebuild_index(p, rc)
     except Exception as err:
         index_error = str(err)
+    # The rebuild above just rewrote the index, so both chip rows read it once
+    # rather than opening every neighbour's sidecar in turn.
+    saved_calculation_map = _dataset_type_calculation_map(p)
+    saved_index_map = _dataset_index_entry_map(p, rc)
     return {
         "ok": True,
         "project_name": p,
@@ -1846,8 +1845,22 @@ def _save_dataset_sidecar_impl(
         "status": payload["status"],
         "notes": payload["notes"],
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
-        "precedents": _sidecar_graph_entries(p, rc, payload.get("precedents"), include_method_type=True),
-        "dependents": _sidecar_graph_entries(p, rc, payload.get("dependents"), include_formula=True),
+        "precedents": _sidecar_graph_entries(
+            p,
+            rc,
+            payload.get("precedents"),
+            include_method_type=True,
+            calculation_map=saved_calculation_map,
+            index_map=saved_index_map,
+        ),
+        "dependents": _sidecar_graph_entries(
+            p,
+            rc,
+            payload.get("dependents"),
+            include_formula=True,
+            calculation_map=saved_calculation_map,
+            index_map=saved_index_map,
+        ),
         # The Details tab renders the same three rows — formula, precedents,
         # dependents — from whichever of the two answers it holds, so a caller
         # that just saved never has to load the sidecar back to fill this in.
@@ -1939,7 +1952,9 @@ def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: st
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _save_dataset_notes_impl(project_name, reserving_class, dataset_name, notes)
 
-def _patch_dataset_impl(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
+def _patch_dataset_impl(
+    ds_id: str, items: list, file_mtime: float | None = None
+) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return None
@@ -2054,7 +2069,9 @@ def _patch_dataset_impl(ds_id: str, items: list, file_mtime: float = None) -> Di
     }
 
 
-def patch_dataset(ds_id: str, items: list, file_mtime: float = None) -> Dict[str, Any]:
+def patch_dataset(
+    ds_id: str, items: list, file_mtime: float | None = None
+) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
     if not path or not os.path.exists(path):
         return _patch_dataset_impl(ds_id, items, file_mtime)
