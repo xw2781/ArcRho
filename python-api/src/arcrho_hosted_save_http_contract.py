@@ -24,6 +24,14 @@ HTTP_CONTRACT_VERSION = 1
 GATEWAY_CONFIG_VERSION = 1
 RECEIPT_VERSION = 1
 HOSTED_SAVE_PATH = "/api/hosted-saves"
+# Live walk progress for one still-running hosted save. A POST carrying
+# ``{"RequestId": ...}`` (signed like a hosted save) answers with the current
+# save-job status and its optional ``progress`` payload, read from the status
+# file on the Gateway host's local disk — the client polls this over HTTP
+# instead of re-reading the status file across SMB, whose client-side cache
+# hides fresh writes for seconds at a time.
+HOSTED_SAVE_PROGRESS_PATH = "/api/hosted-save-progress"
+MAX_PROGRESS_REQUEST_BYTES = 4 * 1024
 CAPABILITIES_PATH = "/api/capabilities"
 HEALTH_PATH = "/api/health"
 DEFAULT_GATEWAY_HOST = "0.0.0.0"

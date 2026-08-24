@@ -136,6 +136,67 @@
 }
 
 /*
+  Live update list. While an Engine-hosted save's dependent walk runs, the
+  card names each object being refreshed as its own compact row instead of
+  hiding the work behind the spinner. The list appears only once the first
+  update arrives, stays capped at roughly six rows, and scrolls itself to the
+  newest entry; the current row is emphasized so a glance answers "what is it
+  doing right now".
+*/
+.arcrho-load-popup-live[hidden] {
+  display: none;
+}
+
+.arcrho-load-popup-live {
+  margin: 12px 0 2px;
+  border: 1px solid #dde4ec;
+  border-radius: 4px;
+  background: #f8fafc;
+  max-height: 138px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  text-align: left;
+}
+
+.arcrho-load-popup-live-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 9px;
+  border-top: 1px solid #eef2f7;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.arcrho-load-popup-live-row:first-child {
+  border-top: 0;
+}
+
+.arcrho-load-popup-live-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arcrho-load-popup-live-count {
+  flex: none;
+  color: #64748b;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.arcrho-load-popup-live-row.is-current {
+  color: #0f172a;
+}
+
+.arcrho-load-popup-live-row.is-current .arcrho-load-popup-live-label {
+  font-weight: 600;
+}
+
+/*
   A measured job re-announces itself every few hundred milliseconds, and its
   message is a reserving-class path whose length changes each time. Left to
   size itself the card would jump on every tick, so this mode fixes the card's

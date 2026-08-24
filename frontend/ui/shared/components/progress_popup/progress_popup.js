@@ -42,7 +42,7 @@ function ensureStyles(doc) {
   const link = doc.createElement("link");
   link.id = STYLE_ID;
   link.rel = "stylesheet";
-  link.href = "/ui/shared/components/progress_popup/progress_popup.css?v=20260820dtjob1";
+  link.href = "/ui/shared/components/progress_popup/progress_popup.css?v=20260824a";
   (doc.head || doc.documentElement)?.appendChild(link);
 }
 
@@ -106,6 +106,7 @@ export function createArcRhoProgressPopup({
             </div>
             <div class="arcrho-load-popup-progress-count"></div>
           </div>
+          <div class="arcrho-load-popup-live" hidden></div>
           <div class="arcrho-load-popup-elapsed">Elapsed: 0.0s</div>
         </div>
       `;
@@ -171,6 +172,45 @@ export function createArcRhoProgressPopup({
     card?.setAttribute("aria-valuemax", String(bar.total));
   }
 
+  /**
+   * Renders the live update list — one compact row per narrated step, the
+   * newest marked as current. An empty array hides the list, so a save that
+   * reports nothing keeps today's plain card. The caller owns the array;
+   * this only draws it, keeping the scroll pinned to the newest row.
+   *
+   * @param {Array<{label: string, count?: string, current?: boolean}>} items
+   */
+  function setLiveItems(items) {
+    if (!overlayEl) return;
+    const list = overlayEl.querySelector(".arcrho-load-popup-live");
+    if (!list) return;
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+      list.hidden = true;
+      list.textContent = "";
+      return;
+    }
+    list.hidden = false;
+    list.textContent = "";
+    for (const item of rows) {
+      const row = doc.createElement("div");
+      row.className = "arcrho-load-popup-live-row" + (item?.current ? " is-current" : "");
+      const label = doc.createElement("span");
+      label.className = "arcrho-load-popup-live-label";
+      label.textContent = String(item?.label || "");
+      row.appendChild(label);
+      const count = String(item?.count || "");
+      if (count) {
+        const badge = doc.createElement("span");
+        badge.className = "arcrho-load-popup-live-count";
+        badge.textContent = count;
+        row.appendChild(badge);
+      }
+      list.appendChild(row);
+    }
+    list.scrollTop = list.scrollHeight;
+  }
+
   /** Removes the popup and stops the elapsed counter. */
   function hide() {
     if (elapsedFrame) {
@@ -182,7 +222,7 @@ export function createArcRhoProgressPopup({
     overlayEl = null;
   }
 
-  return { show, hide, isVisible };
+  return { show, hide, isVisible, setLiveItems };
 }
 
 /**
@@ -212,6 +252,10 @@ export function createArcRhoBusyOverlay(options = {}) {
     return {
       setMessage(text) {
         if (!dismissed) popup.show(text);
+      },
+      /** Draws the live update list under this scope's message. */
+      setLiveItems(items) {
+        if (!dismissed) popup.setLiveItems(items);
       },
       // Called before any dialog this scope opens, and again when it ends.
       dismiss() {

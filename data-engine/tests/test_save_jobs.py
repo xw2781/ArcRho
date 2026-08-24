@@ -23,9 +23,12 @@ from fastapi import HTTPException
 
 from arcrho_engine_save_contract import (
     build_save_job_request,
+    claim_save_job,
     read_save_job_result,
     read_save_job_status,
+    save_job_claim_path,
     save_job_request_path,
+    write_save_job_status,
 )
 from arcrho_engine import save_jobs
 
@@ -132,6 +135,64 @@ class HostedSaveJobTests(unittest.TestCase):
         result = read_save_job_result(self.root, self.REQUEST_ID)
         self.assertEqual(result["propagation"]["status"], "completed")
         self.assertEqual(status["response"], result)
+
+    def test_the_claim_marker_admits_exactly_one_executor(self) -> None:
+        # Five Engine instances race every request; the exclusive-create
+        # marker is the arbiter, so a second claim for the same id loses no
+        # matter how the queue file itself was observed or handled.
+        self.assertTrue(claim_save_job(self.root, self.REQUEST_ID))
+        self.assertFalse(claim_save_job(self.root, self.REQUEST_ID))
+
+    def test_a_duplicate_execution_is_refused_by_the_claim(self) -> None:
+        # The queue file reappearing (a watcher re-offer, a share hiccup)
+        # must not run the save twice: the first claim's marker refuses it.
+        def fake_save(*args, **kwargs):
+            return {"ok": True}
+
+        path, request = self._publish_request()
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(fake_save)),
+        ):
+            self.assertTrue(
+                save_jobs.process_hosted_save_request(self.root, path, request)
+            )
+            # Re-create the queue file as a duplicate delivery would.
+            path.write_text(json.dumps(request), encoding="utf-8")
+            self.assertFalse(
+                save_jobs.process_hosted_save_request(self.root, path, request)
+            )
+        status = read_save_job_status(self.root, self.REQUEST_ID)
+        self.assertEqual(status["status"], "success")
+
+    def test_a_late_error_never_overwrites_a_terminal_success(self) -> None:
+        # Production once saw a duplicate run's 409 replace the success the
+        # client was about to read; a terminal status is now written once.
+        def fake_save(*args, **kwargs):
+            return {"ok": True}
+
+        path, request = self._publish_request()
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, _fake_app_server(fake_save)),
+        ):
+            self.assertTrue(
+                save_jobs.process_hosted_save_request(self.root, path, request)
+            )
+            # A rogue duplicate bypassing the claim still cannot demote the
+            # published outcome.
+            save_job_claim_path(self.root, self.REQUEST_ID).unlink()
+            path.write_text(json.dumps(request), encoding="utf-8")
+
+            def conflicting_save(*args, **kwargs):
+                raise HTTPException(409, "changed on disk")
+
+            with patch.dict(sys.modules, _fake_app_server(conflicting_save)):
+                self.assertFalse(
+                    save_jobs.process_hosted_save_request(self.root, path, request)
+                )
+        status = read_save_job_status(self.root, self.REQUEST_ID)
+        self.assertEqual(status["status"], "success")
 
     def test_the_save_runs_as_the_user_who_submitted_it(self) -> None:
         # Instances run under their own service profiles, so without this the

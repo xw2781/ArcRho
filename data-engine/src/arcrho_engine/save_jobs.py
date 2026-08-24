@@ -33,6 +33,7 @@ import importlib
 import os
 import time
 import traceback
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -48,7 +49,10 @@ from arcrho_engine_save_contract import (
     SAVE_JOB_MODE_PLAN,
     SAVE_PLAN_STALE_MESSAGE,
     SaveJobContractError,
+    claim_save_job,
     prune_stale_save_job_artifacts,
+    read_save_job_status,
+    save_job_status_is_terminal,
     validate_save_job_request,
     write_save_job_result,
     write_save_job_status,
@@ -65,6 +69,11 @@ from arcrho_engine.runtime_log import append_runtime_log
 # reported to the user as a busy class rather than held open-endedly.
 SAVE_JOB_LEASE_WAIT_SECONDS = 30.0
 SAVE_JOB_LEASE_POLL_SECONDS = 0.25
+
+# Floor between two live-progress status writes during the inline walk. The
+# writes hit local disk, so this is generosity toward the walk, not the disk:
+# a class with hundreds of dependents must not spend its time re-publishing.
+SAVE_JOB_PROGRESS_MIN_INTERVAL_SECONDS = 0.2
 
 _last_prune_at = 0.0
 
@@ -244,12 +253,20 @@ def process_hosted_save_request(
     request_id = normalized["RequestId"]
 
     # Exactly one Engine claims the save; everyone else saw the same
-    # filesystem event and backs off here.
+    # filesystem event and backs off here. The exclusive-create marker is the
+    # arbiter — delete-to-claim on the queue file once let two instances both
+    # believe they had won, and the loser's 409 then overwrote the winner's
+    # success status. The queue file is still removed afterwards (best effort)
+    # so the rescan cycle stops re-offering it.
     try:
-        if not safe_remove(request_path):
+        if not claim_save_job(root, request_id):
             return False
     except Exception:
         return False
+    try:
+        safe_remove(request_path)
+    except Exception:
+        pass
 
     _prune_occasionally(root)
     _log(
@@ -264,7 +281,23 @@ def process_hosted_save_request(
         message: str = "",
         status_code: int | None = None,
         response: Mapping[str, Any] | None = None,
+        progress: Mapping[str, Any] | None = None,
     ) -> None:
+        # A terminal status is written once and never demoted: should any
+        # duplicate execution slip past the claim, neither its "processing"
+        # announcement nor its late 409 may replace the outcome the client
+        # is about to read.
+        try:
+            existing = read_save_job_status(root, request_id)
+        except Exception:
+            existing = None
+        if save_job_status_is_terminal(existing):
+            _log(
+                root,
+                f"{request_id} kept existing terminal status "
+                f"{existing.get('status')!r}; dropped late {status!r}",
+            )
+            return
         write_save_job_status(
             root,
             request_id,
@@ -272,6 +305,7 @@ def process_hosted_save_request(
             message=message,
             status_code=status_code,
             response=response,
+            progress=progress,
         )
 
     def publish_error(message: str, status_code: int) -> None:
@@ -340,6 +374,46 @@ def process_hosted_save_request(
 
         _log(root, f"{request_id} executing {module_name}.{function_name}")
 
+        last_progress_monotonic = [0.0]
+
+        def publish_walk_progress(
+            stage: str, completed: int, total: int, label: str
+        ) -> None:
+            """Publish one live walk step into the processing status.
+
+            Throttled, and never allowed to fail the save it narrates. The
+            client polls these over the Gateway to show which dependent is
+            being refreshed while the save request is still in flight.
+            """
+
+            try:
+                now = time.monotonic()
+                if now - last_progress_monotonic[0] < SAVE_JOB_PROGRESS_MIN_INTERVAL_SECONDS:
+                    return
+                last_progress_monotonic[0] = now
+                publish(
+                    "processing",
+                    progress={
+                        "stage": str(stage),
+                        "completed": int(completed),
+                        "total": int(total),
+                        "label": str(label),
+                    },
+                )
+            except Exception:
+                pass
+
+        # Older canonical bundles predate the inline progress hook; the save
+        # must run identically without it.
+        inline_save_progress = getattr(
+            dependent_propagation_service, "inline_save_progress", None
+        )
+        progress_scope = (
+            inline_save_progress(publish_walk_progress)
+            if callable(inline_save_progress)
+            else nullcontext()
+        )
+
         try:
             # This instance runs under its own service profile, so the save
             # acts as the user who submitted it — otherwise every sidecar and
@@ -353,6 +427,7 @@ def process_hosted_save_request(
                 ) as identity,
                 dependent_propagation_service.suspended_reserving_class_hold_check(),
                 dependent_propagation_service.inline_engine_propagation(),
+                progress_scope,
             ):
                 _log(root, f"{request_id} acting as {identity['display_name']!r}")
                 response = save_function(

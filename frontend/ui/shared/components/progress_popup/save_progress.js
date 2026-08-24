@@ -23,7 +23,7 @@ strand the overlay by adding a new early return.
 
 */
 
-import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260813e";
+import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
 import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
 
@@ -51,6 +51,14 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
   async function run(work) {
     let message = `Preparing the ${savedNoun} before saving.`;
     let scope = overlay.begin(message);
+    const liveItems = [];
+    let stopPolling = null;
+    const stopTracking = () => {
+      if (stopPolling) {
+        stopPolling();
+        stopPolling = null;
+      }
+    };
     const progress = {
       /** Announces the write and dependent-update step. */
       writing() {
@@ -58,22 +66,95 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
         scope.setMessage(message);
       },
       /** Retargets the card headline; used by queued refresh flows that
-       *  still poll a propagation job. Engine-hosted saves complete inline,
-       *  so an ordinary save never streams live updates. */
+       *  still poll a propagation job. */
       setMessage(text) {
         const line = String(text || "").trim();
         if (!line) return;
         message = line;
         scope.setMessage(message);
       },
+      /**
+       * Adds one live dependent-walk step to the card as its own row. The
+       * update is the Engine's `{stage, completed, total, label}` progress
+       * payload: a dataset-level step names the object being refreshed and
+       * carries the walk's running count, a phase-level step ("Refreshing
+       * DFM methods") arrives with no denominator. A repeated label updates
+       * its row in place rather than stuttering the list.
+       */
+      liveUpdate(update) {
+        const label = String(update?.label || "").trim();
+        if (!label) return;
+        const total = Math.max(0, Math.trunc(Number(update?.total) || 0));
+        const completed = Math.max(0, Math.trunc(Number(update?.completed) || 0));
+        const row = {
+          label,
+          count: total > 0 ? `${Math.min(completed + 1, total)} of ${total}` : "",
+          current: true,
+        };
+        const last = liveItems[liveItems.length - 1];
+        if (last && last.label === row.label) {
+          liveItems[liveItems.length - 1] = row;
+        } else {
+          if (last) last.current = false;
+          liveItems.push(row);
+          // Keep the DOM bounded on a class with hundreds of dependents; the
+          // list scrolls, but the card only ever holds the recent tail.
+          if (liveItems.length > 60) liveItems.shift();
+        }
+        scope.setLiveItems?.(liveItems);
+      },
+      /**
+       * Follows one Engine-hosted save while its request is still in flight.
+       * The page picked the save job's request id itself, so this can poll
+       * the app server (which asks the Gateway over HTTP) for the live walk
+       * progress and stream each step into the card. Polling is best-effort
+       * and self-terminating: any terminal status stops it, and `finish` or
+       * `run`'s own cleanup stops it with the card.
+       */
+      trackHostedSave(requestId, { intervalMs = 350, fetchImpl } = {}) {
+        stopTracking();
+        const id = String(requestId || "").trim();
+        if (!id) return () => {};
+        const doFetch = fetchImpl || (typeof fetch === "function" ? fetch : null);
+        if (!doFetch) return () => {};
+        let stopped = false;
+        let timer = null;
+        const stop = () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          timer = null;
+        };
+        const poll = async () => {
+          if (stopped) return;
+          try {
+            const resp = await doFetch(`/hosted-saves/progress/${id}`);
+            const payload = resp?.ok ? await resp.json() : null;
+            if (stopped) return;
+            if (payload?.progress) progress.liveUpdate(payload.progress);
+            const status = String(payload?.status || "");
+            if (status === "success" || status === "error") {
+              stop();
+              return;
+            }
+          } catch {
+            // A failed poll only costs one narration tick.
+          }
+          if (!stopped) timer = setTimeout(poll, intervalMs);
+        };
+        timer = setTimeout(poll, intervalMs);
+        stopPolling = stop;
+        return stop;
+      },
       /** Drops the spinner; call before any dialog the save opens. */
       finish() {
+        stopTracking();
         scope.dismiss();
       },
     };
     try {
       return await work(progress);
     } finally {
+      stopTracking();
       scope.dismiss();
     }
   }
@@ -91,6 +172,8 @@ export const inertArcRhoSaveProgress = {
   run: (work) => work({
     writing() {},
     setMessage() {},
+    liveUpdate() {},
+    trackHostedSave: () => () => {},
     finish() {},
   }),
   isVisible: () => false,

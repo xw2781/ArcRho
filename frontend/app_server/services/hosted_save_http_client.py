@@ -16,12 +16,14 @@ from arcrho_hosted_save_http_contract import (
     AUTH_USER_HEADER,
     CAPABILITIES_PATH,
     HOSTED_SAVE_PATH,
+    HOSTED_SAVE_PROGRESS_PATH,
     canonical_request_bytes,
     sign_request,
 )
 
 
 GATEWAY_HEALTH_TIMEOUT_SECONDS = 2.0
+GATEWAY_PROGRESS_TIMEOUT_SECONDS = 2.0
 GATEWAY_RETRY_DELAY_SECONDS = 0.5
 _DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
 
@@ -78,6 +80,48 @@ def gateway_supports_save_kind(
     if not isinstance(advertised, (list, tuple)):
         return False
     return str(save_kind) in {str(item) for item in advertised}
+
+
+def fetch_hosted_save_progress(
+    gateway_config: Mapping[str, Any], request_id: str
+) -> dict[str, Any] | None:
+    """Ask the Gateway for one save's live status; None on any trouble.
+
+    Called from a UI poll loop while the save request itself is still in
+    flight, so it makes exactly one attempt and treats every failure —
+    an old Gateway without the endpoint included — as "nothing to show".
+    """
+
+    body = json.dumps({"RequestId": str(request_id)}).encode("utf-8")
+    url = f"{gateway_config['url']}{HOSTED_SAVE_PROGRESS_PATH}"
+    timestamp = str(int(time.time()))
+    try:
+        signature = sign_request(
+            gateway_config["secret"],
+            user=gateway_config["user"],
+            timestamp=timestamp,
+            method="POST",
+            path=HOSTED_SAVE_PROGRESS_PATH,
+            body=body,
+        )
+        request = Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                AUTH_USER_HEADER: gateway_config["user"],
+                AUTH_TIMESTAMP_HEADER: timestamp,
+                AUTH_SIGNATURE_HEADER: signature,
+            },
+        )
+        with _DIRECT_HTTP_OPENER.open(
+            request, timeout=GATEWAY_PROGRESS_TIMEOUT_SECONDS
+        ) as response:
+            return _response_json(response)
+    except Exception:
+        return None
 
 
 def submit_hosted_save(

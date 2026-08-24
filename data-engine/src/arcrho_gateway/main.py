@@ -50,6 +50,7 @@ from arcrho_engine_save_contract import (  # noqa: E402
     save_job_request_path,
     save_job_status_is_terminal,
     save_job_status_response,
+    validate_request_id,
     validate_save_job_request,
 )
 from arcrho_hosted_save_http_contract import (  # noqa: E402
@@ -59,8 +60,10 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     CAPABILITIES_PATH,
     HEALTH_PATH,
     HOSTED_SAVE_PATH,
+    HOSTED_SAVE_PROGRESS_PATH,
     HTTP_CONTRACT_VERSION,
     HTTP_SAVE_KINDS,
+    MAX_PROGRESS_REQUEST_BYTES,
     MAX_REQUEST_BYTES,
     HostedSaveHttpContractError,
     canonical_request_bytes,
@@ -86,6 +89,7 @@ from arcrho_workspace_mutation_contract import (  # noqa: E402
     MAX_WORKSPACE_MUTATION_REQUEST_BYTES,
     WORKSPACE_MUTATION_PATH,
 )
+from arcrho_log_retention_contract import apply_log_retention  # noqa: E402
 from arcrho_gateway.engine_calculations import EngineCalculationExecutor  # noqa: E402
 from arcrho_gateway.workspace_mutations import WorkspaceMutationExecutor  # noqa: E402
 from arcrho_gateway.workspace_reads import (  # noqa: E402
@@ -174,8 +178,12 @@ def _prune_terminal_receipts(root: Path, retention_hours: int) -> int:
     return removed
 
 
+def _log_path(root: Path) -> Path:
+    return root / "runtime" / "logs" / "gateway.log"
+
+
 def _log(root: Path, message: str) -> None:
-    path = root / "runtime" / "logs" / "gateway.log"
+    path = _log_path(root)
     line = f"{_now_iso()} {message}\n"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -342,7 +350,13 @@ class Gateway:
             **self.mutations.capability_fields(),
         }
 
-    def authenticate(self, headers: Mapping[str, str], body: bytes) -> str:
+    def authenticate(
+        self,
+        headers: Mapping[str, str],
+        body: bytes,
+        *,
+        path: str = HOSTED_SAVE_PATH,
+    ) -> str:
         config = _load_gateway_config(self.root)
         user = normalize_user(headers.get(AUTH_USER_HEADER))
         secret = config["users"].get(user)
@@ -352,11 +366,41 @@ class Gateway:
             user=user,
             timestamp=headers.get(AUTH_TIMESTAMP_HEADER, ""),
             method="POST",
-            path=HOSTED_SAVE_PATH,
+            path=path,
             body=body,
         ):
             raise GatewayHttpError(401, "Gateway authentication failed.")
         return user
+
+    def save_progress(self, raw_payload: Any) -> dict[str, Any]:
+        """Answer one live-progress poll for a still-running hosted save.
+
+        Reads the save-job status file on this host's local disk, so the
+        client sees fresh walk progress instead of the seconds-stale view the
+        SMB client cache would give it. Returns only the narration fields —
+        the full save response stays on the submit exchange.
+        """
+
+        if not isinstance(raw_payload, Mapping):
+            raise GatewayHttpError(400, "Progress request must be a JSON object.")
+        try:
+            request_id = validate_request_id(str(raw_payload.get("RequestId") or ""))
+        except Exception as exc:
+            raise GatewayHttpError(400, "Progress request needs a valid RequestId.") from exc
+        status = read_save_job_status(self.root, request_id)
+        if status is None:
+            return {"request_id": request_id, "status": "unknown"}
+        answer: dict[str, Any] = {
+            "request_id": request_id,
+            "status": str(status.get("status") or "unknown"),
+        }
+        progress = status.get("progress")
+        if isinstance(progress, Mapping):
+            answer["progress"] = dict(progress)
+        message = str(status.get("message") or "").strip()
+        if message:
+            answer["message"] = message
+        return answer
 
     def submit(self, authenticated_user: str, raw_payload: Any) -> dict[str, Any]:
         try:
@@ -501,6 +545,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 "Workspace-mutation",
             )
             return
+        if path == HOSTED_SAVE_PROGRESS_PATH:
+            self._handle_save_progress()
+            return
         if path != HOSTED_SAVE_PATH:
             self._send_json(404, {"detail": "Not found."})
             return
@@ -522,6 +569,32 @@ class GatewayHandler(BaseHTTPRequestHandler):
             self._send_json(exc.status_code, {"detail": exc.detail})
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._send_json(400, {"detail": "Hosted-save request is not valid JSON."})
+        except Exception:
+            _log(self.server.gateway.root, traceback.format_exc())
+            self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
+
+    def _handle_save_progress(self) -> None:
+        """Serve one live-progress poll: authenticate, read status, answer."""
+
+        try:
+            content_length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            self._send_json(400, {"detail": "Content-Length is invalid."})
+            return
+        if content_length <= 0 or content_length > MAX_PROGRESS_REQUEST_BYTES:
+            self._send_json(413, {"detail": "Progress request is too large."})
+            return
+        body = self.rfile.read(content_length)
+        try:
+            self.server.gateway.authenticate(
+                self.headers, body, path=HOSTED_SAVE_PROGRESS_PATH
+            )
+            payload = json.loads(body.decode("utf-8"))
+            self._send_json(200, self.server.gateway.save_progress(payload))
+        except GatewayHttpError as exc:
+            self._send_json(exc.status_code, {"detail": exc.detail})
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._send_json(400, {"detail": "Progress request is not valid JSON."})
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
             self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
@@ -596,6 +669,8 @@ def _start_heartbeat(server: GatewayServer, path: Path) -> threading.Thread:
 
 def main() -> int:
     root = get_project_root().resolve()
+    log_path = _log_path(root)
+    apply_log_retention(log_path.parent, appended_files=(log_path,))
     try:
         config = _load_gateway_config(root)
         pruned = _prune_terminal_receipts(root, config["receipt_retention_hours"])

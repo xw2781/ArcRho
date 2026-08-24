@@ -4,8 +4,9 @@ A save executed from a Client PC pays one SMB round trip per file touched
 (~0.4 s each over the mapped drive), so the app server ships the save to the
 Engine instead: the request file itself represents ``queued`` state, and the
 client polls only after an initial pickup window until the Engine reports a
-terminal state. The Engine claims the request with the legacy delete-to-claim
-rule, holds the reserving-class lease while it runs the canonical service save
+terminal state. The Engine claims the request through an exclusive-create
+marker (:func:`claim_save_job`) and then removes the queue file, holds the
+reserving-class lease while it runs the canonical service save
 plus the dependent walk inline, and embeds the service's full response in the
 terminal success status. A legacy result file is also published for older
 clients, so mixed client versions keep their exact response shapes while the
@@ -128,6 +129,34 @@ def save_job_status_path(server_root: str | os.PathLike[str], request_id: str) -
 
 def save_job_result_path(server_root: str | os.PathLike[str], request_id: str) -> Path:
     return _save_jobs_root(server_root) / "results" / f"{validate_request_id(request_id)}.json"
+
+
+def save_job_claim_path(server_root: str | os.PathLike[str], request_id: str) -> Path:
+    # Lives beside the statuses so the stale-artifact pruner sweeps orphaned
+    # claims on the same cycle without learning a new folder.
+    return _save_jobs_root(server_root) / "statuses" / f"{validate_request_id(request_id)}.claim"
+
+
+def claim_save_job(server_root: str | os.PathLike[str], request_id: str) -> bool:
+    """Atomically claim one save request; exactly one caller ever wins.
+
+    Several Engine instances watch the same requests folder and race to
+    execute each save. Delete-to-claim on the queue file proved racy enough
+    to let one request run twice (the duplicate run then refused 409 against
+    the first run's own write and overwrote its success status), so the
+    arbiter is an exclusive-create marker file: the filesystem admits exactly
+    one creator, no matter how many instances observed the request or how
+    the queue file itself was handled.
+    """
+
+    path = save_job_claim_path(server_root, request_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(path, "x", encoding="utf-8") as stream:
+            stream.write(time.strftime("%Y-%m-%dT%H:%M:%S"))
+    except FileExistsError:
+        return False
+    return True
 
 
 def build_save_job_request(
@@ -271,6 +300,7 @@ def write_save_job_status(
     message: str = "",
     status_code: int | None = None,
     response: Mapping[str, Any] | None = None,
+    progress: Mapping[str, Any] | None = None,
 ) -> Path:
     payload: dict[str, Any] = {
         "request_id": validate_request_id(request_id),
@@ -283,6 +313,12 @@ def write_save_job_status(
         payload["status_code"] = int(status_code)
     if response is not None:
         payload["response"] = dict(response)
+    if progress is not None:
+        # Live walk progress for a still-``processing`` save, in the same
+        # ``{stage, completed, total, label}`` shape the durable propagation
+        # queue publishes; readers that only watch for terminal states are
+        # unaffected.
+        payload["progress"] = dict(progress)
     return _write_json_atomic(save_job_status_path(server_root, request_id), payload)
 
 
@@ -354,6 +390,7 @@ def discard_save_job_artifacts(
         save_job_status_path(server_root, request_id),
         save_job_result_path(server_root, request_id),
         save_job_request_path(server_root, request_id),
+        save_job_claim_path(server_root, request_id),
     ):
         try:
             path.unlink(missing_ok=True)

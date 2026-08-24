@@ -2,15 +2,29 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
+from typing import Any, Dict
+
 from app_server.schemas.dependent_propagation import (
     DependentPropagationJobStatusResponse,
     RefreshDependentsJobRequest,
     RefreshDependentsJobResponse,
     ReservingClassBusyResponse,
 )
-from app_server.services import dependent_propagation_service
+from app_server.services import dependent_propagation_service, engine_hosted_save_service
 
 router = APIRouter()
+
+
+@router.get("/hosted-saves/progress/{request_id}")
+def get_hosted_save_progress(request_id: str) -> Dict[str, Any]:
+    """Live walk progress for one in-flight Engine-hosted save.
+
+    The saving page picked the save's request id itself and polls here while
+    its save call is still running, so its card can name the dependent being
+    refreshed instead of showing a bare spinner.
+    """
+
+    return engine_hosted_save_service.get_hosted_save_progress(request_id)
 
 
 @router.post(

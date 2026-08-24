@@ -157,7 +157,7 @@ def _commit_text_files(files: Dict[str, str], *, last_paths: Iterable[str] = ())
                 handle.write(value)
             staged[path] = temporary
         for path, _value in ordered:
-            os.replace(staged.pop(path), path)
+            dataset_sidecar_status_service.replace_staged_file(staged.pop(path), path)
             replaced.append(path)
     except Exception as exc:
         rollback_errors: List[str] = []
@@ -1246,18 +1246,12 @@ def _refresh_one_method(
             }
         for name, sidecar in reloaded_sidecars.items():
             changed_by_key[_key(name)] = (name, sidecar)
-        review_precedents = [
-            name for name in precedent_names
-            if dataset_sidecar_status_service.normalize_status(
-                changed_by_key[_key(name)][1].get("status")
-            ) == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
-        ]
-        if review_precedents:
-            return {
-                "ok": False,
-                "dataset_name": output_name,
-                "reason": "Required precedent needs review: " + ", ".join(review_precedents),
-            }
+        # A precedent flagged review-needed no longer blocks this recompute:
+        # its numbers are current — the flag only records that no person has
+        # confirmed them — and this method comes out flagged itself, so the
+        # human review demand survives while the walk stays healthy. Only a
+        # precedent whose refresh actually failed (``blocked_precedents``
+        # above) still stops the recompute.
     changed = False
     matched_input = False
 
@@ -1502,8 +1496,17 @@ def refresh_dependents(
                 refreshed_sidecar = result.get("sidecar") or sidecar
                 dependent_key = _key(dependent_name)
                 sidecar_snapshot[dependent_key] = refreshed_sidecar
-                if dataset_sidecar_status_service.normalize_status(refreshed_sidecar.get("status")) \
-                        != dataset_sidecar_status_service.STATUS_CURRENT:
+                refreshed_status = dataset_sidecar_status_service.normalize_status(
+                    refreshed_sidecar.get("status")
+                )
+                if refreshed_status not in (
+                    dataset_sidecar_status_service.STATUS_CURRENT,
+                    # Review-needed means freshly recomputed but awaiting a
+                    # person's sign-off; deeper dependents keep cascading from
+                    # those current numbers instead of declining, so one save
+                    # no longer fails the whole walk over its own flags.
+                    dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
+                ):
                     fresh_precedent_keys.discard(dependent_key)
                     blocked_precedent_keys.add(dependent_key)
                 else:

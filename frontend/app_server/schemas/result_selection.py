@@ -20,3 +20,7 @@ class ResultSelectionSaveRequest(BaseModel):
     # rechecks it under the reserving-class lease and refuses with 409 if the
     # class changed while the plan was on screen.
     plan_fingerprint: str = ""
+    # Save-job identity the page picked up front (32 hex chars) so it can
+    # poll the live dependent-walk progress while this save is in flight.
+    # Optional; a save without one gets a server-generated id as before.
+    client_request_id: str = ""

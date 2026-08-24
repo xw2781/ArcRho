@@ -70,5 +70,6 @@ def save_result_selection(req: ResultSelectionSaveRequest) -> Dict[str, Any]:
         req.project_name,
         req.reserving_class,
         plan_fingerprint=req.plan_fingerprint,
+        client_request_id=req.client_request_id,
         **_result_selection_save_call(req),
     )

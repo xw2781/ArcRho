@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -602,6 +603,31 @@ def inline_engine_propagation() -> Iterator[None]:
         _inline_engine_propagation.reset(token)
 
 
+# The Engine's hosted-save executor installs a publisher here so the inline
+# walk can narrate itself: each callback becomes one live update in the
+# save-job status the client polls while its save request is still in flight.
+_inline_save_progress_publisher: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "arcrho_inline_save_progress_publisher", default=None
+)
+
+
+@contextmanager
+def inline_save_progress(publisher: Any) -> Iterator[None]:
+    """Route the inline walk's progress callbacks to ``publisher``.
+
+    ``publisher`` receives ``(stage, completed, total, label)`` — the same
+    shape :func:`calculated_dataset_service.recalculate_dependents` emits and
+    the durable propagation queue publishes. It must never raise into the
+    walk; the Engine's publisher already swallows its own failures.
+    """
+
+    token = _inline_save_progress_publisher.set(publisher)
+    try:
+        yield
+    finally:
+        _inline_save_progress_publisher.reset(token)
+
+
 def _collect_refreshed_dataset_names(walk_result: Mapping[str, Any]) -> List[str]:
     names: List[str] = []
     seen: set[str] = set()
@@ -661,6 +687,7 @@ def _run_inline_save_propagation(
                 (root.get("dataset_name"), root.get("dataset_type")) for root in rest
             ],
             rebuild_index=True,
+            progress_callback=_inline_save_progress_publisher.get(),
         )
     except Exception as exc:
         return {
@@ -669,11 +696,66 @@ def _run_inline_save_propagation(
             "message": str(exc),
             "refreshed_datasets": [],
         }
-    return {
+    payload: Dict[str, Any] = {
         "ok": bool(result.get("ok")),
         "status": "completed",
         "refreshed_datasets": _collect_refreshed_dataset_names(result),
     }
+    if not payload["ok"]:
+        # Without this the client and the hosted-save log can only report a
+        # generic scheduling warning; the walk knows exactly which dependent
+        # declined and why.
+        payload["message"] = _summarize_walk_failure(result)
+    return payload
+
+
+def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
+    """Name what actually failed in a finished-but-unhealthy walk."""
+
+    failed = sorted(
+        {
+            str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
+            for item in result.get("skipped") or []
+            if isinstance(item, Mapping)
+        }
+        - {""}
+    )
+    method_failures: List[str] = []
+    for bucket in (
+        "dfm_updates",
+        "result_selection_updates",
+        "bornhuetter_ferguson_updates",
+        "cape_cod_updates",
+        "bootstrap_updates",
+    ):
+        updates = result.get(bucket)
+        if not isinstance(updates, Mapping) or updates.get("ok", True):
+            continue
+        for error in updates.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            name = str(error.get("dataset_name") or error.get("method_name") or "").strip()
+            reason = str(error.get("reason") or "").strip()
+            text = f"{name}: {reason}" if name and reason else (name or reason)
+            if text:
+                method_failures.append(text)
+    parts: List[str] = []
+    if failed:
+        parts.append("Dependent update(s) did not refresh: " + ", ".join(failed))
+    if method_failures:
+        parts.append(
+            "Method refresh failure(s): " + "; ".join(sorted(set(method_failures)))
+        )
+    if result.get("index_error"):
+        parts.append("The reserving-class index rebuild failed.")
+    if not parts:
+        parts.append("One or more dependent updates failed.")
+    # The message reaches the client and the shared hosted-saves log; a
+    # failure reason quoting an exception must not leak server paths.
+    return _WALK_FAILURE_PATH_RE.sub("[path]", " ".join(parts))
+
+
+_WALK_FAILURE_PATH_RE = re.compile(r"(?i)(?:[a-z]:[\\/]|\\\\)[^\s\"']+")
 
 
 def enqueue_marked_save_propagation(

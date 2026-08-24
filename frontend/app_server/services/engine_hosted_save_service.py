@@ -42,6 +42,7 @@ from arcrho_engine_save_contract import (
     save_job_request_path,
     save_job_status_response,
     save_job_status_is_terminal,
+    validate_request_id,
 )
 from arcrho_hosted_save_http_contract import (
     HTTP_SAVE_KINDS,
@@ -449,10 +450,24 @@ def _run_hosted_job(
     unavailable_message: str,
     timeout_message: str,
     failure_message: str,
+    client_request_id: str = "",
 ) -> Dict[str, Any]:
-    """Run one hosted job and append its client-side latency trace locally."""
+    """Run one hosted job and append its client-side latency trace locally.
 
-    request_id = uuid.uuid4().hex
+    ``client_request_id`` lets the page that triggered the save pick the save
+    job's identity up front, so it can poll the live walk progress for that
+    same id while this call is still in flight. An absent or malformed value
+    falls back to a fresh id — the save must never fail over its narration.
+    """
+
+    request_id = ""
+    if str(client_request_id or "").strip():
+        try:
+            request_id = validate_request_id(str(client_request_id).strip())
+        except Exception:
+            request_id = ""
+    if not request_id:
+        request_id = uuid.uuid4().hex
     gateway_config: Mapping[str, Any] = {"enabled": False}
     if save_kind in HTTP_SAVE_KINDS:
         try:
@@ -580,6 +595,7 @@ def run_hosted_save(
     args: Sequence[Any],
     kwargs: Mapping[str, Any] | None = None,
     plan_fingerprint: str = "",
+    client_request_id: str = "",
 ) -> Dict[str, Any]:
     """Execute one allowlisted service save on ArcRho Engine and return its response.
 
@@ -597,6 +613,7 @@ def run_hosted_save(
         args=args,
         kwargs=kwargs,
         plan_fingerprint=plan_fingerprint,
+        client_request_id=client_request_id,
         processing_timeout_seconds=SAVE_JOB_PROCESSING_TIMEOUT_SECONDS,
         missing_result_message=(
             "ArcRho Engine reported a successful save but its result payload "
@@ -640,3 +657,53 @@ def run_hosted_save_plan(
         timeout_message=HOSTED_PLAN_TIMEOUT_MESSAGE,
         failure_message="The dependent-update plan failed.",
     )
+
+
+def get_hosted_save_progress(request_id: str) -> Dict[str, Any]:
+    """Report one in-flight hosted save's live status for the UI poller.
+
+    The page generated the save's request id itself, so it can ask while its
+    save call is still running. The Gateway answers from the status file on
+    the server host's local disk; without a Gateway the same file is read
+    over SMB, where the client-side cache may serve a view a few seconds
+    stale — the poll then simply narrates a little behind. Every failure
+    degrades to ``{"status": "unknown"}``: a progress poll must never break
+    the save it describes.
+    """
+
+    try:
+        normalized_id = validate_request_id(str(request_id or "").strip())
+    except Exception as error:
+        raise HTTPException(400, "A valid save request id is required.") from error
+
+    gateway_config: Mapping[str, Any] = {"enabled": False}
+    try:
+        gateway_config = config.load_gateway_config()
+    except HostedSaveHttpContractError:
+        gateway_config = {"enabled": False}
+    if gateway_config.get("enabled") is True:
+        answer = hosted_save_http_client.fetch_hosted_save_progress(
+            gateway_config, normalized_id
+        )
+        if isinstance(answer, Mapping):
+            return {
+                "status": str(answer.get("status") or "unknown"),
+                "progress": answer.get("progress")
+                if isinstance(answer.get("progress"), Mapping)
+                else None,
+                "message": str(answer.get("message") or "") or None,
+            }
+
+    try:
+        server_root = dependent_propagation_service._workspace_server_root()
+        status = read_save_job_status(server_root, normalized_id)
+    except Exception:
+        status = None
+    if not isinstance(status, Mapping):
+        return {"status": "unknown", "progress": None, "message": None}
+    progress = status.get("progress")
+    return {
+        "status": str(status.get("status") or "unknown"),
+        "progress": dict(progress) if isinstance(progress, Mapping) else None,
+        "message": str(status.get("message") or "") or None,
+    }

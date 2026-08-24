@@ -130,7 +130,7 @@ def _commit_text_files(files: Mapping[str, str], *, last_paths: Iterable[str] = 
                 handle.write(changed[path])
             staged[path] = temporary
         for path in ordered_paths:
-            os.replace(staged.pop(path), path)
+            dataset_sidecar_status_service.replace_staged_file(staged.pop(path), path)
             replaced.append(path)
     except Exception as exc:
         rollback_errors: List[str] = []
@@ -938,7 +938,9 @@ def _refresh_one(
     precedent_names = bornhuetter_ferguson_precedent_names(method)
     blocked = [name for name in precedent_names if _key(name) in blocked_precedent_keys]
     if blocked:
-        raise RuntimeError("Required BF precedent needs review: " + ", ".join(blocked))
+        # ``blocked_precedent_keys`` holds precedents whose refresh failed,
+        # not merely review-flagged ones; the message must say so.
+        raise RuntimeError("Required BF precedent could not be refreshed: " + ", ".join(blocked))
     changed_keys = {_key(name) for name in changed_names if _key(name)}
     latest_name = _clean(tab.get("latest_dataset"))
     dfm_name = _clean(tab.get("dfm_dataset"))

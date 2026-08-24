@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
@@ -166,6 +167,28 @@ def sidecar_write_lock(path: str) -> threading.RLock:
     key = os.path.normcase(os.path.abspath(path))
     with _SIDECAR_WRITE_LOCKS_GUARD:
         return _SIDECAR_WRITE_LOCKS.setdefault(key, threading.RLock())
+
+
+def replace_staged_file(source: str, target: str) -> None:
+    """``os.replace`` that rides out a concurrent reader's sharing violation.
+
+    On Windows a reader holding the target open without FILE_SHARE_DELETE
+    makes the swap fail with WinError 5 for the duration of the read — on the
+    server host that reader is typically another Engine walking the class, or
+    a client re-reading the sidecar over the share. Such reads last
+    milliseconds, so a save must wait through a few of them rather than fail;
+    one save died exactly this way in production. The last attempt re-raises,
+    so a genuinely locked file still fails loudly.
+    """
+
+    for attempt in range(10):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.15)
 
 
 def reserving_class_io_lock(project_name: str, reserving_class: str) -> threading.RLock:
@@ -373,7 +396,7 @@ def update_precedent_dependents(
                     fh.write(persisted_json_text(finalize_sidecar(payload)))
                 staged[path] = temporary
             for path in sorted(updates, key=os.path.normcase):
-                os.replace(staged.pop(path), path)
+                replace_staged_file(staged.pop(path), path)
                 replaced.append(path)
         except Exception as exc:
             rollback_errors = []

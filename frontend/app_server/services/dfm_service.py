@@ -152,7 +152,7 @@ def _commit_text_files(files: Mapping[str, str], *, last_paths: Iterable[str] = 
                 handle.write(changed[path])
             staged[path] = temporary
         for path in ordered_paths:
-            os.replace(staged.pop(path), path)
+            dataset_sidecar_status_service.replace_staged_file(staged.pop(path), path)
             replaced.append(path)
     except Exception as exc:
         rollback_errors: List[str] = []
