@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.4.0
-# Release Note: Judge the ArcRho Bridge alive from the server side through the Gateway and only give up after thirty silent seconds, instead of failing on one stale heartbeat reading over the mapped drive.
+# Version: 1.3.2
+# Release Note: List each skipped ResQ item by name in the completion message now that a broken method no longer fails the whole reserving class.
 # Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -16,31 +16,23 @@ import time
 import uuid
 from typing import Any, Callable
 
-# The liveness rule is shared with the sync macro and the app server's hosted
-# read; the worker constants are re-exported here so the batch macro and the
-# contract-parity test keep reading them from this adapter.
-from arcrho_api.bridge_liveness import (  # noqa: F401
-    BRIDGE_SILENCE_LIMIT_SEC,
-    BRIDGE_WORKER_DIR,
-    BRIDGE_WORKER_MAX_AGE_SEC,
-    BRIDGE_WORKER_ROLE,
-    QUEUE_STATUS_DIRS,
-    BridgeSilenceTracker,
-    await_bridge_signal,
-    live_worker_names,
-    observe_bridge_liveness,
-)
-
 
 TITLE = "Import ResQ Reserving Class"
 REQUEST_FUNCTION = "ImportResQReservingClass"
 CONTRACT_VERSION = 1
+BRIDGE_WORKER_MAX_AGE_SEC = 6
 IMPORT_TIMEOUT_SEC = 60.0 * 60.0
 POLL_INTERVAL_SEC = 1.0
 REQUEST_CLAIM_TIMEOUT_SEC = 30.0
-QUEUE_NAME = "import"
-STATUS_RELATIVE_DIR = QUEUE_STATUS_DIRS[QUEUE_NAME]
-REQUEST_RELATIVE_DIR = STATUS_RELATIVE_DIR.with_name("requests")
+BRIDGE_WORKER_DIR = Path("runtime") / "instances" / "arcrho_bridge_worker"
+BRIDGE_WORKER_ROLE = "bridge_worker"
+REQUEST_RELATIVE_DIR = (
+    Path("requests")
+    / "RPC bridge"
+    / "resq_reserving_class_import"
+    / "requests"
+)
+STATUS_RELATIVE_DIR = REQUEST_RELATIVE_DIR.with_name("statuses")
 REQUEST_ROOT = REQUEST_RELATIVE_DIR.parent
 REQUIRED_REQUEST_FIELDS = (
     "Function",
@@ -66,7 +58,7 @@ _INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
 
 class BridgeUnavailableError(RuntimeError):
-    """Raised when no ResQ-connected Bridge worker has shown life for the silence limit."""
+    """Raised before publication when no ResQ-connected Bridge worker is live."""
 
 
 class BridgeRequestError(RuntimeError):
@@ -140,37 +132,64 @@ def _logical_rc_path(value: object) -> str:
     return normalized
 
 
-def _observe(server_root: object, request_id: str = "") -> dict[str, Any] | None:
-    """One liveness look; a look that fails is a silent look, not a verdict."""
-
+def _read_json(path: Path) -> dict[str, Any] | None:
     try:
-        return observe_bridge_liveness(server_root, queue=QUEUE_NAME, request_id=request_id)
-    except Exception:
+        with path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except (FileNotFoundError, PermissionError, OSError, UnicodeError, json.JSONDecodeError):
         return None
+    return payload if isinstance(payload, dict) else None
 
 
-def _request_status(observation: object) -> dict[str, Any] | None:
-    request = observation.get("request") if isinstance(observation, dict) else None
-    status = request.get("status") if isinstance(request, dict) else None
-    return status if isinstance(status, dict) else None
+def _is_true(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes"}
 
 
-def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tuple[str, ...]:
-    """Names of the live workers, after waiting out a silence shorter than the limit."""
+def discover_live_bridge_workers(
+    server_root: object,
+    *,
+    max_age_sec: float = BRIDGE_WORKER_MAX_AGE_SEC,
+    now: float | None = None,
+) -> tuple[Path, ...]:
+    """Return fresh, ResQ-connected Bridge worker heartbeats under ``server_root``."""
 
-    observation, tracker = await_bridge_signal(
-        lambda: _observe(server_root),
-        limit_sec=BRIDGE_SILENCE_LIMIT_SEC,
-        poll_interval_sec=POLL_INTERVAL_SEC,
-        sleep=sleep,
-    )
-    workers = live_worker_names(observation)
+    root = Path(server_root)
+    heartbeat_dir = root / BRIDGE_WORKER_DIR
+    observed_at = time.time() if now is None else float(now)
+    try:
+        candidates = tuple(heartbeat_dir.glob("*.json"))
+    except OSError:
+        return ()
+
+    live: list[Path] = []
+    for path in candidates:
+        try:
+            age = observed_at - path.stat().st_mtime
+        except OSError:
+            continue
+        if age < -max_age_sec or age > max_age_sec:
+            continue
+        payload = _read_json(path)
+        if not payload:
+            continue
+        role = str(payload.get("Role") or payload.get("role") or "").strip().casefold()
+        if role != BRIDGE_WORKER_ROLE or not _is_true(payload.get("ResQGuiRunning")):
+            continue
+        live.append(path)
+    return tuple(sorted(live, key=lambda item: item.name.casefold()))
+
+
+def require_live_bridge_workers(server_root: object) -> tuple[Path, ...]:
+    workers = discover_live_bridge_workers(server_root)
     if workers:
         return workers
+    heartbeat_dir = Path(server_root) / BRIDGE_WORKER_DIR
     raise BridgeUnavailableError(
-        f"No active ArcRho Bridge worker was found: {tracker.describe()}. "
+        "No active ArcRho Bridge worker was found. "
         f"Expected a ResQ-connected heartbeat newer than {BRIDGE_WORKER_MAX_AGE_SEC:g} "
-        f"seconds under [{Path(server_root) / BRIDGE_WORKER_DIR}]."
+        f"seconds under [{heartbeat_dir}]."
     )
 
 
@@ -364,25 +383,18 @@ def wait_for_import_result(
     progress=None,
     on_poll: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    """Poll the request's status until a terminal result arrives.
-
-    Every poll is one liveness look that also carries the status file, so the
-    worker is judged from the same observation the result comes from. Silence
-    past the limit abandons the wait; it does not prove the import stopped.
-    """
+    """Poll the deterministic Bridge status file until a terminal result arrives."""
 
     if timeout_sec <= 0 or poll_interval_sec <= 0 or claim_timeout_sec <= 0:
         raise ValueError("Timeout, polling interval, and claim timeout must be positive.")
     _, status_path = _request_paths(server_root, request_id)
     deadline = time.monotonic() + float(timeout_sec)
     claim_deadline = time.monotonic() + min(float(claim_timeout_sec), float(timeout_sec))
-    tracker = BridgeSilenceTracker(limit_sec=BRIDGE_SILENCE_LIMIT_SEC)
 
     while True:
         if on_poll is not None:
             on_poll()
-        observation = _observe(server_root, request_id)
-        status = _request_status(observation)
+        status = _read_json(status_path)
         if status is not None:
             reported_id = str(status.get("request_id") or status.get("RequestId") or "").strip()
             if reported_id != request_id:
@@ -416,12 +428,10 @@ def wait_for_import_result(
                 "and try the import again."
             )
 
-        if not tracker.record(observation) and tracker.exceeded:
-            raise BridgeUnavailableError(
-                f"ArcRho Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
-                "Whether the import finished is unknown; if the Bridge was only slow it may "
-                f"still complete. Check [{status_path}] before importing this reserving class "
-                "again."
+        if not discover_live_bridge_workers(server_root):
+            raise BridgeRequestError(
+                "ArcRho Bridge became unavailable while the import was waiting for a result. "
+                "The existing reserving-class data was left unchanged."
             )
         remaining = deadline - time.monotonic()
         if remaining <= 0:

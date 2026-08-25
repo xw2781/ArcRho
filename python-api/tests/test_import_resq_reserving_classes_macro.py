@@ -273,22 +273,46 @@ class BatchImportMacroTests(unittest.TestCase):
         self.assertEqual(final_kwargs.get("kind"), "warning")
         self.assertIsNone(final_kwargs.get("auto_close_ms"))
 
-    def test_remaining_classes_are_skipped_when_the_bridge_dies(self):
+    def test_remaining_classes_are_skipped_when_the_bridge_falls_silent(self):
         self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        sent = []
 
-        def fail_and_kill_bridge(**_kwargs):
-            (self.server_root / self.single.BRIDGE_WORKER_DIR / "worker.json").unlink()
-            raise self.single.BridgeRequestError("Bridge went away.")
+        def fall_silent(*, payload, **_kwargs):
+            sent.append(payload["Path"])
+            raise self.single.BridgeUnavailableError("Request was abandoned: silent for 30 seconds.")
 
         with (
             self._api_module(),
-            patch.object(self.single, "publish_import_request", side_effect=fail_and_kill_bridge),
+            patch.object(self.single, "publish_import_request", side_effect=fall_silent),
         ):
             result = self.module.run_macro()
 
         self.assertFalse(result["success"])
+        self.assertEqual(sent, ["Auto\\NJ"])
         self.assertEqual(len(result["results"]), 2)
-        self.assertIn("Skipped: ArcRho Bridge became unavailable.", result["results"][1]["error"])
+        self.assertIn("silent for 30 seconds", result["results"][0]["error"])
+        self.assertIn("Skipped: the ArcRho Bridge stopped responding", result["results"][1]["error"])
+
+    def test_a_request_error_does_not_skip_the_remaining_classes(self):
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        publish = self._publish_with_status({
+            "Auto\\PA": {"status": "success", "result": {"datasets_imported": 2, "errors": 0}},
+        })
+
+        def fail_first(*, server_root, request_id, payload):
+            if payload["Path"] == "Auto\\NJ":
+                raise self.single.BridgeRequestError("Could not publish the request.")
+            return publish(server_root=server_root, request_id=request_id, payload=payload)
+
+        with (
+            self._api_module(),
+            patch.object(self.single, "publish_import_request", side_effect=fail_first),
+        ):
+            result = self.module.run_macro()
+
+        outcomes = {item["path"]: item["success"] for item in result["results"]}
+        self.assertEqual(outcomes, {"Auto\\NJ": False, "Auto\\PA": True})
+        self.assertIn("Could not publish the request.", result["results"][0]["error"])
 
     def test_a_confirmed_overwrite_travels_in_every_request(self):
         # Overwrite is chosen with the checkbox in the selection window, then

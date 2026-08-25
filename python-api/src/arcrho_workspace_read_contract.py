@@ -183,6 +183,17 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name", "reserving_class", "method_name", "origin_length"),
         ("output_type", "timeout_sec"),
     ),
+    # The ResQ import and sync macros poll the Bridge worker's heartbeat, and
+    # the status file of the request it is running, while they wait. Over the
+    # mapped drive Windows serves those timestamps from a cache that can lag a
+    # heartbeat written every second by ten seconds, so the look is taken on
+    # the server host, where it is exact.
+    "bridge_worker_liveness": WorkspaceReadKind(
+        "bridge_liveness_service",
+        "get_bridge_worker_liveness",
+        (),
+        ("queue", "request_id"),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

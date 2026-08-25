@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.3.0
-# Release Note: Skip the rest of the batch only when the sibling macro has judged the ArcRho Bridge silent for thirty seconds, not on one stale heartbeat reading over the mapped drive.
+# Version: 1.2.1
+# Release Note: Report skipped ResQ items by name in the final summary now that a broken method no longer fails its whole reserving class.
 # Description: List every reserving class in the active project in a review table with the canonical default classes preselected and an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>
@@ -313,9 +313,9 @@ def import_selected_classes(
 
     A failed class is recorded and the batch continues, because each request
     commits or restores that class independently on the server. The one
-    exception is a Bridge the sibling macro has judged silent for its whole
-    limit: every later class would only wait out the same silence to fail the
-    same way, so the rest of the batch is marked skipped instead of sent.
+    exception is a Bridge that stopped heartbeating: every later class would
+    only wait out the claim timeout to fail the same way, so the rest of the
+    batch is marked skipped immediately.
     """
 
     results: list[dict[str, Any]] = []
@@ -346,21 +346,6 @@ def import_selected_classes(
                 request_id=request_id,
                 on_poll=_report_macro_activity,
             )
-        except single.BridgeUnavailableError as exc:
-            results.append({
-                "path": rc_path,
-                "success": False,
-                "error": str(exc),
-                "request_id": request_id,
-            })
-            for remaining in rc_paths[position:]:
-                results.append({
-                    "path": remaining,
-                    "success": False,
-                    "error": "Skipped: the ArcRho Bridge stopped responding, so this class was not sent.",
-                    "request_id": "",
-                })
-            break
         except Exception as exc:
             results.append({
                 "path": rc_path,
@@ -368,6 +353,15 @@ def import_selected_classes(
                 "error": str(exc),
                 "request_id": request_id,
             })
+            if not single.discover_live_bridge_workers(server_root):
+                for remaining in rc_paths[position:]:
+                    results.append({
+                        "path": remaining,
+                        "success": False,
+                        "error": "Skipped: ArcRho Bridge became unavailable.",
+                        "request_id": "",
+                    })
+                break
             continue
         result = single._status_result(status)
         # A committed class with item errors is a success with skipped items:

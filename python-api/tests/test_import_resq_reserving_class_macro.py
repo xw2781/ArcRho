@@ -25,6 +25,9 @@ _CONTRACT_PATH = (
     / "resq_reserving_class_import_contract.json"
 )
 _REQUEST_ID = "a1b2c3d4e5f6478899aabbccddeeff00"
+_SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 
 def load_macro_module():
@@ -36,7 +39,38 @@ def load_macro_module():
         raise RuntimeError("Could not load the ResQ reserving-class import macro.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # A missing Bridge is judged after a silence, not a look; keep it short here.
+    module.BRIDGE_SILENCE_LIMIT_SEC = 0.05
+    module.POLL_INTERVAL_SEC = 0.01
     return module
+
+
+def _look(*, live: bool = True, status: dict | None = None, status_age: float = 0.0) -> dict:
+    """One scripted liveness look, as the hosted read would report it."""
+
+    return {
+        "observed_at": 0.0,
+        "workers": [{"name": "worker.json", "age_sec": 0.4 if live else 9.6, "live": live}],
+        "request": {
+            "request_id": _REQUEST_ID,
+            "found": status is not None,
+            "age_sec": status_age if status is not None else None,
+            "status": status,
+        },
+    }
+
+
+def _processing_status() -> dict:
+    return {"contract_version": 1, "status": "processing", "request_id": _REQUEST_ID}
+
+
+def _success_status() -> dict:
+    return {
+        "contract_version": 1,
+        "status": "success",
+        "request_id": _REQUEST_ID,
+        "result": {"datasets_imported": 1, "errors": 0},
+    }
 
 
 class _Progress:
@@ -517,6 +551,103 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(self.ui.reload_calls, [])
         self.assertIn("unsupported status contract version", result["message"])
+
+    def _scripted_looks(self, *looks: dict | None):
+        """Answer each liveness look from the script, repeating the last one."""
+
+        remaining = list(looks)
+
+        def observe(_server_root, *, queue, request_id=""):
+            self.assertEqual(queue, "import")
+            return remaining.pop(0) if len(remaining) > 1 else remaining[0]
+
+        return patch.object(self.module, "observe_bridge_liveness", side_effect=observe)
+
+    def test_a_stale_heartbeat_reading_mid_import_does_not_abandon_the_request(self):
+        # The first looks are what a lagging drive cache produces: a heartbeat
+        # nine seconds old and a status file untouched for twelve. Neither is
+        # a verdict; the import then reports success.
+        looks = self._scripted_looks(
+            _look(live=False, status=_processing_status(), status_age=12.0),
+            _look(live=False, status=_processing_status(), status_age=12.0),
+            _look(live=True, status=_success_status()),
+        )
+
+        with looks:
+            status = self.module.wait_for_import_result(
+                server_root=self.server_root,
+                request_id=_REQUEST_ID,
+                timeout_sec=5,
+                poll_interval_sec=0.001,
+            )
+
+        self.assertEqual(status["status"], "success")
+
+    def test_a_fresh_status_file_is_life_even_when_no_heartbeat_looks_usable(self):
+        self.module.BRIDGE_SILENCE_LIMIT_SEC = 0.02
+        looks = self._scripted_looks(
+            *[_look(live=False, status=_processing_status(), status_age=0.8)] * 6,
+            _look(live=False, status=_success_status(), status_age=0.5),
+        )
+
+        with looks:
+            status = self.module.wait_for_import_result(
+                server_root=self.server_root,
+                request_id=_REQUEST_ID,
+                timeout_sec=5,
+                poll_interval_sec=0.01,
+            )
+
+        self.assertEqual(status["status"], "success")
+
+    def test_silence_past_the_limit_abandons_the_wait_without_claiming_the_data_unchanged(self):
+        looks = self._scripted_looks(
+            _look(live=False, status=_processing_status(), status_age=12.0),
+        )
+
+        with looks, self.assertRaises(self.module.BridgeUnavailableError) as raised:
+            self.module.wait_for_import_result(
+                server_root=self.server_root,
+                request_id=_REQUEST_ID,
+                timeout_sec=5,
+                poll_interval_sec=0.01,
+            )
+
+        message = str(raised.exception)
+        self.assertIn("was abandoned", message)
+        self.assertIn("consecutive checks", message)
+        self.assertIn("worker.json 9.6 s old (not usable)", message)
+        self.assertIn("status file 12.0 s old", message)
+        self.assertIn("Whether the import finished is unknown", message)
+        self.assertNotIn("left unchanged", message)
+
+    def test_a_look_that_fails_is_a_silent_look_not_a_crash(self):
+        calls = []
+
+        def observe(*_args, **_kwargs):
+            calls.append(1)
+            if len(calls) < 3:
+                raise RuntimeError("gateway hiccup")
+            return _look(live=True, status=_success_status())
+
+        with patch.object(self.module, "observe_bridge_liveness", side_effect=observe):
+            status = self.module.wait_for_import_result(
+                server_root=self.server_root,
+                request_id=_REQUEST_ID,
+                timeout_sec=5,
+                poll_interval_sec=0.001,
+            )
+
+        self.assertEqual(status["status"], "success")
+        self.assertEqual(len(calls), 3)
+
+    def test_the_preflight_waits_out_a_short_silence_before_refusing(self):
+        looks = self._scripted_looks(_look(live=False), _look(live=False), _look(live=True))
+
+        with looks:
+            workers = self.module.require_live_bridge_workers(self.server_root)
+
+        self.assertEqual(workers, ("worker.json",))
 
 
 if __name__ == "__main__":

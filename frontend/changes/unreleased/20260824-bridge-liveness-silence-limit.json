@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "The ResQ import macros no longer abandon a running import, and skip the rest of a batch, because one heartbeat reading over the mapped drive looked stale.",
+  "details": [
+    "The Bridge is now judged alive from the ArcRho Server side through the Gateway, where the heartbeat's age is exact, and only counted as gone after thirty seconds with no sign of life.",
+    "A request's own status file, which the Bridge keeps touching while it works, counts as a sign of life alongside the heartbeat.",
+    "When a wait is abandoned the message says the import's outcome is unknown and where to check, instead of claiming the data was left unchanged.",
+    "Import ResQ Reserving Class 1.4.0, Import ResQ Reserving Classes 1.3.0, and Sync Reserving Class with ResQ 1.2.1 carry the change; they need this app version's Python API."
+  ]
+}

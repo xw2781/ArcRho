@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -30,6 +31,9 @@ _DATA_ENGINE_BRIDGE_DIR = (
 _SYNC_CONTRACT_PATH = _DATA_ENGINE_BRIDGE_DIR / "resq_reserving_class_sync_contract.json"
 _IMPORT_CONTRACT_PATH = _DATA_ENGINE_BRIDGE_DIR / "resq_reserving_class_import_contract.json"
 _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
+_SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 
 def _load_macro_module():
@@ -41,6 +45,9 @@ def _load_macro_module():
         raise RuntimeError("Could not load the ResQ reserving-class sync macro.")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # A missing Bridge is judged after a silence, not a look; keep it short here.
+    module.BRIDGE_SILENCE_LIMIT_SEC = 0.05
+    module.POLL_INTERVAL_SEC = 0.01
     return module
 
 

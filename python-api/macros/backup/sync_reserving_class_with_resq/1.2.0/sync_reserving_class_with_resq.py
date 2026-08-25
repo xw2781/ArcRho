@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.2.1
-# Release Note: Check for a live ArcRho Bridge worker from the server side through the Gateway and only refuse after thirty silent seconds, instead of on one stale heartbeat reading over the mapped drive.
+# Version: 1.2.0
+# Release Note: Run the ResQ session on a ResQ-connected ArcRho Bridge worker through the shared request queue, so the macro works on a machine without ResQ installed.
 # Description: Compare every dataset and supported method output in the selected reserving class, show both ArcRho and ResQ timestamps in a review table, and apply only the synchronization actions the user accepts.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -38,34 +38,25 @@ import traceback
 import uuid
 from typing import Any, Callable, Mapping
 
-from arcrho_api.bridge_liveness import (  # noqa: F401
-    BRIDGE_SILENCE_LIMIT_SEC,
-    BRIDGE_WORKER_DIR,
-    BRIDGE_WORKER_MAX_AGE_SEC,
-    BRIDGE_WORKER_ROLE,
-    QUEUE_STATUS_DIRS,
-    await_bridge_signal,
-    live_worker_names,
-    observe_bridge_liveness,
-)
-
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.2.1"
+MACRO_VERSION = "1.2.0"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 REVIEW_POLL_SECONDS = 0.5
 
 # Pinned to data-engine/src/arcrho_bridge/resq_reserving_class_sync_contract.json
 # and, for the shared worker/status facts that contract deliberately does not
 # restate, to resq_reserving_class_import_contract.json. A macro cannot import
-# the Bridge, so a test asserts this adapter still matches both files. The
-# worker facts and the liveness rule come from arcrho_api.bridge_liveness,
-# which the import macros and the app server's hosted read share.
+# the Bridge, so a test asserts this adapter still matches both files.
 REQUEST_FUNCTION = "SyncResQReservingClass"
 CONTRACT_VERSION = 1
-QUEUE_NAME = "sync"
-STATUS_RELATIVE_DIR = QUEUE_STATUS_DIRS[QUEUE_NAME]
-REQUEST_RELATIVE_DIR = STATUS_RELATIVE_DIR.with_name("requests")
+REQUEST_RELATIVE_DIR = (
+    Path("requests")
+    / "RPC bridge"
+    / "resq_reserving_class_sync"
+    / "requests"
+)
+STATUS_RELATIVE_DIR = REQUEST_RELATIVE_DIR.with_name("statuses")
 REQUIRED_REQUEST_FIELDS = (
     "Function",
     "ContractVersion",
@@ -80,6 +71,9 @@ SELECTION_FIELD = "SelectedRows"
 SELECTION_ROW_FIELDS = ("Id", "Signature")
 FORBIDDEN_PATH_FIELDS = ("StatusPath", "DataPath", "TargetPath", "ServerRoot")
 STATUS_VALUES = frozenset({"processing", "success", "error"})
+BRIDGE_WORKER_DIR = Path("runtime") / "instances" / "arcrho_bridge_worker"
+BRIDGE_WORKER_ROLE = "bridge_worker"
+BRIDGE_WORKER_MAX_AGE_SEC = 6
 
 # A preview only reads; an apply can rewrite a whole reserving class, so it is
 # given the same hour a queued ResQ import gets.
@@ -164,6 +158,12 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _is_true(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes"}
+
+
 def _logical_project_name(value: object) -> str:
     name = str(value or "").strip()
     if (
@@ -196,33 +196,51 @@ def _user_name() -> str:
         return "unknown"
 
 
-def _observe(server_root: object) -> dict[str, Any] | None:
-    """One liveness look; a look that fails is a silent look, not a verdict."""
+def discover_live_bridge_workers(
+    server_root: object,
+    *,
+    max_age_sec: float = BRIDGE_WORKER_MAX_AGE_SEC,
+    now: float | None = None,
+) -> tuple[Path, ...]:
+    """Return fresh, ResQ-connected Bridge worker heartbeats under ``server_root``."""
 
+    root = Path(server_root)
+    heartbeat_dir = root / BRIDGE_WORKER_DIR
+    observed_at = time.time() if now is None else float(now)
     try:
-        return observe_bridge_liveness(server_root, queue=QUEUE_NAME)
-    except Exception:
-        return None
+        candidates = tuple(heartbeat_dir.glob("*.json"))
+    except OSError:
+        return ()
+
+    live: list[Path] = []
+    for path in candidates:
+        try:
+            age = observed_at - path.stat().st_mtime
+        except OSError:
+            continue
+        if age < -max_age_sec or age > max_age_sec:
+            continue
+        payload = _read_json(path)
+        if not payload:
+            continue
+        role = str(payload.get("Role") or payload.get("role") or "").strip().casefold()
+        if role != BRIDGE_WORKER_ROLE or not _is_true(payload.get("ResQGuiRunning")):
+            continue
+        live.append(path)
+    return tuple(sorted(live, key=lambda item: item.name.casefold()))
 
 
-def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tuple[str, ...]:
-    """Names of the live workers, after waiting out a silence shorter than the limit."""
-
-    observation, tracker = await_bridge_signal(
-        lambda: _observe(server_root),
-        limit_sec=BRIDGE_SILENCE_LIMIT_SEC,
-        poll_interval_sec=POLL_INTERVAL_SEC,
-        sleep=sleep,
-    )
-    workers = live_worker_names(observation)
+def require_live_bridge_workers(server_root: object) -> tuple[Path, ...]:
+    workers = discover_live_bridge_workers(server_root)
     if workers:
         return workers
+    heartbeat_dir = Path(server_root) / BRIDGE_WORKER_DIR
     raise BridgeUnavailableError(
         "No active ArcRho Bridge worker was found, so ResQ cannot be reached from "
         "this computer. Start ArcRho on a machine where ResQ is running, then "
-        f"synchronize again.\n{tracker.describe()}. "
+        "synchronize again.\n"
         f"Expected a ResQ-connected heartbeat newer than {BRIDGE_WORKER_MAX_AGE_SEC:g} "
-        f"seconds under [{Path(server_root) / BRIDGE_WORKER_DIR}]."
+        f"seconds under [{heartbeat_dir}]."
     )
 
 
