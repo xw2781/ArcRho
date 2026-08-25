@@ -82,13 +82,13 @@ When ResQ migration encounters a single-instance Dataset Type with `Generated=tr
 - Keep Dataset Type formulas and project header labels in their canonical project configuration/header sources. Cached dataset reads must hydrate them before the first grid render; do not synthesize generic `12, 24, ...` labels for an engine dataset.
 - Add an exact full-payload cross-producer test for the frontend and migration engine-sidecar writers, including path-alias independence, plus a cached-load test proving formula and development-label hydration matches a force rebuild.
 
-## Network-Drive Project Data I/O (MUST)
-When designing or maintaining a frontend feature, including its bundled app-server code, assume ArcRho project JSON and related metadata may live on a mapped or UNC network drive.
-- Do not read or write multiple independent small files sequentially in a per-file awaited loop. Every network filesystem operation can add a full round trip.
-- For reads, enumerate folders once, deduplicate paths, reuse request-scoped configuration/index snapshots, and use bounded parallel I/O or a batch/aggregate read. Do not reload the same JSON, index, or configuration once per dataset, method, precedent, or dependent.
-- For writes, coalesce updates and avoid rewriting unchanged files. Preserve correctness by serializing writes per target or protected folder, using the existing lock and atomic temporary-file replacement patterns; do not use unsafe unbounded parallel writes.
-- If a true data dependency requires sequential I/O, document that dependency in the implementation and minimize the number of network operations.
-- Add focused coverage for bounded concurrency, deterministic result ordering, write atomicity, and failure handling whenever this rule changes an I/O workflow.
+## Server-Hosted Project Data I/O (MUST)
+The frontend client app on a Client PC reaches ArcRho project data over HTTP through the machine-wide ArcRho Gateway, not over the mapped or UNC drive. The Gateway, Engine, and Bridge run on the Server PC where the workspace is local disk; the canonical `app_server` service function stays the single owner of each read or save and runs unchanged on either side. SMB is the transport being retired, not a peer of HTTP.
+- Prefer HTTP for every client interaction with files on the Server PC. Register a read in `python-api/src/arcrho_workspace_read_contract.py` and route it through `workspace_read_client.run_workspace_read`; register a save in `arcrho_engine_save_contract.SAVE_JOB_KINDS` and route it through `workspace_mutation_client.run_workspace_mutation` or the hosted save job. Engine calculations already run hosted. A new client-side feature must not open project JSON, sidecars, CSVs, or indexes over the share directly.
+- When a task touches any module that still reads or writes project data over SMB from the client — a route not wrapped in the hosted transport, a service the read registry does not list, or a hosted path that quietly runs locally when the Gateway is unavailable — say so explicitly in the response, name the module, and propose moving it onto the Gateway and removing the SMB fallback. Do this even when the task itself did not ask about transport.
+- Do not add a new SMB fallback, and do not keep an existing one out of caution. Keep an SMB path only for a strong, feature-specific reason that HTTP cannot serve, state that reason in the response, and record it in the implementation and the domain doc so the next agent does not re-open the question.
+- Where an SMB path remains, every filesystem operation is a full round trip: enumerate a folder once, reuse request-scoped index and configuration snapshots, use bounded parallel or batched reads rather than a per-file awaited loop, and coalesce writes under the existing lock and atomic temporary-file replacement patterns.
+- Add focused coverage for transport selection and failure handling whenever a change moves a read or save between transports.
 
 ## Log File Retention (MUST)
 Every log file any ArcRho component writes is kept for 30 days and no longer. No component may define its own retention window, keep-last-N rule, or cleanup routine.
