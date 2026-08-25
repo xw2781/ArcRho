@@ -204,7 +204,7 @@ switch ($Action) {
             Write-Output 'A build listener is already running. Stop it first.'
             exit 1
         }
-        Start-Process -FilePath $launcher -WorkingDirectory (Join-Path $ListenerRepo 'data-engine') | Out-Null
+        Start-Process -FilePath $launcher -WorkingDirectory (Join-Path $ListenerRepo 'server-components') | Out-Null
         Write-Output ("Started the build listener from {0}" -f $ListenerRepo)
         Start-Sleep -Seconds 6
         Write-Output ''
