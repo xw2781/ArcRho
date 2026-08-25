@@ -36,7 +36,7 @@ import traceback
 from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from arcrho_dependent_propagation_contract import (
     acquire_reserving_class_lease,
@@ -142,6 +142,30 @@ def _inline_walk_summary(response: Any) -> str:
         return refreshed
     except Exception:
         return ""
+
+
+def _walk_stage_timing(
+    marks: Sequence[tuple[str, float]], started_at: float, finished_at: float
+) -> str:
+    """Render the inline walk's stage transitions as one line of durations.
+
+    ``marks`` holds the first progress call of each stage in order, as
+    ``(stage, monotonic)``. A stage lasts until the next stage's first call;
+    the last one runs to ``finished_at``, so it also carries the save's
+    return path. The time before the first mark is the save's own commit.
+
+    The queued-walk diary times every stage transition, and that is what
+    localizes a stall; without this line a slow hosted save reports one total
+    and leaves nothing behind but file timestamps.
+    """
+
+    if not marks:
+        return ""
+    parts = [f"before walk {max(0.0, marks[0][1] - started_at):.1f}s"]
+    for index, (stage, at) in enumerate(marks):
+        end = marks[index + 1][1] if index + 1 < len(marks) else finished_at
+        parts.append(f"{stage} {max(0.0, end - at):.1f}s")
+    return "stages: " + ", ".join(parts)
 
 
 def _acquire_lease_with_wait(root: Path, project: str, reserving: str):
@@ -333,6 +357,8 @@ def process_hosted_save_request(
         )
         return False
     heartbeat_stop, heartbeat_thread = start_reserving_class_lease_heartbeat(lease)
+    started_at = time.monotonic()
+    walk_stage_marks: list[tuple[str, float]] = []
 
     try:
         configure_canonical_runtime(root)
@@ -384,10 +410,17 @@ def process_hosted_save_request(
             Throttled, and never allowed to fail the save it narrates. The
             client polls these over the Gateway to show which dependent is
             being refreshed while the save request is still in flight.
+
+            Each stage's first call is also kept as a timing mark ahead of
+            the throttle, so a short stage still marks where the next one
+            began.
             """
 
             try:
                 now = time.monotonic()
+                stage_name = str(stage)
+                if not walk_stage_marks or walk_stage_marks[-1][0] != stage_name:
+                    walk_stage_marks.append((stage_name, now))
                 if now - last_progress_monotonic[0] < SAVE_JOB_PROGRESS_MIN_INTERVAL_SECONDS:
                     return
                 last_progress_monotonic[0] = now
@@ -442,6 +475,7 @@ def process_hosted_save_request(
             publish_error(detail, int(exc.status_code))
             return False
 
+        returned_at = time.monotonic()
         if not isinstance(response, dict):
             response = {"ok": True, "response": response}
         # Keep the separate result during mixed-client rollout. Current
@@ -449,11 +483,27 @@ def process_hosted_save_request(
         # one extra SMB read; older clients still read this legacy artifact.
         write_save_job_result(root, request_id, response)
         publish("success", response=response)
-        walk = _inline_walk_summary(response)
-        _log(root, f"{request_id} success" + (f" ({walk})" if walk else ""))
+        published_at = time.monotonic()
+        detail = "; ".join(
+            part
+            for part in (
+                _inline_walk_summary(response),
+                _walk_stage_timing(walk_stage_marks, started_at, returned_at),
+                f"publish {published_at - returned_at:.1f}s",
+            )
+            if part
+        )
+        _log(root, f"{request_id} success in {published_at - started_at:.1f}s ({detail})")
         return True
     except Exception as exc:
-        _log(root, f"{request_id} failed: {exc!r}\n{traceback.format_exc()}")
+        failed_at = time.monotonic()
+        timing = _walk_stage_timing(walk_stage_marks, started_at, failed_at)
+        _log(
+            root,
+            f"{request_id} failed after {failed_at - started_at:.1f}s: {exc!r}"
+            + (f" ({timing})" if timing else "")
+            + f"\n{traceback.format_exc()}",
+        )
         try:
             message = _redact_machine_paths(exc) or "The hosted save failed."
         except Exception:

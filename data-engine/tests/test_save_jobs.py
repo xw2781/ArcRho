@@ -136,6 +136,46 @@ class HostedSaveJobTests(unittest.TestCase):
         self.assertEqual(result["propagation"]["status"], "completed")
         self.assertEqual(status["response"], result)
 
+    def test_the_log_times_each_walk_stage_the_service_reports(self) -> None:
+        progress_hooks: list = []
+
+        @contextmanager
+        def inline_save_progress(publisher):
+            progress_hooks.append(publisher)
+            yield
+
+        def fake_save(*args, **kwargs):
+            report = progress_hooks[-1]
+            for stage in ("marking", "dfm", "dfm", "index"):
+                report(stage, 0, 0, stage)
+            return {
+                "ok": True,
+                "propagation": {"status": "completed", "ok": True,
+                                "refreshed_datasets": ["C 30 - Ultimate"]},
+            }
+
+        modules = _fake_app_server(fake_save)
+        modules["app_server.services"].dependent_propagation_service.inline_save_progress = (
+            inline_save_progress
+        )
+        path, request = self._publish_request()
+        with (
+            patch.object(save_jobs, "configure_canonical_runtime"),
+            patch.dict(sys.modules, modules),
+        ):
+            self.assertTrue(save_jobs.process_hosted_save_request(self.root, path, request))
+
+        log_text = (self.root / "runtime" / "logs" / "hosted_saves.log").read_text(
+            encoding="utf-8"
+        )
+        success_line = next(line for line in log_text.splitlines() if " success in " in line)
+        self.assertIn("walk refreshed 1: C 30 - Ultimate; stages: before walk ", success_line)
+        self.assertEqual(
+            success_line.count(", dfm "), 1, "a stage's repeated progress calls are one mark"
+        )
+        self.assertIn(", index ", success_line)
+        self.assertIn("; publish ", success_line)
+
     def test_the_claim_marker_admits_exactly_one_executor(self) -> None:
         # Five Engine instances race every request; the exclusive-create
         # marker is the arbiter, so a second claim for the same id loses no
@@ -535,6 +575,20 @@ class InlineWalkSummaryTests(unittest.TestCase):
                          {"data": {"calculated_updates": None}},
                          {"propagation": {"refreshed_datasets": "not a list"}}):
             self.assertEqual(save_jobs._inline_walk_summary(response), "")
+
+
+class InlineWalkTimingTests(unittest.TestCase):
+    """A stalled stage must name itself in the log, not hide inside one total."""
+
+    def test_each_stage_lasts_until_the_next_one_starts(self) -> None:
+        marks = [("marking", 10.5), ("dfm", 10.5), ("index", 11.7)]
+        self.assertEqual(
+            save_jobs._walk_stage_timing(marks, started_at=10.0, finished_at=12.0),
+            "stages: before walk 0.5s, marking 0.0s, dfm 1.2s, index 0.3s",
+        )
+
+    def test_a_save_without_a_walk_reports_no_stages(self) -> None:
+        self.assertEqual(save_jobs._walk_stage_timing([], 1.0, 2.0), "")
 
 
 if __name__ == "__main__":
