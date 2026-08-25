@@ -9,7 +9,7 @@ metadata:
 ---
 
 Implemented 2026-08-16 and deployed to the live Gateway: `POST /api/engine-calculations`
-(`python-api/src/arcrho_engine_calculation_contract.py`, `data-engine/src/arcrho_gateway/engine_calculations.py`,
+(`python-api/src/arcrho_engine_calculation_contract.py`, `server-components/src/arcrho_gateway/engine_calculations.py`,
 `frontend/app_server/services/engine_calculation_service.py`). Every `arcrho_runtime_service`
 request site now calls `engine_calculation_service.run_engine_calculation(pairs, data_path, timeout)`.
 Docs: `frontend/docs/app_server/domains/engine_calculations.md`; contract rule 18.

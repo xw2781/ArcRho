@@ -8,7 +8,7 @@ metadata:
   modified: 2026-08-16T16:37:07.197Z
 ---
 
-2026-08-16, building the Gateway from the Client PC (`python data-engine/src/arcrho_gateway/build_exe.py`, `ARCRHO_DEPLOY_ROOT` unset so it used the UNC `\\NE7SASWPN02\E\ArcRho Server`): PyInstaller succeeded, then `deploy_exe()` failed at `temporary.rename(DEPLOY_APP_DIR)` with `PermissionError: [WinError 5] Access is denied`. This is the swap step, not the build.
+2026-08-16, building the Gateway from the Client PC (`python server-components/src/arcrho_gateway/build_exe.py`, `ARCRHO_DEPLOY_ROOT` unset so it used the UNC `\\NE7SASWPN02\E\ArcRho Server`): PyInstaller succeeded, then `deploy_exe()` failed at `temporary.rename(DEPLOY_APP_DIR)` with `PermissionError: [WinError 5] Access is denied`. This is the swap step, not the build.
 
 What the failure leaves behind — verify all of it before deciding anything:
 
@@ -24,8 +24,8 @@ Note that the Gateway bundles `ENGINE_BUNDLED_SOURCES`, which includes `frontend
 
 2026-08-16 (later): a Gateway deploy from this Client PC with `ARCRHO_DEPLOY_ROOT="E:\ArcRho Server"` (the mapped letter, not the UNC form) swapped cleanly on the first try — the script still reported the deploy root as `\NE7SASWPN02\E\ArcRho Server` and left the relaunch to the server Orchestrator; heartbeat reappeared ~2 min after `Build finished`.
 
-**Superseded 2026-08-16 (later the same day):** `data-engine/src/build_runtime.py` now owns the deploy for every
-`build_exe.py` (`stage_deploy` + `swap_deploy`; see `data-engine/architectures.md` "Component build deployment").
+**Superseded 2026-08-16 (later the same day):** `server-components/src/build_runtime.py` now owns the deploy for every
+`build_exe.py` (`stage_deploy` + `swap_deploy`; see `server-components/architectures.md` "Component build deployment").
 The build is robocopy-mirrored (`/MIR /MT:32`) into a persistent `apps\.<App Name>.slot` *while the component is
 still running*, using a `.arcrho-deploy-manifest.json` inside the folder to restore deployed timestamps on
 byte-identical files so only changed files transfer; the stopped window is three renames (live→`.prev`,

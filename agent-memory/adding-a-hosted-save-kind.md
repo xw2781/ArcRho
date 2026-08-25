@@ -21,7 +21,7 @@ two edits plus a rebuild:
 3. `frontend/app_server/api/<x>_router.py` — replace the direct service call with
    `engine_hosted_save_service.run_hosted_save(kind, project, reserving_class, **projection)`, where
    the projection is `{"args": [...], "kwargs": {...}}` shared with the roots resolver.
-4. `python data-engine/deploy.py` — an edit under `frontend/app_server/` or `python-api/src/` makes
+4. `python server-components/deploy.py` — an edit under `frontend/app_server/` or `python-api/src/` makes
    bridge, engine **and** gateway stale.
 
 Notes that cost time to rediscover:

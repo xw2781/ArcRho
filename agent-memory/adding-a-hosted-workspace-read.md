@@ -18,7 +18,7 @@ Moving a page's load off SMB onto the Gateway is four edits plus a Gateway rebui
    contract's arg names exactly; a mismatch only fails on the Gateway, never locally.
 3. `frontend/app_server/api/<x>_router.py` — `workspace_read_client.run_workspace_read(kind, kwargs,
    local=lambda: service(...))`. Register in `app_server/api/__init__.py` **and** `app_server/main.py`.
-4. Rebuild the Gateway (`data-engine/src/arcrho_gateway/build_exe.py`). Its `--hidden-import` list and
+4. Rebuild the Gateway (`server-components/src/arcrho_gateway/build_exe.py`). Its `--hidden-import` list and
    its pre-build "Validating canonical workspace-read dependencies" probe are both generated from
    `WORKSPACE_READ_KINDS`, so a new module is picked up with no build-script edit.
 
@@ -27,7 +27,7 @@ Notes that cost time to rediscover:
   depth (nested `sidecar.path`, a new `method_path`) is rebased onto the client's root for free.
 - Verify without the UI: `GET http://<server>:28767/api/capabilities` lists `workspace_read_kinds`;
   then call `workspace_read_client.run_workspace_read(...)` from a repo-rooted Python 3.10 shell with
-  `sys.path` = `['frontend', 'python-api/src', 'data-engine/src']` and read the transport back out of
+  `sys.path` = `['frontend', 'python-api/src', 'server-components/src']` and read the transport back out of
   `%LOCALAPPDATA%\ArcRho\logs\client_read_latency.jsonl` (`transport: http_gateway|smb`, `remote_ms`).
 - A read whose identity comes from the browser (a method type picking a filename prefix) must be
   allowlisted in the service. The read runs on the server host under the caller's identity, so an

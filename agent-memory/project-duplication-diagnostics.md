@@ -11,7 +11,7 @@ metadata:
 Project-duplication failures surface to the UI as "The ArcRho Server filesystem
 could not complete project duplication." That string is deliberate: any
 `OSError`/`shutil.Error` is redacted in `_safe_status_error`
-(`data-engine/src/arcrho_engine/project_duplication.py`) so shared status JSON
+(`server-components/src/arcrho_engine/project_duplication.py`) so shared status JSON
 stays location-independent. The Engine exe is built `--noconsole` with no
 logging, so `print()` diagnostics are lost on deployed machines.
 
