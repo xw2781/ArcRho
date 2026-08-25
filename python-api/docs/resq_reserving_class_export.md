@@ -160,7 +160,7 @@ Architecture:
     variant (a new `ExportResQReservingClass` Bridge function mirroring the
     import request/status contract) — not built yet.
 22. The DFM selection-sync logic intentionally mirrors the ArcRho Bridge
-    `SyncDFM` implementation (`data-engine/src/arcrho_bridge/resq_client.py`).
+    `SyncDFM` implementation (`server-components/src/arcrho_bridge/resq_client.py`).
     If the Bridge sync rules change, the macro must follow; consolidating both
     behind one shared module is open work (the macro cannot import the Bridge
     package today).

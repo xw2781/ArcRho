@@ -19,7 +19,7 @@ from arcrho_api import bridge_liveness  # noqa: E402
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[2]
-    / "data-engine"
+    / "server-components"
     / "src"
     / "arcrho_bridge"
     / "resq_reserving_class_import_contract.json"

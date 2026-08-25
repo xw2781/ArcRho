@@ -55,7 +55,7 @@ MACRO_VERSION = "1.2.1"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 REVIEW_POLL_SECONDS = 0.5
 
-# Pinned to data-engine/src/arcrho_bridge/resq_reserving_class_sync_contract.json
+# Pinned to server-components/src/arcrho_bridge/resq_reserving_class_sync_contract.json
 # and, for the shared worker/status facts that contract deliberately does not
 # restate, to resq_reserving_class_import_contract.json. A macro cannot import
 # the Bridge, so a test asserts this adapter still matches both files. The

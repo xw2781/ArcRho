@@ -16,7 +16,7 @@ credentials: SQL Server access uses the caller's Windows identity.
 
 This module is the single owner of the folder/file names, the JSON schema, the
 normalization rules, and the staleness rule. Consumers must import from here
-rather than rebuilding any of it. `data-engine` cannot import this package from
+rather than rebuilding any of it. The Engine cannot import this package from
 its frozen bundle, so it mirrors the two path constants locally and
 `frontend/tests/test_source_table_contract.py` fails when the mirror drifts.
 """

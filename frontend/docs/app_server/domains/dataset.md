@@ -4,7 +4,7 @@
 <!-- MANUAL:BEGIN -->
 Dataset retrieval/patch domain for in-memory dataset instances.
 Also handles reserving-class dataset file discovery and sidecar metadata, including the only persisted dataset/method Notes field.
-See [`data-engine/docs/dataset-scenarios.md`](../../../../data-engine/docs/dataset-scenarios.md) for the source-kind scenario matrix, editability rules, and cache rebuild behavior.
+See [`server-components/docs/dataset-scenarios.md`](../../../../server-components/docs/dataset-scenarios.md) for the source-kind scenario matrix, editability rules, and cache rebuild behavior.
 <!-- MANUAL:END -->
 
 ## Entry Points

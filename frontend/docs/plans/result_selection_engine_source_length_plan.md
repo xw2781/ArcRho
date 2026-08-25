@@ -81,11 +81,11 @@ for this specific RS.
 The engine already supports vector generation at an arbitrary period length; only the
 frontend HTTP route is missing.
 
-- Function aliases (`data-engine/src/utils.py:225-230`):
+- Function aliases (`server-components/src/utils.py:225-230`):
   `ArcRhoTri → ADASTri`, `ArcRhoVec → ADASVec`.
-- Both dispatch to `UDF_ADASTri(arg)` (`data-engine/src/arcrho_engine/main.py:115-116`).
+- Both dispatch to `UDF_ADASTri(arg)` (`server-components/src/arcrho_engine/main.py:115-116`).
 - Vector mode is detected by `is_vector_function(arg['Function'])`
-  (`data-engine/src/arcrho_engine/data_processing.py:877-878`); the engine builds the full
+  (`server-components/src/arcrho_engine/data_processing.py:877-878`); the engine builds the full
   matrix at the requested length and returns the first column for vectors.
 - The VBA `ArcRhoVec` maps a single `PeriodLength` to **both** `OriginLength` and
   `DevelopmentLength` (`excel-addin/src_vba/UDF_ArcRho.bas:190-217`).

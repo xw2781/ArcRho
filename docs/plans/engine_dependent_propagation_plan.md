@@ -144,7 +144,7 @@ marks the drained requests' statuses as completed by the merged run (status
 gains a `merged_into: <request_id>` field). Requests arriving mid-run queue
 normally and run next; the lease serializes them.
 
-## Engine Changes (`data-engine/src/arcrho_engine/`)
+## Engine Changes (`server-components/src/arcrho_engine/`)
 
 - `requirements.txt`: add `fastapi` and `pydantic` (already proven in the Bridge
   bundle for the same reason — `app_server` services raise `HTTPException`).
@@ -244,7 +244,7 @@ starts its own cascade.
    page, are not watched.)*
 3. Each phase ends with the standard docs/index/release-fragment updates. Note
    the Bridge bundles `frontend/app_server`, so phase 1's app-server changes
-   require a Bridge rebuild (`data-engine/src/arcrho_bridge/build_exe.py`) even
+   require a Bridge rebuild (`server-components/src/arcrho_bridge/build_exe.py`) even
    though the Bridge gains no feature.
 
 ## Testing

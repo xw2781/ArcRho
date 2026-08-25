@@ -24,8 +24,8 @@ The authorization is per component. Stopping one never authorizes stopping anoth
 | **Engine** | `arcrho_engine/bundled_sources.py` — `ENGINE_BUNDLED_SOURCES`, plus `build_exe.py`'s `--paths` and hidden imports | Every pending calculation, dependent-propagation, and project-duplication job pauses until instances return | Fresh heartbeats under `runtime\instances\arcrho_engine\`; if the Orchestrator is not running, start `apps\ArcRho Engine\ArcRho Engine.exe` manually |
 | **Gateway** | `arcrho_gateway/build_exe.py` — its `--paths` and `--hidden-import` list (it bundles `ENGINE_BUNDLED_SOURCES`) | Hosted saves fail for enrolled users; a save in flight during the swap must be retried | Fresh heartbeat under `runtime\instances\arcrho_gateway\` and `GET <client_url>/api/health` → `{"ok": true}` |
 | **Orchestrator** | `arcrho_orchestrator/build_exe.py` — its imports, PyInstaller paths, and deployment logic | Component replenishment pauses; Engine, Bridge, Gateway, and ResQ keep running | Fresh heartbeat under `runtime\instances\arcrho_orchestrator\`. When the task changed its supervision of another component, verify that component's readiness signal too |
-| **Admin Control** | `data-engine/src/arcrho_admin/` | Local administration UI is unavailable | `GET http://127.0.0.1:28766/api/health` → `{"ok": true}` and the process is running |
-| **Launcher** | `data-engine/src/arcrho_launcher/` | Nothing running is affected; it owns no runtime instance | Deployed executable is stamped with the new build |
+| **Admin Control** | `server-components/src/arcrho_admin/` | Local administration UI is unavailable | `GET http://127.0.0.1:28766/api/health` → `{"ok": true}` and the process is running |
+| **Launcher** | `server-components/src/arcrho_launcher/` | Nothing running is affected; it owns no runtime instance | Deployed executable is stamped with the new build |
 
 An Orchestrator deploy relaunches at least one Orchestrator. Other users' per-session Orchestrators return through their normal Launcher/login lifecycle, and their already-running Engine, Bridge, and Gateway processes are untouched.
 

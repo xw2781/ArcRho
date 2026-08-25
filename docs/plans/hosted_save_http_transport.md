@@ -47,7 +47,7 @@ upgrade degrades the transport instead of failing the save.
   An existing file is authoritative, including `enabled: false`; invalid
   enabled configuration fails explicitly and never silently falls back.
 - Initial server setup uses
-  `py -3.10 data-engine/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`.
+  `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`.
   The command records the canonical client URL, updates the server registry,
   and installs the current user's local credential without printing the
   secret. Other users are enrolled automatically by ArcRho and do not run the

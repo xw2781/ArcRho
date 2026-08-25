@@ -133,8 +133,8 @@ Owners:
 
 - `python-api/migration/resq_data_migration.py:192,233-245`
 - `python-api/migration/resq_migration/dfm.py:638-679`
-- `data-engine/src/arcrho_bridge/bundled_sources.py:59-67`
-- `data-engine/src/arcrho_bridge/build_exe.py:163-169`
+- `server-components/src/arcrho_bridge/bundled_sources.py:59-67`
+- `server-components/src/arcrho_bridge/build_exe.py:163-169`
 
 The migration `_debug_log` function appends one JSON object per line to
 `migration\logs\resq_data_migration_debug.log` and never rotates it. DFM export
@@ -149,7 +149,7 @@ application data, and the deployed file remains the live append target.
 
 ### 5. Admin Control duplicates append-only events
 
-Owner: `data-engine/src/arcrho_admin/main.py:12-23,123-124,197-225,281-299`.
+Owner: `server-components/src/arcrho_admin/main.py:12-23,123-124,197-225,281-299`.
 
 Admin Control appends every event to both its deployed application directory
 and `E:\ArcRho Server\runtime\logs\arcrho_admin.log`. Neither destination has
@@ -165,7 +165,7 @@ remain immutable.
 Owners include:
 
 - `python-api/src/arcrho_dependent_propagation_contract.py:18-20`
-- `data-engine/src/arcrho_bridge/main.py:453-559,641-727`
+- `server-components/src/arcrho_bridge/main.py:453-559,641-727`
 - The canonical project-duplication request/status contract.
 
 Validated terminal dependent-propagation statuses intentionally have no

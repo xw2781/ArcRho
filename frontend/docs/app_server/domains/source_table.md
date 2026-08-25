@@ -55,7 +55,7 @@ Server/database pairs that connect successfully are recorded in a **server-share
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - `python-api/src/arcrho_api/source_table_contract.py` is the canonical owner of the folder/file names, the `source_import.json` schema, the normalization rules, and the CSV staleness rule. `app_server/config.py` delegates its path helpers to it.
-- `data-engine` ships as its own frozen bundle and cannot import `arcrho_api`, so `arcrho_engine/data_processing.py` mirrors `SOURCE_IMPORT_DIR` and `MASTER_TABLE_FILE` locally. `frontend/tests/test_source_table_contract.py` fails when the mirror drifts, and also asserts the engine resolves the master path without consulting `table_path`.
+- The Engine ships as its own frozen bundle and cannot import `arcrho_api`, so `arcrho_engine/data_processing.py` mirrors `SOURCE_IMPORT_DIR` and `MASTER_TABLE_FILE` locally. `frontend/tests/test_source_table_contract.py` fails when the mirror drifts, and also asserts the engine resolves the master path without consulting `table_path`.
 - Requires `pyodbc` plus a Microsoft ODBC Driver for SQL Server (18, 17, or a Native Client fallback) on the client PC. Both are optional at import time: a missing driver answers `503` with an explicit message rather than failing at startup.
 <!-- MANUAL:END -->
 

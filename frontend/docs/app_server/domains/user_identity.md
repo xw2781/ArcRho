@@ -20,7 +20,7 @@ Resolve the current Windows login to the display name used by the ArcRho Home br
 - `app_server/config.py` - Canonical workspace-root and username-index path resolution.
 - `app_server/services/dataset_service.py`, `calculated_dataset_service.py`, `result_selection_service.py`, `dfm_service.py`, `bornhuetter_ferguson_service.py`, `cape_cod_service.py`, `bootstrap_service.py`, `arcrho_runtime_service.py`, `audit_service.py` - Writers that stamp the resolved display name onto persisted metadata.
 - `app_server/services/engine_hosted_save_service.py`, `dependent_propagation_service.py` - Send the submitting user with the request they publish to ArcRho Engine.
-- `data-engine/src/arcrho_engine/save_jobs.py`, `dependent_propagation.py` - Bind `acting_identity(...)` around the work they run on the server host.
+- `server-components/src/arcrho_engine/save_jobs.py`, `dependent_propagation.py` - Bind `acting_identity(...)` around the work they run on the server host.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

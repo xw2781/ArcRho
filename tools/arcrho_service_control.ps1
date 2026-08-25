@@ -195,7 +195,7 @@ switch ($Action) {
     }
 
     'listener-start' {
-        $launcher = Join-Path $ListenerRepo 'data-engine\build_manager.bat'
+        $launcher = Join-Path $ListenerRepo 'server-components\build_manager.bat'
         if (-not (Test-Path $launcher)) {
             Write-Error ("Not found: {0}" -f $launcher)
             exit 1

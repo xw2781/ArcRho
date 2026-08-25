@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 
-# Pinned to data-engine/src/arcrho_bridge/resq_reserving_class_import_contract.json
+# Pinned to server-components/src/arcrho_bridge/resq_reserving_class_import_contract.json
 # by the macro tests; the Bridge cannot be imported from here.
 BRIDGE_WORKER_DIR = Path("runtime") / "instances" / "arcrho_bridge_worker"
 BRIDGE_WORKER_ROLE = "bridge_worker"

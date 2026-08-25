@@ -4,7 +4,7 @@
 The host process cannot import Python, so ``electron/persisted_json_text.js``
 keeps a mirror for the files the host writes itself. A mirror is only safe
 while it is pinned, so this renders the same payloads through both and
-compares the text byte for byte -- the same check ``data-engine/tests/
+compares the text byte for byte -- the same check ``server-components/tests/
 test_bridge_json_parity.py`` applies to the frozen Bridge's copy.
 
 Numbers are limited to integers and short decimals on purpose. JavaScript has

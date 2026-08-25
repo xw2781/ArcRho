@@ -152,7 +152,7 @@ requires explicit per-session permission (root `AGENTS.md`, Agent Project Data A
 
 The same-named ResQ project is reachable read-only through
 `win32com.client.Dispatch("ResQ3Automation.ResQApplication")`
-([resq_client.py:50](../../../data-engine/src/arcrho_bridge/resq_client.py#L50)) using the
+([resq_client.py:50](../../../server-components/src/arcrho_bridge/resq_client.py#L50)) using the
 `arcrho_bridge` virtual environment. Comparing ArcRho method output against ResQ for the same
 reserving class is the strongest available regression oracle, but COM is slow and prone to
 transient failure. It is therefore an **opt-in Layer A extension** (`A8`), sampled to a handful of

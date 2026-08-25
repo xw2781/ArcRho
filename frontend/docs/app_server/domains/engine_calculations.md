@@ -25,9 +25,9 @@ Gateway side: `POST /api/engine-calculations` (`arcrho_engine_calculation_contra
 - `app_server/services/engine_calculation_service.py` - `publish_and_wait` (the exchange itself, identical on both hosts), `execute_hosted_engine_calculation` (the server-side entry: derives the output path with `set_data_path_like_vba` — or the Temporary view path for `OutputVariant: temporary_view` — then publishes and waits, or delegates a dataset operation to `arcrho_runtime_service`), `run_engine_calculation` (client transport for one exchange: capability probe, request signing, result-visibility wait, diagnostics record), and `run_hosted_dataset_operation` (client transport for a dataset run/precheck: same selection, response returned verbatim with rebased paths, dataset handle registration, `504` after acceptance).
 - `app_server/api/arcrho_router.py` - The `/arcrho/tri*` and `/arcrho/vec*` routes build the pairs and options once and hand them to `run_hosted_dataset_operation` with the local service call as the fallback.
 - `app_server/services/workspace_read_client.py` - `post_signed_json`, `GatewayTransportFailure`, `cached_gateway_capabilities`, and `rebase_workspace_paths`, shared with workspace reads.
-- `data-engine/src/arcrho_gateway/engine_calculations.py` - Server-side executor: authenticates, validates against the contract, imports the canonical executor named by `EXECUTOR_MODULE` / `EXECUTOR_FUNCTION`, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
-- `data-engine/src/arcrho_gateway/main.py` - Route dispatch (shared with workspace reads) and the capability field.
-- `data-engine/src/arcrho_gateway/build_exe.py` - Bundles the contract, the executor module, and `watchdog` so the server-side wait is a file-system event.
+- `server-components/src/arcrho_gateway/engine_calculations.py` - Server-side executor: authenticates, validates against the contract, imports the canonical executor named by `EXECUTOR_MODULE` / `EXECUTOR_FUNCTION`, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
+- `server-components/src/arcrho_gateway/main.py` - Route dispatch (shared with workspace reads) and the capability field.
+- `server-components/src/arcrho_gateway/build_exe.py` - Bundles the contract, the executor module, and `watchdog` so the server-side wait is a file-system event.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

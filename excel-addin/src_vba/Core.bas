@@ -922,7 +922,7 @@ Private Sub WriteUtf8TextFile(ByVal filePath As String, ByVal text As String)
     stream.Close
 End Sub
 
-' Keep this mapping in sync with data-engine/docs/filename-escaping-rules.md.
+' Keep this mapping in sync with server-components/docs/filename-escaping-rules.md.
 Private Function EncodeFileNameSegment(ByVal value As String) As String
     EncodeFileNameSegment = value
     EncodeFileNameSegment = Replace(EncodeFileNameSegment, "\", "_%5C_")

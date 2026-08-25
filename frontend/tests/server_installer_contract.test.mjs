@@ -12,11 +12,11 @@ const detector = fs.readFileSync(
   "utf8"
 );
 const serverInstaller = fs.readFileSync(
-  new URL("../../data-engine/server-installer/server_installer.nsi", import.meta.url),
+  new URL("../../server-components/server-installer/server_installer.nsi", import.meta.url),
   "utf8"
 );
 const releaseBuilder = fs.readFileSync(
-  new URL("../../data-engine/server-installer/build_release.py", import.meta.url),
+  new URL("../../server-components/server-installer/build_release.py", import.meta.url),
   "utf8"
 );
 

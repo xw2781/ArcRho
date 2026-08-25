@@ -3,8 +3,8 @@
   "typeCheckingMode": "basic",
   "extraPaths": [
     "frontend",
-    "data-engine",
-    "data-engine/src",
+    "server-components",
+    "server-components/src",
     "python-api/src",
     "python-api/migration"
   ],
@@ -12,7 +12,7 @@
     "**/node_modules",
     "**/__pycache__",
     "**/.*",
-    "data-engine/builds",
+    "server-components/builds",
     "frontend/dist",
     "frontend/python_dist",
     "frontend/python_build"

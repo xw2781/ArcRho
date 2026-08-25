@@ -12,8 +12,8 @@ from fastapi import HTTPException
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 PYTHON_API_SRC = REPO_ROOT / "python-api" / "src"
-DATA_ENGINE_SRC = REPO_ROOT / "data-engine" / "src"
-for path in (FRONTEND_ROOT, PYTHON_API_SRC, DATA_ENGINE_SRC):
+SERVER_COMPONENTS_SRC = REPO_ROOT / "server-components" / "src"
+for path in (FRONTEND_ROOT, PYTHON_API_SRC, SERVER_COMPONENTS_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

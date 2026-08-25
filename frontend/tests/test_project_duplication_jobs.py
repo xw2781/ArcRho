@@ -14,11 +14,11 @@ from fastapi import HTTPException, status
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
-DATA_ENGINE_SRC = REPOSITORY_ROOT / "data-engine" / "src"
+SERVER_COMPONENTS_SRC = REPOSITORY_ROOT / "server-components" / "src"
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
-if str(DATA_ENGINE_SRC) not in sys.path:
-    sys.path.insert(0, str(DATA_ENGINE_SRC))
+if str(SERVER_COMPONENTS_SRC) not in sys.path:
+    sys.path.insert(0, str(SERVER_COMPONENTS_SRC))
 
 from app_server import config
 from arcrho_project_duplication_contract import (

@@ -10,7 +10,7 @@ Phase 1 reads landed as a generic transport rather than one hand-written
 endpoint per read: `python-api/src/arcrho_workspace_read_contract.py` holds
 the `WORKSPACE_READ_KINDS` registry (kind → `app_server.services` function and
 its keyword arguments), the Gateway executes a registered kind in-process
-against local disk (`POST /api/workspace-reads`, `data-engine/src/arcrho_gateway/workspace_reads.py`,
+against local disk (`POST /api/workspace-reads`, `server-components/src/arcrho_gateway/workspace_reads.py`,
 now bundling `frontend/app_server` like the Engine), and the client routes
 select the transport per request through
 `frontend/app_server/services/workspace_read_client.py`, rebasing server paths
@@ -26,7 +26,7 @@ Phase 2 engine calculations landed 2026-08-16 as the same shape:
 `ENGINE_CALCULATION_KINDS` registry (Engine function → exact request-file keys,
 server-owned keys a client may never send, allowed output variants), the
 Gateway serves `POST /api/engine-calculations`
-(`data-engine/src/arcrho_gateway/engine_calculations.py`) by running the
+(`server-components/src/arcrho_gateway/engine_calculations.py`) by running the
 canonical `app_server` publish-and-wait exchange against the server-local
 `requests` root — the request file and CSV are unchanged, so the Engine handler
 is untouched and Excel/`arcrho_api`/migration keep publishing over SMB — and
@@ -68,7 +68,7 @@ No legacy name is accepted anywhere. What moved:
 | Surface | Now |
 | --- | --- |
 | Role key, `COMPONENT_ALIASES` | `gateway` |
-| Python package | `data-engine/src/arcrho_gateway/` |
+| Python package | `server-components/src/arcrho_gateway/` |
 | Deployed app folder | `apps/ArcRho Gateway/` |
 | Heartbeat folder | `runtime/instances/arcrho_gateway/` |
 | Config namespace | `apps.gateway.*` |
@@ -121,7 +121,7 @@ file-protocol consumers keep working on SMB unchanged.
 ## What the Client PC Does Over SMB Today
 
 The pilot gateway's complete route table is `/api/health`, `/api/capabilities`,
-and `POST /api/hosted-saves` (`data-engine/src/arcrho_gateway/main.py`).
+and `POST /api/hosted-saves` (`server-components/src/arcrho_gateway/main.py`).
 Everything below is direct filesystem I/O from the app server on the Client PC.
 
 ### Reserving-class contents (PI page, `GET /datasets/cached`)

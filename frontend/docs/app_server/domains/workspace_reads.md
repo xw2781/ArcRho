@@ -33,9 +33,9 @@ Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read
 - `python-api/src/arcrho_workspace_read_contract.py` - The canonical `WORKSPACE_READ_KINDS` registry (kind → service module, function, required/optional keyword arguments), request validation, route path, timeout, and the `X-ArcRho-Workspace-Root` response header name.
 - `app_server/services/workspace_read_client.py` - Client transport selection, capability probe cache (`cached_gateway_capabilities`), request signing and posting (`post_signed_json`, `GatewayTransportFailure` with its `accepted` flag), server-root path rebasing, local fallback, and the read-latency record. The Engine calculation transport ([`engine_calculations`](engine_calculations.md)) reuses these helpers.
 - `app_server/services/client_save_latency_log_service.py` - `append_client_read_latency` writes `%LOCALAPPDATA%\ArcRho\logs\client_read_latency.jsonl` (rotated like the save log).
-- `data-engine/src/arcrho_gateway/workspace_reads.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
-- `data-engine/src/arcrho_gateway/main.py` - Route dispatch and the capability field.
-- `data-engine/src/arcrho_gateway/build_exe.py` - Bundles `ENGINE_BUNDLED_SOURCES` and every registered service module into the gateway executable.
+- `server-components/src/arcrho_gateway/workspace_reads.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status.
+- `server-components/src/arcrho_gateway/main.py` - Route dispatch and the capability field.
+- `server-components/src/arcrho_gateway/build_exe.py` - Bundles `ENGINE_BUNDLED_SOURCES` and every registered service module into the gateway executable.
 - The routers listed above - Each passes only the registry's arguments and supplies its local service call.
 <!-- MANUAL:END -->
 

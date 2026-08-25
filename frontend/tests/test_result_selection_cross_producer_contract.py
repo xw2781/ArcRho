@@ -12,8 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 MIGRATION_ROOT = REPO_ROOT / "python-api" / "migration"
 PYTHON_API_ROOT = REPO_ROOT / "python-api" / "src"
-DATA_ENGINE_ROOT = REPO_ROOT / "data-engine" / "src"
-for path in (FRONTEND_ROOT, MIGRATION_ROOT, PYTHON_API_ROOT, DATA_ENGINE_ROOT):
+SERVER_COMPONENTS_ROOT = REPO_ROOT / "server-components" / "src"
+for path in (FRONTEND_ROOT, MIGRATION_ROOT, PYTHON_API_ROOT, SERVER_COMPONENTS_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 

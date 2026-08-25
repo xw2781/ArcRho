@@ -3,7 +3,7 @@
     "deny": [
       "Read(frontend/node_modules/**)",
       "Read(frontend/dist/**)",
-      "Read(data-engine/venvs/**)",
+      "Read(server-components/venvs/**)",
       "Read(.git/**)"
     ]
   },

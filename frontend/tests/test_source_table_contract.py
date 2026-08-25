@@ -22,7 +22,7 @@ from app_server.services import mssql_odbc, source_table_service
 from arcrho_api import source_table_contract
 
 ENGINE_DATA_PROCESSING = (
-    REPOSITORY_ROOT / "data-engine" / "src" / "arcrho_engine" / "data_processing.py"
+    REPOSITORY_ROOT / "server-components" / "src" / "arcrho_engine" / "data_processing.py"
 )
 
 

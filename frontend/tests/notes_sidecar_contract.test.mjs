@@ -41,7 +41,7 @@ test("dataset sidecars are the only persisted notes owner", async () => {
     "python-api/src/arcrho_api/cape_cod_contract.py",
     "python-api/src/arcrho_api/bootstrap_contract.py",
     "python-api/src/arcrho_api/dfm.py",
-    "data-engine/src/arcrho_bridge/resq_client.py",
+    "server-components/src/arcrho_bridge/resq_client.py",
     "python-api/migration/resq_migration/dfm.py",
     "python-api/migration/resq_migration/extractors.py",
   ].map(read));

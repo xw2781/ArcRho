@@ -1062,8 +1062,8 @@ should use only the new rule system after migration.
 
 Likely implementation areas include:
 
-- `data-engine/src/arcrho_engine/data_processing.py`
-- `data-engine/src/arcrho_engine/general_utils.py`
+- `server-components/src/arcrho_engine/data_processing.py`
+- `server-components/src/arcrho_engine/general_utils.py`
 - New data-engine tests
 - `frontend/app_server/config.py`
 - New app-server schema, service, and router for data-processing rules

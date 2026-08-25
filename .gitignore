@@ -29,8 +29,8 @@ build/
 !frontend/build/
 !frontend/build/**
 frontend/build/generated/
-data-engine/builds/
-data-engine/server-installer/out/
+server-components/builds/
+server-components/server-installer/out/
 dist/
 python_build/
 python_dist/
@@ -71,9 +71,9 @@ runtime/
 .restart_electron
 .shutdown_electron
 
-# ArcRho data-engine runtime instance state
-data-engine/src/arcrho_engine/instances/
-data-engine/src/arcrho_orchestrator/instances/
+# ArcRho server component runtime instance state
+server-components/src/arcrho_engine/instances/
+server-components/src/arcrho_orchestrator/instances/
 
 # Editor and agent-local state
 # .claude/settings.json is tracked: it carries the shared agent hooks, and a

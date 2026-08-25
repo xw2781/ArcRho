@@ -38,9 +38,9 @@ Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_
 <!-- MANUAL:BEGIN -->
 - `python-api/src/arcrho_workspace_mutation_contract.py` - The canonical `WORKSPACE_MUTATION_KINDS` registry (kind → service module, function, required/optional keyword arguments, and which of them are name lists), request validation, route path, and timeout.
 - `app_server/services/workspace_mutation_client.py` - Client transport selection and the no-fallback-after-acceptance rule. It reuses the read transport's signing, capability probe cache, `post_signed_json`, and path rebasing rather than repeating them.
-- `data-engine/src/arcrho_gateway/workspace_mutations.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status while preserving a structured refusal detail.
-- `data-engine/src/arcrho_gateway/main.py` - Route dispatch and the capability field; the handler is the one `_handle_hosted_execution` shared with reads and calculations.
-- `data-engine/src/arcrho_gateway/build_exe.py` - Registered mutation service modules join the hidden-import list and the pre-build import probe automatically.
+- `server-components/src/arcrho_gateway/workspace_mutations.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status while preserving a structured refusal detail.
+- `server-components/src/arcrho_gateway/main.py` - Route dispatch and the capability field; the handler is the one `_handle_hosted_execution` shared with reads and calculations.
+- `server-components/src/arcrho_gateway/build_exe.py` - Registered mutation service modules join the hidden-import list and the pre-build import probe automatically.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

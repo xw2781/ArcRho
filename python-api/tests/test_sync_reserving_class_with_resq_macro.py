@@ -25,11 +25,11 @@ _MACRO_PATH = (
     / "macros"
     / "sync_reserving_class_with_resq.py"
 )
-_DATA_ENGINE_BRIDGE_DIR = (
-    Path(__file__).resolve().parents[2] / "data-engine" / "src" / "arcrho_bridge"
+_SERVER_COMPONENTS_BRIDGE_DIR = (
+    Path(__file__).resolve().parents[2] / "server-components" / "src" / "arcrho_bridge"
 )
-_SYNC_CONTRACT_PATH = _DATA_ENGINE_BRIDGE_DIR / "resq_reserving_class_sync_contract.json"
-_IMPORT_CONTRACT_PATH = _DATA_ENGINE_BRIDGE_DIR / "resq_reserving_class_import_contract.json"
+_SYNC_CONTRACT_PATH = _SERVER_COMPONENTS_BRIDGE_DIR / "resq_reserving_class_sync_contract.json"
+_IMPORT_CONTRACT_PATH = _SERVER_COMPONENTS_BRIDGE_DIR / "resq_reserving_class_import_contract.json"
 _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC_DIR) not in sys.path:

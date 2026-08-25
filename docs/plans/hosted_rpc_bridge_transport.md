@@ -243,7 +243,7 @@ No router registration changes are needed — both routers are already wired int
 
 ### 6. Tests
 
-12. `data-engine/tests/test_workspace_mutations.py` and
+12. `server-components/tests/test_workspace_mutations.py` and
     `test_workspace_reads.py` — the registry tests
     (`test_every_registered_kind_names_a_real_service_function`,
     `test_advertised_kinds_are_the_registry`) cover the new kinds for free once
@@ -286,7 +286,7 @@ No router registration changes are needed — both routers are already wired int
 
 ### 8. Deploy and measure
 
-22. Rebuild the Gateway through `python data-engine/deploy.py gateway`, per the
+22. Rebuild the Gateway through `python server-components/deploy.py gateway`, per the
     deployment authorization in `AGENTS.md` — the server-side Build Listener
     does the work; check its heartbeat `Repository` first.
 23. Verify `GET http://NE7SASWPN02.PRCINS.NET:28767/api/capabilities` lists the
