@@ -7,17 +7,19 @@ import json
 import os
 import re
 import shutil
-import stat as stat_module
+# Nothing here uses the alias directly: the reparse-point tests reach the
+# Windows file-attribute constants through this module's attribute, so the
+# import has to stay put.
+import stat as stat_module  # pyright: ignore[reportUnusedImport]
 import time
-import traceback
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any, Callable, Mapping
 
 from arcrho_engine_job_lease import (
+    EngineJobLease,
     acquire_engine_job_lease,
     engine_job_lease_owner,
     refresh_engine_job_lease,
@@ -94,11 +96,8 @@ class _TargetLock:
 
 
 @dataclass(frozen=True)
-class _RequestLease:
-    path: Path
+class _RequestLease(EngineJobLease):
     request_id: str
-    owner_token: str
-    heartbeat_failed: Event
 
 
 def _progress(stage: str, completed: int, total: int, label: str) -> Progress:
@@ -356,10 +355,10 @@ def _acquire_request_lease(
     if lease is None:
         return None
     return _RequestLease(
-        lease.path,
-        request_id,
-        lease.owner_token,
-        lease.heartbeat_failed,
+        path=lease.path,
+        owner_token=lease.owner_token,
+        heartbeat_failed=lease.heartbeat_failed,
+        request_id=request_id,
     )
 
 
