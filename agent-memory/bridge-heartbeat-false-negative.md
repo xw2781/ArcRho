@@ -25,3 +25,11 @@ claims "existing reserving-class data was left unchanged", which was false.
 folder mtimes before assuming the Bridge failed; a fix should require several consecutive misses
 (or use the `processing` status file the Bridge touches every second) before giving up, and must
 not claim the data was untouched. Related: [[bridge-restart-after-deploy]].
+
+**Fix landed 2026-08-24:** the rule now lives in `arcrho_api/bridge_liveness.py` (shared by both import
+macros, the sync macro, and the hosted read `bridge_worker_liveness` in
+`frontend/app_server/services/bridge_liveness_service.py`). A live heartbeat or a status file touched
+within 6 s is life; only 30 s of consecutive silent looks (`BRIDGE_SILENCE_LIMIT_SEC`) abandon a wait,
+and the message then says the outcome is unknown. Macros 1.4.0 / 1.3.0 / 1.2.1 are published to the
+shared library; the hosted look only becomes exact once the Gateway is redeployed (until then the
+transport log shows `kind_not_advertised` and the look runs over SMB with the same tolerant rule).
