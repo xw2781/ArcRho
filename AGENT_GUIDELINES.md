@@ -117,6 +117,9 @@ When fixing a bug, remove clearly obsolete code in the touched area. Ask before 
 ## ArcRho JSON Contract Skill
 Use `$arcrho-json-contract` when refining dataset JSON sidecars/sidercars, reserving-class `index.json`, data storage formats, JSON field names or structures, ResQ migration behavior, or `python-api/migration/resq_data_migration.py` output.
 
+## ArcRho Workspace Sync Skill
+Use `$arcrho-sync-workspace` when asked to sync, update, or refresh this clone against the remote, to pull the latest, or when the user says they have switched between the NE7SASWPN02 and L-H2MQ6280FVP workspaces. It fast-forwards unasked only when the clone is clean and purely behind, and it asks before rebasing, merging, or discarding anything that exists only here. It refuses to run in the Build Listener's clone, which resets itself.
+
 ## ArcRho Macro Source
 Treat `python-api/macros` as the source of truth for ArcRho macro files maintained in this repository.
 Follow the macro metadata, versioning, release-note, and backup rules in `python-api/macros/README.md` whenever adding or changing a macro.
