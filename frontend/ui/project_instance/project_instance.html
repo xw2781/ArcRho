@@ -7,7 +7,7 @@
   <title>Project Instance</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance_preferences.css?v=20260824e"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance_preferences.css?v=20260824g"/>
   <link rel="stylesheet" href="/ui/shared/styles/pi_table.css?v=20260819a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
@@ -233,12 +233,10 @@
         <div class="pi-prefs-body">
           <nav class="pi-prefs-nav" id="piPrefsNav" role="tablist" aria-orientation="vertical" aria-label="Preference sections">
             <button class="pi-prefs-nav-item is-active" id="piPrefsNavFormats" type="button" role="tab" aria-selected="true" aria-controls="piPrefsPanelFormats" data-section="formats">
-              <span class="pi-prefs-nav-label">Number Formats</span>
-              <span class="pi-prefs-nav-scope">Shared</span>
+              <span class="pi-prefs-nav-label" data-label="Number Formats"><span>Number Formats</span></span>
             </button>
             <button class="pi-prefs-nav-item" id="piPrefsNavTabs" type="button" role="tab" aria-selected="false" aria-controls="piPrefsPanelTabs" data-section="tabs">
-              <span class="pi-prefs-nav-label">Default Tabs</span>
-              <span class="pi-prefs-nav-scope is-user">Yours</span>
+              <span class="pi-prefs-nav-label" data-label="Default Tabs"><span>Default Tabs</span></span>
             </button>
           </nav>
           <div class="pi-prefs-panels">
@@ -247,6 +245,7 @@
                 <h2 class="pi-prefs-panel-title">Default Number Formats</h2>
                 <p class="pi-prefs-panel-note">Shared by everyone using this ArcRho Server. New datasets take their display format from here.</p>
                 <div class="pi-prefs-path" id="piPrefsFormatsPath"></div>
+                <div class="pi-number-formats-scope" id="piPrefsFormatsScope"></div>
               </div>
               <div class="pi-number-formats-default-row">
                 <label for="piPrefsFormatsDefault">Fallback number format</label>
@@ -266,14 +265,13 @@
                   <thead><tr><th>Dataset Type Name</th><th>Number Format</th><th aria-label="Actions"></th></tr></thead>
                   <tbody id="piPrefsFormatsBody"></tbody>
                 </table>
-                <div class="pi-number-formats-empty" id="piPrefsFormatsEmpty" hidden>No matching overrides.</div>
+                <div class="pi-number-formats-empty" id="piPrefsFormatsEmpty" hidden>No matching dataset types.</div>
               </div>
             </section>
             <section class="pi-prefs-panel" id="piPrefsPanelTabs" role="tabpanel" aria-labelledby="piPrefsNavTabs" tabindex="-1" hidden>
               <div class="pi-prefs-panel-head">
                 <h2 class="pi-prefs-panel-title">Default Tab in Dataset Windows</h2>
-                <p class="pi-prefs-panel-note">Yours alone, and only in this project. Pick the tab each kind of window opens on.</p>
-                <div class="pi-prefs-path" id="piPrefsTabsPath"></div>
+                <p class="pi-prefs-panel-note">Yours alone, and used in every project you open on this PC. Pick the tab each kind of window opens on.</p>
                 <button class="pi-prefs-reset" id="piPrefsTabsReset" type="button">Reset to app defaults</button>
               </div>
               <div class="pi-prefs-tab-list ar-framed-scroll" id="piPrefsTabsList"></div>
@@ -288,6 +286,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260824e"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260824g"></script>
 </body>
 </html>

@@ -19,9 +19,9 @@ test("Project Instance opens one Preferences window from the dataset toolbar", a
   assert.match(html, /id="piPrefsPanelTabs"/);
   assert.match(boot, /installProjectInstancePreferences\(ctx\)/);
   assert.match(boot, /api\.initProjectInstancePreferences\(\)/);
-  // The window's own defaults snapshot is loaded beside the dataset table's,
-  // so a window opened right after boot already knows the user's default tab.
-  assert.match(boot, /api\.loadDefaultWindowTabPreferences\(\)/);
+  // The default tabs are local-user state the page state carries from the
+  // start, so boot has no read of its own to wait for.
+  assert.doesNotMatch(boot, /loadDefaultWindowTabPreferences/);
   assert.match(moduleSource, /export function installProjectInstancePreferences/);
 });
 
@@ -42,14 +42,22 @@ test("The shared number-format section keeps its server-wide contract", async ()
   assert.doesNotMatch(moduleSource, /row\.dataset_name/);
 });
 
-test("The default-tab section writes a complete map to the project-user file", async () => {
-  const moduleSource = await read("ui/project_instance/project_instance_preferences.js");
+test("The default-tab section keeps one local choice used by every project", async () => {
+  const [moduleSource, catalog] = await Promise.all([
+    read("ui/project_instance/project_instance_preferences.js"),
+    read("ui/shared/tabs/window_tab_catalog.js"),
+  ]);
 
-  assert.match(moduleSource, /saveProjectUserPreferences\(projectName, \{ \[DEFAULT_WINDOW_TABS_PREFERENCE_KEY\]: chosen \}\)/);
-  // A partial map would leave a kind on its old value, because the app server
-  // deep-merges the patch onto the stored preferences.
-  assert.match(moduleSource, /const chosen = \{ \.\.\.editor\.tabs\.chosen \};/);
+  // One browser-storage key on this PC, never a file under a project.
+  assert.match(catalog, /export const DEFAULT_WINDOW_TABS_STORAGE_KEY = "arcrho_default_window_tabs";/);
+  assert.match(catalog, /localStorage\?\.setItem\(DEFAULT_WINDOW_TABS_STORAGE_KEY/);
+  // A partial map would leave a kind on an older stored value.
+  assert.match(catalog, /const defaults = normalizeDefaultWindowTabs\(chosen\);/);
+  assert.match(moduleSource, /const chosen = writeDefaultWindowTabs\(editor\.tabs\.chosen\);/);
   assert.match(moduleSource, /state\.defaultWindowTabs = chosen;/);
+  assert.doesNotMatch(moduleSource, /ProjectUserPreferences/);
+  // A save in one project reaches the windows already open on the others.
+  assert.match(moduleSource, /window\.addEventListener\("storage", adoptTabDefaultsFromAnotherWindow\)/);
 });
 
 test("Both scroll surfaces in the window use the shared framed scrollbar", async () => {
@@ -82,7 +90,7 @@ test("Project Instance windows open on the user's default tab", async () => {
   }
   // No opener may hard-code a default tab beside the catalog's.
   assert.doesNotMatch(windows, /options\?\.dfmTab \|\| "ratios"/);
-  assert.match(context, /defaultWindowTabs: appDefaultWindowTabs\(\)/);
+  assert.match(context, /defaultWindowTabs: readDefaultWindowTabs\(\)/);
   // Every kind's app default, in catalog order.
   assert.deepEqual(catalog.match(/appDefaultTab: "(\w+)"/gu), [
     'appDefaultTab: "data"',
@@ -229,4 +237,91 @@ test("Every tabbed page stays blank until its opening tab has rendered", async (
   assert.match(paint, /addEventListener\("error", revealPage\)/u);
   assert.match(paint, /addEventListener\("unhandledrejection", revealPage\)/u);
   assert.match(css, /animation: arcrhoPageHoldRelease 0s linear 12s forwards/u);
+});
+
+test("The number-format table lists the project's dataset types without writing", async () => {
+  const [moduleSource, html, context, boot] = await Promise.all([
+    read("ui/project_instance/project_instance_preferences.js"),
+    read("ui/project_instance/project_instance.html"),
+    read("ui/project_instance/project_instance_context.js"),
+    read("ui/project_instance/project_instance_boot.js"),
+  ]);
+
+  // The list of types comes from Project Settings' Dataset Types, never from a
+  // reserving-class index that only names instances.
+  assert.match(moduleSource, /fetchProjectDatasetTypes\(projectName\)/u);
+  assert.doesNotMatch(moduleSource, /index\.json/u);
+  assert.match(moduleSource, /mergeNumberFormatRows\(\{ overrides, datasetTypeNames \}\)/u);
+  // Listing never writes: the only PUT is the Save path.
+  assert.equal(moduleSource.match(/method: "PUT"/gu)?.length, 1);
+  assert.match(moduleSource, /async function saveNumberFormats\(\) \{\s+const body = numberFormatsPayload\(\);\s+const response = await fetch\(NUMBER_FORMATS_ENDPOINT, \{\s+method: "PUT"/u);
+  // A project type's name is not free text, and a blank format shows the fallback.
+  assert.match(moduleSource, /nameInput\.readOnly = !!row\.in_project;/u);
+  assert.match(moduleSource, /formatInput\.placeholder = row\.in_project \? fallback : "";/u);
+  assert.match(html, /id="piPrefsFormatsScope"/u);
+  assert.match(html, /No matching dataset types\./u);
+  assert.match(context, /piPrefsFormatsScope: document\.getElementById\("piPrefsFormatsScope"\)/u);
+  assert.match(boot, /project_instance_preferences\.js\?v=20260824g/u);
+});
+
+test("Project types on the fallback never become overrides", async () => {
+  const {
+    mergeNumberFormatRows,
+    numberFormatOverridesFromRows,
+    numberFormatOverridesKey,
+    effectiveNumberFormat,
+  } = await import(new URL("ui/project_instance/project_instance_number_format_rows.js", root));
+
+  const overrides = [
+    { dataset_type_name: "Paid Claims", number_format: "0,000.00" },
+    { dataset_type_name: "Legacy Type", number_format: "0.0%" },
+    { dataset_type_name: "paid claims", number_format: "ignored duplicate" },
+  ];
+  const rows = mergeNumberFormatRows({
+    overrides,
+    datasetTypeNames: ["Claim Counts", "Paid Claims", " Claim  Counts ", "Incurred Claims"],
+  });
+
+  // Project order first, each project type once, then the foreign override.
+  assert.deepEqual(rows, [
+    { dataset_type_name: "Claim Counts", number_format: "", in_project: true },
+    { dataset_type_name: "Paid Claims", number_format: "0,000.00", in_project: true },
+    { dataset_type_name: "Incurred Claims", number_format: "", in_project: true },
+    { dataset_type_name: "Legacy Type", number_format: "0.0%", in_project: false },
+  ]);
+
+  // Only the rows with a format of their own reach the shared file.
+  assert.deepEqual(numberFormatOverridesFromRows(rows), [
+    { dataset_type_name: "Paid Claims", number_format: "0,000.00" },
+    { dataset_type_name: "Legacy Type", number_format: "0.0%" },
+  ]);
+  // So a freshly listed project has nothing to save.
+  assert.equal(
+    numberFormatOverridesKey(numberFormatOverridesFromRows(rows)),
+    numberFormatOverridesKey(overrides.slice(0, 2)),
+  );
+  // Reordering rows is not an edit.
+  assert.equal(
+    numberFormatOverridesKey([...overrides.slice(0, 2)].reverse()),
+    numberFormatOverridesKey(overrides.slice(0, 2)),
+  );
+  assert.equal(effectiveNumberFormat(rows[0], "0,000"), "0,000");
+  assert.equal(effectiveNumberFormat(rows[1], "0,000"), "0,000.00");
+
+  // Rows added by hand still have to be complete and unique.
+  assert.throws(
+    () => numberFormatOverridesFromRows([{ dataset_type_name: "", number_format: "0", in_project: false }]),
+    /Override row 1 is incomplete/u,
+  );
+  assert.throws(
+    () => numberFormatOverridesFromRows([{ dataset_type_name: "Other", number_format: "", in_project: false }]),
+    /Override row 1 is incomplete/u,
+  );
+  assert.throws(
+    () => numberFormatOverridesFromRows([
+      { dataset_type_name: "Paid Claims", number_format: "0", in_project: true },
+      { dataset_type_name: "PAID CLAIMS", number_format: "0.0", in_project: false },
+    ]),
+    /Duplicate override: PAID CLAIMS/u,
+  );
 });

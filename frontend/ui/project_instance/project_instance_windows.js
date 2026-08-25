@@ -2,7 +2,7 @@ import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
-import { resolveWindowTab } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+import { resolveWindowTab } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824f";
 
 export function installProjectInstanceWindows(ctx) {
   const { api, els, projectName, state } = ctx;

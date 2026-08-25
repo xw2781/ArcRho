@@ -8,16 +8,16 @@ import {
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260824e";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260824g";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260821a";
-import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824e";
+import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824g";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260821a";
 import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260824c";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260817a";
-import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260824e";
+import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260824f";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260821b";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260824c";
@@ -67,7 +67,7 @@ export async function bootProjectInstance() {
     api.finishPageLoading();
     return;
   }
-  await Promise.all([api.loadDatasetTablePreferences(), api.loadDefaultWindowTabPreferences()]);
+  await api.loadDatasetTablePreferences();
   api.startReservingClassBusyWatch();
   await Promise.all([api.loadPathTree(), api.loadDatasets()]);
   state.projectInstanceBootComplete = true;

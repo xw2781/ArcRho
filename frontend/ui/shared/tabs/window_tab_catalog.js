@@ -109,9 +109,9 @@ export const WINDOW_TAB_KINDS = Object.freeze([
   }),
 ]);
 
-/* Where a user's chosen defaults live inside the project-user preferences file
-   (`projects/<project>/users/<login>/preferences.json`). */
-export const DEFAULT_WINDOW_TABS_PREFERENCE_KEY = "defaultWindowTabs";
+/* Where a user's chosen defaults live. They are local-user state: one choice
+   per Windows account on this PC, used in every project. */
+export const DEFAULT_WINDOW_TABS_STORAGE_KEY = "arcrho_default_window_tabs";
 
 const KIND_BY_KEY = new Map(WINDOW_TAB_KINDS.map((kind) => [kind.key, kind]));
 
@@ -151,11 +151,23 @@ export function normalizeDefaultWindowTabs(stored) {
   return defaults;
 }
 
-export function readDefaultWindowTabs(preferences) {
-  const stored = preferences && typeof preferences === "object"
-    ? preferences[DEFAULT_WINDOW_TABS_PREFERENCE_KEY]
-    : null;
+export function readDefaultWindowTabs() {
+  let stored = null;
+  try {
+    // The stored text is a preference a user can edit by hand.
+    stored = JSON.parse(globalThis.localStorage?.getItem(DEFAULT_WINDOW_TABS_STORAGE_KEY) || "null");
+  } catch {
+    stored = null;
+  }
   return normalizeDefaultWindowTabs(stored);
+}
+
+/* Always a complete map, so a kind left at the app default is written rather
+   than left to an older stored value. Returns what was stored. */
+export function writeDefaultWindowTabs(chosen) {
+  const defaults = normalizeDefaultWindowTabs(chosen);
+  globalThis.localStorage?.setItem(DEFAULT_WINDOW_TABS_STORAGE_KEY, JSON.stringify(defaults));
+  return defaults;
 }
 
 /* One rule for every opener: an explicitly requested tab wins, then the user's

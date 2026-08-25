@@ -6,23 +6,36 @@
      `<workspace_root>/config/dataset_number_formats.json` through
      `/dataset/number-format-defaults`, with the same revision check the
      standalone editor used, so two open windows cannot overwrite each other.
-   - Default Tabs is project-user-specific. It reads and writes
-     `projects/<project>/users/<login>/preferences.json` through
-     `/project-user-preferences`, under the key the shared window tab catalog
-     owns.
+     The table lists every Dataset Type of the open project beside the saved
+     overrides, so a type added in Project Settings is there to pick a format
+     for without typing its name. Listing never writes: a project type left on
+     the fallback is not in the file, and only Save touches it.
+   - Default Tabs is local-user state. It reads and writes browser storage
+     under the key the shared window tab catalog owns, so one Windows account
+     on this PC keeps one choice and every project it opens uses it.
 
    The tab lists and the app defaults come from the catalog, which the pages
    themselves read, so the window can never offer a tab a page does not have. */
 
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import {
-  DEFAULT_WINDOW_TABS_PREFERENCE_KEY,
+  DEFAULT_WINDOW_TABS_STORAGE_KEY,
   WINDOW_TAB_KINDS,
   appDefaultWindowTabs,
   readDefaultWindowTabs,
-} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+  writeDefaultWindowTabs,
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824f";
+import { extractDatasetTypeItems, fetchProjectDatasetTypes } from "/ui/shared/dataset/dataset_types_source.js";
+import {
+  effectiveNumberFormat,
+  mergeNumberFormatRows,
+  numberFormatOverridesFromRows,
+  numberFormatOverridesKey,
+} from "./project_instance_number_format_rows.js?v=20260824g";
 
 const NUMBER_FORMATS_ENDPOINT = "/dataset/number-format-defaults";
+const REMOVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9M6 4.5V3h4v1.5M5 6.5v6M8 6.5v6M11 6.5v6M4.5 4.5l.5 9h6l.5-9"></path></svg>';
+const RESET_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 3v2.5H6"></path></svg>';
 
 function text(value) {
   return String(value ?? "").trim();
@@ -40,18 +53,13 @@ function sameTabDefaults(left, right) {
 }
 
 export function installProjectInstancePreferences(ctx) {
-  const { api, els, projectName, state } = ctx;
-  const {
-    getProjectUserPreferencesPath,
-    loadProjectUserPreferences,
-    saveProjectUserPreferences,
-  } = ctx;
+  const { api, els, state, projectName } = ctx;
   const editor = {
     section: "formats",
     busy: false,
     lastFocus: null,
     drag: null,
-    formats: { revision: 0, rows: [], loaded: false, savedDefault: "", savedRows: [] },
+    formats: { revision: 0, rows: [], loaded: false, savedDefault: "", savedKey: "", typeCount: 0, typesError: "" },
     tabs: { loaded: false, chosen: appDefaultWindowTabs(), saved: appDefaultWindowTabs() },
   };
 
@@ -100,9 +108,14 @@ export function installProjectInstancePreferences(ctx) {
   function visibleFormatRows() {
     const query = text(els.piPrefsFormatsFilter?.value).toLocaleLowerCase();
     if (!query) return editor.formats.rows;
+    const fallback = fallbackNumberFormat();
     return editor.formats.rows.filter((row) => (
-      `${row.dataset_type_name} ${row.number_format}`.toLocaleLowerCase().includes(query)
+      `${row.dataset_type_name} ${effectiveNumberFormat(row, fallback)}`.toLocaleLowerCase().includes(query)
     ));
+  }
+
+  function fallbackNumberFormat() {
+    return text(els.piPrefsFormatsDefault?.value) || "0,000";
   }
 
   function updateFormatRow(id, field, value) {
@@ -115,36 +128,83 @@ export function installProjectInstancePreferences(ctx) {
     if (!body) return;
     body.replaceChildren();
     const rows = visibleFormatRows();
+    const fallback = fallbackNumberFormat();
     els.piPrefsFormatsEmpty.hidden = rows.length > 0;
     for (const row of rows) {
       const tr = document.createElement("tr");
-      const fields = ["dataset_type_name", "number_format"];
-      for (const field of fields) {
-        const td = document.createElement("td");
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = row[field];
-        input.maxLength = field === "dataset_type_name" ? 256 : 64;
-        input.autocomplete = "off";
-        input.spellcheck = false;
-        input.setAttribute("aria-label", field === "dataset_type_name" ? "Dataset Type Name" : "Number Format");
-        input.addEventListener("input", () => updateFormatRow(row.id, field, input.value));
-        td.appendChild(input);
-        tr.appendChild(td);
-      }
+      const inherited = () => !!row.in_project && !text(row.number_format);
+      tr.classList.toggle("is-inherited", inherited());
+
+      // A project type is named in Project Settings; only a row added here,
+      // for a type this project does not define, has a free-text name.
+      const nameCell = document.createElement("td");
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = row.dataset_type_name;
+      nameInput.maxLength = 256;
+      nameInput.autocomplete = "off";
+      nameInput.spellcheck = false;
+      nameInput.readOnly = !!row.in_project;
+      nameInput.setAttribute("aria-label", "Dataset Type Name");
+      nameInput.addEventListener("input", () => updateFormatRow(row.id, "dataset_type_name", nameInput.value));
+      nameCell.appendChild(nameInput);
+      tr.appendChild(nameCell);
+
+      // A blank format on a project type shows the fallback it inherits and
+      // writes nothing; typing one turns the row into an override.
+      const formatCell = document.createElement("td");
+      const formatInput = document.createElement("input");
+      formatInput.type = "text";
+      formatInput.value = row.number_format;
+      formatInput.maxLength = 64;
+      formatInput.autocomplete = "off";
+      formatInput.spellcheck = false;
+      formatInput.placeholder = row.in_project ? fallback : "";
+      formatInput.setAttribute("aria-label", "Number Format");
+      formatCell.appendChild(formatInput);
+      tr.appendChild(formatCell);
+
       const action = document.createElement("td");
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "pi-number-formats-remove";
-      remove.setAttribute("aria-label", `Remove override for ${row.dataset_type_name || "new row"}`);
-      remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9M6 4.5V3h4v1.5M5 6.5v6M8 6.5v6M11 6.5v6M4.5 4.5l.5 9h6l.5-9"></path></svg>';
-      remove.addEventListener("click", () => {
-        editor.formats.rows = editor.formats.rows.filter((item) => item.id !== row.id);
-        renderFormatRows();
+      const button = document.createElement("button");
+      button.type = "button";
+      if (row.in_project) {
+        button.className = "pi-number-formats-remove is-reset";
+        button.setAttribute("aria-label", `Use the fallback for ${row.dataset_type_name}`);
+        button.innerHTML = RESET_ICON;
+        button.hidden = inherited();
+        button.addEventListener("click", () => {
+          updateFormatRow(row.id, "number_format", "");
+          renderFormatRows();
+        });
+      } else {
+        button.className = "pi-number-formats-remove";
+        button.setAttribute("aria-label", `Remove override for ${row.dataset_type_name || "new row"}`);
+        button.innerHTML = REMOVE_ICON;
+        button.addEventListener("click", () => {
+          editor.formats.rows = editor.formats.rows.filter((item) => item.id !== row.id);
+          renderFormatRows();
+        });
+      }
+      formatInput.addEventListener("input", () => {
+        updateFormatRow(row.id, "number_format", formatInput.value);
+        tr.classList.toggle("is-inherited", inherited());
+        if (row.in_project) button.hidden = inherited();
       });
-      action.appendChild(remove);
+      action.appendChild(button);
       tr.appendChild(action);
       body.appendChild(tr);
+    }
+  }
+
+  function renderFormatScope() {
+    if (!els.piPrefsFormatsScope) return;
+    const { typeCount, typesError } = editor.formats;
+    if (typesError) {
+      els.piPrefsFormatsScope.textContent = `Could not list the Dataset Types of ${projectName || "this project"}; showing saved overrides only.`;
+    } else if (projectName) {
+      els.piPrefsFormatsScope.textContent = `Lists the ${typeCount} Dataset Type${typeCount === 1 ? "" : "s"} of ${projectName}. A blank format means the fallback, and a dataset keeps any format saved on it.`;
+    } else {
+      els.piPrefsFormatsScope.textContent = "";
     }
   }
 
@@ -152,7 +212,8 @@ export function installProjectInstancePreferences(ctx) {
     const row = {
       id: `row-${Date.now()}-${Math.random()}`,
       dataset_type_name: "",
-      number_format: text(els.piPrefsFormatsDefault?.value) || "0,000",
+      number_format: fallbackNumberFormat(),
+      in_project: false,
     };
     editor.formats.rows.push(row);
     if (els.piPrefsFormatsFilter) els.piPrefsFormatsFilter.value = "";
@@ -162,52 +223,67 @@ export function installProjectInstancePreferences(ctx) {
     lastRow?.scrollIntoView({ block: "nearest" });
   }
 
-  async function loadNumberFormats() {
-    editor.formats.loaded = false;
+  async function fetchNumberFormatsDocument() {
     const response = await fetch(NUMBER_FORMATS_ENDPOINT, { cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false) throw new Error(detailMessage(payload, `HTTP ${response.status}`));
+    return payload;
+  }
+
+  // Read fresh rather than from the page state: a type added in Project
+  // Settings after this page opened is exactly the one the user came to set.
+  async function fetchProjectDatasetTypeNames() {
+    if (!projectName) return [];
+    const fetched = await fetchProjectDatasetTypes(projectName);
+    return extractDatasetTypeItems(fetched.data?.columns, fetched.data?.rows).map((item) => item.name);
+  }
+
+  async function loadNumberFormats() {
+    editor.formats.loaded = false;
+    editor.formats.typesError = "";
+    // The shared file is the one read that has to succeed; a project whose
+    // Dataset Types cannot be listed still gets its saved overrides.
+    const [formats, types] = await Promise.allSettled([fetchNumberFormatsDocument(), fetchProjectDatasetTypeNames()]);
+    if (formats.status === "rejected") throw formats.reason;
+    const payload = formats.value;
+    const datasetTypeNames = types.status === "fulfilled" ? types.value : [];
+    if (types.status === "rejected") editor.formats.typesError = types.reason?.message || String(types.reason);
+    const overrides = Array.isArray(payload.overrides) ? payload.overrides : [];
     editor.formats.revision = Number(payload.revision) || 0;
-    editor.formats.rows = (Array.isArray(payload.overrides) ? payload.overrides : []).map((row, index) => ({
+    editor.formats.rows = mergeNumberFormatRows({ overrides, datasetTypeNames }).map((row, index) => ({
       id: `row-${Date.now()}-${index}`,
-      dataset_type_name: text(row?.dataset_type_name),
-      number_format: text(row?.number_format),
+      ...row,
     }));
-    editor.formats.savedRows = editor.formats.rows.map(({ dataset_type_name, number_format }) => (
-      `${dataset_type_name}${number_format}`
-    ));
+    editor.formats.typeCount = datasetTypeNames.length;
+    editor.formats.savedKey = numberFormatOverridesKey(overrides);
     editor.formats.savedDefault = text(payload.default_number_format) || "0,000";
     editor.formats.loaded = true;
     els.piPrefsFormatsDefault.value = editor.formats.savedDefault;
     els.piPrefsFormatsPath.textContent = text(payload.path);
     els.piPrefsFormatsFilter.value = "";
+    renderFormatScope();
     renderFormatRows();
   }
 
   function numberFormatsDirty() {
     if (!editor.formats.loaded) return false;
     if (text(els.piPrefsFormatsDefault?.value) !== editor.formats.savedDefault) return true;
-    const current = editor.formats.rows.map((row) => `${text(row.dataset_type_name)}${text(row.number_format)}`);
-    return current.length !== editor.formats.savedRows.length
-      || current.some((value, index) => value !== editor.formats.savedRows[index]);
+    try {
+      return numberFormatOverridesKey(numberFormatOverridesFromRows(editor.formats.rows)) !== editor.formats.savedKey;
+    } catch {
+      // An incomplete row is an edit; Save reports what is missing.
+      return true;
+    }
   }
 
   function numberFormatsPayload() {
     const fallback = text(els.piPrefsFormatsDefault?.value);
     if (!fallback) throw new Error("Fallback number format is required.");
-    const overrides = editor.formats.rows.map((row, index) => {
-      const dataset_type_name = text(row.dataset_type_name);
-      const number_format = text(row.number_format);
-      if (!dataset_type_name || !number_format) throw new Error(`Override row ${index + 1} is incomplete.`);
-      return { dataset_type_name, number_format };
-    });
-    const seen = new Set();
-    for (const row of overrides) {
-      const key = row.dataset_type_name.toLocaleLowerCase();
-      if (seen.has(key)) throw new Error(`Duplicate override: ${row.dataset_type_name}.`);
-      seen.add(key);
-    }
-    return { expected_revision: editor.formats.revision, default_number_format: fallback, overrides };
+    return {
+      expected_revision: editor.formats.revision,
+      default_number_format: fallback,
+      overrides: numberFormatOverridesFromRows(editor.formats.rows),
+    };
   }
 
   async function saveNumberFormats() {
@@ -221,7 +297,7 @@ export function installProjectInstancePreferences(ctx) {
     if (!response.ok || payload?.ok === false) throw new Error(detailMessage(payload, `HTTP ${response.status}`));
     editor.formats.revision = Number(payload.revision) || editor.formats.revision + 1;
     editor.formats.savedDefault = body.default_number_format;
-    editor.formats.savedRows = body.overrides.map((row) => `${row.dataset_type_name}${row.number_format}`);
+    editor.formats.savedKey = numberFormatOverridesKey(body.overrides);
   }
 
   /* ---- Default tabs section ---- */
@@ -274,23 +350,13 @@ export function installProjectInstancePreferences(ctx) {
     }
   }
 
-  async function loadTabDefaults() {
-    editor.tabs.loaded = false;
-    if (!projectName) {
-      editor.tabs.chosen = appDefaultWindowTabs();
-      editor.tabs.saved = appDefaultWindowTabs();
-      els.piPrefsTabsPath.textContent = "";
-      renderTabDefaults();
-      throw new Error("Project name is missing.");
-    }
-    const preferences = await loadProjectUserPreferences(projectName, { forceReload: true });
-    editor.tabs.saved = readDefaultWindowTabs(preferences);
+  function loadTabDefaults() {
+    // Opening the window re-reads storage, so adopt what it says: a window on
+    // another project may have changed these defaults since this page booted.
+    editor.tabs.saved = readDefaultWindowTabs();
     editor.tabs.chosen = { ...editor.tabs.saved };
     editor.tabs.loaded = true;
-    // Opening the window re-reads the file, so adopt what it says: another
-    // machine may have changed these defaults since this page booted.
     state.defaultWindowTabs = editor.tabs.saved;
-    els.piPrefsTabsPath.textContent = getProjectUserPreferencesPath(projectName);
     renderTabDefaults();
   }
 
@@ -298,15 +364,22 @@ export function installProjectInstancePreferences(ctx) {
     return editor.tabs.loaded && !sameTabDefaults(editor.tabs.chosen, editor.tabs.saved);
   }
 
-  async function saveTabDefaults() {
-    // Every kind is written, never a partial map: the preferences file is
-    // deep-merged on the server, so an omitted kind would keep its old value
-    // instead of returning to the app default.
-    const chosen = { ...editor.tabs.chosen };
-    await saveProjectUserPreferences(projectName, { [DEFAULT_WINDOW_TABS_PREFERENCE_KEY]: chosen });
+  function saveTabDefaults() {
+    const chosen = writeDefaultWindowTabs(editor.tabs.chosen);
     editor.tabs.saved = chosen;
     state.defaultWindowTabs = chosen;
-    els.piPrefsTabsPath.textContent = getProjectUserPreferencesPath(projectName);
+  }
+
+  /* Every open window shares these defaults, so a save in one of them reaches
+     the others through the storage event rather than waiting for a reopen. */
+  function adoptTabDefaultsFromAnotherWindow(event) {
+    if (event.key !== DEFAULT_WINDOW_TABS_STORAGE_KEY) return;
+    const hasUnsavedEdits = tabDefaultsDirty();
+    state.defaultWindowTabs = readDefaultWindowTabs();
+    editor.tabs.saved = state.defaultWindowTabs;
+    if (hasUnsavedEdits) return;
+    editor.tabs.chosen = { ...editor.tabs.saved };
+    renderTabDefaults();
   }
 
   function resetTabDefaults() {
@@ -320,19 +393,22 @@ export function installProjectInstancePreferences(ctx) {
   async function loadEditor() {
     setBusy(true);
     setStatus("Loading preferences...");
-    const failures = [];
-    const results = await Promise.allSettled([loadNumberFormats(), loadTabDefaults()]);
-    if (results[0].status === "rejected") failures.push(`number formats (${results[0].reason?.message || results[0].reason})`);
-    if (results[1].status === "rejected") failures.push(`default tabs (${results[1].reason?.message || results[1].reason})`);
-    if (failures.length) {
+    loadTabDefaults();
+    try {
+      await loadNumberFormats();
+      const overrides = editor.formats.rows.filter((row) => text(row.number_format)).length;
+      const types = editor.formats.typeCount;
+      if (editor.formats.typesError) {
+        setStatus(`Could not list this project's dataset types (${editor.formats.typesError}).`, "error");
+      } else {
+        setStatus(`${types} dataset type${types === 1 ? "" : "s"} listed, ${overrides} with a format of ${overrides === 1 ? "its" : "their"} own.`);
+      }
+    } catch (error) {
       if (!editor.formats.loaded) {
         editor.formats.rows = [];
         renderFormatRows();
       }
-      setStatus(`Could not load ${failures.join(" and ")}.`, "error");
-    } else {
-      const count = editor.formats.rows.length;
-      setStatus(`${count} number-format override${count === 1 ? "" : "s"} loaded.`);
+      setStatus(`Could not load number formats (${error.message}).`, "error");
     }
     setBusy(false);
   }
@@ -353,7 +429,7 @@ export function installProjectInstancePreferences(ctx) {
         saved.push("Default number formats");
       }
       if (saveTabs) {
-        await saveTabDefaults();
+        saveTabDefaults();
         saved.push("Default tabs");
       }
       setStatus(`${saved.join(" and ")} saved.`, "success");
@@ -383,20 +459,6 @@ export function installProjectInstancePreferences(ctx) {
       els.piPrefsFormatsDefault?.select();
     } else {
       els.piPrefsTabsList?.querySelector('.pi-prefs-tabchip[aria-checked="true"]')?.focus();
-    }
-  }
-
-  /* The window openers need the user's defaults the moment a window is opened,
-     so Project Instance keeps a snapshot on its own state rather than awaiting
-     a read per window. The preferences file is already cached by the shared
-     client, so this costs no extra network round trip at boot. */
-  async function loadDefaultWindowTabPreferences() {
-    if (!projectName) return;
-    try {
-      const preferences = await loadProjectUserPreferences(projectName);
-      state.defaultWindowTabs = readDefaultWindowTabs(preferences);
-    } catch (err) {
-      console.warn("Failed to load default window tabs:", err);
     }
   }
 
@@ -438,6 +500,9 @@ export function installProjectInstancePreferences(ctx) {
     els.piPrefsSave?.addEventListener("click", () => void saveEditor());
     els.piPrefsFormatsAdd?.addEventListener("click", addOverride);
     els.piPrefsFormatsFilter?.addEventListener("input", renderFormatRows);
+    // Inherited rows show the fallback as their placeholder, so retyping it
+    // has to repaint them; the table lives outside that input, so focus stays.
+    els.piPrefsFormatsDefault?.addEventListener("input", renderFormatRows);
     els.piPrefsTabsReset?.addEventListener("click", resetTabDefaults);
     for (const item of els.piPrefsNav?.querySelectorAll(".pi-prefs-nav-item") || []) {
       item.addEventListener("click", () => showSection(item.dataset.section));
@@ -446,6 +511,7 @@ export function installProjectInstancePreferences(ctx) {
     els.piPrefsHeader?.addEventListener("pointermove", moveDrag);
     els.piPrefsHeader?.addEventListener("pointerup", endDrag);
     els.piPrefsHeader?.addEventListener("pointercancel", endDrag);
+    window.addEventListener("storage", adoptTabDefaultsFromAnotherWindow);
     document.addEventListener("keydown", (event) => {
       if (els.piPrefsOverlay?.hidden) return;
       if (event.key === "Escape") {
@@ -461,7 +527,6 @@ export function installProjectInstancePreferences(ctx) {
 
   Object.assign(api, {
     initProjectInstancePreferences: initPreferencesWindow,
-    loadDefaultWindowTabPreferences,
     openProjectInstancePreferences: openEditor,
   });
 }

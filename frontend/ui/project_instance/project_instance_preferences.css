@@ -80,7 +80,7 @@
   min-height: 0;
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 172px minmax(0, 1fr);
+  grid-template-columns: fit-content(260px) minmax(0, 1fr);
 }
 
 /* Section rail */
@@ -98,8 +98,6 @@
 .pi-prefs-nav-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   width: 100%;
   min-height: 30px;
   box-sizing: border-box;
@@ -129,25 +127,27 @@
 
 .pi-prefs-nav-label {
   min-width: 0;
+  display: grid;
+}
+
+.pi-prefs-nav-label > span {
+  grid-area: 1 / 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pi-prefs-nav-scope {
-  flex: 0 0 auto;
-  border-radius: 8px;
-  background: #e2e8f0;
-  color: #64748b;
-  padding: 1px 6px;
-  font-size: 9px;
+/* Invisible copy of the label at the active weight, so the rail keeps one
+   width instead of shifting when a section is selected. */
+.pi-prefs-nav-label::after {
+  grid-area: 1 / 1;
+  content: attr(data-label);
+  white-space: nowrap;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  visibility: hidden;
+  pointer-events: none;
 }
-
-.pi-prefs-nav-scope.is-user { background: #dcfce7; color: #15803d; }
-.pi-prefs-nav-item.is-active .pi-prefs-nav-scope { background: #dbeafe; color: #1d4f9c; }
 
 /* Panels */
 .pi-prefs-panels {
@@ -410,6 +410,16 @@
 
 .pi-number-formats-remove:hover { border-color: #fecaca; background: #fff1f2; color: #be123c; }
 .pi-number-formats-remove svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.pi-number-formats-remove.is-reset:hover { border-color: #bfd3f2; background: #eef4ff; color: #1d4ed8; }
+.pi-number-formats-remove[hidden] { display: none; }
+
+/* Project types are named in Project Settings, so their name cell reads as a
+   label, and a type left on the fallback shows it as a quiet placeholder. */
+.pi-number-formats-scope { margin-top: 4px; color: #667085; font-size: 11px; }
+.pi-number-formats-table input[readonly] { cursor: default; }
+.pi-number-formats-table tr:hover input[readonly] { border-color: transparent; background: transparent; }
+.pi-number-formats-table input::placeholder { color: #98a2b3; }
+.pi-number-formats-table tr.is-inherited td:first-child input { color: #475569; }
 
 .pi-number-formats-empty { position: absolute; inset: 30px 0 0; padding-top: 28px; background: #fff; color: #7c8798; text-align: center; }
 

@@ -1,4 +1,4 @@
-import { appDefaultWindowTabs } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+import { readDefaultWindowTabs } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824f";
 
 const qs = new URLSearchParams(window.location.search);
 
@@ -73,12 +73,12 @@ export function createProjectInstanceContext(deps = {}) {
     piPrefsPanelFormats: document.getElementById("piPrefsPanelFormats"),
     piPrefsPanelTabs: document.getElementById("piPrefsPanelTabs"),
     piPrefsFormatsPath: document.getElementById("piPrefsFormatsPath"),
+    piPrefsFormatsScope: document.getElementById("piPrefsFormatsScope"),
     piPrefsFormatsDefault: document.getElementById("piPrefsFormatsDefault"),
     piPrefsFormatsFilter: document.getElementById("piPrefsFormatsFilter"),
     piPrefsFormatsAdd: document.getElementById("piPrefsFormatsAdd"),
     piPrefsFormatsBody: document.getElementById("piPrefsFormatsBody"),
     piPrefsFormatsEmpty: document.getElementById("piPrefsFormatsEmpty"),
-    piPrefsTabsPath: document.getElementById("piPrefsTabsPath"),
     piPrefsTabsList: document.getElementById("piPrefsTabsList"),
     piPrefsTabsReset: document.getElementById("piPrefsTabsReset"),
     piPrefsStatus: document.getElementById("piPrefsStatus"),
@@ -154,7 +154,9 @@ export function createProjectInstanceContext(deps = {}) {
   };
   const state = {
     selectedPath: "",
-    defaultWindowTabs: appDefaultWindowTabs(),
+    // Local-user state, so every window opener has the real defaults from the
+    // first moment rather than waiting for a read to finish.
+    defaultWindowTabs: readDefaultWindowTabs(),
     reservingClassBusy: false,
     pathPickerController: null,
     pathPickerModel: null,
