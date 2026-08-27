@@ -211,6 +211,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         loaded = result_selection_service.load_result_selection("Project", "Class", "Selection")
         restamped = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         restamped["method_metadata"]["last_modified"] = "2026-02-01T00:00:00Z"
+        restamped["method_metadata"]["data_refreshed"] = "2026-02-01T00:00:00Z"
         self.write_json(self.methods / "RS@Selection.json", restamped)
 
         with (
@@ -387,6 +388,34 @@ class ResultSelectionServiceTests(unittest.TestCase):
             result["review_status_updates"],
             [{"dataset_name": "Selection", "status": 2}],
         )
+
+    def test_a_refresh_records_itself_without_moving_the_user_save_stamp(self) -> None:
+        # The ResQ sync reads ``last_modified`` as the last edit a person made.
+        # A propagation refresh recomputes from inputs nobody edited here, so it
+        # stamps ``data_refreshed`` instead, as DFM, BF and Cape Cod already do.
+        from app_server.helpers import parse_method_last_modified_timestamp
+
+        self.write_selection()
+        before = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        self.write_source("Paid", [30, 40])
+        with (
+            mock.patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value={"updated": []},
+            ),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(result["ok"])
+        saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            parse_method_last_modified_timestamp(saved["method_metadata"]["last_modified"]),
+            parse_method_last_modified_timestamp(before["method_metadata"]["last_modified"]),
+        )
+        refreshed_at = parse_method_last_modified_timestamp(saved["method_metadata"]["data_refreshed"])
+        self.assertIsNotNone(refreshed_at)
+        self.assertGreater(refreshed_at, parse_method_last_modified_timestamp(before["method_metadata"]["last_modified"]))
 
     def test_dataset_save_refreshes_transitive_result_selection_chain_but_keeps_review_alerts(self) -> None:
         self.write_selection()

@@ -106,21 +106,41 @@ def _json_text(payload: Dict[str, Any]) -> str:
 def _revision_projection(payload: Dict[str, Any]) -> Dict[str, Any]:
     """The content a revision covers: everything except when it was written.
 
-    ``last_modified`` records when the file was saved rather than what it holds,
-    and every other method family already leaves it out -- DFM, BF, CC and
-    bootstrap all revision a projection through ``dfm_contract.method_revisions``
-    that never reaches it. Keeping it in meant an RPC upload recording ResQ's
-    own save time would move the token an open editor holds, and that editor's
-    next save would be refused even though nothing it edited had changed.
+    ``last_modified`` records when a person last saved the file and
+    ``data_refreshed`` when a propagation refresh last recomputed it; neither
+    says what the file holds, and every other method family already leaves
+    both out -- DFM, BF, CC and bootstrap all revision a projection through
+    ``dfm_contract.method_revisions`` that never reaches them. Keeping them in
+    meant an RPC upload recording ResQ's own save time would move the token an
+    open editor holds, and that editor's next save would be refused even
+    though nothing it edited had changed.
     """
 
     projection = dict(payload)
     metadata = projection.get("method_metadata")
     if isinstance(metadata, dict):
         projection["method_metadata"] = {
-            key: value for key, value in metadata.items() if key != "last_modified"
+            key: value
+            for key, value in metadata.items()
+            if key not in _REVISION_FREE_METADATA_KEYS
         }
     return projection
+
+
+# The two write stamps: when a person last saved the method, and when a
+# propagation refresh last recomputed it. Neither describes the content.
+_REVISION_FREE_METADATA_KEYS = frozenset({"last_modified", "data_refreshed"})
+
+
+def _normalized_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the user-save stamp, and the refresh stamp when the file has one."""
+
+    source = payload.get("method_metadata") if isinstance(payload.get("method_metadata"), dict) else {}
+    metadata = {"last_modified": _clean(source.get("last_modified")) or _now()}
+    data_refreshed = _clean(source.get("data_refreshed"))
+    if data_refreshed:
+        metadata["data_refreshed"] = data_refreshed
+    return metadata
 
 
 def _method_revision(payload: Dict[str, Any]) -> str:
@@ -339,13 +359,7 @@ def normalize_method_payload(payload: Dict[str, Any], *, require_complete_basis:
             "selected_ultimate": _round_vector(method.get("selected_ultimate")),
             "ultimate_overrides": _round_vector(method.get("ultimate_overrides")),
         },
-        "method_metadata": {
-            "last_modified": _clean(
-                (payload.get("method_metadata") or {}).get("last_modified")
-                if isinstance(payload.get("method_metadata"), dict)
-                else ""
-            ) or _now(),
-        },
+        "method_metadata": _normalized_metadata(payload),
     }
     if require_complete_basis:
         row_count = len(origin_labels)
@@ -1100,7 +1114,11 @@ def _persist_refreshed_method(
     method_path = _method_path(project_name, reserving_class, name)
     sidecar_path = _sidecar_path(project_name, reserving_class, name)
     timestamp = _now()
-    payload["method_metadata"]["last_modified"] = timestamp
+    # A refresh recomputes the method from its inputs; nobody edited it here.
+    # The user-save stamp stays where the last Save put it, as it does for
+    # DFM, BF and Cape Cod, and the refresh records itself separately, so the
+    # ResQ sync review never reads a propagation as an edit to push.
+    payload["method_metadata"]["data_refreshed"] = timestamp
     with dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
         latest_sidecar = _read_json(sidecar_path) or sidecar
         updated_sidecar = dict(latest_sidecar)
