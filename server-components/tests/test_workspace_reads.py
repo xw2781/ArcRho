@@ -114,6 +114,18 @@ class WorkspaceReadContractTests(unittest.TestCase):
         )
         self.assertIsNone(request["Kwargs"]["origin_length"])
 
+    def test_a_kind_that_names_no_project_validates(self) -> None:
+        """The Bridge-worker liveness look reads the runtime folder, not a project."""
+
+        request = build_workspace_read_request(
+            request_id="read-1",
+            read_kind="bridge_worker_liveness",
+            kwargs={"queue": "import", "request_id": ""},
+            user_name="alice",
+        )
+        self.assertEqual(request["ReadKind"], "bridge_worker_liveness")
+        self.assertEqual(request["Kwargs"]["queue"], "import")
+
     def test_foreign_payload_is_refused(self) -> None:
         with self.assertRaises(WorkspaceReadContractError):
             validate_workspace_read_request({"Function": "ArcRhoHostedSave"})

@@ -250,8 +250,12 @@ def validate_workspace_read_request(payload: Mapping[str, Any]) -> dict[str, Any
     try:
         request_id = validate_request_id(payload.get("RequestId"))
         # Only logical identifiers travel; a machine-local project folder or a
-        # drive-letter reserving-class path is refused before any lookup.
-        validate_project_name(kwargs["project_name"], "project_name")
+        # drive-letter reserving-class path is refused before any lookup. A kind
+        # that names no project at all — the Bridge-worker liveness look reads
+        # only the runtime folder — has nothing to check here, and the required
+        # -field check above already refused an empty name where one is needed.
+        if "project_name" in spec.allowed and kwargs.get("project_name"):
+            validate_project_name(kwargs["project_name"], "project_name")
         if "reserving_class" in spec.allowed and kwargs.get("reserving_class"):
             validate_reserving_class_path(kwargs["reserving_class"])
     except DependentPropagationContractError as exc:
