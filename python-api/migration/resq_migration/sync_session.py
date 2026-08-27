@@ -1342,6 +1342,24 @@ def _selected_rows(plan: list[dict[str, Any]], selected_ids: list[str]) -> list[
     return rows
 
 
+def _reviewed_signature(sync_contract, reviewed: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Return the observation a row must still match, or None when it has none.
+
+    A row echoed back from the review table carries the ``signature`` it was
+    shown with. A plan row this session observed itself is its own
+    observation, so the write phase can recheck the rows it selected from an
+    earlier plan even though those rows never left the process and were never
+    given a separate ``signature`` field.
+    """
+
+    signature = reviewed.get("signature")
+    if isinstance(signature, Mapping):
+        return signature
+    if isinstance(reviewed.get("state_signature"), Mapping):
+        return sync_contract.plan_signature(reviewed)
+    return None
+
+
 def _stale_selected_rows(
     runtime: Mapping[str, Any],
     reviewed_rows: list[Mapping[str, Any]],
@@ -1351,7 +1369,9 @@ def _stale_selected_rows(
 
     ``reviewed_rows`` carries the signature the person actually saw, taken
     from the preview phase, so a change made while the review table was open
-    is caught here rather than being silently written over.
+    is caught here rather than being silently written over. The write phase
+    passes its own earlier plan rows here too, and each of those is compared
+    against the observation it was built from.
     """
 
     sync_contract = runtime["sync_contract"]
@@ -1360,8 +1380,8 @@ def _stale_selected_rows(
     for reviewed in reviewed_rows:
         row_id = str(reviewed.get("id") or "")
         observed = current.get(row_id)
-        reviewed_signature = reviewed.get("signature")
-        if not isinstance(reviewed_signature, Mapping):
+        reviewed_signature = _reviewed_signature(sync_contract, reviewed)
+        if reviewed_signature is None:
             # A reviewed row without its signature cannot be proven unchanged.
             stale.append(str(reviewed.get("name") or row_id or "item"))
             continue

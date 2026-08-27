@@ -375,6 +375,77 @@ class SyncSessionInventoryTests(unittest.TestCase):
         self.assertEqual(target["method_names"], ["Settlement Configuration"])
 
 
+class SyncSessionWriteRecheckTests(unittest.TestCase):
+    """The write phase rechecks the plan rows it selected, not review-table echoes.
+
+    Every apply since the session moved onto the Bridge returned ``stale`` for
+    every accepted row: the write phase handed its own plan rows to the stale
+    check, and those rows never carry the separate ``signature`` field a
+    review-table echo does. A plan row is its own observation.
+    """
+
+    def _runtime_and_plan(self):
+        from resq_migration import sync as sync_contract
+
+        arcrho = [{
+            "name": "C 22 - CWOP DFM w/ Selected LDFs",
+            "kind": sync_session.KIND_DFM,
+            "data_format": "Vector",
+            "method_name": "C 22 - CWOP DFM w/ Selected LDFs",
+            "dataset_type": "C 22 - CWOP DFM w/ Selected LDFs",
+            "modified": "2026-08-25T20:00:56.141Z",
+            "modified_timestamp": 1787688056.141,
+            "can_export_to_resq": True,
+            "export_block_reason": "",
+        }]
+        resq = [{
+            "name": "C 22 - CWOP DFM w/ Selected LDFs",
+            "kind": sync_session.KIND_DFM,
+            "data_format": "Vector",
+            "method_name": "C 22 - CWOP DFM w/ Selected LDFs",
+            "dataset_type": "C 22 - CWOP DFM w/ Selected LDFs",
+            "modified": "2026-08-19T13:37:49.471Z",
+            "modified_timestamp": 1787146669.471,
+            "can_import_to_arcrho": True,
+            "can_receive_from_arcrho": True,
+        }]
+        plan = sync_contract.build_sync_plan(arcrho, resq, {"items": {}})
+        return {"sync_contract": sync_contract}, plan, arcrho, resq
+
+    def test_an_unchanged_plan_row_is_not_stale_against_a_fresh_plan(self):
+        from resq_migration import sync as sync_contract
+
+        runtime, plan, arcrho, resq = self._runtime_and_plan()
+        self.assertEqual(plan[0]["action"], "arcrho_to_resq")
+        self.assertNotIn("signature", plan[0])
+
+        selected = sync_session._selected_rows(plan, [plan[0]["id"]])
+        fresh_plan = sync_contract.build_sync_plan(arcrho, resq, {"items": {}})
+
+        self.assertEqual(sync_session._stale_selected_rows(runtime, selected, fresh_plan), [])
+
+    def test_a_plan_row_whose_source_moved_is_still_stale(self):
+        from resq_migration import sync as sync_contract
+
+        runtime, plan, arcrho, resq = self._runtime_and_plan()
+        selected = sync_session._selected_rows(plan, [plan[0]["id"]])
+        moved = [dict(arcrho[0], modified_timestamp=1787688056.141 + 60)]
+        fresh_plan = sync_contract.build_sync_plan(moved, resq, {"items": {}})
+
+        self.assertEqual(
+            sync_session._stale_selected_rows(runtime, selected, fresh_plan),
+            ["C 22 - CWOP DFM w/ Selected LDFs"],
+        )
+
+    def test_a_row_without_any_observation_is_still_stale(self):
+        runtime, plan, _arcrho, _resq = self._runtime_and_plan()
+
+        self.assertEqual(
+            sync_session._stale_selected_rows(runtime, [{"id": plan[0]["id"], "name": "Echo"}], plan),
+            ["Echo"],
+        )
+
+
 class SyncSessionRuntimeTests(unittest.TestCase):
     def test_build_runtime_binds_one_coherent_migration_root(self):
         migration = types.SimpleNamespace(__file__=str(_PYTHON_API_ROOT / "migration" / "resq_data_migration.py"))
