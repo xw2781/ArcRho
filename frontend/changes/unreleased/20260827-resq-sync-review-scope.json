@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ reviews only the input datasets and methods that exist in both ArcRho and ResQ, and no longer flags an interrupted earlier sync.",
+  "details": [
+    "Engine-generated datasets no longer appear in the review on either side: both ArcRho and ResQ rebuild them from source data, so there is nothing to reconcile.",
+    "A dataset or method that exists on one side only is no longer listed; a new item reaches the other side through an import, not through this review.",
+    "The 'Previous sync incomplete' status is gone. An interrupted run leaves nothing behind, and the next review compares the current timestamps against the last recorded baseline like any other row.",
+    "The comparison rules live in the Bridge's synchronization session, so the Bridge must be redeployed to pick this up; the macro itself only reworded its empty-table message."
+  ]
+}

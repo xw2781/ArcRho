@@ -39,25 +39,18 @@ def _item(
     }
 
 
-def _baseline(
-    *,
-    arcrho_timestamp: float = 100.0,
-    resq_timestamp: float = 100.0,
-    pending: bool = False,
-) -> dict:
+def _baseline(*, arcrho_timestamp: float = 100.0, resq_timestamp: float = 100.0) -> dict:
     entry = {
         "arcrho_present": True,
         "resq_present": True,
         "arcrho_timestamp": arcrho_timestamp,
         "resq_timestamp": resq_timestamp,
     }
-    if pending:
-        entry["pending"] = True
     return {"items": {"paid loss": entry}}
 
 
 class ResqSyncPlanTests(unittest.TestCase):
-    def test_raw_timestamp_comparison_one_sided_equal_and_unknown_are_fail_closed(self):
+    def test_raw_timestamp_comparison_equal_and_unknown_are_fail_closed(self):
         cases = (
             (
                 [_item(timestamp=200)],
@@ -79,20 +72,6 @@ class ResqSyncPlanTests(unittest.TestCase):
                 "Same timestamp",
                 "",
                 False,
-            ),
-            (
-                [_item()],
-                [],
-                "Only in ArcRho",
-                sync.ACTION_ARCRHO_TO_RESQ,
-                True,
-            ),
-            (
-                [],
-                [_item()],
-                "Only in ResQ",
-                sync.ACTION_RESQ_TO_ARCRHO,
-                True,
             ),
             (
                 [_item(timestamp=None)],
@@ -137,45 +116,25 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertEqual(local_changed["status"], "ArcRho changed")
         self.assertEqual(local_changed["action"], sync.ACTION_ARCRHO_TO_RESQ)
 
-    def test_pending_baseline_never_preselects_a_direction(self):
+    def test_items_on_one_side_only_never_become_rows(self):
+        plan = sync.build_sync_plan(
+            [_item("Paid Loss"), _item("Only Here"), _item("Twice Here"), _item("Twice Here")],
+            [_item("Paid Loss"), _item("Only There")],
+        )
+
+        self.assertEqual([row["name"] for row in plan], ["Paid Loss"])
+
+    def test_an_interrupted_run_leaves_the_next_comparison_to_the_recorded_baseline(self):
         row = sync.build_sync_plan(
             [_item(timestamp=200)],
             [_item(timestamp=100)],
-            _baseline(pending=True),
+            _baseline(),
         )[0]
 
-        self.assertEqual(row["status"], "Previous sync incomplete; ArcRho newer")
+        self.assertEqual(row["status"], "ArcRho changed")
         self.assertEqual(row["action"], sync.ACTION_ARCRHO_TO_RESQ)
-        self.assertTrue(row["conflict"])
-        self.assertFalse(row["selected"])
-
-    def test_pending_baseline_preserves_recovery_direction_when_timestamps_match(self):
-        state = _baseline(arcrho_timestamp=100, resq_timestamp=100, pending=True)
-        state["items"]["paid loss"]["pending_action"] = sync.ACTION_RESQ_TO_ARCRHO
-
-        row = sync.build_sync_plan(
-            [_item(timestamp=100)],
-            [_item(timestamp=100)],
-            state,
-        )[0]
-
-        self.assertEqual(row["action"], sync.ACTION_RESQ_TO_ARCRHO)
-        self.assertTrue(row["conflict"])
-        self.assertFalse(row["selected"])
-        self.assertFalse(row["disabled"])
-        self.assertIn("recoverable prior action", row["detail"])
-
-    def test_pending_one_sided_row_is_an_unselected_recovery_conflict(self):
-        state = _baseline(pending=True)
-        state["items"]["paid loss"]["pending_action"] = sync.ACTION_ARCRHO_TO_RESQ
-
-        row = sync.build_sync_plan([_item(timestamp=100)], [], state)[0]
-
-        self.assertEqual(row["status"], "Previous sync incomplete; Only in ArcRho")
-        self.assertEqual(row["action"], sync.ACTION_ARCRHO_TO_RESQ)
-        self.assertTrue(row["conflict"])
-        self.assertFalse(row["selected"])
-        self.assertFalse(row["disabled"])
+        self.assertFalse(row["conflict"])
+        self.assertTrue(row["selected"])
 
     def test_both_changed_is_an_unselected_conflict_even_when_newer_side_is_known(self):
         row = sync.build_sync_plan(
@@ -286,19 +245,30 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertTrue(sync.signatures_equal(original, unchanged))
         self.assertFalse(sync.signatures_equal(original, changed))
 
-        pending_state = sync.mark_sync_pending(
+        # Inside a write batch only the side being written from has to hold
+        # still; the target side is re-stamped by the batch's earlier writes.
+        self.assertTrue(sync.write_signatures_equal(original, changed, source_side="arcrho"))
+        self.assertFalse(sync.write_signatures_equal(original, changed, source_side="resq"))
+        renamed = copy.deepcopy(original)
+        renamed["resq"]["dataset_type"] = "Other"
+        self.assertFalse(sync.write_signatures_equal(original, renamed, source_side="arcrho"))
+        with self.assertRaises(ValueError):
+            sync.write_signatures_equal(original, changed, source_side="elsewhere")
+
+        recorded_state = sync.record_synced_items(
             sync.empty_sync_state("Demo", r"Auto\PP", "ResQ Demo"),
             ["Paid Loss"],
-            actions={"paid loss": sync.ACTION_ARCRHO_TO_RESQ},
-            marked_at="2026-08-12T12:00:00+00:00",
-        )
-        pending_row = sync.build_sync_plan(
             [_item(timestamp=200)],
             [_item(timestamp=100)],
-            pending_state,
+            synced_at="2026-08-12T12:00:00+00:00",
+        )
+        baselined_row = sync.build_sync_plan(
+            [_item(timestamp=200)],
+            [_item(timestamp=100)],
+            recorded_state,
         )[0]
         self.assertFalse(
-            sync.signatures_equal(original, sync.plan_signature(pending_row))
+            sync.signatures_equal(original, sync.plan_signature(baselined_row))
         )
 
 

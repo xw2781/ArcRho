@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ no longer refuses a Result Selection over a stray double space in a ResQ dataset name, and no longer refuses a row just because an earlier write in the same run made ResQ recalculate it.",
+  "details": [
+    "ResQ names are left exactly as they are; every comparison of a ResQ name against an ArcRho name now uses the same whitespace-normalized key the review pairing already used, so each ResQ object maps onto exactly one ArcRho item.",
+    "Before each row is written only the side it is written from has to be unchanged. Saving a DFM into ResQ makes ResQ recalculate the Result Selections downstream of it, which previously failed those rows with 'Timestamp changed during synchronization'.",
+    "The change lives in the Bridge's synchronization session; the Bridge must be redeployed to pick it up."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ now shows its results as a table in the same Project Instance window the review used, instead of a message box.",
+  "details": [
+    "One row per applied, failed, or warned item, with the direction, an Applied/Failed/Warning outcome, and the full message for that item, so a long failure reason is no longer squeezed into a dialog.",
+    "The results table can be sorted, filtered, searched, and minimized like the review table; it has no checkboxes and a single Close button, and the macro finishes when it is closed.",
+    "A stale review or an empty selection, which apply nothing, still show their short message box.",
+    "The shared review-table component gained a read-only mode (selectable: false) any macro can use to present a report."
+  ]
+}

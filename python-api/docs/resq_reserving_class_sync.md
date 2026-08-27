@@ -9,13 +9,21 @@ offer a project or path mapping override.
 
 ## Review and timestamp rules
 
-The macro inventories the union of logical datasets and method outputs, pairing
-names case-insensitively after whitespace normalization. Before any write, it
-opens a review table with type, logical name, status, proposed direction, and
-details. **Every row always contains both `ArcRho Timestamp` and `ResQ
-Timestamp` columns**, including rows that exist on only one side.
+The macro inventories the logical datasets and method outputs of both sides,
+pairing names case-insensitively after whitespace normalization, and reviews
+only the items that exist on both. An item on one side only is not shown: a
+new dataset or method reaches the other side through an import, not through
+this review. Before any write, it opens a review table with type, logical
+name, both timestamps, status, proposed direction, and details.
 
-- `Not present` means that logical item was not found on that side.
+ResQ names can carry stray double spaces (`C 81 -  Prior Qtr Indicated`) and
+they are left as they are. ArcRho keeps the normalized name, and every place a
+ResQ name meets an ArcRho name — the review pairing, the preflight checks, the
+read-back after a write, and the exporter's object lookups — goes through the
+same whitespace-normalized, case-insensitive key, so each ResQ object maps
+onto exactly one ArcRho item. The ResQ spelling is only ever used to address
+the ResQ object or to name it in a message.
+
 - `Unknown` means the item exists, but no usable last-modified timestamp was
   available. If ResQ exposes `Created` but not `Modified`, the table shows the
   created value for context as `Unknown Modified; Created ...`; it is not used
@@ -88,19 +96,22 @@ state file under `sync/resq/`. Later comparisons use this durable baseline:
 - both changed: report a conflict and require explicit selection.
 
 This paired baseline prevents a ResQ `Save()` timestamp from causing the next
-run to send the same item back in the opposite direction. Before the first
-accepted mutation, selected rows are marked pending. If a process ends before
-the final baseline is recorded, a later run reports `Previous sync incomplete`
-as an unchecked conflict and preserves the originally accepted direction,
-including when the timestamps now match. Inspect both timestamps and explicitly
-select that direction only when it is the intended recovery action.
+run to send the same item back in the opposite direction. A run that ends
+before its final baseline is recorded leaves no trace in the state file: the
+next review simply compares the current timestamps against the last recorded
+baseline, so an interrupted item shows up as the plain change it is.
 
 The macro re-inventories selected rows after review and again after acquiring
 the reserving-class locks. If any selected observation or proposed action is
 stale, it aborts before applying the batch and asks the user to rerun the
-review. Every row is rechecked again immediately before its own write; a row
-that an earlier write in the batch changed fails individually instead of
-using an old plan.
+review. Every row is rechecked again immediately before its own write, against
+the side it is written from: an ArcRho-to-ResQ row is refused when its ArcRho
+source moved, a ResQ-to-ArcRho row when its ResQ source moved, and either when
+an item changed identity or disappeared. The target side is allowed to move,
+because the batch itself moves it: saving a DFM into ResQ makes ResQ
+recalculate every Result Selection downstream of it, and an import refreshes
+ArcRho's dependents, so a Result Selection written after the DFMs it depends
+on is still written from the ArcRho copy the review showed.
 
 ## Supported actions
 
@@ -110,6 +121,12 @@ using an old plan.
   Propagation recomputes them from their formula inputs in ArcRho and in
   ResQ alike and nobody edits them directly, so their timestamps only ever
   record the last propagation and there is nothing to reconcile.
+- Engine-generated datasets are left out the same way: ArcRho rebuilds them
+  through the Engine and ResQ through its own generator, so neither side holds
+  a hand-edited copy. On the ArcRho side that is every `engine` sidecar; on the
+  ResQ side it is every dataset whose Dataset Type is flagged `Generated` and
+  whose name equals that type, the rule the import already uses to route a
+  dataset to the Engine.
 - DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection methods can sync in
   either direction through their method output rows. ArcRho-to-ResQ rows are
   labeled `supported fields only`: they use the existing, deliberately partial
@@ -159,7 +176,19 @@ limited to the selected logical artifacts captured before that row's import;
 if rollback itself fails, the final summary reports both failures. Dependency
 refresh warnings are reported but do not reverse completed imports. Baselines
 are finalized only for successfully applied rows that are readable on both
-sides afterward. For an ArcRho-to-ResQ method row, `Synchronized` means neither
+sides afterward.
+
+## Results table
+
+When at least one row was accepted, the results open in the same Project
+Instance review window the plan used, as a read-only table (`selectable:
+false`, one `Close` button, no tick column): one row per written item in
+write order, then one row per dependent-refresh warning. Each row shows the
+type, logical name, the direction label from the review, an outcome of
+`Applied`, `Failed`, or `Warning`, and the Bridge's message for that item; the
+header line gives the counts by direction. The macro keeps running until the
+window is closed. A stale review or an empty selection applied nothing, so
+those two outcomes stay a short message box. For an ArcRho-to-ResQ method row, `Synchronized` means neither
 side's timestamp changed since the accepted supported-field write; it is not a
 claim that unsupported method fields are byte-for-byte equivalent.
 

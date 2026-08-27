@@ -299,7 +299,6 @@ class SyncSessionReviewCellTests(unittest.TestCase):
             f"Unknown Modified; Created {shown}",
         )
         self.assertEqual(sync_session._timestamp_cell({"modified": "", "modified_timestamp": None}), "Unknown")
-        self.assertEqual(sync_session._timestamp_cell(None), "Not present")
 
 
 class SyncSessionInventoryTests(unittest.TestCase):
@@ -365,6 +364,7 @@ class SyncSessionInventoryTests(unittest.TestCase):
             _safe_attr=lambda source, name, default=None: getattr(source, name, default),
             _iso_or_text=lambda value: str(value or ""),
             _is_known_dataset_type=lambda _name: True,
+            _is_engine_generated_instance=lambda _payload: False,
             _find_berquist_sherman_for_triangle=(
                 __import__(
                     "resq_migration.extractors",
@@ -468,6 +468,36 @@ class SyncSessionWriteRecheckTests(unittest.TestCase):
             sync_session._stale_selected_rows(runtime, [{"id": plan[0]["id"], "name": "Echo"}], plan),
             ["Echo"],
         )
+
+    def test_a_target_side_restamped_by_the_batch_does_not_block_the_write(self):
+        """Saving the DFMs made ResQ recalculate the Result Selection after them.
+
+        C 91 read C 61 and C 62, which ResQ derives from the C 22 and C 32 DFM
+        outputs, so the two DFM writes moved C 91's ResQ timestamp before its
+        own turn and the row was refused with "Timestamp changed" every run.
+        """
+        from resq_migration import sync as sync_contract
+
+        runtime, plan, arcrho, resq = self._runtime_and_plan()
+        selected = sync_session._selected_rows(plan, [plan[0]["id"]])
+        restamped = [dict(resq[0], modified_timestamp=1787688056.141 + 60)]
+        fresh_plan = sync_contract.build_sync_plan(arcrho, restamped, {"items": {}})
+        current = sync_session._plan_by_id(fresh_plan)[plan[0]["id"]]
+        self.assertTrue(current.get("conflict") or current["action"] != plan[0]["action"])
+
+        self.assertFalse(sync_session._row_moved_before_write(runtime, selected[0], current))
+
+    def test_a_source_side_that_moved_still_blocks_the_write(self):
+        from resq_migration import sync as sync_contract
+
+        runtime, plan, arcrho, resq = self._runtime_and_plan()
+        selected = sync_session._selected_rows(plan, [plan[0]["id"]])
+        moved = [dict(arcrho[0], modified_timestamp=1787688056.141 + 60)]
+        fresh_plan = sync_contract.build_sync_plan(moved, resq, {"items": {}})
+        current = sync_session._plan_by_id(fresh_plan)[plan[0]["id"]]
+
+        self.assertTrue(sync_session._row_moved_before_write(runtime, selected[0], current))
+        self.assertTrue(sync_session._row_moved_before_write(runtime, selected[0], None))
 
 
 class SyncSessionRuntimeTests(unittest.TestCase):
@@ -612,6 +642,69 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
         sync_session._preflight_method_export(exporter, row, satisfied=lambda name: name == "Paid Loss")
 
 
+class SyncSessionResQNameMappingTests(unittest.TestCase):
+    """ResQ names with stray double spaces map one-to-one onto ArcRho's clean names.
+
+    ResQ holds "C 81 -  Prior Qtr Indicated" while ArcRho keeps the normalized
+    "C 81 - Prior Qtr Indicated". The review paired them, but the Result
+    Selection preflight compared raw names and refused C 92 on every run as
+    having ResQ sources ArcRho could not remove.
+    """
+
+    def test_the_name_key_is_the_contract_pairing_key(self):
+        from resq_migration import sync as sync_contract
+
+        for raw in (
+            "C 81 -  Prior Qtr Indicated",
+            "  C 81 - Prior   Qtr Indicated ",
+            "c 81 - prior qtr indicated",
+        ):
+            self.assertEqual(sync_session._name_key(raw), sync_contract.logical_key(raw))
+            self.assertEqual(sync_session._name_key(raw), "c 81 - prior qtr indicated")
+
+    def _result_selection_exporter(self, resq_sources):
+        datasets = [Mock(Name=name) for name in resq_sources]
+        target = Mock()
+        target.DatasetCount = len(datasets)
+        target.OriginCount = 40
+        target.Dataset.side_effect = lambda index: datasets[index - 1]
+        exporter = Mock()
+        exporter._find_dataset.return_value = Mock()
+        exporter._find_method_by_output.return_value = target
+        return exporter
+
+    def _result_selection_row(self, sources):
+        return _write_row(
+            "C 92 - Current Qtr Selected",
+            kind=sync_session.KIND_RS,
+            payload={"method_tab": {"loaded_datasets": [{"name": name, "weights": []} for name in sources]}},
+        )
+
+    def test_result_selection_sources_differing_only_by_spacing_pass_preflight(self):
+        exporter = self._result_selection_exporter([
+            "C 81 -  Prior Qtr Indicated",
+            "C 82 -  Prior Qtr Selected",
+            "C 91 -  Current Qtr Indicated",
+        ])
+        row = self._result_selection_row([
+            "C 81 - Prior Qtr Indicated",
+            "C 82 - Prior Qtr Selected",
+            "C 91 - Current Qtr Indicated",
+        ])
+
+        sync_session._preflight_method_export(exporter, row)
+
+    def test_a_source_only_resq_holds_is_reported_in_resq_spelling(self):
+        exporter = self._result_selection_exporter([
+            "C 81 -  Prior Qtr Indicated",
+            "C 83 -  Prior Qtr Other",
+        ])
+        row = self._result_selection_row(["C 81 - Prior Qtr Indicated"])
+
+        with self.assertRaisesRegex(RuntimeError, r"cannot remove: C 83 -  Prior Qtr Other$"):
+            sync_session._preflight_method_export(exporter, row)
+
+
 class _ResQCollection:
     def __init__(self, items):
         self.items = list(items)
@@ -627,14 +720,14 @@ class _ResQCollection:
 
 
 class SyncSessionCalculatedDatasetTests(unittest.TestCase):
-    """Calculated datasets never reach the review: propagation owns them on both sides."""
+    """Calculated and engine datasets never reach the review: both sides rebuild them."""
 
     def _sync_contract(self):
         from resq_migration import sync as sync_contract
 
         return sync_contract
 
-    def test_arcrho_inventory_leaves_out_calculated_sidecars(self):
+    def test_arcrho_inventory_leaves_out_calculated_and_engine_sidecars(self):
         import json
         import tempfile
 
@@ -659,10 +752,18 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
                 formula='"Reported" / "CWOP"',
                 csv_file="Reported CDF.csv",
             )
+            engine = dict(
+                plain,
+                dataset_name="Reported Loss",
+                source_kind="engine",
+                csv_file="Reported Loss.csv",
+            )
             (sidecars / "Paid Loss.json").write_text(json.dumps(plain), encoding="utf-8")
             (sidecars / "Reported CDF.json").write_text(json.dumps(calculated), encoding="utf-8")
+            (sidecars / "Reported Loss.json").write_text(json.dumps(engine), encoding="utf-8")
             (cache / "Paid Loss.csv").write_text("1\n", encoding="utf-8")
             (cache / "Reported CDF.csv").write_text("1\n", encoding="utf-8")
+            (cache / "Reported Loss.csv").write_text("1\n", encoding="utf-8")
             migration = types.SimpleNamespace(
                 DATASET_SIDECAR_DIR="sidecars",
                 METHOD_DATA_DIR="methods",
@@ -679,11 +780,11 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
 
             inventory = sync_session.collect_arcrho_inventory(runtime, rc_dir)
 
-        # The calculated dataset's CSV cache must not resurface it as a sidecar-less row either.
+        # Neither left-out dataset's CSV cache may resurface it as a sidecar-less row.
         self.assertEqual([item["name"] for item in inventory], ["Paid Loss"])
         self.assertTrue(inventory[0]["can_export_to_resq"])
 
-    def test_resq_inventory_leaves_out_calculated_datasets(self):
+    def test_resq_inventory_leaves_out_calculated_and_generated_datasets(self):
         def dataset(name: str, calculated: bool):
             return types.SimpleNamespace(
                 Name=name,
@@ -696,7 +797,11 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
 
         empty = _ResQCollection([])
         reserving_class = types.SimpleNamespace(
-            Triangles=lambda: _ResQCollection([dataset("Paid Loss", False), dataset("Reported CDF", True)]),
+            Triangles=lambda: _ResQCollection([
+                dataset("Paid Loss", False),
+                dataset("Reported CDF", True),
+                dataset("Reported Loss", False),
+            ]),
             Vectors=lambda: empty,
             DFMMethods=lambda: empty,
             BFMethods=lambda: empty,
@@ -707,6 +812,7 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
             _safe_attr=lambda source, name, default=None: getattr(source, name, default),
             _iso_or_text=lambda value: str(value or ""),
             _is_known_dataset_type=lambda _name: True,
+            _is_engine_generated_instance=lambda payload: payload["name"] == "Reported Loss",
         )
         runtime = {
             "migration": migration,

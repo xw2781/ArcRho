@@ -32,6 +32,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -41,6 +42,22 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from arcrho_api.timestamps import format_display_timestamp
+
+_NAME_SPACE_RE = re.compile(r"\s+")
+
+
+def _name_key(value: object) -> str:
+    """Map an ArcRho or ResQ display name onto their shared logical identity.
+
+    ArcRho keeps every name whitespace-normalized. ResQ names can carry stray
+    double spaces that stay as they are, so every comparison of a ResQ name
+    against an ArcRho name goes through this one key. It is the same rule the
+    sync contract's ``logical_key`` applies when pairing rows, so one ResQ
+    object maps onto exactly one ArcRho item whatever its spacing; the ResQ
+    spelling itself is only ever used to address or name the ResQ object.
+    """
+
+    return _NAME_SPACE_RE.sub(" ", str(value or "").strip()).casefold()
 
 
 # Host contract version. The Bridge refuses a bundle whose session API it was
@@ -375,6 +392,10 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
             # A calculated dataset is recomputed by propagation on both sides
             # and nobody edits it directly, so there is nothing to reconcile.
             continue
+        if kind == KIND_DATASET and str(payload.get("source_kind") or "").strip().casefold() == "engine":
+            # An engine dataset is rebuilt from source data on both sides, so
+            # neither side holds a hand-edited copy to reconcile either.
+            continue
         modified_text = _sidecar_modified(payload)
         timestamp_source = "Dataset metadata"
         if not modified_text:
@@ -589,6 +610,12 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                 # ResQ recomputes it from its formula, as ArcRho does on its
                 # side, so the row would only ever report propagation times.
                 continue
+            if kind == KIND_DATASET and migration._is_engine_generated_instance(
+                {"name": name, "dataset_type": dataset_type}
+            ):
+                # The same rule the import uses to route a dataset to the
+                # Engine: generated on both sides, so nothing to reconcile.
+                continue
             import_supported = (
                 kind in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}
                 and known_type
@@ -636,7 +663,7 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
     return items
 
 
-def _timestamp_cell(item: Mapping[str, Any] | None) -> str:
+def _timestamp_cell(item: Mapping[str, Any]) -> str:
     """Every review row gets an explicit timestamp value for each side.
 
     Both sides are shown in this machine's local time, the form ResQ's own
@@ -644,8 +671,6 @@ def _timestamp_cell(item: Mapping[str, Any] | None) -> str:
     epoch seconds and never on this text.
     """
 
-    if not item:
-        return "Not present"
     value = str(item.get("modified") or "").strip()
     shown = format_display_timestamp(value, default=value)
     source = str(item.get("timestamp_source") or "").strip()
@@ -953,8 +978,8 @@ def _preflight_method_export(
         require_present(details.get("input_triangle"), exporter._find_triangle, "DFM input triangle")
         if target is None:
             return
-        expected_input = str(details.get("input_triangle") or "").strip().casefold()
-        actual_input = str(getattr(getattr(target, "InputTriangle"), "Name") or "").strip().casefold()
+        expected_input = _name_key(details.get("input_triangle"))
+        actual_input = _name_key(getattr(getattr(target, "InputTriangle"), "Name"))
         if actual_input != expected_input:
             raise RuntimeError(
                 "Existing ResQ DFM input triangle differs from ArcRho; safe retargeting is not supported."
@@ -1039,7 +1064,7 @@ def _preflight_method_export(
     elif kind == KIND_RS:
         loaded = method_tab.get("loaded_datasets") if isinstance(method_tab.get("loaded_datasets"), list) else []
         desired = {
-            str(source.get("name") or "").strip().casefold()
+            _name_key(source.get("name"))
             for source in loaded
             if isinstance(source, Mapping) and str(source.get("name") or "").strip()
         }
@@ -1050,11 +1075,15 @@ def _preflight_method_export(
             exporter.reserving_class.ResultSelections(), str(row.get("name") or "")
         )
         if target is not None:
-            existing = set()
+            # The comparison runs on the shared key so a stray double space in
+            # ResQ does not read as a source ArcRho would have to remove; the
+            # ResQ spelling is kept only to name a genuine extra.
+            existing: dict[str, str] = {}
             count = int(getattr(target, "DatasetCount", 0) or 0)
             for index in range(1, count + 1):
-                existing.add(str(target.Dataset(index).Name or "").strip().casefold())
-            extras = sorted(existing - desired)
+                resq_name = str(target.Dataset(index).Name or "").strip()
+                existing.setdefault(_name_key(resq_name), resq_name)
+            extras = sorted(name for key, name in existing.items() if key not in desired)
             if extras:
                 raise RuntimeError(
                     "ResQ Result Selection has source datasets ArcRho cannot remove: "
@@ -1085,7 +1114,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
     method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), Mapping) else {}
 
     def key(value: object) -> str:
-        return str(value or "").strip().casefold()
+        return _name_key(value)
 
     def assert_link(actual: object, expected: object, role: str) -> None:
         actual_name = key(getattr(actual, "Name"))
@@ -1531,8 +1560,8 @@ def _stale_selected_rows(
     ``reviewed_rows`` carries the signature the person actually saw, taken
     from the preview phase, so a change made while the review table was open
     is caught here rather than being silently written over. The write phase
-    passes its own earlier plan rows here too, and each of those is compared
-    against the observation it was built from.
+    runs this once more under the reserving-class lock before its first
+    write; the per-row check inside the batch is ``_row_moved_before_write``.
     """
 
     sync_contract = runtime["sync_contract"]
@@ -1552,6 +1581,36 @@ def _stale_selected_rows(
         ):
             stale.append(str(reviewed.get("name") or row_id or "item"))
     return stale
+
+
+def _row_moved_before_write(
+    runtime: Mapping[str, Any],
+    row: Mapping[str, Any],
+    current_row: Mapping[str, Any] | None,
+) -> bool:
+    """Tell whether the side a row is written from moved since the batch began.
+
+    ``row`` is the plan row selected under the reserving-class lock and
+    ``current_row`` its fresh observation taken right before the write. Only
+    the source side's timestamp and both sides' identity count: an earlier
+    write in the same batch re-stamps the target side of everything
+    downstream of it, which is the batch doing its job, not a change to
+    refuse.
+    """
+
+    sync_contract = runtime["sync_contract"]
+    if current_row is None:
+        return True
+    source_side = (
+        "arcrho"
+        if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ
+        else "resq"
+    )
+    return not sync_contract.write_signatures_equal(
+        sync_contract.plan_signature(row),
+        sync_contract.plan_signature(current_row),
+        source_side=source_side,
+    )
 
 
 def apply_sync_plan(
@@ -1579,7 +1638,6 @@ def apply_sync_plan(
 
     results: list[dict[str, Any]] = []
     successful_keys: list[str] = []
-    clear_pending_keys: list[str] = []
     local_mutated_names: list[str] = []
     post_write_observations: dict[str, dict[str, Any]] = {}
     total = len(selected_rows)
@@ -1739,15 +1797,6 @@ def apply_sync_plan(
             {str(row.get("key") or "") for row in remote_to_local},
             backup_root,
         )
-        state = sync_contract.mark_sync_pending(
-            state,
-            [str(row.get("key") or "") for row in selected_rows],
-            actions={
-                str(row.get("key") or ""): str(row.get("action") or "")
-                for row in selected_rows
-            },
-        )
-        sync_contract.write_sync_state(state_path, state)
         with nullcontext():
             # Writes are deliberately sequential and follow the dependency
             # order above: every ArcRho-to-ResQ row, each after the rows it
@@ -1758,10 +1807,17 @@ def apply_sync_plan(
             for row in write_order:
                 current = plan_with_baseline(locked_observation["state"])
                 current_row = _plan_by_id(current["plan"]).get(str(row.get("id") or ""))
-                stale = _stale_selected_rows(runtime, [row], current["plan"])
-                if stale or current_row is None:
-                    clear_pending_keys.append(str(row.get("key") or ""))
-                    record(row, False, "Timestamp changed during synchronization; rerun the review.")
+                if _row_moved_before_write(runtime, row, current_row):
+                    source = (
+                        "ArcRho"
+                        if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ
+                        else "ResQ"
+                    )
+                    record(
+                        row,
+                        False,
+                        f"The {source} source changed during synchronization; rerun the review.",
+                    )
                     continue
                 if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ:
                     try:
@@ -1777,14 +1833,10 @@ def apply_sync_plan(
                         except Exception as exc:
                             ok, message = False, str(exc)
                     if not ok:
-                        restored = False
                         try:
                             _restore_group(runtime, exporter, rc_dir, row, backup_root, backup_paths)
-                            restored = True
                         except Exception as restore_error:
                             message = f"{message} Rollback also failed: {restore_error}"
-                        if restored:
-                            clear_pending_keys.append(str(row.get("key") or ""))
                     else:
                         stable, stability_message = remember_post_write(
                             row, locked_observation["state"], current_row
@@ -1793,7 +1845,6 @@ def apply_sync_plan(
                             ok, message = False, f"{message} {stability_message}".strip()
                             try:
                                 _restore_group(runtime, exporter, rc_dir, row, backup_root, backup_paths)
-                                clear_pending_keys.append(str(row.get("key") or ""))
                             except Exception as restore_error:
                                 message = f"{message} Rollback also failed: {restore_error}"
                         else:
@@ -1879,9 +1930,6 @@ def apply_sync_plan(
                             f"{item.get('message')} The final ArcRho/ResQ timestamps "
                             "could not be recorded; the row remains in recovery state."
                         )
-            updated_state = sync_contract.clear_sync_pending(
-                updated_state, clear_pending_keys
-            )
             sync_contract.write_sync_state(state_path, updated_state)
 
     successes = sum(bool(item.get("success")) for item in results if item.get("id"))

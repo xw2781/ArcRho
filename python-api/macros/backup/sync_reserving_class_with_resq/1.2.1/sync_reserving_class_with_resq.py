@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.3.1
-# Release Note: Say that an empty review means nothing exists on both sides, now that the Bridge reviews only datasets and methods present in ArcRho and ResQ alike.
+# Version: 1.2.1
+# Release Note: Check for a live ArcRho Bridge worker from the server side through the Gateway and only refuse after thirty silent seconds, instead of on one stale heartbeat reading over the mapped drive.
 # Description: Compare every dataset and supported method output in the selected reserving class, show both ArcRho and ResQ timestamps in a review table, and apply only the synchronization actions the user accepts.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -23,8 +23,8 @@ The session is split into the two phases the review table needs:
    written over a change made while the review table was open.
 
 Everything in this file is client-side: context, the review table, progress,
-and the results table. The comparison and write rules live in the canonical
-session this macro never imports.
+and the summary. The comparison and write rules live in the canonical session
+this macro never imports.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from arcrho_api.bridge_liveness import (  # noqa: F401
 
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.3.1"
+MACRO_VERSION = "1.2.1"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 REVIEW_POLL_SECONDS = 0.5
 
@@ -516,14 +516,24 @@ def review_table_payload(
         "acceptLabel": "Apply Selected",
         "cancelLabel": "Cancel",
         "searchPlaceholder": "Filter datasets and methods",
-        "emptyMessage": "No dataset or method exists in both ArcRho and ResQ for this reserving class.",
+        "emptyMessage": "No datasets or methods were found on either side.",
     }
 
 
-def _await_review_table(ui, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Open a non-blocking review table, poll until it completes, and return the completion."""
+def review_sync_plan(
+    ui,
+    preview: list[Mapping[str, Any]],
+    project_name: str,
+    rc_path: str,
+    connection_name: str,
+) -> list[str] | None:
+    """Open the non-blocking review table and poll until the user decides."""
 
-    opened = ui.send_command("ui.reviewTableOpen", args=dict(payload), timeout_sec=20)
+    opened = ui.send_command(
+        "ui.reviewTableOpen",
+        args=review_table_payload(preview, project_name, rc_path, connection_name),
+        timeout_sec=20,
+    )
     opened_payload = _result_payload(opened)
     dialog_id = str(opened_payload.get("dialogId") or opened_payload.get("dialog_id") or "").strip()
     if not dialog_id:
@@ -536,12 +546,15 @@ def _await_review_table(ui, payload: Mapping[str, Any]) -> dict[str, Any]:
                 args={"dialogId": dialog_id},
                 timeout_sec=20,
             )
-            completion = _result_payload(status)
-            state = str(completion.get("status") or completion.get("state") or "").strip().casefold()
+            payload = _result_payload(status)
+            state = str(payload.get("status") or payload.get("state") or "").strip().casefold()
             if state == "completed":
-                return completion
+                if not bool(payload.get("accepted")):
+                    return None
+                selected = payload.get("selectedRowIds") or payload.get("selected_row_ids") or []
+                return [str(value) for value in selected if str(value).strip()]
             if state not in {"", "pending", "open"}:
-                raise RuntimeError(str(completion.get("error") or f"Review table ended in an unexpected state: {state}"))
+                raise RuntimeError(str(payload.get("error") or f"Review table ended in an unexpected state: {state}"))
             time.sleep(REVIEW_POLL_SECONDS)
     finally:
         try:
@@ -552,24 +565,6 @@ def _await_review_table(ui, payload: Mapping[str, Any]) -> dict[str, Any]:
             )
         except Exception:
             pass
-
-
-def review_sync_plan(
-    ui,
-    preview: list[Mapping[str, Any]],
-    project_name: str,
-    rc_path: str,
-    connection_name: str,
-) -> list[str] | None:
-    """Show the sync plan and return the accepted row IDs, or None when cancelled."""
-
-    completion = _await_review_table(
-        ui, review_table_payload(preview, project_name, rc_path, connection_name)
-    )
-    if not bool(completion.get("accepted")):
-        return None
-    selected = completion.get("selectedRowIds") or completion.get("selected_row_ids") or []
-    return [str(value) for value in selected if str(value).strip()]
 
 
 def accepted_rows(preview: list[Mapping[str, Any]], selected_ids: list[str]) -> list[dict[str, Any]]:
@@ -591,9 +586,8 @@ def accepted_rows(preview: list[Mapping[str, Any]], selected_ids: list[str]) -> 
 
 
 def _sync_summary_message(result: Mapping[str, Any]) -> str:
-    """The short message for a run that applied nothing: a stale review or an empty selection."""
-
-    if str(result.get("status") or "") == "stale":
+    status = str(result.get("status") or "")
+    if status == "stale":
         names = [str(value) for value in result.get("stale_items") or []]
         details = "\n".join(f"- {name}" for name in names[:12])
         return (
@@ -601,77 +595,31 @@ def _sync_summary_message(result: Mapping[str, Any]) -> str:
             "Run the macro again to review a fresh comparison."
             + (f"\n\nChanged items:\n{details}" if details else "")
         )
-    return "No synchronization actions were selected. Nothing was changed."
+    if status == "no_changes":
+        return "No synchronization actions were selected. Nothing was changed."
 
-
-def sync_result_table_payload(result: Mapping[str, Any]) -> dict[str, Any]:
-    """Project the Bridge's apply results into the read-only review-table contract.
-
-    One row per result item: the accepted rows in the order they were written,
-    then any dependent-refresh warning, which carries no row id. The direction
-    label comes from the preview row the item was accepted from, so the results
-    read exactly as the review did.
-    """
-
-    preview = [row for row in result.get("preview") or [] if isinstance(row, Mapping)]
-    direction_by_id = {str(row.get("id") or ""): str(row.get("action_label") or "") for row in preview}
-    items = [item for item in result.get("results") or [] if isinstance(item, Mapping)]
-    rows = []
-    applied = failed = warnings = to_resq = to_arcrho = 0
-    for index, item in enumerate(items, start=1):
-        item_id = str(item.get("id") or "")
-        if not item_id:
-            warnings += 1
-            outcome = {"text": "Warning", "tone": "warn"}
-        elif item.get("success"):
-            applied += 1
-            if item.get("action") == "arcrho_to_resq":
-                to_resq += 1
-            elif item.get("action") == "resq_to_arcrho":
-                to_arcrho += 1
-            outcome = {"text": "Applied", "tone": "ok"}
-        else:
-            failed += 1
-            outcome = {"text": "Failed", "tone": "error"}
-        rows.append({
-            "id": f"result-{index}",
-            "cells": {
-                "kind": str(item.get("kind") or KIND_DATASET),
-                "name": str(item.get("name") or ""),
-                "direction": direction_by_id.get(item_id, ""),
-                "outcome": outcome,
-                "detail": str(item.get("message") or ""),
-            },
-        })
-    headline = (
-        "Reserving-class synchronization completed with errors."
-        if failed
-        else "Reserving-class synchronization completed."
-    )
-    return {
-        "title": "ResQ Sync Results",
-        "host": "projectInstance",
-        "selectable": False,
-        "summary": (
-            f"{headline}\n"
-            f"Project: {result.get('project_name')} | Reserving class: {result.get('rc_path')} | "
-            f"ResQ: {result.get('connection_name')}\n"
-            f"Applied {applied} of {applied + failed} accepted action(s): "
-            f"{to_resq} ArcRho -> ResQ, {to_arcrho} ResQ -> ArcRho. {failed} failed"
-            + (f"; {warnings} dependent-refresh warning(s)" if warnings else "")
-            + "."
-        ),
-        "columns": [
-            {"key": "kind", "label": "Type", "width": 150},
-            {"key": "name", "label": "Dataset / Method Output", "width": 250},
-            {"key": "direction", "label": "Direction", "width": 145},
-            {"key": "outcome", "label": "Outcome", "width": 110},
-            {"key": "detail", "label": "Details", "width": 520},
-        ],
-        "rows": rows,
-        "acceptLabel": "Close",
-        "searchPlaceholder": "Filter results",
-    }
+    results = [item for item in result.get("results") or [] if isinstance(item, Mapping)]
+    successful = [item for item in results if item.get("id") and item.get("success")]
+    failed = [item for item in results if item.get("id") and not item.get("success")]
+    warnings = [item for item in results if not item.get("id")]
+    to_resq = sum(item.get("action") == "arcrho_to_resq" for item in successful)
+    to_arcrho = sum(item.get("action") == "resq_to_arcrho" for item in successful)
+    lines = [
+        "Reserving-class synchronization completed." if not failed else "Reserving-class synchronization completed with errors.",
+        f"Project: {result.get('project_name')}",
+        f"Path: {result.get('rc_path')}",
+        f"ResQ connection: {result.get('connection_name')}",
+        "",
+        f"Applied: {len(successful)}",
+        f"ArcRho -> ResQ: {to_resq}",
+        f"ResQ -> ArcRho: {to_arcrho}",
+        f"Failed or skipped: {len(failed)}",
+    ]
+    if failed or warnings:
+        lines.extend(("", "Details:"))
+        for item in (failed + warnings)[:12]:
+            lines.append(f"- {item.get('name')}: {item.get('message')}")
+    return "\n".join(lines)
 
 
 def run_macro(active_dfm=None, active_context=None):
@@ -781,14 +729,10 @@ def run_macro(active_dfm=None, active_context=None):
                 result["reload_error"] = str(exc)
 
         status = str(result.get("status") or "")
-        if status in {"completed", "completed_with_errors"}:
-            payload = sync_result_table_payload(result)
-            result["message"] = payload["summary"]
-            _await_review_table(ui, payload)
-        else:
-            summary = _sync_summary_message(result)
-            _message(ui, summary, kind="warning", auto_close_ms=None if status == "stale" else 7000)
-            result["message"] = summary
+        summary = _sync_summary_message(result)
+        kind = "warning" if status in {"stale", "no_changes", "completed_with_errors"} else "success"
+        _message(ui, summary, kind=kind, auto_close_ms=None if status in {"stale", "completed_with_errors"} else 7000)
+        result["message"] = summary
         return result
     except BridgeUnavailableError as exc:
         # Nothing was published, so this is a precondition, not a failure to

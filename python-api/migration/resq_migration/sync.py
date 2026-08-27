@@ -102,9 +102,6 @@ def _state_signature(value: Mapping[str, Any] | None) -> dict[str, Any]:
     source = value if isinstance(value, Mapping) else {}
     return {
         "present": bool(source),
-        "pending": bool(source.get("pending")),
-        "pending_action": str(source.get("pending_action") or ""),
-        "pending_since": str(source.get("pending_since") or ""),
         "arcrho_present": bool(source.get("arcrho_present")),
         "resq_present": bool(source.get("resq_present")),
         "arcrho_timestamp": _timestamp(source.get("arcrho_timestamp")),
@@ -191,20 +188,21 @@ def build_sync_plan(
     resq_items: Iterable[Mapping[str, Any]],
     state: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build a deterministic, reviewable plan over the union of both inventories."""
+    """Build a deterministic, reviewable plan over the items both inventories hold.
+
+    An item on one side only is not a synchronization candidate: a new dataset
+    or method reaches the other side through an import, not through this
+    review, so such items never become rows.
+    """
 
     local_groups = _group_inventory(arcrho_items)
     remote_groups = _group_inventory(resq_items)
     state_items = state.get("items") if isinstance(state, Mapping) and isinstance(state.get("items"), Mapping) else {}
     rows: list[dict[str, Any]] = []
-    for key in sorted(set(local_groups) | set(remote_groups)):
-        local_candidates = local_groups.get(key, [])
-        remote_candidates = remote_groups.get(key, [])
-        display_name = clean_name(
-            (local_candidates or remote_candidates)[0].get("name")
-            if (local_candidates or remote_candidates)
-            else key
-        )
+    for key in sorted(set(local_groups) & set(remote_groups)):
+        local_candidates = local_groups[key]
+        remote_candidates = remote_groups[key]
+        display_name = clean_name(local_candidates[0].get("name"))
         baseline = state_items.get(key) if isinstance(state_items, Mapping) and isinstance(state_items.get(key), Mapping) else None
         row: dict[str, Any] = {
             "id": _row_id(key),
@@ -236,7 +234,7 @@ def build_sync_plan(
         local_kind = clean_name((arcrho or {}).get("kind"))
         remote_kind = clean_name((resq or {}).get("kind"))
         row["kind"] = local_kind or remote_kind or "Dataset"
-        if arcrho and resq and logical_key(local_kind) != logical_key(remote_kind):
+        if logical_key(local_kind) != logical_key(remote_kind):
             row.update(
                 status="Type mismatch",
                 detail=f"ArcRho identifies this as {local_kind}; ResQ identifies it as {remote_kind}.",
@@ -244,87 +242,43 @@ def build_sync_plan(
             rows.append(row)
             continue
 
-        if arcrho and resq:
-            local_format = clean_name(arcrho.get("data_format"))
-            remote_format = clean_name(resq.get("data_format"))
-            if local_format and remote_format and logical_key(local_format) != logical_key(remote_format):
-                row.update(
-                    status="Format mismatch",
-                    detail=f"ArcRho is {local_format}; ResQ is {remote_format}.",
-                )
-                rows.append(row)
-                continue
-            local_type = clean_name(arcrho.get("dataset_type"))
-            remote_type = clean_name(resq.get("dataset_type"))
-            if local_type and remote_type and logical_key(local_type) != logical_key(remote_type):
-                row.update(
-                    status="Dataset Type mismatch",
-                    detail=f"ArcRho uses {local_type}; ResQ uses {remote_type}.",
-                )
-                rows.append(row)
-                continue
-            local_method_name = clean_name(arcrho.get("method_name"))
-            remote_method_name = clean_name(resq.get("method_name"))
-            if (
-                logical_key(local_kind) != logical_key("Dataset")
-                and local_method_name
-                and remote_method_name
-                and logical_key(local_method_name) != logical_key(remote_method_name)
-            ):
-                row.update(
-                    status="Method mismatch",
-                    detail=(
-                        f"ArcRho method {local_method_name} and ResQ method "
-                        f"{remote_method_name} produce the same output name."
-                    ),
-                )
-                rows.append(row)
-                continue
+        local_format = clean_name(arcrho.get("data_format"))
+        remote_format = clean_name(resq.get("data_format"))
+        if local_format and remote_format and logical_key(local_format) != logical_key(remote_format):
+            row.update(
+                status="Format mismatch",
+                detail=f"ArcRho is {local_format}; ResQ is {remote_format}.",
+            )
+            rows.append(row)
+            continue
+        local_type = clean_name(arcrho.get("dataset_type"))
+        remote_type = clean_name(resq.get("dataset_type"))
+        if local_type and remote_type and logical_key(local_type) != logical_key(remote_type):
+            row.update(
+                status="Dataset Type mismatch",
+                detail=f"ArcRho uses {local_type}; ResQ uses {remote_type}.",
+            )
+            rows.append(row)
+            continue
+        local_method_name = clean_name(arcrho.get("method_name"))
+        remote_method_name = clean_name(resq.get("method_name"))
+        if (
+            logical_key(local_kind) != logical_key("Dataset")
+            and local_method_name
+            and remote_method_name
+            and logical_key(local_method_name) != logical_key(remote_method_name)
+        ):
+            row.update(
+                status="Method mismatch",
+                detail=(
+                    f"ArcRho method {local_method_name} and ResQ method "
+                    f"{remote_method_name} produce the same output name."
+                ),
+            )
+            rows.append(row)
+            continue
 
-        if baseline and baseline.get("pending"):
-            if arcrho is not None and resq is not None:
-                observed_action, observed_status, detail, _conflict = _comparison_action(arcrho, resq, None)
-            elif arcrho is None:
-                observed_action = ACTION_RESQ_TO_ARCRHO
-                observed_status = "Only in ResQ"
-                detail = "The item is not present in ArcRho."
-            else:
-                observed_action = ACTION_ARCRHO_TO_RESQ
-                observed_status = "Only in ArcRho"
-                detail = "The item is not present in ResQ."
-            pending_action = str(baseline.get("pending_action") or "")
-            action = (
-                pending_action
-                if pending_action in {ACTION_ARCRHO_TO_RESQ, ACTION_RESQ_TO_ARCRHO}
-                else observed_action
-            )
-            status = f"Previous sync incomplete; {observed_status}"
-            direction = (
-                "ArcRho -> ResQ"
-                if action == ACTION_ARCRHO_TO_RESQ
-                else "ResQ -> ArcRho"
-                if action == ACTION_RESQ_TO_ARCRHO
-                else "no direction"
-            )
-            detail = (
-                "A prior accepted synchronization did not finish recording its baseline. "
-                f"{detail} The recoverable prior action is {direction}; select it only "
-                "after reviewing both timestamps."
-            )
-            conflict = True
-        elif arcrho is None:
-            action = ACTION_RESQ_TO_ARCRHO
-            status = "Only in ResQ"
-            detail = "The item is not present in ArcRho."
-            conflict = False
-        elif resq is None:
-            action = ACTION_ARCRHO_TO_RESQ
-            status = "Only in ArcRho"
-            detail = "The item is not present in ResQ."
-            conflict = False
-        else:
-            action, status, detail, conflict = _comparison_action(arcrho, resq, baseline)
-
+        action, status, detail, conflict = _comparison_action(arcrho, resq, baseline)
         row.update(action=action, status=status, detail=detail, conflict=conflict)
         if action:
             supported, reason = _support_for_action(action, arcrho, resq)
@@ -370,6 +324,31 @@ def plan_signature(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _signature_sides(
+    left: Mapping[str, Any], right: Mapping[str, Any], side_name: str
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    a = left.get(side_name) if isinstance(left.get(side_name), Mapping) else {}
+    b = right.get(side_name) if isinstance(right.get(side_name), Mapping) else {}
+    return a, b
+
+
+def _side_identity_equal(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    if bool(a.get("present")) != bool(b.get("present")):
+        return False
+    for field in ("kind", "data_format", "method_name", "dataset_type"):
+        if clean_name(a.get(field)) != clean_name(b.get(field)):
+            return False
+    return True
+
+
+def _side_timestamp_equal(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    a_time = _timestamp(a.get("modified_timestamp"))
+    b_time = _timestamp(b.get("modified_timestamp"))
+    if a_time is None or b_time is None:
+        return a_time == b_time
+    return _timestamps_equal(a_time, b_time)
+
+
 def signatures_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     if str(left.get("key") or "") != str(right.get("key") or ""):
         return False
@@ -382,19 +361,35 @@ def signatures_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     if dict(left.get("state_signature") or {}) != dict(right.get("state_signature") or {}):
         return False
     for side_name in ("arcrho", "resq"):
-        a = left.get(side_name) if isinstance(left.get(side_name), Mapping) else {}
-        b = right.get(side_name) if isinstance(right.get(side_name), Mapping) else {}
-        if bool(a.get("present")) != bool(b.get("present")):
+        a, b = _signature_sides(left, right, side_name)
+        if not _side_identity_equal(a, b) or not _side_timestamp_equal(a, b):
             return False
-        for field in ("kind", "data_format", "method_name", "dataset_type"):
-            if clean_name(a.get(field)) != clean_name(b.get(field)):
-                return False
-        a_time = _timestamp(a.get("modified_timestamp"))
-        b_time = _timestamp(b.get("modified_timestamp"))
-        if a_time is None or b_time is None:
-            if a_time != b_time:
-                return False
-        elif not _timestamps_equal(a_time, b_time):
+    return True
+
+
+def write_signatures_equal(
+    left: Mapping[str, Any], right: Mapping[str, Any], *, source_side: str
+) -> bool:
+    """Tell whether a row may still be written from ``source_side``.
+
+    ``signatures_equal`` holds a whole row still, which is right while the
+    review is open. Inside one write batch it is too strict: saving a DFM into
+    ResQ makes ResQ recalculate every Result Selection downstream of it, and an
+    import into ArcRho refreshes its dependents, so the batch itself re-stamps
+    the target side of a later row and shifts its proposed action against the
+    unchanged baseline. Here only the identity of both sides and the timestamp
+    of the side being written from decide.
+    """
+
+    if source_side not in ("arcrho", "resq"):
+        raise ValueError(f"Unknown source side: {source_side!r}")
+    if str(left.get("key") or "") != str(right.get("key") or ""):
+        return False
+    for side_name in ("arcrho", "resq"):
+        a, b = _signature_sides(left, right, side_name)
+        if not _side_identity_equal(a, b):
+            return False
+        if side_name == source_side and not _side_timestamp_equal(a, b):
             return False
     return True
 
@@ -501,55 +496,3 @@ def write_sync_state(path: str | os.PathLike[str], state: Mapping[str, Any]) -> 
         except OSError:
             pass
     return target
-
-
-def mark_sync_pending(
-    state: Mapping[str, Any],
-    keys: Iterable[str],
-    *,
-    actions: Mapping[str, Any] | None = None,
-    marked_at: str | None = None,
-) -> dict[str, Any]:
-    """Persist a fail-closed marker before the first accepted mutation."""
-
-    updated = dict(state)
-    entries = dict(state.get("items") or {}) if isinstance(state.get("items"), Mapping) else {}
-    timestamp = str(marked_at or datetime.now(timezone.utc).isoformat()).strip()
-    for raw_key in keys:
-        key = logical_key(raw_key)
-        if not key:
-            continue
-        previous = dict(entries.get(key) or {}) if isinstance(entries.get(key), Mapping) else {}
-        previous.update({"pending": True, "pending_since": timestamp})
-        action = str((actions or {}).get(key) or "")
-        if action in {ACTION_ARCRHO_TO_RESQ, ACTION_RESQ_TO_ARCRHO}:
-            previous["pending_action"] = action
-        entries[key] = previous
-    updated["items"] = entries
-    updated["updated_at"] = timestamp
-    return updated
-
-
-def clear_sync_pending(state: Mapping[str, Any], keys: Iterable[str]) -> dict[str, Any]:
-    """Clear markers for rows proven not to have mutated or fully rolled back."""
-
-    updated = dict(state)
-    entries = dict(state.get("items") or {}) if isinstance(state.get("items"), Mapping) else {}
-    for raw_key in keys:
-        key = logical_key(raw_key)
-        current = entries.get(key)
-        if not isinstance(current, Mapping) or not current.get("pending"):
-            continue
-        restored = dict(current)
-        restored.pop("pending", None)
-        restored.pop("pending_since", None)
-        restored.pop("pending_action", None)
-        if any(
-            field in restored
-            for field in ("arcrho_timestamp", "resq_timestamp", "arcrho_present", "resq_present")
-        ):
-            entries[key] = restored
-        else:
-            entries.pop(key, None)
-    updated["items"] = entries
-    return updated

@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.3.1
-# Release Note: Say that an empty review means nothing exists on both sides, now that the Bridge reviews only datasets and methods present in ArcRho and ResQ alike.
+# Version: 1.3.0
+# Release Note: Show the synchronization results as a read-only table in the same Project Instance window the review used, one row per applied, failed, or warned item, instead of a message box.
 # Description: Compare every dataset and supported method output in the selected reserving class, show both ArcRho and ResQ timestamps in a review table, and apply only the synchronization actions the user accepts.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -51,7 +51,7 @@ from arcrho_api.bridge_liveness import (  # noqa: F401
 
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.3.1"
+MACRO_VERSION = "1.3.0"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 REVIEW_POLL_SECONDS = 0.5
 
@@ -516,7 +516,7 @@ def review_table_payload(
         "acceptLabel": "Apply Selected",
         "cancelLabel": "Cancel",
         "searchPlaceholder": "Filter datasets and methods",
-        "emptyMessage": "No dataset or method exists in both ArcRho and ResQ for this reserving class.",
+        "emptyMessage": "No datasets or methods were found on either side.",
     }
 
 

@@ -367,11 +367,9 @@ class SyncMacroReviewTableTests(unittest.TestCase):
     def test_review_table_has_both_timestamp_columns_and_cells_for_every_row(self):
         preview = [
             _preview_row("both-present"),
-            dict(_preview_row("missing-resq"), resq_timestamp="Not present"),
             dict(_preview_row("unknown"), arcrho_timestamp="Unknown", resq_timestamp="Unknown"),
             dict(
                 _preview_row("created-only"),
-                arcrho_timestamp="Not present",
                 resq_timestamp="Unknown Modified; Created 2026-08-12T09:30:00",
             ),
         ]
@@ -391,7 +389,6 @@ class SyncMacroReviewTableTests(unittest.TestCase):
         by_id = {row["id"]: row["cells"] for row in payload["rows"]}
         self.assertEqual(by_id["both-present"]["arcrho_timestamp"], "2026-08-12T10:00:00+00:00")
         self.assertEqual(by_id["both-present"]["resq_timestamp"], "2026-08-12T11:00:00")
-        self.assertEqual(by_id["missing-resq"]["resq_timestamp"], "Not present")
         self.assertEqual(by_id["unknown"]["arcrho_timestamp"], "Unknown")
         self.assertEqual(
             by_id["created-only"]["resq_timestamp"],
@@ -455,22 +452,64 @@ class SyncMacroSummaryTests(unittest.TestCase):
         self.assertIn("Paid Loss", message)
         self.assertIn("Run the macro again", message)
 
-    def test_a_completed_result_counts_both_directions(self):
-        message = self.module._sync_summary_message({
-            "status": "completed",
+    def test_an_empty_selection_reports_that_nothing_changed(self):
+        message = self.module._sync_summary_message({"status": "no_changes"})
+
+        self.assertIn("Nothing was changed", message)
+
+    def test_a_completed_result_becomes_a_read_only_table_with_one_row_per_item(self):
+        payload = self.module.sync_result_table_payload({
+            "status": "completed_with_errors",
             "project_name": "Demo",
             "rc_path": r"Auto\PP",
             "connection_name": "ResQ Demo",
+            "preview": [
+                _preview_row("a"),
+                dict(_preview_row("b", action="resq_to_arcrho"), action_label="ResQ -> ArcRho"),
+                dict(_preview_row("c", action="resq_to_arcrho"), action_label="ResQ -> ArcRho"),
+            ],
             "results": [
-                {"id": "a", "success": True, "action": "arcrho_to_resq"},
-                {"id": "b", "success": True, "action": "resq_to_arcrho"},
-                {"id": "c", "success": False, "action": "resq_to_arcrho", "name": "C", "message": "failed"},
+                {"id": "a", "name": "A", "kind": "Dataset", "success": True, "action": "arcrho_to_resq", "message": "Written"},
+                {"id": "b", "name": "B", "kind": "DFM", "success": True, "action": "resq_to_arcrho", "message": "Imported"},
+                {"id": "c", "name": "C", "kind": "Dataset", "success": False, "action": "resq_to_arcrho", "message": "failed"},
+                {"id": "", "name": "Dependent refresh", "kind": "Warning", "success": False, "action": "", "message": "stale DFM"},
             ],
         })
 
-        self.assertIn("ArcRho -> ResQ: 1", message)
-        self.assertIn("ResQ -> ArcRho: 1", message)
-        self.assertIn("Failed or skipped: 1", message)
+        self.assertEqual(payload["host"], "projectInstance")
+        self.assertFalse(payload["selectable"])
+        self.assertEqual(payload["acceptLabel"], "Close")
+        self.assertIn("completed with errors", payload["summary"])
+        self.assertIn("Applied 2 of 3 accepted action(s): 1 ArcRho -> ResQ, 1 ResQ -> ArcRho. 1 failed", payload["summary"])
+        self.assertIn("1 dependent-refresh warning(s)", payload["summary"])
+        self.assertEqual([row["id"] for row in payload["rows"]], ["result-1", "result-2", "result-3", "result-4"])
+        cells = [row["cells"] for row in payload["rows"]]
+        self.assertEqual([cell["direction"] for cell in cells], ["ArcRho -> ResQ", "ResQ -> ArcRho", "ResQ -> ArcRho", ""])
+        self.assertEqual(
+            [cell["outcome"] for cell in cells],
+            [
+                {"text": "Applied", "tone": "ok"},
+                {"text": "Applied", "tone": "ok"},
+                {"text": "Failed", "tone": "error"},
+                {"text": "Warning", "tone": "warn"},
+            ],
+        )
+        self.assertEqual(cells[2]["detail"], "failed")
+        self.assertEqual(cells[3]["name"], "Dependent refresh")
+
+    def test_the_results_table_stays_open_until_the_user_closes_it(self):
+        ui = _ReviewUI(selected_row_ids=(), accepted=True)
+        payload = self.module.sync_result_table_payload({"status": "completed", "results": []})
+
+        with patch.object(self.module.time, "sleep"):
+            completion = self.module._await_review_table(ui, payload)
+
+        self.assertEqual(completion["status"], "completed")
+        self.assertEqual(
+            [command for command, _args, _timeout in ui.calls],
+            ["ui.reviewTableOpen", "ui.reviewTableStatus", "ui.reviewTableStatus", "ui.reviewTableClose"],
+        )
+        self.assertFalse(ui.calls[0][1]["selectable"])
 
 
 if __name__ == "__main__":
