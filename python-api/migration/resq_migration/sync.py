@@ -480,6 +480,99 @@ def record_synced_items(
     return updated
 
 
+def absorb_propagated_changes(
+    state: Mapping[str, Any],
+    before_rows: Iterable[Mapping[str, Any]],
+    after_rows: Iterable[Mapping[str, Any]],
+    *,
+    keys: Iterable[str],
+    synced_at: str | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Baseline the moves a write batch itself caused downstream of its rows.
+
+    ``keys`` names the review rows downstream of what the batch wrote and not
+    written themselves. Both systems recalculate those from the inputs the
+    batch just synchronized and re-stamp them, so a move between the batch's
+    opening observation (``before_rows``) and its closing one (``after_rows``)
+    is the batch's own doing, not an edit. Each side that moved takes its
+    closing timestamp as the new baseline while a side that held still keeps
+    its old one, so a change that was already pending before the batch stays
+    pending. A row with no baseline yet is baselined only when it showed no
+    difference before the batch. Returns the updated state and one record per
+    absorbed row naming the sides that moved.
+    """
+
+    before = {str(row.get("key") or ""): row for row in before_rows}
+    after = {str(row.get("key") or ""): row for row in after_rows}
+    updated = dict(state)
+    entries = dict(state.get("items") or {}) if isinstance(state.get("items"), Mapping) else {}
+    timestamp = str(synced_at or datetime.now(timezone.utc).isoformat()).strip()
+    absorbed: list[dict[str, Any]] = []
+
+    def side(row: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+        value = row.get(name)
+        return value if isinstance(value, Mapping) else {}
+
+    for raw_key in keys:
+        key = logical_key(raw_key)
+        before_row = before.get(key)
+        after_row = after.get(key)
+        if before_row is None or after_row is None:
+            continue
+        moved: dict[str, float] = {}
+        closing: dict[str, float | None] = {}
+        for side_name in ("arcrho", "resq"):
+            opening_time = _timestamp(side(before_row, side_name).get("modified_timestamp"))
+            closing_time = _timestamp(side(after_row, side_name).get("modified_timestamp"))
+            closing[side_name] = closing_time
+            if closing_time is None:
+                continue
+            if opening_time is not None and _timestamps_equal(opening_time, closing_time):
+                continue
+            moved[side_name] = closing_time
+        if not moved:
+            continue
+        entry = entries.get(key)
+        if isinstance(entry, Mapping):
+            new_entry = dict(entry)
+            for side_name, closing_time in moved.items():
+                new_entry[f"{side_name}_timestamp"] = closing_time
+                new_entry[f"{side_name}_present"] = True
+        else:
+            opening_local = _timestamp(side(before_row, "arcrho").get("modified_timestamp"))
+            opening_remote = _timestamp(side(before_row, "resq").get("modified_timestamp"))
+            showed_no_difference = (
+                not before_row.get("action")
+                and not before_row.get("conflict")
+                and opening_local is not None
+                and opening_remote is not None
+                and _timestamps_equal(opening_local, opening_remote)
+            )
+            if not showed_no_difference or closing["arcrho"] is None or closing["resq"] is None:
+                continue
+            new_entry = {
+                "name": clean_name(before_row.get("name")),
+                "kind": clean_name(before_row.get("kind")),
+                "arcrho_present": True,
+                "resq_present": True,
+                "arcrho_timestamp": closing["arcrho"],
+                "resq_timestamp": closing["resq"],
+                "synced_at": timestamp,
+            }
+        new_entry["propagated_at"] = timestamp
+        entries[key] = new_entry
+        absorbed.append({
+            "key": key,
+            "name": clean_name(before_row.get("name")),
+            "kind": clean_name(before_row.get("kind")),
+            "sides": sorted(moved),
+        })
+    updated["items"] = entries
+    if absorbed:
+        updated["updated_at"] = timestamp
+    return updated, absorbed
+
+
 def write_sync_state(path: str | os.PathLike[str], state: Mapping[str, Any]) -> Path:
     """Atomically persist the one canonical synchronization-baseline document."""
 

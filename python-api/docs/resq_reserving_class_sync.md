@@ -24,6 +24,12 @@ same whitespace-normalized, case-insensitive key, so each ResQ object maps
 onto exactly one ArcRho item. The ResQ spelling is only ever used to address
 the ResQ object or to name it in a message.
 
+On the ArcRho side a method's timestamp is its last user Save
+(`method_metadata.last_modified`). A propagation refresh records itself as
+`data_refreshed` and leaves that stamp alone, for Result Selections as for
+DFM, BF and Cape Cod, so a method ArcRho recomputed because one of its inputs
+changed is never offered as an edit to push.
+
 - `Unknown` means the item exists, but no usable last-modified timestamp was
   available. If ResQ exposes `Created` but not `Modified`, the table shows the
   created value for context as `Unknown Modified; Created ...`; it is not used
@@ -113,6 +119,19 @@ recalculate every Result Selection downstream of it, and an import refreshes
 ArcRho's dependents, so a Result Selection written after the DFMs it depends
 on is still written from the ArcRho copy the review showed.
 
+After the batch, the review items downstream of what it wrote are baselined
+too. Both systems recalculate a Result Selection, or a method whose input was
+written, from the inputs the batch just synchronized and re-stamp it, so a
+move between the batch's opening and closing observations on such an item is
+the batch's own doing. The walk follows ArcRho's sidecar graph across the whole
+reserving class, calculated datasets included, plus the links in the review
+rows' method tabs; ResQ holds the same graph once the inputs match. Only the
+side that moved takes its closing timestamp, so a change that was already
+pending before the batch stays pending, and an item with no baseline yet is
+baselined only when it showed no difference before the batch. These items
+appear in the results table as `Recalculated` rows; nothing is written for
+them.
+
 ## Supported actions
 
 - Ordinary ArcRho triangle/vector datasets can sync in either direction when
@@ -185,8 +204,10 @@ Instance review window the plan used, as a read-only table (`selectable:
 false`, one `Close` button, no tick column): one row per written item in
 write order, then one row per dependent-refresh warning. Each row shows the
 type, logical name, the direction label from the review, an outcome of
-`Applied`, `Failed`, or `Warning`, and the Bridge's message for that item; the
-header line gives the counts by direction. The macro keeps running until the
+`Applied`, `Failed`, `Warning`, or `Recalculated`, and the Bridge's message
+for that item; the header line gives the counts by direction. A
+`Recalculated` row is an item the writes made both systems recompute; its
+baseline was updated and nothing was written. The macro keeps running until the
 window is closed. A stale review or an empty selection applied nothing, so
 those two outcomes stay a short message box. For an ArcRho-to-ResQ method row, `Synchronized` means neither
 side's timestamp changed since the accepted supported-field write; it is not a

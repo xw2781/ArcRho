@@ -116,6 +116,87 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertEqual(local_changed["status"], "ArcRho changed")
         self.assertEqual(local_changed["action"], sync.ACTION_ARCRHO_TO_RESQ)
 
+    def _baselined_state(self):
+        return sync.record_synced_items(
+            sync.empty_sync_state("Demo", r"Auto\PP", "ResQ Demo"),
+            ["Paid Loss"],
+            [_item(timestamp=200)],
+            [_item(timestamp=100)],
+            synced_at="2026-08-12T12:00:00+00:00",
+        )
+
+    def test_a_batch_ripple_is_baselined_only_on_the_side_it_moved(self):
+        # Saving a DFM into ResQ makes ResQ recalculate and re-stamp the Result
+        # Selection downstream of it; the next review used to call that "ResQ
+        # changed" and offer to pull back a copy nobody edited.
+        state = self._baselined_state()
+        before = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=100)], state)
+        after = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=150)], state)
+        self.assertEqual(after[0]["status"], "ResQ changed")
+
+        updated, absorbed = sync.absorb_propagated_changes(
+            state, before, after, keys=["paid loss"], synced_at="2026-08-12T12:05:00+00:00"
+        )
+
+        self.assertEqual(
+            absorbed,
+            [{"key": "paid loss", "name": "Paid Loss", "kind": "Dataset", "sides": ["resq"]}],
+        )
+        entry = updated["items"]["paid loss"]
+        self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (200.0, 150.0))
+        self.assertEqual(entry["propagated_at"], "2026-08-12T12:05:00+00:00")
+        self.assertEqual(entry["synced_at"], "2026-08-12T12:00:00+00:00")
+        replan = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=150)], updated)
+        self.assertEqual(replan[0]["status"], "Synchronized")
+
+    def test_a_change_pending_before_the_batch_survives_the_ripple(self):
+        state = self._baselined_state()
+        before = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=100)], state)
+        after = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=150)], state)
+        self.assertEqual(before[0]["status"], "ArcRho changed")
+
+        updated, absorbed = sync.absorb_propagated_changes(state, before, after, keys=["paid loss"])
+
+        self.assertEqual([item["sides"] for item in absorbed], [["resq"]])
+        entry = updated["items"]["paid loss"]
+        self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (200.0, 150.0))
+        replan = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=150)], updated)
+        self.assertEqual(replan[0]["status"], "ArcRho changed")
+
+    def test_a_row_without_a_baseline_is_baselined_only_from_matching_timestamps(self):
+        empty = sync.empty_sync_state("Demo", r"Auto\PP", "ResQ Demo")
+        same_before = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=200)])
+        same_after = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=250)])
+        self.assertEqual(same_before[0]["status"], "Same timestamp")
+
+        updated, absorbed = sync.absorb_propagated_changes(
+            empty, same_before, same_after, keys=["paid loss"], synced_at="2026-08-12T12:05:00+00:00"
+        )
+
+        self.assertEqual([item["sides"] for item in absorbed], [["resq"]])
+        entry = updated["items"]["paid loss"]
+        self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (200.0, 250.0))
+        self.assertEqual(entry["synced_at"], "2026-08-12T12:05:00+00:00")
+        replan = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=250)], updated)
+        self.assertEqual(replan[0]["status"], "Synchronized")
+
+        pending_before = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=200)])
+        pending_after = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=250)])
+        untouched, absorbed = sync.absorb_propagated_changes(
+            empty, pending_before, pending_after, keys=["paid loss"]
+        )
+        self.assertEqual(absorbed, [])
+        self.assertEqual(untouched["items"], {})
+
+    def test_a_row_that_held_still_is_left_alone(self):
+        state = self._baselined_state()
+        plan = sync.build_sync_plan([_item(timestamp=200)], [_item(timestamp=100)], state)
+
+        updated, absorbed = sync.absorb_propagated_changes(state, plan, plan, keys=["paid loss", "missing"])
+
+        self.assertEqual(absorbed, [])
+        self.assertEqual(updated["items"], state["items"])
+
     def test_items_on_one_side_only_never_become_rows(self):
         plan = sync.build_sync_plan(
             [_item("Paid Loss"), _item("Only Here"), _item("Twice Here"), _item("Twice Here")],

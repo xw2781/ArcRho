@@ -7,7 +7,9 @@ tests follow the rules rather than their old home.
 """
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -640,6 +642,47 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
             sync_session._preflight_method_export(exporter, row)
 
         sync_session._preflight_method_export(exporter, row, satisfied=lambda name: name == "Paid Loss")
+
+
+class SyncSessionRippleTests(unittest.TestCase):
+    """A write re-stamps everything downstream of it, on both sides."""
+
+    def test_downstream_rows_are_reached_through_calculated_datasets(self):
+        from resq_migration import sync as sync_contract
+
+        runtime = {
+            "sync_contract": sync_contract,
+            "migration": types.SimpleNamespace(
+                DATASET_SIDECAR_DIR="sidecars",
+                _normalize_cached_dataset_name=lambda stem: stem,
+            ),
+        }
+        rows = [
+            _write_row("C 22", kind=sync_session.KIND_DFM, payload={"details_tab": {"input_triangle": "Paid"}}),
+            _write_row("C 91", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "C 61"}]}}),
+            _write_row("C 92", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "C 91"}]}}),
+            _write_row("C 12", kind=sync_session.KIND_DFM, payload={"details_tab": {"input_triangle": "Paid"}}),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            rc_dir = Path(temp)
+            (rc_dir / "sidecars").mkdir()
+            # C 61 is calculated from C 22 and never reaches the review, yet it
+            # is the link through which a written DFM re-stamps C 91 and C 92.
+            (rc_dir / "sidecars" / "C 61.json").write_text(
+                json.dumps({
+                    "dataset_name": "C 61",
+                    "calculated": True,
+                    "precedents": [{"dataset_name": "C 22"}],
+                    "dependents": [{"dataset_name": "C 91"}],
+                }),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                sync_session._downstream_keys(runtime, rc_dir, rows, {"c 22"}),
+                {"c 91", "c 92"},
+            )
+            self.assertEqual(sync_session._downstream_keys(runtime, rc_dir, rows, {"c 12"}), set())
 
 
 class SyncSessionResQNameMappingTests(unittest.TestCase):

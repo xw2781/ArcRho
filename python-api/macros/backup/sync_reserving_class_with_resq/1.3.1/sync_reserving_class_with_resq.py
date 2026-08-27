@@ -51,7 +51,7 @@ from arcrho_api.bridge_liveness import (  # noqa: F401
 
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.3.2"
+MACRO_VERSION = "1.3.1"
 PROGRESS_ID = "sync-reserving-class-with-resq"
 REVIEW_POLL_SECONDS = 0.5
 
@@ -608,24 +608,19 @@ def sync_result_table_payload(result: Mapping[str, Any]) -> dict[str, Any]:
     """Project the Bridge's apply results into the read-only review-table contract.
 
     One row per result item: the accepted rows in the order they were written,
-    then any dependent-refresh warning, which carries no row id, then any item
-    the writes made both systems recalculate, which the Bridge re-baselined
-    without writing. The direction label comes from the preview row the item
-    was accepted from, so the results read exactly as the review did.
+    then any dependent-refresh warning, which carries no row id. The direction
+    label comes from the preview row the item was accepted from, so the results
+    read exactly as the review did.
     """
 
     preview = [row for row in result.get("preview") or [] if isinstance(row, Mapping)]
     direction_by_id = {str(row.get("id") or ""): str(row.get("action_label") or "") for row in preview}
     items = [item for item in result.get("results") or [] if isinstance(item, Mapping)]
     rows = []
-    applied = failed = warnings = recalculated = to_resq = to_arcrho = 0
+    applied = failed = warnings = to_resq = to_arcrho = 0
     for index, item in enumerate(items, start=1):
         item_id = str(item.get("id") or "")
-        if item.get("absorbed"):
-            recalculated += 1
-            item_id = ""
-            outcome = {"text": "Recalculated", "tone": "info"}
-        elif not item_id:
+        if not item_id:
             warnings += 1
             outcome = {"text": "Warning", "tone": "warn"}
         elif item.get("success"):
@@ -664,7 +659,6 @@ def sync_result_table_payload(result: Mapping[str, Any]) -> dict[str, Any]:
             f"Applied {applied} of {applied + failed} accepted action(s): "
             f"{to_resq} ArcRho -> ResQ, {to_arcrho} ResQ -> ArcRho. {failed} failed"
             + (f"; {warnings} dependent-refresh warning(s)" if warnings else "")
-            + (f"; {recalculated} recalculated item(s) re-baselined" if recalculated else "")
             + "."
         ),
         "columns": [

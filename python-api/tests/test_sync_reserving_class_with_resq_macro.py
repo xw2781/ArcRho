@@ -497,6 +497,37 @@ class SyncMacroSummaryTests(unittest.TestCase):
         self.assertEqual(cells[2]["detail"], "failed")
         self.assertEqual(cells[3]["name"], "Dependent refresh")
 
+    def test_a_recalculated_downstream_item_is_reported_without_counting_as_applied(self):
+        payload = self.module.sync_result_table_payload({
+            "status": "completed",
+            "project_name": "Demo",
+            "rc_path": r"Auto\PP",
+            "connection_name": "ResQ Demo",
+            "preview": [_preview_row("a"), dict(_preview_row("d", action=""), action_label="No action")],
+            "results": [
+                {"id": "a", "name": "A", "kind": "DFM", "success": True, "action": "arcrho_to_resq", "message": "Written"},
+                {
+                    "id": "d",
+                    "name": "D",
+                    "kind": "Result Selection",
+                    "success": True,
+                    "absorbed": True,
+                    "action": "",
+                    "message": "Recalculated on the ResQ side by this run's writes.",
+                },
+            ],
+        })
+
+        self.assertIn(
+            "Applied 1 of 1 accepted action(s): 1 ArcRho -> ResQ, 0 ResQ -> ArcRho. 0 failed; "
+            "1 recalculated item(s) re-baselined.",
+            payload["summary"],
+        )
+        cells = [row["cells"] for row in payload["rows"]]
+        self.assertEqual(cells[1]["outcome"], {"text": "Recalculated", "tone": "info"})
+        self.assertEqual(cells[1]["direction"], "")
+        self.assertEqual(cells[1]["kind"], "Result Selection")
+
     def test_the_results_table_stays_open_until_the_user_closes_it(self):
         ui = _ReviewUI(selected_row_ids=(), accepted=True)
         payload = self.module.sync_result_table_payload({"status": "completed", "results": []})

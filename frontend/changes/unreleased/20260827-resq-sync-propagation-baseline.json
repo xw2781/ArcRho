@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ no longer reports items that were only recalculated by propagation as changes to synchronize.",
+  "details": [
+    "After a run, the items downstream of what it wrote are re-baselined: both ArcRho and ResQ recompute a Result Selection, or a method whose input was written, from the inputs the run just synchronized, and that recalculation used to show up as 'ResQ changed' at the next review. They now appear in the results table as 'Recalculated' rows, and nothing is written for them.",
+    "Only the side the run moved is re-baselined, so a change that was already pending before the run is still offered afterwards.",
+    "On the ArcRho side, a Result Selection refresh no longer overwrites the method's last-saved time; like DFM, BF and Cape Cod it records the refresh separately, so editing one input no longer proposes every Result Selection downstream of it as an ArcRho change.",
+    "The macro (1.3.2) renders the new rows; the Bridge and the Engine must be redeployed to pick up the rest."
+  ]
+}

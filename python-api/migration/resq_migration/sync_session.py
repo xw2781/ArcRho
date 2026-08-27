@@ -188,6 +188,59 @@ def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[
     return ordered
 
 
+def _downstream_keys(
+    runtime: Mapping[str, Any],
+    rc_dir: Path,
+    plan_rows: list[dict[str, Any]],
+    source_keys: set[str],
+) -> set[str]:
+    """Name every review row downstream of ``source_keys`` in ArcRho's graph.
+
+    The walk follows the sidecar ``precedents``/``dependents`` edges across
+    the whole reserving class, calculated datasets included, plus the links
+    in the review rows' method tabs, so a Result Selection that reads a
+    calculated dataset derived from a written DFM is reached through it. ResQ
+    holds the same graph once the inputs are synchronized, so the same walk
+    names what ResQ recalculates after the writes.
+    """
+
+    migration = runtime["migration"]
+    sync_contract = runtime["sync_contract"]
+    edges: dict[str, set[str]] = {}
+
+    def add_edge(source: object, target: object) -> None:
+        source_key = sync_contract.logical_key(source)
+        target_key = sync_contract.logical_key(target)
+        if source_key and target_key and source_key != target_key:
+            edges.setdefault(source_key, set()).add(target_key)
+
+    sidecar_entries = _read_json_entries(
+        _directory_files(rc_dir / migration.DATASET_SIDECAR_DIR, ".json")
+    )
+    for path, _modified, payload in sidecar_entries:
+        name = sync_contract.clean_name(
+            payload.get("dataset_name") or migration._normalize_cached_dataset_name(path.stem)
+        )
+        for precedent in _dependency_names(payload.get("precedents")):
+            add_edge(precedent, name)
+        for dependent in _dependency_names(payload.get("dependents")):
+            add_edge(name, dependent)
+    for row in plan_rows:
+        for precedent in _row_precedent_names(row):
+            add_edge(precedent, row.get("key"))
+
+    reached: set[str] = set()
+    frontier = list(source_keys)
+    while frontier:
+        current = frontier.pop()
+        for target in edges.get(current, ()):
+            if target not in reached and target not in source_keys:
+                reached.add(target)
+                frontier.append(target)
+    row_keys = {str(row.get("key") or "") for row in plan_rows}
+    return reached & row_keys
+
+
 def _safe_int(value: object, default: int = 0) -> int:
     try:
         return int(value)
@@ -1930,10 +1983,44 @@ def apply_sync_plan(
                             f"{item.get('message')} The final ArcRho/ResQ timestamps "
                             "could not be recorded; the row remains in recovery state."
                         )
+            if successful_keys:
+                # The writes ripple: both systems recalculate and re-stamp
+                # whatever reads a written row, so those rows are baselined
+                # here rather than shown as changes at the next review.
+                selected_keys = {str(row.get("key") or "") for row in selected_rows}
+                ripple_keys = _downstream_keys(
+                    runtime, rc_dir, locked_observation["plan"], set(successful_keys)
+                ) - selected_keys
+                updated_state, absorbed = sync_contract.absorb_propagated_changes(
+                    updated_state,
+                    locked_observation["plan"],
+                    final_plan,
+                    keys=sorted(ripple_keys),
+                )
+                locked_by_key = {
+                    str(row.get("key") or ""): row for row in locked_observation["plan"]
+                }
+                for item in absorbed:
+                    sides = " and ".join(
+                        "ArcRho" if side == "arcrho" else "ResQ" for side in item["sides"]
+                    )
+                    results.append({
+                        "id": str((locked_by_key.get(item["key"]) or {}).get("id") or ""),
+                        "name": item["name"],
+                        "kind": item["kind"],
+                        "action": "",
+                        "success": True,
+                        "absorbed": True,
+                        "message": (
+                            f"Recalculated on the {sides} side by this run's writes; "
+                            "the baseline was updated and nothing was written."
+                        ),
+                    })
             sync_contract.write_sync_state(state_path, updated_state)
 
-    successes = sum(bool(item.get("success")) for item in results if item.get("id"))
-    failures = sum(not bool(item.get("success")) for item in results if item.get("id"))
+    written = [item for item in results if item.get("id") and not item.get("absorbed")]
+    successes = sum(bool(item.get("success")) for item in written)
+    failures = sum(not bool(item.get("success")) for item in written)
     return {
         "successes": successes,
         "failures": failures,
