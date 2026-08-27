@@ -568,15 +568,7 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
             _write_row(
                 "Selected Ult",
                 kind="Result Selection",
-                payload={"method_tab": {"loaded_datasets": [{"name": "BF Ultimate"}, {"name": "Ultimate Loss"}]}},
-            ),
-            _write_row(
-                "Ultimate Loss",
-                payload={
-                    "calculated": True,
-                    "formula": '"Paid LDF" * 1',
-                    "precedents": [{"dataset_name": "Paid Loss"}, {"dataset_name": "Paid LDF"}],
-                },
+                payload={"method_tab": {"loaded_datasets": [{"name": "BF Ultimate"}, {"name": "Prior Ult"}]}},
             ),
         ]
 
@@ -584,7 +576,7 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
 
         self.assertEqual(
             [row["id"] for row in ordered],
-            ["Paid Loss", "Prior Ult", "Paid LDF", "Ultimate Loss", "BF Ultimate", "Selected Ult"],
+            ["Paid Loss", "Prior Ult", "Paid LDF", "BF Ultimate", "Selected Ult"],
         )
 
     def test_unlinked_rows_keep_datasets_first_and_then_the_review_order(self):
@@ -600,8 +592,8 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
 
     def test_a_dependency_cycle_keeps_every_row_instead_of_failing(self):
         rows = [
-            _write_row("Alpha", payload={"calculated": True, "precedents": [{"dataset_name": "Beta"}]}),
-            _write_row("Beta", payload={"calculated": True, "precedents": [{"dataset_name": "Alpha"}]}),
+            _write_row("Alpha", payload={"precedents": [{"dataset_name": "Beta"}]}),
+            _write_row("Beta", payload={"precedents": [{"dataset_name": "Alpha"}]}),
         ]
 
         ordered = sync_session._dependency_ordered_rows(self._contract(), rows)
@@ -619,69 +611,117 @@ class SyncSessionWriteOrderTests(unittest.TestCase):
 
         sync_session._preflight_method_export(exporter, row, satisfied=lambda name: name == "Paid Loss")
 
-    def test_calculated_dataset_preflight_requires_its_formula_inputs(self):
-        exporter = Mock()
-        exporter._find_dataset.return_value = None
-        row = _write_row(
-            "Ultimate Loss",
-            payload={
-                "calculated": True,
-                "formula": '"Paid Loss" * 2',
-                "data_format": "Vector",
-                "precedents": [{"dataset_name": "Paid Loss"}],
-            },
-        )
 
-        with patch.object(sync_session, "_dataset_export_values", return_value=[[None]]):
-            with self.assertRaisesRegex(RuntimeError, "Required formula dataset is not present in ResQ: Paid Loss"):
-                sync_session._preflight_dataset_export(exporter, row)
-            values = sync_session._preflight_dataset_export(
-                exporter, row, satisfied=lambda name: name == "Paid Loss"
+class _ResQCollection:
+    def __init__(self, items):
+        self.items = list(items)
+        self.Count = len(self.items)
+
+    def Item(self, value):
+        if isinstance(value, int):
+            return self.items[value - 1]
+        for item in self.items:
+            if str(getattr(item, "Name", "")).casefold() == str(value).casefold():
+                return item
+        raise KeyError(value)
+
+
+class SyncSessionCalculatedDatasetTests(unittest.TestCase):
+    """Calculated datasets never reach the review: propagation owns them on both sides."""
+
+    def _sync_contract(self):
+        from resq_migration import sync as sync_contract
+
+        return sync_contract
+
+    def test_arcrho_inventory_leaves_out_calculated_sidecars(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            rc_dir = Path(temp)
+            sidecars = rc_dir / "sidecars"
+            cache = rc_dir / "cache"
+            sidecars.mkdir()
+            cache.mkdir()
+            plain = {
+                "dataset_name": "Paid Loss",
+                "method_type": "None",
+                "data_format": "Triangle",
+                "calculated": False,
+                "csv_file": "Paid Loss.csv",
+                "last_modified": "2026-08-27T09:18:22",
+            }
+            calculated = dict(
+                plain,
+                dataset_name="Reported CDF",
+                calculated=True,
+                formula='"Reported" / "CWOP"',
+                csv_file="Reported CDF.csv",
+            )
+            (sidecars / "Paid Loss.json").write_text(json.dumps(plain), encoding="utf-8")
+            (sidecars / "Reported CDF.json").write_text(json.dumps(calculated), encoding="utf-8")
+            (cache / "Paid Loss.csv").write_text("1\n", encoding="utf-8")
+            (cache / "Reported CDF.csv").write_text("1\n", encoding="utf-8")
+            migration = types.SimpleNamespace(
+                DATASET_SIDECAR_DIR="sidecars",
+                METHOD_DATA_DIR="methods",
+                DATASET_CACHE_DIR="cache",
+                _normalize_cached_dataset_name=lambda value: str(value),
+                _cached_dataset_names_from_file=lambda name: [Path(name).stem],
+            )
+            runtime = {
+                "migration": migration,
+                "parse_timestamp": sync_session._parsed_timestamp,
+                "method_entry": lambda payload, filename: None,
+                "sync_contract": self._sync_contract(),
+            }
+
+            inventory = sync_session.collect_arcrho_inventory(runtime, rc_dir)
+
+        # The calculated dataset's CSV cache must not resurface it as a sidecar-less row either.
+        self.assertEqual([item["name"] for item in inventory], ["Paid Loss"])
+        self.assertTrue(inventory[0]["can_export_to_resq"])
+
+    def test_resq_inventory_leaves_out_calculated_datasets(self):
+        def dataset(name: str, calculated: bool):
+            return types.SimpleNamespace(
+                Name=name,
+                MethodType=0,
+                Modified="2026-08-27T09:19:05",
+                Created="2026-08-11T10:00:00",
+                DatasetType=types.SimpleNamespace(Name=name),
+                Calculated=calculated,
             )
 
-        # ResQ computes the values, so a blank ArcRho cell does not block the creation.
-        self.assertEqual(values, [[None]])
-
-    def _calculated_export(self, target):
-        created = {"Paid Loss": Mock()}
-        exporter = Mock()
-        exporter.counts = {"errors": 0, "datasets_written": 0}
-        exporter.skipped = {}
-        exporter.error_details = []
-        exporter._find_dataset.side_effect = lambda name: created.get(name)
-        exporter._create_dataset.side_effect = (
-            lambda sidecar, name, is_triangle: created.__setitem__(name, target)
+        empty = _ResQCollection([])
+        reserving_class = types.SimpleNamespace(
+            Triangles=lambda: _ResQCollection([dataset("Paid Loss", False), dataset("Reported CDF", True)]),
+            Vectors=lambda: empty,
+            DFMMethods=lambda: empty,
+            BFMethods=lambda: empty,
+            CapeCodMethods=lambda: empty,
+            ResultSelections=lambda: empty,
         )
-        payload = {
-            "calculated": True,
-            "formula": '"Paid Loss" * 2',
-            "data_format": "Triangle",
-            "precedents": [{"dataset_name": "Paid Loss"}],
+        migration = types.SimpleNamespace(
+            _safe_attr=lambda source, name, default=None: getattr(source, name, default),
+            _iso_or_text=lambda value: str(value or ""),
+            _is_known_dataset_type=lambda _name: True,
+        )
+        runtime = {
+            "migration": migration,
+            "exporter_module": types.SimpleNamespace(
+                _clean_label=lambda value: " ".join(str(value or "").split())
+            ),
+            "sync_contract": self._sync_contract(),
+            "parse_timestamp": sync_session._parsed_timestamp,
         }
-        row = _write_row("Ultimate Loss", payload=payload)
-        with patch.object(sync_session, "_dataset_export_values", return_value=[[1.0]]):
-            outcome = sync_session._export_one_to_resq(exporter, row)
-        return exporter, payload, outcome
+        exporter = types.SimpleNamespace(reserving_class=reserving_class)
 
-    def test_calculated_dataset_absent_from_resq_is_created_with_its_formula(self):
-        target = Mock()
-        target.Calculated = True
-        target.Formula = '"Paid Loss"  *  2'
+        inventory = sync_session.collect_resq_inventory(runtime, exporter)
 
-        exporter, payload, (ok, message) = self._calculated_export(target)
-
-        self.assertTrue(ok)
-        self.assertIn("calculated dataset", message)
-        exporter._create_dataset.assert_called_once_with(payload, "Ultimate Loss", True)
-        exporter.export_datasets.assert_not_called()
-
-    def test_calculated_dataset_creation_fails_when_resq_drops_the_formula(self):
-        target = Mock()
-        target.Calculated = True
-        target.Formula = ""
-
-        with self.assertRaisesRegex(RuntimeError, "formula did not match"):
-            self._calculated_export(target)
+        self.assertEqual([item["name"] for item in inventory], ["Paid Loss"])
+        self.assertTrue(inventory[0]["can_receive_from_arcrho"])
 
 
 if __name__ == "__main__":

@@ -85,10 +85,12 @@ def _dependency_names(entries: object) -> list[str]:
 def _row_precedent_names(row: Mapping[str, Any]) -> list[str]:
     """Name every ArcRho dataset this row's ArcRho side reads.
 
-    A dataset row carries its formula inputs in the sidecar ``precedents``
-    field, the same graph ArcRho's own recompute walk follows. A method row
-    names its linked datasets in its method tabs; the ResQ writer resolves
-    those links by name, so they are dependencies of the ResQ write as well.
+    A row carries any sidecar ``precedents`` it has, the same graph ArcRho's
+    own recompute walk follows. A method row also names its linked datasets
+    in its method tabs; the ResQ writer resolves those links by name, so they
+    are dependencies of the ResQ write as well. Calculated datasets never
+    reach the plan, so in practice the edges run from plain datasets to the
+    methods that read them and between methods.
     """
 
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
@@ -369,6 +371,10 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
         if key in method_keys:
             continue
         kind = _method_kind(payload.get("method_type"))
+        if kind == KIND_DATASET and bool(payload.get("calculated")):
+            # A calculated dataset is recomputed by propagation on both sides
+            # and nobody edits it directly, so there is nothing to reconcile.
+            continue
         modified_text = _sidecar_modified(payload)
         timestamp_source = "Dataset metadata"
         if not modified_text:
@@ -579,6 +585,10 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             ) or name
             known_type = bool(migration._is_known_dataset_type(dataset_type))
             calculated = bool(_required_resq_attr(obj, "Calculated", f"{collection_kind} dataset"))
+            if kind == KIND_DATASET and calculated:
+                # ResQ recomputes it from its formula, as ArcRho does on its
+                # side, so the row would only ever report propagation times.
+                continue
             import_supported = (
                 kind in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}
                 and known_type
@@ -599,8 +609,8 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                 import_reason = f"ResQ-to-ArcRho import is not supported for {kind}."
             else:
                 import_reason = ""
-            can_receive = kind == KIND_DATASET and not calculated
-            receive_reason = "ResQ calculated datasets recompute their own values." if calculated else ""
+            can_receive = kind == KIND_DATASET
+            receive_reason = ""
             if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}:
                 can_receive = False
                 receive_reason = f"ArcRho-to-ResQ write-back is not supported for {kind}."
@@ -750,14 +760,7 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
         expected_values = _preflight_dataset_export(exporter, row)
         payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
         is_triangle = _payload_is_triangle(payload)
-        name = str(row.get("name") or "")
-        if _creates_calculated_dataset(exporter, row):
-            # ResQ owns a calculated dataset's values, so the write is the
-            # object and its formula; the value writer would refuse the rest.
-            exporter._create_dataset(payload, name, is_triangle)
-            _verify_calculated_dataset_export(exporter, row)
-            return True, "Created in ResQ as a calculated dataset; ResQ computes its values."
-        target = exporter._find_triangle(name) if is_triangle else None
+        target = exporter._find_triangle(str(row.get("name") or "")) if is_triangle else None
         if target is not None:
             # The general exporter historically tolerates ClearData failures.
             # Selective sync must fail closed because otherwise ArcRho blanks or
@@ -826,55 +829,10 @@ def _dataset_export_values(exporter, row: Mapping[str, Any]) -> list[list[float 
     return values
 
 
-def _creates_calculated_dataset(exporter, row: Mapping[str, Any]) -> bool:
-    """True when the row is a calculated ArcRho dataset that ResQ does not hold yet."""
-
-    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
-    payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
-    if not bool(payload.get("calculated")) or not str(payload.get("formula") or "").strip():
-        return False
-    return exporter._find_dataset(str(row.get("name") or "")) is None
-
-
-def _verify_calculated_dataset_export(exporter, row: Mapping[str, Any]) -> None:
-    """Read back the calculated object and formula the creation claims to apply."""
-
-    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
-    payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
-    target = exporter._find_dataset(str(row.get("name") or ""))
-    if target is None:
-        raise RuntimeError("ResQ did not expose the calculated dataset after the write.")
-    if not bool(getattr(target, "Calculated", False)):
-        raise RuntimeError("ResQ did not keep the dataset calculated after the write.")
-    expected = " ".join(str(payload.get("formula") or "").split()).casefold()
-    actual = " ".join(str(getattr(target, "Formula", "") or "").split()).casefold()
-    if actual != expected:
-        raise RuntimeError("ResQ formula did not match ArcRho after the write.")
-
-
-def _preflight_dataset_export(
-    exporter,
-    row: Mapping[str, Any],
-    *,
-    satisfied: Callable[[str], bool] | None = None,
-) -> list[list[float | None]]:
-    """Block a dataset write ResQ would refuse or silently truncate.
-
-    ``satisfied`` names datasets an earlier row of the same batch will have
-    created by the time this row is written; the strict check without it runs
-    again immediately before the write.
-    """
-
+def _preflight_dataset_export(exporter, row: Mapping[str, Any]) -> list[list[float | None]]:
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
     values = _dataset_export_values(exporter, row)
-    if _creates_calculated_dataset(exporter, row):
-        # ResQ evaluates the formula when the object is saved, so every input
-        # must already exist there or be written earlier in this batch.
-        for name in _dependency_names(payload.get("precedents")):
-            if exporter._find_dataset(name) is None and not (satisfied is not None and satisfied(name)):
-                raise RuntimeError(f"Required formula dataset is not present in ResQ: {name}")
-        return values
     is_triangle = _payload_is_triangle(payload)
     if is_triangle:
         return values
@@ -1753,7 +1711,7 @@ def apply_sync_plan(
         for row in local_to_remote:
             try:
                 if row.get("kind") == KIND_DATASET:
-                    _preflight_dataset_export(exporter, row, satisfied=satisfied_by_batch)
+                    _preflight_dataset_export(exporter, row)
                 else:
                     _preflight_method_export(exporter, row, satisfied=satisfied_by_batch)
             except Exception as exc:

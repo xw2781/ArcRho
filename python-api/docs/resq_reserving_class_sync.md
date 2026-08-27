@@ -105,10 +105,11 @@ using an old plan.
 ## Supported actions
 
 - Ordinary ArcRho triangle/vector datasets can sync in either direction when
-  their canonical metadata and CSV cache exist, the Dataset Type is known,
-  and a ResQ target is not calculated. A calculated ArcRho dataset that ResQ
-  does not hold yet is created there with its formula, after its formula
-  inputs, and ResQ computes its values.
+  their canonical metadata and CSV cache exist and the Dataset Type is known.
+- Calculated datasets are left out of the review entirely, on both sides.
+  Propagation recomputes them from their formula inputs in ArcRho and in
+  ResQ alike and nobody edits them directly, so their timestamps only ever
+  record the last propagation and there is nothing to reconcile.
 - DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection methods can sync in
   either direction through their method output rows. ArcRho-to-ResQ rows are
   labeled `supported fields only`: they use the existing, deliberately partial
@@ -124,23 +125,22 @@ Unsupported actions are displayed but disabled. Duplicate normalized names are
 `Ambiguous name`. Kind, data-format, Dataset Type, or method/output identity
 disagreements are mismatch rows and are also disabled. Other examples include
 a missing ArcRho sidecar or CSV cache, a ResQ Dataset Type unknown to ArcRho,
-a method-coded output whose ResQ method object cannot be found, and a
-calculated ResQ dataset that owns its recomputation.
+and a method-coded output whose ResQ method object cannot be found.
 
 ## Write order
 
 Accepted rows are written one at a time. ArcRho-to-ResQ rows go first, then
 ResQ-to-ArcRho rows, and within each direction the rows follow ArcRho's own
-dependency graph: a calculated dataset comes after the datasets its formula
-reads, a DFM after its input triangle, a BF or Cape Cod method after the DFM
-output and priors it links, and a Result Selection after every source it
-loads. Rows with no link between them keep the review-table order, datasets
-before methods. The graph is read from the sidecar `precedents` and the method
-tabs of the accepted rows, so only rows in the same run reorder each other.
+dependency graph: a DFM comes after its input triangle, a BF or Cape Cod
+method after the DFM output and priors it links, and a Result Selection after
+every source it loads. Rows with no link between them keep the review-table
+order, datasets before methods. The graph is read from the method tabs and
+any sidecar `precedents` of the accepted rows, so only rows in the same run
+reorder each other.
 
-A method or calculated dataset whose input is created earlier in the same run
-passes preflight on that promise; the strict check runs again right before the
-row is written, so an input that failed still blocks every row that reads it.
+A method whose linked dataset is created earlier in the same run passes
+preflight on that promise; the strict check runs again right before the row
+is written, so an input that failed still blocks every row that reads it.
 
 ## Apply and recovery boundaries
 
