@@ -178,6 +178,9 @@ export function createReviewTableView(settings = {}) {
     cellIndexByKey.set(column.key, index);
   });
   const selectedIds = settings.selectedIds instanceof Set ? settings.selectedIds : new Set();
+  // A read-only report draws no tick column and ignores row clicks; sorting,
+  // filtering, and column handling stay exactly as they are for a review.
+  const selectable = settings.selectable !== false;
   const onSelectionChange = typeof settings.onSelectionChange === "function"
     ? settings.onSelectionChange
     : () => {};
@@ -609,7 +612,7 @@ export function createReviewTableView(settings = {}) {
       moveActiveRow(-1, event);
       return;
     }
-    if (event.key === " " || event.key === "Spacebar") {
+    if (selectable && (event.key === " " || event.key === "Spacebar")) {
       const row = visibleRows.find((item) => item.id === activeId);
       if (!row) return;
       event.preventDefault();
@@ -730,27 +733,29 @@ export function createReviewTableView(settings = {}) {
     tr.dataset.recordKey = row.id;
     if (row.disabled) tr.setAttribute("aria-disabled", "true");
 
-    const selectCell = element(doc, "td", "reviewTableSelectColumn");
-    const box = element(doc, "input", "reviewTableRowSelect");
-    box.type = "checkbox";
-    box.checked = selectedIds.has(row.id);
-    box.disabled = row.disabled;
-    box.setAttribute(
-      "aria-label",
-      row.disabled ? `Action unavailable for ${row.id}` : `Select action for ${row.id}`,
-    );
-    // The row handler already toggles this row, so the checkbox only has to
-    // stop its own click from being counted twice.
-    box.addEventListener("click", (event) => event.stopPropagation());
-    box.addEventListener("change", () => {
-      setRowTicked(row, box.checked);
-      anchorId = row.id;
-      activeId = row.id;
-      syncSelectionDom();
-      onSelectionChange();
-    });
-    selectCell.appendChild(box);
-    tr.appendChild(selectCell);
+    if (selectable) {
+      const selectCell = element(doc, "td", "reviewTableSelectColumn");
+      const box = element(doc, "input", "reviewTableRowSelect");
+      box.type = "checkbox";
+      box.checked = selectedIds.has(row.id);
+      box.disabled = row.disabled;
+      box.setAttribute(
+        "aria-label",
+        row.disabled ? `Action unavailable for ${row.id}` : `Select action for ${row.id}`,
+      );
+      // The row handler already toggles this row, so the checkbox only has to
+      // stop its own click from being counted twice.
+      box.addEventListener("click", (event) => event.stopPropagation());
+      box.addEventListener("change", () => {
+        setRowTicked(row, box.checked);
+        anchorId = row.id;
+        activeId = row.id;
+        syncSelectionDom();
+        onSelectionChange();
+      });
+      selectCell.appendChild(box);
+      tr.appendChild(selectCell);
+    }
 
     for (const column of orderedColumns()) {
       const value = row.cells[columnIndex(column.key)] || { text: "", tone: "" };
@@ -762,10 +767,12 @@ export function createReviewTableView(settings = {}) {
       tr.appendChild(td);
     }
 
-    tr.addEventListener("click", (event) => {
-      applyRowClick(row, event);
-      try { surface.focus({ preventScroll: true }); } catch {}
-    });
+    if (selectable) {
+      tr.addEventListener("click", (event) => {
+        applyRowClick(row, event);
+        try { surface.focus({ preventScroll: true }); } catch {}
+      });
+    }
     return tr;
   }
 
@@ -775,9 +782,11 @@ export function createReviewTableView(settings = {}) {
     const columns = orderedColumns();
 
     const colgroup = element(doc, "colgroup");
-    const selectCol = element(doc, "col", "reviewTableSelectCol");
-    selectCol.style.width = `${SELECT_COLUMN_WIDTH}px`;
-    colgroup.appendChild(selectCol);
+    if (selectable) {
+      const selectCol = element(doc, "col", "reviewTableSelectCol");
+      selectCol.style.width = `${SELECT_COLUMN_WIDTH}px`;
+      colgroup.appendChild(selectCol);
+    }
     for (const column of columns) {
       const col = element(doc, "col");
       col.dataset.colKey = column.key;
@@ -787,7 +796,7 @@ export function createReviewTableView(settings = {}) {
 
     const thead = element(doc, "thead");
     const headRow = element(doc, "tr");
-    headRow.appendChild(buildSelectHeaderCell());
+    if (selectable) headRow.appendChild(buildSelectHeaderCell());
     for (const column of columns) headRow.appendChild(buildHeaderCell(column));
     thead.appendChild(headRow);
     table.appendChild(thead);

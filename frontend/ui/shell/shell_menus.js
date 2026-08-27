@@ -1,7 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
 import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260817a";
-import { initUpdateProgressBridge } from "./update_progress.js?v=20260821e";
+import { initUpdateProgressBridge } from "./update_progress.js?v=20260827a";
 import { initReleaseNotesDialog, openReleaseHistory } from "./release_notes_dialog.js?v=20260820a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "../shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 

@@ -5,7 +5,7 @@
 // through `arcrho:review-table-window-init`, and reports the user's decision back
 // with `arcrho:review-table-window-complete`. The parent Project Instance page owns
 // the automation dialog lifecycle and the window frame.
-import { createReviewTablePanel } from "./review_table.js?v=20260821b";
+import { createReviewTablePanel } from "./review_table.js?v=20260827a";
 
 const inst = new URLSearchParams(window.location.search).get("inst") || "";
 let panel = null;

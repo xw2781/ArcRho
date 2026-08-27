@@ -19,7 +19,7 @@ import { installProjectInstanceDatasetAddPicker } from "./project_instance_datas
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260817a";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260824f";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
-import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260821b";
+import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260827a";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260824c";
 import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";
 import { installProjectInstanceDeleteGuard } from "./project_instance_delete_guard.js?v=20260817a";

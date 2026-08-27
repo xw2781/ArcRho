@@ -1,4 +1,4 @@
-import { createReviewTableView } from "./review_table_view.js?v=20260819a";
+import { createReviewTableView } from "./review_table_view.js?v=20260827a";
 
 const CELL_TONES = new Set(["", "muted", "info", "ok", "warn", "error", "newer", "older"]);
 let reviewTableSequence = 0;
@@ -169,16 +169,22 @@ export function normalizeReviewTableOptions(options = {}) {
   const sourceRows = Array.isArray(options.rows) ? options.rows : [];
   const columns = normalizeReviewTableColumns(options.columns, sourceRows);
   const rows = normalizeReviewTableRows(sourceRows, columns, options.selectedRowIds ?? options.selected_row_ids);
+  // `selectable: false` turns the review into a read-only report: no tick
+  // column, no selection counter, and one Close button in place of
+  // Accept/Cancel. The completion still travels back through the same
+  // status protocol, with an empty selection.
+  const selectable = options.selectable !== false;
   return {
     title: cleanText(options.title) || "Review Sync Actions",
     message: toText(options.message ?? options.summary).trim(),
     columns,
     rows,
+    selectable,
     // Caller-defined footer checkboxes; their final states travel back with
     // the completion result as `optionStates`, keyed by each option's key.
     options: normalizeReviewTableChoices(options.options),
     searchPlaceholder: cleanText(options.searchPlaceholder ?? options.search_placeholder) || "Search actions",
-    acceptLabel: cleanText(options.acceptLabel ?? options.accept_label) || "Accept Selected",
+    acceptLabel: cleanText(options.acceptLabel ?? options.accept_label) || (selectable ? "Accept Selected" : "Close"),
     cancelLabel: cleanText(options.cancelLabel ?? options.cancel_label) || "Cancel",
     allowEmptySelection: options.allowEmptySelection === true || options.allow_empty_selection === true,
   };
@@ -320,7 +326,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   const doc = settings.documentRef || document;
   const container = settings.container;
   if (!container) throw new Error("Review table panel requires a container.");
-  const selectedIds = new Set(model.rows.filter((row) => row.selected).map((row) => row.id));
+  const selectedIds = new Set(model.selectable ? model.rows.filter((row) => row.selected).map((row) => row.id) : []);
   let settled = false;
   let visibleRows = [...model.rows];
 
@@ -356,11 +362,15 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   const selectionStatus = element(doc, "span", "reviewTableSelectionStatus");
   selectionStatus.setAttribute("aria-live", "polite");
   const actions = element(doc, "div", "reviewTableActions");
-  const cancelButton = element(doc, "button", "reviewTableButton", model.cancelLabel);
-  cancelButton.type = "button";
+  // A read-only report has nothing to cancel, so its footer carries only the
+  // one button that closes it; the status span stays as the flex spacer that
+  // keeps that button at the right-hand edge.
+  const cancelButton = model.selectable ? element(doc, "button", "reviewTableButton", model.cancelLabel) : null;
+  if (cancelButton) cancelButton.type = "button";
   const acceptButton = element(doc, "button", "reviewTableButton primary", model.acceptLabel);
   acceptButton.type = "button";
-  actions.append(cancelButton, acceptButton);
+  if (cancelButton) actions.appendChild(cancelButton);
+  actions.appendChild(acceptButton);
   if (optionsBox) footer.appendChild(optionsBox);
   footer.append(selectionStatus, actions);
   container.append(body, footer);
@@ -377,6 +387,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
       disabled: summary.visibleActionableCount === 0,
     });
     count.textContent = `${summary.visibleCount} of ${model.rows.length} rows shown`;
+    if (!model.selectable) return;
     selectionStatus.textContent = `${summary.selectedCount} of ${summary.actionableCount} actions selected`;
     acceptButton.disabled = !model.allowEmptySelection && summary.selectedCount === 0;
   }
@@ -386,6 +397,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
     container: body,
     columns: model.columns,
     rows: model.rows,
+    selectable: model.selectable,
     selectedIds,
     filterRows: filterReviewTableRows,
     onSelectionChange: updateSelectionUi,
@@ -410,7 +422,7 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   }
 
   search.addEventListener("input", () => view.setSearchText(search.value));
-  cancelButton.addEventListener("click", () => finish(false, "cancel"));
+  cancelButton?.addEventListener("click", () => finish(false, "cancel"));
   acceptButton.addEventListener("click", () => finish(true, "accept"));
   updateSelectionUi();
 
