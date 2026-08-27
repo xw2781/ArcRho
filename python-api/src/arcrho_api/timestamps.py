@@ -36,6 +36,19 @@ def utc_now_text() -> str:
     return format_persisted_timestamp(datetime.now(timezone.utc))
 
 
+def _parse_timestamp_text(value: Any) -> datetime | None:
+    """Read any ISO-8601 form a file or an external system supplies, or None."""
+
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return None
+    candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        return datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+
+
 def normalize_persisted_timestamp(value: Any, *, default: str = "") -> str:
     """Return *value* in the persisted form, or *default* when it is not a time.
 
@@ -44,15 +57,28 @@ def normalize_persisted_timestamp(value: Any, *, default: str = "") -> str:
     sub-second precision.
     """
 
-    text = str(value if value is not None else "").strip()
-    if not text:
-        return default
-    candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
-    try:
-        parsed = datetime.fromisoformat(candidate)
-    except ValueError:
+    parsed = _parse_timestamp_text(value)
+    if parsed is None:
         return default
     return format_persisted_timestamp(parsed)
+
+
+def format_display_timestamp(value: Any, *, default: str = "") -> str:
+    """Render *value* the way the app's lists and ResQ's own windows show a time.
+
+    That is this machine's local time as ``8/13/2026 2:49:34 PM``. The persisted
+    form is UTC, and ``18:49:34Z`` read beside ResQ's ``2:49:34 PM`` looks like a
+    four-hour error when both name the same instant, so nothing a person reads
+    is shown in the persisted form.
+    """
+
+    parsed = _parse_timestamp_text(value)
+    if parsed is None:
+        return default
+    local = parsed.astimezone()
+    hour = local.hour % 12 or 12
+    meridiem = "PM" if local.hour >= 12 else "AM"
+    return f"{local.month}/{local.day}/{local.year} {hour}:{local:%M:%S} {meridiem}"
 
 
 def is_persisted_timestamp(value: Any) -> bool:
@@ -79,6 +105,7 @@ def persisted_timestamp(value: Any = None) -> str:
 
 __all__ = [
     "PERSISTED_TIMESTAMP_FORMAT",
+    "format_display_timestamp",
     "format_persisted_timestamp",
     "is_persisted_timestamp",
     "normalize_persisted_timestamp",

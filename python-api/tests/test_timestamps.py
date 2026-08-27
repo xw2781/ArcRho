@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 from arcrho_api.timestamps import (  # noqa: E402
+    format_display_timestamp,
     format_persisted_timestamp,
     is_persisted_timestamp,
     normalize_persisted_timestamp,
@@ -58,6 +59,25 @@ class PersistedTimestampTests(unittest.TestCase):
         self.assertEqual(normalize_persisted_timestamp("   "), "")
         self.assertFalse(is_persisted_timestamp("2026-08-19T14:05:30Z"))
         self.assertFalse(is_persisted_timestamp("later"))
+
+    def test_the_display_form_is_local_time_in_the_list_format(self) -> None:
+        # The ResQ window showed 8/13/2026 2:49:34 PM for the value persisted
+        # as 18:49:34Z (Eastern Daylight Time); the display form must show the
+        # same wall clock ResQ does, whatever zone the machine is in.
+        instant = datetime(2026, 8, 13, 18, 49, 34, 302000, tzinfo=timezone.utc)
+        local = instant.astimezone()
+        hour = local.hour % 12 or 12
+        expected = f"{local.month}/{local.day}/{local.year} {hour}:{local:%M:%S} {'PM' if local.hour >= 12 else 'AM'}"
+        self.assertEqual(format_display_timestamp("2026-08-13T18:49:34.302Z"), expected)
+        self.assertEqual(format_display_timestamp("2026-08-13T18:49:34.302+00:00"), expected)
+        self.assertEqual(format_display_timestamp(local.isoformat()), expected)
+        self.assertEqual(format_display_timestamp(local.replace(tzinfo=None).isoformat()), expected)
+        self.assertRegex(format_display_timestamp("2026-08-13T00:30:00Z"), r"^\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M$")
+
+    def test_the_display_form_keeps_text_that_is_not_a_time(self) -> None:
+        self.assertEqual(format_display_timestamp("Not present", default="Not present"), "Not present")
+        self.assertEqual(format_display_timestamp(""), "")
+        self.assertEqual(format_display_timestamp(None), "")
 
     def test_the_contract_stamp_keeps_a_token_and_mints_now_for_nothing(self) -> None:
         self.assertEqual(persisted_timestamp("later"), "later")
