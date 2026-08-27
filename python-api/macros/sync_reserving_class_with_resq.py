@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.3.1
-# Release Note: Say that an empty review means nothing exists on both sides, now that the Bridge reviews only datasets and methods present in ArcRho and ResQ alike.
+# Version: 1.3.2
+# Release Note: Show items the run made both systems recalculate as Recalculated rows, re-baselined by the Bridge without a write, and count them apart from applied actions.
 # Description: Compare every dataset and supported method output in the selected reserving class, show both ArcRho and ResQ timestamps in a review table, and apply only the synchronization actions the user accepts.
 # Scope: Reserving Class
 # </arcrho-macro>
