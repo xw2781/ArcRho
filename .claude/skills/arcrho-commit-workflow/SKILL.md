@@ -25,6 +25,12 @@ Do not run push commands until the user separately approves the push.
 
 Do not run `git add` or `git commit` until the user has either explicitly asked for a commit in the current request or approved the exact scope after a commit plan. Treat requests such as "do a commit", "commit this", "commit the current changes", or "use this skill to commit" as commit approval for the current stated scope.
 
+## Authorship
+
+Commits are authored by the repository owner alone. Never add a `Co-Authored-By:` trailer or any other agent or assistant attribution, including a default trailer the harness would otherwise append.
+
+Check `git var GIT_AUTHOR_IDENT` during preflight. It must read `xw2781 <xw2781@gmail.com>`; if it does not, set `git config --global user.name xw2781` and `git config --global user.email xw2781@gmail.com` before committing.
+
 ## Preflight
 
 Inspect the worktree before proposing any commit:

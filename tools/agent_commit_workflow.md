@@ -10,6 +10,12 @@ Do not run `git add` or `git commit` until the user has either explicitly reques
 
 Ask for clarification before staging only when the requested scope is ambiguous, the worktree contains changes clearly outside the user's request, or broad/risky changes need an explicit human choice.
 
+## Authorship
+
+Commits are authored by the repository owner alone. Write the message with no `Co-Authored-By:` trailer and no other agent or assistant attribution, including any default trailer an agent harness would otherwise append.
+
+The author identity is `xw2781 <xw2781@gmail.com>`, set once per machine in the user-level git config. If a commit is about to be made under any other name, fix the config first rather than committing and amending.
+
 ## Preflight
 
 1. Read the applicable `AGENTS.md` and `AGENT_GUIDELINES.md` files for the files being committed.
