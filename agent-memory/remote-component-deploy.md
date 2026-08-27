@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec5d33a-1179-4b13-9b77-8a931ebeb128
-  modified: 2026-08-23T16:06:16.475Z
+  modified: 2026-08-27T22:38:20.409Z
 ---
 
 Since 2026-08-17, component rebuilds go through `python server-components/deploy.py` (no arguments = every stale component). It queues a request under `E:\ArcRho Server\requests\builds` and the **ArcRho Build Listener** — the "Listen for build requests" toggle in `server-components\build_manager.bat` on the server — runs the same `build_exe.py` locally, streaming its log back. Exit codes: `0` ok, `1` build failed, `2` usage/precondition, `3` no listener running (relay the CLI's message asking a human to start it; nothing else in the flow needs a person).
@@ -39,5 +39,7 @@ Gotchas: the listener **resets its own clone** on every request, so nothing may 
 **A `WinError 5` renaming the build status JSON aborts the rest of the run while the finished components stay deployed.** Seen 2026-08-19: renaming the status file .build-*.json.<hex>.tmp to build-*.json under the requests/builds/statuses folder failed as Access denied, the CLI printed `Build failed:` and `[error]` and still exited **0**, Engine and Bridge were deployed and verified, and Gateway — the component the task actually needed — was never built. Do not read exit 0 as success when the log contains `[error]`; re-check `--stale` and deploy what remains, one component per run if it recurs.
 
 **On this Client PC the auto-mode permission classifier blocks `deploy.py` runs** (even `--stale`), so `.claude/settings.local.json` carries allow rules for `Bash(py -3.10 server-components/deploy.py*)` / `Bash(python server-components/deploy.py*)` and their `PowerShell(...)` twins (added 2026-08-20 with user approval). Rules are prefix-matched, so run the bare command — a `Set-Location ...;` prefix breaks the match and re-triggers the classifier.
+
+**When the tree holds another session's in-flight work, commit yours and deploy by ref.** `py -3.10 server-components/deploy.py --ref <sha> bridge engine gateway` builds exactly that commit; the buildbot clone resolves an unpushed commit through its `worktree` remote, so no push is needed (done 2026-08-27 with `7a3639fd`, request `build-260827-183621`). A working-tree deploy would have shipped the other session's uncommitted propagation edits. The CLI's stdout stays empty until the run ends; follow progress in `E:\ArcRho Server\requests\builds\statuses\<request>.json` and `logs\<request>.log`.
 
 Related: [[gateway-deploy-swap-lock]], [[bridge-restart-after-deploy]], [[client-pc-primary-workstation]], [[pi-path-load-smb-cost]]
