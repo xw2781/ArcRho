@@ -200,6 +200,8 @@ def load_resq_data_migration(
 def run_reserving_class_import(
     request: Mapping[str, Any],
     progress_callback: ProgressCallback | None = None,
+    *,
+    resq_credentials: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one logical Bridge import request through the canonical migration.
 
@@ -208,6 +210,10 @@ def run_reserving_class_import(
     the canonical index has been rebuilt.  Engine failures are intentionally
     different: the staged engine component is discarded and the prior live
     engine component is copied into the staged result before the swap.
+
+    ``resq_credentials`` is the account the migration connects to ResQ with;
+    the Bridge passes its shared service account so the claiming worker's own
+    Windows identity never decides which projects the import can see.
     """
 
     project_name = _project_name_from_request(request)
@@ -267,6 +273,13 @@ def run_reserving_class_import(
                 "import_reserving_class_from_resq()."
             )
 
+        connection = {}
+        if resq_credentials:
+            connection = {
+                "connection_name": resq_credentials["connection_name"],
+                "user_name": resq_credentials["user_name"],
+                "password": resq_credentials["password"],
+            }
         result = importer(
             project_name,
             rc_path,
@@ -277,6 +290,7 @@ def run_reserving_class_import(
             skip_unavailable_engine=True,
             progress_callback=_safe_progress_callback(progress_callback),
             verbose=False,
+            **connection,
         )
         if not isinstance(result, Mapping):
             raise ResQMigrationBundleError(

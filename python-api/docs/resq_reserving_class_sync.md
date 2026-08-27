@@ -33,6 +33,43 @@ automatic direction selection. ResQ timestamps without an offset are treated
 as local wall-clock time, so clock or timezone errors can affect a first-time
 comparison.
 
+## Timestamps and time zones
+
+The same instant is written three ways along the sync path, and reading two of
+them side by side has repeatedly looked like a four-hour error. It is not one;
+the four hours are the Server PC's UTC offset (Eastern Daylight Time is UTC−4).
+
+- **ResQ keeps a local wall-clock reading** and its windows show it as such:
+  `8/13/2026 2:49:34 PM`. COM hands the same value back as a datetime labelled
+  UTC, which is false; `resq_migration.core._iso_or_text` drops the label and
+  reads the value in the Server PC's zone. That is one reason the migration and
+  the Bridge run on the Server PC — a client in another zone would move every
+  ResQ timestamp by the difference.
+- **ArcRho persists every time in UTC** with a `Z` suffix, the one rule in
+  `arcrho_api.timestamps`: the ResQ reading above is stored as
+  `2026-08-13T18:49:34.302Z`. Method and sidecar JSON, the sync state file, and
+  the preview signatures all hold that form or its epoch seconds.
+- **The review table shows local time** in the app's list format, produced by
+  `arcrho_api.timestamps.format_display_timestamp` for both columns, so a row
+  reads the same as ResQ's window and the ArcRho method list. The comparison
+  runs on epoch seconds and never on the displayed text.
+
+A genuine zone error has a signature: the difference is exactly the offset, and
+a row synchronized moments ago reports `ResQ changed` or `Both changed` on the
+very next preview with no edit in between. Check the epoch values in the
+`sync/resq/` state file against the persisted `last_modified` before changing
+any conversion. The 2026-08-26 report (`18:49:34` shown for ResQ's `2:49:34 PM`)
+failed that test: the baseline was recorded on 2026-08-12 at 10:36 PM, ResQ's
+method really was saved on 2026-08-13 at 2:49 PM, and the ArcRho method had
+been rewritten by that evening's import, so `Both changed; ArcRho newer` was
+the correct verdict and only the rendering was misleading.
+
+Note that an import from ResQ stamps the ArcRho method with the time of the
+import, not ResQ's `Modified`, and records no sync baseline. The next preview
+therefore reports the imported row as `ArcRho changed` (or `Both changed` when
+ResQ had moved since the last baseline) although its content came from ResQ.
+That is a baseline gap, not a timezone error.
+
 Straightforward supported actions are selected initially. If both sides
 changed since the last accepted sync, the newer side is proposed but the row
 is marked as a conflict and starts unchecked. The user can select or deselect
@@ -61,14 +98,17 @@ select that direction only when it is the intended recovery action.
 The macro re-inventories selected rows after review and again after acquiring
 the reserving-class locks. If any selected observation or proposed action is
 stale, it aborts before applying the batch and asks the user to rerun the
-review. Methods are rechecked after selected dataset work as well; a method
-changed during that phase fails individually instead of using an old plan.
+review. Every row is rechecked again immediately before its own write; a row
+that an earlier write in the batch changed fails individually instead of
+using an old plan.
 
 ## Supported actions
 
 - Ordinary ArcRho triangle/vector datasets can sync in either direction when
   their canonical metadata and CSV cache exist, the Dataset Type is known,
-  and a ResQ target is not calculated.
+  and a ResQ target is not calculated. A calculated ArcRho dataset that ResQ
+  does not hold yet is created there with its formula, after its formula
+  inputs, and ResQ computes its values.
 - DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection methods can sync in
   either direction through their method output rows. ArcRho-to-ResQ rows are
   labeled `supported fields only`: they use the existing, deliberately partial
@@ -86,6 +126,21 @@ disagreements are mismatch rows and are also disabled. Other examples include
 a missing ArcRho sidecar or CSV cache, a ResQ Dataset Type unknown to ArcRho,
 a method-coded output whose ResQ method object cannot be found, and a
 calculated ResQ dataset that owns its recomputation.
+
+## Write order
+
+Accepted rows are written one at a time. ArcRho-to-ResQ rows go first, then
+ResQ-to-ArcRho rows, and within each direction the rows follow ArcRho's own
+dependency graph: a calculated dataset comes after the datasets its formula
+reads, a DFM after its input triangle, a BF or Cape Cod method after the DFM
+output and priors it links, and a Result Selection after every source it
+loads. Rows with no link between them keep the review-table order, datasets
+before methods. The graph is read from the sidecar `precedents` and the method
+tabs of the accepted rows, so only rows in the same run reorder each other.
+
+A method or calculated dataset whose input is created earlier in the same run
+passes preflight on that promise; the strict check runs again right before the
+row is written, so an input that failed still blocks every row that reads it.
 
 ## Apply and recovery boundaries
 
@@ -142,6 +197,15 @@ The Bridge runs its frozen copy of the session and of the ResQ exporter
 effect on a synchronization until the Bridge is rebuilt and redeployed. The
 worker refuses a bundle whose `SYNC_SESSION_API_VERSION` it was not built
 against rather than driving it.
+
+The session connects to ResQ with the shared service account from the server
+`config.json` (`resq.connection_name`, `resq.user_name`, `resq.password`),
+handed in through `build_runtime`, never with the worker's own Windows
+identity. Bridge workers run one per signed-in user session and whichever
+claims a request first runs it, so a session that connected as the claiming
+user saw that user's ResQ projects: a project another user owned came back as
+`ResQ project not found` from one worker and synchronized normally from the
+next.
 
 The active ArcRho window must have no unsaved dataset or method changes before
 the interactive macro will proceed.

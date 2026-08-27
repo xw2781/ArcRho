@@ -48,6 +48,20 @@ def resq_connection_settings():
     return connection_name, user_name, password
 
 
+def shared_resq_credentials():
+    """The same service account, shaped for the queued import and sync sessions.
+
+    Those sessions open their own COM connection inside whichever user's Bridge
+    worker claimed the request. Left to the migration's defaults they would
+    connect with that worker's Windows identity, and ResQ would show each user
+    only the projects they hold, so the outcome of a queued request depended on
+    who won the claim.
+    """
+
+    connection_name, user_name, password = resq_connection_settings()
+    return {"connection_name": connection_name, "user_name": user_name, "password": password}
+
+
 class ResQClient:
     def __init__(self):
         self.app = None
@@ -128,6 +142,7 @@ class ResQClient:
         return run_reserving_class_import(
             request,
             progress_callback=progress_callback,
+            resq_credentials=shared_resq_credentials(),
         )
 
     def write_resq_reserving_class_sync(self, request, *, progress_callback=None):
@@ -147,6 +162,7 @@ class ResQClient:
         return run_reserving_class_sync(
             request,
             progress_callback=progress_callback,
+            resq_credentials=shared_resq_credentials(),
         )
 
     def write_dfm_payload(self, request):

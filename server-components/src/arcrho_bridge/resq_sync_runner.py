@@ -86,7 +86,7 @@ SELECTION_FIELD = SYNC_CONTRACT["selection_field"]
 
 # The session API this Bridge was built against. A bundle that changed the
 # contract must not be driven by an older worker.
-SUPPORTED_SYNC_SESSION_API_VERSION = 1
+SUPPORTED_SYNC_SESSION_API_VERSION = 2
 
 _SESSION_MODULE_NAME = "resq_migration.sync_session"
 _EXPORTER_MODULE_NAME = "_arcrho_bridge_resq_sync_exporter"
@@ -103,8 +103,15 @@ class ResQSyncRequestError(ValueError):
 def run_reserving_class_sync(
     request: Mapping[str, Any],
     progress_callback: ProgressCallback | None = None,
+    *,
+    resq_credentials: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Run one logical Bridge synchronization request through the canonical session."""
+    """Run one logical Bridge synchronization request through the canonical session.
+
+    ``resq_credentials`` is the account the session connects to ResQ with; the
+    Bridge passes its shared service account so the claiming worker's own
+    Windows identity never decides which projects the session can see.
+    """
 
     phase = _phase_from_request(request)
     project_name = _project_name_from_request(request)
@@ -117,7 +124,7 @@ def run_reserving_class_sync(
     migration = load_resq_data_migration(bundle)
     session = load_sync_session(bundle)
     exporter_module = load_sync_exporter(bundle)
-    runtime = session.build_runtime(migration, exporter_module)
+    runtime = session.build_runtime(migration, exporter_module, resq_credentials=resq_credentials)
 
     def report(event: Mapping[str, Any]) -> None:
         _report_progress(progress_callback, event)

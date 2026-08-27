@@ -278,6 +278,30 @@ class SyncSessionExportGuardTests(unittest.TestCase):
             sync_session._verify_dataset_export(exporter, row, [[None]])
 
 
+class SyncSessionReviewCellTests(unittest.TestCase):
+    def test_review_timestamps_are_shown_in_local_time(self):
+        from arcrho_api.timestamps import format_display_timestamp
+
+        persisted = "2026-08-13T18:49:34.302Z"
+        shown = format_display_timestamp(persisted)
+        self.assertNotEqual(shown, persisted)
+
+        self.assertEqual(
+            sync_session._timestamp_cell({"modified": persisted, "modified_timestamp": 1.0, "timestamp_source": "ResQ Modified"}),
+            shown,
+        )
+        self.assertEqual(
+            sync_session._timestamp_cell({"modified": persisted, "modified_timestamp": 1.0, "timestamp_source": "File modified"}),
+            f"{shown} (File modified)",
+        )
+        self.assertEqual(
+            sync_session._timestamp_cell({"modified": persisted, "modified_timestamp": None, "timestamp_source": "ResQ Created"}),
+            f"Unknown Modified; Created {shown}",
+        )
+        self.assertEqual(sync_session._timestamp_cell({"modified": "", "modified_timestamp": None}), "Unknown")
+        self.assertEqual(sync_session._timestamp_cell(None), "Not present")
+
+
 class SyncSessionInventoryTests(unittest.TestCase):
     def test_berquist_sherman_inventory_uses_validated_method_name(self):
         output = types.SimpleNamespace(
@@ -463,7 +487,201 @@ class SyncSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(callable(runtime["method_entry"]))
 
     def test_the_session_declares_the_api_version_the_bridge_pins(self):
-        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 1)
+        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 2)
+
+    def test_the_exporter_connects_with_the_account_the_host_supplied(self):
+        migration = types.SimpleNamespace(
+            __file__=str(_PYTHON_API_ROOT / "migration" / "resq_data_migration.py"),
+            CONNECTION_NAME="ResQ Default",
+            USER_NAME="",
+            PASSWORD="",
+        )
+        exporter_module = types.SimpleNamespace(__file__="exporter.py", ResQReservingClassExporter=Mock())
+        account = {"connection_name": "ResQ Prod", "user_name": "svc", "password": "secret"}
+        runtime = sync_session.build_runtime(migration, exporter_module, resq_credentials=account)
+
+        sync_session._new_exporter(runtime, "Demo", r"Auto\PP", Path("server"))
+
+        kwargs = exporter_module.ResQReservingClassExporter.call_args.kwargs
+        self.assertEqual(
+            (kwargs["connection_name"], kwargs["resq_user_name"], kwargs["resq_password"]),
+            ("ResQ Prod", "svc", "secret"),
+        )
+
+    def test_a_host_without_an_account_leaves_the_migration_defaults_in_charge(self):
+        migration = types.SimpleNamespace(
+            __file__=str(_PYTHON_API_ROOT / "migration" / "resq_data_migration.py"),
+            CONNECTION_NAME="ResQ Default",
+            USER_NAME="",
+            PASSWORD="",
+        )
+        exporter_module = types.SimpleNamespace(__file__="exporter.py", ResQReservingClassExporter=Mock())
+        runtime = sync_session.build_runtime(migration, exporter_module)
+
+        sync_session._new_exporter(runtime, "Demo", r"Auto\PP", Path("server"))
+
+        kwargs = exporter_module.ResQReservingClassExporter.call_args.kwargs
+        self.assertEqual(
+            (kwargs["connection_name"], kwargs["resq_user_name"], kwargs["resq_password"]),
+            ("ResQ Default", "", ""),
+        )
+
+
+def _write_row(row_id: str, *, kind: str = "Dataset", payload: dict | None = None) -> dict:
+    return {
+        "id": row_id,
+        "key": row_id.casefold(),
+        "name": row_id,
+        "kind": kind,
+        "arcrho": {"payload": dict(payload or {})},
+        "resq": None,
+        "action": "arcrho_to_resq",
+        "selected": True,
+        "disabled": False,
+    }
+
+
+class SyncSessionWriteOrderTests(unittest.TestCase):
+    """The write phase follows ArcRho's dependency graph, not the review order."""
+
+    def _contract(self):
+        from resq_migration import sync as sync_contract
+
+        return sync_contract
+
+    def test_rows_follow_the_arcrho_dependency_graph_within_one_direction(self):
+        # The plan lists rows alphabetically; every dependency here sorts after
+        # at least one row that reads it.
+        rows = [
+            _write_row(
+                "BF Ultimate",
+                kind="Bornhuetter Ferguson",
+                payload={"method_tab": {
+                    "latest_dataset": "Paid Loss",
+                    "dfm_dataset": "Paid LDF",
+                    "prior_datasets": [{"name": "Prior Ult"}],
+                }},
+            ),
+            _write_row("Paid LDF", kind="DFM", payload={"details_tab": {"input_triangle": "Paid Loss"}}),
+            _write_row("Paid Loss"),
+            _write_row("Prior Ult"),
+            _write_row(
+                "Selected Ult",
+                kind="Result Selection",
+                payload={"method_tab": {"loaded_datasets": [{"name": "BF Ultimate"}, {"name": "Ultimate Loss"}]}},
+            ),
+            _write_row(
+                "Ultimate Loss",
+                payload={
+                    "calculated": True,
+                    "formula": '"Paid LDF" * 1',
+                    "precedents": [{"dataset_name": "Paid Loss"}, {"dataset_name": "Paid LDF"}],
+                },
+            ),
+        ]
+
+        ordered = sync_session._dependency_ordered_rows(self._contract(), rows)
+
+        self.assertEqual(
+            [row["id"] for row in ordered],
+            ["Paid Loss", "Prior Ult", "Paid LDF", "Ultimate Loss", "BF Ultimate", "Selected Ult"],
+        )
+
+    def test_unlinked_rows_keep_datasets_first_and_then_the_review_order(self):
+        rows = [
+            _write_row("Zeta", kind="DFM", payload={"details_tab": {"input_triangle": "Elsewhere"}}),
+            _write_row("Beta"),
+            _write_row("Alpha"),
+        ]
+
+        ordered = sync_session._dependency_ordered_rows(self._contract(), rows)
+
+        self.assertEqual([row["id"] for row in ordered], ["Beta", "Alpha", "Zeta"])
+
+    def test_a_dependency_cycle_keeps_every_row_instead_of_failing(self):
+        rows = [
+            _write_row("Alpha", payload={"calculated": True, "precedents": [{"dataset_name": "Beta"}]}),
+            _write_row("Beta", payload={"calculated": True, "precedents": [{"dataset_name": "Alpha"}]}),
+        ]
+
+        ordered = sync_session._dependency_ordered_rows(self._contract(), rows)
+
+        self.assertEqual(sorted(row["id"] for row in ordered), ["Alpha", "Beta"])
+
+    def test_method_preflight_accepts_a_link_created_earlier_in_the_batch(self):
+        exporter = Mock()
+        exporter._find_triangle.return_value = None
+        exporter._find_in.return_value = None
+        row = _write_row("Paid LDF", kind="DFM", payload={"details_tab": {"input_triangle": "Paid Loss"}})
+
+        with self.assertRaisesRegex(RuntimeError, "not present in ResQ: Paid Loss"):
+            sync_session._preflight_method_export(exporter, row)
+
+        sync_session._preflight_method_export(exporter, row, satisfied=lambda name: name == "Paid Loss")
+
+    def test_calculated_dataset_preflight_requires_its_formula_inputs(self):
+        exporter = Mock()
+        exporter._find_dataset.return_value = None
+        row = _write_row(
+            "Ultimate Loss",
+            payload={
+                "calculated": True,
+                "formula": '"Paid Loss" * 2',
+                "data_format": "Vector",
+                "precedents": [{"dataset_name": "Paid Loss"}],
+            },
+        )
+
+        with patch.object(sync_session, "_dataset_export_values", return_value=[[None]]):
+            with self.assertRaisesRegex(RuntimeError, "Required formula dataset is not present in ResQ: Paid Loss"):
+                sync_session._preflight_dataset_export(exporter, row)
+            values = sync_session._preflight_dataset_export(
+                exporter, row, satisfied=lambda name: name == "Paid Loss"
+            )
+
+        # ResQ computes the values, so a blank ArcRho cell does not block the creation.
+        self.assertEqual(values, [[None]])
+
+    def _calculated_export(self, target):
+        created = {"Paid Loss": Mock()}
+        exporter = Mock()
+        exporter.counts = {"errors": 0, "datasets_written": 0}
+        exporter.skipped = {}
+        exporter.error_details = []
+        exporter._find_dataset.side_effect = lambda name: created.get(name)
+        exporter._create_dataset.side_effect = (
+            lambda sidecar, name, is_triangle: created.__setitem__(name, target)
+        )
+        payload = {
+            "calculated": True,
+            "formula": '"Paid Loss" * 2',
+            "data_format": "Triangle",
+            "precedents": [{"dataset_name": "Paid Loss"}],
+        }
+        row = _write_row("Ultimate Loss", payload=payload)
+        with patch.object(sync_session, "_dataset_export_values", return_value=[[1.0]]):
+            outcome = sync_session._export_one_to_resq(exporter, row)
+        return exporter, payload, outcome
+
+    def test_calculated_dataset_absent_from_resq_is_created_with_its_formula(self):
+        target = Mock()
+        target.Calculated = True
+        target.Formula = '"Paid Loss"  *  2'
+
+        exporter, payload, (ok, message) = self._calculated_export(target)
+
+        self.assertTrue(ok)
+        self.assertIn("calculated dataset", message)
+        exporter._create_dataset.assert_called_once_with(payload, "Ultimate Loss", True)
+        exporter.export_datasets.assert_not_called()
+
+    def test_calculated_dataset_creation_fails_when_resq_drops_the_formula(self):
+        target = Mock()
+        target.Calculated = True
+        target.Formula = ""
+
+        with self.assertRaisesRegex(RuntimeError, "formula did not match"):
+            self._calculated_export(target)
 
 
 if __name__ == "__main__":

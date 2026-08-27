@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ now writes accepted rows one at a time in ArcRho's dependency order instead of alphabetically, so a dataset or method is never saved to ResQ before the datasets it reads.",
+  "details": [
+    "Within one direction, a calculated dataset follows its formula inputs, a DFM follows its input triangle, a BF or Cape Cod method follows the DFM output and priors it links, and a Result Selection follows every source it loads; rows with no link between them keep the review order.",
+    "A method whose linked dataset is created earlier in the same run is no longer blocked before writing; the strict check still runs right before each row, so a failed input still stops the rows that read it.",
+    "A calculated ArcRho dataset that ResQ does not hold yet is created in ResQ with its formula and left for ResQ to compute, instead of being created and then reported as a failed value write.",
+    "The change lives in the Bridge's synchronization session; the macro itself is unchanged and the Bridge must be redeployed to pick it up."
+  ]
+}

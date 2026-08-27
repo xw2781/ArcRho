@@ -76,6 +76,36 @@ class ResQImportRunnerTests(unittest.TestCase):
         )
         self.assertIn(os.environ["ARCRHO_FRONTEND_ROOT"], sys.path)
 
+    def test_the_migration_connects_with_the_account_the_bridge_hands_it(self):
+        server_root = self.root / "server"
+        self._write_dataset(server_root / "projects" / "Demo" / "data" / "rc", "old", source_kind="input", value="old")
+        account = {"connection_name": "ResQ Prod", "user_name": "svc", "password": "secret"}
+        seen = {}
+
+        def importer(_project_name, _rc_path, **kwargs):
+            seen.update({key: kwargs[key] for key in ("connection_name", "user_name", "password")})
+            self._write_dataset(Path(kwargs["project_data_dir"]) / "rc", "new", source_kind="input", value="new")
+            return {"errors": 0, "engine_errors": 0, "engine_available": True, "total_written": 1}
+
+        module = SimpleNamespace(
+            INDEX_FILE_NAME="index.json",
+            _encode_rc_folder=lambda _rc_path: "rc",
+            import_reserving_class_from_resq=importer,
+            _apply_runtime_scope=lambda *args: ("previous", args),
+            _restore_runtime_scope=lambda _previous: None,
+            merge_preserved_arcrho_artifacts=lambda _live, _stage, **_kwargs: {"groups": 0, "files": 0, "names": []},
+            refresh_sidecar_graphs_for_rc=lambda path: None,
+            rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
+        )
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            runner.run_reserving_class_import(self._swap_request("run-svc"), resq_credentials=account)
+
+        self.assertEqual(seen, account)
+
     def test_engine_failure_restores_the_prior_engine_component_before_commit(self):
         server_root = self.root / "server"
         live_rc = server_root / "projects" / "Demo" / "data" / "rc"

@@ -58,14 +58,18 @@ class _StubSession(types.SimpleNamespace):
 
     def __init__(self, *, apply_result=None, apply_error=None):
         super().__init__()
-        self.SYNC_SESSION_API_VERSION = 1
+        self.SYNC_SESSION_API_VERSION = 2
         self.preview_calls = []
         self.apply_calls = []
         self._apply_result = apply_result or {"status": "completed", "results": []}
         self._apply_error = apply_error
 
-    def build_runtime(self, migration, exporter_module):
-        return {"migration": migration, "exporter_module": exporter_module}
+    def build_runtime(self, migration, exporter_module, *, resq_credentials=None):
+        return {
+            "migration": migration,
+            "exporter_module": exporter_module,
+            "resq_credentials": resq_credentials,
+        }
 
     def preview_sync(self, runtime, project_name, rc_path, *, server_root, progress_callback=None):
         self.preview_calls.append((runtime, project_name, rc_path, server_root))
@@ -101,7 +105,7 @@ class ResQSyncRunnerPhaseTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _run(self, request, *, session=None, progress=None):
+    def _run(self, request, *, session=None, progress=None, credentials=None):
         session = session or self.session
         bundle = types.SimpleNamespace(migration_dir=self.server_root / "bundle" / "migration")
         self.acquire = Mock(return_value=self.lease)
@@ -122,7 +126,19 @@ class ResQSyncRunnerPhaseTests(unittest.TestCase):
             ),
             patch.object(resq_sync_runner, "stop_engine_job_lease_heartbeat"),
         ):
-            return resq_sync_runner.run_reserving_class_sync(request, progress_callback=progress)
+            return resq_sync_runner.run_reserving_class_sync(
+                request,
+                progress_callback=progress,
+                resq_credentials=credentials,
+            )
+
+    def test_the_session_connects_with_the_account_the_bridge_hands_it(self):
+        account = {"connection_name": "ResQ Prod", "user_name": "svc", "password": "secret"}
+
+        self._run(_request(), credentials=account)
+
+        runtime = self.session.preview_calls[0][0]
+        self.assertEqual(runtime["resq_credentials"], account)
 
     def test_a_preview_reads_without_taking_the_reserving_class_lease(self):
         events = []
@@ -208,7 +224,7 @@ class ResQSyncRunnerBundleTests(unittest.TestCase):
         stranger = types.SimpleNamespace(
             __name__="resq_migration.sync_session",
             __file__=str(Path(self.temp_dir.name) / "elsewhere" / "sync_session.py"),
-            SYNC_SESSION_API_VERSION=1,
+            SYNC_SESSION_API_VERSION=resq_sync_runner.SUPPORTED_SYNC_SESSION_API_VERSION,
         )
 
         with patch.dict(sys.modules, {"resq_migration.sync_session": stranger}):

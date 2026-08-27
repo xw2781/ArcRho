@@ -38,12 +38,15 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+from arcrho_api.timestamps import format_display_timestamp
 
 
 # Host contract version. The Bridge refuses a bundle whose session API it was
 # not built against, the same way the macro used to pin the support release.
-SYNC_SESSION_API_VERSION = 1
+# 2: ``build_runtime`` takes the ResQ account the session connects with.
+SYNC_SESSION_API_VERSION = 2
 
 MAX_JSON_READ_WORKERS = 8
 
@@ -58,6 +61,112 @@ KIND_BOOTSTRAP = "Bootstrap"
 
 _METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS, KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}
 _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
+
+# Tie-break rank inside one write direction. The dependency walk decides the
+# order wherever one accepted row reads another; rows with no such link fall
+# back to this rank so plain datasets precede the methods that read them, DFMs
+# precede the BF and Cape Cod methods that read their output, and Result
+# Selections, which only consume other outputs, come last.
+_WRITE_KIND_RANK = {KIND_DATASET: 0, KIND_DFM: 1, KIND_BF: 2, KIND_CC: 2, KIND_RS: 3}
+
+
+def _dependency_names(entries: object) -> list[str]:
+    """Return the dataset names in a sidecar ``precedents``/``dependents`` list."""
+
+    names: list[str] = []
+    for entry in entries if isinstance(entries, list) else []:
+        name = entry.get("dataset_name") if isinstance(entry, Mapping) else entry
+        text = " ".join(str(name or "").split())
+        if text:
+            names.append(text)
+    return names
+
+
+def _row_precedent_names(row: Mapping[str, Any]) -> list[str]:
+    """Name every ArcRho dataset this row's ArcRho side reads.
+
+    A dataset row carries its formula inputs in the sidecar ``precedents``
+    field, the same graph ArcRho's own recompute walk follows. A method row
+    names its linked datasets in its method tabs; the ResQ writer resolves
+    those links by name, so they are dependencies of the ResQ write as well.
+    """
+
+    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
+    payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    kind = str(row.get("kind") or KIND_DATASET)
+    details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
+    method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), Mapping) else {}
+    names: list[object] = list(_dependency_names(payload.get("precedents")))
+    if kind == KIND_DFM:
+        names.append(details.get("input_triangle"))
+    elif kind == KIND_BF:
+        names.extend((method_tab.get("latest_dataset"), method_tab.get("dfm_dataset")))
+        priors = method_tab.get("prior_datasets") if isinstance(method_tab.get("prior_datasets"), list) else []
+        names.extend(prior.get("name") for prior in priors if isinstance(prior, Mapping))
+    elif kind == KIND_CC:
+        names.extend((
+            method_tab.get("exposure_dataset"),
+            method_tab.get("latest_dataset"),
+            method_tab.get("prior_ultimate_dataset"),
+        ))
+    elif kind == KIND_RS:
+        loaded = method_tab.get("loaded_datasets") if isinstance(method_tab.get("loaded_datasets"), list) else []
+        names.extend(source.get("name") for source in loaded if isinstance(source, Mapping))
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        text = " ".join(str(name or "").split())
+        if text and text.casefold() not in seen:
+            seen.add(text.casefold())
+            out.append(text)
+    return out
+
+
+def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Order rows so every dependency accepted in the same batch is written first.
+
+    This is the topological walk ArcRho's own recompute uses, restricted to
+    the accepted rows: a row is emitted only after each row it reads. Rows
+    with no dependency between them keep the kind rank and then the review
+    order, and a cycle, which ArcRho's graph never contains, is broken at its
+    back edge instead of failing.
+    """
+
+    def seed_order(index: int, row: Mapping[str, Any]) -> tuple[int, int]:
+        return _WRITE_KIND_RANK.get(str(row.get("kind") or ""), len(_WRITE_KIND_RANK)), index
+
+    indexed = sorted(enumerate(rows), key=lambda pair: seed_order(*pair))
+    by_key: dict[str, tuple[int, dict[str, Any]]] = {}
+    key_of_index: dict[int, str] = {}
+    for index, row in indexed:
+        key = str(row.get("key") or "")
+        if not key or key in by_key:
+            key = f"#{index}"
+        by_key[key] = (index, row)
+        key_of_index[index] = key
+    ordered: list[dict[str, Any]] = []
+    visited: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(key: str) -> None:
+        if key in visited or key in visiting:
+            return
+        visiting.add(key)
+        _index, row = by_key[key]
+        dependencies: list[tuple[str, tuple[int, dict[str, Any]]]] = []
+        for name in _row_precedent_names(row):
+            dependency_key = sync_contract.logical_key(name)
+            if dependency_key != key and dependency_key in by_key:
+                dependencies.append((dependency_key, by_key[dependency_key]))
+        for dependency_key, _pair in sorted(dependencies, key=lambda item: seed_order(*item[1])):
+            visit(dependency_key)
+        visiting.discard(key)
+        visited.add(key)
+        ordered.append(row)
+
+    for index, _row in indexed:
+        visit(key_of_index[index])
+    return ordered
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -518,17 +627,23 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
 
 
 def _timestamp_cell(item: Mapping[str, Any] | None) -> str:
-    """Every review row gets an explicit timestamp value for each side."""
+    """Every review row gets an explicit timestamp value for each side.
+
+    Both sides are shown in this machine's local time, the form ResQ's own
+    windows and the ArcRho method list use; the comparison itself runs on the
+    epoch seconds and never on this text.
+    """
 
     if not item:
         return "Not present"
     value = str(item.get("modified") or "").strip()
+    shown = format_display_timestamp(value, default=value)
     source = str(item.get("timestamp_source") or "").strip()
     if item.get("modified_timestamp") is None:
         if value and source.startswith("ResQ Created"):
-            return f"Unknown Modified; Created {value}"
+            return f"Unknown Modified; Created {shown}"
         return "Unknown"
-    return f"{value} ({source})" if source == "File modified" else value
+    return f"{shown} ({source})" if source == "File modified" else shown
 
 
 def _action_label(action: object) -> str:
@@ -540,18 +655,40 @@ def _action_label(action: object) -> str:
     return "No action"
 
 
+def _resq_credentials(runtime: Mapping[str, Any]) -> Mapping[str, str]:
+    """The ResQ account this session connects with.
+
+    The host supplies it through ``build_runtime``. Without one, the migration
+    module's own constants apply, which with empty user and password means the
+    process's Windows identity -- right for a person running the migration
+    directly, wrong for a Bridge worker, whose identity is whichever user's
+    session claimed the request.
+    """
+
+    credentials = runtime.get("resq_credentials")
+    if credentials:
+        return credentials
+    migration = runtime["migration"]
+    return {
+        "connection_name": migration.CONNECTION_NAME,
+        "user_name": migration.USER_NAME,
+        "password": migration.PASSWORD,
+    }
+
+
 def _new_exporter(runtime: Mapping[str, Any], project_name: str, rc_path: str, server_root: Path):
     migration = runtime["migration"]
     exporter_module = runtime["exporter_module"]
+    credentials = _resq_credentials(runtime)
     return exporter_module.ResQReservingClassExporter(
         migration,
         arcrho_project_name=project_name,
         rc_path=rc_path,
         server_root=server_root,
         resq_project_name=project_name,
-        connection_name=migration.CONNECTION_NAME,
-        resq_user_name=migration.USER_NAME,
-        resq_password=migration.PASSWORD,
+        connection_name=credentials["connection_name"],
+        resq_user_name=credentials["user_name"],
+        resq_password=credentials["password"],
         progress_callback=None,
     )
 
@@ -570,8 +707,9 @@ def _plan_context(runtime: Mapping[str, Any], project_name: str, rc_path: str, s
     finally:
         if owns_exporter:
             session.disconnect()
-    state_path = sync_contract.sync_state_path(server_root, project_name, rc_path, migration.CONNECTION_NAME)
-    state = sync_contract.read_sync_state(state_path, project_name, rc_path, migration.CONNECTION_NAME)
+    connection_name = _resq_credentials(runtime)["connection_name"]
+    state_path = sync_contract.sync_state_path(server_root, project_name, rc_path, connection_name)
+    state = sync_contract.read_sync_state(state_path, project_name, rc_path, connection_name)
     plan = sync_contract.build_sync_plan(local, remote, state)
     return {
         "rc_dir": rc_dir,
@@ -612,7 +750,14 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
         expected_values = _preflight_dataset_export(exporter, row)
         payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
         is_triangle = _payload_is_triangle(payload)
-        target = exporter._find_triangle(str(row.get("name") or "")) if is_triangle else None
+        name = str(row.get("name") or "")
+        if _creates_calculated_dataset(exporter, row):
+            # ResQ owns a calculated dataset's values, so the write is the
+            # object and its formula; the value writer would refuse the rest.
+            exporter._create_dataset(payload, name, is_triangle)
+            _verify_calculated_dataset_export(exporter, row)
+            return True, "Created in ResQ as a calculated dataset; ResQ computes its values."
+        target = exporter._find_triangle(name) if is_triangle else None
         if target is not None:
             # The general exporter historically tolerates ClearData failures.
             # Selective sync must fail closed because otherwise ArcRho blanks or
@@ -681,10 +826,55 @@ def _dataset_export_values(exporter, row: Mapping[str, Any]) -> list[list[float 
     return values
 
 
-def _preflight_dataset_export(exporter, row: Mapping[str, Any]) -> list[list[float | None]]:
+def _creates_calculated_dataset(exporter, row: Mapping[str, Any]) -> bool:
+    """True when the row is a calculated ArcRho dataset that ResQ does not hold yet."""
+
+    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
+    payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    if not bool(payload.get("calculated")) or not str(payload.get("formula") or "").strip():
+        return False
+    return exporter._find_dataset(str(row.get("name") or "")) is None
+
+
+def _verify_calculated_dataset_export(exporter, row: Mapping[str, Any]) -> None:
+    """Read back the calculated object and formula the creation claims to apply."""
+
+    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
+    payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    target = exporter._find_dataset(str(row.get("name") or ""))
+    if target is None:
+        raise RuntimeError("ResQ did not expose the calculated dataset after the write.")
+    if not bool(getattr(target, "Calculated", False)):
+        raise RuntimeError("ResQ did not keep the dataset calculated after the write.")
+    expected = " ".join(str(payload.get("formula") or "").split()).casefold()
+    actual = " ".join(str(getattr(target, "Formula", "") or "").split()).casefold()
+    if actual != expected:
+        raise RuntimeError("ResQ formula did not match ArcRho after the write.")
+
+
+def _preflight_dataset_export(
+    exporter,
+    row: Mapping[str, Any],
+    *,
+    satisfied: Callable[[str], bool] | None = None,
+) -> list[list[float | None]]:
+    """Block a dataset write ResQ would refuse or silently truncate.
+
+    ``satisfied`` names datasets an earlier row of the same batch will have
+    created by the time this row is written; the strict check without it runs
+    again immediately before the write.
+    """
+
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
     values = _dataset_export_values(exporter, row)
+    if _creates_calculated_dataset(exporter, row):
+        # ResQ evaluates the formula when the object is saved, so every input
+        # must already exist there or be written earlier in this batch.
+        for name in _dependency_names(payload.get("precedents")):
+            if exporter._find_dataset(name) is None and not (satisfied is not None and satisfied(name)):
+                raise RuntimeError(f"Required formula dataset is not present in ResQ: {name}")
+        return values
     is_triangle = _payload_is_triangle(payload)
     if is_triangle:
         return values
@@ -760,8 +950,18 @@ def _verify_dataset_export(
             raise RuntimeError(f"ResQ vector verification failed at position {index}.")
 
 
-def _preflight_method_export(exporter, row: Mapping[str, Any]) -> None:
-    """Block known lossy dependency failures before mutating a ResQ method."""
+def _preflight_method_export(
+    exporter,
+    row: Mapping[str, Any],
+    *,
+    satisfied: Callable[[str], bool] | None = None,
+) -> None:
+    """Block known lossy dependency failures before mutating a ResQ method.
+
+    ``satisfied`` names datasets an earlier row of the same batch will have
+    created by the time this row is written; the strict check without it runs
+    again immediately before the write.
+    """
 
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
@@ -770,8 +970,11 @@ def _preflight_method_export(exporter, row: Mapping[str, Any]) -> None:
 
     def require(name: object, finder, role: str) -> None:
         clean = str(name or "").strip()
-        if clean and finder(clean) is None:
-            raise RuntimeError(f"Required {role} dataset is not present in ResQ: {clean}")
+        if not clean or finder(clean) is not None:
+            return
+        if satisfied is not None and satisfied(clean):
+            return
+        raise RuntimeError(f"Required {role} dataset is not present in ResQ: {clean}")
 
     def require_present(name: object, finder, role: str) -> None:
         clean = str(name or "").strip()
@@ -1520,18 +1723,17 @@ def apply_sync_plan(
         )
         state = locked_observation["state"]
         state_path = locked_observation["state_path"]
-        local_to_remote = [
+        # Each direction is written in ArcRho's dependency order: a row comes
+        # after every accepted row it reads, whether that is a formula input,
+        # a method's linked dataset, or another method's output.
+        local_to_remote = _dependency_ordered_rows(sync_contract, [
             row for row in selected_rows
             if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ
-        ]
-        remote_to_local = [
+        ])
+        remote_to_local = _dependency_ordered_rows(sync_contract, [
             row for row in selected_rows
             if row.get("action") == sync_contract.ACTION_RESQ_TO_ARCRHO
-        ]
-        data_local = [row for row in local_to_remote if row.get("kind") == KIND_DATASET]
-        method_local = [row for row in local_to_remote if row.get("kind") != KIND_DATASET]
-        data_remote = [row for row in remote_to_local if row.get("kind") == KIND_DATASET]
-        method_remote = [row for row in remote_to_local if row.get("kind") != KIND_DATASET]
+        ])
 
         preflight_failed_ids: set[str] = set()
         for row in remote_to_local:
@@ -1540,15 +1742,25 @@ def apply_sync_plan(
             except Exception as exc:
                 preflight_failed_ids.add(str(row.get("id") or ""))
                 record(row, False, f"Preflight blocked the import: {exc}")
+        # A link may point at an earlier accepted row rather than at an object
+        # ResQ already holds. A row whose own preflight failed never joins the
+        # batch, so anything that reads it is blocked here as well.
+        batch_keys: set[str] = set()
+
+        def satisfied_by_batch(name: str) -> bool:
+            return sync_contract.logical_key(name) in batch_keys
+
         for row in local_to_remote:
             try:
                 if row.get("kind") == KIND_DATASET:
-                    _preflight_dataset_export(exporter, row)
+                    _preflight_dataset_export(exporter, row, satisfied=satisfied_by_batch)
                 else:
-                    _preflight_method_export(exporter, row)
+                    _preflight_method_export(exporter, row, satisfied=satisfied_by_batch)
             except Exception as exc:
                 preflight_failed_ids.add(str(row.get("id") or ""))
                 record(row, False, f"Preflight blocked the write: {exc}")
+                continue
+            batch_keys.add(str(row.get("key") or ""))
         if preflight_failed_ids:
             selected_rows = [
                 row for row in selected_rows
@@ -1556,10 +1768,7 @@ def apply_sync_plan(
             ]
             local_to_remote = [row for row in local_to_remote if str(row.get("id") or "") not in preflight_failed_ids]
             remote_to_local = [row for row in remote_to_local if str(row.get("id") or "") not in preflight_failed_ids]
-            data_local = [row for row in local_to_remote if row.get("kind") == KIND_DATASET]
-            method_local = [row for row in local_to_remote if row.get("kind") != KIND_DATASET]
-            data_remote = [row for row in remote_to_local if row.get("kind") == KIND_DATASET]
-            method_remote = [row for row in remote_to_local if row.get("kind") != KIND_DATASET]
+        write_order = local_to_remote + remote_to_local
 
         rc_dir.mkdir(parents=True, exist_ok=True)
         (rc_dir / migration.DATASET_CACHE_DIR).mkdir(parents=True, exist_ok=True)
@@ -1582,87 +1791,13 @@ def apply_sync_plan(
         )
         sync_contract.write_sync_state(state_path, state)
         with nullcontext():
-            # Data writes are deliberately sequential. A ResQ Save or ArcRho
-            # dependency refresh can recalculate a later selected row, so each
-            # row is re-inventoried immediately before its own mutation.
-            for row in data_local:
-                current = plan_with_baseline(locked_observation["state"])
-                current_row = _plan_by_id(current["plan"]).get(str(row.get("id") or ""))
-                stale = _stale_selected_rows(runtime, [row], current["plan"])
-                if stale or current_row is None:
-                    clear_pending_keys.append(str(row.get("key") or ""))
-                    record(row, False, "Timestamp changed during synchronization; rerun the review.")
-                    continue
-                try:
-                    ok, message = _export_one_to_resq(exporter, row)
-                except Exception as exc:
-                    ok, message = False, str(exc)
-                if ok:
-                    stable, stability_message = remember_post_write(
-                        row, locked_observation["state"], current_row
-                    )
-                    if not stable:
-                        ok, message = False, f"{message} {stability_message}".strip()
-                record(row, ok, message)
-
-            for row in data_remote:
-                current = plan_with_baseline(locked_observation["state"])
-                current_row = _plan_by_id(current["plan"]).get(str(row.get("id") or ""))
-                stale = _stale_selected_rows(runtime, [row], current["plan"])
-                if stale or current_row is None:
-                    clear_pending_keys.append(str(row.get("key") or ""))
-                    record(row, False, "Timestamp changed during synchronization; rerun the review.")
-                    continue
-                with migration.defer_sidecar_graph_enrichment():
-                    try:
-                        ok, message = _import_one_from_resq(
-                            runtime, exporter, rc_path, rc_dir, row, progress_callback
-                        )
-                    except Exception as exc:
-                        ok, message = False, str(exc)
-                if not ok:
-                    restored = False
-                    try:
-                        _restore_group(runtime, exporter, rc_dir, row, backup_root, backup_paths)
-                        restored = True
-                    except Exception as restore_error:
-                        message = f"{message} Rollback also failed: {restore_error}"
-                    if restored:
-                        clear_pending_keys.append(str(row.get("key") or ""))
-                else:
-                    stable, stability_message = remember_post_write(
-                        row, locked_observation["state"], current_row
-                    )
-                    if not stable:
-                        ok, message = False, f"{message} {stability_message}".strip()
-                        try:
-                            _restore_group(runtime, exporter, rc_dir, row, backup_root, backup_paths)
-                            clear_pending_keys.append(str(row.get("key") or ""))
-                        except Exception as restore_error:
-                            message = f"{message} Rollback also failed: {restore_error}"
-                    else:
-                        local_mutated_names.append(str(row.get("name") or ""))
-                        migration.refresh_sidecar_graphs_for_rc(rc_dir)
-                        reserving_class = ArcRhoClient(server_root).project(project_name).reserving_class(rc_path)
-                        propagation = _refresh_dfm_dependents_for_sources_locked(
-                            reserving_class, [str(row.get("name") or "")]
-                        )
-                        for warning in propagation.warnings:
-                            results.append({
-                                "id": "",
-                                "name": "Dependent refresh",
-                                "kind": "Warning",
-                                "action": "",
-                                "success": False,
-                                "message": str(warning),
-                            })
-                record(row, ok, message)
-
-            # Method writes can recalculate other method outputs on either side.
-            # Recheck each method immediately before its mutation, then run local
-            # propagation before the next row. This sequential I/O is required by
-            # the dependency ordering; the inventory itself uses bounded reads.
-            for row in method_local + method_remote:
+            # Writes are deliberately sequential and follow the dependency
+            # order above: every ArcRho-to-ResQ row, each after the rows it
+            # reads, then every ResQ-to-ArcRho row the same way. A ResQ Save
+            # or an ArcRho dependency refresh can recalculate a later selected
+            # row, so each row is re-inventoried immediately before its own
+            # mutation and local propagation runs before the next row.
+            for row in write_order:
                 current = plan_with_baseline(locked_observation["state"])
                 current_row = _plan_by_id(current["plan"]).get(str(row.get("id") or ""))
                 stale = _stale_selected_rows(runtime, [row], current["plan"])
@@ -1888,7 +2023,7 @@ def preview_sync(
             "status": "review_required",
             "project_name": project_name,
             "rc_path": rc_path,
-            "connection_name": migration.CONNECTION_NAME,
+            "connection_name": _resq_credentials(runtime)["connection_name"],
             "preview": rows,
         }
     finally:
@@ -1919,7 +2054,7 @@ def apply_sync(
         base = {
             "project_name": project_name,
             "rc_path": rc_path,
-            "connection_name": migration.CONNECTION_NAME,
+            "connection_name": _resq_credentials(runtime)["connection_name"],
         }
         if not accepted:
             return {**base, "status": "no_changes", "successes": 0, "failures": 0, "results": []}
@@ -1976,12 +2111,17 @@ def apply_sync(
         migration._restore_runtime_scope(previous_scope)
 
 
-def build_runtime(migration, exporter_module) -> dict[str, Any]:
+def build_runtime(migration, exporter_module, *, resq_credentials=None) -> dict[str, Any]:
     """Bind one session to its ResQ migration runtime and exporter.
 
     Every host builds the runtime the same way, so a Bridge worker running
     from its frozen bundle and a test running from the working tree observe
     identical timestamp parsing and plan comparison rules.
+
+    ``resq_credentials`` is the account every ResQ session opens with, as
+    ``connection_name``, ``user_name`` and ``password``. The Bridge passes the
+    shared service account from its server config, so which user's worker
+    claimed the request cannot change what ResQ shows the session.
     """
 
     from arcrho_api.dataset_index_contract import _method_entry_from_payload
@@ -2000,4 +2140,5 @@ def build_runtime(migration, exporter_module) -> dict[str, Any]:
         "parse_timestamp": parse_method_last_modified_timestamp,
         "method_entry": _method_entry_from_payload,
         "sync_contract": sync_contract,
+        "resq_credentials": dict(resq_credentials) if resq_credentials else None,
     }
