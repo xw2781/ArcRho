@@ -41,6 +41,7 @@ from arcrho_api.sidecar_core_contract import dependency_entries
 from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
 from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
+from .engine import import_user_identity_service
 from .core import (
     BS_CRA_FILE_PREFIX,
     BS_CRA_JSON_FORMAT,
@@ -1383,7 +1384,7 @@ def write_engine_generated_export(
     """
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    user = getpass.getuser()
+    user = import_user_identity_service().get_current_display_name() or getpass.getuser()
     updated_at = utc_now_text()
     created = _engine_cache_created_at(csv_path, "")
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)

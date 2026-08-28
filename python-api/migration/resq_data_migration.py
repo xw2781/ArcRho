@@ -161,6 +161,7 @@ from resq_migration.engine import (  # noqa: E402
     discover_fresh_engine_heartbeats,
     finalize_engine_request,
     get_engine_processing_provenance,
+    import_user_identity_service,
     publish_engine_request,
     require_engine_workers,
     wait_for_engine_request,
@@ -1730,6 +1731,25 @@ def import_reserving_class_from_resq(
     project_name: str,
     rc_path: str,
     *,
+    requested_by: str = "",
+    **options,
+) -> dict:
+    """Import one ResQ reserving class into ArcRho using caller-provided UI context.
+
+    ``requested_by`` is the Windows login of the person who asked for the
+    import. The Bridge takes it from the request so a generated dataset is
+    stamped with their configured full name rather than the account the
+    claiming worker runs under; an empty login keeps the process identity.
+    """
+
+    with import_user_identity_service().acting_identity(requested_by):
+        return _import_reserving_class_as_acting_user(project_name, rc_path, **options)
+
+
+def _import_reserving_class_as_acting_user(
+    project_name: str,
+    rc_path: str,
+    *,
     server_root: str | Path | None = None,
     project_data_dir: str | Path | None = None,
     export_mode: str = "configured",
@@ -1741,8 +1761,6 @@ def import_reserving_class_from_resq(
     progress_callback: ProgressCallback | None = None,
     verbose: bool = True,
 ) -> dict:
-    """Import one ResQ reserving class into ArcRho using caller-provided UI context."""
-
     previous_scope = _apply_runtime_scope(project_name, server_root, project_data_dir)
     rc_dir: Path | None = None
     rc_mutation_started = False

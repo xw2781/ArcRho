@@ -83,7 +83,9 @@ class ResQImportRunnerTests(unittest.TestCase):
         seen = {}
 
         def importer(_project_name, _rc_path, **kwargs):
-            seen.update({key: kwargs[key] for key in ("connection_name", "user_name", "password")})
+            seen.update(
+                {key: kwargs[key] for key in ("connection_name", "user_name", "password", "requested_by")}
+            )
             self._write_dataset(Path(kwargs["project_data_dir"]) / "rc", "new", source_kind="input", value="new")
             return {"errors": 0, "engine_errors": 0, "engine_available": True, "total_written": 1}
 
@@ -104,7 +106,7 @@ class ResQImportRunnerTests(unittest.TestCase):
         ):
             runner.run_reserving_class_import(self._swap_request("run-svc"), resq_credentials=account)
 
-        self.assertEqual(seen, account)
+        self.assertEqual(seen, {**account, "requested_by": "tester"})
 
     def test_engine_failure_restores_the_prior_engine_component_before_commit(self):
         server_root = self.root / "server"

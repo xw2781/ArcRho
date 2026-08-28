@@ -4,7 +4,6 @@ import json
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,7 +14,7 @@ for candidate in (FRONTEND_ROOT, REPO_ROOT / "python-api" / "src", REPO_ROOT / "
     if str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from app_server.services import arcrho_runtime_service
+from app_server.services import arcrho_runtime_service, user_identity_service
 from resq_migration import extractors
 
 
@@ -67,18 +66,11 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
             ("Calendar", "false"),
         ]
 
-        real_datetime = datetime
-
-        class FixedDateTime:
-            @staticmethod
-            def utcnow():
-                return real_datetime(2026, 7, 31, 23, 59, 0)
-
         with (
-            patch.object(arcrho_runtime_service, "datetime", FixedDateTime),
+            user_identity_service.acting_identity("tester", "Tester Name"),
+            patch.object(arcrho_runtime_service, "utc_now_text", return_value=self.generated_at),
             patch.object(arcrho_runtime_service, "_utc_timestamp_from_stat", return_value=self.created_at),
             patch.object(arcrho_runtime_service, "_dataset_sidecar_path", return_value=str(runtime_sidecar)),
-            patch.object(arcrho_runtime_service.getpass, "getuser", return_value="tester"),
             patch.object(arcrho_runtime_service, "get_processing_provenance", return_value=self.provenance),
             patch.object(
                 arcrho_runtime_service.dataset_number_format_service,
@@ -100,34 +92,33 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
 
         extractors.PROJECT_NAME = "Demo"
         with (
-            patch.object(extractors.getpass, "getuser", return_value="tester"),
+            user_identity_service.acting_identity("tester", "Tester Name"),
+            patch.object(extractors, "utc_now_text", return_value=self.generated_at),
             patch.object(extractors, "_engine_cache_created_at", return_value=self.created_at),
             patch.object(extractors, "dataset_type_number_format", return_value="0.0%"),
             patch.object(extractors, "dataset_type_decimal_places", return_value=1),
             patch.object(extractors, "_apply_graph_meta_best_effort", side_effect=self._apply_graph),
         ):
-            with patch.object(extractors, "datetime") as migration_datetime:
-                migration_datetime.utcnow.return_value = real_datetime(2026, 7, 31, 23, 59, 0)
-                extractors.write_engine_generated_export(
-                    {
-                        "name": "Ratio",
-                        "dataset_type": "Ratio",
-                        "data_format": 0,
-                        "origin_length": 12,
-                        "development_length": 12,
-                        "origin_labels": ["wrong ResQ label"],
-                        "development_labels": ["12", "24"],
-                        "user": "ResQ User",
-                        "created": "2000-01-01",
-                        "modified": "2000-01-02",
-                    },
-                    r"Auto\PP",
-                    self.migration_rc,
-                    is_vector=False,
-                    provenance=self.provenance,
-                    csv_name=self.csv_name,
-                    csv_path=self.migration_csv,
-                )
+            extractors.write_engine_generated_export(
+                {
+                    "name": "Ratio",
+                    "dataset_type": "Ratio",
+                    "data_format": 0,
+                    "origin_length": 12,
+                    "development_length": 12,
+                    "origin_labels": ["wrong ResQ label"],
+                    "development_labels": ["12", "24"],
+                    "user": "ResQ User",
+                    "created": "2000-01-01",
+                    "modified": "2000-01-02",
+                },
+                r"Auto\PP",
+                self.migration_rc,
+                is_vector=False,
+                provenance=self.provenance,
+                csv_name=self.csv_name,
+                csv_path=self.migration_csv,
+            )
 
         migration_payload = json.loads(
             (self.migration_rc / "sidecars" / "Ratio.json").read_text(encoding="utf-8")
@@ -136,6 +127,9 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
         # the runtime writer has no ResQ source, so the field is migration-only.
         self.assertEqual(migration_payload.pop("source_modified"), "2000-01-02")
         self.assertEqual(migration_payload, runtime_payload)
+        # Both writers stamp the configured full name of the acting user, never the login.
+        self.assertEqual(runtime_payload["modified_by"], "Tester Name")
+        self.assertEqual(runtime_payload["audit_log"][-1]["user"], "Tester Name")
         self.assertIs(runtime_payload["show_subtotal"], True)
         self.assertNotIn("origin_labels", migration_payload)
         self.assertNotIn("development_labels", migration_payload)

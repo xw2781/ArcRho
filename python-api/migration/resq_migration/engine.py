@@ -86,6 +86,15 @@ def _ensure_provenance_importable() -> None:
     _prepend_sys_path(_FRONTEND_ROOT)
 
 
+def import_user_identity_service():
+    """The app-server identity resolver, so a migrated sidecar names the user the app would."""
+
+    _ensure_provenance_importable()
+    from app_server.services import user_identity_service
+
+    return user_identity_service
+
+
 def _resolve_server_root(server_root: object = None) -> Path:
     root = str(server_root).strip() if server_root else ""
     if not root:

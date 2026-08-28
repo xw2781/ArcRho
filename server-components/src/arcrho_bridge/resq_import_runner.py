@@ -283,6 +283,7 @@ def run_reserving_class_import(
         result = importer(
             project_name,
             rc_path,
+            requested_by=str(request.get("UserName") or "").strip(),
             server_root=server_root,
             project_data_dir=stage_data_dir,
             export_mode=export_mode,

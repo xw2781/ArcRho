@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Datasets the ResQ import generates through the Engine now show the importing user's full name in the Project Instance table instead of a Windows login.",
+  "details": [
+    "The import stamps the person who ran the macro, not the Bridge worker that picked the request up.",
+    "Classes imported before this fix keep the login until they are imported again."
+  ]
+}

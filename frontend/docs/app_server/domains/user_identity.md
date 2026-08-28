@@ -21,6 +21,7 @@ Resolve the current Windows login to the display name used by the ArcRho Home br
 - `app_server/services/dataset_service.py`, `calculated_dataset_service.py`, `result_selection_service.py`, `dfm_service.py`, `bornhuetter_ferguson_service.py`, `cape_cod_service.py`, `bootstrap_service.py`, `arcrho_runtime_service.py`, `audit_service.py` - Writers that stamp the resolved display name onto persisted metadata.
 - `app_server/services/engine_hosted_save_service.py`, `dependent_propagation_service.py` - Send the submitting user with the request they publish to ArcRho Engine.
 - `server-components/src/arcrho_engine/save_jobs.py`, `dependent_propagation.py` - Bind `acting_identity(...)` around the work they run on the server host.
+- `server-components/src/arcrho_bridge/resq_import_runner.py`, `python-api/migration/resq_data_migration.py`, `resq_migration/extractors.py` - The Bridge hands the import request's `UserName` to the migration as `requested_by`; the migration binds it as the acting identity, and the engine-generated sidecar it writes stamps the resolved display name through the same service the app's engine writer uses.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches
@@ -37,6 +38,6 @@ Resolve the current Windows login to the display name used by the ArcRho Home br
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Without an acting identity the login comes from the backend process account. If the app server runs under a service account, that account is resolved instead of the interactive desktop user.
-- Sidecars written before this resolution keep whatever text they already hold, so a reserving class can show a mix of full names and login names until each row is saved again. Rows written by an Engine instance between the move to Engine-hosted saves and this change hold that instance's service account and are only corrected by saving the object again.
+- Sidecars written before this resolution keep whatever text they already hold, so a reserving class can show a mix of full names and login names until each row is saved again. Rows written by an Engine instance between the move to Engine-hosted saves and this change hold that instance's service account and are only corrected by saving the object again. Engine-generated datasets imported from ResQ before 2026-08-27 hold the login of the Bridge worker that ran the import and are corrected by importing the class again.
 - The acting identity is scoped to the thread that runs the job (a `contextvars` binding). Work a job hands to another thread or process does not inherit it and falls back to the process account.
 <!-- MANUAL:END -->
