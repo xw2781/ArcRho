@@ -6,13 +6,23 @@ import {
   loadShellActivityHistory,
   normalizeShellActivityEntry,
 } from "/ui/shell/shell_activity_history.js";
-import { getWorkspaceHistoryEntries } from "/ui/shared/services/workspace_history.js?v=20260726a";
+import { getWorkspaceHistoryEntries } from "/ui/shared/services/workspace_history.js?v=20260828a";
+import { localDayKey } from "/ui/shared/services/local_day.js?v=20260828a";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-const MAX_ENTRIES = 15;
+// How far back each store is read. The stores keep one record per item per day, so this is the
+// number of records, not of distinct items.
+const MAX_ENTRIES = 100;
+// Rows past this one all enter together; a long list should not keep the reader waiting.
+const MAX_STAGGERED_ROWS = 12;
+const STAGGER_MS = 22;
 
-const filterInput = document.getElementById("filterInput");
+const kindFilter = document.getElementById("kindFilter");
+const timelineEl = document.getElementById("timeline");
+const emptyEl = document.getElementById("historyEmpty");
+const defaultEmptyText = emptyEl?.textContent || "";
+const kindButtons = Array.from(kindFilter?.querySelectorAll(".kindButton") || []);
 
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 
@@ -30,22 +40,30 @@ function formatTimestamp(ts) {
   }
 }
 
-// Short, scannable time: "Today, 8:15 PM", "Yesterday, 12:57 PM", "Aug 18, 12:57 PM". The full
-// local timestamp stays available in the tooltip.
-function formatWhen(ts) {
+// The row shows only the clock time; the day is the header the row sits under.
+function formatTime(ts) {
   const n = Number(ts || 0);
   if (!Number.isFinite(n) || n <= 0) return "";
-  const date = new Date(n);
+  return new Date(n).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// Day labels: "Today" and "Yesterday" carry their date beside them ("Thu, Aug 28"); older days are
+// the date alone, with the year once it is not this year.
+function formatDay(ts) {
+  const date = new Date(Number(ts || 0));
   const now = new Date();
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-  if (sameDay(date, now)) return `Today, ${time}`;
+  const options = { weekday: "short", month: "short", day: "numeric" };
+  if (date.getFullYear() !== now.getFullYear()) options.year = "numeric";
+  const dateText = date.toLocaleDateString([], options);
+  if (sameDay(date, now)) return { title: "Today", date: dateText };
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (sameDay(date, yesterday)) return `Yesterday, ${time}`;
-  const dateOptions = { month: "short", day: "numeric" };
-  if (date.getFullYear() !== now.getFullYear()) dateOptions.year = "numeric";
-  return `${date.toLocaleDateString([], dateOptions)}, ${time}`;
+  if (sameDay(date, yesterday)) return { title: "Yesterday", date: dateText };
+  return { title: dateText, date: "" };
 }
 
 function folderLeaf(path) {
@@ -87,150 +105,276 @@ function projectInstanceDetail(entry) {
   return parts;
 }
 
-// Shared row: icon | name and detail | time.
-function buildRow({ tabType, name, detailParts, ts, index }) {
-  const row = document.createElement("button");
-  row.type = "button";
-  row.className = "historyRow";
-  row.dataset.index = String(index);
-
-  const icon = document.createElement("span");
-  icon.className = "tabTypeIcon rowIcon";
-  icon.dataset.tabType = tabType;
-  icon.setAttribute("aria-hidden", "true");
-
-  const text = document.createElement("div");
-  text.className = "rowText";
-  const nameEl = document.createElement("span");
-  nameEl.className = "rowName";
-  nameEl.textContent = name;
-  const detail = document.createElement("span");
-  detail.className = "rowDetail";
-  const detailText = detailParts.filter(Boolean).join("  ·  ");
-  detail.textContent = detailText;
-  // Only a truncated detail earns a tooltip, so a short row stays quiet on hover.
-  attachArcrhoTooltip(detail, () => (detail.scrollWidth > detail.clientWidth ? detailText : ""));
-  text.append(nameEl, detail);
-
-  const time = document.createElement("span");
-  time.className = "rowTime";
-  time.textContent = formatWhen(ts);
-  attachArcrhoTooltip(time, formatTimestamp(ts));
-
-  row.append(icon, text, time);
-  return row;
-}
-
-// One descriptor per group: where it renders, how its entries load, and how a row looks, reads,
-// filters, and opens.
-const GROUPS = [
-  {
-    listId: "projectInstanceList",
-    emptyId: "projectInstanceEmpty",
-    countId: "projectInstanceCount",
-    entries: [],
+// One source per page type: how its records load, and how a record is named, described, told
+// apart from its neighbours, and opened. The timeline merges every source into one stream, so the
+// page-type filter is the only place a source shows as a group.
+const SOURCES = {
+  project_instance: {
+    label: "Project Instances",
     async load() {
-      try {
-        return (await loadShellActivityHistory()).filter((entry) => entry.tabType === "project_instance");
-      } catch {
-        return [];
-      }
+      return (await loadShellActivityHistory()).filter((entry) => entry.tabType === "project_instance");
     },
-    searchText: (entry) => [entry.title, entry.projectInstanceState?.selectedPath],
-    build: (entry, index) => buildRow({
-      tabType: "project_instance",
-      name: entry.title,
-      detailParts: projectInstanceDetail(entry),
-      ts: entry.ts,
-      index,
-    }),
+    name: (entry) => entry.title,
+    detailParts: projectInstanceDetail,
+    identity: (entry) => [entry.title, entry.projectInstanceState?.selectedPath],
     open(entry) {
       const normalized = normalizeShellActivityEntry(entry);
       if (normalized) postToShell({ type: "arcrho:open-shell-activity-history-entry", entry: normalized });
     },
   },
-  {
-    listId: "workspaceList",
-    emptyId: "workspaceEmpty",
-    countId: "workspaceCount",
-    entries: [],
+  file_explorer: {
+    label: "My Workspace Folders",
     load: () => getWorkspaceHistoryEntries({ maxEntries: MAX_ENTRIES }),
-    searchText: (entry) => [entry.path],
-    build: (entry, index) => buildRow({
-      tabType: "file_explorer",
-      name: folderLeaf(entry.path),
-      detailParts: [entry.path],
-      ts: entry.ts,
-      index,
-    }),
+    name: (entry) => folderLeaf(entry.path),
+    detailParts: (entry) => [entry.path],
+    identity: (entry) => [entry.path],
     open: (entry) => postToShell({ type: "arcrho:open-file-explorer-from-history", path: entry.path }),
   },
-  {
-    listId: "historyList",
-    emptyId: "historyEmpty",
-    countId: "historyCount",
-    entries: [],
+  dataset: {
+    label: "Datasets",
     load: () => getBrowsingHistoryEntries({ maxEntries: MAX_ENTRIES }),
-    searchText: (entry) => [entry.tri, entry.project, entry.path],
-    build: (entry, index) => buildRow({
-      tabType: "dataset",
-      name: entry.tri,
-      detailParts: [entry.project, entry.path],
-      ts: entry.ts,
-      index,
-    }),
+    name: (entry) => entry.tri,
+    detailParts: (entry) => [entry.project, entry.path],
+    identity: (entry) => [entry.project, entry.path, entry.tri],
     open: openDatasetEntry,
   },
-];
+};
 
-for (const group of GROUPS) {
-  group.listEl = document.getElementById(group.listId);
-  group.emptyEl = document.getElementById(group.emptyId);
-  group.countEl = document.getElementById(group.countId);
-  group.defaultEmptyText = group.emptyEl?.textContent || "";
-  group.listEl?.addEventListener("click", (e) => {
-    const row = e.target?.closest?.(".historyRow");
-    const entry = group.entries[Number(row?.dataset.index ?? -1)];
-    if (entry) group.open(entry);
-  });
-}
-
-function matches(group, entry, query) {
-  if (!query) return true;
-  return group.searchText(entry).some((text) => textOf(text).toLowerCase().includes(query));
-}
-
-// Draw every group from its loaded entries under the current filter. Row indexes point back into
-// the unfiltered list so a click resolves the same entry whatever the filter hides.
-function paint() {
-  const rawQuery = textOf(filterInput?.value);
-  const query = rawQuery.toLowerCase();
-  for (const group of GROUPS) {
-    if (!group.listEl || !group.emptyEl) continue;
-    group.listEl.innerHTML = "";
-    let shown = 0;
-    group.entries.forEach((entry, index) => {
-      if (!matches(group, entry, query)) return;
-      group.listEl.appendChild(group.build(entry, index));
-      shown += 1;
+// Every record from every source, newest first. A record's key names the source, the thing it
+// points at, and the moment it was opened, so a reload can tell a record it already showed from a
+// new one that deserves the enter animation.
+async function loadRecords() {
+  const perSource = await Promise.all(Object.entries(SOURCES).map(async ([kind, source]) => {
+    let raw = [];
+    try {
+      raw = await source.load();
+    } catch {
+      raw = [];
+    }
+    return raw.map((entry) => {
+      const ts = Number(entry.ts) || 0;
+      return {
+        kind,
+        ts,
+        key: [kind, ...source.identity(entry).map(textOf), ts].join("|"),
+        name: source.name(entry),
+        detailParts: source.detailParts(entry),
+        open: () => source.open(entry),
+      };
     });
-    if (group.countEl) group.countEl.textContent = query ? `${shown} of ${group.entries.length}` : String(group.entries.length);
-    group.emptyEl.hidden = shown > 0;
-    group.emptyEl.textContent = query && group.entries.length ? `No matches for "${rawQuery}".` : group.defaultEmptyText;
+  }));
+  return perSource.flat().sort((a, b) => b.ts - a.ts);
+}
+
+// Date header: ring on the spine, a caret, then the day and its date. It is a button that folds
+// the day's rows away and back.
+function buildDayHeader({ title: label, date }, { collapsed, rowsId }) {
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "dayHeader";
+  header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  header.setAttribute("aria-controls", rowsId);
+
+  const time = document.createElement("span");
+  time.className = "dayTime";
+
+  const spine = document.createElement("span");
+  spine.className = "spine";
+  const mark = document.createElement("span");
+  mark.className = "dayMark";
+  spine.appendChild(mark);
+
+  const caret = document.createElement("span");
+  caret.className = "dayCaret";
+  caret.setAttribute("aria-hidden", "true");
+  caret.innerHTML = '<svg viewBox="0 0 16 16"><path d="M4 6h8l-4 5z" fill="currentColor"/></svg>';
+
+  const text = document.createElement("div");
+  text.className = "dayText";
+  const title = document.createElement("h2");
+  title.className = "dayTitle";
+  title.textContent = label;
+  const dateEl = document.createElement("span");
+  dateEl.className = "dayDate";
+  dateEl.textContent = date;
+  text.append(title, dateEl);
+
+  header.append(time, spine, caret, text);
+  return header;
+}
+
+// Row: time | dot on the spine | icon | name | detail | open arrow. The six cells sit straight on
+// the timeline's shared columns, which is what lines every detail up under one edge.
+function buildRow(record) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "historyRow";
+  row.dataset.key = record.key;
+
+  const time = document.createElement("span");
+  time.className = "rowTime";
+  time.textContent = formatTime(record.ts);
+  attachArcrhoTooltip(time, formatTimestamp(record.ts));
+
+  const spine = document.createElement("span");
+  spine.className = "spine";
+  const tick = document.createElement("span");
+  tick.className = "rowTick";
+  const dot = document.createElement("span");
+  dot.className = "rowDot";
+  spine.append(tick, dot);
+
+  const icon = document.createElement("span");
+  icon.className = "tabTypeIcon rowIcon";
+  icon.dataset.tabType = record.kind;
+  icon.setAttribute("aria-hidden", "true");
+
+  const nameEl = document.createElement("span");
+  nameEl.className = "rowName";
+  nameEl.textContent = record.name;
+  const detail = document.createElement("span");
+  detail.className = "rowDetail";
+  const detailText = record.detailParts.filter(Boolean).join("  ·  ");
+  detail.textContent = detailText;
+  // Only a truncated detail earns a tooltip, so a short row stays quiet on hover.
+  attachArcrhoTooltip(detail, () => (detail.scrollWidth > detail.clientWidth ? detailText : ""));
+
+  const go = document.createElement("span");
+  go.className = "rowGo";
+  go.setAttribute("aria-hidden", "true");
+  go.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>';
+
+  row.append(time, spine, icon, nameEl, detail, go);
+  return row;
+}
+
+let records = [];
+let recordsByKey = new Map();
+let selectedKind = "all";
+// Keys of the day headers and rows on the page now; anything not in here enters with motion.
+let shownKeys = new Set();
+// Days the user has folded away; a reload keeps them folded.
+const collapsedDays = new Set();
+
+function emptyText(shownCount) {
+  if (shownCount > 0) return "";
+  if (selectedKind !== "all" && records.length) return `No recent ${SOURCES[selectedKind].label}.`;
+  return defaultEmptyText;
+}
+
+// Draw the timeline under the current page-type filter: one group per day, newest day first,
+// each holding its date header and that day's records. Records that were not on the page a
+// moment ago slide in, each a beat after the one before; records that stayed do not move.
+function paint() {
+  if (!timelineEl || !emptyEl) return;
+
+  for (const button of kindButtons) {
+    const kind = button.dataset.kind;
+    const count = kind === "all" ? records.length : records.filter((record) => record.kind === kind).length;
+    const countEl = button.querySelector(".kindCount");
+    if (countEl) countEl.textContent = String(count);
   }
+
+  const shown = selectedKind === "all" ? records : records.filter((record) => record.kind === selectedKind);
+  const days = [];
+  for (const record of shown) {
+    const day = localDayKey(record.ts);
+    const last = days[days.length - 1];
+    if (last && last.day === day) last.records.push(record);
+    else days.push({ day, key: `day|${day}`, label: formatDay(record.ts), records: [record] });
+  }
+
+  timelineEl.innerHTML = "";
+  const nextKeys = new Set();
+  let entering = 0;
+  const place = (parent, element, key) => {
+    nextKeys.add(key);
+    if (!shownKeys.has(key)) {
+      element.classList.add("isNew");
+      element.style.setProperty("--enter-delay", `${Math.min(entering, MAX_STAGGERED_ROWS) * STAGGER_MS}ms`);
+      element.addEventListener("animationend", () => element.classList.remove("isNew"), { once: true });
+      entering += 1;
+    }
+    parent.appendChild(element);
+  };
+  days.forEach((day, index) => {
+    const collapsed = collapsedDays.has(day.day);
+    const group = document.createElement("section");
+    group.className = "dayGroup";
+    group.classList.toggle("isCollapsed", collapsed);
+    group.dataset.day = day.day;
+    group.setAttribute("aria-label", [day.label.title, day.label.date].filter(Boolean).join(", "));
+    const rowsId = `dayRows${index}`;
+    place(group, buildDayHeader(day.label, { collapsed, rowsId }), day.key);
+    const rows = document.createElement("div");
+    rows.className = "dayRows";
+    const inner = document.createElement("div");
+    inner.className = "dayRowsInner";
+    inner.id = rowsId;
+    inner.inert = collapsed;
+    for (const record of day.records) place(inner, buildRow(record), record.key);
+    rows.appendChild(inner);
+    group.append(rows);
+    timelineEl.appendChild(group);
+  });
+  shownKeys = nextKeys;
+
+  emptyEl.hidden = shown.length > 0;
+  emptyEl.textContent = emptyText(shown.length);
 }
 
 async function render() {
-  await Promise.all(GROUPS.map(async (group) => {
-    group.entries = await group.load();
-  }));
+  records = await loadRecords();
+  recordsByKey = new Map(records.map((record) => [record.key, record]));
   paint();
 }
 
-filterInput?.addEventListener("input", paint);
-filterInput?.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !filterInput.value) return;
-  filterInput.value = "";
+// A click on a date header folds or unfolds that day in place; a click on a row opens it.
+function toggleDay(group) {
+  const day = group.dataset.day || "";
+  const collapsed = !group.classList.contains("isCollapsed");
+  if (collapsed) collapsedDays.add(day);
+  else collapsedDays.delete(day);
+  group.classList.toggle("isCollapsed", collapsed);
+  group.querySelector(".dayHeader")?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  const inner = group.querySelector(".dayRowsInner");
+  if (inner) inner.inert = collapsed;
+}
+
+timelineEl?.addEventListener("click", (e) => {
+  const header = e.target?.closest?.(".dayHeader");
+  if (header) {
+    const group = header.closest(".dayGroup");
+    if (group) toggleDay(group);
+    return;
+  }
+  const row = e.target?.closest?.(".historyRow");
+  const record = recordsByKey.get(row?.dataset.key || "");
+  if (record) record.open();
+});
+
+// Arrow keys walk the visible rows, Home and End jump to the ends, so the timeline reads from
+// the keyboard as one list rather than a pile of buttons. Rows of a folded day are skipped.
+timelineEl?.addEventListener("keydown", (e) => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  const rows = Array.from(timelineEl.querySelectorAll(".dayGroup:not(.isCollapsed) .historyRow"));
+  if (!rows.length) return;
+  const current = rows.indexOf(document.activeElement);
+  let next = current;
+  if (e.key === "ArrowDown") next = Math.min(rows.length - 1, current + 1);
+  else if (e.key === "ArrowUp") next = Math.max(0, current - 1);
+  else if (e.key === "Home") next = 0;
+  else next = rows.length - 1;
+  e.preventDefault();
+  rows[next]?.focus();
+});
+
+kindFilter?.addEventListener("click", (e) => {
+  const button = e.target?.closest?.(".kindButton");
+  const kind = button?.dataset.kind;
+  if (!kind || kind === selectedKind) return;
+  selectedKind = kind;
+  for (const item of kindButtons) item.setAttribute("aria-pressed", item === button ? "true" : "false");
   paint();
 });
 

@@ -1,0 +1,16 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Browsing History is now a timeline: every page you opened, newest first, grouped by day under Today, Yesterday, and dated headers.",
+  "details": [
+    "Each day is its own block with a date header; a thin line runs down the left with a ring for each day and a dot for each record, and the date header stays in view while you scroll its rows.",
+    "Click a date header to fold that day away, and click it again to open it back up.",
+    "Earlier days are left as they were: opening a page again today updates today's record only, so the same page can appear under Today and under earlier days. The history now keeps up to 100 records per kind.",
+    "Each row shows the time, the page icon, the name, and the path, with names and paths lined up in columns across the whole page. Hovering a row lights its dot and shows an open arrow.",
+    "Records slide in when they first appear, and a reload leaves records you already saw where they are.",
+    "A page-type switch in the header narrows the timeline to Project Instances, My Workspace Folders, or Datasets, each with its count. The text filter box is gone.",
+    "Up and Down arrow keys move between rows.",
+    "Motion is turned off when the operating system asks for reduced motion."
+  ]
+}

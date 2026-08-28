@@ -1,6 +1,9 @@
-/* Browsing History page, styled after Project Explorer: white ground, one hairline under a
-   compact bold header, plain rows that only highlight on hover. Every color reads a shared theme
-   token, so this one stylesheet renders Light, Dark, and High Contrast. */
+/* Browsing History as a timeline: one chronological stream of every page the user opened, split
+   by day, with a thin spine down the left that carries a dot per record. The page keeps the
+   Project Explorer ground (white surface, one hairline under a compact bold header, rows that only
+   highlight on hover) and every color reads a shared theme token, so this one stylesheet renders
+   Light, Dark, and High Contrast. Motion is short and only confirms state: a record slides in when
+   it first appears, and hovering a row lights its dot, its connector, and its open arrow. */
 html, body {
   height: 100%;
   margin: 0;
@@ -15,12 +18,12 @@ body {
   overflow: hidden;
 }
 
-/* Header: title on the left, filter box on the right, hairline below. */
+/* Header: title on the left, page-type filter on the right, hairline below. */
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   flex: 0 0 auto;
   padding: 10px 16px;
   border-bottom: 1px solid var(--ar-color-border);
@@ -31,88 +34,246 @@ body {
   font-weight: 700;
   color: var(--ar-color-text-strong);
 }
-.filterInput {
+.headerTools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* Page-type filter: one segmented control, the chosen segment blue-tinted like a primary action.
+   Each segment carries its live count in a fixed-width slot so a changing number never shifts
+   the control. */
+.kindFilter {
+  display: inline-flex;
   box-sizing: border-box;
-  width: 240px;
-  max-width: 100%;
   height: 28px;
-  padding: 0 8px;
   border: 1px solid var(--ar-color-border-strong);
   border-radius: 4px;
   background: var(--ar-color-input);
-  color: var(--ar-color-text);
+  overflow: hidden;
+}
+.kindButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--ar-color-border);
+  background: transparent;
+  color: var(--ar-color-text-muted);
   font: inherit;
   font-size: 12px;
-  outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
 }
-.filterInput::placeholder {
+.kindButton:first-child {
+  border-left: 0;
+}
+.kindButton:hover {
+  background: var(--ar-color-surface-hover);
+  color: var(--ar-color-text);
+}
+.kindButton[aria-pressed="true"] {
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-accent);
+}
+.kindButton:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus);
+  outline-offset: -2px;
+}
+.kindCount {
+  min-width: 2ch;
+  font-size: 11px;
   color: var(--ar-color-text-subtle);
+  transition: color 150ms ease;
 }
-.filterInput:focus {
-  border-color: var(--ar-color-border-focus);
-  box-shadow: 0 0 0 3px var(--ar-color-focus-ring);
+.kindButton[aria-pressed="true"] .kindCount {
+  color: var(--ar-color-accent);
 }
 
 .content {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px 0 16px;
+  padding: 4px 0 24px;
 }
 
-/* Groups: a small label with its count, then the rows. */
-.group {
+/* Timeline grid: time | spine | icon | name | detail | open arrow. The timeline owns the columns
+   as one invisible table, and every day group, date header, and row lays itself out on those
+   same columns through subgrid, so each name column is as wide as the widest name on the page
+   (up to two fifths of the width) and every detail starts on one shared line. Every header and
+   row draws its own segment of the spine, so the line stays continuous while a sticky header
+   slides over the rows beneath it, and only the very first header and the very last row stop the
+   line at their own marker. */
+.timeline {
+  --time-width: 76px;
+  --spine-width: 28px;
+  --name-max: 40%;
+  display: grid;
+  grid-template-columns: var(--time-width) var(--spine-width) 14px fit-content(var(--name-max)) minmax(0, 1fr) 12px;
+  align-content: start;
+}
+.dayGroup {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   margin-top: 14px;
 }
-.group:first-of-type {
+.dayGroup:first-child {
   margin-top: 0;
 }
-.groupHeader {
+.dayHeader,
+.historyRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+.spine {
+  position: relative;
+  align-self: stretch;
+}
+.spine::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--ar-color-border);
+}
+.dayGroup:first-child > .dayHeader .spine::before {
+  top: 50%;
+}
+.dayGroup:last-child .historyRow:last-child .spine::before,
+.dayGroup:last-child.isCollapsed > .dayHeader .spine::before {
+  bottom: 50%;
+}
+
+/* Date header: a hollow ring on the spine, a caret, then the day and its date. It is a button
+   that folds its rows away and back. It sticks to the top of its own group, so the reader always
+   knows which day the rows under the pointer belong to, and the next day's header pushes it out
+   as that group scrolls up. */
+.dayHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  background: var(--ar-color-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+.dayHeader:hover {
+  background: var(--ar-color-surface-hover);
+}
+.dayHeader:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus);
+  outline-offset: -2px;
+}
+.dayCaret {
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  color: var(--ar-color-text-subtle);
+  transition: transform 150ms ease, color 150ms ease;
+}
+.dayCaret svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.dayHeader:hover .dayCaret,
+.dayHeader:focus-visible .dayCaret {
+  color: var(--ar-color-text);
+}
+.dayGroup.isCollapsed .dayCaret {
+  transform: rotate(-90deg);
+}
+
+/* The rows of a day sit in a clip whose single row track eases between its full height and
+   nothing, so a fold reads as the day closing rather than its rows vanishing. */
+.dayRows {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+}
+.dayRowsInner {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  min-height: 0;
+  overflow: hidden;
+  visibility: visible;
+  transition: visibility 0s;
+}
+.dayGroup.isCollapsed > .dayRows {
+  grid-template-rows: 0fr;
+}
+.dayGroup.isCollapsed .dayRowsInner {
+  visibility: hidden;
+  transition: visibility 0s linear 180ms;
+}
+.dayMark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border: 2px solid var(--ar-color-text-muted);
+  border-radius: 50%;
+  background: var(--ar-color-surface);
+}
+.dayText {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 6px 16px;
+  gap: 8px;
+  grid-column: 4 / -1;
+  min-width: 0;
+  padding: 0 16px 0 12px;
 }
-.groupTitle {
+.dayTitle {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
+  color: var(--ar-color-text-strong);
+}
+.dayDate {
+  font-size: 11px;
   color: var(--ar-color-text-muted);
 }
-.groupCount {
-  font-size: 11px;
-  color: var(--ar-color-text-subtle);
-}
-.list {
-  display: flex;
-  flex-direction: column;
-}
-.empty {
-  padding: 4px 16px;
-  color: var(--ar-color-text-subtle);
-  font-size: 12px;
-}
-.empty[hidden] {
+.dayDate:empty {
   display: none;
 }
 
-/* Row: icon, name and detail on one line, time at the right. */
+/* Row: time at the left, a dot on the spine, then icon, name, detail, and an open arrow that only
+   shows on hover. Hover changes color, scale, and opacity alone, so nothing shifts. */
 .historyRow {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
   box-sizing: border-box;
   width: 100%;
-  padding: 6px 16px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 100ms ease;
+  transition: background-color 150ms ease;
 }
 .historyRow:hover {
   background: var(--ar-color-surface-hover);
@@ -124,44 +285,156 @@ body {
   outline: 2px solid var(--ar-color-border-focus);
   outline-offset: -2px;
 }
+.rowTime {
+  padding: 7px 8px 7px 16px;
+  font-size: 11px;
+  color: var(--ar-color-text-subtle);
+  text-align: right;
+  white-space: nowrap;
+  transition: color 150ms ease;
+}
+.historyRow:hover .rowTime,
+.historyRow:focus-visible .rowTime {
+  color: var(--ar-color-text);
+}
+.rowTick {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(50% - 2px);
+  height: 1px;
+  margin-top: -0.5px;
+  background: var(--ar-color-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 150ms ease;
+}
+.rowDot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--ar-color-border-strong);
+  box-shadow: 0 0 0 2px var(--ar-color-surface);
+  transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+.historyRow:hover .rowTick,
+.historyRow:focus-visible .rowTick {
+  transform: scaleX(1);
+}
+.historyRow:hover .rowDot,
+.historyRow:focus-visible .rowDot {
+  transform: scale(1.45);
+  background: var(--ar-color-accent);
+  box-shadow: 0 0 0 2px var(--ar-color-surface-hover);
+}
 .rowIcon {
   width: 14px;
   height: 14px;
+  margin-left: 4px;
   color: var(--ar-color-text-muted);
+  transition: color 150ms ease;
 }
-.rowText {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
+.historyRow:hover .rowIcon,
+.historyRow:focus-visible .rowIcon {
+  color: var(--ar-color-accent);
 }
 .rowName {
-  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
+  padding: 7px 0 7px 12px;
   color: var(--ar-color-text-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .rowDetail {
-  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
+  padding: 7px 0 7px 16px;
   font-size: 12px;
   color: var(--ar-color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rowTime {
-  font-size: 11px;
+.rowGo {
+  width: 12px;
+  height: 12px;
+  margin: 0 14px 0 8px;
+  color: var(--ar-color-accent);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.rowGo svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+.historyRow:hover .rowGo,
+.historyRow:focus-visible .rowGo {
+  opacity: 1;
+  transform: none;
+}
+
+/* A record slides in the first time it appears on the page, each one a beat after the last, so a
+   fresh load reads as the timeline filling in rather than snapping into place. */
+@keyframes historyEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.timeline .isNew {
+  animation: historyEnter 180ms ease-out both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+.empty {
+  padding: 28px 16px;
   color: var(--ar-color-text-subtle);
-  white-space: nowrap;
+  font-size: 12px;
+  text-align: center;
+  animation: historyEnter 180ms ease-out both;
+}
+.empty[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline .isNew,
+  .empty {
+    animation: none;
+  }
+  .historyRow,
+  .rowTime,
+  .rowTick,
+  .rowDot,
+  .rowIcon,
+  .rowGo,
+  .dayHeader,
+  .dayCaret,
+  .dayRows,
+  .dayRowsInner,
+  .kindButton,
+  .kindCount {
+    transition: none;
+  }
 }
 
 @media (max-width: 720px) {
-  .header {
-    flex-direction: column;
-    align-items: stretch;
+  .headerTools {
+    flex: 1 1 100%;
+    margin-left: 0;
   }
-  .filterInput {
-    width: 100%;
+  .timeline {
+    --time-width: 64px;
+    --name-max: 50%;
   }
 }

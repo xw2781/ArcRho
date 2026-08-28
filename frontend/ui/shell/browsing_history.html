@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Browsing History</title>
-  <link rel="stylesheet" href="/ui/shell/browsing_history.css?v=20260827b"/>
+  <link rel="stylesheet" href="/ui/shell/browsing_history.css?v=20260828c"/>
   <link rel="stylesheet" href="/ui/shell/tab-type-icons/tab_type_icons.css?v=20260821a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e"/>
@@ -14,37 +14,28 @@
 <body>
   <header class="header">
     <h1 class="title">Browsing History</h1>
-    <input id="filterInput" class="filterInput" type="text" placeholder="Filter" aria-label="Filter history" autocomplete="off" spellcheck="false"/>
+    <div class="headerTools">
+      <div id="kindFilter" class="kindFilter" role="group" aria-label="Page Type">
+        <button type="button" class="kindButton" data-kind="all" aria-pressed="true">
+          <span class="kindLabel">All</span><span class="kindCount"></span>
+        </button>
+        <button type="button" class="kindButton" data-kind="project_instance" aria-pressed="false">
+          <span class="kindLabel">Project Instances</span><span class="kindCount"></span>
+        </button>
+        <button type="button" class="kindButton" data-kind="file_explorer" aria-pressed="false">
+          <span class="kindLabel">My Workspace Folders</span><span class="kindCount"></span>
+        </button>
+        <button type="button" class="kindButton" data-kind="dataset" aria-pressed="false">
+          <span class="kindLabel">Datasets</span><span class="kindCount"></span>
+        </button>
+      </div>
+    </div>
   </header>
   <main class="content">
-    <section class="group" aria-label="Project Instances">
-      <div class="groupHeader">
-        <h2 class="groupTitle">Project Instances</h2>
-        <span id="projectInstanceCount" class="groupCount"></span>
-      </div>
-      <div id="projectInstanceEmpty" class="empty">No recent Project Instance pages.</div>
-      <div id="projectInstanceList" class="list" aria-label="Project Instance History List"></div>
-    </section>
-
-    <section class="group" aria-label="My Workspace Folders">
-      <div class="groupHeader">
-        <h2 class="groupTitle">My Workspace Folders</h2>
-        <span id="workspaceCount" class="groupCount"></span>
-      </div>
-      <div id="workspaceEmpty" class="empty">No recent My Workspace folders.</div>
-      <div id="workspaceList" class="list" aria-label="My Workspace Folder History List"></div>
-    </section>
-
-    <section class="group" aria-label="Datasets">
-      <div class="groupHeader">
-        <h2 class="groupTitle">Datasets</h2>
-        <span id="historyCount" class="groupCount"></span>
-      </div>
-      <div id="historyEmpty" class="empty">No recent datasets.</div>
-      <div id="historyList" class="list" aria-label="Dataset Viewer History List"></div>
-    </section>
+    <div id="timeline" class="timeline" aria-label="Browsing History Timeline"></div>
+    <div id="historyEmpty" class="empty" hidden>No recent pages.</div>
   </main>
 
-  <script type="module" src="/ui/shell/browsing_history_main.js?v=20260827c"></script>
+  <script type="module" src="/ui/shell/browsing_history_main.js?v=20260828e"></script>
 </body>
 </html>

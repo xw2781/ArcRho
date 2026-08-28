@@ -1,5 +1,7 @@
+import { localDayKey } from "/ui/shared/services/local_day.js?v=20260828a";
+
 const LOCAL_PROJECT_PREFS_ENDPOINT = "/local-project/preferences";
-const MAX_ACTIVITY_ENTRIES = 10;
+const MAX_ACTIVITY_ENTRIES = 60;
 
 function toText(value) {
   return String(value || "").trim();
@@ -142,7 +144,14 @@ export function normalizeShellActivityEntry(raw) {
   return entry;
 }
 
+// One record per page per day: opening the same page again today replaces today's record, while
+// the records it left on earlier days stay.
 function getActivityKey(entry) {
+  const identity = getActivityIdentity(entry);
+  return identity ? `${identity}|${localDayKey(entry.ts)}` : "";
+}
+
+function getActivityIdentity(entry) {
   if (!entry) return "";
   if (entry.tabType === "dataset") {
     const d = entry.datasetInputs || {};

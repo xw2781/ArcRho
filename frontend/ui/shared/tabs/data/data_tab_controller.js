@@ -102,7 +102,8 @@ const WF_GLOBAL_CTRL_PREFIX = "arcrho_workflow_global_ctrl_v1::";
 const DEFAULT_PROJECT_DISPLAY = "Default Project";
 const DEFAULT_PATH_DISPLAY = "Default Path";
 const DEFAULT_TOKEN = "__DEFAULT__";
-const BROWSING_HISTORY_MAX_ENTRIES = 15;
+// Records, not distinct datasets: the store keeps one record per dataset per day.
+const BROWSING_HISTORY_MAX_ENTRIES = 100;
 
 const qs = new URLSearchParams(window.location.search);
 const instanceId = qs.get("inst") || "default";

@@ -2,10 +2,11 @@ import {
   normalizeReservingClassPath,
   normalizeReservingClassPathKey,
 } from "/ui/shared/services/valid_value_lists.js";
+import { localDayKey } from "/ui/shared/services/local_day.js?v=20260828a";
 
 const LAST_VIEWED_KEY = "arcrho_dataset_last_viewed_v1";
 const HISTORY_KEY = "arcrho_browsing_history_v1";
-const DEFAULT_MAX_ENTRIES = 15;
+const DEFAULT_MAX_ENTRIES = 100;
 
 function toText(value) {
   return String(value || "").trim();
@@ -41,13 +42,15 @@ function writeStorageObject(key, value) {
   }
 }
 
+// One record per dataset per day: viewing it again today replaces today's record, while the
+// records it left on earlier days stay.
 function getEntryKey(entry) {
   if (!entry) return "";
   const projectKey = normalizeNameKey(entry.project);
   const pathKey = normalizeReservingClassPathKey(entry.path);
   const triKey = normalizeNameKey(entry.tri);
   if (!projectKey || !pathKey || !triKey) return "";
-  return `${projectKey}||${pathKey}||${triKey}`;
+  return `${projectKey}||${pathKey}||${triKey}||${localDayKey(entry.ts)}`;
 }
 
 export function normalizeBrowsingHistoryEntry(rawEntry) {
@@ -114,7 +117,7 @@ export function pushBrowsingHistoryEntry(entry, options = {}) {
 
   const next = [normalized];
   const targetKey = getEntryKey(normalized);
-  for (const existing of getBrowsingHistoryEntries({ maxEntries: Math.max(maxEntries * 2, 100) })) {
+  for (const existing of getBrowsingHistoryEntries({ maxEntries: Math.max(maxEntries * 2, 200) })) {
     const existingKey = getEntryKey(existing);
     if (!existingKey || existingKey === targetKey) continue;
     next.push(existing);

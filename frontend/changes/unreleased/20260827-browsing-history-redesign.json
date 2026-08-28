@@ -2,11 +2,9 @@
   "type": "improvement",
   "scope": "shell",
   "audience": "user",
-  "summary": "Redesigned the Browsing History page in the plain Project Explorer style with a filter box, page-type icons, and short, readable times.",
+  "summary": "Redesigned the Browsing History page in the plain Project Explorer style with page-type icons and short, readable times.",
   "details": [
-    "Project Instances, My Workspace Folders, and Datasets are small labelled lists with a count.",
-    "Each row is one line: the page icon, the name, the path, and a time such as Today, 8:15 PM with the full timestamp on hover.",
-    "A filter box narrows every group by name or path at once.",
+    "Each row shows the page icon, the name, and the path, with the full timestamp on hover.",
     "A single click always opens a record; the first click on the page no longer gets lost.",
     "The page follows the Dark and High Contrast themes through the shared theme colors."
   ]
