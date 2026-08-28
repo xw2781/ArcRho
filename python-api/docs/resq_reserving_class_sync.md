@@ -150,9 +150,18 @@ them.
   either direction through their method output rows. ArcRho-to-ResQ rows are
   labeled `supported fields only`: they use the existing, deliberately partial
   ResQ writer (for example, BF supports one prior; Cape Cod scaling type and
-  some collapsed modes are not reconstructed; DFM notes/formula definitions
-  are not pushed). Missing required ResQ dependencies and unremovable Result
-  Selection sources block the action before mutation.
+  some collapsed modes are not reconstructed; DFM formula definitions are not
+  pushed). Notes sync in both directions for every dataset and method. ArcRho
+  keeps them in the sidecar — a dataset's own, or the output sidecar of a
+  method, never the method JSON — so the inventory attaches the sidecar
+  `notes` to each row whenever that sidecar is readable; the writer sets the
+  ResQ `Notes` of the triangle, vector, or method with line breaks normalized
+  to `\r\n` (an empty value clears them, an unreadable sidecar leaves them
+  unchanged), and the read-back verification compares them like every other
+  applied field. A ResQ-to-ArcRho row lands ResQ's Notes in the rewritten
+  sidecar because the triangle, vector, and method readers all read them.
+  Missing required ResQ dependencies and unremovable Result Selection sources
+  block the action before mutation.
 - Berquist-Sherman Settlement Rate and Case Reserve Adequacy can import from
   ResQ into ArcRho only. ArcRho-to-ResQ creation/write-back is not supported.
 - Bootstrap synchronization is not supported.

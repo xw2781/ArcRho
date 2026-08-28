@@ -385,6 +385,17 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
     method_entries = _read_json_entries(_directory_files(rc_dir / migration.METHOD_DATA_DIR, ".json"))
     csv_entries = _directory_files(rc_dir / migration.DATASET_CACHE_DIR, ".csv")
     csv_by_name = {path.name.casefold(): (path, modified) for path, modified in csv_entries}
+    sidecar_names = [
+        (
+            path,
+            modified,
+            payload,
+            sync_contract.clean_name(payload.get("dataset_name") or migration._normalize_cached_dataset_name(path.stem)),
+        )
+        for path, modified, payload in sidecar_entries
+    ]
+    # Method Notes live in a method's output sidecar, not in its method JSON.
+    sidecar_by_key = {sync_contract.logical_key(name): payload for _path, _modified, payload, name in sidecar_names}
 
     items: list[dict[str, Any]] = []
     method_keys: set[str] = set()
@@ -428,12 +439,14 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
             "method_name": sync_contract.clean_name(entry.get("method_name") or name),
             "method_file": path.name,
         }
+        sidecar = sidecar_by_key.get(sync_contract.logical_key(name))
+        if sidecar is not None:
+            item["notes"] = str(sidecar.get("notes") or "")
         items.append(item)
         method_keys.add(sync_contract.logical_key(name))
 
     sidecar_keys: set[str] = set()
-    for path, fallback_modified, payload in sidecar_entries:
-        name = sync_contract.clean_name(payload.get("dataset_name") or migration._normalize_cached_dataset_name(path.stem))
+    for path, fallback_modified, payload, name in sidecar_names:
         key = sync_contract.logical_key(name)
         if not key:
             continue
@@ -463,7 +476,7 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
             block_reason = "The ArcRho dataset CSV cache is missing; open the dataset once to build it."
         else:
             block_reason = ""
-        items.append({
+        item = {
             "name": name,
             "kind": kind,
             "data_format": str(payload.get("data_format") or ""),
@@ -476,7 +489,10 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
             "payload": payload,
             "sidecar_file": path.name,
             "csv_file": csv_file,
-        })
+        }
+        if "notes" in payload:
+            item["notes"] = str(payload.get("notes") or "")
+        items.append(item)
 
     # A cache with no sidecar still belongs in the review inventory, but it is
     # deliberately not exportable because the sidecar owns its data contract.
@@ -857,6 +873,8 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
             "name": str(item.get("method_name") or row.get("name") or ""),
             "payload": item.get("payload") or {},
         }
+        if "notes" in item:
+            entry["notes"] = item["notes"]
         if kind == KIND_DFM:
             exporter.export_dfms([entry])
         elif kind == KIND_BF:
@@ -928,6 +946,15 @@ def _preflight_dataset_export(exporter, row: Mapping[str, Any]) -> list[list[flo
     return values
 
 
+def _verify_notes(exporter, target, item: Mapping[str, Any], label: str) -> None:
+    """Read ResQ Notes back when the ArcRho row carried notes to write."""
+
+    if "notes" not in item:
+        return
+    if str(getattr(target, "Notes", "") or "") != exporter._resq_notes_text(item["notes"]):
+        raise RuntimeError(f"ResQ {label} notes verification failed.")
+
+
 def _verify_dataset_export(
     exporter,
     row: Mapping[str, Any],
@@ -974,6 +1001,7 @@ def _verify_dataset_export(
                     raise RuntimeError(
                         f"ResQ triangle verification failed at ({origin_index}, {development_index})."
                     )
+        _verify_notes(exporter, target, item, "triangle")
         return
 
     flat = [source[0] for source in values]
@@ -984,6 +1012,7 @@ def _verify_dataset_export(
         actual = float(target.ValuesByIndex(index))
         if expected is None or abs(actual - expected) > 1e-9:
             raise RuntimeError(f"ResQ vector verification failed at position {index}.")
+    _verify_notes(exporter, target, item, "vector")
 
 
 def _preflight_method_export(
@@ -1238,6 +1267,8 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
                         raise RuntimeError(
                             f"ResQ DFM User Entry verification failed at column {development_index}."
                         )
+
+        _verify_notes(exporter, target, item, "DFM")
         return
 
     if kind == KIND_BF:
@@ -1267,6 +1298,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         expected_prior_type = 0 if expected_prior_type is None else int(expected_prior_type)
         if int(getattr(target, "PriorType")) != expected_prior_type:
             raise RuntimeError("ResQ BF prior type did not match ArcRho after the write.")
+        _verify_notes(exporter, target, item, "BF")
         return
 
     if kind == KIND_CC:
@@ -1304,6 +1336,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         if method_tab.get("trend_rate") is not None and not bool(method_tab.get("auto_trend_fit")):
             if abs(float(getattr(target, "TrendRate")) - float(method_tab["trend_rate"])) > 1e-9:
                 raise RuntimeError("ResQ Cape Cod trend rate did not match ArcRho after the write.")
+        _verify_notes(exporter, target, item, "Cape Cod")
         return
 
     if kind == KIND_RS:
@@ -1345,6 +1378,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
             actual = float(target.Ultimates(origin_index, rs_origin_length))
             if abs(actual - float(expected)) > 1e-9:
                 raise RuntimeError("ResQ Result Selection ultimate override verification failed.")
+        _verify_notes(exporter, target, item, "Result Selection")
 
 
 def _resq_import_target(row: Mapping[str, Any]) -> dict[str, Any]:

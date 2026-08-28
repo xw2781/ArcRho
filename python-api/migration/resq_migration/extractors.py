@@ -535,6 +535,7 @@ def export_triangle(
     user = _normalize_import_name(_extract_attr(triangle, "User", "", context=f"triangle {name!r}"))
     created = _iso_or_text(_extract_attr(triangle, "Created", "", context=f"triangle {name!r}"))
     modified = _iso_or_text(_extract_attr(triangle, "Modified", "", context=f"triangle {name!r}"))
+    notes = str(_extract_attr(triangle, "Notes", "", context=f"triangle {name!r}") or "")
     origin_labels = [_triangle_origin_label(triangle, i) for i in range(1, origin_count + 1)]
     dev_labels = [_triangle_development_label(triangle, j) for j in range(1, max_dev_count + 1)]
 
@@ -555,6 +556,7 @@ def export_triangle(
         "user": user,
         "created": created,
         "modified": modified,
+        "notes": notes,
         "status": normalize_method_status(
             _extract_attr(triangle, "Status", 0, context=f"triangle {name!r}")
         ),
@@ -1169,6 +1171,7 @@ def export_vector(vector, *, strict: bool = False) -> dict:
     user = _normalize_import_name(_extract_attr(vector, "User", "", context=f"vector {name!r}"))
     created = _iso_or_text(_extract_attr(vector, "Created", "", context=f"vector {name!r}"))
     modified = _iso_or_text(_extract_attr(vector, "Modified", "", context=f"vector {name!r}"))
+    notes = str(_extract_attr(vector, "Notes", "", context=f"vector {name!r}") or "")
     formula = _clean_name(_extract_attr(vector, "Formula", "", context=f"vector {name!r}"))
     origin_labels = [_vector_origin_label(vector, i) for i in range(1, origin_count + 1)]
 
@@ -1190,6 +1193,7 @@ def export_vector(vector, *, strict: bool = False) -> dict:
         "user": user,
         "created": created,
         "modified": modified,
+        "notes": notes,
         "status": normalize_method_status(
             _extract_attr(vector, "Status", 0, context=f"vector {name!r}")
         ),

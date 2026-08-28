@@ -873,5 +873,135 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
         self.assertTrue(inventory[0]["can_receive_from_arcrho"])
 
 
+class SyncSessionMethodNotesTests(unittest.TestCase):
+    """DFM Method Notes live in the output sidecar and ride along on an ArcRho-to-ResQ write."""
+
+    def test_arcrho_inventory_attaches_output_sidecar_notes_to_the_method_row(self):
+        from resq_migration import sync as sync_contract
+
+        with tempfile.TemporaryDirectory() as temp:
+            rc_dir = Path(temp)
+            for folder in ("sidecars", "methods", "cache"):
+                (rc_dir / folder).mkdir()
+            for method_name, output_name in (("Paid DFM", "Paid CDF"), ("Orphan DFM", "Orphan CDF")):
+                method = {"details_tab": {"name": method_name, "output_dataset": output_name}}
+                (rc_dir / "methods" / f"DFM@{method_name}.json").write_text(json.dumps(method), encoding="utf-8")
+            sidecar = {
+                "dataset_name": "Paid CDF",
+                "method_type": "DFM",
+                "data_format": "Origin Vector",
+                "notes": "Excluded 2020.\nSelected 3-year.",
+                "last_modified": "2026-08-27T09:18:22",
+            }
+            (rc_dir / "sidecars" / "Paid CDF.json").write_text(json.dumps(sidecar), encoding="utf-8")
+            plain = {
+                "dataset_name": "Paid Loss",
+                "method_type": "None",
+                "data_format": "Triangle",
+                "csv_file": "Paid Loss.csv",
+                "notes": "Loaded from claims.",
+                "last_modified": "2026-08-27T09:18:22",
+            }
+            (rc_dir / "sidecars" / "Paid Loss.json").write_text(json.dumps(plain), encoding="utf-8")
+            (rc_dir / "cache" / "Paid Loss.csv").write_text("1\n", encoding="utf-8")
+            migration = types.SimpleNamespace(
+                DATASET_SIDECAR_DIR="sidecars",
+                METHOD_DATA_DIR="methods",
+                DATASET_CACHE_DIR="cache",
+                _normalize_cached_dataset_name=lambda value: str(value),
+                _cached_dataset_names_from_file=lambda name: [Path(name).stem],
+            )
+            runtime = {
+                "migration": migration,
+                "parse_timestamp": sync_session._parsed_timestamp,
+                "method_entry": lambda payload, filename: {
+                    "dataset_name": payload["details_tab"]["output_dataset"],
+                    "method_name": payload["details_tab"]["name"],
+                    "method_type": "DFM",
+                },
+                "sync_contract": sync_contract,
+            }
+
+            inventory = sync_session.collect_arcrho_inventory(runtime, rc_dir)
+
+        by_name = {item["name"]: item for item in inventory}
+        # The output sidecar folds into its method row instead of listing twice.
+        self.assertEqual(sorted(by_name), ["Orphan CDF", "Paid CDF", "Paid Loss"])
+        self.assertEqual(by_name["Paid CDF"]["notes"], "Excluded 2020.\nSelected 3-year.")
+        self.assertNotIn("notes", by_name["Orphan CDF"])
+        # A plain dataset's sidecar is its own notes owner.
+        self.assertEqual(by_name["Paid Loss"]["notes"], "Loaded from claims.")
+
+    def _dfm_row(self, **item):
+        return {
+            "name": "Paid CDF",
+            "kind": sync_session.KIND_DFM,
+            "arcrho": {"method_name": "Paid DFM", "payload": {"details_tab": {"name": "Paid DFM"}}, **item},
+        }
+
+    def _writer(self):
+        exporter = Mock()
+        exporter.counts = {"errors": 0, "dfms_written": 0}
+        exporter.skipped = {}
+        exporter.error_details = []
+        exporter.export_dfms.side_effect = lambda entries: exporter.counts.__setitem__("dfms_written", len(entries))
+        return exporter
+
+    def test_export_hands_the_sidecar_notes_to_the_dfm_writer(self):
+        exporter = self._writer()
+
+        with patch.object(sync_session, "_preflight_method_export"), patch.object(sync_session, "_verify_method_export"):
+            ok, _message = sync_session._export_one_to_resq(exporter, self._dfm_row(notes="Excluded 2020."))
+
+        self.assertTrue(ok)
+        exporter.export_dfms.assert_called_once_with(
+            [{"name": "Paid DFM", "payload": {"details_tab": {"name": "Paid DFM"}}, "notes": "Excluded 2020."}]
+        )
+
+    def test_export_leaves_notes_out_when_the_sidecar_was_unavailable(self):
+        exporter = self._writer()
+
+        with patch.object(sync_session, "_preflight_method_export"), patch.object(sync_session, "_verify_method_export"):
+            sync_session._export_one_to_resq(exporter, self._dfm_row())
+
+        self.assertNotIn("notes", exporter.export_dfms.call_args.args[0][0])
+
+    def test_verification_reads_the_notes_back(self):
+        target = Mock()
+        target.Notes = "Old note"
+        exporter = Mock()
+        exporter._find_in.return_value = target
+        exporter._dfm_development_column_count.return_value = 0
+        exporter._average_formula_display_indexes.return_value = {}
+        exporter._user_entry_payload_row_index.return_value = None
+        exporter._resq_notes_text.side_effect = lambda notes: str(notes).replace("\n", "\r\n")
+        row = self._dfm_row(notes="Excluded 2020.\nSelected 3-year.")
+
+        with patch.object(sync_session, "_preflight_method_export"):
+            with self.assertRaisesRegex(RuntimeError, "DFM notes verification failed"):
+                sync_session._verify_method_export(exporter, row)
+            target.Notes = "Excluded 2020.\r\nSelected 3-year."
+            sync_session._verify_method_export(exporter, row)
+
+    def test_dataset_verification_reads_the_notes_back(self):
+        target = Mock()
+        target.Count = 1
+        target.ValuesByIndex.return_value = 1.0
+        target.Notes = "Old note"
+        exporter = Mock()
+        exporter._find_vector.return_value = target
+        exporter._resq_notes_text.side_effect = lambda notes: str(notes)
+        row = {
+            "name": "Paid Loss",
+            "kind": "Dataset",
+            "arcrho": {"payload": {"data_format": "Vector"}, "notes": "Reviewed."},
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "vector notes verification failed"):
+            sync_session._verify_dataset_export(exporter, row, [[1.0]])
+        target.Notes = "Reviewed."
+        sync_session._verify_dataset_export(exporter, row, [[1.0]])
+
+
 if __name__ == "__main__":
     unittest.main()

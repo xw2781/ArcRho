@@ -17,9 +17,10 @@ COM API (`ResQ3Automation.ResQApplication`), in this order:
    Dataset Type; vectors are written at `StoredPeriodLength` and the display
    length is restored before `Save()`.
 2. **DFM methods** (`methods/DFM@*.json`): ratio exclusions
-   (`SetExcludedRatios`), User Entry factors (`SetUserRatios`), and per-column
+   (`SetExcludedRatios`), User Entry factors (`SetUserRatios`), per-column
    selected averages (`SetSelectedRatios`), matching average rows by
-   whitespace-normalized label against `AverageFormula(i)`.
+   whitespace-normalized label against `AverageFormula(i)`, and Method Notes
+   (`Notes`) taken from the method's output sidecar.
 3. **Bornhuetter Ferguson** (`BF@*.json`): `Latest`/`LatestType`,
    `PercentageDeveloped(Type)`, `Prior`/`PriorType`, `OriginLength`.
 4. **Cape Cod** (`CC@*.json`): `Exposure`, `Latest`, `PercentageDeveloped(Type)`,
@@ -133,10 +134,18 @@ ArcRho → ResQ mapping gaps (lossy or ambiguous reverse direction):
     the ResQ method is skipped for that column (`SetSelectedRatios` is not
     called); creating/reordering ResQ averages via `CustomAverages(i)` writers
     is untested.
-16. DFM method notes live in the ArcRho *output sidecar* `notes`, which the
-    import only writes when the sidecar is new; pushing notes back is
-    therefore skipped to avoid overwriting fresher ResQ notes with stale text.
-    Cell notes are read-only in the Bridge for the same reason.
+16. Notes live in the ArcRho sidecar — a dataset's own, or the *output
+    sidecar* of a DFM, BF, Cape Cod, or Result Selection method, never the
+    method JSON. `collect_rc_artifacts` attaches that value to a method entry
+    whenever the output sidecar exists, and every writer sets the ResQ `Notes`
+    of the triangle, vector, or method from it with line breaks normalized to
+    `\r\n` (ResQ renders a `\n`-only value as one line), clearing them for an
+    empty value and leaving them unchanged when the entry carries no `notes`
+    — the same rule the Bridge `SyncDFM` write-back applies. The triangle and
+    vector readers read ResQ `Notes` as well, so an import lands them in the
+    sidecar. Only the bulk DFM import keeps an existing sidecar's notes; the
+    sync never meets that case because it deletes the target before importing.
+    Cell notes remain read-only in the Bridge.
 17. Engine-generated datasets carry no ResQ provenance and no axis labels in
     their sidecars; the macro writes them by index position against the ResQ
     grid after aligning `OriginLength`/`DevelopmentLength` to the sidecar. If

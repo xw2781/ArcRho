@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ now carries Notes in both directions for every dataset and method.",
+  "details": [
+    "An ArcRho-to-ResQ row writes the notes kept on the dataset's or method's Notes tab into the ResQ Notes field with their line breaks intact; an empty note clears the ResQ notes. Before this, notes were never written, so a synced DFM showed stale or empty notes in ResQ.",
+    "A ResQ-to-ArcRho row brings ResQ's notes into ArcRho for triangles and vectors as well as methods; dataset notes used to come across blank.",
+    "Every write is checked by reading the notes back, like the other fields the sync applies.",
+    "Export Reserving Class to ResQ (1.3.0), whose writer the sync uses, pushes notes the same way."
+  ]
+}

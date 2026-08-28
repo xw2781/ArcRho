@@ -100,6 +100,7 @@ class _ResqTriangle:
         self.OriginCount = len(origins)
         self.OriginLength = period_months
         self.DevelopmentLength = period_months
+        self.Notes = "Counts capped at 2026Q1.\r\nReviewed."
         self._origins = origins
         self._period_months = period_months
         self._first_dev = first_dev
@@ -193,6 +194,10 @@ class QuarterlyTriangleTruncationTests(unittest.TestCase):
         payload = extractors.export_triangle(_quarterly_triangle(expose_origin_date=True))
         self.assertEqual(payload["development_count"], max(_EXPECTED_QUARTERLY_COUNTS))
         self.assertEqual(payload["development_labels"][-1], "17m")
+
+    def test_resq_notes_ride_along_with_the_triangle(self) -> None:
+        payload = extractors.export_triangle(_quarterly_triangle(expose_origin_date=True))
+        self.assertEqual(payload["notes"], "Counts capped at 2026Q1.\r\nReviewed.")
 
     def test_latest_diagonal_values_survive(self) -> None:
         payload = extractors.export_triangle(_quarterly_triangle(expose_origin_date=True))

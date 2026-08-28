@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 1.3.0
-# Release Note: Push every dataset's and method's Notes from its ArcRho sidecar into the ResQ Notes field, with line breaks ResQ renders.
+# Version: 1.1.0
+# Release Note: Read the v4 persisted JSON: snake_case DFM keys, and a sidecar's method_type and data_format names instead of the retired numeric codes.
 # Description: Export all ArcRho datasets and supported methods (DFM, BF, Cape Cod, Result Selection) for the reserving-class path selected in the active Project Instance page into the ResQ database.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -165,8 +165,6 @@ def collect_rc_artifacts(migration, rc_dir: Path):
             payload = _read_json(path)
             if isinstance(payload, dict) and str(payload.get("dataset_name") or "").strip():
                 sidecars.append(payload)
-    # Method Notes live in a method's output sidecar, not in its method JSON.
-    sidecar_by_key = {_label_key(sidecar.get("dataset_name")): sidecar for sidecar in sidecars}
 
     methods = {"DFM": [], "RS": [], "BF": [], "CC": [], "BSSR": [], "BSCRA": []}
     method_dir = rc_dir / migration.METHOD_DATA_DIR
@@ -178,12 +176,9 @@ def collect_rc_artifacts(migration, rc_dir: Path):
                 continue
             payload = _read_json(path)
             if isinstance(payload, dict):
-                entry = {"file_name": path.name, "name": _clean_label(_decode_filename_segment(encoded_name)), "payload": payload}
-                output_name = _dict_path(payload, ("details_tab",)).get("output_dataset") or entry["name"]
-                sidecar = sidecar_by_key.get(_label_key(output_name))
-                if sidecar is not None:
-                    entry["notes"] = str(sidecar.get("notes") or "")
-                methods[prefix].append(entry)
+                methods[prefix].append(
+                    {"file_name": path.name, "name": _clean_label(_decode_filename_segment(encoded_name)), "payload": payload}
+                )
     return sidecars, methods
 
 
@@ -434,7 +429,6 @@ class ResQReservingClassExporter:
             self._emit(f"[dry run] would write {name}")
             return
 
-        notes = self._sync_notes(target, sidecar)
         if is_triangle:
             self._write_triangle_values(target, sidecar, values)
         else:
@@ -442,7 +436,7 @@ class ResQReservingClassExporter:
         self.counts["datasets_written"] += 1
         if created:
             self.counts["datasets_created"] += 1
-        self._emit(f"Exported dataset: {name} (notes {notes})", status="success")
+        self._emit(f"Exported dataset: {name}", status="success")
 
     def _create_dataset(self, sidecar, name, is_triangle):
         type_name = _clean_label(sidecar.get("dataset_type")) or name
@@ -537,13 +531,13 @@ class ResQReservingClassExporter:
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
             try:
-                self._export_dfm(name, details, payload, entry)
+                self._export_dfm(name, details, payload)
             except ExportSkipped as skip:
                 self._record_skip("DFM", name, skip.reason, str(skip))
             except Exception as exc:
                 self._record_error("DFM", name, exc)
 
-    def _export_dfm(self, name, details, payload, entry):
+    def _export_dfm(self, name, details, payload):
         dfm = self._find_in("dfm_methods", self.reserving_class.DFMMethods, name)
         created = False
         if dfm is None:
@@ -555,36 +549,14 @@ class ResQReservingClassExporter:
         excluded = self._sync_dfm_excluded_ratios(dfm, payload)
         user_values = self._sync_dfm_user_entry_values(dfm, payload)
         selected = self._sync_dfm_selected_ratios(dfm, payload)
-        notes = self._sync_notes(dfm, entry)
         dfm.Save()
         self.counts["dfms_written"] += 1
         if created:
             self.counts["dfms_created"] += 1
         self._emit(
-            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, selected {selected}, notes {notes})",
+            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, selected {selected})",
             status="success",
         )
-
-    def _resq_notes_text(self, notes):
-        # ResQ Notes need \r\n line breaks; a \n-only value renders as one line.
-        text = str(notes or "")
-        if not text.strip():
-            return ""
-        return re.sub(r"\r?\n", "\r\n", text)
-
-    def _sync_notes(self, target, entry):
-        # ArcRho keeps Notes in the sidecar: a dataset's own, or the output
-        # sidecar of a method. A dataset entry is that sidecar and a method
-        # entry carries ``notes`` only when its output sidecar was readable, so
-        # an absent field leaves the ResQ Notes unchanged and an empty value
-        # clears them.
-        if "notes" not in entry:
-            return 0
-        notes = self._resq_notes_text(entry["notes"])
-        if str(getattr(target, "Notes", "") or "") == notes:
-            return 0
-        target.Notes = notes
-        return 1
 
     def _create_dfm(self, name, details):
         if self.dry_run:
@@ -750,7 +722,7 @@ class ResQReservingClassExporter:
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
             try:
-                self._export_bf(name, details, payload, entry)
+                self._export_bf(name, details, payload)
             except ExportSkipped as skip:
                 self._record_skip("BF", name, skip.reason, str(skip))
             except Exception as exc:
@@ -770,7 +742,7 @@ class ResQReservingClassExporter:
                 return method
         return None
 
-    def _export_bf(self, name, details, payload, entry):
+    def _export_bf(self, name, details, payload):
         bf = self._find_method_by_output(self.reserving_class.BFMethods(), name)
         created = False
         if bf is None:
@@ -824,12 +796,11 @@ class ResQReservingClassExporter:
                     prior_type = method_tab.get("prior_type_code")
                     bf.PriorType = int(prior_type) if prior_type is not None else RESQ_PRIOR_TYPE_ULTIMATES
                     bf.Prior = prior
-        notes = self._sync_notes(bf, entry)
         bf.Save()
         self.counts["bfs_written"] += 1
         if created:
             self.counts["bfs_created"] += 1
-        self._emit(f"Exported BF: {name} (notes {notes})", status="success")
+        self._emit(f"Exported BF: {name}", status="success")
 
     # ----- Cape Cod ---------------------------------------------------------------
 
@@ -840,13 +811,13 @@ class ResQReservingClassExporter:
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
             try:
-                self._export_cc(name, details, payload, entry)
+                self._export_cc(name, details, payload)
             except ExportSkipped as skip:
                 self._record_skip("CC", name, skip.reason, str(skip))
             except Exception as exc:
                 self._record_error("CC", name, exc)
 
-    def _export_cc(self, name, details, payload, entry):
+    def _export_cc(self, name, details, payload):
         cc = self._find_method_by_output(self.reserving_class.CapeCodMethods(), name)
         created = False
         if cc is None:
@@ -907,12 +878,11 @@ class ResQReservingClassExporter:
                 cc.AltUltimateCalc = bool(alt_calc)
             except Exception:
                 pass
-        notes = self._sync_notes(cc, entry)
         cc.Save()
         self.counts["ccs_written"] += 1
         if created:
             self.counts["ccs_created"] += 1
-        self._emit(f"Exported CC: {name} (notes {notes})", status="success")
+        self._emit(f"Exported CC: {name}", status="success")
 
     # ----- Result Selection -------------------------------------------------------
 
@@ -923,13 +893,13 @@ class ResQReservingClassExporter:
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
             try:
-                self._export_result_selection(name, details, payload, entry)
+                self._export_result_selection(name, details, payload)
             except ExportSkipped as skip:
                 self._record_skip("Result Selection", name, skip.reason, str(skip))
             except Exception as exc:
                 self._record_error("Result Selection", name, exc)
 
-    def _export_result_selection(self, name, details, payload, entry):
+    def _export_result_selection(self, name, details, payload):
         rs = self._find_method_by_output(self.reserving_class.ResultSelections(), name)
         created = False
         method_tab = _dict_path(payload, ("method_tab",))
@@ -1019,13 +989,12 @@ class ResQReservingClassExporter:
                     continue
                 rs.SetUltimates(origin_index, rs_origin_length, value)
                 override_updates += 1
-        notes = self._sync_notes(rs, entry)
         rs.Save()
         self.counts["result_selections_written"] += 1
         if created:
             self.counts["result_selections_created"] += 1
         self._emit(
-            f"Exported Result Selection: {name} (weights {weight_updates}, overrides {override_updates}, notes {notes})",
+            f"Exported Result Selection: {name} (weights {weight_updates}, overrides {override_updates})",
             status="success",
         )
 

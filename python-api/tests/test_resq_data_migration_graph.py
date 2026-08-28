@@ -256,6 +256,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             Created = "2026-01-01T00:00:00"
             Modified = "2026-01-02T00:00:00"
             Formula = ""
+            Notes = "Selected after review.\r\nKeep."
             DatasetType = type(
                 "DatasetType",
                 (),
@@ -281,6 +282,9 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         )
         self.assertEqual(payload["status"], 2)
         self.assertEqual(sidecar["status"], 2)
+        # ResQ Notes ride into the sidecar, the ArcRho owner of dataset notes.
+        self.assertEqual(payload["notes"], "Selected after review.\r\nKeep.")
+        self.assertEqual(sidecar["notes"], "Selected after review.\r\nKeep.")
 
         index_path = self.catalog.rebuild_dataset_instance_index(
             "Demo", r"Auto\PP", self.rc_dir
