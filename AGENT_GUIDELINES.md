@@ -155,4 +155,9 @@ The user pre-authorizes these rebuilds and the component restarts they cause, so
 The frontend includes a bundled portable Node runtime. When validating or running Node/npm commands for this repository, prefer `frontend\node-portable\node.exe` and `frontend\node-portable\npm.cmd` instead of plain `node` or `npm`, because Node is not expected to be installed globally or available on `PATH` in the agent environment. Do not report "Node is not installed in this environment" unless the bundled portable runtime is also missing or fails.
 
 ## Validation Runtime
-Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder.
+Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder, and follow the temporary-file rule below.
+
+## Temporary Files (MUST)
+- Never create temporary files or folders loose in the repository root or beside the code under test. Put every scratch file under `temp/` at the repository root (already gitignored at any depth; create it if missing), or under the harness scratchpad directory when one is provided. Point `tempfile` calls and shell scratch paths at that folder explicitly — for example `tempfile.mkdtemp(dir=temp_dir)` — rather than relying on the default location.
+- Delete whatever you created before finishing the task: remove the scratch files and any folder you made for them once the validation or experiment is done. Wrap them in `tempfile.TemporaryDirectory()` or an equivalent so cleanup happens even when a command fails.
+- Before ending a task, check `git status --short --ignored` for anything new that you left behind — a stray `tmp*` folder, a generated spreadsheet, a copied JSON — and remove it. A gitignored leftover is still litter: it clutters the working tree for the next person and other agents.
