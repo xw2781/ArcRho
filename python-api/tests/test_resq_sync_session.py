@@ -73,6 +73,10 @@ class SyncSessionPhaseTests(unittest.TestCase):
             "resq_timestamp": (row.get("resq") or {}).get("modified_timestamp"),
         }
         sync_contract.signatures_equal.side_effect = lambda left, right: left == right
+        sync_contract.newer_side.side_effect = lambda arcrho, resq: (
+            "resq" if (resq.get("modified_timestamp") or 0) > (arcrho.get("modified_timestamp") or 0) else "arcrho"
+        )
+        sync_contract.export_supported.side_effect = lambda arcrho, resq: bool(arcrho.get("can_export_to_resq"))
         return {"migration": migration, "sync_contract": sync_contract}, migration
 
     def _action_row(self, row_id: str, timestamp: float) -> dict:
@@ -93,6 +97,7 @@ class SyncSessionPhaseTests(unittest.TestCase):
     def test_preview_never_opens_a_write_session_and_publishes_row_signatures(self):
         runtime, migration = self._runtime()
         row = self._action_row("paid-loss", 200)
+        row["arcrho"].update({"dataset_type": "Paid Loss", "method_name": "Paid DFM", "can_export_to_resq": True})
         preview = {
             "plan": [row],
             "state": {"items": {}},
@@ -121,6 +126,12 @@ class SyncSessionPhaseTests(unittest.TestCase):
             result["preview"][0]["signature"],
             runtime["sync_contract"].plan_signature(row),
         )
+        # The Export macro's timestamp check reads these per-row facts, and a
+        # link that opens the item in ArcRho needs the type and method name.
+        public = result["preview"][0]
+        self.assertEqual(public["newer_side"], "arcrho")
+        self.assertTrue(public["export_supported"])
+        self.assertEqual((public["dataset_type"], public["method_name"]), ("Paid Loss", "Paid DFM"))
         migration._restore_runtime_scope.assert_called_once_with({"previous": True})
 
     def test_apply_with_no_accepted_row_performs_no_write_or_resq_connection(self):

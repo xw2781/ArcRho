@@ -2194,23 +2194,33 @@ def _public_plan_rows(runtime: Mapping[str, Any], plan: list[dict[str, Any]]) ->
     """
 
     sync_contract = runtime["sync_contract"]
-    return [
-        {
+    rows = []
+    for row in plan:
+        arcrho = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
+        resq = row.get("resq") if isinstance(row.get("resq"), Mapping) else {}
+        rows.append({
             "id": str(row.get("id") or ""),
             "signature": sync_contract.plan_signature(row),
             "name": str(row.get("name") or ""),
             "kind": str(row.get("kind") or KIND_DATASET),
+            # The ArcRho identity a client needs to open the item in a Project
+            # Instance page: the dataset type, and the method name for a DFM.
+            "dataset_type": str(arcrho.get("dataset_type") or ""),
+            "method_name": str(arcrho.get("method_name") or ""),
             "arcrho_timestamp": _timestamp_cell(row.get("arcrho")),
             "resq_timestamp": _timestamp_cell(row.get("resq")),
+            # Per-item facts the Export macro's timestamp check reads, decided
+            # by the same contract as the plan itself.
+            "newer_side": sync_contract.newer_side(arcrho, resq),
+            "export_supported": sync_contract.export_supported(arcrho, resq),
             "status": str(row.get("status") or ""),
             "action": str(row.get("action") or ""),
             "detail": str(row.get("detail") or ""),
             "selected": bool(row.get("selected")),
             "disabled": bool(row.get("disabled")),
             "review": bool(row.get("review")),
-        }
-        for row in plan
-    ]
+        })
+    return rows
 
 
 

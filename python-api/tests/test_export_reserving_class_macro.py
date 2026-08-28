@@ -249,8 +249,9 @@ class _Button:
 class _ShellUI:
     """A shell that confirms the export and hosts the results window."""
 
-    def __init__(self, button="Export", dirty=False):
+    def __init__(self, button="Export", dirty=False, check_button="Export Anyway"):
         self.button = button
+        self.check_button = check_button
         self.messages = []
         self.progress = Mock()
         window = Mock()
@@ -262,20 +263,38 @@ class _ShellUI:
 
     def message_box(self, text, **kwargs):
         self.messages.append((text, kwargs))
-        return _Button(self.button)
+        return _Button(self.check_button if "links" in kwargs else self.button)
 
     def progress_bar(self, **kwargs):
         return self.progress
 
+    def link_message(self):
+        return next((message for message in self.messages if "links" in message[1]), None)
+
+
+def _preview_row(name, *, kind="Dataset", newer_side="resq", export_supported=True, **fields):
+    row = {"id": name.casefold(), "name": name, "kind": kind, "newer_side": newer_side, "export_supported": export_supported}
+    row.update(fields)
+    return row
+
 
 class ExportMacroRunTests(unittest.TestCase):
-    """The client publishes one export request and shows what the Bridge reports."""
+    """The client checks ResQ timestamps, publishes one export request, and shows what the Bridge reports."""
 
     def setUp(self):
         self.module = _load_macro()
 
-    def _run(self, ui, *, phase_result=None, phase_error=None):
-        run_phase = Mock(side_effect=phase_error) if phase_error else Mock(return_value=dict(phase_result or {}))
+    def _run(self, ui, *, phase_result=None, phase_error=None, preview_rows=None, preview_error=None):
+        def run_phase(**kwargs):
+            if kwargs["phase"] == "preview":
+                if preview_error:
+                    raise preview_error
+                return {"preview": list(preview_rows or [])}
+            if phase_error:
+                raise phase_error
+            return dict(phase_result or {})
+
+        run_phase = Mock(side_effect=run_phase)
         review = Mock(return_value={"status": "completed"})
         with (
             patch.object(arcrho_api, "ArcRhoUI", lambda: ui),
@@ -308,6 +327,80 @@ class ExportMacroRunTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["message"], payload["summary"])
         self.assertEqual(ui.messages[0][1]["buttons"], ["Export", "Cancel"])
+        # The timestamp check ran the preview phase first, and found nothing to warn about.
+        phases = [call.kwargs["phase"] for call in run_phase.call_args_list]
+        self.assertEqual(phases, ["preview", "export"])
+        self.assertEqual(run_phase.call_args_list[0].kwargs["timeout_sec"], resq_sync_queue.PREVIEW_TIMEOUT_SEC)
+        self.assertIsNone(ui.link_message())
+        self.assertEqual(result["timestamp_check"], {"status": "checked", "resq_newer": []})
+
+    def test_items_resq_changed_more_recently_are_listed_as_links_before_the_export(self):
+        ui = _ShellUI()
+        rows = [
+            _preview_row("Paid Loss", dataset_type="Paid Loss"),
+            _preview_row("Paid LDF", kind="DFM", dataset_type="Paid LDF", method_name="Paid DFM"),
+            _preview_row("Older in ResQ", newer_side="arcrho"),
+            _preview_row("Same time", newer_side=""),
+            _preview_row("Not exported", export_supported=False),
+        ]
+
+        result, run_phase, _review = self._run(ui, preview_rows=rows, phase_result={"status": "completed", "results": []})
+
+        text, kwargs = ui.link_message()
+        self.assertIn("ResQ changed 2 item(s) more recently than ArcRho.", text)
+        self.assertEqual(kwargs["buttons"], ["Export Anyway", "Cancel"])
+        self.assertEqual(kwargs["presentation"], "floating")
+        self.assertEqual(kwargs["kind"], "warning")
+        self.assertEqual(
+            kwargs["links"],
+            [
+                {"label": "Paid Loss", "kind": "Dataset", "args": {"datasetName": "Paid Loss", "datasetTypeName": "Paid Loss"}},
+                {
+                    "label": "Paid LDF",
+                    "kind": "DFM",
+                    "args": {
+                        "datasetName": "Paid LDF",
+                        "datasetTypeName": "Paid LDF",
+                        "methodType": "DFM",
+                        "openMethod": True,
+                        "methodName": "Paid DFM",
+                    },
+                },
+            ],
+        )
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview", "export"])
+        self.assertEqual(result["timestamp_check"]["resq_newer"], ["Paid Loss", "Paid LDF"])
+
+    def test_cancelling_the_timestamp_warning_publishes_no_export(self):
+        ui = _ShellUI(check_button="Cancel")
+
+        result, run_phase, review = self._run(ui, preview_rows=[_preview_row("Paid Loss")])
+
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview"])
+        review.assert_not_called()
+        self.assertTrue(result["cancelled"])
+        self.assertEqual(result["reason"], "resq_newer")
+
+    def test_a_failed_timestamp_check_does_not_block_the_export(self):
+        ui = _ShellUI()
+
+        result, run_phase, _review = self._run(
+            ui,
+            preview_error=resq_sync_queue.BridgeRequestError("preview failed"),
+            phase_result={"status": "completed", "results": []},
+        )
+
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview", "export"])
+        self.assertIsNone(ui.link_message())
+        self.assertEqual(result["timestamp_check"], {"status": "failed", "error": "preview failed"})
+
+    def test_a_method_output_link_opens_its_method_window(self):
+        link = self.module.open_link({"name": "BF Ult", "kind": "Bornhuetter Ferguson", "dataset_type": "BF Ult"})
+
+        self.assertEqual(
+            link["args"],
+            {"datasetName": "BF Ult", "datasetTypeName": "BF Ult", "methodType": "Bornhuetter Ferguson", "openMethod": True},
+        )
 
     def test_a_cancelled_confirmation_publishes_nothing(self):
         result, run_phase, review = self._run(_ShellUI(button="Cancel"))

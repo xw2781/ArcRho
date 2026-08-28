@@ -68,11 +68,35 @@ DFM` reads, which `D 92 - Current Qtr Selected` loads in turn; the walk writes
 them in exactly that order, so each save in ResQ finds its inputs already
 written.
 
-## No review, no timestamps
+## Timestamp check before the write
 
-The export deliberately compares nothing, verifies nothing, and records no
-baseline. It is the tool for the moment ArcRho is the source of truth for a
-class and ResQ should simply follow.
+After the person confirms, the macro runs the queue's `preview` phase — the
+same comparison the Sync macro reviews — and reads two facts each row now
+carries: `newer_side` (`arcrho`, `resq`, or blank when a timestamp is
+unknown or the two match) and `export_supported` (whether an ArcRho-to-ResQ
+push of that item would write anything). Both are decided by
+`resq_migration.sync.newer_side` and `sync.export_supported`, the plan's own
+rules, never by re-parsing the display timestamps.
+
+Every row with `newer_side == "resq"` and `export_supported` is an item ResQ
+changed after ArcRho did and the export would overwrite. When there are any,
+a second, floating warning lists them — the kind and the name, the name a
+link that opens the dataset or method in the active Project Instance page
+through `projectInstance.openDataset`, using the `dataset_type` and, for a
+DFM, the `method_name` the preview row carries — and offers `Export Anyway`
+or `Cancel`. The box floats so the item can be inspected behind it before
+choosing.
+
+The check is a caution, not a gate. A preview that fails is recorded in the
+result (`timestamp_check.status == "failed"`) and the export goes ahead; only
+the person's own Cancel stops it. The result of a completed export carries
+`timestamp_check.resq_newer`, the names that were listed.
+
+## No review, no baseline
+
+Beyond that warning the export compares nothing, verifies nothing, and
+records no baseline. It is the tool for the moment ArcRho is the source of
+truth for a class and ResQ should simply follow.
 
 One consequence to know: ResQ's `Save()` re-stamps every written object, and
 no sync baseline records that this run did it. The next `Sync Reserving Class
@@ -115,6 +139,11 @@ builds, publishes, and waits on the request and refuses before publishing
 when no ResQ-connected worker heartbeat is live, and
 `arcrho_api.ui.await_review_table` hosts the results window. Any Client PC
 can therefore export, provided some machine is running ResQ with ArcRho open.
+Inside the app the request is published through the
+`resq_sync_request_publish` hosted mutation and its status is polled through
+the hosted Bridge-liveness read, so the queue is never touched over the
+share; see the transport notes in
+[resq_reserving_class_sync.md](resq_reserving_class_sync.md).
 
 The ResQ writer, `ResQReservingClassExporter`, lives in the macro file. The
 Bridge freezes that file beside the canonical migration

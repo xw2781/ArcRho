@@ -141,6 +141,27 @@ def _support_for_action(
     return False, "No synchronization action is available."
 
 
+def newer_side(arcrho: Mapping[str, Any], resq: Mapping[str, Any]) -> str:
+    """Which side of one item was modified last: ``arcrho``, ``resq``, or ``""``.
+
+    Blank when either timestamp is unknown or the two match within tolerance.
+    The Export macro uses this to warn about a ResQ copy the export would
+    overwrite, so it compares the same epoch seconds the plan compares.
+    """
+
+    local_time = _timestamp(arcrho.get("modified_timestamp"))
+    remote_time = _timestamp(resq.get("modified_timestamp"))
+    if local_time is None or remote_time is None or _timestamps_equal(local_time, remote_time):
+        return ""
+    return "arcrho" if local_time > remote_time else "resq"
+
+
+def export_supported(arcrho: Mapping[str, Any] | None, resq: Mapping[str, Any] | None) -> bool:
+    """Whether an ArcRho-to-ResQ push of this item would write anything."""
+
+    return _support_for_action(ACTION_ARCRHO_TO_RESQ, arcrho, resq)[0]
+
+
 def plan_direction(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Decide the one direction a whole reserving class is pushed in.
 

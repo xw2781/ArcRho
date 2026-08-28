@@ -345,10 +345,17 @@ def message_box(
     kind: str = "info",
     auto_close_ms: int | float | None = None,
     presentation: str | None = None,
+    links: list[dict[str, Any]] | None = None,
     timeout_sec: float = 30.0,
     app_url: str | None = None,
 ) -> UiCommandResult:
-    """Show a message box in the active ArcRho app and return the clicked button."""
+    """Show a message box in the active ArcRho app and return the clicked button.
+
+    ``links`` lists items shown under the message as clickable rows, each
+    ``{"label", "kind", "args"}`` where ``args`` are the
+    ``projectInstance.openDataset`` arguments the shell runs when the row is
+    clicked; the box stays open so several items can be opened in turn.
+    """
 
     args = {
         "message": str(message or ""),
@@ -360,6 +367,8 @@ def message_box(
         args["autoCloseMs"] = max(0, int(float(auto_close_ms)))
     if presentation is not None:
         args["presentation"] = str(presentation or "")
+    if links:
+        args["links"] = [dict(link) for link in links]
     return send_command(
         "ui.messageBox",
         args=args,

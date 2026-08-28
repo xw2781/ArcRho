@@ -392,6 +392,23 @@ class ResqSyncPlanTests(unittest.TestCase):
             sync.signatures_equal(original, sync.plan_signature(baselined_row))
         )
 
+    def test_newer_side_names_the_side_modified_last_or_nothing(self):
+        self.assertEqual(sync.newer_side(_item(timestamp=200), _item(timestamp=100)), "arcrho")
+        self.assertEqual(sync.newer_side(_item(timestamp=100), _item(timestamp=200)), "resq")
+        self.assertEqual(sync.newer_side(_item(timestamp=100), _item(timestamp=100)), "")
+        self.assertEqual(sync.newer_side(_item(timestamp=None), _item(timestamp=100)), "")
+        self.assertEqual(sync.newer_side({}, {}), "")
+
+    def test_export_supported_follows_the_arcrho_to_resq_support_rule(self):
+        self.assertTrue(sync.export_supported(_item(), _item()))
+        blocked = _item()
+        blocked["can_export_to_resq"] = False
+        self.assertFalse(sync.export_supported(blocked, _item()))
+        calculated = _item()
+        calculated["can_receive_from_arcrho"] = False
+        self.assertFalse(sync.export_supported(_item(), calculated))
+        self.assertFalse(sync.export_supported(None, None))
+
 
 if __name__ == "__main__":
     unittest.main()

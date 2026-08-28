@@ -141,6 +141,43 @@ function installAutomationStyles() {
       max-height: min(360px, calc(100vh - 180px));
       overflow: auto;
     }
+    .uiAutomationDialogLinks {
+      /* Items the message names, each a link that opens it in the Project
+         Instance page behind the box; the box stays open while they are
+         inspected, so it is shown floating rather than modal. */
+      margin: 0;
+      padding: 0 16px 12px;
+      list-style: none;
+      max-height: min(220px, calc(100vh - 260px));
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .uiAutomationDialogLinkKind {
+      display: inline-block;
+      min-width: 118px;
+      padding-right: 8px;
+      color: #64748b;
+      white-space: nowrap;
+    }
+    .uiAutomationDialogLink {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #2b6df6;
+      font: inherit;
+      text-align: left;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+    }
+    .uiAutomationDialogLink:hover,
+    .uiAutomationDialogLink:focus-visible {
+      color: #1d4ed8;
+      outline: none;
+    }
     .uiAutomationDialogActions {
       display: flex;
       justify-content: flex-end;
@@ -364,6 +401,25 @@ export function showAutomationMessageBox(args = {}) {
   `;
   overlay.querySelector(".uiAutomationDialogTitle").textContent = toText(args.title) || "ArcRho";
   overlay.querySelector(".uiAutomationDialogBody").textContent = String(args.message || "");
+  const links = Array.isArray(args.links) ? args.links.filter((item) => toText(item?.label)) : [];
+  if (links.length) {
+    const list = document.createElement("ul");
+    list.className = "uiAutomationDialogLinks";
+    for (const [index, item] of links.entries()) {
+      const row = document.createElement("li");
+      const kind = document.createElement("span");
+      kind.className = "uiAutomationDialogLinkKind";
+      kind.textContent = toText(item.kind);
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "uiAutomationDialogLink";
+      link.textContent = toText(item.label);
+      link.dataset.link = String(index);
+      row.append(kind, link);
+      list.appendChild(row);
+    }
+    overlay.querySelector(".uiAutomationDialogBody").after(list);
+  }
   const actions = overlay.querySelector(".uiAutomationDialogActions");
   for (const [index, label] of buttons.entries()) {
     const button = document.createElement("button");
@@ -398,6 +454,13 @@ export function showAutomationMessageBox(args = {}) {
       if (button) {
         event.preventDefault();
         finish(toText(button.dataset.button));
+        return;
+      }
+      const link = event.target?.closest?.(".uiAutomationDialogLink");
+      if (link) {
+        event.preventDefault();
+        const item = links[Number(link.dataset.link)];
+        void sendCommandToProjectInstance({ command: "projectInstance.openDataset", args: item?.args || {} });
       }
     };
     const onKey = (event) => {

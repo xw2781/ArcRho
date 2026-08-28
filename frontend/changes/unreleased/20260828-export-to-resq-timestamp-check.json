@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "Export Reserving Class to ResQ now warns which datasets and methods ResQ changed more recently than ArcRho, with links that open them in ArcRho, before it overwrites them.",
+  "details": [
+    "The first confirmation is shorter; after it the macro compares every dataset and method timestamp with ResQ.",
+    "Items ResQ changed after ArcRho are listed in a second, floating warning; clicking one opens it in the Project Instance page so it can be checked before choosing Export Anyway or Cancel.",
+    "The check never blocks the export on its own: a comparison that fails is noted and the export goes ahead.",
+    "Macro message boxes can now carry clickable item links that open a dataset or method in the active Project Instance page."
+  ]
+}
