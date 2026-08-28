@@ -3,25 +3,22 @@ import {
   normalizeBrowsingHistoryEntry,
 } from "/ui/shell/browsing_history.js";
 import {
-  buildRestoreSummary,
   loadShellActivityHistory,
   normalizeShellActivityEntry,
 } from "/ui/shell/shell_activity_history.js";
 import { getWorkspaceHistoryEntries } from "/ui/shared/services/workspace_history.js?v=20260726a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const MAX_ENTRIES = 15;
 
-const projectInstanceListEl = document.getElementById("projectInstanceList");
-const projectInstanceEmptyEl = document.getElementById("projectInstanceEmpty");
-const workspaceListEl = document.getElementById("workspaceList");
-const workspaceEmptyEl = document.getElementById("workspaceEmpty");
-const listEl = document.getElementById("historyList");
-const emptyEl = document.getElementById("historyEmpty");
-let shellActivityEntries = [];
-let workspaceEntries = [];
+const filterInput = document.getElementById("filterInput");
 
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
+
+function textOf(value) {
+  return String(value || "").trim();
+}
 
 function formatTimestamp(ts) {
   const n = Number(ts || 0);
@@ -33,8 +30,30 @@ function formatTimestamp(ts) {
   }
 }
 
-function postOpenDataset(entry) {
-  const payload = { type: "arcrho:open-dataset-from-history", entry };
+// Short, scannable time: "Today, 8:15 PM", "Yesterday, 12:57 PM", "Aug 18, 12:57 PM". The full
+// local timestamp stays available in the tooltip.
+function formatWhen(ts) {
+  const n = Number(ts || 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const date = new Date(n);
+  const now = new Date();
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(date, now)) return `Today, ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(date, yesterday)) return `Yesterday, ${time}`;
+  const dateOptions = { month: "short", day: "numeric" };
+  if (date.getFullYear() !== now.getFullYear()) dateOptions.year = "numeric";
+  return `${date.toLocaleDateString([], dateOptions)}, ${time}`;
+}
+
+function folderLeaf(path) {
+  const trimmed = textOf(path).replace(/[\\/]+$/, "");
+  return trimmed.split(/[\\/]/).pop() || trimmed;
+}
+
+function postToShell(payload) {
   try {
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(payload, "*");
@@ -46,29 +65,10 @@ function postOpenDataset(entry) {
   return false;
 }
 
-function postOpenActivity(entry) {
-  const payload = { type: "arcrho:open-shell-activity-history-entry", entry };
-  try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(payload, "*");
-      return true;
-    }
-  } catch {
-    // ignore
-  }
-  return false;
-}
-
-function postOpenWorkspacePath(path) {
-  try { window.parent?.postMessage({ type: "arcrho:open-file-explorer-from-history", path }, "*"); } catch {}
-}
-
-function openEntry(entry) {
+function openDatasetEntry(entry) {
   const normalized = normalizeBrowsingHistoryEntry(entry);
   if (!normalized) return;
-
-  if (postOpenDataset(normalized)) return;
-
+  if (postToShell({ type: "arcrho:open-dataset-from-history", entry: normalized })) return;
   const params = new URLSearchParams();
   params.set("project", normalized.project);
   params.set("path", normalized.path);
@@ -76,201 +76,162 @@ function openEntry(entry) {
   window.location.href = `/ui/dataset_viewer/dataset_viewer.html?${params.toString()}`;
 }
 
-function buildRow(entry, index) {
+function projectInstanceDetail(entry) {
+  const state = entry.projectInstanceState || {};
+  const windows = Array.isArray(state.windows) ? state.windows : [];
+  const parts = [textOf(state.selectedPath)];
+  if (windows.length) {
+    const hidden = windows.filter((item) => item.hidden).length;
+    parts.push(`${windows.length} window${windows.length === 1 ? "" : "s"}${hidden ? `, ${hidden} hidden` : ""}`);
+  }
+  return parts;
+}
+
+// Shared row: icon | name and detail | time.
+function buildRow({ tabType, name, detailParts, ts, index }) {
   const row = document.createElement("button");
   row.type = "button";
   row.className = "historyRow";
-  row.dataset.historyIndex = String(index);
-  row.title = `${entry.project} | ${entry.path} | ${entry.tri}`;
+  row.dataset.index = String(index);
 
-  const lineTop = document.createElement("div");
-  lineTop.className = "lineTop";
+  const icon = document.createElement("span");
+  icon.className = "tabTypeIcon rowIcon";
+  icon.dataset.tabType = tabType;
+  icon.setAttribute("aria-hidden", "true");
 
-  const projectEl = document.createElement("div");
-  projectEl.className = "project";
-  projectEl.textContent = entry.project;
+  const text = document.createElement("div");
+  text.className = "rowText";
+  const nameEl = document.createElement("span");
+  nameEl.className = "rowName";
+  nameEl.textContent = name;
+  const detail = document.createElement("span");
+  detail.className = "rowDetail";
+  const detailText = detailParts.filter(Boolean).join("  ·  ");
+  detail.textContent = detailText;
+  // Only a truncated detail earns a tooltip, so a short row stays quiet on hover.
+  attachArcrhoTooltip(detail, () => (detail.scrollWidth > detail.clientWidth ? detailText : ""));
+  text.append(nameEl, detail);
 
-  const triEl = document.createElement("div");
-  triEl.className = "dataset";
-  triEl.textContent = entry.tri;
+  const time = document.createElement("span");
+  time.className = "rowTime";
+  time.textContent = formatWhen(ts);
+  attachArcrhoTooltip(time, formatTimestamp(ts));
 
-  lineTop.appendChild(projectEl);
-  lineTop.appendChild(triEl);
-
-  const pathEl = document.createElement("div");
-  pathEl.className = "path";
-  pathEl.textContent = entry.path;
-
-  const timeEl = document.createElement("div");
-  timeEl.className = "time";
-  timeEl.textContent = formatTimestamp(entry.ts);
-
-  row.appendChild(lineTop);
-  row.appendChild(pathEl);
-  row.appendChild(timeEl);
+  row.append(icon, text, time);
   return row;
 }
 
-function formatActivityType(tabType) {
-  const type = String(tabType || "").trim();
-  const labels = {
-    dataset: "Dataset",
-    dfm: "DFM",
-    workflow: "Workflow",
-    project_settings: "Project Explorer",
-    project_instance: "Project Instance",
-    scripting: "Scripting",
-    agent_guide: "Agent Guide",
-    file_explorer: "File Explorer",
-  };
-  return labels[type] || type || "Page";
-}
-
-function buildActivityRow(entry, index) {
-  const row = document.createElement("button");
-  row.type = "button";
-  row.className = "historyRow";
-  row.dataset.activityIndex = String(index);
-  row.title = `${formatActivityType(entry.tabType)} | ${entry.title}`;
-
-  const lineTop = document.createElement("div");
-  lineTop.className = "lineTop";
-
-  const projectEl = document.createElement("div");
-  projectEl.className = "project";
-  projectEl.textContent = entry.title;
-
-  const typeEl = document.createElement("div");
-  typeEl.className = "dataset";
-  typeEl.textContent = formatActivityType(entry.tabType);
-
-  lineTop.append(projectEl, typeEl);
-
-  const summary = document.createElement("div");
-  summary.className = "path";
-  summary.textContent = buildRestoreSummary(entry) || "Open page";
-
-  const badges = document.createElement("div");
-  badges.className = "badgeLine";
-  if (entry.tabType === "project_instance") {
-    const windows = Array.isArray(entry.projectInstanceState?.windows) ? entry.projectInstanceState.windows : [];
-    if (windows.length) {
-      const nested = document.createElement("span");
-      nested.className = "badge";
-      nested.textContent = `${windows.length} nested`;
-      badges.appendChild(nested);
-      const hiddenCount = windows.filter((item) => item.hidden).length;
-      if (hiddenCount) {
-        const hidden = document.createElement("span");
-        hidden.className = "badge";
-        hidden.textContent = `${hiddenCount} hidden`;
-        badges.appendChild(hidden);
+// One descriptor per group: where it renders, how its entries load, and how a row looks, reads,
+// filters, and opens.
+const GROUPS = [
+  {
+    listId: "projectInstanceList",
+    emptyId: "projectInstanceEmpty",
+    countId: "projectInstanceCount",
+    entries: [],
+    async load() {
+      try {
+        return (await loadShellActivityHistory()).filter((entry) => entry.tabType === "project_instance");
+      } catch {
+        return [];
       }
-      const dfmCount = windows.filter((item) => item.kind === "dfm").length;
-      if (dfmCount) {
-        const dfm = document.createElement("span");
-        dfm.className = "badge";
-        dfm.textContent = `${dfmCount} DFM`;
-        badges.appendChild(dfm);
-      }
-    }
-  }
+    },
+    searchText: (entry) => [entry.title, entry.projectInstanceState?.selectedPath],
+    build: (entry, index) => buildRow({
+      tabType: "project_instance",
+      name: entry.title,
+      detailParts: projectInstanceDetail(entry),
+      ts: entry.ts,
+      index,
+    }),
+    open(entry) {
+      const normalized = normalizeShellActivityEntry(entry);
+      if (normalized) postToShell({ type: "arcrho:open-shell-activity-history-entry", entry: normalized });
+    },
+  },
+  {
+    listId: "workspaceList",
+    emptyId: "workspaceEmpty",
+    countId: "workspaceCount",
+    entries: [],
+    load: () => getWorkspaceHistoryEntries({ maxEntries: MAX_ENTRIES }),
+    searchText: (entry) => [entry.path],
+    build: (entry, index) => buildRow({
+      tabType: "file_explorer",
+      name: folderLeaf(entry.path),
+      detailParts: [entry.path],
+      ts: entry.ts,
+      index,
+    }),
+    open: (entry) => postToShell({ type: "arcrho:open-file-explorer-from-history", path: entry.path }),
+  },
+  {
+    listId: "historyList",
+    emptyId: "historyEmpty",
+    countId: "historyCount",
+    entries: [],
+    load: () => getBrowsingHistoryEntries({ maxEntries: MAX_ENTRIES }),
+    searchText: (entry) => [entry.tri, entry.project, entry.path],
+    build: (entry, index) => buildRow({
+      tabType: "dataset",
+      name: entry.tri,
+      detailParts: [entry.project, entry.path],
+      ts: entry.ts,
+      index,
+    }),
+    open: openDatasetEntry,
+  },
+];
 
-  const timeEl = document.createElement("div");
-  timeEl.className = "time";
-  timeEl.textContent = formatTimestamp(entry.ts);
-
-  row.appendChild(lineTop);
-  row.appendChild(summary);
-  if (badges.childElementCount) row.appendChild(badges);
-  row.appendChild(timeEl);
-  return row;
-}
-
-function buildWorkspaceRow(entry, index) {
-  const row = document.createElement("button");
-  row.type = "button";
-  row.className = "historyRow";
-  row.dataset.workspaceIndex = String(index);
-  row.title = entry.path;
-  const label = document.createElement("div");
-  label.className = "project";
-  label.textContent = "My Workspace";
-  const path = document.createElement("div");
-  path.className = "path";
-  path.textContent = entry.path;
-  const time = document.createElement("div");
-  time.className = "time";
-  time.textContent = formatTimestamp(entry.ts);
-  row.append(label, path, time);
-  return row;
-}
-
-async function render() {
-  if (!listEl || !emptyEl) return;
-
-  if (projectInstanceListEl && projectInstanceEmptyEl) {
-    projectInstanceListEl.innerHTML = "";
-    try {
-      shellActivityEntries = (await loadShellActivityHistory()).filter((entry) => entry.tabType === "project_instance");
-    } catch {
-      shellActivityEntries = [];
-    }
-    if (!shellActivityEntries.length) {
-      projectInstanceEmptyEl.style.display = "block";
-    } else {
-      projectInstanceEmptyEl.style.display = "none";
-      shellActivityEntries.forEach((entry, idx) => {
-        projectInstanceListEl.appendChild(buildActivityRow(entry, idx));
-      });
-    }
-  }
-
-  if (workspaceListEl && workspaceEmptyEl) {
-    workspaceEntries = getWorkspaceHistoryEntries({ maxEntries: MAX_ENTRIES });
-    workspaceListEl.innerHTML = "";
-    workspaceEmptyEl.style.display = workspaceEntries.length ? "none" : "block";
-    workspaceEntries.forEach((entry, index) => workspaceListEl.appendChild(buildWorkspaceRow(entry, index)));
-  }
-
-  const entries = getBrowsingHistoryEntries({ maxEntries: MAX_ENTRIES });
-  listEl.innerHTML = "";
-
-  if (!entries.length) {
-    emptyEl.style.display = "block";
-    return;
-  }
-
-  emptyEl.style.display = "none";
-  entries.forEach((entry, idx) => {
-    listEl.appendChild(buildRow(entry, idx));
+for (const group of GROUPS) {
+  group.listEl = document.getElementById(group.listId);
+  group.emptyEl = document.getElementById(group.emptyId);
+  group.countEl = document.getElementById(group.countId);
+  group.defaultEmptyText = group.emptyEl?.textContent || "";
+  group.listEl?.addEventListener("click", (e) => {
+    const row = e.target?.closest?.(".historyRow");
+    const entry = group.entries[Number(row?.dataset.index ?? -1)];
+    if (entry) group.open(entry);
   });
 }
 
-projectInstanceListEl?.addEventListener("click", (e) => {
-  const row = e.target?.closest?.(".historyRow[data-activity-index]");
-  if (!row) return;
-  const idx = Number(row.dataset.activityIndex || -1);
-  if (!Number.isFinite(idx) || idx < 0) return;
-  const entry = normalizeShellActivityEntry(shellActivityEntries[idx] || null);
-  if (!entry) return;
-  postOpenActivity(entry);
-});
+function matches(group, entry, query) {
+  if (!query) return true;
+  return group.searchText(entry).some((text) => textOf(text).toLowerCase().includes(query));
+}
 
-workspaceListEl?.addEventListener("click", (e) => {
-  const row = e.target?.closest?.(".historyRow[data-workspace-index]");
-  const entry = workspaceEntries[Number(row?.dataset.workspaceIndex || -1)];
-  if (entry) postOpenWorkspacePath(entry.path);
-});
+// Draw every group from its loaded entries under the current filter. Row indexes point back into
+// the unfiltered list so a click resolves the same entry whatever the filter hides.
+function paint() {
+  const rawQuery = textOf(filterInput?.value);
+  const query = rawQuery.toLowerCase();
+  for (const group of GROUPS) {
+    if (!group.listEl || !group.emptyEl) continue;
+    group.listEl.innerHTML = "";
+    let shown = 0;
+    group.entries.forEach((entry, index) => {
+      if (!matches(group, entry, query)) return;
+      group.listEl.appendChild(group.build(entry, index));
+      shown += 1;
+    });
+    if (group.countEl) group.countEl.textContent = query ? `${shown} of ${group.entries.length}` : String(group.entries.length);
+    group.emptyEl.hidden = shown > 0;
+    group.emptyEl.textContent = query && group.entries.length ? `No matches for "${rawQuery}".` : group.defaultEmptyText;
+  }
+}
 
-listEl?.addEventListener("click", (e) => {
-  const row = e.target?.closest?.(".historyRow");
-  if (!row) return;
-  const idx = Number(row.dataset.historyIndex || -1);
-  if (!Number.isFinite(idx) || idx < 0) return;
-  const entry = getBrowsingHistoryEntries({ maxEntries: MAX_ENTRIES })[idx];
-  if (!entry) return;
-  openEntry(entry);
+async function render() {
+  await Promise.all(GROUPS.map(async (group) => {
+    group.entries = await group.load();
+  }));
+  paint();
+}
+
+filterInput?.addEventListener("input", paint);
+filterInput?.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !filterInput.value) return;
+  filterInput.value = "";
+  paint();
 });
 
 window.addEventListener("message", (e) => {
@@ -280,7 +241,9 @@ window.addEventListener("message", (e) => {
   }
 });
 
-window.addEventListener("focus", () => void render());
+// No reload on window focus: the first click on an unfocused page fires focus between mouse-down
+// and mouse-up, and rebuilding the rows in that gap swallowed the click. The shell already tells
+// the page when its tab is activated and when the history changes.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void render();
 });

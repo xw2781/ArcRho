@@ -3264,7 +3264,8 @@
   color: var(--ar-monaco-editor-foreground) !important;
 }
 
-/* Agent Guide, Browsing History, launch pages, and splash screens. */
+/* Agent Guide, launch pages, and splash screens. Browsing History reads the shared tokens from its
+   own stylesheet and needs no Dark rules here. */
 :root[data-arcrho-theme="dark"] :is(.agShell, .agMain, .agContent, .agPane) {
   background-color: var(--ar-color-canvas);
   color: var(--ar-color-text);
@@ -3284,26 +3285,6 @@
 :root[data-arcrho-theme="dark"] :is(.agTab:hover, .agTab.active) {
   background-color: var(--ar-color-surface-hover);
   color: var(--ar-color-text-strong);
-}
-
-:root[data-arcrho-theme="dark"] .page,
-:root[data-arcrho-theme="dark"] .page :is(.section, .list) {
-  background-color: var(--ar-color-canvas);
-  color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] .historyRow {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-surface);
-  color: var(--ar-color-text);
-}
-
-:root[data-arcrho-theme="dark"] .historyRow:hover {
-  background-color: var(--ar-color-surface-hover);
-}
-
-:root[data-arcrho-theme="dark"] .page :is(.subtitle, .path, .time, .empty) {
-  color: var(--ar-color-text-muted);
 }
 
 /* Startup splash; Electron supplies the last renderer-derived theme hint. */

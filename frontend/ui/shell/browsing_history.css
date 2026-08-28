@@ -1,121 +1,167 @@
-:root {
-  --border: #d8d8d8;
-  --bg: #ffffff;
-  --text: #222;
-  --muted: #666;
-  --hover: #f4f4f4;
-}
+/* Browsing History page, styled after Project Explorer: white ground, one hairline under a
+   compact bold header, plain rows that only highlight on hover. Every color reads a shared theme
+   token, so this one stylesheet renders Light, Dark, and High Contrast. */
 html, body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  background: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  font: 13px/1.4 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
 }
-.page {
-  box-sizing: border-box;
-  height: 100%;
-  padding: 14px;
-  overflow: auto;
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header: title on the left, filter box on the right, hairline below. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--ar-color-border);
 }
 .title {
   margin: 0;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
+  color: var(--ar-color-text-strong);
 }
-.subtitle {
-  margin: 6px 0 12px;
+.filterInput {
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ar-color-border-strong);
+  border-radius: 4px;
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+  font: inherit;
   font-size: 12px;
-  color: var(--muted);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.empty {
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  font-size: 13px;
-  color: var(--muted);
-  background: #fcfcfc;
+.filterInput::placeholder {
+  color: var(--ar-color-text-subtle);
 }
-.section {
+.filterInput:focus {
+  border-color: var(--ar-color-border-focus);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring);
+}
+
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 16px;
+}
+
+/* Groups: a small label with its count, then the rows. */
+.group {
   margin-top: 14px;
 }
-.section:first-of-type {
+.group:first-of-type {
   margin-top: 0;
 }
-.sectionTitle {
-  margin: 0 0 8px;
-  font-size: 13px;
+.groupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 16px;
+}
+.groupTitle {
+  margin: 0;
+  font-size: 11px;
   font-weight: 700;
-  color: #2f3a4a;
+  color: var(--ar-color-text-muted);
+}
+.groupCount {
+  font-size: 11px;
+  color: var(--ar-color-text-subtle);
 }
 .list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
+.empty {
+  padding: 4px 16px;
+  color: var(--ar-color-text-subtle);
+  font-size: 12px;
+}
+.empty[hidden] {
+  display: none;
+}
+
+/* Row: icon, name and detail on one line, time at the right. */
 .historyRow {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
   width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fafafa;
+  padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
   cursor: pointer;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: inherit;
+  transition: background-color 100ms ease;
 }
 .historyRow:hover {
-  background: var(--hover);
-  border-color: #bdbdbd;
+  background: var(--ar-color-surface-hover);
 }
-.lineTop {
+.historyRow:active {
+  background: var(--ar-color-surface-selected);
+}
+.historyRow:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus);
+  outline-offset: -2px;
+}
+.rowIcon {
+  width: 14px;
+  height: 14px;
+  color: var(--ar-color-text-muted);
+}
+.rowText {
   display: flex;
-  gap: 10px;
   align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
-.project {
-  font-size: 14px;
-  font-weight: 700;
-  color: #111;
+.rowName {
+  flex: 0 1 auto;
   overflow: hidden;
+  color: var(--ar-color-text-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.rowDetail {
   flex: 1 1 auto;
-}
-.dataset {
-  font-size: 12px;
-  color: #2c2c2c;
-  max-width: 48%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-.path {
   font-size: 12px;
-  color: #4d4d4d;
-  overflow: hidden;
+  color: var(--ar-color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.time {
+.rowTime {
   font-size: 11px;
-  color: #757575;
+  color: var(--ar-color-text-subtle);
+  white-space: nowrap;
 }
-.badgeLine {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.badge {
-  border: 1px solid #d8dde7;
-  border-radius: 999px;
-  padding: 1px 7px;
-  background: #fff;
-  color: #4d5b70;
-  font-size: 11px;
-  line-height: 17px;
+
+@media (max-width: 720px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filterInput {
+    width: 100%;
+  }
 }

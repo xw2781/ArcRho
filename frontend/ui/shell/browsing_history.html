@@ -5,32 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Browsing History</title>
-  <link rel="stylesheet" href="/ui/shell/browsing_history.css?v=20260722a"/>
+  <link rel="stylesheet" href="/ui/shell/browsing_history.css?v=20260827b"/>
+  <link rel="stylesheet" href="/ui/shell/tab-type-icons/tab_type_icons.css?v=20260821a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260824e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
-  <main class="page">
+  <header class="header">
     <h1 class="title">Browsing History</h1>
-    <p class="subtitle">Recent pages saved to this PC for quick restore after cache reloads.</p>
-    <section class="section" aria-label="Project Instances">
-      <h2 class="sectionTitle">Project Instances</h2>
-      <div id="projectInstanceEmpty" class="empty">No recent Project Instance records yet.</div>
+    <input id="filterInput" class="filterInput" type="text" placeholder="Filter" aria-label="Filter history" autocomplete="off" spellcheck="false"/>
+  </header>
+  <main class="content">
+    <section class="group" aria-label="Project Instances">
+      <div class="groupHeader">
+        <h2 class="groupTitle">Project Instances</h2>
+        <span id="projectInstanceCount" class="groupCount"></span>
+      </div>
+      <div id="projectInstanceEmpty" class="empty">No recent Project Instance pages.</div>
       <div id="projectInstanceList" class="list" aria-label="Project Instance History List"></div>
     </section>
-    <section class="section" aria-label="Recent My Workspace Paths">
-      <h2 class="sectionTitle">Recent My Workspace Paths</h2>
-      <div id="workspaceEmpty" class="empty">No recent My Workspace folders yet.</div>
+
+    <section class="group" aria-label="My Workspace Folders">
+      <div class="groupHeader">
+        <h2 class="groupTitle">My Workspace Folders</h2>
+        <span id="workspaceCount" class="groupCount"></span>
+      </div>
+      <div id="workspaceEmpty" class="empty">No recent My Workspace folders.</div>
       <div id="workspaceList" class="list" aria-label="My Workspace Folder History List"></div>
     </section>
-    <section class="section" aria-label="Other">
-      <h2 class="sectionTitle">Other</h2>
-      <div id="historyEmpty" class="empty">No recent Dataset Viewer records yet.</div>
+
+    <section class="group" aria-label="Datasets">
+      <div class="groupHeader">
+        <h2 class="groupTitle">Datasets</h2>
+        <span id="historyCount" class="groupCount"></span>
+      </div>
+      <div id="historyEmpty" class="empty">No recent datasets.</div>
       <div id="historyList" class="list" aria-label="Dataset Viewer History List"></div>
     </section>
   </main>
 
-  <script type="module" src="/ui/shell/browsing_history_main.js?v=20260726a"></script>
+  <script type="module" src="/ui/shell/browsing_history_main.js?v=20260827c"></script>
 </body>
 </html>
