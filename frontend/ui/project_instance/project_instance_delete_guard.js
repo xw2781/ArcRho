@@ -9,7 +9,7 @@
 // could be stale by the time the user confirms and a delete refused for a
 // reason that no longer holds is worse than one round trip.
 
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
 
 // Matches DELETE_BLOCKED_BY_DEPENDENTS in
 // app_server/services/dataset_instance_index_service.py. Pinned by

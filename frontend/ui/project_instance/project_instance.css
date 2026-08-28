@@ -46,7 +46,10 @@ body.resizing-left-panel .pi-table-wrap {
   flex-direction: column;
   min-height: 0;
   position: relative;
-  overflow: hidden;
+  /* `clip`, not `hidden`: nested windows may hang past the bottom edge, and a
+     hidden-overflow box is still a scroll container that focus() or
+     scrollIntoView() inside a window can scroll, shifting the whole page. */
+  overflow: clip;
 }
 .pi-toolbar {
   height: 32px;

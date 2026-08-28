@@ -116,7 +116,7 @@ export function showPageMessageBox({
       }
       overlay.remove();
       if (returnFocus?.isConnected && typeof returnFocus.focus === "function") {
-        requestAnimationFrame(() => returnFocus.focus());
+        requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
       }
       resolve(typeof actionId === "string" ? actionId : undefined);
     }
@@ -143,10 +143,10 @@ export function showPageMessageBox({
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && doc.activeElement === first) {
           event.preventDefault();
-          last.focus();
+          last.focus({ preventScroll: true });
         } else if (!event.shiftKey && doc.activeElement === last) {
           event.preventDefault();
-          first.focus();
+          first.focus({ preventScroll: true });
         }
       }
     }
@@ -173,7 +173,9 @@ export function showPageMessageBox({
     doc.addEventListener("keydown", handleKeydown, true);
     requestAnimationFrame(() => {
       const initial = okButton.isConnected ? okButton : focusableElements()[0];
-      initial?.focus();
+      // preventScroll: the box may sit in a window that hangs past the host
+      // page's edge, and a plain focus() would scroll the host to reveal it.
+      initial?.focus({ preventScroll: true });
     });
   });
 }

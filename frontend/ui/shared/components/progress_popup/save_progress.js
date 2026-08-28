@@ -24,8 +24,8 @@ strand the overlay by adding a new early return.
 */
 
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
-import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260813e";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
+import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 
 /**
  * Creates the saving animation controller for one window.
