@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dataset table's Last Modified now moves for every method a dependent update rewrites, not only for the ones whose published output changed.",
+  "details": [
+    "A DFM, Bornhuetter Ferguson, Cape Cod, or Bootstrap method refreshed automatically with new input, basis, or ratio values used to keep its old Last Modified when the published ultimate happened to stay the same.",
+    "Such a refresh now stamps the method's output dataset and records an Auto Refresh entry in its Audit Log; a refresh that changes nothing still leaves both alone.",
+    "The public Python API's DFM propagation applies the same rule."
+  ]
+}

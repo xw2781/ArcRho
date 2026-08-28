@@ -39,7 +39,7 @@ Own the self-contained Cape Cod v1 contract, aggregate two-file load (plus the d
 - The only supported marker is `arcrho-cape-cod-method-by-tab-v1`.
 - Method JSON owns source names and embedded value snapshots (Latest diagonal, Exposure, Prior Ultimate), the owned parameters (trend rate, auto fit, decay, scaling, alternative calculation, trend factor overrides), origin labels, every derived Method-tab column, timestamps, and deterministic owned/derived/publication revisions. When Auto Fit is on the trend rate is derived (refit on every recalculation) and overrides are cleared.
 - All calculations live in `python-api/src/arcrho_api/cape_cod_contract.py`; the service never computes values itself. Derived columns are validated on save to match the embedded snapshots exactly.
-- The output sidecar owns Notes, Audit Log, status, `Precedents` (Latest, Exposure, Prior Ultimate), and `Dependents`. The reserving-class `index.json` remains a minimal scalar inventory.
+- The output sidecar owns Notes, Audit Log, status, `Precedents` (Latest, Exposure, Prior Ultimate), and `Dependents`. An automatic refresh that rewrites the method stamps the sidecar's `updated_at`/`modified_by` and appends an `Auto Refresh` audit record even when the published output is unchanged; output CSVs are rewritten only when the publication changes. The reserving-class `index.json` remains a minimal scalar inventory.
 - The ultimates triangle is derived display state computed on demand from the latest triangle and current method parameters; it is never persisted.
 <!-- MANUAL:END -->
 

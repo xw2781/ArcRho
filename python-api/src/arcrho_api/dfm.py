@@ -641,7 +641,7 @@ class DfmMethod:
         *,
         modified_at: str,
         automatic: bool,
-        output_changed: bool,
+        changed: bool,
     ) -> dict[str, Any]:
         try:
             return build_dfm_output_sidecar(
@@ -653,9 +653,9 @@ class DfmMethod:
                 notes=self._pending_notes,
                 timestamp=modified_at,
                 user=getpass.getuser(),
-                output_changed=output_changed,
-                append_audit=not automatic or output_changed,
-                audit_action=AUDIT_ACTION_AUTO_REFRESH if automatic and output_changed else None,
+                output_changed=changed,
+                append_audit=not automatic or changed,
+                audit_action=AUDIT_ACTION_AUTO_REFRESH if automatic and changed else None,
             )
         except ValueError as err:
             raise DfmDataError(str(err)) from err
@@ -727,7 +727,16 @@ class DfmMethod:
             files[path] = _json_bytes(with_audit_log_last(source))
         return files
 
-    def save(self, *, automatic: bool = False, output_changed: bool | None = None) -> Path:
+    def save(
+        self,
+        *,
+        automatic: bool = False,
+        output_changed: bool | None = None,
+        changed: bool | None = None,
+    ) -> Path:
+        # ``changed`` lets an automatic refresh that rewrote the method's derived
+        # values without moving its publication stamp the output sidecar and
+        # record the refresh, exactly as the app server does.
         if self.project.read_only:
             raise ReadOnlyError(f"Cannot write {self.file_path}; client is read-only.")
         self._sync_details_identity()
@@ -768,7 +777,7 @@ class DfmMethod:
                 existing_sidecar,
                 modified_at=modified_at,
                 automatic=automatic,
-                output_changed=published_output_changed,
+                changed=bool(changed) or published_output_changed,
             )
             files = self._precedent_graph_files(
                 existing_sidecar,

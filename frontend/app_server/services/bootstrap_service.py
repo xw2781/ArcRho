@@ -650,7 +650,7 @@ def _build_sidecar(
     *,
     precedents: Iterable[str],
     notes: str | None,
-    output_changed: bool,
+    changed: bool,
     automatic: bool,
 ) -> Dict[str, Any]:
     from app_server.services import calculated_dataset_service
@@ -693,10 +693,10 @@ def _build_sidecar(
         notes=notes,
         timestamp=_now(),
         user=user_identity_service.get_current_display_name() or getpass.getuser(),
-        output_changed=bool(output_changed or not automatic),
-        append_audit=bool(not automatic or output_changed),
+        output_changed=bool(changed or not automatic),
+        append_audit=bool(not automatic or changed),
         audit_action=(
-            AUDIT_ACTION_AUTO_REFRESH if automatic and output_changed
+            AUDIT_ACTION_AUTO_REFRESH if automatic and changed
             else ("Update" if existing else "Insert")
         ),
         status=dataset_sidecar_status_service.STATUS_CURRENT,
@@ -710,7 +710,7 @@ def _publish(
     existing_sidecar: Mapping[str, Any],
     *,
     notes: str | None,
-    output_changed: bool,
+    changed: bool,
     automatic: bool,
     write_outputs: bool,
     dfm_cache: Dict[str, Dict[str, Any]] | None = None,
@@ -727,7 +727,7 @@ def _publish(
         existing_sidecar,
         precedents=new_precedents,
         notes=notes,
-        output_changed=output_changed,
+        changed=changed,
         automatic=automatic,
     )
     old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("precedents"))
@@ -1002,7 +1002,7 @@ def save_bootstrap_method(
             refreshed,
             existing_sidecar,
             notes=notes,
-            output_changed=publication_changed,
+            changed=publication_changed,
             automatic=False,
             write_outputs=True,
             dfm_cache=dfm_cache,
@@ -1195,7 +1195,10 @@ def _refresh_one(
         refreshed,
         sidecar,
         notes=None,
-        output_changed=output_changed,
+        # A rewritten method is a modification of its output dataset even when
+        # the published values held: the sidecar's Last Modified and Audit Log
+        # move with the file.
+        changed=output_changed or before_text != after_text,
         automatic=True,
         write_outputs=output_changed,
         dfm_cache=dfm_cache,

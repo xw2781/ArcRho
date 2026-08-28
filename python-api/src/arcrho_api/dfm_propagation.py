@@ -185,6 +185,7 @@ def _refresh_dfm_dependents_for_sources_locked(
                 if any(key not in {input_key, basis_key} for key in source_keys):
                     raise ValueError("dependency graph does not match the DFM precedent identities")
                 old_publication = clean_text(method.metadata.get("publication_revision"))
+                old_derived = clean_text(method.metadata.get("derived_revision"))
                 input_snapshot = method._source_snapshot(input_name, vector=False) if matches_input else None
                 embedded_origins = [str(item) for item in method.data_tab.get("origin_labels", [])]
                 refreshed_origins = [
@@ -206,7 +207,12 @@ def _refresh_dfm_dependents_for_sources_locked(
                     changed_precedents=source_names,
                 )
                 output_changed = clean_text(method.metadata.get("publication_revision")) != old_publication
-                method.save(automatic=True, output_changed=output_changed)
+                derived_changed = clean_text(method.metadata.get("derived_revision")) != old_derived
+                method.save(
+                    automatic=True,
+                    output_changed=output_changed,
+                    changed=output_changed or derived_changed,
+                )
                 if output_key not in refreshed_keys:
                     refreshed_keys.add(output_key)
                     refreshed.append(output_name)

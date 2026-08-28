@@ -39,7 +39,7 @@ Own the self-contained BF v3 contract, aggregate two-file load, revision-aware t
 - `POST /bornhuetter-ferguson/load` is the `bornhuetter_ferguson_load` Server-hosted workspace read: when the Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - The only supported marker is `arcrho-bornhuetter-ferguson-method-by-tab-v3`.
 - Method JSON owns source names and values, prior weights, origin labels, Percentage Developed, Selected Prior, New Ultimate, weight display options, formatting precision, timestamps, and deterministic owned/derived/publication revisions.
-- The output sidecar owns Notes, Audit Log, status, `Precedents`, and `Dependents`. The reserving-class `index.json` remains a minimal scalar inventory and does not copy BF arrays or graph details.
+- The output sidecar owns Notes, Audit Log, status, `Precedents`, and `Dependents`. An automatic refresh that rewrites the method stamps the sidecar's `updated_at`/`modified_by` and appends an `Auto Refresh` audit record even when the published output is unchanged; output CSVs are rewritten only when the publication changes. The reserving-class `index.json` remains a minimal scalar inventory and does not copy BF arrays or graph details.
 - Source reads during refresh are bounded and request-cached. Current opens and ordinary Saves never validate embedded values against source files. A Review Needed BF returns to Current through explicit Save using its last durably refreshed snapshots; any readable method-backed precedents that still need their own review are reported as a non-blocking warning.
 <!-- MANUAL:END -->
 

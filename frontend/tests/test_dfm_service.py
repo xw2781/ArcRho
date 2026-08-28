@@ -739,8 +739,11 @@ class DfmServiceTests(unittest.TestCase):
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["results_tab"]["ultimate_vector"], method["results_tab"]["ultimate_vector"])
         self.assertEqual(saved["data_tab"]["origin_labels"], method["data_tab"]["origin_labels"])
+        # The method file was rewritten, so the output dataset's Last Modified
+        # and Audit Log move with it even though the published ultimate held.
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
-        self.assertEqual(sidecar["audit_log"], [])
+        self.assertNotEqual(sidecar["updated_at"], "2026-01-01T00:00:00Z")
+        self.assertEqual([entry["action"] for entry in sidecar["audit_log"]], ["Auto Refresh"])
 
     def test_basis_only_refresh_updates_method_without_rewriting_ultimate_csv(self) -> None:
         method = self.write_method_pair(status=0)
@@ -771,6 +774,8 @@ class DfmServiceTests(unittest.TestCase):
         )
         sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
         self.assertEqual(sidecar["status"], 2)
+        self.assertNotEqual(sidecar["updated_at"], "2026-01-01T00:00:00Z")
+        self.assertEqual(sidecar["audit_log"][-1]["action"], "Auto Refresh")
         self.assertEqual(
             result["review_status_updates"],
             [{"dataset_name": "Development Output", "status": 2}],
@@ -784,6 +789,29 @@ class DfmServiceTests(unittest.TestCase):
                 "output_changed": False,
             }],
         )
+
+    def test_refresh_that_changes_nothing_keeps_last_modified_and_audit(self) -> None:
+        self.write_method_pair()
+        self.write_source(
+            "Paid",
+            "100,175\n200,\n",
+            data_format="Triangle",
+            dependents=["Development Output"],
+        )
+        first = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+        self.assertTrue(first["ok"], first)
+        sidecar_path = self.sidecars / "Development Output.json"
+        stamped = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertNotEqual(stamped["updated_at"], "2026-01-01T00:00:00Z")
+
+        with mock.patch.object(dfm_service, "_now", return_value="2030-01-01T00:00:00Z"):
+            second = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(second["ok"], second)
+        self.assertEqual(second["updated"], [])
+        unchanged = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual(unchanged["updated_at"], stamped["updated_at"])
+        self.assertEqual(unchanged["audit_log"], stamped["audit_log"])
 
     def test_input_refresh_with_unchanged_origins_does_not_read_ratio_basis(self) -> None:
         self.write_method_pair()

@@ -292,6 +292,23 @@ class DfmV2PropagationTests(unittest.TestCase):
             [1100, 2200, 3300],
         )
 
+    def test_basis_only_refresh_stamps_the_output_sidecar_without_rewriting_the_output(self) -> None:
+        before = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
+        self.basis_path.write_text("1100\n2200\n3300\n", encoding="utf-8")
+
+        with patch("arcrho_api.dfm._now_iso", return_value="2030-01-01T00:00:00.000Z"):
+            result = refresh_dfm_dependents_for_sources(self.rc, ("Premium",))
+
+        self.assertEqual(result.refreshed_outputs, ("Paid DFM",))
+        self.assertEqual(result.warnings, ())
+        sidecar = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
+        # The ultimate did not move, but the method was rewritten with the new
+        # basis, so its output dataset reads as modified by the refresh.
+        self.assertEqual(sidecar["publication_revision"], before["publication_revision"])
+        self.assertEqual(sidecar["updated_at"], "2030-01-01T00:00:00.000Z")
+        self.assertEqual(len(sidecar["audit_log"]), len(before["audit_log"]) + 1)
+        self.assertEqual(sidecar["audit_log"][-1]["action"], "Auto Refresh")
+
     def test_failed_branch_keeps_publication_and_marks_dfm_descendants_review_needed(self) -> None:
         parent_sidecar = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
         parent_sidecar["dependents"] = [{"dataset_name": "Blocked Child"}]
