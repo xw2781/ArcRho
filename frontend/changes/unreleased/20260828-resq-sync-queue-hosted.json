@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ and Export Reserving Class to ResQ now hand their request to the Bridge through the ArcRho Gateway instead of writing it across the network share.",
+  "details": [
+    "The request is published on the server and its progress is read there, so a Client PC no longer writes or polls the Bridge queue over the mapped drive.",
+    "A wait that hears nothing from the Bridge for thirty seconds is abandoned with a clear message rather than left polling.",
+    "A macro run from a script outside the app still uses the shared folder directly."
+  ]
+}

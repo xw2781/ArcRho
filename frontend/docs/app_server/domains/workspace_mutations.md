@@ -19,6 +19,16 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /dfm/rpc-bridge/cleanup` | `dfm_rpc_bridge_cleanup` | `dfm_rpc_bridge_service.hosted_cleanup_tmp` |
 | `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
 | the four `/result-selection/rpc-bridge/*` equivalents | `result_selection_rpc_bridge_*` | `result_selection_rpc_bridge_service.hosted_*` |
+| (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
+
+The ResQ sync-queue publish is the request file the Sync and Export Reserving
+Class with ResQ macros hand to a ResQ-connected Bridge worker. The payload and
+the on-disk write are `arcrho_api.resq_sync_queue`'s own; the service adds only
+the place it is written from and stamps the acting user's login as the
+request's `UserName`. It is idempotent by request id — an id that already has
+a request or a status file is returned as `resumed` — and the macro's polling
+of that request's status is the hosted `bridge_worker_liveness` read, so
+inside the app neither half of the exchange crosses the share.
 
 The RPC-bridge kinds are the one family whose work is not finished when the
 service returns from local disk: `sync` and `update-remote` publish a request

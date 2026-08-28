@@ -15,6 +15,7 @@ import os
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -291,6 +292,119 @@ class QueueBridgeAvailabilityTests(unittest.TestCase):
                     timeout_sec=5.0,
                     progress_label="test",
                 )
+
+    def test_a_request_nobody_claims_is_reported_after_the_claim_window(self):
+        self._write_worker_heartbeat()
+
+        with patch.object(queue, "REQUEST_CLAIM_TIMEOUT_SEC", 0.05):
+            with self.assertRaisesRegex(queue.BridgeRequestError, "did not claim|claimed request"):
+                queue.run_bridge_phase(
+                    server_root=self.server_root,
+                    project_name="Demo",
+                    rc_path=r"Auto\PP",
+                    phase="preview",
+                    timeout_sec=5.0,
+                    progress_label="test",
+                )
+
+
+class HostedTransportTests(unittest.TestCase):
+    """Inside the app the request is published and polled on the server host, never over the share."""
+
+    def _app_server(self, publish_calls, read_calls, status=None):
+        def run_workspace_mutation(kind, kwargs, *, local):
+            publish_calls.append((kind, dict(kwargs)))
+            return {"ok": True, "request_id": kwargs["request_id"], "resumed": False}
+
+        def run_workspace_read(kind, kwargs, *, local):
+            read_calls.append((kind, dict(kwargs)))
+            request = None
+            if kwargs.get("request_id"):
+                request = {"request_id": kwargs["request_id"], "found": True, "age_sec": 0.2, "status": status}
+            return {
+                "observed_at": 0.0,
+                "workers": [{"name": "worker.json", "age_sec": 0.3, "live": True}],
+                "request": request,
+            }
+
+        services = types.ModuleType("app_server.services")
+        services.workspace_mutation_client = types.SimpleNamespace(run_workspace_mutation=run_workspace_mutation)
+        services.resq_sync_queue_service = types.SimpleNamespace(
+            publish_resq_sync_request=lambda **kwargs: self.fail("the local publish must not run")
+        )
+        services.workspace_read_client = types.SimpleNamespace(run_workspace_read=run_workspace_read)
+        services.bridge_liveness_service = types.SimpleNamespace(
+            get_bridge_worker_liveness=lambda **kwargs: self.fail("the local look must not run")
+        )
+        package = types.ModuleType("app_server")
+        package.services = services
+        return {"app_server": package, "app_server.services": services}
+
+    def test_the_request_goes_through_the_hosted_mutation_and_the_status_through_the_hosted_look(self):
+        publish_calls, read_calls = [], []
+        rows = [_preview_row("paid-loss")]
+
+        def status_for(request_id):
+            return {"contract_version": queue.CONTRACT_VERSION, "request_id": request_id, "status": "success", "result": {"status": "completed"}}
+
+        modules = self._app_server(publish_calls, read_calls)
+        # The status carries the id the publish handed out, so it is filled in once that is known.
+        read_client = modules["app_server.services"].workspace_read_client
+        original_read = read_client.run_workspace_read
+        read_client.run_workspace_read = lambda kind, kwargs, *, local: (
+            (lambda look: look if look.get("request") is None else {**look, "request": {**look["request"], "status": status_for(kwargs["request_id"])}})(
+                original_read(kind, kwargs, local=local)
+            )
+        )
+
+        with patch.dict(sys.modules, modules):
+            result = queue.run_bridge_phase(
+                server_root=r"Q:\absent",
+                project_name="Demo",
+                rc_path=r"Auto\PP",
+                phase="apply",
+                selected_rows=rows,
+                timeout_sec=5.0,
+                progress_label="test",
+            )
+
+        self.assertEqual(result, {"status": "completed"})
+        kind, kwargs = publish_calls[0]
+        self.assertEqual(kind, queue.PUBLISH_MUTATION_KIND)
+        self.assertEqual((kwargs["project_name"], kwargs["reserving_class"], kwargs["phase"]), ("Demo", r"Auto\PP", "apply"))
+        self.assertEqual(kwargs["selected_rows"], rows)
+        self.assertEqual(read_calls[0], (queue.LIVENESS_READ_KIND, {"queue": "sync", "request_id": ""}))
+        self.assertEqual(read_calls[-1][1], {"queue": "sync", "request_id": kwargs["request_id"]})
+        self.assertFalse(Path(r"Q:\absent").exists())
+
+    def test_a_publish_the_server_refuses_is_reported_without_a_local_retry(self):
+        publish_calls, read_calls = [], []
+        modules = self._app_server(publish_calls, read_calls)
+
+        class Refusal(Exception):
+            detail = "The ArcRho Server did not confirm this change."
+
+        def refuse(kind, kwargs, *, local):
+            raise Refusal()
+
+        modules["app_server.services"].workspace_mutation_client.run_workspace_mutation = refuse
+
+        with patch.dict(sys.modules, modules):
+            with self.assertRaisesRegex(queue.BridgeRequestError, "did not confirm this change"):
+                queue.submit_sync_request(
+                    server_root=r"Q:\absent", project_name="Demo", rc_path=r"Auto\PP", phase="export"
+                )
+
+    def test_a_bad_request_is_refused_before_anything_is_sent(self):
+        publish_calls, read_calls = [], []
+
+        with patch.dict(sys.modules, self._app_server(publish_calls, read_calls)):
+            with self.assertRaises(ValueError):
+                queue.submit_sync_request(
+                    server_root=r"Q:\absent", project_name="Demo", rc_path=r"Auto\PP", phase="rollback"
+                )
+
+        self.assertEqual(publish_calls, [])
 
 
 if __name__ == "__main__":

@@ -27,6 +27,13 @@ restate, to ``resq_reserving_class_import_contract.json``. A macro cannot
 import the Bridge, so a test asserts this adapter still matches both files.
 The worker facts and the liveness rule come from ``arcrho_api.bridge_liveness``,
 which the import macros and the app server's hosted read share.
+
+Inside the ArcRho app neither half of the exchange touches the share: the
+request is published through the ``resq_sync_request_publish`` hosted
+mutation, which runs ``publish_sync_request`` on the server host, and every
+poll is the hosted Bridge-liveness look, which carries the status file. Both
+run on the mapped drive only where the app server cannot be imported at all,
+which is a script outside the app, never a Client PC inside it.
 """
 
 from __future__ import annotations
@@ -44,7 +51,9 @@ from .bridge_liveness import (  # noqa: F401 -- the worker facts are re-exported
     BRIDGE_WORKER_DIR,
     BRIDGE_WORKER_MAX_AGE_SEC,
     BRIDGE_WORKER_ROLE,
+    LIVENESS_READ_KIND,
     QUEUE_STATUS_DIRS,
+    BridgeSilenceTracker,
     await_bridge_signal,
     live_worker_names,
     observe_bridge_liveness,
@@ -107,15 +116,6 @@ def _safe_int(value: object, default: int = 0) -> int:
         return default
 
 
-def _read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        with path.open("r", encoding="utf-8-sig") as stream:
-            payload = json.load(stream)
-    except (FileNotFoundError, PermissionError, OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
 def _logical_project_name(value: object) -> str:
     name = str(value or "").strip()
     if (
@@ -148,13 +148,19 @@ def _user_name() -> str:
         return "unknown"
 
 
-def _observe(server_root: object) -> dict[str, Any] | None:
+def _observe(server_root: object, request_id: str = "") -> dict[str, Any] | None:
     """One liveness look; a look that fails is a silent look, not a verdict."""
 
     try:
-        return observe_bridge_liveness(server_root, queue=QUEUE_NAME)
+        return observe_bridge_liveness(server_root, queue=QUEUE_NAME, request_id=request_id)
     except Exception:
         return None
+
+
+def _request_status(observation: object) -> dict[str, Any] | None:
+    request = observation.get("request") if isinstance(observation, dict) else None
+    status = request.get("status") if isinstance(request, dict) else None
+    return status if isinstance(status, dict) else None
 
 
 def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tuple[str, ...]:
@@ -178,7 +184,9 @@ def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tup
     )
 
 
-def _request_paths(server_root: object, request_id: str) -> tuple[Path, Path]:
+def request_paths(server_root: object, request_id: str) -> tuple[Path, Path]:
+    """The request file and the status file of one request under a server root."""
+
     root = Path(server_root)
     return (
         root / REQUEST_RELATIVE_DIR / f"{request_id}.json",
@@ -193,8 +201,13 @@ def create_sync_request(
     phase: str,
     selected_rows: list[Mapping[str, Any]] | None = None,
     request_id: str | None = None,
+    user_name: str = "",
 ) -> tuple[str, dict[str, Any]]:
-    """Build the location-independent payload consumed by ArcRho Bridge."""
+    """Build the location-independent payload consumed by ArcRho Bridge.
+
+    ``user_name`` is the person the request is for; the hosted publish passes
+    the identity it acts under, and a direct caller leaves it to the process.
+    """
 
     identifier = str(request_id or uuid.uuid4().hex).strip()
     if not identifier:
@@ -208,7 +221,7 @@ def create_sync_request(
         "RequestId": identifier,
         "ProjectName": _logical_project_name(project_name),
         "Path": _logical_rc_path(rc_path),
-        "UserName": _user_name(),
+        "UserName": str(user_name or "").strip() or _user_name(),
         "Phase": normalized_phase,
     }
     if normalized_phase == PHASE_APPLY:
@@ -249,9 +262,14 @@ def publish_sync_request(
     request_id: str,
     payload: dict[str, Any],
 ) -> Path:
-    """Atomically publish a Bridge request after the hard availability preflight."""
+    """Atomically write one request file under ``server_root``.
 
-    request_path, _ = _request_paths(server_root, request_id)
+    This is the on-disk write itself. Inside the app it runs on the server
+    host through the ``resq_sync_request_publish`` hosted mutation; see
+    ``submit_sync_request`` for the transport choice.
+    """
+
+    request_path, _ = request_paths(server_root, request_id)
     temp_path = request_path.with_name(f".{request_id}.tmp")
     try:
         request_path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,22 +331,28 @@ def wait_for_sync_result(
     progress_label: str = "ArcRho Bridge is working with ResQ",
     on_poll: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    """Poll the deterministic Bridge status file until a terminal result arrives.
+    """Poll the request's status until a terminal result arrives.
 
-    ``on_poll`` runs before every look, which is where a macro reports its
-    activity and checks whether the person cancelled it.
+    Every poll is one Bridge-liveness look that also carries the status file,
+    taken on the server host inside the app, so the worker is judged from the
+    same observation the result comes from. ``on_poll`` runs before every
+    look, which is where a macro reports its activity and checks whether the
+    person cancelled it. Silence past the limit abandons the wait; it does not
+    prove the run stopped.
     """
 
     if timeout_sec <= 0 or poll_interval_sec <= 0 or claim_timeout_sec <= 0:
         raise ValueError("Timeout, polling interval, and claim timeout must be positive.")
-    request_path, status_path = _request_paths(server_root, request_id)
+    _, status_path = request_paths(server_root, request_id)
     deadline = time.monotonic() + float(timeout_sec)
     claim_deadline = time.monotonic() + min(float(claim_timeout_sec), float(timeout_sec))
+    tracker = BridgeSilenceTracker(limit_sec=BRIDGE_SILENCE_LIMIT_SEC)
 
     while True:
         if on_poll is not None:
             on_poll()
-        status = _read_json(status_path)
+        observation = _observe(server_root, request_id)
+        status = _request_status(observation)
         if status is not None:
             reported_id = str(status.get("request_id") or status.get("RequestId") or "").strip()
             if reported_id != request_id:
@@ -355,11 +379,17 @@ def wait_for_sync_result(
                 raise BridgeRequestError(
                     f"ArcRho Bridge request [{request_id}] returned unsupported status [{state}]."
                 )
-        elif time.monotonic() > claim_deadline and request_path.exists():
+        elif time.monotonic() > claim_deadline:
             raise BridgeRequestError(
                 f"No ArcRho Bridge worker claimed request [{request_id}] within "
                 f"{claim_timeout_sec:g} seconds. Confirm ResQ is running on a machine with "
                 "ArcRho open."
+            )
+        if not tracker.record(observation) and tracker.exceeded:
+            raise BridgeUnavailableError(
+                f"ArcRho Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
+                "Whether the run finished is unknown; if the Bridge was only slow it may "
+                f"still complete. Check [{status_path}] before running this macro again."
             )
         if time.monotonic() > deadline:
             raise BridgeRequestError(
@@ -367,6 +397,61 @@ def wait_for_sync_result(
                 f"{timeout_sec:g} seconds."
             )
         time.sleep(poll_interval_sec)
+
+
+PUBLISH_MUTATION_KIND = "resq_sync_request_publish"
+
+
+def submit_sync_request(
+    *,
+    server_root: object,
+    project_name: str,
+    rc_path: str,
+    phase: str,
+    selected_rows: list[Mapping[str, Any]] | None = None,
+) -> str:
+    """Publish one request and return its id, writing on the server host when the app can.
+
+    The payload is built here first so a bad project name, path, phase, or
+    selection is refused before anything is sent. Inside the app the write
+    then goes through the hosted mutation, whose local fallback is the same
+    on-disk publish; outside the app there is no Gateway client at all, so the
+    file is written directly.
+    """
+
+    request_id, payload = create_sync_request(
+        project_name=project_name,
+        rc_path=rc_path,
+        phase=phase,
+        selected_rows=selected_rows,
+    )
+    kwargs: dict[str, Any] = {
+        "project_name": payload["ProjectName"],
+        "reserving_class": payload["Path"],
+        "request_id": request_id,
+        "phase": payload["Phase"],
+    }
+    if selected_rows:
+        kwargs["selected_rows"] = [dict(row) for row in selected_rows]
+    try:
+        from app_server.services import resq_sync_queue_service, workspace_mutation_client
+    except ImportError:
+        publish_sync_request(server_root=server_root, request_id=request_id, payload=payload)
+        return request_id
+    try:
+        workspace_mutation_client.run_workspace_mutation(
+            PUBLISH_MUTATION_KIND,
+            kwargs,
+            local=lambda: resq_sync_queue_service.publish_resq_sync_request(**kwargs),
+        )
+    except BridgeRequestError:
+        raise
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or exc
+        raise BridgeRequestError(
+            f"Could not publish ArcRho Bridge request [{request_id}]: {detail}"
+        ) from exc
+    return request_id
 
 
 def run_bridge_phase(
@@ -384,13 +469,13 @@ def run_bridge_phase(
     """Publish one queue phase and return the Bridge's result payload."""
 
     require_live_bridge_workers(server_root)
-    request_id, payload = create_sync_request(
+    request_id = submit_sync_request(
+        server_root=server_root,
         project_name=project_name,
         rc_path=rc_path,
         phase=phase,
         selected_rows=selected_rows,
     )
-    publish_sync_request(server_root=server_root, request_id=request_id, payload=payload)
     status = wait_for_sync_result(
         server_root=server_root,
         request_id=request_id,

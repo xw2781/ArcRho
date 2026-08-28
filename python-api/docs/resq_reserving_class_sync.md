@@ -260,6 +260,18 @@ file, and the Bridge liveness preflight — is `arcrho_api.resq_sync_queue`,
 which the `Export Reserving Class to ResQ` macro shares; the macro itself
 keeps only the review table, the results table, and the flow between them.
 
+Inside the ArcRho app neither half of that exchange crosses the share. The
+request is published through the `resq_sync_request_publish` hosted
+workspace mutation (`app_server.services.resq_sync_queue_service`), which
+runs the same on-disk write on the Server PC through the Gateway and stamps
+the acting user's login as the request's `UserName`; it is idempotent by
+request id, so a response the client never saw cannot queue a second run.
+Every poll of the status file is the hosted `bridge_worker_liveness` read,
+which carries the status payload along with the worker heartbeats, so the
+worker is judged from the same look the result comes from and thirty seconds
+of silent looks abandon the wait. Only a script outside the app, where the
+app server cannot be imported, writes and reads the queue files directly.
+
 The session runs in two phases, one request each:
 
 - `preview` is read-only. It returns the review rows together with the
