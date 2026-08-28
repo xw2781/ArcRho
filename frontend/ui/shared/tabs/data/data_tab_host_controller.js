@@ -3,7 +3,7 @@
 import {
   collectDatasetPropagationFailures,
   datasetPropagationFailureStep,
-} from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
+} from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260827a";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,

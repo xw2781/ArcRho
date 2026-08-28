@@ -1609,6 +1609,7 @@ def _recalculate_dependents_impl(
     *,
     include_dfm: bool = True,
     include_result_selection: bool = True,
+    include_berquist_sherman: bool = True,
     include_bornhuetter_ferguson: bool = True,
     include_cape_cod: bool = True,
     include_bootstrap: bool = True,
@@ -1846,6 +1847,105 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
 
+    # A Berquist Sherman output is a triangle other methods build on -- a DFM
+    # over the adjusted paid claims, say -- while its own ultimate claim counts
+    # usually come from a Result Selection. So the wave runs after Result
+    # Selection and before the vector methods: a republished B&S triangle is
+    # fed through DFM, calculated, and Result Selection inside the wave, and
+    # what that nested walk refreshed joins the roots of the BF, CC, and
+    # Bootstrap waves below.
+    berquist_sherman_updates = None
+    if include_berquist_sherman:
+        _notify("berquist_sherman", 0, 0, "Refreshing Berquist Sherman methods")
+        try:
+            from app_server.services import berquist_sherman_service
+
+            dfm_fresh_names = [
+                _clean_text(value)
+                for item in (dfm_updates or {}).get("updated", [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            ]
+            dfm_fresh_names.extend(
+                _clean_text(item.get("dataset_name"))
+                for item in (dfm_updates or {}).get("status_refreshed", [])
+                if _clean_text(item.get("dataset_name"))
+            )
+            calculated_fresh_names = [
+                _clean_text(item.get("dataset_type_name"))
+                for item in results
+                if item.get("ok") and _clean_text(item.get("dataset_type_name"))
+            ]
+            result_selection_fresh_names = [
+                _clean_text(item.get("dataset_name"))
+                for field in ("updated", "status_refreshed")
+                for item in (result_selection_updates or {}).get(field, [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            result_selection_fresh_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_fresh_names", [])
+                if _clean_text(name)
+            )
+            failed_result_selection_names = [
+                _clean_text(item.get("dataset_name"))
+                for item in (result_selection_updates or {}).get("errors", [])
+                if _clean_text(item.get("dataset_name"))
+            ]
+            failed_result_selection_names.extend(
+                _clean_text(name)
+                for name in (result_selection_updates or {}).get("downstream_blocked_names", [])
+                if _clean_text(name)
+            )
+            berquist_sherman_roots = [
+                *changed_root_names,
+                *dfm_fresh_names,
+                *failed_dfm_names,
+                *calculated_fresh_names,
+                *failed_dataset_names,
+                *result_selection_fresh_names,
+                *failed_result_selection_names,
+            ]
+            berquist_sherman_updates = berquist_sherman_service.refresh_dependents(
+                project_name,
+                reserving_class,
+                berquist_sherman_roots,
+                rebuild_index=False,
+                blocked_precedent_names=[
+                    *failed_dfm_names,
+                    *failed_dataset_names,
+                    *failed_result_selection_names,
+                ],
+                finalize_method_review_status=False,
+            )
+        except Exception as err:
+            berquist_sherman_updates = {
+                "ok": False,
+                "errors": [{"reason": str(err)}],
+                "updated": [],
+            }
+    berquist_sherman_fresh_names = [
+        _clean_text(item.get("dataset_name"))
+        for field in ("updated", "status_refreshed")
+        for item in (berquist_sherman_updates or {}).get(field, [])
+        if _clean_text(item.get("dataset_name"))
+    ]
+    berquist_sherman_fresh_names.extend(
+        _clean_text(name)
+        for name in (berquist_sherman_updates or {}).get("downstream_fresh_names", [])
+        if _clean_text(name)
+    )
+    failed_berquist_sherman_names = [
+        _clean_text(item.get("dataset_name"))
+        for item in (berquist_sherman_updates or {}).get("errors", [])
+        if _clean_text(item.get("dataset_name"))
+    ]
+    failed_berquist_sherman_names.extend(
+        _clean_text(name)
+        for name in (berquist_sherman_updates or {}).get("downstream_blocked_names", [])
+        if _clean_text(name)
+    )
+
     bornhuetter_ferguson_updates = None
     if include_bornhuetter_ferguson:
         _notify(
@@ -1899,6 +1999,8 @@ def _recalculate_dependents_impl(
                 *failed_dataset_names,
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
+                *berquist_sherman_fresh_names,
+                *failed_berquist_sherman_names,
             ]
             bornhuetter_ferguson_updates = bornhuetter_ferguson_service.refresh_dependents(
                 project_name,
@@ -1909,6 +2011,7 @@ def _recalculate_dependents_impl(
                     *failed_dfm_names,
                     *failed_dataset_names,
                     *failed_result_selection_names,
+                    *failed_berquist_sherman_names,
                 ],
                 finalize_method_review_status=False,
             )
@@ -1981,6 +2084,8 @@ def _recalculate_dependents_impl(
                 *failed_dataset_names,
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
+                *berquist_sherman_fresh_names,
+                *failed_berquist_sherman_names,
                 *bornhuetter_ferguson_fresh_names,
                 *failed_bornhuetter_ferguson_names,
             ]
@@ -1993,6 +2098,7 @@ def _recalculate_dependents_impl(
                     *failed_dfm_names,
                     *failed_dataset_names,
                     *failed_result_selection_names,
+                    *failed_berquist_sherman_names,
                     *failed_bornhuetter_ferguson_names,
                 ],
                 finalize_method_review_status=False,
@@ -2080,6 +2186,8 @@ def _recalculate_dependents_impl(
                 *failed_dataset_names,
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
+                *berquist_sherman_fresh_names,
+                *failed_berquist_sherman_names,
                 *bornhuetter_ferguson_fresh_names,
                 *failed_bornhuetter_ferguson_names,
                 *cape_cod_fresh_names,
@@ -2094,6 +2202,7 @@ def _recalculate_dependents_impl(
                     *failed_dfm_names,
                     *failed_dataset_names,
                     *failed_result_selection_names,
+                    *failed_berquist_sherman_names,
                     *failed_bornhuetter_ferguson_names,
                     *failed_cape_cod_names,
                 ],
@@ -2127,6 +2236,8 @@ def _recalculate_dependents_impl(
         overall_ok = overall_ok and bool(dfm_updates.get("ok"))
     if result_selection_updates is not None:
         overall_ok = overall_ok and bool(result_selection_updates.get("ok"))
+    if berquist_sherman_updates is not None:
+        overall_ok = overall_ok and bool(berquist_sherman_updates.get("ok"))
     if bornhuetter_ferguson_updates is not None:
         overall_ok = overall_ok and bool(bornhuetter_ferguson_updates.get("ok"))
     if cape_cod_updates is not None:
@@ -2149,6 +2260,7 @@ def _recalculate_dependents_impl(
         "skipped": [item for item in results if not item.get("ok")],
         "dfm_updates": dfm_updates,
         "result_selection_updates": result_selection_updates,
+        "berquist_sherman_updates": berquist_sherman_updates,
         "bornhuetter_ferguson_updates": bornhuetter_ferguson_updates,
         "cape_cod_updates": cape_cod_updates,
         "bootstrap_updates": bootstrap_updates,
@@ -2165,6 +2277,7 @@ def recalculate_dependents(
     *,
     include_dfm: bool = True,
     include_result_selection: bool = True,
+    include_berquist_sherman: bool = True,
     include_bornhuetter_ferguson: bool = True,
     include_cape_cod: bool = True,
     include_bootstrap: bool = True,
@@ -2181,6 +2294,7 @@ def recalculate_dependents(
             changed_dataset_type_name,
             include_dfm=include_dfm,
             include_result_selection=include_result_selection,
+            include_berquist_sherman=include_berquist_sherman,
             include_bornhuetter_ferguson=include_bornhuetter_ferguson,
             include_cape_cod=include_cape_cod,
             include_bootstrap=include_bootstrap,

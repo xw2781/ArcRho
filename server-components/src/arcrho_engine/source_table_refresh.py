@@ -331,6 +331,7 @@ def _method_update_count(result: Mapping[str, Any]) -> int:
     for bucket in (
         "dfm_updates",
         "result_selection_updates",
+        "berquist_sherman_updates",
         "bornhuetter_ferguson_updates",
         "cape_cod_updates",
         "bootstrap_updates",

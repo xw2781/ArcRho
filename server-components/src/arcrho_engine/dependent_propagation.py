@@ -387,6 +387,7 @@ def execute_dependent_propagation(
 _METHOD_UPDATE_BUCKETS = (
     "dfm_updates",
     "result_selection_updates",
+    "berquist_sherman_updates",
     "bornhuetter_ferguson_updates",
     "cape_cod_updates",
     "bootstrap_updates",

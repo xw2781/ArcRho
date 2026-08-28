@@ -37,6 +37,10 @@ test("dataset propagation failures include calculated, DFM, Result Selection, BF
         },
       }],
     },
+    berquist_sherman_updates: {
+      ok: false,
+      errors: [{ dataset_name: "BS Paid", reason: "Closed Claim Counts must be an annual triangle dataset" }],
+    },
     cape_cod_updates: {
       ok: false,
       errors: [{ dataset_name: "CC Reported", reason: "Exposure vector refresh failed" }],
@@ -54,13 +58,14 @@ test("dataset propagation failures include calculated, DFM, Result Selection, BF
       ["Calculated dataset", "Calculated Ratio", "calculation_error"],
       ["DFM", "DFM Paid", "Input triangle refresh failed"],
       ["Result Selection", "Selected Ultimate", "Ratio Basis is unreadable"],
+      ["Berquist Sherman", "BS Paid", "Closed Claim Counts must be an annual triangle dataset"],
       ["Bornhuetter Ferguson", "BF Reported", "Prior vector refresh failed"],
       ["Bornhuetter Ferguson downstream", "BF Downstream", "Dependent refresh failed"],
       ["Cape Cod", "CC Reported", "Exposure vector refresh failed"],
       ["Bootstrap", "BST Incurred", "Required Bootstrap precedent needs review: DFM Paid"],
     ],
   );
-  assert.deepEqual(datasetPropagationFailureStep(failures[3]), {
+  assert.deepEqual(datasetPropagationFailureStep(failures[4]), {
     ok: false,
     skipped: true,
     status: "failed",

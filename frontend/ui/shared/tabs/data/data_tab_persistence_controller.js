@@ -1,10 +1,10 @@
 // Owns sidecar, settings, notes, external-link, dirty, save, and close lifecycles.
 import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
-import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260728a";
+import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260827a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260817a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 export function registerDataTabPersistenceController(runtime) {

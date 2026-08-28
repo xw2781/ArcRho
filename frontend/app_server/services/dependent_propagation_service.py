@@ -645,6 +645,7 @@ def _collect_refreshed_dataset_names(walk_result: Mapping[str, Any]) -> List[str
     for bucket in (
         "dfm_updates",
         "result_selection_updates",
+        "berquist_sherman_updates",
         "bornhuetter_ferguson_updates",
         "cape_cod_updates",
         "bootstrap_updates",
@@ -724,6 +725,7 @@ def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
     for bucket in (
         "dfm_updates",
         "result_selection_updates",
+        "berquist_sherman_updates",
         "bornhuetter_ferguson_updates",
         "cape_cod_updates",
         "bootstrap_updates",

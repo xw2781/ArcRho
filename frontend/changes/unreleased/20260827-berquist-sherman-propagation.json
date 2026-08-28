@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dependent propagation",
+  "audience": "user",
+  "summary": "A Berquist Sherman method's output dataset is now recalculated automatically when one of its sources changes, so the Dataset Viewer and its dependents no longer show the values from the method's last manual save.",
+  "details": [
+    "Saving a Result Selection, DFM, calculated dataset, or input triangle that feeds a B&S Settlement Rate or Case Reserve Adequacy method used to leave the method's output CSV as the page last saved it. The method page looked fresh because it recomputes from its sources on every open, but the Dataset Viewer and every method built on the output read the stale cache.",
+    "The Engine's dependent update now runs a Berquist Sherman step after Result Selection and before Bornhuetter Ferguson: it recomputes both variants on the server with the same calculation the page uses, rewrites the output CSV when the numbers changed, moves the dataset's Last Modified, records an Auto Refresh entry in its Audit Log, and carries the new triangle on through DFM, Result Selection, Bornhuetter Ferguson, Cape Cod, and Bootstrap in the same walk.",
+    "A B&S output the update could not recompute — a source it cannot read or one that is not annual — keeps its last saved values and is flagged Review Needed, with the reason reported under a Berquist Sherman heading in the save's refresh report."
+  ]
+}
