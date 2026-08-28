@@ -1,35 +1,25 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.0.0
-# Release Note: Run on the ResQ-connected ArcRho Bridge like the Sync macro; push input datasets, DFM and Result Selection selections and Notes, save BF, Cape Cod and Berquist Sherman methods in ArcRho's dependency order, and show the results in a Project Instance window.
-# Description: Push the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
+# Version: 1.3.0
+# Release Note: Push every dataset's and method's Notes from its ArcRho sidecar into the ResQ Notes field, with line breaks ResQ renders.
+# Description: Export all ArcRho datasets and supported methods (DFM, BF, Cape Cod, Result Selection) for the reserving-class path selected in the active Project Instance page into the ResQ database.
 # Scope: Reserving Class
 # </arcrho-macro>
-
-"""Push one ArcRho reserving class into ResQ.
-
-Two things live in this file, because the Bridge freezes it beside the
-canonical migration and loads it as its ResQ writer:
-
-- ``ResQReservingClassExporter`` drives ResQ COM for one reserving class. The
-  canonical session (``resq_migration.sync_session``) owns the inventory, the
-  dependency order, and the per-item bookkeeping, and calls the writers here
-  for both the Sync macro's apply phase and this macro's export phase.
-- ``run_macro`` is the client side: it publishes an ``export`` request to the
-  shared Bridge queue through ``arcrho_api.resq_sync_queue``, waits for the
-  ResQ-connected Bridge worker, and shows the results in a Project Instance
-  window. It never touches ResQ or the reserving-class files itself.
-"""
 
 from __future__ import annotations
 
 import csv
+import importlib.util
+import json
 from pathlib import Path
 import re
+import sys
 import traceback
 
+MIGRATION_SCRIPT = Path(r"E:\XWSpace\Repos\ArcRho\python-api\migration\resq_data_migration.py")
 TITLE = "Export Reserving Class to ResQ"
 PROGRESS_ID = "export-reserving-class-to-resq"
+DEFAULT_SERVER_ROOT = Path(r"E:\ArcRho Server")
 
 # ResQ enumeration ordinals confirmed against resq_migration.core and the live
 # fake-project probe; see python-api/docs/resq_reserving_class_export.md.
@@ -37,8 +27,6 @@ RESQ_METHOD_TYPE_DFM = 1
 RESQ_METHOD_TYPE_BF = 2
 RESQ_METHOD_TYPE_CAPE_COD = 3
 RESQ_METHOD_TYPE_RESULT_SELECTION = 4
-RESQ_METHOD_TYPE_BS_SR = 8
-RESQ_METHOD_TYPE_BS_CRA = 9
 
 # A v4 sidecar names its owning method in ``method_type``; the numeric twin is
 # gone from the file, so the ResQ code is derived here from that name.
@@ -49,14 +37,6 @@ _SIDECAR_METHOD_TYPE_CODES = {
     "bornhuetter ferguson": RESQ_METHOD_TYPE_BF,
     "cape cod": RESQ_METHOD_TYPE_CAPE_COD,
     "result selection": RESQ_METHOD_TYPE_RESULT_SELECTION,
-}
-
-# Methods the export phase only saves, by the ResQ code the session names them with.
-_SAVE_ONLY_METHOD_LABELS = {
-    RESQ_METHOD_TYPE_BF: "BF",
-    RESQ_METHOD_TYPE_CAPE_COD: "CC",
-    RESQ_METHOD_TYPE_BS_SR: "B&S Settlement Rate",
-    RESQ_METHOD_TYPE_BS_CRA: "B&S Case Reserve Adequacy",
 }
 
 
@@ -70,6 +50,34 @@ RESQ_DATA_FORMAT_ORIGIN_VECTOR = 1
 RESQ_PERC_DEVELOPED_PATTERN = 1
 RESQ_PERC_DEVELOPED_CUM_DEV_FACTORS = 2
 RESQ_PRIOR_TYPE_ULTIMATES = 0
+
+_FILENAME_TOKEN = re.compile(r"_%([0-9A-Fa-f]{2})_")
+
+
+def _load_resq_migration_module():
+    if not MIGRATION_SCRIPT.exists():
+        raise FileNotFoundError(f"ResQ migration script not found: {MIGRATION_SCRIPT}")
+    module_dir = str(MIGRATION_SCRIPT.parent)
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
+    spec = importlib.util.spec_from_file_location("arcrho_resq_data_migration", MIGRATION_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load ResQ migration script: {MIGRATION_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _decode_filename_segment(value: str) -> str:
+    return _FILENAME_TOKEN.sub(lambda match: chr(int(match.group(1), 16)), str(value or ""))
+
+
+def _read_json(path: Path):
+    try:
+        with Path(path).open("r", encoding="utf-8-sig") as stream:
+            return json.load(stream)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
 
 
 def _read_csv_matrix(path: Path):
@@ -147,8 +155,40 @@ class ExportSkipped(RuntimeError):
         self.reason = reason
 
 
+def collect_rc_artifacts(migration, rc_dir: Path):
+    """Enumerate the reserving-class sidecars and method payloads on disk."""
+
+    sidecars = []
+    sidecar_dir = rc_dir / migration.DATASET_SIDECAR_DIR
+    if sidecar_dir.is_dir():
+        for path in sorted(sidecar_dir.glob("*.json")):
+            payload = _read_json(path)
+            if isinstance(payload, dict) and str(payload.get("dataset_name") or "").strip():
+                sidecars.append(payload)
+    # Method Notes live in a method's output sidecar, not in its method JSON.
+    sidecar_by_key = {_label_key(sidecar.get("dataset_name")): sidecar for sidecar in sidecars}
+
+    methods = {"DFM": [], "RS": [], "BF": [], "CC": [], "BSSR": [], "BSCRA": []}
+    method_dir = rc_dir / migration.METHOD_DATA_DIR
+    if method_dir.is_dir():
+        for path in sorted(method_dir.glob("*.json")):
+            stem = path.stem
+            prefix, _, encoded_name = stem.partition("@")
+            if prefix not in methods or not encoded_name:
+                continue
+            payload = _read_json(path)
+            if isinstance(payload, dict):
+                entry = {"file_name": path.name, "name": _clean_label(_decode_filename_segment(encoded_name)), "payload": payload}
+                output_name = _dict_path(payload, ("details_tab",)).get("output_dataset") or entry["name"]
+                sidecar = sidecar_by_key.get(_label_key(output_name))
+                if sidecar is not None:
+                    entry["notes"] = str(sidecar.get("notes") or "")
+                methods[prefix].append(entry)
+    return sidecars, methods
+
+
 class ResQReservingClassExporter:
-    """Write one ArcRho reserving class's datasets and methods into ResQ."""
+    """Push one ArcRho reserving class (datasets + supported methods) into ResQ."""
 
     def __init__(
         self,
@@ -161,6 +201,7 @@ class ResQReservingClassExporter:
         connection_name: str = "",
         resq_user_name: str = "",
         resq_password: str = "",
+        dry_run: bool = False,
         progress_callback=None,
     ) -> None:
         self.migration = migration
@@ -171,6 +212,7 @@ class ResQReservingClassExporter:
         self.connection_name = connection_name or migration.CONNECTION_NAME
         self.resq_user_name = resq_user_name if resq_user_name else migration.USER_NAME
         self.resq_password = resq_password if resq_password else migration.PASSWORD
+        self.dry_run = bool(dry_run)
         self.progress_callback = progress_callback
         self.app = None
         self.project = None
@@ -187,11 +229,9 @@ class ResQReservingClassExporter:
             "ccs_created": 0,
             "result_selections_written": 0,
             "result_selections_created": 0,
-            "methods_saved": 0,
             "errors": 0,
         }
         self.skipped = {}
-        self.skip_details = []
         self.error_details = []
         self._completed = 0
         self._total = 0
@@ -215,7 +255,6 @@ class ResQReservingClassExporter:
 
     def _record_skip(self, kind, name, reason, message):
         self.skipped[reason] = self.skipped.get(reason, 0) + 1
-        self.skip_details.append({"kind": kind, "name": str(name), "reason": reason, "message": str(message)})
         self._emit(f"Skipped {kind} {name}: {message}", status="skipped")
 
     def _record_error(self, kind, name, error):
@@ -309,6 +348,8 @@ class ResQReservingClassExporter:
         dataset_type = self._find_in("dataset_types", self.project.DatasetTypes, type_name)
         if dataset_type is not None:
             return dataset_type
+        if self.dry_run:
+            raise ExportSkipped("dry_run_missing_dataset_type", f"Dataset Type missing in ResQ: {type_name}")
         try:
             dataset_type = dataset_types.Add()
             dataset_type.Name = type_name
@@ -389,6 +430,10 @@ class ResQReservingClassExporter:
         elif bool(getattr(target, "Calculated", False)):
             raise ExportSkipped("calculated_in_resq", "ResQ dataset is calculated; ResQ recomputes its values")
 
+        if self.dry_run:
+            self._emit(f"[dry run] would write {name}")
+            return
+
         notes = self._sync_notes(target, sidecar)
         if is_triangle:
             self._write_triangle_values(target, sidecar, values)
@@ -404,6 +449,8 @@ class ResQReservingClassExporter:
         category = _clean_label(sidecar.get("dataset_category"))
         format_code = RESQ_DATA_FORMAT_TRIANGLE if is_triangle else RESQ_DATA_FORMAT_ORIGIN_VECTOR
         dataset_type = self._ensure_dataset_type(type_name, category, format_code)
+        if self.dry_run:
+            raise ExportSkipped("dry_run_would_create", "dataset does not exist in ResQ yet")
         collection = self.reserving_class.Triangles() if is_triangle else self.reserving_class.Vectors()
         target = collection.Add()
         target.Name = name
@@ -412,6 +459,10 @@ class ResQReservingClassExporter:
             cumulative = sidecar.get("cumulative")
             if cumulative is not None:
                 target.Cumulative = bool(cumulative)
+        formula = str(sidecar.get("formula") or "").strip()
+        if bool(sidecar.get("calculated")) and formula:
+            target.Calculated = True
+            target.Formula = formula
         target.Save()
         self._register_lookup("triangles" if is_triangle else "vectors", name, target)
         return target
@@ -498,6 +549,9 @@ class ResQReservingClassExporter:
         if dfm is None:
             dfm = self._create_dfm(name, details)
             created = True
+        if self.dry_run:
+            self._emit(f"[dry run] would sync DFM {name}")
+            return
         excluded = self._sync_dfm_excluded_ratios(dfm, payload)
         user_values = self._sync_dfm_user_entry_values(dfm, payload)
         selected = self._sync_dfm_selected_ratios(dfm, payload)
@@ -533,6 +587,8 @@ class ResQReservingClassExporter:
         return 1
 
     def _create_dfm(self, name, details):
+        if self.dry_run:
+            raise ExportSkipped("dry_run_would_create", "DFM method does not exist in ResQ yet")
         input_triangle_name = _clean_label(details.get("input_triangle"))
         input_triangle = self._find_triangle(input_triangle_name) if input_triangle_name else None
         if input_triangle is None:
@@ -718,6 +774,8 @@ class ResQReservingClassExporter:
         bf = self._find_method_by_output(self.reserving_class.BFMethods(), name)
         created = False
         if bf is None:
+            if self.dry_run:
+                raise ExportSkipped("dry_run_would_create", "BF method does not exist in ResQ yet")
             output_type = _clean_label(details.get("output_type")) or name
             category = _clean_label(details.get("dataset_category"))
             dataset_type = self._ensure_dataset_type(output_type, category, RESQ_DATA_FORMAT_ORIGIN_VECTOR)
@@ -726,6 +784,9 @@ class ResQReservingClassExporter:
             bf.OutputVector.Name = name
             bf.OutputVector.DatasetType = dataset_type
             created = True
+        if self.dry_run:
+            self._emit(f"[dry run] would sync BF {name}")
+            return
 
         method_tab = _dict_path(payload, ("method_tab",))
         origin_length = int(details.get("origin_length") or 0)
@@ -789,6 +850,8 @@ class ResQReservingClassExporter:
         cc = self._find_method_by_output(self.reserving_class.CapeCodMethods(), name)
         created = False
         if cc is None:
+            if self.dry_run:
+                raise ExportSkipped("dry_run_would_create", "Cape Cod method does not exist in ResQ yet")
             output_type = _clean_label(details.get("output_type")) or name
             category = _clean_label(details.get("dataset_category"))
             dataset_type = self._ensure_dataset_type(output_type, category, RESQ_DATA_FORMAT_ORIGIN_VECTOR)
@@ -797,6 +860,9 @@ class ResQReservingClassExporter:
             cc.OutputVector.Name = name
             cc.OutputVector.DatasetType = dataset_type
             created = True
+        if self.dry_run:
+            self._emit(f"[dry run] would sync CC {name}")
+            return
 
         method_tab = _dict_path(payload, ("method_tab",))
         origin_length = int(details.get("origin_length") or 0)
@@ -848,42 +914,6 @@ class ResQReservingClassExporter:
             self.counts["ccs_created"] += 1
         self._emit(f"Exported CC: {name} (notes {notes})", status="success")
 
-    # ----- save-only methods ------------------------------------------------------
-
-    def _find_method(self, method_code, name):
-        """The ResQ method object for a save-only kind, by its ArcRho output name."""
-
-        if method_code == RESQ_METHOD_TYPE_BF:
-            return self._find_method_by_output(self.reserving_class.BFMethods(), name)
-        if method_code == RESQ_METHOD_TYPE_CAPE_COD:
-            return self._find_method_by_output(self.reserving_class.CapeCodMethods(), name)
-        if method_code in (RESQ_METHOD_TYPE_BS_SR, RESQ_METHOD_TYPE_BS_CRA):
-            found = self.migration._find_berquist_sherman_for_triangle(self.reserving_class, name, method_code)
-            return found[1] if found else None
-        raise ValueError(f"ResQ method type {method_code} is not a save-only kind")
-
-    def save_method(self, method_code, name):
-        """Save a ResQ method without writing any field.
-
-        The export pushes a method's inputs first, so the save makes ResQ
-        recalculate the method from them and re-stamp it; ArcRho's own
-        settings for the method are not carried across.
-        """
-
-        label = _SAVE_ONLY_METHOD_LABELS[method_code]
-        self._completed += 1
-        target = self._find_method(method_code, name)
-        if target is None:
-            self._record_skip(label, name, "missing_in_resq", "method not found in ResQ")
-            return
-        try:
-            target.Save()
-        except Exception as exc:
-            self._record_error(label, name, exc)
-            return
-        self.counts["methods_saved"] += 1
-        self._emit(f"Saved {label}: {name}", status="success")
-
     # ----- Result Selection -------------------------------------------------------
 
     def export_result_selections(self, rs_entries):
@@ -906,6 +936,8 @@ class ResQReservingClassExporter:
         loaded = method_tab.get("loaded_datasets")
         loaded = loaded if isinstance(loaded, list) else []
         if rs is None:
+            if self.dry_run:
+                raise ExportSkipped("dry_run_would_create", "Result Selection does not exist in ResQ yet")
             output_type = _clean_label(details.get("output_type")) or name
             dataset_type = self._ensure_dataset_type(output_type, "", RESQ_DATA_FORMAT_ORIGIN_VECTOR)
             rs = self.reserving_class.AddMethod(RESQ_METHOD_TYPE_RESULT_SELECTION)
@@ -913,6 +945,9 @@ class ResQReservingClassExporter:
             rs.OutputVector.Name = name
             rs.OutputVector.DatasetType = dataset_type
             created = True
+        if self.dry_run:
+            self._emit(f"[dry run] would sync Result Selection {name}")
+            return
 
         origin_length = int(details.get("origin_length") or 0)
         if origin_length:
@@ -994,31 +1029,133 @@ class ResQReservingClassExporter:
             status="success",
         )
 
+    # ----- top-level --------------------------------------------------------------
+
+    def run(self):
+        rc_dir = (
+            self.server_root
+            / "projects"
+            / self.arcrho_project_name
+            / "data"
+            / self.migration._encode_rc_folder(self.rc_path)
+        )
+        if not rc_dir.is_dir():
+            raise RuntimeError(f"ArcRho reserving-class folder not found: {rc_dir}")
+        sidecars, methods = collect_rc_artifacts(self.migration, rc_dir)
+        for prefix, kind in (("BSSR", "berquist_sherman_sr"), ("BSCRA", "berquist_sherman_cra")):
+            for entry in methods[prefix]:
+                self._record_skip(
+                    "method",
+                    entry["name"],
+                    "berquist_sherman_not_supported",
+                    "Berquist Sherman method creation is not documented in the ResQ COM API",
+                )
+
+        plain_datasets = [
+            sidecar
+            for sidecar in sidecars
+            if _sidecar_method_code(sidecar) == 0
+        ]
+        self._total = (
+            len(plain_datasets)
+            + len(methods["DFM"])
+            + len(methods["BF"])
+            + len(methods["CC"])
+            + len(methods["RS"])
+        )
+        self._emit(
+            f"Exporting {len(plain_datasets)} datasets and "
+            f"{len(methods['DFM'])} DFM / {len(methods['BF'])} BF / "
+            f"{len(methods['CC'])} CC / {len(methods['RS'])} RS methods"
+        )
+
+        self.connect()
+        try:
+            delayed = False
+            if not self.dry_run:
+                try:
+                    self.project.BeginDelayedUpdate()
+                    delayed = True
+                except Exception:
+                    delayed = False
+            try:
+                self.export_datasets(sidecars)
+                if delayed:
+                    self.project.EndDelayedUpdate()
+                    delayed = False
+            except Exception:
+                if delayed:
+                    try:
+                        self.project.CancelDelayedUpdate()
+                    except Exception:
+                        pass
+                    delayed = False
+                raise
+            self.export_dfms(methods["DFM"])
+            self.export_bfs(methods["BF"])
+            self.export_ccs(methods["CC"])
+            self.export_result_selections(methods["RS"])
+        finally:
+            self.disconnect()
+
+        return {
+            "arcrho_project": self.arcrho_project_name,
+            "resq_project": self.resq_project_name,
+            "rc_path": self.rc_path,
+            "connection": self.connection_name,
+            "dry_run": self.dry_run,
+            "counts": dict(self.counts),
+            "skipped": dict(self.skipped),
+            "error_details": list(self.error_details),
+        }
+
+
+def export_reserving_class_to_resq(
+    project_name,
+    rc_path,
+    *,
+    server_root=None,
+    resq_project_name="",
+    connection_name="",
+    resq_user_name="",
+    resq_password="",
+    dry_run=False,
+    progress_callback=None,
+    migration=None,
+):
+    """Headless entry point used by the macro UI flow, tests, and __main__."""
+
+    migration = migration or _load_resq_migration_module()
+    exporter = ResQReservingClassExporter(
+        migration,
+        arcrho_project_name=str(project_name),
+        rc_path=str(rc_path),
+        server_root=Path(server_root) if server_root else DEFAULT_SERVER_ROOT,
+        resq_project_name=str(resq_project_name or ""),
+        connection_name=str(connection_name or ""),
+        resq_user_name=str(resq_user_name or ""),
+        resq_password=str(resq_password or ""),
+        dry_run=bool(dry_run),
+        progress_callback=progress_callback,
+    )
+    return exporter.run()
+
 
 # ----- macro UI flow ------------------------------------------------------------------
-#
-# Everything below is client-side. The ResQ session and the reserving-class
-# files are the Bridge worker's: the macro publishes an ``export`` request to
-# the shared queue and renders what the worker reports.
-
-KIND_DATASET = "Dataset"
-_OUTCOME_CELLS = {
-    "exported": ("Exported", "ok"),
-    "saved": ("Saved", "ok"),
-    "skipped": ("Skipped", "warn"),
-    "failed": ("Failed", "error"),
-}
 
 
 def _message(ui, text, *, title=TITLE, kind="info", auto_close_ms=None, buttons=None):
-    return ui.message_box(
-        str(text or ""),
-        title=title,
-        kind=kind,
-        auto_close_ms=auto_close_ms,
-        buttons=buttons,
-        timeout_sec=600,
-    )
+    try:
+        return ui.message_box(
+            str(text or ""),
+            title=title,
+            kind=kind,
+            auto_close_ms=auto_close_ms,
+            buttons=buttons,
+            timeout_sec=600,
+        )
+    except TypeError:
+        return ui.message_box(str(text or ""), title=title, kind=kind)
 
 
 def _context_value(context, *names):
@@ -1032,78 +1169,91 @@ def _context_value(context, *names):
 
 
 def _has_export_context(context) -> bool:
-    return bool(
+    return isinstance(context, dict) and bool(
         _context_value(context, "projectName", "project_name")
         and _context_value(context, "selectedPath", "selected_path", "path")
     )
 
 
-def _report_activity() -> None:
-    cancel_checker = globals().get("check_macro_cancelled")
-    if callable(cancel_checker):
-        cancel_checker()
-    reporter = globals().get("report_macro_activity")
-    if callable(reporter):
-        reporter()
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
-def export_result_table_payload(result) -> dict:
-    """Project the Bridge's export results into the read-only review-table contract.
+def _make_progress_callback(progress):
+    def callback(event):
+        cancel_checker = globals().get("check_macro_cancelled")
+        if callable(cancel_checker):
+            cancel_checker()
+        activity_reporter = globals().get("report_macro_activity")
+        if callable(activity_reporter):
+            activity_reporter()
+        if progress is None or not isinstance(event, dict):
+            return
+        total = _safe_int(event.get("total"), 0)
+        completed = _safe_int(event.get("completed"), 0)
+        message = str(event.get("message") or "Exporting to ResQ")
+        status = str(event.get("status") or "").casefold()
+        tone = {"error": "error", "skipped": "warning", "success": "success"}.get(status)
+        try:
+            progress.update(
+                completed=completed if total > 0 else None,
+                total=total if total > 0 else None,
+                label=message,
+                detail=message,
+                tone=tone,
+            )
+        except Exception:
+            pass
 
-    One row per item in the order it was written -- ArcRho's dependency
-    order -- with its outcome and the Bridge's message; the header carries
-    the counts.
-    """
+    return callback
 
-    items = [item for item in result.get("results") or [] if isinstance(item, dict)]
-    rows = []
-    counts = {outcome: 0 for outcome in _OUTCOME_CELLS}
-    for index, item in enumerate(items, start=1):
-        outcome = str(item.get("outcome") or "")
-        if outcome not in counts:
-            outcome = "failed"
-        counts[outcome] += 1
-        text, tone = _OUTCOME_CELLS[outcome]
-        rows.append({
-            "id": f"result-{index}",
-            "cells": {
-                "kind": str(item.get("kind") or KIND_DATASET),
-                "name": str(item.get("name") or ""),
-                "outcome": {"text": text, "tone": tone},
-                "detail": str(item.get("message") or ""),
-            },
-        })
-    headline = "Export to ResQ completed with errors." if counts["failed"] else "Export to ResQ completed."
-    return {
-        "title": "ResQ Export Results",
-        "host": "projectInstance",
-        "selectable": False,
-        "summary": (
-            f"{headline}\n"
-            f"Project: {result.get('project_name')} | Reserving class: {result.get('rc_path')} | "
-            f"ResQ: {result.get('connection_name')}\n"
-            f"Exported {counts['exported']} dataset/method item(s); saved {counts['saved']} method(s); "
-            f"skipped {counts['skipped']}; failed {counts['failed']}."
-        ),
-        "columns": [
-            {"key": "kind", "label": "Type", "width": 150},
-            {"key": "name", "label": "Dataset / Method Output", "width": 250},
-            {"key": "outcome", "label": "Outcome", "width": 110},
-            {"key": "detail", "label": "Details", "width": 620},
-        ],
-        "rows": rows,
-        "acceptLabel": "Close",
-        "searchPlaceholder": "Filter results",
-    }
+
+def _summary_message(result):
+    counts = result.get("counts") or {}
+    skipped = result.get("skipped") or {}
+    lines = [
+        "Export to ResQ completed." if not counts.get("errors") else "Export to ResQ completed with errors.",
+        f"ArcRho project: {result.get('arcrho_project')}",
+        f"ResQ project: {result.get('resq_project')} ({result.get('connection')})",
+        f"Path: {result.get('rc_path')}",
+        "",
+        f"Datasets written: {counts.get('datasets_written', 0)} (created {counts.get('datasets_created', 0)})",
+        f"DFM methods: {counts.get('dfms_written', 0)} (created {counts.get('dfms_created', 0)})",
+        f"BF methods: {counts.get('bfs_written', 0)} (created {counts.get('bfs_created', 0)})",
+        f"Cape Cod methods: {counts.get('ccs_written', 0)} (created {counts.get('ccs_created', 0)})",
+        f"Result Selections: {counts.get('result_selections_written', 0)} "
+        f"(created {counts.get('result_selections_created', 0)})",
+        f"Errors: {counts.get('errors', 0)}",
+    ]
+    if skipped:
+        lines.append("")
+        lines.append("Skipped:")
+        for reason in sorted(skipped):
+            lines.append(f"- {reason}: {skipped[reason]}")
+    details = result.get("error_details") or []
+    if details:
+        lines.append("")
+        lines.append("Details:")
+        for detail in details[:12]:
+            lines.append(f"- {detail.get('kind')} {detail.get('name')}: {detail.get('message')}")
+    return "\n".join(lines)
 
 
 def run_macro(active_dfm=None, active_context=None):
     from arcrho_api import ArcRhoUI, get_server_root
-    from arcrho_api.resq_sync_queue import WRITE_TIMEOUT_SEC, BridgeUnavailableError, run_bridge_phase
-    from arcrho_api.ui import await_review_table
 
     ui = ArcRhoUI()
     progress = None
+    try:
+        migration = _load_resq_migration_module()
+    except Exception as exc:
+        message = f"Could not load the ResQ migration helpers.\n\n{exc}"
+        _message(ui, message, kind="error")
+        return {"success": False, "message": message}
+
     try:
         context = (
             active_context
@@ -1116,82 +1266,98 @@ def run_macro(active_dfm=None, active_context=None):
             raise ValueError("The active Project Instance page does not expose a project and reserving-class path.")
     except Exception as exc:
         message = (
-            "Activate a Project Instance page and select a reserving-class path "
+            "Activate a Project Instance page and select a valid reserving-class path "
             f"before exporting to ResQ.\n\n{exc}"
         )
         _message(ui, message, kind="warning")
-        return {"status": "cancelled", "cancelled": True, "message": message}
+        return {"success": False, "message": message}
+
+    confirmation = _message(
+        ui,
+        (
+            "Export all ArcRho datasets and supported methods to the ResQ database?\n\n"
+            f"ResQ connection: {migration.CONNECTION_NAME}\n"
+            f"ResQ project: {project_name}\n"
+            f"Path: {rc_path}\n\n"
+            "Matching ResQ datasets and method selections will be overwritten. "
+            "Bootstrap and Berquist Sherman methods are not exported."
+        ),
+        kind="warning",
+        buttons=["Export", "Cancel"],
+    )
+    if str(getattr(confirmation, "button", "") or "").strip().casefold() != "export":
+        return {"success": False, "message": "Export cancelled by user.", "cancelled": True}
 
     try:
-        active_window = ui.project_instance.active_window(timeout_sec=10)
-        if active_window is not None and active_window.get_properties(timeout_sec=10).dirty:
-            message = "Save or close unsaved dataset/method changes before exporting this reserving class."
-            _message(ui, message, kind="warning", auto_close_ms=9000)
-            return {"status": "cancelled", "cancelled": True, "reason": "active_window_dirty", "message": message}
+        server_root = get_server_root(required=True)
+    except Exception as exc:
+        message = f"Could not resolve the ArcRho Server root.\n\n{exc}"
+        _message(ui, message, kind="error")
+        return {"success": False, "message": message}
 
-        confirmation = _message(
-            ui,
-            (
-                "Export this ArcRho reserving class to ResQ?\n\n"
-                f"Project: {project_name}\n"
-                f"Path: {rc_path}\n\n"
-                "Input datasets, DFM and Result Selection selections, and their Notes overwrite "
-                "the matching ResQ objects; Bornhuetter Ferguson, Cape Cod and Berquist Sherman "
-                "methods are saved so ResQ recalculates them. Calculated, engine-built and "
-                "Bootstrap items are left out."
-            ),
-            kind="warning",
-            buttons=["Export", "Cancel"],
-        )
-        if str(getattr(confirmation, "button", "") or "").strip().casefold() != "export":
-            return {"status": "cancelled", "cancelled": True, "message": "Export cancelled by user."}
-
-        root = get_server_root(required=True)
+    try:
         progress = ui.progress_bar(
             progress_id=PROGRESS_ID,
             title=TITLE,
-            label=f"Exporting to ResQ: {rc_path}",
+            label=f"Preparing export to ResQ: {rc_path}",
             total=0,
         )
-        result = run_bridge_phase(
-            server_root=root,
-            project_name=project_name,
-            rc_path=rc_path,
-            phase="export",
-            timeout_sec=WRITE_TIMEOUT_SEC,
-            progress=progress,
-            progress_label=f"Exporting to ResQ: {rc_path}",
-            on_poll=_report_activity,
-        )
-        progress.close(auto_close_ms=1500)
+    except Exception:
         progress = None
-        payload = export_result_table_payload(result)
-        result["message"] = payload["summary"]
-        await_review_table(ui, payload, on_poll=_report_activity)
-        return result
-    except BridgeUnavailableError as exc:
-        # Nothing was published, so this is a precondition, not a failure to
-        # report as a crash with a traceback the user cannot act on.
-        if progress is not None:
-            try:
-                progress.update(label="ResQ is not reachable", detail=str(exc), tone="error")
-            except Exception:
-                pass
-        _message(ui, str(exc), kind="warning")
-        return {"status": "unavailable", "error": str(exc), "message": str(exc)}
+
+    try:
+        result = export_reserving_class_to_resq(
+            project_name,
+            rc_path,
+            server_root=server_root,
+            progress_callback=_make_progress_callback(progress),
+            migration=migration,
+        )
     except Exception as exc:
-        tb = traceback.format_exc()
         if progress is not None:
             try:
-                progress.update(label="Export failed", detail=str(exc), tone="error")
+                progress.update(label="Export failed", tone="error")
             except Exception:
                 pass
-        message = f"Export to ResQ failed.\n\nProject: {project_name}\nPath: {rc_path}\n\n{exc}\n\n{tb}"
-        _message(ui, message, kind="error")
-        return {"status": "error", "error": str(exc), "traceback": tb, "message": message}
+        tb = traceback.format_exc()
+        message = (
+            f"Export to ResQ failed.\n\nProject: {project_name}\nPath: {rc_path}\n\n{exc}"
+        )
+        _message(ui, f"{message}\n\n{tb}", kind="error")
+        return {"success": False, "message": message, "traceback": tb}
     finally:
         if progress is not None:
             try:
                 progress.close(auto_close_ms=1500)
             except Exception:
                 pass
+
+    errors = _safe_int((result.get("counts") or {}).get("errors"), 0)
+    message = _summary_message(result)
+    _message(ui, message, kind="warning" if errors else "info", auto_close_ms=None if errors else 5000)
+    return {"success": errors == 0, "message": message, "result": result}
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Export one ArcRho reserving class into ResQ.")
+    parser.add_argument("project_name")
+    parser.add_argument("rc_path")
+    parser.add_argument("--server-root", default=str(DEFAULT_SERVER_ROOT))
+    parser.add_argument("--resq-project", default="")
+    parser.add_argument("--dry-run", action="store_true")
+    arguments = parser.parse_args()
+
+    def _print_progress(event):
+        print(f"[{event.get('completed')}/{event.get('total')}] {event.get('status') or 'info'}: {event.get('message')}")
+
+    outcome = export_reserving_class_to_resq(
+        arguments.project_name,
+        arguments.rc_path,
+        server_root=arguments.server_root,
+        resq_project_name=arguments.resq_project,
+        dry_run=arguments.dry_run,
+        progress_callback=_print_progress,
+    )
+    print(json.dumps(outcome, indent=2))

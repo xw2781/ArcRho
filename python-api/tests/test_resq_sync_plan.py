@@ -214,20 +214,21 @@ class ResqSyncPlanTests(unittest.TestCase):
 
         self.assertEqual(row["status"], "ArcRho changed")
         self.assertEqual(row["action"], sync.ACTION_ARCRHO_TO_RESQ)
-        self.assertFalse(row["conflict"])
+        self.assertFalse(row["review"])
         self.assertTrue(row["selected"])
 
-    def test_both_changed_is_an_unselected_conflict_even_when_newer_side_is_known(self):
+    def test_both_changed_rides_with_the_reserving_class_and_is_marked_for_review(self):
         row = sync.build_sync_plan(
             [_item(timestamp=150)],
             [_item(timestamp=160)],
             _baseline(),
         )[0]
 
-        self.assertEqual(row["status"], "Both changed; ResQ newer")
+        self.assertEqual(row["status"], "Both changed")
         self.assertEqual(row["action"], sync.ACTION_RESQ_TO_ARCRHO)
-        self.assertTrue(row["conflict"])
-        self.assertFalse(row["selected"])
+        self.assertTrue(row["review"])
+        self.assertIn("overwrites this ArcRho change", row["detail"])
+        self.assertTrue(row["selected"])
         self.assertFalse(row["disabled"])
 
         equal = sync.build_sync_plan(
@@ -237,8 +238,47 @@ class ResqSyncPlanTests(unittest.TestCase):
         )[0]
         self.assertEqual(equal["status"], "Both changed")
         self.assertEqual(equal["action"], "")
-        self.assertTrue(equal["conflict"])
+        self.assertFalse(equal["review"])
         self.assertTrue(equal["disabled"])
+
+    def test_the_latest_timestamp_on_each_side_decides_one_direction_for_every_row(self):
+        plan = sync.build_sync_plan(
+            [_item("Paid Loss", timestamp=300), _item("Incurred Loss", timestamp=100)],
+            [_item("Paid Loss", timestamp=100), _item("Incurred Loss", timestamp=200)],
+        )
+
+        self.assertEqual(
+            sync.plan_direction(plan),
+            {"direction": sync.ACTION_ARCRHO_TO_RESQ, "arcrho_timestamp": 300.0, "resq_timestamp": 200.0},
+        )
+        by_name = {row["name"]: row for row in plan}
+        agreeing = by_name["Paid Loss"]
+        self.assertEqual((agreeing["status"], agreeing["action"]), ("ArcRho newer", sync.ACTION_ARCRHO_TO_RESQ))
+        self.assertFalse(agreeing["review"])
+        # The row's own timestamps point the other way: it is still pushed
+        # with the class, ticked, but marked so the person reads it first.
+        disagreeing = by_name["Incurred Loss"]
+        self.assertEqual((disagreeing["status"], disagreeing["action"]), ("ResQ newer", sync.ACTION_ARCRHO_TO_RESQ))
+        self.assertTrue(disagreeing["review"])
+        self.assertTrue(disagreeing["selected"])
+        self.assertFalse(disagreeing["disabled"])
+        self.assertIn("ArcRho copy overwrites this ResQ change", disagreeing["detail"])
+
+    def test_matching_or_unknown_latest_timestamps_give_no_direction(self):
+        matching = sync.build_sync_plan(
+            [_item("Paid Loss", timestamp=300), _item("Incurred Loss", timestamp=100)],
+            [_item("Paid Loss", timestamp=100), _item("Incurred Loss", timestamp=300)],
+        )
+        self.assertEqual(sync.plan_direction(matching)["direction"], "")
+        self.assertEqual([row["action"] for row in matching], ["", ""])
+        self.assertEqual([row["status"] for row in matching], ["ResQ newer", "ArcRho newer"])
+        self.assertTrue(all(row["disabled"] for row in matching))
+
+        unknown = sync.build_sync_plan([_item(timestamp=None)], [_item(timestamp=100)])
+        self.assertEqual(
+            sync.plan_direction(unknown),
+            {"direction": "", "arcrho_timestamp": None, "resq_timestamp": 100.0},
+        )
 
     def test_type_format_dataset_type_and_method_mismatches_do_not_offer_actions(self):
         cases = (

@@ -63,7 +63,8 @@ def _name_key(value: object) -> str:
 # Host contract version. The Bridge refuses a bundle whose session API it was
 # not built against, the same way the macro used to pin the support release.
 # 2: ``build_runtime`` takes the ResQ account the session connects with.
-SYNC_SESSION_API_VERSION = 2
+# 3: ``export_reserving_class`` pushes a whole class from ArcRho without a review.
+SYNC_SESSION_API_VERSION = 3
 
 MAX_JSON_READ_WORKERS = 8
 
@@ -78,13 +79,26 @@ KIND_BOOTSTRAP = "Bootstrap"
 
 _METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS, KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}
 _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
+# Methods the export phase saves in ResQ without writing a field: ResQ
+# recalculates each from the datasets and DFMs exported before it and
+# re-stamps it. Keyed by the ResQ method-type code the exporter looks it up by.
+_SAVE_ONLY_METHOD_CODES = {KIND_BF: 2, KIND_CC: 3, KIND_BS_SR: 8, KIND_BS_CRA: 9}
 
 # Tie-break rank inside one write direction. The dependency walk decides the
 # order wherever one accepted row reads another; rows with no such link fall
 # back to this rank so plain datasets precede the methods that read them, DFMs
-# precede the BF and Cape Cod methods that read their output, and Result
-# Selections, which only consume other outputs, come last.
-_WRITE_KIND_RANK = {KIND_DATASET: 0, KIND_DFM: 1, KIND_BF: 2, KIND_CC: 2, KIND_RS: 3}
+# and Berquist Sherman adjustments precede the BF and Cape Cod methods that
+# read their output, and Result Selections, which only consume other outputs,
+# come last.
+_WRITE_KIND_RANK = {
+    KIND_DATASET: 0,
+    KIND_DFM: 1,
+    KIND_BS_SR: 1,
+    KIND_BS_CRA: 1,
+    KIND_BF: 2,
+    KIND_CC: 2,
+    KIND_RS: 3,
+}
 
 
 def _dependency_names(entries: object) -> list[str]:
@@ -102,9 +116,11 @@ def _dependency_names(entries: object) -> list[str]:
 def _row_precedent_names(row: Mapping[str, Any]) -> list[str]:
     """Name every ArcRho dataset this row's ArcRho side reads.
 
-    A row carries any sidecar ``precedents`` it has, the same graph ArcRho's
-    own recompute walk follows. A method row also names its linked datasets
-    in its method tabs; the ResQ writer resolves those links by name, so they
+    A row carries the sidecar ``precedents`` of its dataset, the same graph
+    ArcRho's own recompute walk follows: a dataset row's payload is its
+    sidecar, and a method row carries the precedents of its output sidecar
+    beside its method JSON. A method row also names its linked datasets in
+    its method tabs; the ResQ writer resolves those links by name, so they
     are dependencies of the ResQ write as well. Calculated datasets never
     reach the plan, so in practice the edges run from plain datasets to the
     methods that read them and between methods.
@@ -116,6 +132,7 @@ def _row_precedent_names(row: Mapping[str, Any]) -> list[str]:
     details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
     method_tab = payload.get("method_tab") if isinstance(payload.get("method_tab"), Mapping) else {}
     names: list[object] = list(_dependency_names(payload.get("precedents")))
+    names.extend(_dependency_names(item.get("precedents")))
     if kind == KIND_DFM:
         names.append(details.get("input_triangle"))
     elif kind == KIND_BF:
@@ -442,6 +459,7 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
         sidecar = sidecar_by_key.get(sync_contract.logical_key(name))
         if sidecar is not None:
             item["notes"] = str(sidecar.get("notes") or "")
+            item["precedents"] = _dependency_names(sidecar.get("precedents"))
         items.append(item)
         method_keys.add(sync_contract.logical_key(name))
 
@@ -750,13 +768,29 @@ def _timestamp_cell(item: Mapping[str, Any]) -> str:
     return f"{shown} ({source})" if source == "File modified" else shown
 
 
-def _action_label(action: object) -> str:
-    normalized = str(action or "")
+def _direction_label(direction: object) -> str:
+    normalized = str(direction or "")
     if normalized == "arcrho_to_resq":
         return "ArcRho -> ResQ"
     if normalized == "resq_to_arcrho":
         return "ResQ -> ArcRho"
-    return "No action"
+    return ""
+
+
+def _direction_payload(direction: Mapping[str, Any]) -> dict[str, Any]:
+    """The reserving class's direction and the two timestamps that decided it, display-ready."""
+
+    def shown(value: object) -> str:
+        if value is None:
+            return "Unknown"
+        return format_display_timestamp(datetime.fromtimestamp(float(value), timezone.utc).isoformat())
+
+    return {
+        "action": str(direction.get("direction") or ""),
+        "label": _direction_label(direction.get("direction")),
+        "arcrho_timestamp": shown(direction.get("arcrho_timestamp")),
+        "resq_timestamp": shown(direction.get("resq_timestamp")),
+    }
 
 
 def _resq_credentials(runtime: Mapping[str, Any]) -> Mapping[str, str]:
@@ -822,34 +856,60 @@ def _plan_context(runtime: Mapping[str, Any], project_name: str, rc_path: str, s
         "state": state,
         "state_path": state_path,
         "plan": plan,
+        "direction": sync_contract.plan_direction(plan),
     }
 
 
-def _export_result_delta(exporter, before: Mapping[str, Any], kind: str) -> tuple[bool, str]:
-    count_field = {
-        KIND_DATASET: "datasets_written",
-        KIND_DFM: "dfms_written",
-        KIND_BF: "bfs_written",
-        KIND_CC: "ccs_written",
-        KIND_RS: "result_selections_written",
-    }.get(kind, "")
+_WRITTEN_COUNT_FIELDS = {
+    KIND_DATASET: "datasets_written",
+    KIND_DFM: "dfms_written",
+    KIND_BF: "bfs_written",
+    KIND_CC: "ccs_written",
+    KIND_RS: "result_selections_written",
+}
+OUTCOME_WRITTEN = "written"
+OUTCOME_SKIPPED = "skipped"
+OUTCOME_FAILED = "failed"
+
+
+def _exporter_snapshot(exporter) -> dict[str, Any]:
+    before = dict(exporter.counts)
+    before["_skipped"] = dict(exporter.skipped)
+    return before
+
+
+def _export_result_delta(exporter, before: Mapping[str, Any], count_field: str) -> tuple[str, str]:
+    """What the exporter did since ``before`` -- written, skipped, or failed -- and why."""
+
     before_errors = int(before.get("errors") or 0)
     if int(exporter.counts.get("errors") or 0) > before_errors and exporter.error_details:
-        return False, str(exporter.error_details[-1].get("message") or "ResQ write failed.")
+        return OUTCOME_FAILED, str(exporter.error_details[-1].get("message") or "ResQ write failed.")
     skipped_before = before.get("_skipped") if isinstance(before.get("_skipped"), Mapping) else {}
     for reason, count in exporter.skipped.items():
         if int(count or 0) > int(skipped_before.get(reason) or 0):
-            return False, str(reason).replace("_", " ")
+            detail = exporter.skip_details[-1] if exporter.skip_details else {}
+            return OUTCOME_SKIPPED, str(detail.get("message") or str(reason).replace("_", " "))
     if count_field and int(exporter.counts.get(count_field) or 0) > int(before.get(count_field) or 0):
-        return True, "Written to ResQ."
-    return False, "ResQ did not report the item as written."
+        return OUTCOME_WRITTEN, "Written to ResQ."
+    return OUTCOME_FAILED, "ResQ did not report the item as written."
+
+
+def _writer_entry(item: Mapping[str, Any], row: Mapping[str, Any]) -> dict[str, Any]:
+    """The entry a method writer takes: name, payload, and the sidecar notes when readable."""
+
+    entry = {
+        "name": str(item.get("method_name") or row.get("name") or ""),
+        "payload": item.get("payload") or {},
+    }
+    if "notes" in item:
+        entry["notes"] = item["notes"]
+    return entry
 
 
 def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     kind = str(row.get("kind") or KIND_DATASET)
-    before = dict(exporter.counts)
-    before["_skipped"] = dict(exporter.skipped)
+    before = _exporter_snapshot(exporter)
     if kind == KIND_DATASET:
         expected_values = _preflight_dataset_export(exporter, row)
         payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
@@ -869,12 +929,7 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
         _verify_dataset_export(exporter, row, expected_values)
     else:
         _preflight_method_export(exporter, row)
-        entry = {
-            "name": str(item.get("method_name") or row.get("name") or ""),
-            "payload": item.get("payload") or {},
-        }
-        if "notes" in item:
-            entry["notes"] = item["notes"]
+        entry = _writer_entry(item, row)
         if kind == KIND_DFM:
             exporter.export_dfms([entry])
         elif kind == KIND_BF:
@@ -896,7 +951,68 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
         else:
             return False, f"ArcRho-to-ResQ write-back is not supported for {kind}."
         _verify_method_export(exporter, row)
-    return _export_result_delta(exporter, before, kind)
+    outcome, message = _export_result_delta(exporter, before, _WRITTEN_COUNT_FIELDS.get(kind, ""))
+    return outcome == OUTCOME_WRITTEN, message
+
+
+# The export phase reports each item as one of these.
+EXPORT_OUTCOME_EXPORTED = "exported"
+EXPORT_OUTCOME_SAVED = "saved"
+_EXPORT_PROGRESS_STATUS = {
+    EXPORT_OUTCOME_EXPORTED: "success",
+    EXPORT_OUTCOME_SAVED: "success",
+    OUTCOME_SKIPPED: "skipped",
+    OUTCOME_FAILED: "error",
+}
+
+
+def _export_rows(runtime: Mapping[str, Any], inventory: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The ArcRho items an export pushes, as rows the dependency walk can order.
+
+    Calculated and engine datasets never reach the inventory; Bootstrap is
+    left out here because ResQ has no write path for it yet.
+    """
+
+    sync_contract = runtime["sync_contract"]
+    rows: list[dict[str, Any]] = []
+    for item in inventory:
+        kind = str(item.get("kind") or KIND_DATASET)
+        if kind == KIND_BOOTSTRAP:
+            continue
+        key = sync_contract.logical_key(item.get("name"))
+        rows.append({"id": key, "key": key, "kind": kind, "name": str(item.get("name") or ""), "arcrho": item})
+    return rows
+
+
+def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
+    """Write one export row and say what became of it: exported, saved, skipped, or failed.
+
+    Input datasets, DFMs, and Result Selections go through the exporter's
+    writers, Notes included; every other supported method is only saved, so
+    ResQ recalculates it from the inputs written before it. There is no
+    preflight and no read-back: an export is a push, not a reconciliation.
+    """
+
+    item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
+    kind = str(row.get("kind") or KIND_DATASET)
+    before = _exporter_snapshot(exporter)
+    if kind in _SAVE_ONLY_METHOD_CODES:
+        exporter.save_method(_SAVE_ONLY_METHOD_CODES[kind], str(row.get("name") or ""))
+        outcome, message = _export_result_delta(exporter, before, "methods_saved")
+        return (EXPORT_OUTCOME_SAVED if outcome == OUTCOME_WRITTEN else outcome), message
+    reason = str(item.get("export_block_reason") or "")
+    if reason:
+        return OUTCOME_SKIPPED, reason
+    if kind == KIND_DATASET:
+        exporter.export_datasets([item.get("payload") or {}])
+    elif kind == KIND_DFM:
+        exporter.export_dfms([_writer_entry(item, row)])
+    elif kind == KIND_RS:
+        exporter.export_result_selections([_writer_entry(item, row)])
+    else:
+        return OUTCOME_SKIPPED, f"{kind} methods are not exported."
+    outcome, message = _export_result_delta(exporter, before, _WRITTEN_COUNT_FIELDS.get(kind, ""))
+    return (EXPORT_OUTCOME_EXPORTED if outcome == OUTCOME_WRITTEN else outcome), message
 
 
 def _dataset_export_values(exporter, row: Mapping[str, Any]) -> list[list[float | None]]:
@@ -2088,11 +2204,10 @@ def _public_plan_rows(runtime: Mapping[str, Any], plan: list[dict[str, Any]]) ->
             "resq_timestamp": _timestamp_cell(row.get("resq")),
             "status": str(row.get("status") or ""),
             "action": str(row.get("action") or ""),
-            "action_label": _action_label(row.get("action")),
             "detail": str(row.get("detail") or ""),
             "selected": bool(row.get("selected")),
             "disabled": bool(row.get("disabled")),
-            "conflict": bool(row.get("conflict")),
+            "review": bool(row.get("review")),
         }
         for row in plan
     ]
@@ -2125,7 +2240,8 @@ def preview_sync(
 
     The returned ``preview`` rows are display-ready and carry the signature
     the apply phase rechecks, so the caller never needs the plan's internal
-    rows or a ResQ session of its own.
+    rows or a ResQ session of its own. ``direction`` is the one way the whole
+    reserving class is pushed, with the two latest timestamps that decided it.
     """
 
     migration = runtime["migration"]
@@ -2151,6 +2267,7 @@ def preview_sync(
             "project_name": project_name,
             "rc_path": rc_path,
             "connection_name": _resq_credentials(runtime)["connection_name"],
+            "direction": _direction_payload(preview["direction"]),
             "preview": rows,
         }
     finally:
@@ -2229,6 +2346,86 @@ def apply_sync(
             **base,
             "status": "completed_with_errors" if result.get("failures") else "completed",
         }
+    finally:
+        if exporter is not None:
+            try:
+                exporter.disconnect()
+            except Exception:
+                pass
+        migration._restore_runtime_scope(previous_scope)
+
+
+def export_reserving_class(
+    runtime: Mapping[str, Any],
+    project_name: str,
+    rc_path: str,
+    *,
+    server_root: object,
+    progress_callback=None,
+) -> dict[str, Any]:
+    """Push one reserving class from ArcRho into ResQ, in ArcRho's dependency order.
+
+    Every input dataset with a CSV cache is written with its Notes, every DFM
+    and Result Selection has its selections and Notes written, and every
+    Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method is saved so
+    ResQ recalculates it from those writes. Calculated and engine datasets are
+    left out, as is Bootstrap. Nothing is compared, verified, or baselined:
+    the result says what became of each item and nothing more.
+    """
+
+    migration = runtime["migration"]
+    sync_contract = runtime["sync_contract"]
+    project_name, rc_path, root = _session_scope(project_name, rc_path, server_root)
+    previous_scope = migration._apply_runtime_scope(project_name, root)
+    exporter = None
+    try:
+        base = {
+            "project_name": project_name,
+            "rc_path": rc_path,
+            "connection_name": _resq_credentials(runtime)["connection_name"],
+        }
+        rc_dir = migration.PROJECT_DATA_DIR / migration._encode_rc_folder(rc_path)
+        if not rc_dir.is_dir():
+            raise RuntimeError(f"ArcRho reserving-class folder not found: {rc_dir}")
+        _emit_progress(progress_callback, {
+            "event": "scan",
+            "completed": 0,
+            "total": 0,
+            "message": f"Reading the ArcRho reserving class: {rc_path}",
+        })
+        rows = _dependency_ordered_rows(
+            sync_contract, _export_rows(runtime, collect_arcrho_inventory(runtime, rc_dir))
+        )
+        _emit_progress(progress_callback, {
+            "event": "connect",
+            "completed": 0,
+            "total": len(rows),
+            "message": f"Connecting to ResQ: {base['connection_name']}",
+        })
+        exporter = _new_exporter(runtime, project_name, rc_path, root)
+        exporter.connect()
+        results: list[dict[str, Any]] = []
+        for index, row in enumerate(rows, start=1):
+            try:
+                outcome, message = _push_row_to_resq(exporter, row)
+            except Exception as exc:
+                outcome, message = OUTCOME_FAILED, str(exc)
+            results.append({
+                "id": row["id"],
+                "name": row["name"],
+                "kind": row["kind"],
+                "outcome": outcome,
+                "message": message,
+            })
+            _emit_progress(progress_callback, {
+                "event": "write",
+                "completed": index,
+                "total": len(rows),
+                "status": _EXPORT_PROGRESS_STATUS[outcome],
+                "message": f"{row['name']}: {message}",
+            })
+        failed = any(item["outcome"] == OUTCOME_FAILED for item in results)
+        return {**base, "status": "completed_with_errors" if failed else "completed", "results": results}
     finally:
         if exporter is not None:
             try:

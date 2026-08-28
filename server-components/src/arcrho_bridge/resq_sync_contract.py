@@ -6,7 +6,8 @@ worker as an import, from a sibling queue folder.  Everything about that worker
 vocabulary and path-field ban are therefore not restated here: they are read
 from the import contract, which owns them.  This file adds only what is
 specific to synchronization: its own function, queue folders, request fields,
-and the two phases a synchronization is split into.
+and the phases it serves: the two a reviewed synchronization is split into and
+the export that pushes a whole reserving class without a review.
 """
 from __future__ import annotations
 
@@ -131,8 +132,8 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
     for key in ("Function", "ContractVersion", "RequestId", "Phase"):
         if key not in normalized["required_request_fields"]:
             raise ResQSyncContractError(f"{key} must be required by the request contract.")
-    if set(normalized["allowed_phases"]) != {"preview", "apply"}:
-        raise ResQSyncContractError("Phases must be exactly preview and apply.")
+    if set(normalized["allowed_phases"]) != {"preview", "apply", "export"}:
+        raise ResQSyncContractError("Phases must be exactly preview, apply, and export.")
     if set(normalized["selection_row_fields"]) != {"Id", "Signature"}:
         raise ResQSyncContractError(
             "A selected review row must carry exactly its row ID and reviewed signature."

@@ -42,7 +42,7 @@ def _reviewed_row(row_id: str = "paid-loss") -> dict:
 def _request(**overrides):
     payload = {
         "Function": "SyncResQReservingClass",
-        "ContractVersion": 1,
+        "ContractVersion": 2,
         "RequestId": "sync-request-123",
         "ProjectName": "Demo",
         "Path": r"Auto\PP",
@@ -58,9 +58,10 @@ class _StubSession(types.SimpleNamespace):
 
     def __init__(self, *, apply_result=None, apply_error=None):
         super().__init__()
-        self.SYNC_SESSION_API_VERSION = 2
+        self.SYNC_SESSION_API_VERSION = resq_sync_runner.SUPPORTED_SYNC_SESSION_API_VERSION
         self.preview_calls = []
         self.apply_calls = []
+        self.export_calls = []
         self._apply_result = apply_result or {"status": "completed", "results": []}
         self._apply_error = apply_error
 
@@ -91,6 +92,12 @@ class _StubSession(types.SimpleNamespace):
         if self._apply_error is not None:
             raise self._apply_error
         return dict(self._apply_result)
+
+    def export_reserving_class(self, runtime, project_name, rc_path, *, server_root, progress_callback=None):
+        self.export_calls.append((runtime, project_name, rc_path, server_root))
+        if progress_callback is not None:
+            progress_callback({"event": "write", "completed": 1, "total": 1, "status": "success"})
+        return {"status": "completed", "results": [{"id": "paid-loss", "outcome": "exported"}]}
 
 
 class ResQSyncRunnerPhaseTests(unittest.TestCase):
@@ -178,6 +185,23 @@ class ResQSyncRunnerPhaseTests(unittest.TestCase):
         self.assertEqual(staging_parent, self.server_root / "r")
         self.assertEqual((project_name, rc_path), ("Demo", r"Auto\PP"))
         self.assertEqual(request_id, "sync-request-123")
+
+    def test_an_export_holds_the_reserving_class_lease_and_runs_the_export_session(self):
+        events = []
+        account = {"connection_name": "ResQ Prod", "user_name": "svc", "password": "secret"}
+
+        result = self._run(_request(Phase="export"), progress=events.append, credentials=account)
+
+        self.assertEqual(result["phase"], "export")
+        self.assertEqual(result["status"], "completed")
+        self.acquire.assert_called_once()
+        self.release.assert_called_once_with(self.lease)
+        self.assertEqual(self.session.apply_calls, [])
+        runtime, project_name, rc_path, server_root = self.session.export_calls[0]
+        self.assertEqual((project_name, rc_path), ("Demo", r"Auto\PP"))
+        self.assertEqual(server_root, self.server_root.resolve())
+        self.assertEqual(runtime["resq_credentials"], account)
+        self.assertEqual(events, [{"event": "write", "completed": 1, "total": 1, "status": "success"}])
 
     def test_a_reviewed_row_without_its_signature_is_refused_before_any_lease(self):
         for rows in ([{"Id": "paid-loss"}], [{"Signature": {"key": "x"}}], ["paid-loss"], []):

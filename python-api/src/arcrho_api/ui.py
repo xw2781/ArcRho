@@ -6,7 +6,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -280,6 +280,61 @@ def send_command(
     if not out.ok:
         raise ArcRhoApiError(out.error or f"ArcRho UI command failed: {command}")
     return out
+
+
+REVIEW_TABLE_POLL_SECONDS = 0.5
+
+
+def _command_result(result: object) -> dict[str, Any]:
+    """The result payload of a UI command, whether it came back typed or as JSON."""
+
+    if isinstance(result, dict):
+        payload = result.get("result")
+        return dict(payload) if isinstance(payload, dict) else dict(result)
+    payload = getattr(result, "result", None)
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def await_review_table(
+    ui: "ArcRhoUI",
+    payload: dict[str, Any],
+    *,
+    on_poll: Callable[[], None] | None = None,
+    poll_interval_sec: float = REVIEW_TABLE_POLL_SECONDS,
+) -> dict[str, Any]:
+    """Open a review table, wait until the person completes it, and return the completion.
+
+    ``ui.reviewTableOpen`` returns at once so the automation queue stays free
+    while the table is open; the completion is read through
+    ``ui.reviewTableStatus`` and the table is always closed afterwards.
+    ``on_poll`` runs before every status look, which is where a macro reports
+    its activity and checks whether it was cancelled.
+    """
+
+    opened = ui.send_command("ui.reviewTableOpen", args=dict(payload), timeout_sec=20)
+    opened_payload = _command_result(opened)
+    dialog_id = str(opened_payload.get("dialogId") or opened_payload.get("dialog_id") or "").strip()
+    if not dialog_id:
+        raise ArcRhoApiError("ArcRho did not return a review-table dialog ID. Update or restart the ArcRho shell.")
+    try:
+        while True:
+            if on_poll is not None:
+                on_poll()
+            status = ui.send_command("ui.reviewTableStatus", args={"dialogId": dialog_id}, timeout_sec=20)
+            completion = _command_result(status)
+            state = str(completion.get("status") or completion.get("state") or "").strip().casefold()
+            if state == "completed":
+                return completion
+            if state not in {"", "pending", "open"}:
+                raise ArcRhoApiError(
+                    str(completion.get("error") or f"Review table ended in an unexpected state: {state}")
+                )
+            time.sleep(poll_interval_sec)
+    finally:
+        try:
+            ui.send_command("ui.reviewTableClose", args={"dialogId": dialog_id}, timeout_sec=10)
+        except Exception:
+            pass
 
 
 def message_box(
@@ -979,6 +1034,9 @@ class ArcRhoUI:
 
     def progress_bar(self, **kwargs: Any) -> ProgressBar:
         return ProgressBar(self, **kwargs)
+
+    def review_table(self, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        return await_review_table(self, payload, **kwargs)
 
     def project_instance_context(self, **kwargs: Any) -> UiCommandResult:
         kwargs.setdefault("app_url", self.app_url)

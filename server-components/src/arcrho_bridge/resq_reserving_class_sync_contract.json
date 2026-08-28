@@ -1,5 +1,5 @@
 {
-  "contract_version": 1,
+  "contract_version": 3,
   "function": "SyncResQReservingClass",
   "request_relative_dir": [
     "requests",
@@ -24,7 +24,8 @@
   ],
   "allowed_phases": [
     "preview",
-    "apply"
+    "apply",
+    "export"
   ],
   "selection_field": "SelectedRows",
   "selection_row_fields": [

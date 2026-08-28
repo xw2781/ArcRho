@@ -18,6 +18,10 @@ imports, and runs its two phases:
     the same time -- rechecks the reviewed signatures, and writes only when
     every one of them still matches.
 
+``export``
+    Takes the same lease and pushes the whole reserving class from ArcRho into
+    ResQ in dependency order, with no review and no signature.
+
 Like the import queue, the request carries logical identifiers only: the server
 root, queue folders, and status path are all derived from the Bridge's own
 configuration.
@@ -86,7 +90,7 @@ SELECTION_FIELD = SYNC_CONTRACT["selection_field"]
 
 # The session API this Bridge was built against. A bundle that changed the
 # contract must not be driven by an older worker.
-SUPPORTED_SYNC_SESSION_API_VERSION = 2
+SUPPORTED_SYNC_SESSION_API_VERSION = 3
 
 _SESSION_MODULE_NAME = "resq_migration.sync_session"
 _EXPORTER_MODULE_NAME = "_arcrho_bridge_resq_sync_exporter"
@@ -139,7 +143,7 @@ def run_reserving_class_sync(
         )
         return _json_safe(dict(result, phase=phase))
 
-    # Only the writing phase competes for the reserving class. A preview is
+    # Only a writing phase competes for the reserving class. A preview is
     # read-only and must never block an import that is already running.
     lease = _acquire_target_lock(
         _import_staging_parent(server_root),
@@ -153,14 +157,23 @@ def run_reserving_class_sync(
         thread_name=f"arcrho-resq-sync-lease-{request_id[:8]}",
     )
     try:
-        result = session.apply_sync(
-            runtime,
-            project_name,
-            rc_path,
-            server_root=server_root,
-            reviewed_rows=reviewed_rows,
-            progress_callback=report,
-        )
+        if phase == "apply":
+            result = session.apply_sync(
+                runtime,
+                project_name,
+                rc_path,
+                server_root=server_root,
+                reviewed_rows=reviewed_rows,
+                progress_callback=report,
+            )
+        else:
+            result = session.export_reserving_class(
+                runtime,
+                project_name,
+                rc_path,
+                server_root=server_root,
+                progress_callback=report,
+            )
         return _json_safe(dict(result, phase=phase))
     finally:
         stop_engine_job_lease_heartbeat(

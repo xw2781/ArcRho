@@ -56,7 +56,7 @@ def _plan_row(
         "detail": "Test detail",
         "selected": selected,
         "disabled": disabled,
-        "conflict": False,
+        "review": False,
     }
 
 
@@ -93,7 +93,12 @@ class SyncSessionPhaseTests(unittest.TestCase):
     def test_preview_never_opens_a_write_session_and_publishes_row_signatures(self):
         runtime, migration = self._runtime()
         row = self._action_row("paid-loss", 200)
-        preview = {"plan": [row], "state": {"items": {}}, "state_path": Path("state.json")}
+        preview = {
+            "plan": [row],
+            "state": {"items": {}},
+            "state_path": Path("state.json"),
+            "direction": {"direction": "arcrho_to_resq", "arcrho_timestamp": 200.0, "resq_timestamp": 199.0},
+        }
 
         with (
             patch.object(sync_session, "_plan_context", return_value=preview),
@@ -108,6 +113,9 @@ class SyncSessionPhaseTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "review_required")
         self.assertEqual(result["connection_name"], "ResQ Test")
+        self.assertEqual(result["direction"]["action"], "arcrho_to_resq")
+        self.assertEqual(result["direction"]["label"], "ArcRho -> ResQ")
+        self.assertNotEqual(result["direction"]["arcrho_timestamp"], "Unknown")
         apply_plan.assert_not_called()
         self.assertEqual(
             result["preview"][0]["signature"],
@@ -485,7 +493,7 @@ class SyncSessionWriteRecheckTests(unittest.TestCase):
         restamped = [dict(resq[0], modified_timestamp=1787688056.141 + 60)]
         fresh_plan = sync_contract.build_sync_plan(arcrho, restamped, {"items": {}})
         current = sync_session._plan_by_id(fresh_plan)[plan[0]["id"]]
-        self.assertTrue(current.get("conflict") or current["action"] != plan[0]["action"])
+        self.assertNotEqual(current["action"], plan[0]["action"])
 
         self.assertFalse(sync_session._row_moved_before_write(runtime, selected[0], current))
 
@@ -519,7 +527,7 @@ class SyncSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(callable(runtime["method_entry"]))
 
     def test_the_session_declares_the_api_version_the_bridge_pins(self):
-        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 2)
+        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 3)
 
     def test_the_exporter_connects_with_the_account_the_host_supplied(self):
         migration = types.SimpleNamespace(
@@ -891,6 +899,7 @@ class SyncSessionMethodNotesTests(unittest.TestCase):
                 "method_type": "DFM",
                 "data_format": "Origin Vector",
                 "notes": "Excluded 2020.\nSelected 3-year.",
+                "precedents": [{"dataset_name": "Paid Loss"}],
                 "last_modified": "2026-08-27T09:18:22",
             }
             (rc_dir / "sidecars" / "Paid CDF.json").write_text(json.dumps(sidecar), encoding="utf-8")
@@ -928,7 +937,10 @@ class SyncSessionMethodNotesTests(unittest.TestCase):
         # The output sidecar folds into its method row instead of listing twice.
         self.assertEqual(sorted(by_name), ["Orphan CDF", "Paid CDF", "Paid Loss"])
         self.assertEqual(by_name["Paid CDF"]["notes"], "Excluded 2020.\nSelected 3-year.")
+        # The output sidecar's graph edges ride along too, for the write order.
+        self.assertEqual(by_name["Paid CDF"]["precedents"], ["Paid Loss"])
         self.assertNotIn("notes", by_name["Orphan CDF"])
+        self.assertNotIn("precedents", by_name["Orphan CDF"])
         # A plain dataset's sidecar is its own notes owner.
         self.assertEqual(by_name["Paid Loss"]["notes"], "Loaded from claims.")
 
@@ -1001,6 +1013,228 @@ class SyncSessionMethodNotesTests(unittest.TestCase):
             sync_session._verify_dataset_export(exporter, row, [[1.0]])
         target.Notes = "Reviewed."
         sync_session._verify_dataset_export(exporter, row, [[1.0]])
+
+
+def _export_item(name: str, *, kind: str = "Dataset", payload: dict | None = None, **fields) -> dict:
+    item = {"name": name, "kind": kind, "payload": dict(payload or {}), "export_block_reason": ""}
+    item.update(fields)
+    return item
+
+
+def _push_exporter():
+    """An exporter whose writers only move the counters the session reads."""
+
+    exporter = Mock()
+    exporter.counts = {
+        "errors": 0,
+        "datasets_written": 0,
+        "dfms_written": 0,
+        "result_selections_written": 0,
+        "methods_saved": 0,
+    }
+    exporter.skipped = {}
+    exporter.skip_details = []
+    exporter.error_details = []
+
+    def bump(field):
+        def writer(*_args, **_kwargs):
+            exporter.counts[field] += 1
+        return writer
+
+    exporter.export_datasets.side_effect = bump("datasets_written")
+    exporter.export_dfms.side_effect = bump("dfms_written")
+    exporter.export_result_selections.side_effect = bump("result_selections_written")
+    exporter.save_method.side_effect = bump("methods_saved")
+    return exporter
+
+
+class SyncSessionExportTests(unittest.TestCase):
+    """The export phase pushes the whole class one way, in ArcRho's dependency order."""
+
+    def _runtime(self, migration=None):
+        from resq_migration import sync as sync_contract
+
+        return {"migration": migration or Mock(), "sync_contract": sync_contract}
+
+    def test_export_rows_leave_bootstrap_out_and_key_rows_by_logical_name(self):
+        rows = sync_session._export_rows(self._runtime(), [
+            _export_item("Paid  Loss"),
+            _export_item("Boot", kind=sync_session.KIND_BOOTSTRAP),
+            _export_item("BF Ult", kind=sync_session.KIND_BF),
+        ])
+
+        self.assertEqual([row["name"] for row in rows], ["Paid  Loss", "BF Ult"])
+        self.assertEqual(rows[0]["key"], "paid loss")
+        self.assertEqual(rows[0]["id"], rows[0]["key"])
+        self.assertIs(rows[1]["arcrho"]["kind"], sync_session.KIND_BF)
+
+    def test_a_save_only_method_is_saved_by_its_resq_code(self):
+        exporter = _push_exporter()
+        for kind, code in ((sync_session.KIND_BF, 2), (sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8), (sync_session.KIND_BS_CRA, 9)):
+            with self.subTest(kind=kind):
+                exporter.save_method.reset_mock()
+                row = {"kind": kind, "name": f"{kind} method", "arcrho": _export_item(f"{kind} method", kind=kind)}
+
+                outcome, message = sync_session._push_row_to_resq(exporter, row)
+
+                self.assertEqual((outcome, message), ("saved", "Written to ResQ."))
+                exporter.save_method.assert_called_once_with(code, f"{kind} method")
+        exporter.export_bfs.assert_not_called()
+        exporter.export_ccs.assert_not_called()
+
+    def test_a_dataset_and_a_dfm_go_through_the_writers_with_their_notes(self):
+        exporter = _push_exporter()
+        dataset = {"kind": "Dataset", "name": "Paid Loss", "arcrho": _export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"})}
+        dfm = {
+            "kind": sync_session.KIND_DFM,
+            "name": "Paid CDF",
+            "arcrho": _export_item("Paid CDF", kind=sync_session.KIND_DFM, payload={"details_tab": {"name": "Paid DFM"}}, method_name="Paid DFM", notes="Excluded 2020."),
+        }
+
+        self.assertEqual(sync_session._push_row_to_resq(exporter, dataset), ("exported", "Written to ResQ."))
+        self.assertEqual(sync_session._push_row_to_resq(exporter, dfm), ("exported", "Written to ResQ."))
+
+        exporter.export_datasets.assert_called_once_with([{"csv_file": "Paid Loss.csv"}])
+        exporter.export_dfms.assert_called_once_with(
+            [{"name": "Paid DFM", "payload": {"details_tab": {"name": "Paid DFM"}}, "notes": "Excluded 2020."}]
+        )
+
+    def test_a_blocked_item_is_skipped_with_the_inventory_reason(self):
+        exporter = _push_exporter()
+        row = {
+            "kind": "Dataset",
+            "name": "Paid Loss",
+            "arcrho": _export_item("Paid Loss", export_block_reason="The ArcRho dataset CSV cache is missing."),
+        }
+
+        outcome, message = sync_session._push_row_to_resq(exporter, row)
+
+        self.assertEqual((outcome, message), ("skipped", "The ArcRho dataset CSV cache is missing."))
+        exporter.export_datasets.assert_not_called()
+
+    def test_an_exporter_skip_or_error_is_reported_with_its_message(self):
+        exporter = _push_exporter()
+
+        def skip(_sidecars):
+            exporter.skipped["calculated_in_resq"] = 1
+            exporter.skip_details.append({"message": "ResQ dataset is calculated; ResQ recomputes its values"})
+
+        exporter.export_datasets.side_effect = skip
+        row = {"kind": "Dataset", "name": "Paid Loss", "arcrho": _export_item("Paid Loss")}
+        self.assertEqual(
+            sync_session._push_row_to_resq(exporter, row),
+            ("skipped", "ResQ dataset is calculated; ResQ recomputes its values"),
+        )
+
+        def fail(_code, _name):
+            exporter.counts["errors"] += 1
+            exporter.error_details.append({"message": "locked by the template"})
+
+        exporter.save_method.side_effect = fail
+        bf = {"kind": sync_session.KIND_BF, "name": "BF Ult", "arcrho": _export_item("BF Ult", kind=sync_session.KIND_BF)}
+        self.assertEqual(sync_session._push_row_to_resq(exporter, bf), ("failed", "locked by the template"))
+
+    def test_method_rows_order_by_their_output_sidecar_precedents(self):
+        from resq_migration import sync as sync_contract
+
+        def row(name, kind, *, precedents=(), payload=None):
+            return {
+                "id": name,
+                "key": sync_contract.logical_key(name),
+                "name": name,
+                "kind": kind,
+                "arcrho": {"payload": dict(payload or {}), "precedents": list(precedents)},
+            }
+
+        # A Result Selection feeds a Berquist Sherman adjustment whose output
+        # triangle a DFM reads: only the sidecar edges can put them in order.
+        rows = [
+            row("D 18 - BS Paid DFM", sync_session.KIND_DFM, payload={"details_tab": {"input_triangle": "Gross Loss--Paid - B&S"}}),
+            row("Gross Loss--Paid - B&S", sync_session.KIND_BS_SR, precedents=["Gross Loss--Paid", "C 92 - Selected"]),
+            row("C 92 - Selected", sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "Claim Counts"}]}}),
+            row("Gross Loss--Paid", "Dataset"),
+            row("Claim Counts", "Dataset"),
+        ]
+
+        ordered = sync_session._dependency_ordered_rows(sync_contract, rows)
+
+        self.assertEqual(
+            [item["id"] for item in ordered],
+            ["Gross Loss--Paid", "Claim Counts", "C 92 - Selected", "Gross Loss--Paid - B&S", "D 18 - BS Paid DFM"],
+        )
+
+    def test_export_reserving_class_writes_in_dependency_order_and_reports_every_item(self):
+        import tempfile
+
+        exporter = _push_exporter()
+        inventory = [
+            _export_item("Selected Ult", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "BF Ult"}]}}),
+            _export_item("BF Ult", kind=sync_session.KIND_BF, precedents=["Paid LDF", "Paid Loss"]),
+            _export_item("Boot", kind=sync_session.KIND_BOOTSTRAP),
+            _export_item("Paid LDF", kind=sync_session.KIND_DFM, precedents=["Paid Loss"], method_name="Paid DFM"),
+            _export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"}),
+        ]
+        events = []
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "data" / "RC").mkdir(parents=True)
+            migration = Mock()
+            migration.PROJECT_DATA_DIR = root / "data"
+            migration._encode_rc_folder.return_value = "RC"
+            migration._apply_runtime_scope.return_value = {"previous": True}
+            migration.CONNECTION_NAME = "ResQ Test"
+            migration.USER_NAME = ""
+            migration.PASSWORD = ""
+            runtime = self._runtime(migration)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=inventory) as collect,
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    runtime, "Demo", r"Auto\PP", server_root=root, progress_callback=events.append
+                )
+
+        collect.assert_called_once_with(runtime, root / "data" / "RC")
+        exporter.connect.assert_called_once_with()
+        exporter.disconnect.assert_called_once_with()
+        migration._restore_runtime_scope.assert_called_once_with({"previous": True})
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual((result["project_name"], result["rc_path"], result["connection_name"]), ("Demo", r"Auto\PP", "ResQ Test"))
+        self.assertEqual(
+            [(item["name"], item["outcome"]) for item in result["results"]],
+            [("Paid Loss", "exported"), ("Paid LDF", "exported"), ("BF Ult", "saved"), ("Selected Ult", "exported")],
+        )
+        exporter.save_method.assert_called_once_with(2, "BF Ult")
+        writes = [event for event in events if event.get("event") == "write"]
+        self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
+        self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")
+
+    def test_a_failed_item_marks_the_export_completed_with_errors_and_keeps_going(self):
+        import tempfile
+
+        exporter = _push_exporter()
+        exporter.export_datasets.side_effect = RuntimeError("COM went away")
+        inventory = [_export_item("Paid Loss"), _export_item("BF Ult", kind=sync_session.KIND_BF)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "data" / "RC").mkdir(parents=True)
+            migration = Mock()
+            migration.PROJECT_DATA_DIR = root / "data"
+            migration._encode_rc_folder.return_value = "RC"
+            migration.CONNECTION_NAME = "ResQ Test"
+            migration.USER_NAME = ""
+            migration.PASSWORD = ""
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=inventory),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(self._runtime(migration), "Demo", r"Auto\PP", server_root=root)
+
+        self.assertEqual(result["status"], "completed_with_errors")
+        self.assertEqual(
+            [(item["name"], item["outcome"], item["message"]) for item in result["results"]],
+            [("Paid Loss", "failed", "COM went away"), ("BF Ult", "saved", "Written to ResQ.")],
+        )
 
 
 if __name__ == "__main__":

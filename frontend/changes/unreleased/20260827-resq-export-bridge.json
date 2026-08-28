@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Export Reserving Class to ResQ now runs on the ResQ-connected ArcRho Bridge from any PC, pushes the class in ArcRho's dependency order, and shows its results in a Project Instance window.",
+  "details": [
+    "Input datasets are written with their Notes, DFM and Result Selection selections and Notes are written, and Bornhuetter Ferguson, Cape Cod and Berquist Sherman methods are saved so ResQ recalculates them from what was just written.",
+    "Calculated and engine-built datasets and Bootstrap methods are left out; a dataset without a CSV cache is reported as skipped with the reason.",
+    "Items are written in the order ArcRho's dependency graph gives, so a method is never saved before its inputs.",
+    "The results open in the same nested Project Instance window the Sync macro uses: one row per item with Exported, Saved, Skipped or Failed and the Bridge's message.",
+    "The export compares no timestamps and records no sync baseline, so the next Sync Reserving Class with ResQ preview reports every exported item as changed on the ResQ side."
+  ]
+}

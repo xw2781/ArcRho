@@ -141,12 +141,42 @@ def _support_for_action(
     return False, "No synchronization action is available."
 
 
+def plan_direction(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Decide the one direction a whole reserving class is pushed in.
+
+    Each side's timestamp is the latest modified timestamp among the items the
+    review shows, and the newer side is the source for every row. Matching or
+    unknown timestamps give no direction, so nothing is pushed.
+    """
+
+    latest: dict[str, float | None] = {"arcrho": None, "resq": None}
+    for row in rows:
+        for side in ("arcrho", "resq"):
+            item = row.get(side)
+            moment = _timestamp(item.get("modified_timestamp")) if isinstance(item, Mapping) else None
+            if moment is not None and (latest[side] is None or moment > latest[side]):
+                latest[side] = moment
+    local_time = latest["arcrho"]
+    remote_time = latest["resq"]
+    direction = ""
+    if local_time is not None and remote_time is not None and not _timestamps_equal(local_time, remote_time):
+        direction = ACTION_ARCRHO_TO_RESQ if local_time > remote_time else ACTION_RESQ_TO_ARCRHO
+    return {"direction": direction, "arcrho_timestamp": local_time, "resq_timestamp": remote_time}
+
+
 def _comparison_action(
     arcrho: Mapping[str, Any],
     resq: Mapping[str, Any],
     baseline: Mapping[str, Any] | None,
+    direction: str,
 ) -> tuple[str, str, str, bool]:
-    """Return action, status, detail, and whether the row is a two-sided conflict."""
+    """Return action, status, detail, and whether the row is marked for review.
+
+    ``direction`` is the reserving class's direction. A row is pushed that way
+    whenever it changed on either side; it is marked for review when the side
+    being written over is the one that changed, because that push overwrites
+    an edit rather than delivering one. Review never blocks the push.
+    """
 
     local_time = _timestamp(arcrho.get("modified_timestamp"))
     remote_time = _timestamp(resq.get("modified_timestamp"))
@@ -156,31 +186,35 @@ def _comparison_action(
             missing.append("ArcRho")
         if remote_time is None:
             missing.append("ResQ")
-        return "", "Unknown timestamp", f"{', '.join(missing)} timestamp is unavailable; no direction was inferred.", False
+        return "", "Unknown timestamp", f"{', '.join(missing)} timestamp is unavailable; the row is left alone.", False
 
     if baseline:
         local_changed = _changed_from_baseline(arcrho, baseline, "arcrho")
         remote_changed = _changed_from_baseline(resq, baseline, "resq")
-        if local_changed is False and remote_changed is False:
+        if local_changed is None or remote_changed is None:
+            # An incomplete legacy/invalid baseline must never silently decide.
+            return "", "Unknown baseline", "The saved synchronization baseline is incomplete; the row is left alone.", False
+        if not local_changed and not remote_changed:
             return "", "Synchronized", "Neither side changed since the last accepted synchronization.", False
-        if local_changed is True and remote_changed is False:
-            return ACTION_ARCRHO_TO_RESQ, "ArcRho changed", "ArcRho changed since the last synchronization.", False
-        if remote_changed is True and local_changed is False:
-            return ACTION_RESQ_TO_ARCRHO, "ResQ changed", "ResQ changed since the last synchronization.", False
-        if local_changed is True and remote_changed is True:
-            if _timestamps_equal(local_time, remote_time):
-                return "", "Both changed", "Both sides changed and have the same timestamp; choose neither and review manually.", True
-            if local_time > remote_time:
-                return ACTION_ARCRHO_TO_RESQ, "Both changed; ArcRho newer", "Both sides changed; the newer ArcRho timestamp is proposed.", True
-            return ACTION_RESQ_TO_ARCRHO, "Both changed; ResQ newer", "Both sides changed; the newer ResQ timestamp is proposed.", True
-        # An incomplete legacy/invalid baseline must never silently decide.
-        return "", "Unknown baseline", "The saved synchronization baseline is incomplete; no direction was inferred.", False
+        status = "Both changed" if local_changed and remote_changed else ("ArcRho changed" if local_changed else "ResQ changed")
+        detail = f"{status} since the last synchronization."
+    else:
+        if _timestamps_equal(local_time, remote_time):
+            return "", "Same timestamp", "The timestamps match; content equality was not assumed.", False
+        local_changed = local_time > remote_time
+        remote_changed = not local_changed
+        status = "ArcRho newer" if local_changed else "ResQ newer"
+        detail = f"{status.split()[0]} has the newer timestamp."
 
-    if _timestamps_equal(local_time, remote_time):
-        return "", "Same timestamp", "The timestamps match; content equality was not assumed.", False
-    if local_time > remote_time:
-        return ACTION_ARCRHO_TO_RESQ, "ArcRho newer", "ArcRho has the newer timestamp.", False
-    return ACTION_RESQ_TO_ARCRHO, "ResQ newer", "ResQ has the newer timestamp.", False
+    if not direction:
+        return "", status, f"{detail} The reserving class has no newer side, so nothing is pushed.", False
+    if direction == ACTION_ARCRHO_TO_RESQ:
+        source, target, target_changed = "ArcRho", "ResQ", remote_changed
+    else:
+        source, target, target_changed = "ResQ", "ArcRho", local_changed
+    if target_changed:
+        return direction, status, f"{detail} The {source} copy overwrites this {target} change; review before applying.", True
+    return direction, status, detail, False
 
 
 def build_sync_plan(
@@ -192,13 +226,15 @@ def build_sync_plan(
 
     An item on one side only is not a synchronization candidate: a new dataset
     or method reaches the other side through an import, not through this
-    review, so such items never become rows.
+    review, so such items never become rows. Every row is pushed in the one
+    direction ``plan_direction`` decides for the whole reserving class.
     """
 
     local_groups = _group_inventory(arcrho_items)
     remote_groups = _group_inventory(resq_items)
     state_items = state.get("items") if isinstance(state, Mapping) and isinstance(state.get("items"), Mapping) else {}
     rows: list[dict[str, Any]] = []
+    comparable: list[tuple[dict[str, Any], Mapping[str, Any] | None]] = []
     for key in sorted(set(local_groups) & set(remote_groups)):
         local_candidates = local_groups[key]
         remote_candidates = remote_groups[key]
@@ -215,7 +251,7 @@ def build_sync_plan(
             "detail": "",
             "selected": False,
             "disabled": True,
-            "conflict": False,
+            "review": False,
             "state_signature": _state_signature(baseline),
         }
         if len(local_candidates) > 1 or len(remote_candidates) > 1:
@@ -278,24 +314,30 @@ def build_sync_plan(
             rows.append(row)
             continue
 
-        action, status, detail, conflict = _comparison_action(arcrho, resq, baseline)
-        row.update(action=action, status=status, detail=detail, conflict=conflict)
+        rows.append(row)
+        comparable.append((row, baseline))
+
+    direction = plan_direction(rows)["direction"]
+    for row, baseline in comparable:
+        arcrho = row["arcrho"]
+        resq = row["resq"]
+        action, status, detail, review = _comparison_action(arcrho, resq, baseline, direction)
+        row.update(action=action, status=status, detail=detail, review=review)
         if action:
             supported, reason = _support_for_action(action, arcrho, resq)
             if supported:
+                # Every supported row rides with the reserving class; a review
+                # mark is a warning to read, not a reason to leave the row out.
                 row["disabled"] = False
-                # Straightforward one-sided/newer changes are selected by default;
-                # a two-sided conflict requires an explicit user opt-in.
-                row["selected"] = not conflict
+                row["selected"] = True
                 if action == ACTION_ARCRHO_TO_RESQ:
-                    scope_note = clean_name((arcrho or {}).get("export_scope_note"))
+                    scope_note = clean_name(arcrho.get("export_scope_note"))
                     if scope_note:
                         row["status"] = f"{status}; supported fields only"
                         row["detail"] = f"{detail} {scope_note}".strip()
             else:
                 row["status"] = f"{status}; unsupported"
                 row["detail"] = f"{detail} {reason}".strip()
-        rows.append(row)
     return rows
 
 
@@ -317,7 +359,7 @@ def plan_signature(row: Mapping[str, Any]) -> dict[str, Any]:
         "key": str(row.get("key") or ""),
         "action": str(row.get("action") or ""),
         "disabled": bool(row.get("disabled")),
-        "conflict": bool(row.get("conflict")),
+        "review": bool(row.get("review")),
         "state_signature": dict(row.get("state_signature") or {}),
         "arcrho": side(row.get("arcrho")),
         "resq": side(row.get("resq")),
@@ -356,7 +398,7 @@ def signatures_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
         return False
     if bool(left.get("disabled")) != bool(right.get("disabled")):
         return False
-    if bool(left.get("conflict")) != bool(right.get("conflict")):
+    if bool(left.get("review")) != bool(right.get("review")):
         return False
     if dict(left.get("state_signature") or {}) != dict(right.get("state_signature") or {}):
         return False
@@ -543,7 +585,6 @@ def absorb_propagated_changes(
             opening_remote = _timestamp(side(before_row, "resq").get("modified_timestamp"))
             showed_no_difference = (
                 not before_row.get("action")
-                and not before_row.get("conflict")
                 and opening_local is not None
                 and opening_remote is not None
                 and _timestamps_equal(opening_local, opening_remote)

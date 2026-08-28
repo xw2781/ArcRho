@@ -1,53 +1,143 @@
-# Export Reserving Class to ResQ — design notes and open questions
+# One-way ResQ reserving-class export
 
-Status: first release notes for the `Export Reserving Class to ResQ` macro
-(`python-api/macros/export_reserving_class_to_resq.py`), 2026-08-11.
-Verified against ResQ connection `JGO_CO1SQLWPV22`, project
-`NJ_Annual_Prod_202605_Fake` on both the ArcRho Server and the ResQ database.
+The `Export Reserving Class to ResQ` macro
+(`python-api/macros/export_reserving_class_to_resq.py`) pushes one ArcRho
+reserving class into the identically scoped ResQ reserving class, one way and
+without a review. It is the push counterpart of the
+[sync macro](resq_reserving_class_sync.md): the same Bridge queue, the same
+canonical session, the same ResQ writer, and the same results window, minus
+the comparison, the signatures, and the baseline.
 
-## What the macro does
+The ArcRho project name is also used as the ResQ project name, and the
+selected reserving-class path must exist in that project on both sides. The
+UI does not offer a project or path mapping override.
 
-For the reserving-class path selected in the active Project Instance page, the
-macro pushes ArcRho state into the matching ResQ reserving class over the ResQ
-COM API (`ResQ3Automation.ResQApplication`), in this order:
+## What is pushed
 
-1. **Plain datasets** (sidecar `method_type_code == 0`): triangle and vector
-   values from the reserving-class `datasets/` CSV cache, cell by cell
-   (`SetValuesByIndex`). Missing ResQ datasets are created under their existing
-   Dataset Type; vectors are written at `StoredPeriodLength` and the display
-   length is restored before `Save()`.
-2. **DFM methods** (`methods/DFM@*.json`): ratio exclusions
-   (`SetExcludedRatios`), User Entry factors (`SetUserRatios`), per-column
-   selected averages (`SetSelectedRatios`), matching average rows by
-   whitespace-normalized label against `AverageFormula(i)`, and Method Notes
-   (`Notes`) taken from the method's output sidecar.
-3. **Bornhuetter Ferguson** (`BF@*.json`): `Latest`/`LatestType`,
-   `PercentageDeveloped(Type)`, `Prior`/`PriorType`, `OriginLength`.
-4. **Cape Cod** (`CC@*.json`): `Exposure`, `Latest`, `PercentageDeveloped(Type)`,
-   `AutoTrendFit`, `TrendRate`, `DecayFactor`, `AltUltimateCalc`.
-5. **Result Selection** (`RS@*.json`): loads missing source datasets
-   (`AddDataset`), weights (`SetWeights`), and selected-ultimate overrides
-   (`ClearOverriddenUltimates` + `SetUltimates(i, OriginLength, v)`).
+For the reserving-class path selected in the active Project Instance page,
+every item below is written, each after the items it reads:
 
-Each mutated object gets its own `Save()`; dataset writes run inside
-`project.BeginDelayedUpdate()`/`EndDelayedUpdate()` when available. Errors and
-skips are collected per item and reported in the summary dialog instead of
-aborting the run.
+- **Input datasets** — every sidecar whose `method_type` is `None`, that is
+  neither `calculated` nor an `engine` dataset, and that has a CSV cache on
+  disk. Triangle and vector values are written cell by cell
+  (`SetValuesByIndex`) and the sidecar Notes go into the ResQ `Notes`. A
+  dataset ResQ does not hold is created under its Dataset Type; a dataset that
+  is `Calculated` in ResQ is skipped, because ResQ recomputes it.
+- **DFM methods** — ratio exclusions (`SetExcludedRatios`), User Entry factors
+  (`SetUserRatios`), the selected average per column (`SetSelectedRatios`),
+  and Notes, the writer the sync's apply phase uses too.
+- **Result Selections** — the loaded source datasets, weights (`SetWeights`),
+  selected-ultimate overrides (`ClearOverriddenUltimates` + `SetUltimates`),
+  and Notes.
+- **Bornhuetter Ferguson, Cape Cod, and Berquist Sherman methods** — saved
+  only. The exporter finds the ResQ method by its ArcRho output name and calls
+  `Save()`, so ResQ recalculates it from the datasets and DFMs written before
+  it and re-stamps it. No field is carried across: ArcRho's own settings for
+  these methods are not pushed, and a method ResQ does not hold is reported
+  as skipped rather than created.
 
-Deliberately **not exported**: Bootstrap methods (excluded by request),
-Berquist Sherman methods (no documented COM creation path), method *output*
-datasets (their ResQ method recomputes them), datasets that are `Calculated`
-in ResQ (ResQ recomputes them), and the derived `@6`/`@12` aggregated CSV
-cache variants (only the sidecar's native `csv_file` granularity is written).
+Left out, and not shown in the results:
 
-## Verified behavior (fake-project read/write tests)
+- **Calculated datasets** — propagation recomputes them from their formula
+  inputs in ArcRho and in ResQ alike.
+- **Engine-generated datasets** (`source_kind: engine`) — ArcRho rebuilds them
+  through the Engine and ResQ through its own generator.
+- **Bootstrap methods** — ResQ has no write path for them yet.
+- **Method output datasets** — they are written through their method, never
+  as datasets.
+
+A dataset without a CSV cache, or a method-owned output sidecar whose method
+JSON is missing, is shown as `Skipped` with the reason.
+
+## Write order
+
+Items are written in ArcRho's dependency order, the same topological walk
+the sync's apply phase uses (`resq_migration.sync_session`). The graph comes
+from the sidecar `precedents`: a dataset row carries its own sidecar's
+precedents, and a method row carries the precedents of its output sidecar
+beside the links in its method tabs. A row is written only after every row it
+reads, wherever that row sits in the inventory; rows with no link between
+them keep a kind order — datasets, then DFMs and Berquist Sherman
+adjustments, then Bornhuetter Ferguson and Cape Cod, then Result Selections —
+and then the inventory order.
+
+The graph is genuinely needed. In the fake project, `C 92 - Current Qtr
+Selected` (a Result Selection of claim counts) feeds the B&S Settlement Rate
+adjustment of `Gross Loss--Paid`, whose adjusted triangle `D 18 - BS Paid
+DFM` reads, which `D 92 - Current Qtr Selected` loads in turn; the walk writes
+them in exactly that order, so each save in ResQ finds its inputs already
+written.
+
+## No review, no timestamps
+
+The export deliberately compares nothing, verifies nothing, and records no
+baseline. It is the tool for the moment ArcRho is the source of truth for a
+class and ResQ should simply follow.
+
+One consequence to know: ResQ's `Save()` re-stamps every written object, and
+no sync baseline records that this run did it. The next `Sync Reserving Class
+with ResQ` preview therefore reports every exported item as `ResQ changed`
+(or `Both changed`) and proposes the class direction ResQ to ArcRho. That
+preview is a review, not a write — untick the rows or cancel it — but expect
+it. Recording a paired baseline after an export is possible follow-up work.
+
+## Results window
+
+The results open inside the active Project Instance page as the same nested,
+read-only review window the sync macro uses (`ui.reviewTableOpen` with
+`host: "projectInstance"` and `selectable: false`): one row per item in write
+order, with the type, the logical name, an outcome of `Exported`, `Saved`,
+`Skipped`, or `Failed`, and the Bridge's message for the item, under a header
+naming the project, the reserving class, the ResQ connection, and the counts.
+The window is non-modal, so it can be minimized to the toolbar while the
+class is inspected; the macro keeps running until it is closed.
+
+Before anything is published, the macro asks for confirmation and refuses
+while the active nested window has unsaved changes, since an unsaved edit
+would not be part of the export.
+
+## Runtime
+
+ResQ automation exists only where ResQ itself is installed, which is usually
+not the machine ArcRho runs on. The macro therefore owns no ResQ session and
+reads no reserving-class file: it publishes an `export` request to the same
+Bridge queue the sync macro uses (`SyncResQReservingClass`, contract version
+3, under `requests\RPC bridge\resq_reserving_class_sync\`), and a
+ResQ-connected ArcRho Bridge worker on the Server PC runs
+`resq_migration.sync_session.export_reserving_class` on its behalf. The
+worker takes the reserving-class job lease a ResQ import and a sync apply
+take, so no two of them write one reserving class at the same time, and
+connects to ResQ with the shared service account from the server
+`config.json`.
+
+The client side is shared with the sync macro: `arcrho_api.resq_sync_queue`
+builds, publishes, and waits on the request and refuses before publishing
+when no ResQ-connected worker heartbeat is live, and
+`arcrho_api.ui.await_review_table` hosts the results window. Any Client PC
+can therefore export, provided some machine is running ResQ with ArcRho open.
+
+The ResQ writer, `ResQReservingClassExporter`, lives in the macro file. The
+Bridge freezes that file beside the canonical migration
+(`arcrho_bridge/bundled_sources.py`) and loads it as its writer, so an edit to
+the exporter or to the session has no effect on an export or a sync until the
+Bridge is rebuilt and redeployed. The worker refuses a bundle whose
+`SYNC_SESSION_API_VERSION` it was not built against rather than driving it.
+
+For headless use, build a runtime with
+`resq_migration.sync_session.build_runtime(migration, exporter_module)` and
+call `export_reserving_class(runtime, project_name, rc_path, server_root=...)`
+on a machine with ResQ.
+
+## ResQ COM findings
+
+Verified on 2026-08-11 against ResQ connection `JGO_CO1SQLWPV22`, project
+`NJ_Annual_Prod_202605_Fake`, when the writer was first built, and still what
+the writer relies on:
 
 - 749 read-back comparisons across vector values, DFM
   exclusions/selections/User Entry factors, RS weights, and BF linkage came
   back identical to the ArcRho sources for
-  `PRNJ - PA\PA\NY\Direct Group\BI Total`; the Cape Cod method in
-  `PRNJ - PA\PA\All States\Direct Group\COL` round-tripped its linkage,
-  `AutoTrendFit`, and `DecayFactor`.
+  `PRNJ - PA\PA\NY\Direct Group\BI Total`.
 - Dataset creation was exercised end to end: a deleted ResQ vector was
   recreated under its existing Dataset Type with byte-identical values.
 - The pywin32 write convention for parameterized VBA property puts is
@@ -55,125 +145,62 @@ cache variants (only the sidecar's native `csv_file` granularity is written).
   `SetSelectedRatios`); it appears nowhere in the ResQ documentation but is
   proven by `python-api/migration/references/ResQToolBox2.py`, the API example
   notebook, and the ArcRho Bridge `SyncDFM` implementation.
-
-## Practical constraints found during testing
-
 - **ResQ names carry stray whitespace.** Real objects exist with trailing or
-  doubled spaces (`"...Earned Premium "`, `"C 92 -  Current Qtr Selected"`),
-  while ArcRho normalized all names on import. A plain `collection.Item(name)`
-  misses those objects, so every macro lookup falls back to a cached
-  whitespace-normalized name map. Any future ResQ write-back code must do the
-  same.
+  doubled spaces, while ArcRho normalized all names on import. A plain
+  `collection.Item(name)` misses those objects, so every lookup falls back to
+  a cached whitespace-normalized name map.
 - **Dataset Type inserts can be permission-blocked.** The test ResQ user gets
-  "You do not have permission to insert a Dataset Type", so ArcRho-only
-  datasets whose Dataset Type does not exist in ResQ cannot be exported; the
-  macro records the `dataset_type_not_creatable` skip. Genuinely new method
-  exports (whose output type equals the new method name) hit the same wall.
-- **Template-implementation methods are locked.** Deleting (and presumably
-  structurally changing) a method that belongs to a ResQ reserving-class
-  template fails with "it is part of the ... template implementation". Value
-  and selection syncs still work; the method create path therefore only
-  matters for non-template methods.
-- **The ArcRho `datasets/` CSV cache is lazy.** In the test reserving class 75
-  of 78 plain datasets had no CSV on disk and were skipped
-  (`missing_csv_cache`). Users must open a dataset once in ArcRho (or a batch
-  cache build must exist) before its values can be exported. Method JSONs are
-  complete on disk, so method sync is unaffected.
-- **COM collection state is cached per connection.** After `Delete()` the item
-  still appears in the same session's collection; a fresh
-  connection sees the truth. The macro uses a single connection and only
-  creates, so this only affects external test tooling.
+  "You do not have permission to insert a Dataset Type", so an ArcRho-only
+  dataset whose Dataset Type does not exist in ResQ cannot be created; the
+  item is reported as skipped (`dataset_type_not_creatable`).
+- **Template-implementation methods are locked.** Structurally changing a
+  method that belongs to a ResQ reserving-class template fails with "it is
+  part of the ... template implementation". Value and selection writes and a
+  plain `Save()` still work.
+- **The ArcRho `datasets/` CSV cache is lazy.** A dataset never opened in
+  ArcRho has no CSV on disk and is skipped; open it once (or build the cache)
+  before exporting.
+- **COM collection state is cached per connection.** After `Delete()` the
+  item still appears in the same session's collection; a fresh connection
+  sees the truth. The exporter uses one connection and only creates.
 
-## Unclear / undocumented areas (for future work)
+## Unclear / undocumented areas
 
 ResQ COM API:
 
 1. Enum ordinals are undocumented; only `ResQMethodType` 0-4/8/9,
    `ResQDataFormat` 0/1, `RatioExclusionType` 0/1/2, and `PercDevelopedType`
-   0-3 are empirically confirmed. `ScalingType` codes are unknown, so the
-   macro does **not** write Cape Cod `scaling_type`.
+   0-3 are empirically confirmed.
 2. `AddMethod` accepts 1-4 in live code; whether it supports Berquist Sherman
-   (8/9) or Bootstrap (6) is unknown — no creation example exists anywhere.
+   (8/9) or Bootstrap (6) is unknown, which is one reason those are saved
+   rather than created.
 3. The User Entry average row is documented as row 11 but is row 10 in this
-   database; the macro always resolves it dynamically via `AverageFormula`
+   database; the writer always resolves it dynamically via `AverageFormula`
    labels, never by fixed index.
-4. `GetCapeCodMethod` (docs) vs `GetCapeCodeMethod` (ResQToolBox2) — the macro
-   avoids both and iterates `CapeCodMethods()`.
-5. No bulk/SafeArray write path exists; every cell is one COM round trip.
-   Whether `BeginDelayedUpdate` materially speeds up large triangle loads is
-   unmeasured.
-6. There is no explicit `Recalculate`; recalculation appears synchronous on
-   property set, but save-failure semantics (partial in-memory state) are
-   undocumented.
-7. `Save()` on `Selected` must be isolated per the docs; the macro never
+4. No bulk/SafeArray write path exists; every cell is one COM round trip.
+5. There is no explicit `Recalculate`; recalculation appears synchronous on
+   property set and on `Save()`, but save-failure semantics (partial
+   in-memory state) are undocumented.
+6. `Save()` on `Selected` must be isolated per the docs; the writer never
    touches dataset `Selected` flags for this reason.
-8. BF multi-prior model (`AddPriorVector`/`PriorRatioObj`) has doc pages but
-   no worked example; the macro uses the backwards-compatible single `Prior`,
-   so only the first ArcRho `prior_datasets` entry is exported.
-9. Whether ResQ accepts written Benchmark-row factors is unverified; the macro
-   only writes User Entry rows.
 
-ArcRho → ResQ mapping gaps (lossy or ambiguous reverse direction):
+ArcRho → ResQ mapping gaps of the DFM and Result Selection writers:
 
-10. BF v3 JSON dropped `percentage_developed_type_code`/`prior_type_code`
-    (v2 kept them). For v3 files the macro defaults to
-    `pdCumDevFactors` (2) and `ptUltimates` (0).
-11. Cape Cod `prior_ultimate_mode` collapses ResQ codes 0/2/3 to
-    `latest_ultimates`; the macro writes 2 (`pdCumDevFactors`) for that mode
-    and 1 for `pattern`, so an original 0/3 configuration is not restored.
-12. BF per-origin prior weights in ArcRho (`prior_datasets[].weights`) have no
-    confirmed ResQ write target (import hardcodes them to 1.0); they are not
-    exported. Candidates (`ManualRatioWeights`, `PriorRatioObj.RatioWeights`)
-    need a ResQ-side experiment.
-13. DFM `excluded == 2` (no data) is never written; ResQ derives empty cells.
-    Legacy v1 method files that stored 2s are treated as "not excluded".
-14. ArcRho User Entry *formula text* (`average formulas.inputs`) cannot be
-    represented in ResQ; only the resolved numeric factor is written.
-15. Custom average definitions (`custom average formula settings`) are matched
-    by label only. An ArcRho-authored average whose label does not exist in
-    the ResQ method is skipped for that column (`SetSelectedRatios` is not
-    called); creating/reordering ResQ averages via `CustomAverages(i)` writers
-    is untested.
-16. Notes live in the ArcRho sidecar — a dataset's own, or the *output
-    sidecar* of a DFM, BF, Cape Cod, or Result Selection method, never the
-    method JSON. `collect_rc_artifacts` attaches that value to a method entry
-    whenever the output sidecar exists, and every writer sets the ResQ `Notes`
-    of the triangle, vector, or method from it with line breaks normalized to
-    `\r\n` (ResQ renders a `\n`-only value as one line), clearing them for an
-    empty value and leaving them unchanged when the entry carries no `notes`
-    — the same rule the Bridge `SyncDFM` write-back applies. The triangle and
-    vector readers read ResQ `Notes` as well, so an import lands them in the
-    sidecar. Only the bulk DFM import keeps an existing sidecar's notes; the
-    sync never meets that case because it deletes the target before importing.
-    Cell notes remain read-only in the Bridge.
-17. Engine-generated datasets carry no ResQ provenance and no axis labels in
-    their sidecars; the macro writes them by index position against the ResQ
-    grid after aligning `OriginLength`/`DevelopmentLength` to the sidecar. If
-    the ResQ project grid changed since import, index alignment is unchecked.
-18. The ArcRho project name is assumed to equal the ResQ project name (true
-    for the fake test pair). A mapping override exists on the headless entry
-    point (`resq_project_name=`) but has no UI.
-19. Result Selection dataset ordering after `AddDataset` is assumed stable;
+7. DFM `excluded == 2` (no data) is never written; ResQ derives empty cells.
+8. ArcRho User Entry *formula text* (`average formulas.inputs`) cannot be
+   represented in ResQ; only the resolved numeric factor is written.
+9. Custom average definitions are matched by label only. An ArcRho-authored
+   average whose label does not exist in the ResQ method is skipped for that
+   column; creating or reordering ResQ averages via `CustomAverages(i)` is
+   untested.
+10. Result Selection dataset ordering after `AddDataset` is assumed stable;
     weights are addressed through a name→index map rebuilt after adds, but
     ResQ's `CustomSortIndex` semantics are undocumented.
-20. Ultimate overrides push ArcRho `ultimate_overrides` as ResQ overridden
-    ultimates. ArcRho's `calculated_ultimate` may already differ numerically
-    from ResQ's own weighted calculation; whether to force-push non-overridden
-    ultimates is a policy question left unanswered (they are not pushed).
+11. Ultimate overrides push ArcRho `ultimate_overrides` as ResQ overridden
+    ultimates; non-overridden ultimates are not pushed.
 
-Architecture:
-
-21. The macro talks to ResQ COM directly in the app-server process (same
-    pattern as `import_resq_dataset.py`), so it requires ResQ installed on the
-    machine running ArcRho. Client PCs without ResQ would need a Bridge-based
-    variant (a new `ExportResQReservingClass` Bridge function mirroring the
-    import request/status contract) — not built yet.
-22. The DFM selection-sync logic intentionally mirrors the ArcRho Bridge
-    `SyncDFM` implementation (`server-components/src/arcrho_bridge/resq_client.py`).
-    If the Bridge sync rules change, the macro must follow; consolidating both
-    behind one shared module is open work (the macro cannot import the Bridge
-    package today).
-23. The in-app `run_macro` UI flow (Project Instance context, confirmation
-    dialog, progress, summary) reuses the proven import-macro plumbing but was
-    not exercised end to end inside the app in this round; the headless core
-    (`export_reserving_class_to_resq(...)`) is what the tests drove.
+The Bornhuetter Ferguson and Cape Cod field writers remain in the exporter
+for the sync macro's apply phase; their known gaps (one BF prior, no scaling
+type, collapsed prior-ultimate modes) are the sync documentation's
+`supported fields only` caveat and do not affect the export, which only saves
+those methods.

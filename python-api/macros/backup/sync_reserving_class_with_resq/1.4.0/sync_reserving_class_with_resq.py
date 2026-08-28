@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.4.1
-# Release Note: Talk to the ArcRho Bridge through the shared arcrho_api queue client the Export macro now uses as well; what the sync does is unchanged.
+# Version: 1.4.0
+# Release Note: Push the whole reserving class one way, chosen from each side's latest timestamp; rows whose own timestamps disagree are marked for review without blocking the sync, and the Proposed Action column is gone.
 # Description: Compare every dataset and supported method output in the selected reserving class, push the whole class from whichever side changed last, and mark rows whose own timestamps disagree with that direction for review.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -10,10 +10,9 @@
 
 ResQ automation exists only where ResQ is installed, which is usually not the
 machine ArcRho runs on. This macro therefore owns no ResQ session at all: it
-publishes logical requests to the shared Bridge queue through
-``arcrho_api.resq_sync_queue`` and a ResQ-connected Bridge worker runs the
-canonical synchronization session (``resq_migration.sync_session``) on its
-behalf.
+publishes logical requests to the shared Bridge queue and a ResQ-connected
+Bridge worker runs the canonical synchronization session
+(``resq_migration.sync_session``) on its behalf.
 
 The session is split into the two phases the review table needs:
 
@@ -30,23 +29,82 @@ session this macro never imports.
 
 from __future__ import annotations
 
+import getpass
+import json
+import os
+from pathlib import Path
+import time
 import traceback
-from typing import Any, Mapping
+import uuid
+from typing import Any, Callable, Mapping
 
-from arcrho_api.resq_sync_queue import (
-    PREVIEW_TIMEOUT_SEC,
-    WRITE_TIMEOUT_SEC,
-    BridgeUnavailableError,
-    run_bridge_phase,
+from arcrho_api.bridge_liveness import (  # noqa: F401
+    BRIDGE_SILENCE_LIMIT_SEC,
+    BRIDGE_WORKER_DIR,
+    BRIDGE_WORKER_MAX_AGE_SEC,
+    BRIDGE_WORKER_ROLE,
+    QUEUE_STATUS_DIRS,
+    await_bridge_signal,
+    live_worker_names,
+    observe_bridge_liveness,
 )
-from arcrho_api.ui import await_review_table
 
 
 TITLE = "Sync Reserving Class with ResQ"
-MACRO_VERSION = "1.4.1"
+MACRO_VERSION = "1.4.0"
 PROGRESS_ID = "sync-reserving-class-with-resq"
+REVIEW_POLL_SECONDS = 0.5
+
+# Pinned to server-components/src/arcrho_bridge/resq_reserving_class_sync_contract.json
+# and, for the shared worker/status facts that contract deliberately does not
+# restate, to resq_reserving_class_import_contract.json. A macro cannot import
+# the Bridge, so a test asserts this adapter still matches both files. The
+# worker facts and the liveness rule come from arcrho_api.bridge_liveness,
+# which the import macros and the app server's hosted read share.
+REQUEST_FUNCTION = "SyncResQReservingClass"
+# Version 2: the preview carries the reserving class's one direction and every
+# row's action follows it, so a Bridge still on version 1 must refuse rather
+# than answer with per-row directions this macro would apply.
+CONTRACT_VERSION = 2
+QUEUE_NAME = "sync"
+STATUS_RELATIVE_DIR = QUEUE_STATUS_DIRS[QUEUE_NAME]
+REQUEST_RELATIVE_DIR = STATUS_RELATIVE_DIR.with_name("requests")
+REQUIRED_REQUEST_FIELDS = (
+    "Function",
+    "ContractVersion",
+    "RequestId",
+    "ProjectName",
+    "Path",
+    "UserName",
+    "Phase",
+)
+ALLOWED_PHASES = frozenset({"preview", "apply"})
+SELECTION_FIELD = "SelectedRows"
+SELECTION_ROW_FIELDS = ("Id", "Signature")
+FORBIDDEN_PATH_FIELDS = ("StatusPath", "DataPath", "TargetPath", "ServerRoot")
+STATUS_VALUES = frozenset({"processing", "success", "error"})
+
+# A preview only reads; an apply can rewrite a whole reserving class, so it is
+# given the same hour a queued ResQ import gets.
+PREVIEW_TIMEOUT_SEC = 30.0 * 60.0
+APPLY_TIMEOUT_SEC = 60.0 * 60.0
+POLL_INTERVAL_SEC = 1.0
+REQUEST_CLAIM_TIMEOUT_SEC = 30.0
 
 KIND_DATASET = "Dataset"
+_INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
+
+
+class BridgeUnavailableError(RuntimeError):
+    """Raised before publication when no ResQ-connected Bridge worker is live."""
+
+
+class BridgeRequestError(RuntimeError):
+    """Raised when a published Bridge request cannot complete successfully."""
+
+    def __init__(self, message: str, *, status: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.status = status or {}
 
 
 def _message(ui, text: object, *, title: str = TITLE, kind: str = "info", auto_close_ms=None):
@@ -83,6 +141,317 @@ def _report_activity() -> None:
     reporter = globals().get("report_macro_activity")
     if callable(reporter):
         reporter()
+
+
+def _result_payload(result: object) -> dict[str, Any]:
+    if isinstance(result, Mapping):
+        payload = result.get("result")
+        return dict(payload) if isinstance(payload, Mapping) else dict(result)
+    payload = getattr(result, "result", None)
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    try:
+        with path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except (FileNotFoundError, PermissionError, OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _logical_project_name(value: object) -> str:
+    name = str(value or "").strip()
+    if (
+        not name
+        or name in {".", ".."}
+        or any(character in name for character in _INVALID_PROJECT_NAME_CHARS)
+    ):
+        raise ValueError("Project name must be a single logical project identifier.")
+    return name
+
+
+def _logical_rc_path(value: object) -> str:
+    normalized = str(value or "").strip().replace("/", "\\")
+    segments = [part.strip() for part in normalized.split("\\")]
+    if (
+        not normalized
+        or normalized.startswith("\\")
+        or ":" in normalized
+        or "\x00" in normalized
+        or any(part in {"", ".", ".."} for part in segments)
+    ):
+        raise ValueError("Reserving-class path must be a relative logical ArcRho path.")
+    return normalized
+
+
+def _user_name() -> str:
+    try:
+        return str(getpass.getuser() or "unknown").strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _observe(server_root: object) -> dict[str, Any] | None:
+    """One liveness look; a look that fails is a silent look, not a verdict."""
+
+    try:
+        return observe_bridge_liveness(server_root, queue=QUEUE_NAME)
+    except Exception:
+        return None
+
+
+def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tuple[str, ...]:
+    """Names of the live workers, after waiting out a silence shorter than the limit."""
+
+    observation, tracker = await_bridge_signal(
+        lambda: _observe(server_root),
+        limit_sec=BRIDGE_SILENCE_LIMIT_SEC,
+        poll_interval_sec=POLL_INTERVAL_SEC,
+        sleep=sleep,
+    )
+    workers = live_worker_names(observation)
+    if workers:
+        return workers
+    raise BridgeUnavailableError(
+        "No active ArcRho Bridge worker was found, so ResQ cannot be reached from "
+        "this computer. Start ArcRho on a machine where ResQ is running, then "
+        f"synchronize again.\n{tracker.describe()}. "
+        f"Expected a ResQ-connected heartbeat newer than {BRIDGE_WORKER_MAX_AGE_SEC:g} "
+        f"seconds under [{Path(server_root) / BRIDGE_WORKER_DIR}]."
+    )
+
+
+def _request_paths(server_root: object, request_id: str) -> tuple[Path, Path]:
+    root = Path(server_root)
+    return (
+        root / REQUEST_RELATIVE_DIR / f"{request_id}.json",
+        root / STATUS_RELATIVE_DIR / f"{request_id}.json",
+    )
+
+
+def create_sync_request(
+    *,
+    project_name: object,
+    rc_path: object,
+    phase: str,
+    selected_rows: list[Mapping[str, Any]] | None = None,
+    request_id: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Build the location-independent payload consumed by ArcRho Bridge."""
+
+    identifier = str(request_id or uuid.uuid4().hex).strip()
+    if not identifier:
+        raise ValueError("Request ID is required.")
+    normalized_phase = str(phase or "").strip().casefold()
+    if normalized_phase not in ALLOWED_PHASES:
+        raise ValueError("Phase must be one of: " + ", ".join(sorted(ALLOWED_PHASES)) + ".")
+    payload: dict[str, Any] = {
+        "Function": REQUEST_FUNCTION,
+        "ContractVersion": CONTRACT_VERSION,
+        "RequestId": identifier,
+        "ProjectName": _logical_project_name(project_name),
+        "Path": _logical_rc_path(rc_path),
+        "UserName": _user_name(),
+        "Phase": normalized_phase,
+    }
+    if normalized_phase == "apply":
+        payload[SELECTION_FIELD] = _selection_payload(selected_rows)
+    elif selected_rows:
+        raise ValueError("A preview request must not carry a selection.")
+    return identifier, payload
+
+
+def _selection_payload(selected_rows: list[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    """Echo the reviewed rows back exactly as the preview reported them.
+
+    The signature is the Bridge's own observation, not something this macro
+    recomputes; sending it back unchanged is what lets the apply phase prove
+    nothing moved while the review table was open.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for row in selected_rows or []:
+        if not isinstance(row, Mapping):
+            continue
+        row_id = str(row.get("id") or "").strip()
+        signature = row.get("signature")
+        if not row_id or not isinstance(signature, Mapping):
+            raise ValueError(
+                "The ArcRho Bridge preview did not report a signature for every selected "
+                "row. Compare the reserving class again."
+            )
+        rows.append({"Id": row_id, "Signature": dict(signature), "Name": str(row.get("name") or "")})
+    if not rows:
+        raise ValueError("At least one reviewed row is required to apply a synchronization.")
+    return rows
+
+
+def publish_sync_request(
+    *,
+    server_root: object,
+    request_id: str,
+    payload: dict[str, Any],
+) -> Path:
+    """Atomically publish a Bridge request after the hard availability preflight."""
+
+    request_path, _ = _request_paths(server_root, request_id)
+    temp_path = request_path.with_name(f".{request_id}.tmp")
+    try:
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        with temp_path.open("x", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2)
+            stream.write("\n")
+        os.replace(temp_path, request_path)
+    except Exception as exc:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise BridgeRequestError(
+            f"Could not publish ArcRho Bridge request [{request_id}]: {exc}"
+        ) from exc
+    return request_path
+
+
+def _progress_tone(status: object) -> str:
+    normalized = str(status or "").strip().casefold()
+    if normalized in {"error", "failed", "fail"}:
+        return "error"
+    if normalized in {"warning", "warn", "skipped"}:
+        return "warning"
+    if normalized in {"success", "complete", "completed"}:
+        return "success"
+    return ""
+
+
+def _update_progress_from_status(progress, status: Mapping[str, Any], fallback_label: str) -> None:
+    if progress is None:
+        return
+    progress_payload = status.get("progress")
+    detail = progress_payload if isinstance(progress_payload, Mapping) else {}
+    state = str(status.get("status") or "").strip().casefold()
+    label = str(detail.get("message") or detail.get("label") or status.get("message") or "").strip()
+    if not label:
+        label = fallback_label
+    try:
+        progress.update(
+            label=label,
+            detail=label,
+            total=_safe_int(detail.get("total"), getattr(progress, "total", 0)),
+            completed=_safe_int(detail.get("completed"), getattr(progress, "completed", 0)),
+            tone=_progress_tone(detail.get("status") or state),
+        )
+    except Exception:
+        pass
+
+
+def wait_for_sync_result(
+    *,
+    server_root: object,
+    request_id: str,
+    timeout_sec: float,
+    poll_interval_sec: float = POLL_INTERVAL_SEC,
+    claim_timeout_sec: float = REQUEST_CLAIM_TIMEOUT_SEC,
+    progress=None,
+    progress_label: str = "ArcRho Bridge is working with ResQ",
+    on_poll: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    """Poll the deterministic Bridge status file until a terminal result arrives."""
+
+    if timeout_sec <= 0 or poll_interval_sec <= 0 or claim_timeout_sec <= 0:
+        raise ValueError("Timeout, polling interval, and claim timeout must be positive.")
+    request_path, status_path = _request_paths(server_root, request_id)
+    deadline = time.monotonic() + float(timeout_sec)
+    claim_deadline = time.monotonic() + min(float(claim_timeout_sec), float(timeout_sec))
+
+    while True:
+        if on_poll is not None:
+            on_poll()
+        status = _read_json(status_path)
+        if status is not None:
+            reported_id = str(status.get("request_id") or status.get("RequestId") or "").strip()
+            if reported_id != request_id:
+                raise BridgeRequestError(
+                    "ArcRho Bridge returned a status for a different or missing request ID at "
+                    f"[{status_path}]."
+                )
+            version = status.get("contract_version")
+            if isinstance(version, bool) or version != CONTRACT_VERSION:
+                raise BridgeRequestError(
+                    f"ArcRho Bridge returned unsupported status contract version [{version!r}]."
+                )
+            _update_progress_from_status(progress, status, progress_label)
+            state = str(status.get("status") or "").strip().casefold()
+            if state == "success":
+                return status
+            if state == "error":
+                detail = str(status.get("message") or "unknown ArcRho Bridge error").strip()
+                raise BridgeRequestError(
+                    f"ArcRho Bridge request [{request_id}] failed: {detail}",
+                    status=status,
+                )
+            if state and state not in STATUS_VALUES:
+                raise BridgeRequestError(
+                    f"ArcRho Bridge request [{request_id}] returned unsupported status [{state}]."
+                )
+        elif time.monotonic() > claim_deadline and request_path.exists():
+            raise BridgeRequestError(
+                f"No ArcRho Bridge worker claimed request [{request_id}] within "
+                f"{claim_timeout_sec:g} seconds. Confirm ResQ is running on a machine with "
+                "ArcRho open."
+            )
+        if time.monotonic() > deadline:
+            raise BridgeRequestError(
+                f"ArcRho Bridge request [{request_id}] did not finish within "
+                f"{timeout_sec:g} seconds."
+            )
+        time.sleep(poll_interval_sec)
+
+
+def run_bridge_phase(
+    *,
+    server_root: object,
+    project_name: str,
+    rc_path: str,
+    phase: str,
+    selected_rows: list[Mapping[str, Any]] | None = None,
+    timeout_sec: float,
+    progress=None,
+    progress_label: str,
+) -> dict[str, Any]:
+    """Publish one synchronization phase and return the Bridge's result payload."""
+
+    require_live_bridge_workers(server_root)
+    request_id, payload = create_sync_request(
+        project_name=project_name,
+        rc_path=rc_path,
+        phase=phase,
+        selected_rows=selected_rows,
+    )
+    publish_sync_request(server_root=server_root, request_id=request_id, payload=payload)
+    status = wait_for_sync_result(
+        server_root=server_root,
+        request_id=request_id,
+        timeout_sec=timeout_sec,
+        progress=progress,
+        progress_label=progress_label,
+        on_poll=_report_activity,
+    )
+    result = status.get("result")
+    if not isinstance(result, Mapping):
+        raise BridgeRequestError(
+            f"ArcRho Bridge reported success for [{request_id}] without a result payload.",
+            status=dict(status),
+        )
+    return dict(result)
 
 
 def _direction_sides(action: object) -> tuple[str, str]:
@@ -178,9 +547,37 @@ def review_table_payload(
 
 
 def _await_review_table(ui, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Open a non-blocking review table and return its completion once the person is done."""
+    """Open a non-blocking review table, poll until it completes, and return the completion."""
 
-    return await_review_table(ui, dict(payload), on_poll=_report_activity)
+    opened = ui.send_command("ui.reviewTableOpen", args=dict(payload), timeout_sec=20)
+    opened_payload = _result_payload(opened)
+    dialog_id = str(opened_payload.get("dialogId") or opened_payload.get("dialog_id") or "").strip()
+    if not dialog_id:
+        raise RuntimeError("ArcRho did not return a review-table dialog ID. Update or restart the ArcRho shell.")
+    try:
+        while True:
+            _report_activity()
+            status = ui.send_command(
+                "ui.reviewTableStatus",
+                args={"dialogId": dialog_id},
+                timeout_sec=20,
+            )
+            completion = _result_payload(status)
+            state = str(completion.get("status") or completion.get("state") or "").strip().casefold()
+            if state == "completed":
+                return completion
+            if state not in {"", "pending", "open"}:
+                raise RuntimeError(str(completion.get("error") or f"Review table ended in an unexpected state: {state}"))
+            time.sleep(REVIEW_POLL_SECONDS)
+    finally:
+        try:
+            ui.send_command(
+                "ui.reviewTableClose",
+                args={"dialogId": dialog_id},
+                timeout_sec=10,
+            )
+        except Exception:
+            pass
 
 
 def review_sync_plan(
@@ -349,7 +746,6 @@ def run_macro(active_dfm=None, active_context=None):
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress_holder.get("value"),
             progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
-            on_poll=_report_activity,
         )
         preview = [row for row in preview_result.get("preview") or [] if isinstance(row, Mapping)]
         connection_name = str(preview_result.get("connection_name") or "")
@@ -392,10 +788,9 @@ def run_macro(active_dfm=None, active_context=None):
                 rc_path=rc_path,
                 phase="apply",
                 selected_rows=reviewed,
-                timeout_sec=WRITE_TIMEOUT_SEC,
+                timeout_sec=APPLY_TIMEOUT_SEC,
                 progress=progress_holder.get("value"),
                 progress_label="Synchronizing ArcRho and ResQ",
-                on_poll=_report_activity,
             )
         result["preview"] = preview
         result["direction"] = direction

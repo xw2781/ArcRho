@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Sync Reserving Class with ResQ now pushes the whole reserving class one way, from whichever side changed last, instead of proposing a direction row by row.",
+  "details": [
+    "Each side's timestamp is the latest change among the datasets and method outputs in the review; the newer side is pushed to the other, and the review window's header shows both timestamps and the chosen direction.",
+    "A row whose own timestamps point the other way is marked Review in a new column and stays ticked; the mark is a caution to read before applying, not a block on the sync.",
+    "The Proposed Action column is gone from the review table, and the results table names the direction once in its header instead of on every row.",
+    "The accept button reads Sync to ResQ or Sync to ArcRho so the direction is visible where it is confirmed."
+  ]
+}

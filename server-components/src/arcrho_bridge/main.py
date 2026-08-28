@@ -1104,7 +1104,7 @@ class BridgeRequestHandler(FileSystemEventHandler):
                 )
         elif selection is not None:
             raise ValueError(
-                f"A preview request must not supply {_RESQ_SYNC_SELECTION_FIELD}."
+                f"A {request['Phase']} request must not supply {_RESQ_SYNC_SELECTION_FIELD}."
             )
 
         supplied_paths = [

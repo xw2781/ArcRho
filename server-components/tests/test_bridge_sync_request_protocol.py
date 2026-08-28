@@ -442,6 +442,17 @@ class BridgeSyncRequestValidationTests(unittest.TestCase):
             "preview request must not supply",
         )
 
+    def test_an_export_request_is_accepted_without_a_selection_and_refused_with_one(self):
+        request = _sync_request(Phase="Export")
+
+        self.handler._validate_resq_sync_request(request)
+
+        self.assertEqual(request["Phase"], "export")
+        self._assert_rejected(
+            _sync_request(Phase="export", SelectedRows=[_reviewed_row()]),
+            "export request must not supply",
+        )
+
     def test_a_request_may_never_name_a_path(self):
         for field in bridge_main._RESQ_IMPORT_FORBIDDEN_PATH_FIELDS:
             with self.subTest(field=field):

@@ -57,6 +57,7 @@ _EXPORTS = {
     ),
     "run_macro_source": (".ui", "run_macro_source"),
     "send_command": (".ui", "send_command"),
+    "await_review_table": (".ui", "await_review_table"),
     "wait_for_app": (".ui", "wait_for_app"),
 }
 
