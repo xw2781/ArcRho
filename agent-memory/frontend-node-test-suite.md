@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-08-21T03:32:58.967Z
+  modified: 2026-08-29T22:18:12.135Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
@@ -45,6 +45,16 @@ add-tab SVG) plus three `project_settings_source_data.test.mjs` table-summary te
 ("table summary service publishes versioned distribution data", "app server owns
 date-role detection", "table summary is addressed by project") — all nine confirmed
 failing at clean HEAD via a worktree baseline.
+
+On 2026-08-29 (formula-links work, HEAD 2e50e8c plus another session's uncommitted shell/electron
+edits in the same tree) a full run was 959 tests with 11 failures: the usual cast (B&S adapters,
+shared-grid module URL x2, RS apply, shell add-tab SVG, 3 table-summary) plus `home_shortcuts`
+(missing `ui/shared/services/local_day.js`), `dev_window_frame` "development launch", and the PI
+Excel Link Manager "refresh icon" test — none of those three read files the formula work touched,
+so they belong to the other session's tree state. Harnesses that build the Data-tab persistence
+controller with stub factories (`dataset_draft_save.test.mjs`) must stub every link controller
+factory the controller creates; a missing one surfaces as "Cannot read properties of undefined
+(reading 'isDirty')" rather than a clear import error.
 
 Separately, "changed theme and chart owners are reached through current cache-version chains"
 (tests/color_theme.test.mjs) is a **flake in full-suite runs only** — it passes in isolation
