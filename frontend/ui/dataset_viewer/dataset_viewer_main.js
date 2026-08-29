@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260824c";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260829a";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -21,7 +21,10 @@ import {
   renderDatasetChart,
 } from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260812b";
+import {
+  createExternalLinksTab,
+  createInternalLinksTab,
+} from "/ui/shared/tabs/links/links_tab.js?v=20260829a";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
 import { configureDataTabChangeWatch } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import {
@@ -137,11 +140,20 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260828a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260829a"
 );
 
-const datasetLinksTab = createExternalLinksTab({
-  container: document.getElementById("datasetLinksMount"),
+const postLinksStatus = (message, tone = "") => {
+  if (!message) return;
+  window.parent?.postMessage?.({
+    type: "arcrho:status",
+    text: message,
+    ...(tone ? { tone } : {}),
+  }, "*");
+};
+
+const datasetExternalLinksTab = createExternalLinksTab({
+  container: document.getElementById("datasetExternalLinksMount"),
   ariaLabel: "Dataset external links",
   emptyDescription: "Excel links used by editable cells in the Data tab will appear here.",
   getLinks: () => datasetDataTab.getDatasetExternalLinkRecords(),
@@ -151,16 +163,40 @@ const datasetLinksTab = createExternalLinksTab({
   onBreakLinks: (records) => datasetDataTab.breakDatasetExternalLinks(
     records.map((record) => record?.id).filter(Boolean),
   ),
-  onStatus: (message, tone = "") => {
-    if (!message) return;
-    window.parent?.postMessage?.({
-      type: "arcrho:status",
-      text: message,
-      ...(tone ? { tone } : {}),
-    }, "*");
-  },
+  onStatus: postLinksStatus,
 });
-configureDataTabLinks(datasetLinksTab);
+
+const datasetInternalLinksTab = createInternalLinksTab({
+  container: document.getElementById("datasetInternalLinksMount"),
+  ariaLabel: "ArcRho dataset links",
+  emptyDescription: "ArcRho dataset links used by editable cells in the Data tab will appear here.",
+  getLinks: () => datasetDataTab.getDatasetInternalLinkRecords(),
+  onRefreshLinks: (records) => datasetDataTab.refreshDatasetInternalLinkRecords(
+    records.map((record) => record?.id).filter(Boolean),
+  ),
+  onBreakLinks: (records) => datasetDataTab.breakDatasetInternalLinks(
+    records.map((record) => record?.id).filter(Boolean),
+  ),
+  onOpenDataset: (record) => {
+    const params = new URLSearchParams(window.location.search);
+    window.parent?.postMessage?.({
+      type: "arcrho:project-instance-open-dependent-dataset",
+      datasetName: record?.datasetName,
+      reservingClass: (params.get("path") || "").trim(),
+      projectName: (params.get("project") || "").trim(),
+    }, "*");
+    return { ok: true, message: `Opening dataset ${record?.datasetName || ""}...` };
+  },
+  onStatus: postLinksStatus,
+});
+
+// Both sections refresh together whenever the Data tab reports a link change.
+configureDataTabLinks({
+  refresh: () => Promise.all([
+    datasetExternalLinksTab.refresh(),
+    datasetInternalLinksTab.refresh(),
+  ]),
+});
 
 window.ADA_DATASET_READY = datasetDataTab.bootDatasetDataTab();
 

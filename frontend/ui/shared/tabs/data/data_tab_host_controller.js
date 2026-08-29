@@ -386,6 +386,71 @@ export function registerDataTabHostController(runtime) {
     return String(value || "").trim().toLowerCase();
   }
 
+  // ---- Cross-window dataset reference picking ------------------------------
+  // The window editing a formula announces the pick; every other durable
+  // dataset window of the same project and reserving class answers clicks and
+  // drags on its grid with the picked rectangle until the pick ends.
+
+  function publishDatasetReferencePickBegin() {
+    try {
+      window.parent?.postMessage({
+        type: "arcrho:dataset-reference-pick-begin",
+        inst: instanceId,
+        project: getResolvedProjectValue(),
+        reservingClass: getResolvedReservingClassValue(),
+        datasetName: getDatasetInstanceNameValue(),
+      }, "*");
+    } catch {}
+  }
+
+  function publishDatasetReferencePickEnd() {
+    try {
+      window.parent?.postMessage({
+        type: "arcrho:dataset-reference-pick-end",
+        inst: instanceId,
+      }, "*");
+    } catch {}
+  }
+
+  function publishDatasetReferencePick(range = {}) {
+    const toInst = String(state.referencePickRequester || "");
+    const datasetName = getDatasetInstanceNameValue();
+    if (!toInst || !datasetName) return;
+    try {
+      window.parent?.postMessage({
+        type: "arcrho:dataset-reference-pick",
+        inst: instanceId,
+        toInst,
+        datasetName,
+        dataFormat: runtime.currentDatasetSidecarDataFormat || state.model?.data_format || "",
+        rowStart: range.rowStart,
+        rowEnd: range.rowEnd,
+        colStart: range.colStart,
+        colEnd: range.colEnd,
+        final: range.final === true,
+      }, "*");
+    } catch {}
+  }
+
+  function handleDatasetReferencePickBegin(msg = {}) {
+    if (!msg || String(msg.inst || "") === String(instanceId || "")) return;
+    if (isDfmDataTabHost() || runtime.isProjectInstanceDraft || runtime.isTemporaryDatasetView) return;
+    if (!getDatasetInstanceNameValue()) return;
+    // References resolve within one reserving class, so only its windows pick.
+    if (normalizeDatasetMatchText(msg.project) !== normalizeDatasetMatchText(getResolvedProjectValue())) return;
+    const left = normalizeDatasetMatchText(normalizeReservingClassPath(msg.reservingClass || ""));
+    const right = normalizeDatasetMatchText(normalizeReservingClassPath(getResolvedReservingClassValue()));
+    if (!left || !right || left !== right) return;
+    state.referencePickRequester = String(msg.inst);
+    setStatus(`Select cells here to insert them into the ${String(msg.datasetName || "dataset").trim() || "dataset"} formula.`);
+  }
+
+  function handleDatasetReferencePickEnd(msg = {}) {
+    if (String(state.referencePickRequester || "") !== String(msg?.inst || "")) return;
+    state.referencePickRequester = "";
+    setStatus("");
+  }
+
   function collectCurrentDatasetNamesForMatch() {
     return new Set([
       normalizeDatasetMatchText(getDatasetInstanceNameValue()),
@@ -460,6 +525,20 @@ export function registerDataTabHostController(runtime) {
     }
     if (e?.data?.type === CALCULATED_DATASETS_UPDATED_MESSAGE) {
       void handleCalculatedDatasetsUpdatedMessage(e.data.report || null);
+      return;
+    }
+    if (e?.data?.type === "arcrho:dataset-reference-pick-begin") {
+      handleDatasetReferencePickBegin(e.data);
+      return;
+    }
+    if (e?.data?.type === "arcrho:dataset-reference-pick-end") {
+      handleDatasetReferencePickEnd(e.data);
+      return;
+    }
+    if (e?.data?.type === "arcrho:dataset-reference-pick") {
+      if (String(e.data.toInst || "") === String(instanceId || "")) {
+        runtime.applyDatasetReferencePick?.(e.data);
+      }
       return;
     }
     if (e?.data?.type === "arcrho:dependency-source-preview") {
@@ -894,6 +973,11 @@ export function registerDataTabHostController(runtime) {
     applyDependencySourcePreview,
     clearDependencySourcePreview,
     normalizeDatasetMatchText,
+    publishDatasetReferencePickBegin,
+    publishDatasetReferencePickEnd,
+    publishDatasetReferencePick,
+    handleDatasetReferencePickBegin,
+    handleDatasetReferencePickEnd,
     collectCurrentDatasetNamesForMatch,
     isCalculationStepUpdated,
     calculationContextMatches,

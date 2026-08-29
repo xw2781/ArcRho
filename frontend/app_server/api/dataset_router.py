@@ -8,6 +8,7 @@ from app_server.schemas.dataset import (
     CachedDatasetDeleteRequest,
     DatasetCacheLoadRequest,
     DatasetCalculatedPreviewRequest,
+    DatasetInternalLinksResolveRequest,
     DatasetNotesSaveRequest,
     DatasetNumberFormatsSaveRequest,
     DatasetSidecarLoadRequest,
@@ -17,6 +18,7 @@ from app_server.schemas.dataset import (
 )
 from app_server.services import dataset_service, engine_hosted_save_service
 from app_server.services import calculated_dataset_service
+from app_server.services import dataset_internal_link_service
 from app_server.services import dataset_number_format_service
 from app_server.services import workspace_mutation_client
 from app_server.services import workspace_read_client
@@ -197,6 +199,26 @@ def load_dataset_cache(req: DatasetCacheLoadRequest) -> Dict[str, Any]:
     )
 
 
+@router.post("/dataset/internal_links/resolve")
+def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> Dict[str, Any]:
+    # One cached-dataset read per unique referenced name; hosted on the
+    # Gateway when it offers the kind so a Client PC pays one HTTP round trip
+    # instead of one SMB visit per referenced dataset.
+    return workspace_read_client.run_workspace_read(
+        "dataset_internal_links_resolve",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "references": list(req.references),
+        },
+        local=lambda: dataset_internal_link_service.resolve_dataset_internal_links(
+            req.project_name,
+            req.reserving_class,
+            req.references,
+        ),
+    )
+
+
 @router.post("/dataset/calculated/preview")
 def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) -> Dict[str, Any]:
     return calculated_dataset_service.preview_dependents(
@@ -236,6 +258,7 @@ def _dataset_sidecar_save_call(req: DatasetSidecarSaveRequest) -> Dict[str, Any]
             "notes": req.notes,
             "precedents": req.precedents,
             "external_links": req.external_links,
+            "internal_links": req.internal_links,
             "values": req.values,
             "mask": req.mask,
         },

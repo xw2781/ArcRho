@@ -61,6 +61,7 @@ FORBIDDEN_INDEX_ROW_FIELDS = frozenset(
         "dependents",
         "audit_log",
         "external_links",
+        "internal_links",
         "show_subtotal",
         "values",
         "mask",

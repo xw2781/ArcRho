@@ -183,6 +183,15 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name", "reserving_class", "method_name", "origin_length"),
         ("output_type", "timeout_sec"),
     ),
+    # Resolving a Dataset window's internal cell links reads one cached
+    # dataset per unique referenced name; on the server host those reads are
+    # local disk, so a Client PC pays one HTTP round trip instead of one SMB
+    # visit per referenced dataset.
+    "dataset_internal_links_resolve": WorkspaceReadKind(
+        "dataset_internal_link_service",
+        "resolve_dataset_internal_links",
+        ("project_name", "reserving_class", "references"),
+    ),
     # The ResQ import and sync macros poll the Bridge worker's heartbeat, and
     # the status file of the request it is running, while they wait. Over the
     # mapped drive Windows serves those timestamps from a cache that can lag a

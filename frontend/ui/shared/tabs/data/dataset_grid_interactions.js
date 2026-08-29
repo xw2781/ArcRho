@@ -7,9 +7,14 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829a";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260812b";
+import {
+  buildInternalDatasetReferenceText,
+  isInternalDatasetReference,
+  isInternalReferencePickDraft,
+} from "/ui/shared/dataset/dataset_internal_reference.js?v=20260829a";
 
 export function wireDatasetGridInteractions(deps) {
   const {
@@ -20,14 +25,24 @@ export function wireDatasetGridInteractions(deps) {
     notifyDatasetUpdated = () => {},
     refreshDatasetSettingsDirty = () => {},
     commitExternalReference = async () => ({ handled: false, ok: false }),
+    commitInternalReference = async () => ({ handled: false, ok: false }),
     cancelExternalReference = () => {},
     hardCodeExternalLinkCells = () => 0,
     decorateExternalLinkCell = () => {},
     getExternalLinkCellInfo = () => null,
+    beginReferencePick = () => {},
+    endReferencePick = () => {},
+    publishReferencePick = () => {},
   } = deps;
 
   // Digits typed against a multi-cell selection accumulate here until the selection changes.
   let rangeFillSession = null;
+  // Cross-window reference pick: armed while this window's cell edit holds a
+  // formula draft that can accept a [Dataset][rows] reference picked from
+  // another open Dataset window; the gesture flag tracks a pick drag in the
+  // window doing the picking.
+  let referencePickArmed = false;
+  let referencePickGesture = false;
 
   const formulaHover = createFormulaHoverEditor({
     onCommit: commitHoveredExternalFormula,
@@ -80,9 +95,11 @@ export function wireDatasetGridInteractions(deps) {
     onCellInput: (displayR, displayC, rawValue, input, td) => {
       if (isExternalReferenceDraft(rawValue)) {
         if (state.editingCell) state.editingCell.pendingExternalReference = String(rawValue || "");
+        syncReferencePickSession(rawValue);
         return;
       }
       if (state.editingCell) delete state.editingCell.pendingExternalReference;
+      syncReferencePickSession(rawValue);
       const nextValue = setDisplayCellValue(displayR, displayC, rawValue, { silentInvalid: true });
       syncInputCellDisplay(td, input, nextValue);
     },
@@ -95,12 +112,19 @@ export function wireDatasetGridInteractions(deps) {
     onCellCommit: async (displayR, displayC, rawValue, input, td) => {
       const edit = state.editingCell;
       if (edit?.r !== displayR || edit?.c !== displayC || edit.commitPending) return;
+      // While a cross-window pick is armed, focus leaving this window is part
+      // of picking cells elsewhere, never a commit; Enter or an in-window
+      // blur still commits because the document keeps focus for those.
+      if (referencePickArmed && document.hasFocus?.() === false) return;
       if (isExternalReferenceDraft(rawValue)) {
+        const isInternal = isInternalDatasetReference(rawValue);
         edit.commitPending = true;
         input.readOnly = true;
         input.setAttribute("aria-busy", "true");
-        setStatus("Loading linked values from Excel...");
-        const result = await commitExternalReference({
+        setStatus(isInternal
+          ? "Loading linked values from the referenced dataset..."
+          : "Loading linked values from Excel...");
+        const result = await (isInternal ? commitInternalReference : commitExternalReference)({
           displayRow: displayR,
           displayColumn: displayC,
           reference: rawValue,
@@ -111,18 +135,20 @@ export function wireDatasetGridInteractions(deps) {
         input.removeAttribute("aria-busy");
         if (!result?.ok) {
           if (!result?.aborted && !result?.stale) {
-            setStatus(result?.error || "The Excel link could not be loaded.");
+            setStatus(result?.error || "The linked values could not be loaded.");
             requestAnimationFrame(() => input.isConnected && input.focus({ preventScroll: true }));
           }
           return;
         }
+        stopReferencePickSession();
         state.editingCell = null;
         renderTable();
         notifyDatasetUpdated();
         applySelectionFromState();
-        setStatus(`Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+        setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
         return;
       }
+      stopReferencePickSession();
       const nextValue = setDisplayCellValue(displayR, displayC, rawValue, { hardCodeLinks: true });
       syncInputCellDisplay(td, input, nextValue);
       state.editingCell = null;
@@ -283,6 +309,78 @@ export function wireDatasetGridInteractions(deps) {
     return !!raw && (raw.startsWith("=") || !!parseExcelReference(raw));
   }
 
+  function syncReferencePickSession(rawValue) {
+    const armed = !!state.editingCell && isInternalReferencePickDraft(rawValue);
+    if (armed === referencePickArmed) return;
+    referencePickArmed = armed;
+    if (armed) beginReferencePick();
+    else endReferencePick();
+  }
+
+  function stopReferencePickSession() {
+    if (!referencePickArmed) return;
+    referencePickArmed = false;
+    endReferencePick();
+  }
+
+  /**
+   * A reference picked in another Dataset window lands here, routed by the
+   * Project Instance host. The picked rectangle replaces the whole draft
+   * after "=": an internal link is one standalone reference, so repeated
+   * picks re-aim it the way Excel re-aims the reference under the caret.
+   */
+  function applyDatasetReferencePick(message = {}) {
+    const edit = state.editingCell;
+    if (!edit || !referencePickArmed) return false;
+    const text = buildInternalDatasetReferenceText({
+      datasetName: message.datasetName,
+      rowStart: message.rowStart,
+      rowEnd: message.rowEnd,
+      colStart: message.colStart,
+      colEnd: message.colEnd,
+      isVector: String(message.dataFormat || "").trim().toLowerCase() === "vector",
+    });
+    if (!text) return false;
+    const input = document.querySelector(`#tableWrap .dsCellInput[data-r="${edit.r}"][data-c="${edit.c}"]`);
+    if (!input) return false;
+    input.value = text;
+    edit.pendingExternalReference = text;
+    if (message.final) {
+      requestAnimationFrame(() => {
+        if (!input.isConnected) return;
+        input.focus({ preventScroll: true });
+        try {
+          input.setSelectionRange(input.value.length, input.value.length);
+        } catch { /* keep browser default cursor placement */ }
+      });
+    }
+    return true;
+  }
+
+  /**
+   * The other half of the pick: this window's selection reported to the
+   * window whose formula is being edited, in untransposed dataset
+   * coordinates clamped to the value grid (total rows and columns fall off).
+   */
+  function publishReferencePickSelection(final) {
+    if (!state.referencePickRequester || !state.model) return;
+    const range = Array.isArray(state.selRanges) && state.selRanges.length
+      ? state.selRanges[state.selRanges.length - 1]
+      : null;
+    if (!range) return;
+    const cornerA = displayToActualCell(range.r0, range.c0);
+    const cornerB = displayToActualCell(range.r1, range.c1);
+    const rowLimit = (state.model.origin_labels?.length || 0) - 1;
+    const colLimit = (state.model.dev_labels?.length || 0) - 1;
+    if (rowLimit < 0 || colLimit < 0) return;
+    const rowStart = Math.max(0, Math.min(cornerA.r, cornerB.r));
+    const rowEnd = Math.min(rowLimit, Math.max(cornerA.r, cornerB.r));
+    const colStart = Math.max(0, Math.min(cornerA.c, cornerB.c));
+    const colEnd = Math.min(colLimit, Math.max(cornerA.c, cornerB.c));
+    if (rowEnd < rowStart || colEnd < colStart) return;
+    publishReferencePick({ rowStart, rowEnd, colStart, colEnd, final: !!final });
+  }
+
   async function commitHoveredExternalFormula({ formula, context }) {
     if (isReadOnly()) {
       const error = "Generated datasets are read-only.";
@@ -298,15 +396,18 @@ export function wireDatasetGridInteractions(deps) {
     }
 
     cancelExternalReference();
-    setStatus("Loading linked values from Excel...");
-    const result = await commitExternalReference({
+    const isInternal = isInternalDatasetReference(formula);
+    setStatus(isInternal
+      ? "Loading linked values from the referenced dataset..."
+      : "Loading linked values from Excel...");
+    const result = await (isInternal ? commitInternalReference : commitExternalReference)({
       displayRow,
       displayColumn,
       reference: formula,
     });
     if (!result?.ok) {
       if (!result?.aborted && !result?.stale) {
-        setStatus(result?.error || "The Excel link could not be loaded.");
+        setStatus(result?.error || "The linked values could not be loaded.");
       }
       return result;
     }
@@ -315,7 +416,7 @@ export function wireDatasetGridInteractions(deps) {
     renderTable();
     notifyDatasetUpdated();
     applySelectionFromState();
-    setStatus(`Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+    setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
     return result;
   }
 
@@ -361,6 +462,7 @@ export function wireDatasetGridInteractions(deps) {
   function cancelCellEdit(displayR, displayC) {
     const edit = state.editingCell;
     if (!edit || edit.r !== displayR || edit.c !== displayC) return false;
+    stopReferencePickSession();
     if (edit.commitPending || edit.pendingExternalReference) cancelExternalReference();
     const actualR = Number.isInteger(edit.actualR) ? edit.actualR : null;
     const actualC = Number.isInteger(edit.actualC) ? edit.actualC : null;
@@ -501,14 +603,17 @@ export function wireDatasetGridInteractions(deps) {
     if (rows.length === 1 && rows[0].length === 1 && isExternalReferenceDraft(rows[0][0])) {
       const rawReference = rows[0][0];
       void (async () => {
-        setStatus("Loading linked values from Excel...");
-        const result = await commitExternalReference({
+        const isInternal = isInternalDatasetReference(rawReference);
+        setStatus(isInternal
+          ? "Loading linked values from the referenced dataset..."
+          : "Loading linked values from Excel...");
+        const result = await (isInternal ? commitInternalReference : commitExternalReference)({
           displayRow: start.r,
           displayColumn: start.c,
           reference: rawReference,
         });
         if (!result?.ok) {
-          if (!result?.aborted && !result?.stale) setStatus(result?.error || "The Excel link could not be loaded.");
+          if (!result?.aborted && !result?.stale) setStatus(result?.error || "The linked values could not be loaded.");
           return;
         }
         state.editingCell = null;
@@ -518,7 +623,7 @@ export function wireDatasetGridInteractions(deps) {
         renderTable();
         notifyDatasetUpdated();
         applySelectionFromState();
-        setStatus(`Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+        setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
       })();
       return 1;
     }
@@ -628,10 +733,15 @@ export function wireDatasetGridInteractions(deps) {
     }
     if (initialText !== null) {
       input.value = String(initialText);
-      setDisplayCellValue(displayR, displayC, input.value, { silentInvalid: true });
-      const actual = displayToActualCell(displayR, displayC);
-      syncInputCellDisplay(input.closest("td"), input, state.model?.values?.[actual.r]?.[actual.c]);
-      notifyDatasetUpdated();
+      if (isExternalReferenceDraft(input.value)) {
+        state.editingCell.pendingExternalReference = input.value;
+        syncReferencePickSession(input.value);
+      } else {
+        setDisplayCellValue(displayR, displayC, input.value, { silentInvalid: true });
+        const actual = displayToActualCell(displayR, displayC);
+        syncInputCellDisplay(input.closest("td"), input, state.model?.values?.[actual.r]?.[actual.c]);
+        notifyDatasetUpdated();
+      }
     }
     requestAnimationFrame(() => {
       input.focus({ preventScroll: true });
@@ -750,6 +860,10 @@ export function wireDatasetGridInteractions(deps) {
         append,
         baseRanges,
       };
+      if (state.referencePickRequester) {
+        referencePickGesture = true;
+        publishReferencePickSelection(false);
+      }
     });
 
     // drag over (use mouseover to avoid heavy mousemove)
@@ -764,11 +878,16 @@ export function wireDatasetGridInteractions(deps) {
 
       const { anchor, append, baseRanges } = state.dragSel;
       spreadsheetTable.setRange(anchor, rc, { append, baseRanges });
+      if (referencePickGesture) publishReferencePickSelection(false);
     });
 
     // end drag anywhere
     document.addEventListener("mouseup", () => {
       state.dragSel = null;
+      if (referencePickGesture) {
+        referencePickGesture = false;
+        publishReferencePickSelection(true);
+      }
     });
 
     // Click row header -> select entire row
@@ -885,6 +1004,7 @@ export function wireDatasetGridInteractions(deps) {
   }
 
   return {
+    applyDatasetReferencePick,
     applySelectionFromState,
     copyActiveRangeToClipboard,
   };

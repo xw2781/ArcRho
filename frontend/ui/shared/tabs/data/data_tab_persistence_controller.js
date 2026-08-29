@@ -2,7 +2,7 @@
 import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260827a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
-import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260809a";
+import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260829a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
@@ -11,7 +11,7 @@ export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController, createDatasetInternalLinksController, resolveDatasetInternalLinks } = new Proxy({}, { get: (_target, name) => defer(name) });
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
@@ -61,17 +61,38 @@ export function registerDataTabPersistenceController(runtime) {
     getDatasetSidecarSourceKind: () => runtime.currentDatasetSidecarSourceKind,
     getDatasetSidecarDataFormat: () => runtime.currentDatasetSidecarDataFormat,
     getDatasetExternalLinks: () => runtime.datasetExternalLinks,
+    getDatasetInternalLinks: () => runtime.datasetInternalLinks,
     isSettingsDirty: () => datasetSettingsDirty,
     isNotesDirty: () => notesDirty,
   });
+  const linksControllerIsReadOnly = () => (
+    isDatasetReadOnly() || isDfmDataTabHost() || !currentDatasetIsManualTriangleOrVector()
+  );
+  const linksControllerIsTransposed = () => document.getElementById("transposedChk")?.checked === true;
+  const notifyLinksInventoryChanged = () => {
+    getDataTabLinksController()?.refresh?.();
+    updateDatasetSaveUi();
+  };
   runtime.datasetExternalLinks = createDatasetExternalLinksController({
     state,
-    isReadOnly: () => isDatasetReadOnly() || isDfmDataTabHost() || !currentDatasetIsManualTriangleOrVector(),
-    isTransposed: () => document.getElementById("transposedChk")?.checked === true,
-    onInventoryChanged: () => {
-      getDataTabLinksController()?.refresh?.();
-      updateDatasetSaveUi();
-    },
+    isReadOnly: linksControllerIsReadOnly,
+    isTransposed: linksControllerIsTransposed,
+    onInventoryChanged: notifyLinksInventoryChanged,
+    // A cell an Excel link takes over stops being an ArcRho-linked cell.
+    onTargetsClaimed: (cells) => runtime.datasetInternalLinks?.hardCodeTargetCells(cells),
+  });
+  runtime.datasetInternalLinks = createDatasetInternalLinksController({
+    state,
+    resolveReferences: (references) => resolveDatasetInternalLinks({
+      project_name: getResolvedProjectValue(),
+      reserving_class: getResolvedReservingClassValue(),
+      references,
+    }),
+    isReadOnly: linksControllerIsReadOnly,
+    isTransposed: linksControllerIsTransposed,
+    onInventoryChanged: notifyLinksInventoryChanged,
+    // And a cell an ArcRho link takes over stops being Excel-linked.
+    onTargetsClaimed: (cells) => runtime.datasetExternalLinks?.hardCodeTargetCells(cells),
   });
   function buildDatasetSidecarContextPayload() {
     return {
@@ -146,6 +167,15 @@ export function registerDataTabPersistenceController(runtime) {
       || !currentDatasetIsManualTriangleOrVector()
     ) return {};
     return { external_links: runtime.datasetExternalLinks.serialize() };
+  }
+
+  function getDatasetInternalLinksPayload() {
+    if (
+      isDfmDataTabHost()
+      || !datasetExternalLinksLoaded
+      || !currentDatasetIsManualTriangleOrVector()
+    ) return {};
+    return { internal_links: runtime.datasetInternalLinks.serialize() };
   }
 
   function normalizeDatasetSettings(source = {}) {
@@ -350,6 +380,7 @@ export function registerDataTabPersistenceController(runtime) {
     datasetExcelLinkCheckAbortController?.abort();
     datasetExcelLinkCheckAbortController = null;
     runtime.datasetExternalLinks.abort();
+    runtime.datasetInternalLinks.abort();
   }
 
   async function reportDatasetExcelLinkFailures(failures, options = {}) {
@@ -483,6 +514,45 @@ export function registerDataTabPersistenceController(runtime) {
     return result;
   }
 
+  async function refreshDatasetInternalLinks(options = {}) {
+    const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
+    if (
+      isDfmDataTabHost()
+      || !datasetExternalLinksLoaded
+      || !state.model
+      || !currentDatasetIsManualTriangleOrVector()
+      || !isCurrent()
+    ) {
+      return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
+    }
+    const hadLinkFailures = runtime.datasetInternalLinks.getLinkFailures().length > 0;
+    const result = await runtime.datasetInternalLinks.refreshAll(
+      options?.ids ?? null,
+      { markRefreshedCellsDirty: options?.markRefreshedCellsDirty === true },
+    );
+    if (!isCurrent() || result?.stale || result?.aborted) return result;
+    if (result.changedCount > 0) {
+      renderTable();
+      notifyDatasetUpdated();
+      applyGridSelectionFromState();
+    } else if (hadLinkFailures || result.failedCount > 0) {
+      // Repaint so a repaired reference loses its red marking, and a newly
+      // broken one gains it, even when no value moved.
+      renderTable();
+      applyGridSelectionFromState();
+    }
+    getDataTabLinksController()?.refresh?.();
+    updateDatasetSaveUi();
+    if (result.changedCount > 0 && !result.failedCount) {
+      window.setTimeout(() => {
+        if (isCurrent()) {
+          setStatus(`Dataset link refresh updated ${result.changedCount} linked cell${result.changedCount === 1 ? "" : "s"}.`);
+        }
+      }, 0);
+    }
+    return result;
+  }
+
   async function syncSidecarForCurrentDataset(options = {}) {
     const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
     if (!isCurrent()) return false;
@@ -498,6 +568,7 @@ export function registerDataTabPersistenceController(runtime) {
       runtime.currentDatasetPrecedents = [];
       datasetExternalLinksLoaded = false;
       runtime.datasetExternalLinks.clear();
+      runtime.datasetInternalLinks.clear();
       lastSavedDatasetSettings = null;
       datasetSettingsDirty = false;
       renderDatasetAuditLog([]);
@@ -521,6 +592,7 @@ export function registerDataTabPersistenceController(runtime) {
         getDatasetAuditLog()?.setError(error?.message || "Unable to load the audit log.");
         datasetExternalLinksLoaded = false;
         runtime.datasetExternalLinks.clear();
+        runtime.datasetInternalLinks.clear();
       }
       throw error;
     }
@@ -533,6 +605,7 @@ export function registerDataTabPersistenceController(runtime) {
       runtime.currentDatasetPrecedents = [];
       datasetExternalLinksLoaded = false;
       runtime.datasetExternalLinks.clear();
+      runtime.datasetInternalLinks.clear();
       lastSavedDatasetSettings = normalizeDatasetSettings(getCurrentDatasetSettings());
       datasetSettingsDirty = false;
       getDatasetAuditLog()?.setError(resp?.data?.detail || "Unable to load the audit log.");
@@ -557,6 +630,9 @@ export function registerDataTabPersistenceController(runtime) {
     datasetExternalLinksLoaded = !isDfmDataTabHost() && currentDatasetIsManualTriangleOrVector();
     runtime.datasetExternalLinks.load(
       datasetExternalLinksLoaded && data.exists ? data.external_links : [],
+    );
+    runtime.datasetInternalLinks.load(
+      datasetExternalLinksLoaded && data.exists ? data.internal_links : [],
     );
     if (data.exists) scheduleDatasetExcelLinkCheck({ contextKey: key, isCurrent });
     if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
@@ -640,6 +716,7 @@ export function registerDataTabPersistenceController(runtime) {
       notes: String(getNotesEditorElements().input?.value ?? ""),
       ...getManualInputDatasetValuePayload(),
       ...getDatasetExternalLinksPayload(),
+      ...getDatasetInternalLinksPayload(),
     };
     progress?.writing();
     const resp = await withDataTabDatasetMutation({ source: "sidecar-save" }, () => saveDatasetSidecar(payload));
@@ -658,6 +735,7 @@ export function registerDataTabPersistenceController(runtime) {
     runtime.currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.precedents);
     if (datasetExternalLinksLoaded) {
       runtime.datasetExternalLinks.markClean(resp.data?.external_links ?? runtime.datasetExternalLinks.serialize());
+      runtime.datasetInternalLinks.markClean(resp.data?.internal_links ?? runtime.datasetInternalLinks.serialize());
     }
     if (isProjectInstanceDraft) {
       runtime.savedProjectInstanceDraftName = context.dataset_name;
@@ -720,6 +798,7 @@ export function registerDataTabPersistenceController(runtime) {
 
   async function runDatasetSave(options, progress) {
     runtime.datasetExternalLinks.abort();
+    runtime.datasetInternalLinks.abort();
     runtime.datasetSaveInFlight = true;
     updateDatasetSaveUi();
     void getDataTabLinksController()?.refresh?.();
@@ -729,7 +808,7 @@ export function registerDataTabPersistenceController(runtime) {
     let propagationClean = true;
     let refreshedDatasets = [];
     try {
-      if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || notesDirty || isUnsavedProjectInstanceDraft()) {
+      if (datasetSettingsDirty || hasManualInputGridChanges() || runtime.datasetExternalLinks.isDirty() || runtime.datasetInternalLinks.isDirty() || notesDirty || isUnsavedProjectInstanceDraft()) {
         const sidecarResult = await saveDatasetSidecarForCurrentContext(progress);
         if (!sidecarResult.ok) return sidecarResult;
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
@@ -750,6 +829,7 @@ export function registerDataTabPersistenceController(runtime) {
   async function discardDatasetChanges(options = {}) {
     const reload = options?.reload !== false;
     runtime.datasetExternalLinks.restoreSaved();
+    runtime.datasetInternalLinks.restoreSaved();
     if (lastSavedDatasetSettings) {
       applyDatasetSettingsToControls(lastSavedDatasetSettings);
       saveTriInputsToStorage();
@@ -1094,6 +1174,7 @@ export function registerDataTabPersistenceController(runtime) {
     buildDatasetSidecarContextPayload, hasDatasetSidecarContext,
     buildDatasetSidecarContextKey, getCurrentDatasetSettings,
     getManualInputDatasetValuePayload, getDatasetExternalLinksPayload,
+    getDatasetInternalLinksPayload,
     normalizeDatasetSettings, sameDatasetSettings,
     hasManualInputGridChanges, hasUnsavedDatasetChanges,
     isUnsavedProjectInstanceDraft, shouldPersistManualInputGridValues,
@@ -1116,6 +1197,7 @@ export function registerDataTabPersistenceController(runtime) {
     loadTemporaryNumberFormatSettings,
     invalidateDatasetContextLoads,
     refreshDatasetExternalLinks,
+    refreshDatasetInternalLinks,
     syncSidecarForCurrentDataset,
     saveDatasetSidecarForCurrentContext,
     saveDatasetChanges,

@@ -1503,6 +1503,20 @@ window.addEventListener("message", (event) => {
     }
     return;
   }
+  if (msg.type === "arcrho:dataset-reference-pick-begin" || msg.type === "arcrho:dataset-reference-pick-end") {
+    // Formula-edit pick mode: every other dataset window of this project
+    // decides for itself whether it can serve as a pick source.
+    postMessageToDatasetWindows({ ...msg }, event.source);
+    return;
+  }
+  if (msg.type === "arcrho:dataset-reference-pick") {
+    const frame = findWindowByInstance(msg.toInst);
+    const iframe = frame ? getWindowIframe(frame) : null;
+    try {
+      iframe?.contentWindow?.postMessage({ ...msg }, "*");
+    } catch {}
+    return;
+  }
   if (msg.type === "arcrho:dependency-source-preview") {
     postMessageToDatasetWindows({ ...msg }, event.source, { includeDfm: true });
     void publishCalculatedDependencyPreviews(msg, event.source).catch((err) => {

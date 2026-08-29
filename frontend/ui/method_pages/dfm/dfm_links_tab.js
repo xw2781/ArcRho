@@ -1,4 +1,4 @@
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260812b";
+import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260829a";
 import {
   breakDfmExternalLinks,
   getDfmExternalLinkRecords,

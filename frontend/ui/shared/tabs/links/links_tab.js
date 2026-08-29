@@ -3,7 +3,7 @@ import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
 
 const EXTERNAL_LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
-const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260807a";
+const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260829a";
 const MOUNTED_EXTERNAL_LINKS_TABS = new WeakMap();
 
 function ensureExternalLinksStylesheet(documentRef) {
@@ -55,21 +55,45 @@ function normalizeAffectedCellCount(value) {
   return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
-function normalizeExternalLinkRecord(record, index) {
+// The default (Excel) identity columns; the ArcRho internal-links variant
+// swaps these for dataset-oriented ones while reusing the same table core.
+const EXTERNAL_LINK_IDENTITY_COLUMNS = [
+  {
+    key: "workbookPath",
+    header: "Workbook",
+    colClassName: "arExternalLinksWorkbookColumn",
+    cellClassName: "arExternalLinksWorkbookCell",
+  },
+  {
+    key: "worksheet",
+    header: "Worksheet",
+    colClassName: "arExternalLinksWorksheetColumn",
+    cellClassName: "arExternalLinksWorksheetCell",
+  },
+  {
+    key: "address",
+    header: "Cell Address",
+    colClassName: "arExternalLinksAddressColumn",
+    cellClassName: "arExternalLinksAddressCell",
+  },
+];
+
+function normalizeLinkRecord(record, index, identityColumns, idPrefix) {
   const source = record && typeof record === "object" && !Array.isArray(record)
     ? record
     : {};
-  const id = String(source.id ?? "").trim() || `external-link-${index + 1}`;
-  return {
+  const id = String(source.id ?? "").trim() || `${idPrefix}-${index + 1}`;
+  const normalized = {
     id,
-    workbookPath: String(source.workbookPath ?? "").trim(),
-    worksheet: String(source.worksheet ?? "").trim(),
-    address: String(source.address ?? "").trim(),
     destination: String(source.destination ?? "").trim(),
     value: String(source.value ?? ""),
     affectedCellCount: normalizeAffectedCellCount(source.affectedCellCount),
     readOnly: source.readOnly === true,
   };
+  for (const column of identityColumns) {
+    normalized[column.key] = String(source[column.key] ?? "").trim();
+  }
+  return normalized;
 }
 
 function errorMessage(error, fallback) {
@@ -109,6 +133,10 @@ export function createExternalLinksTab({
   onOpenWorkbook = openPathThroughDesktopHost,
   onStatus,
   documentRef = container?.ownerDocument || globalThis.document,
+  noun = "external links",
+  idPrefix = "external-link",
+  identityColumns = EXTERNAL_LINK_IDENTITY_COLUMNS,
+  openMenuItems = null,
 } = {}) {
   if (!documentRef || typeof documentRef.createElement !== "function") {
     throw new TypeError("createExternalLinksTab requires a document.");
@@ -139,6 +167,29 @@ export function createExternalLinksTab({
 
   ensureExternalLinksStylesheet(documentRef);
 
+  // "Open ..." context entries: the Excel table opens the workbook two ways;
+  // a variant passes its own entries (for example "Open source dataset").
+  const resolvedOpenMenuItems = Array.isArray(openMenuItems) ? openMenuItems : [
+    {
+      action: "open-workbook",
+      label: "Open workbook",
+      availableFor: (record) => !!record?.workbookPath,
+      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: false }),
+      failure: "The workbook could not be opened.",
+      success: "Workbook opened.",
+    },
+    {
+      action: "open-workbook-read-only",
+      label: "Open workbook as Read-Only",
+      availableFor: (record) => !!record?.workbookPath,
+      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: true }),
+      failure: "The workbook could not be opened read-only.",
+      success: "Workbook opened read-only.",
+    },
+  ];
+  const nounText = String(noun || "external links");
+  const nounSentence = nounText.charAt(0).toUpperCase() + nounText.slice(1);
+
   const root = documentRef.createElement("div");
   root.className = "arExternalLinks";
   root.setAttribute("aria-busy", "false");
@@ -151,14 +202,12 @@ export function createExternalLinksTab({
   const menuInner = documentRef.createElement("div");
   menuInner.className = "ctx-menu-inner";
   menu.appendChild(menuInner);
-  const openWorkbookItem = appendMenuItem(documentRef, menuInner, "open-workbook", "Open workbook");
-  const openWorkbookReadOnlyItem = appendMenuItem(
-    documentRef,
-    menuInner,
-    "open-workbook-read-only",
-    "Open workbook as Read-Only",
-  );
+  const openItems = resolvedOpenMenuItems.map((item) => ({
+    ...item,
+    element: appendMenuItem(documentRef, menuInner, item.action, item.label),
+  }));
   const openWorkbookSeparator = appendMenuSeparator(documentRef, menuInner);
+  openWorkbookSeparator.hidden = !openItems.length;
   const refreshSelectedItem = appendMenuItem(documentRef, menuInner, "refresh-selected", "Refresh selected");
   const breakSelectedItem = appendMenuItem(documentRef, menuInner, "break-selected", "Break selected");
   const menuSeparator = appendMenuSeparator(documentRef, menuInner);
@@ -176,7 +225,7 @@ export function createExternalLinksTab({
     state,
     "strong",
     "arExternalLinksStateTitle",
-    "No external links",
+    `No ${nounText}`,
   );
   const stateDescription = appendTextElement(
     documentRef,
@@ -206,9 +255,7 @@ export function createExternalLinksTab({
 
   const colgroup = documentRef.createElement("colgroup");
   for (const className of [
-    "arExternalLinksWorkbookColumn",
-    "arExternalLinksWorksheetColumn",
-    "arExternalLinksAddressColumn",
+    ...identityColumns.map((column) => column.colClassName),
     "arExternalLinksDestinationColumn",
     "arExternalLinksValueColumn",
   ]) {
@@ -220,7 +267,11 @@ export function createExternalLinksTab({
 
   const head = documentRef.createElement("thead");
   const headerRow = documentRef.createElement("tr");
-  for (const label of ["Workbook", "Worksheet", "Cell Address", "Destination", "Values"]) {
+  for (const label of [
+    ...identityColumns.map((column) => column.header),
+    "Destination",
+    "Values",
+  ]) {
     const header = documentRef.createElement("th");
     header.scope = "col";
     header.textContent = label;
@@ -326,9 +377,10 @@ export function createExternalLinksTab({
     const breakableAll = records.filter((record) => !record.readOnly);
     const contextRecord = records.find((record) => record.id === contextRowId) || null;
 
-    openWorkbookItem.hidden = !contextRecord?.workbookPath;
-    openWorkbookReadOnlyItem.hidden = !contextRecord?.workbookPath;
-    openWorkbookSeparator.hidden = !contextRecord?.workbookPath;
+    for (const item of openItems) {
+      item.element.hidden = !contextRecord || item.availableFor(contextRecord) !== true;
+    }
+    openWorkbookSeparator.hidden = !openItems.length || openItems.every((item) => item.element.hidden);
     refreshSelectedItem.hidden = selectedScope.length === 0;
     breakSelectedItem.hidden = breakableSelected.length === 0;
     refreshAllItem.hidden = records.length === 0;
@@ -338,18 +390,17 @@ export function createExternalLinksTab({
 
     refreshSelectedItem.setAttribute(
       "aria-label",
-      `Refresh ${selectedScope.length} selected external links`,
+      `Refresh ${selectedScope.length} selected ${nounText}`,
     );
     breakSelectedItem.setAttribute(
       "aria-label",
-      `Break ${breakableSelected.length} selected external links`,
+      `Break ${breakableSelected.length} selected ${nounText}`,
     );
-    refreshAllItem.setAttribute("aria-label", "Refresh all external links");
-    breakAllItem.setAttribute("aria-label", "Break all external links");
+    refreshAllItem.setAttribute("aria-label", `Refresh all ${nounText}`);
+    breakAllItem.setAttribute("aria-label", `Break all ${nounText}`);
 
     return [
-      openWorkbookItem,
-      openWorkbookReadOnlyItem,
+      ...openItems.map((item) => item.element),
       refreshSelectedItem,
       breakSelectedItem,
       refreshAllItem,
@@ -439,7 +490,9 @@ export function createExternalLinksTab({
 
   const render = (nextRecords) => {
     if (destroyed) return;
-    records = nextRecords.map(normalizeExternalLinkRecord);
+    records = nextRecords.map(
+      (record, index) => normalizeLinkRecord(record, index, identityColumns, idPrefix),
+    );
     const availableIds = new Set(records.map((record) => record.id));
     Array.from(selectedIds).forEach((id) => {
       if (!availableIds.has(id)) selectedIds.delete(id);
@@ -468,13 +521,10 @@ export function createExternalLinksTab({
         openMenu(event);
       });
 
-      for (const [className, value] of [
-        ["arExternalLinksWorkbookCell", record.workbookPath],
-        ["arExternalLinksWorksheetCell", record.worksheet],
-        ["arExternalLinksAddressCell", record.address],
-      ]) {
+      for (const column of identityColumns) {
+        const value = record[column.key];
         const cell = documentRef.createElement("td");
-        cell.className = className;
+        cell.className = column.cellClassName;
         cell.textContent = value;
         attachArcrhoTooltip(cell, value, { document: documentRef });
         row.appendChild(cell);
@@ -518,14 +568,14 @@ export function createExternalLinksTab({
     } else if (records.length) {
       hideState();
     } else {
-      showState("Empty", "No external links", emptyDescription);
+      showState("Empty", `No ${nounText}`, emptyDescription);
     }
     syncBusyState();
   };
 
-  const setLoading = (message = "Loading external links...") => {
+  const setLoading = (message = `Loading ${nounText}...`) => {
     loading = true;
-    showState("Loading", message || "Loading external links...");
+    showState("Loading", message || `Loading ${nounText}...`);
     syncBusyState();
   };
 
@@ -533,15 +583,15 @@ export function createExternalLinksTab({
     loading = false;
     showState(
       "Error",
-      "Unable to load external links",
-      message || "The external links could not be loaded.",
+      `Unable to load ${nounText}`,
+      message || `The ${nounText} could not be loaded.`,
     );
     syncBusyState();
   };
 
   const setWarning = (title, description = "") => {
     advisory = {
-      title: String(title || "External links require attention"),
+      title: String(title || `${nounSentence} require attention`),
       description: String(description || ""),
     };
     showState("Warning", advisory.title, advisory.description);
@@ -551,7 +601,7 @@ export function createExternalLinksTab({
   const clearWarning = () => {
     advisory = null;
     if (records.length) hideState();
-    else showState("Empty", "No external links", emptyDescription);
+    else showState("Empty", `No ${nounText}`, emptyDescription);
     syncBusyState();
   };
 
@@ -571,7 +621,7 @@ export function createExternalLinksTab({
       return true;
     } catch (error) {
       if (destroyed || generation !== refreshGeneration) return false;
-      const message = errorMessage(error, "The external links could not be loaded.");
+      const message = errorMessage(error, `The ${nounText} could not be loaded.`);
       setError(message);
       reportStatus(message, "error");
       return false;
@@ -592,13 +642,13 @@ export function createExternalLinksTab({
     // only place left that can report progress while the domain handler runs.
     showState(
       "Loading",
-      kind === "break" ? "Breaking external links..." : "Refreshing external links...",
+      kind === "break" ? `Breaking ${nounText}...` : `Refreshing ${nounText}...`,
     );
     const handler = kind === "break" ? onBreakLinks : onRefreshLinks;
     const title = kind === "break" ? "Unable to break links" : "Unable to refresh links";
     const fallback = kind === "break"
-      ? "The external links could not be broken."
-      : "The external links could not be refreshed.";
+      ? `The ${nounText} could not be broken.`
+      : `The ${nounText} could not be refreshed.`;
 
     try {
       const result = await handler(actionRecords.slice());
@@ -613,8 +663,8 @@ export function createExternalLinksTab({
       const refreshed = await refresh();
       if (destroyed || !refreshed) return false;
       const defaultMessage = kind === "break"
-        ? "External links broken."
-        : "External links refreshed.";
+        ? `${nounSentence} broken.`
+        : `${nounSentence} refreshed.`;
       reportStatus(String(result?.message || defaultMessage), "success");
       return true;
     } catch (error) {
@@ -635,35 +685,28 @@ export function createExternalLinksTab({
     return runAction(kind, scopeMode);
   };
 
-  const handleOpenWorkbook = async (readOnly) => {
+  const handleOpenMenuItem = async (item) => {
     const record = records.find((candidate) => candidate.id === contextRowId);
     closeMenu();
     restoreTableFocus();
-    if (destroyed || loading || activeAction || !record?.workbookPath) return false;
+    if (destroyed || loading || activeAction || !record || item.availableFor(record) !== true) {
+      return false;
+    }
 
-    activeAction = "open-workbook";
+    activeAction = item.action;
     syncBusyState();
     try {
-      const result = await onOpenWorkbook(record.workbookPath, { readOnly: !!readOnly });
+      const result = await item.run(record);
       if (destroyed) return false;
-      const failure = actionFailureMessage(
-        result,
-        readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
-      );
+      const failure = actionFailureMessage(result, item.failure);
       if (failure) {
         reportStatus(failure, "error");
         return false;
       }
-      reportStatus(
-        readOnly ? "Workbook opened read-only." : "Workbook opened.",
-        "success",
-      );
+      reportStatus(item.success, "success");
       return true;
     } catch (error) {
-      const message = errorMessage(
-        error,
-        readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
-      );
+      const message = errorMessage(error, item.failure);
       reportStatus(message, "error");
       return false;
     } finally {
@@ -687,8 +730,9 @@ export function createExternalLinksTab({
     if (event.key === "Escape") closeMenu();
   };
 
-  openWorkbookItem.addEventListener("click", () => handleOpenWorkbook(false));
-  openWorkbookReadOnlyItem.addEventListener("click", () => handleOpenWorkbook(true));
+  for (const item of openItems) {
+    item.element.addEventListener("click", () => handleOpenMenuItem(item));
+  }
   refreshSelectedItem.addEventListener("click", () => handleMenuAction("refresh", "selection"));
   breakSelectedItem.addEventListener("click", () => handleMenuAction("break", "selection"));
   refreshAllItem.addEventListener("click", () => handleMenuAction("refresh", "all"));
@@ -738,4 +782,57 @@ export function createExternalLinksTab({
   };
   MOUNTED_EXTERNAL_LINKS_TABS.set(container, controller);
   return controller;
+}
+
+/**
+ * The ArcRho internal-links variant of the same table: links from this
+ * dataset's cells into other datasets of the reserving class. Columns become
+ * Dataset / Source Range, and the context menu opens the source dataset
+ * instead of a workbook.
+ */
+export function createInternalLinksTab({
+  container,
+  ariaLabel = "Dataset links",
+  emptyDescription = "ArcRho dataset links used by editable cells in the Data tab will appear here.",
+  getLinks,
+  onRefreshLinks,
+  onBreakLinks,
+  onOpenDataset,
+  onStatus,
+  documentRef = container?.ownerDocument || globalThis.document,
+} = {}) {
+  return createExternalLinksTab({
+    container,
+    ariaLabel,
+    emptyDescription,
+    getLinks,
+    onRefreshLinks,
+    onBreakLinks,
+    onStatus,
+    documentRef,
+    noun: "dataset links",
+    idPrefix: "internal-link",
+    identityColumns: [
+      {
+        key: "datasetName",
+        header: "Dataset",
+        colClassName: "arInternalLinksDatasetColumn",
+        cellClassName: "arExternalLinksWorkbookCell",
+      },
+      {
+        key: "sourceRange",
+        header: "Source Range",
+        colClassName: "arInternalLinksRangeColumn",
+        cellClassName: "arExternalLinksAddressCell",
+      },
+    ],
+    openMenuItems: typeof onOpenDataset === "function" ? [{
+      action: "open-dataset",
+      label: "Open source dataset",
+      availableFor: (record) => !!record?.datasetName,
+      run: (record) => onOpenDataset(record),
+      failure: "The source dataset could not be opened.",
+      success: "Dataset opened.",
+    }] : [],
+  });
 }

@@ -38,7 +38,7 @@ const interactionSource = (await readFile(
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260829a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(
@@ -48,6 +48,13 @@ const interactionSource = (await readFile(
   .replace(
     '"/ui/shared/components/formula_hover/formula_hover.js?v=20260812b"',
     JSON.stringify(formulaHoverStubUrl),
+  )
+  .replace(
+    '"/ui/shared/dataset/dataset_internal_reference.js?v=20260829a"',
+    JSON.stringify(dataUrl(await readFile(
+      new URL("../ui/shared/dataset/dataset_internal_reference.js", import.meta.url),
+      "utf8",
+    ))),
   );
 const interactions = await import(dataUrl(interactionSource));
 

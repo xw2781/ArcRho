@@ -11,6 +11,7 @@ import {
   loadDatasetSidecar,
   patchDataset,
   previewCalculatedDatasetDependents,
+  resolveDatasetInternalLinks,
   saveDatasetNotes,
   saveDatasetSidecar,
 } from "/ui/shared/dataset/dataset_api.js";
@@ -18,7 +19,7 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260811j";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829a";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
@@ -36,7 +37,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260811j";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260829a";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -64,7 +65,8 @@ import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
 import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
-import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260819a";
+import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260829a";
+import { createDatasetInternalLinksController } from "/ui/shared/dataset/dataset_internal_links.js?v=20260829a";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -88,12 +90,12 @@ import {
 } from "/ui/shell/browsing_history.js";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
-import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260805a";
+import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260829a";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260824a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260829a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -132,6 +134,7 @@ const runtime = {
   loadDatasetSidecar,
   patchDataset,
   previewCalculatedDatasetDependents,
+  resolveDatasetInternalLinks,
   saveDatasetNotes,
   saveDatasetSidecar,
   renderTable,
@@ -162,6 +165,7 @@ const runtime = {
   getDataTabCloseConfirm,
   getDataTabLinksController,
   createDatasetExternalLinksController,
+  createDatasetInternalLinksController,
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
   loadProjectValidValueList,
@@ -206,6 +210,7 @@ const runtime = {
   currentDatasetSidecarSourceKind: "",
   datasetDependencyGuard: null,
   datasetExternalLinks: null,
+  datasetInternalLinks: null,
   datasetHeadersService: null,
   datasetInstanceNameConflict: false,
   datasetInstanceNameConflictMessage: "",
@@ -250,6 +255,23 @@ export async function breakDatasetExternalLink(id) {
 
 export async function refreshDatasetExternalLinkRecords(ids) {
   return runtime.refreshDatasetExternalLinks({ ids });
+}
+
+export function getDatasetInternalLinkRecords() {
+  return runtime.datasetInternalLinks.listRecords();
+}
+
+export async function breakDatasetInternalLinks(ids) {
+  const result = runtime.datasetInternalLinks.breakLinks(ids);
+  if (!result.ok) return result;
+  renderTable();
+  runtime.notifyDatasetUpdated({ publishPreview: false });
+  runtime.setStatus(result.message || "Links broken. Current dataset values are now hard-coded.");
+  return result;
+}
+
+export async function refreshDatasetInternalLinkRecords(ids) {
+  return runtime.refreshDatasetInternalLinks({ ids });
 }
 
 async function openProjectNameTreeForDataset(targetInput) {
@@ -299,6 +321,15 @@ async function openDatasetNameTreeForDataset(targetInput) {
 
 function wireGridInteractions() {
   if (datasetGridInteractions) return;
+  const dfmLinksRefused = () => Promise.resolve({
+    handled: true,
+    ok: false,
+    error: "Enter external Excel links in DFM Ratios User Entry cells.",
+  });
+  const mapLinkCells = (cells) => (Array.isArray(cells) ? cells : []).map((cell) => ({
+    row: Number(cell?.row ?? cell?.r),
+    column: Number(cell?.column ?? cell?.c),
+  }));
   datasetGridInteractions = wireDatasetGridInteractions({
     state,
     renderTable,
@@ -308,27 +339,38 @@ function wireGridInteractions() {
     refreshDatasetSettingsDirty: runtime.refreshDatasetSettingsDirty,
     commitExternalReference: (request) => (
       isDfmDataTabHost()
-        ? Promise.resolve({
-          handled: true,
-          ok: false,
-          error: "Enter external Excel links in DFM Ratios User Entry cells.",
-        })
+        ? dfmLinksRefused()
         : runtime.datasetExternalLinks.commitReference(request)
     ),
-    cancelExternalReference: () => runtime.datasetExternalLinks.abort(),
-    hardCodeExternalLinkCells: (cells) => runtime.datasetExternalLinks.hardCodeTargetCells(
-      (Array.isArray(cells) ? cells : []).map((cell) => ({
-        row: Number(cell?.row ?? cell?.r),
-        column: Number(cell?.column ?? cell?.c),
-      })),
+    commitInternalReference: (request) => (
+      isDfmDataTabHost()
+        ? dfmLinksRefused()
+        : runtime.datasetInternalLinks.commitReference(request)
     ),
+    cancelExternalReference: () => {
+      runtime.datasetExternalLinks.abort();
+      runtime.datasetInternalLinks.abort();
+    },
+    hardCodeExternalLinkCells: (cells) => {
+      const mapped = mapLinkCells(cells);
+      return runtime.datasetExternalLinks.hardCodeTargetCells(mapped)
+        + runtime.datasetInternalLinks.hardCodeTargetCells(mapped);
+    },
     decorateExternalLinkCell: (cell, displayRow, displayColumn) => {
       runtime.datasetExternalLinks.decorateCell(cell, displayRow, displayColumn);
+      runtime.datasetInternalLinks.decorateCell(cell, displayRow, displayColumn);
     },
+    // A cell holds at most one link (Excel or ArcRho), enforced on commit and
+    // save, so the first answer wins here.
     getExternalLinkCellInfo: (displayRow, displayColumn) => (
-      runtime.datasetExternalLinks.getCellLinkInfo(displayRow, displayColumn)
+      runtime.datasetInternalLinks.getCellLinkInfo(displayRow, displayColumn)
+      || runtime.datasetExternalLinks.getCellLinkInfo(displayRow, displayColumn)
     ),
+    beginReferencePick: () => runtime.publishDatasetReferencePickBegin?.(),
+    endReferencePick: () => runtime.publishDatasetReferencePickEnd?.(),
+    publishReferencePick: (range) => runtime.publishDatasetReferencePick?.(range),
   });
+  runtime.applyDatasetReferencePick = datasetGridInteractions.applyDatasetReferencePick;
 }
 
 function applyGridSelectionFromState() {

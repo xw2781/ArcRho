@@ -107,6 +107,32 @@ class DatasetExternalLink(BaseModel):
         return normalized
 
 
+class DatasetInternalLinkTargetCell(BaseModel):
+    row: int = Field(..., ge=0, strict=True)
+    column: int = Field(..., ge=0, strict=True)
+    source_row: int = Field(..., ge=0, strict=True)
+    source_column: int = Field(..., ge=0, strict=True)
+
+
+class DatasetInternalLink(BaseModel):
+    reference: str = Field(..., min_length=1, strict=True)
+    target_cells: List[DatasetInternalLinkTargetCell] = Field(..., min_length=1)
+
+    @field_validator("reference")
+    @classmethod
+    def normalize_reference(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("reference must not be blank")
+        return normalized
+
+
+class DatasetInternalLinksResolveRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    references: List[str] = Field(..., min_length=1)
+
+
 class DatasetSidecarSaveRequest(BaseModel):
     project_name: str
     reserving_class: str
@@ -130,6 +156,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     notes: Optional[str] = None
     precedents: Optional[List[str]] = None
     external_links: Optional[List[DatasetExternalLink]] = None
+    internal_links: Optional[List[DatasetInternalLink]] = None
     values: Optional[List[List[Optional[float]]]] = None
     mask: Optional[List[List[bool]]] = None
     # Fingerprint of the dependent-update plan the user confirmed. The Engine

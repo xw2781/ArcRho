@@ -75,7 +75,8 @@
    and says so in red, so the broken reference stays visible after the alert is
    dismissed and until it is fixed. Declared after the selection rule so a
    selected cell still reads as broken. */
-.arSpreadsheetTable td.arExternalLinkErrorCell {
+.arSpreadsheetTable td.arExternalLinkErrorCell,
+.arSpreadsheetTable td.arInternalLinkErrorCell {
   color: var(--ar-spreadsheet-link-error-text);
 }
 
@@ -99,9 +100,31 @@
   transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
+/* An ArcRho dataset link wears the same range perimeter as an Excel array
+   formula, re-tinted teal so an internal link reads apart from an Excel one. */
+.arSpreadsheetTable td.arArrayFormulaCell.arInternalLinkCell {
+  --ar-array-formula-border: #0e9f6e;
+}
+
 .arSpreadsheetTable td.arArrayFormulaEdgeTop {
   border-top: 1px solid var(--ar-array-formula-border) !important;
   --ar-array-formula-top-glow: rgba(43, 109, 246, 0.28);
+}
+
+.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeTop {
+  --ar-array-formula-top-glow: rgba(14, 159, 110, 0.28);
+}
+
+.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeRight {
+  --ar-array-formula-right-glow: rgba(14, 159, 110, 0.28);
+}
+
+.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeBottom {
+  --ar-array-formula-bottom-glow: rgba(14, 159, 110, 0.28);
+}
+
+.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeLeft {
+  --ar-array-formula-left-glow: rgba(14, 159, 110, 0.28);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeRight {

@@ -304,6 +304,7 @@ export function createDatasetExternalLinksController({
   isReadOnly = () => false,
   isTransposed = () => false,
   onInventoryChanged = () => {},
+  onTargetsClaimed = () => {},
 } = {}) {
   let links = [];
   let savedLinks = [];
@@ -775,6 +776,7 @@ export function createDatasetExternalLinksController({
     if (overlapping.size) {
       links = links.filter((_link, index) => !overlapping.has(index));
     }
+    onTargetsClaimed(targets.map((target) => ({ row: target.row, column: target.column })));
     let changedCount = 0;
     targets.forEach((target, index) => {
       const value = values[index];

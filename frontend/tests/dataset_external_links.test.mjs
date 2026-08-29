@@ -959,13 +959,13 @@ test("the shared grid stylesheet paints a failed link red in both themes", async
   );
   assert.match(
     spreadsheetCss,
-    /\.arSpreadsheetTable td\.arExternalLinkErrorCell \{\s*color: var\(--ar-spreadsheet-link-error-text\);/u,
+    /\.arSpreadsheetTable td\.arExternalLinkErrorCell,\s*\.arSpreadsheetTable td\.arInternalLinkErrorCell \{\s*color: var\(--ar-spreadsheet-link-error-text\);/u,
   );
   assert.match(spreadsheetCss, /--ar-spreadsheet-link-error-text: #b91c1c;/u);
   // The Dark rule for a plain cell is more specific than the base rule, so the
   // deviation has to be declared in the theme or the red is lost.
   assert.match(
     darkCss,
-    /\[data-arcrho-theme="dark"\] \.arSpreadsheetTable td\.arExternalLinkErrorCell \{\s*color: var\(--ar-color-danger\);/u,
+    /\[data-arcrho-theme="dark"\] \.arSpreadsheetTable td\.arExternalLinkErrorCell,\s*:root\[data-arcrho-theme="dark"\] \.arSpreadsheetTable td\.arInternalLinkErrorCell \{\s*color: var\(--ar-color-danger\);/u,
   );
 });

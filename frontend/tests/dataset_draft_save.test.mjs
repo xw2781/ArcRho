@@ -158,6 +158,11 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
       abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
       serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
     }),
+    createDatasetInternalLinksController: () => ({
+      abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
+      hardCodeTargetCells: () => 0, getLinkFailures: () => [],
+      serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
+    }),
   };
   const runtime = new Proxy(base, {
     get(target, prop) {

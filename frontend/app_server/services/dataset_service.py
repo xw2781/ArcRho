@@ -634,6 +634,146 @@ def _normalize_dataset_external_links(
     return normalized
 
 
+def _normalize_dataset_internal_links(
+    value: Any,
+    *,
+    strict: bool = False,
+) -> List[Dict[str, Any]]:
+    """Validate the ``internal_links`` sidecar field (ArcRho dataset cell links).
+
+    Mirrors ``_normalize_dataset_external_links``: strict on save, lenient on
+    load. Target cells are zero-based untransposed coordinates of this dataset;
+    source cells are zero-based coordinates of the referenced dataset.
+    """
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        if strict:
+            raise HTTPException(400, "internal_links must be a list.")
+        return []
+
+    from app_server.services import dataset_internal_link_service
+
+    normalized: List[Dict[str, Any]] = []
+    seen_links: set[Tuple[str, Tuple[Tuple[int, int, int, int], ...]]] = set()
+    owned_targets: set[Tuple[int, int]] = set()
+
+    def invalid(detail: str) -> bool:
+        if strict:
+            raise HTTPException(400, detail)
+        return False
+
+    def nonnegative_int(raw: Any) -> int | None:
+        if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+            return None
+        return raw
+
+    for raw_link in value:
+        if hasattr(raw_link, "model_dump"):
+            raw_link = raw_link.model_dump()
+        if not isinstance(raw_link, dict):
+            invalid("Each internal link must be an object.")
+            continue
+
+        raw_reference = raw_link.get("reference")
+        if not isinstance(raw_reference, str) or not raw_reference.strip():
+            invalid("Each internal link reference must be a nonblank string.")
+            continue
+        try:
+            reference = dataset_internal_link_service.canonical_internal_reference(raw_reference)
+        except HTTPException as err:
+            invalid(f"Internal link reference is invalid: {err.detail}")
+            continue
+
+        raw_targets = raw_link.get("target_cells")
+        if not isinstance(raw_targets, list) or not raw_targets:
+            invalid("Each internal link must include at least one target cell.")
+            continue
+
+        targets: List[Dict[str, Any]] = []
+        seen_targets: set[Tuple[int, int]] = set()
+        seen_sources: set[Tuple[int, int]] = set()
+        link_is_invalid = False
+        for raw_target in raw_targets:
+            if hasattr(raw_target, "model_dump"):
+                raw_target = raw_target.model_dump()
+            if not isinstance(raw_target, dict):
+                invalid("Each internal link target cell must be an object.")
+                link_is_invalid = True
+                break
+            row = nonnegative_int(raw_target.get("row"))
+            column = nonnegative_int(raw_target.get("column"))
+            source_row = nonnegative_int(raw_target.get("source_row"))
+            source_column = nonnegative_int(raw_target.get("source_column"))
+            if row is None or column is None or source_row is None or source_column is None:
+                invalid(
+                    "Internal link target row, column, source_row, and source_column "
+                    "must be nonnegative integers.",
+                )
+                link_is_invalid = True
+                break
+            target_key = (row, column)
+            source_key = (source_row, source_column)
+            if target_key in seen_targets or source_key in seen_sources:
+                invalid("Internal link target and source cells must be unique within a link.")
+                link_is_invalid = True
+                break
+            seen_targets.add(target_key)
+            seen_sources.add(source_key)
+            targets.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "source_row": source_row,
+                    "source_column": source_column,
+                }
+            )
+
+        if link_is_invalid or not targets:
+            if not link_is_invalid:
+                invalid("Each internal link must include at least one valid target cell.")
+            continue
+
+        link_key = (
+            reference,
+            tuple(
+                (target["row"], target["column"], target["source_row"], target["source_column"])
+                for target in targets
+            ),
+        )
+        if link_key in seen_links:
+            continue
+        target_keys = {(target["row"], target["column"]) for target in targets}
+        if target_keys & owned_targets:
+            invalid("An internal link target cell cannot belong to more than one link.")
+            continue
+        seen_links.add(link_key)
+        owned_targets.update(target_keys)
+        normalized.append({"reference": reference, "target_cells": targets})
+
+    return normalized
+
+
+def _require_disjoint_dataset_link_targets(
+    external_links: List[Dict[str, Any]],
+    internal_links: List[Dict[str, Any]],
+) -> None:
+    external_targets = {
+        (target["row"], target["column"])
+        for link in external_links
+        for target in link.get("target_cells") or []
+    }
+    for link in internal_links:
+        for target in link.get("target_cells") or []:
+            if (target["row"], target["column"]) in external_targets:
+                raise HTTPException(
+                    400,
+                    "A dataset cell cannot be linked to both an Excel workbook "
+                    "and another ArcRho dataset.",
+                )
+
+
 def _write_dataset_sidecar_payload(path: str, payload: Dict[str, Any]) -> None:
     with _dataset_sidecar_write_lock(path):
         tmp_path = f"{path}.{uuid.uuid4()}.tmp"
@@ -1312,6 +1452,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
             "reserving_class": rc,
             "dataset_name": ds,
             "external_links": [],
+            "internal_links": [],
             "show_subtotal": DEFAULT_SHOW_SUBTOTAL,
             "path": path,
         }
@@ -1380,6 +1521,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "calculated": True if app_calculated else payload.get("calculated"),
         "formula": str(formula or ""),
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
+        "internal_links": _normalize_dataset_internal_links(payload.get("internal_links")),
         "precedents": precedents,
         "dependents": dependents,
         "modified_by": str(payload.get("modified_by") or ""),
@@ -1621,6 +1763,7 @@ def load_cached_dataset_values(
         "formula": dataset_type_formula,
         "calculated": sidecar.get("calculated"),
         "external_links": _normalize_dataset_external_links(sidecar.get("external_links")),
+        "internal_links": _normalize_dataset_internal_links(sidecar.get("internal_links")),
         "precedents": sidecar.get("precedents") if isinstance(sidecar.get("precedents"), list) else [],
         "dependents": sidecar.get("dependents") if isinstance(sidecar.get("dependents"), list) else [],
         "audit_log": _normalize_dataset_audit_log(sidecar.get("audit_log")),
@@ -1655,6 +1798,7 @@ def _save_dataset_sidecar_impl(
     notes: str | None = None,
     precedents: List[str] | None = None,
     external_links: List[Any] | None = None,
+    internal_links: List[Any] | None = None,
     values: List[List[Any]] | None = None,
     mask: List[List[bool]] | None = None,
 ) -> Dict[str, Any]:
@@ -1664,6 +1808,11 @@ def _save_dataset_sidecar_impl(
     normalized_external_links = (
         _normalize_dataset_external_links(external_links, strict=True)
         if external_links is not None
+        else None
+    )
+    normalized_internal_links = (
+        _normalize_dataset_internal_links(internal_links, strict=True)
+        if internal_links is not None
         else None
     )
 
@@ -1743,6 +1892,12 @@ def _save_dataset_sidecar_impl(
         payload["origin_labels"] = _normalize_origin_labels(origin_labels)
     if normalized_external_links is not None:
         payload["external_links"] = normalized_external_links
+    if normalized_internal_links is not None:
+        payload["internal_links"] = normalized_internal_links
+    _require_disjoint_dataset_link_targets(
+        _normalize_dataset_external_links(payload.get("external_links")),
+        _normalize_dataset_internal_links(payload.get("internal_links")),
+    )
     _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
@@ -1845,6 +2000,7 @@ def _save_dataset_sidecar_impl(
         "status": payload["status"],
         "notes": payload["notes"],
         "external_links": _normalize_dataset_external_links(payload.get("external_links")),
+        "internal_links": _normalize_dataset_internal_links(payload.get("internal_links")),
         "precedents": _sidecar_graph_entries(
             p,
             rc,

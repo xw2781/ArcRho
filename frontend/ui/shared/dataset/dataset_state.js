@@ -14,4 +14,8 @@ export const state = {
 
   activeCell: null, // { r, c } or null
   chartMode: "byCol", // "byRow" = one line per origin, "byCol" = one line per dev period
+
+  // inst of the window whose formula edit is picking cells from this window's
+  // grid, or "" when no cross-window dataset-reference pick is active.
+  referencePickRequester: "",
 };

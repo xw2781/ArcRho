@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset cells can now link their values to a cell or range of another dataset in the same segment, alongside the existing Excel links.",
+  "details": [
+    "Type a formula such as =[C 82 - Prior Qtr Selected][1:6] into a cell, or start with = and simply click or drag the cells in the other open dataset window, Excel-style; the picked reference fills in live and Enter loads the values.",
+    "A linked range wears a teal outline so an ArcRho link reads apart from a blue Excel link, and hovering shows the formula just like an Excel-linked cell.",
+    "The Links tab now has two sections - Excel Links and ArcRho Links - each with refresh, break, and open actions; refreshing an ArcRho link re-reads the source dataset's current values.",
+    "Linked values are snapshots saved with the dataset; the sidecar stores them under a new internal_links field beside external_links."
+  ]
+}

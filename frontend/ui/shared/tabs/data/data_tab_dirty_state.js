@@ -21,6 +21,7 @@ export function createDatasetDirtyState(deps) {
     getDatasetSidecarSourceKind,
     getDatasetSidecarDataFormat,
     getDatasetExternalLinks,
+    getDatasetInternalLinks,
     isSettingsDirty,
     isNotesDirty,
   } = deps;
@@ -58,7 +59,8 @@ export function createDatasetDirtyState(deps) {
     return isSettingsDirty()
       || isNotesDirty()
       || hasManualInputGridChanges()
-      || getDatasetExternalLinks().isDirty();
+      || getDatasetExternalLinks().isDirty()
+      || getDatasetInternalLinks().isDirty();
   }
 
   // The draft stays save-eligible until it is persisted under its current Name;

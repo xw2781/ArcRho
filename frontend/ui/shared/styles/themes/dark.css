@@ -1119,8 +1119,13 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .arSpreadsheetTable td.arExternalLinkErrorCell {
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable td.arExternalLinkErrorCell,
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable td.arInternalLinkErrorCell {
   color: var(--ar-color-danger);
+}
+
+:root[data-arcrho-theme="dark"] .arLinksSectionTitle {
+  color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable thead th:not(.arSpreadsheetSelectedLabel) {

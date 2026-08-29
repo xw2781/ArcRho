@@ -28,6 +28,9 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:close-active-tab`
 - `arcrho:close-shell-menus`
 - `arcrho:dataset-dirty`
+- `arcrho:dataset-reference-pick`
+- `arcrho:dataset-reference-pick-begin`
+- `arcrho:dataset-reference-pick-end`
 - `arcrho:dataset-settings-changed`
 - `arcrho:dependency-source-cleared`
 - `arcrho:dependency-source-preview`

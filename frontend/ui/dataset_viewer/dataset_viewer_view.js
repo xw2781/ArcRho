@@ -259,9 +259,18 @@ export function mountDatasetViewer(container) {
     </div>
   </div>
 
-  <!-- Links tab page -->
+  <!-- Links tab page: Excel workbook links above, ArcRho dataset links below -->
   <div id="dsLinksPage" data-page="links" style="display:none;">
-    <div id="datasetLinksMount"></div>
+    <div id="datasetLinksMount" class="arLinksSections">
+      <section class="arLinksSection">
+        <h3 class="arLinksSectionTitle">Excel Links</h3>
+        <div id="datasetExternalLinksMount" class="arLinksSectionBody"></div>
+      </section>
+      <section class="arLinksSection">
+        <h3 class="arLinksSectionTitle">ArcRho Links</h3>
+        <div id="datasetInternalLinksMount" class="arLinksSectionBody"></div>
+      </section>
+    </div>
   </div>
 
   <!-- Audit Log tab page -->
