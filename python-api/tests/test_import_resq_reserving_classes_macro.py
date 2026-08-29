@@ -189,7 +189,7 @@ class BatchImportMacroTests(unittest.TestCase):
             request_path.write_text(json.dumps(payload), encoding="utf-8")
             status = dict(status_by_path[payload["Path"]])
             status["request_id"] = request_id
-            status["contract_version"] = 1
+            status["contract_version"] = self.single.CONTRACT_VERSION
             status_path.parent.mkdir(parents=True, exist_ok=True)
             status_path.write_text(json.dumps(status), encoding="utf-8")
             return request_path

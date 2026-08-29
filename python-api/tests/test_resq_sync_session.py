@@ -260,6 +260,180 @@ class SyncSessionPhaseTests(unittest.TestCase):
                     )
 
 
+class SyncSessionTransferPreviewTests(unittest.TestCase):
+    """The whole-class review the Import and Export macros share."""
+
+    def setUp(self):
+        from resq_migration import sync as sync_contract
+        from resq_migration import transfer_selection
+
+        self.sync_contract = sync_contract
+        self.transfer_selection = transfer_selection
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.root = Path(self.tempdir.name)
+
+    def _runtime(self):
+        migration = Mock()
+        migration.CONNECTION_NAME = "ResQ Test"
+        migration._apply_runtime_scope.return_value = {"previous": True}
+        return {
+            "migration": migration,
+            "sync_contract": self.sync_contract,
+            "transfer_selection": self.transfer_selection,
+        }
+
+    def _arcrho(self, name, **fields):
+        item = {
+            "name": name,
+            "kind": "Dataset",
+            "modified": "2026-08-28T10:00:00+00:00",
+            "modified_timestamp": 100.0,
+            "timestamp_source": "Dataset metadata",
+            "can_export_to_resq": True,
+            "export_block_reason": "",
+        }
+        item.update(fields)
+        return item
+
+    def _resq(self, name, **fields):
+        item = {
+            "name": name,
+            "kind": "Dataset",
+            "modified": "2026-08-28T11:00:00+00:00",
+            "modified_timestamp": 200.0,
+            "timestamp_source": "ResQ Modified",
+            "can_import_to_arcrho": True,
+            "import_block_reason": "",
+            "can_receive_from_arcrho": True,
+            "receive_block_reason": "",
+        }
+        item.update(fields)
+        return item
+
+    def _context(self, arcrho, resq):
+        plan = self.sync_contract.build_sync_plan(arcrho, resq, {})
+        return {
+            "arcrho": arcrho,
+            "resq": resq,
+            "plan": plan,
+            "direction": self.sync_contract.plan_direction(plan),
+        }
+
+    def _preview(self, direction, arcrho, resq):
+        runtime = self._runtime()
+        with patch.object(sync_session, "_plan_context", return_value=self._context(arcrho, resq)):
+            return sync_session.preview_transfer(
+                runtime, "Demo", r"Auto\PP", direction=direction, server_root=self.root
+            )
+
+    def test_an_item_only_one_side_holds_is_still_a_row(self):
+        result = self._preview(
+            "import",
+            [self._arcrho("Paid Loss"), self._arcrho("ArcRho Only")],
+            [self._resq("Paid Loss"), self._resq("ResQ Only")],
+        )
+
+        rows = {row["name"]: row for row in result["preview"]}
+        self.assertEqual(set(rows), {"Paid Loss", "ArcRho Only", "ResQ Only"})
+        self.assertEqual(rows["Paid Loss"]["presence"], "both")
+        self.assertEqual(rows["ArcRho Only"]["presence"], "arcrho")
+        self.assertEqual(rows["ResQ Only"]["presence"], "resq")
+
+    def test_an_import_can_bring_a_resq_only_item_across_and_an_export_cannot(self):
+        arcrho = [self._arcrho("ArcRho Only")]
+        resq = [self._resq("ResQ Only")]
+
+        importing = {row["name"]: row for row in self._preview("import", arcrho, resq)["preview"]}
+        exporting = {row["name"]: row for row in self._preview("export", arcrho, resq)["preview"]}
+
+        self.assertTrue(importing["ResQ Only"]["transfer_supported"])
+        self.assertFalse(importing["ArcRho Only"]["transfer_supported"])
+        self.assertFalse(exporting["ResQ Only"]["transfer_supported"])
+        self.assertFalse(exporting["ArcRho Only"]["transfer_supported"])
+        self.assertIn("no matching dataset", exporting["ArcRho Only"]["transfer_block_reason"])
+
+    def test_a_berquist_sherman_method_is_exportable_because_the_export_saves_it(self):
+        arcrho = [self._arcrho("BS Paid", kind="B&S Settlement Rate", can_export_to_resq=False,
+                               export_block_reason="ArcRho-to-ResQ write-back is not supported for B&S Settlement Rate.")]
+        resq = [self._resq("BS Paid", kind="B&S Settlement Rate", can_receive_from_arcrho=False,
+                           receive_block_reason="ArcRho cannot write B&S Settlement Rate methods to ResQ.")]
+
+        row = self._preview("export", arcrho, resq)["preview"][0]
+
+        self.assertTrue(row["transfer_supported"])
+        self.assertEqual(row["transfer_block_reason"], "")
+
+    def test_an_ambiguous_name_is_still_named_and_left_untickable(self):
+        result = self._preview(
+            "export",
+            [self._arcrho("Paid  Loss"), self._arcrho("Paid Loss")],
+            [self._resq("Paid Loss")],
+        )
+
+        row = result["preview"][0]
+        self.assertEqual(row["name"], "Paid Loss")
+        self.assertEqual(row["presence"], "both")
+        self.assertFalse(row["transfer_supported"])
+        self.assertFalse(row["selected"])
+        self.assertIn("same normalized name", row["detail"])
+
+    def test_everything_is_ticked_until_a_selection_has_been_saved(self):
+        result = self._preview(
+            "export",
+            [self._arcrho("Paid Loss"), self._arcrho("Reported Loss")],
+            [self._resq("Paid Loss"), self._resq("Reported Loss")],
+        )
+
+        self.assertTrue(all(row["selected"] for row in result["preview"]))
+        self.assertEqual(result["selection"]["names"], [])
+
+    def test_the_saved_selection_decides_what_comes_back_ticked(self):
+        self.transfer_selection.save_selection(
+            self.root, "Demo", r"Auto\PP", "ResQ Test", "export", ["Paid Loss"], updated_by="ali"
+        )
+
+        result = self._preview(
+            "export",
+            [self._arcrho("Paid Loss"), self._arcrho("Reported Loss")],
+            [self._resq("Paid Loss"), self._resq("Reported Loss")],
+        )
+
+        ticked = {row["name"]: row["selected"] for row in result["preview"]}
+        self.assertEqual(ticked, {"Paid Loss": True, "Reported Loss": False})
+        self.assertEqual(result["selection"]["names"], ["Paid Loss"])
+        self.assertEqual(result["selection"]["updated_by"], "ali")
+
+    def test_one_direction_selection_never_ticks_the_other(self):
+        self.transfer_selection.save_selection(
+            self.root, "Demo", r"Auto\PP", "ResQ Test", "import", ["Paid Loss"]
+        )
+
+        exporting = self._preview(
+            "export",
+            [self._arcrho("Paid Loss"), self._arcrho("Reported Loss")],
+            [self._resq("Paid Loss"), self._resq("Reported Loss")],
+        )
+
+        self.assertEqual(exporting["selection"]["names"], [])
+        self.assertTrue(all(row["selected"] for row in exporting["preview"]))
+
+    def test_an_unsupported_row_is_never_ticked(self):
+        self.transfer_selection.save_selection(
+            self.root, "Demo", r"Auto\PP", "ResQ Test", "export", ["Paid Loss", "No Cache"]
+        )
+
+        result = self._preview(
+            "export",
+            [self._arcrho("Paid Loss"), self._arcrho("No Cache", can_export_to_resq=False,
+                                                    export_block_reason="The ArcRho dataset CSV cache is missing.")],
+            [self._resq("Paid Loss"), self._resq("No Cache")],
+        )
+
+        ticked = {row["name"]: row["selected"] for row in result["preview"]}
+        self.assertEqual(ticked, {"Paid Loss": True, "No Cache": False})
+
+
 class SyncSessionExportGuardTests(unittest.TestCase):
     def test_triangle_sync_fails_before_export_when_resq_cannot_clear_data(self):
         target = Mock()
@@ -538,7 +712,7 @@ class SyncSessionRuntimeTests(unittest.TestCase):
         self.assertTrue(callable(runtime["method_entry"]))
 
     def test_the_session_declares_the_api_version_the_bridge_pins(self):
-        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 3)
+        self.assertEqual(sync_session.SYNC_SESSION_API_VERSION, 4)
 
     def test_the_exporter_connects_with_the_account_the_host_supplied(self):
         migration = types.SimpleNamespace(
@@ -1101,8 +1275,13 @@ class SyncSessionExportTests(unittest.TestCase):
 
     def _runtime(self, migration=None):
         from resq_migration import sync as sync_contract
+        from resq_migration import transfer_selection
 
-        return {"migration": migration or Mock(), "sync_contract": sync_contract}
+        return {
+            "migration": migration or Mock(),
+            "sync_contract": sync_contract,
+            "transfer_selection": transfer_selection,
+        }
 
     def test_export_rows_leave_bootstrap_out_and_key_rows_by_logical_name(self):
         rows = sync_session._export_rows(self._runtime(), [
@@ -1257,6 +1436,76 @@ class SyncSessionExportTests(unittest.TestCase):
         writes = [event for event in events if event.get("event") == "write"]
         self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
         self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")
+
+    def test_a_selection_narrows_what_is_written_and_becomes_the_next_default(self):
+        import tempfile
+
+        from resq_migration import transfer_selection
+
+        exporter = _push_exporter()
+        inventory = [
+            _export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"}),
+            _export_item("Reported Loss", payload={"csv_file": "Reported Loss.csv"}),
+            _export_item("Paid LDF", kind=sync_session.KIND_DFM, precedents=["Paid Loss"], method_name="Paid DFM"),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            migration = self._export_scope(root)
+            runtime = self._runtime(migration)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=inventory),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    runtime,
+                    "Demo",
+                    r"Auto\PP",
+                    server_root=root,
+                    selected_names=["Paid Loss", "Paid LDF"],
+                    requested_by="ali",
+                )
+
+            # Only the ticked rows are written, still in dependency order.
+            self.assertEqual(
+                [item["name"] for item in result["results"]], ["Paid Loss", "Paid LDF"]
+            )
+            self.assertEqual(result["selection"]["saved"], 2)
+            self.assertEqual(result["selection"]["error"], "")
+            saved = transfer_selection.read_selection(
+                transfer_selection.selection_path(root, "Demo", r"Auto\PP", "ResQ Test"),
+                "Demo",
+                r"Auto\PP",
+                "ResQ Test",
+            )
+            self.assertEqual(
+                transfer_selection.selected_names(saved, "export"), ["Paid LDF", "Paid Loss"]
+            )
+            self.assertEqual(saved["selections"]["export"]["updated_by"], "ali")
+            self.assertEqual(transfer_selection.selected_names(saved, "import"), [])
+
+    def test_an_export_without_a_selection_saves_none_and_writes_everything(self):
+        import tempfile
+
+        from resq_migration import transfer_selection
+
+        exporter = _push_exporter()
+        inventory = [_export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"})]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = self._runtime(self._export_scope(root))
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=inventory),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    runtime, "Demo", r"Auto\PP", server_root=root
+                )
+
+            self.assertEqual([item["name"] for item in result["results"]], ["Paid Loss"])
+            self.assertEqual(result["selection"], {"saved": 0, "path": "", "error": ""})
+            self.assertFalse(
+                transfer_selection.selection_path(root, "Demo", r"Auto\PP", "ResQ Test").exists()
+            )
 
     def _export_scope(self, root: Path):
         """A migration bound to one temporary reserving class the export can read."""

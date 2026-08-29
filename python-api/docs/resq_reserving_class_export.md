@@ -5,9 +5,10 @@ The `Export Reserving Class to ResQ` macro
 reserving class into the identically scoped ResQ reserving class, one way and
 in one piece. It is the push counterpart of the
 [sync macro](resq_reserving_class_sync.md): the same Bridge queue, the same
-canonical session, the same ResQ writer, the same comparison shown before the
-write, the same shared baseline, and the same results window — minus the
-per-row choice and the signatures.
+canonical session, the same ResQ writer, the same shared baseline, and the
+same results window — minus the per-row direction and the signatures. The
+review before the write is the one the Import macro also opens; see
+[the shared ResQ transfer review](resq_reserving_class_transfer_review.md).
 
 The ArcRho project name is also used as the ResQ project name, and the
 selected reserving-class path must exist in that project on both sides. The
@@ -84,62 +85,36 @@ pulls `C 92` and `C 91` forward in the walk; without the calculated link,
 `C 91` was saved before `C 52`, and ResQ marked it "Needs Review" the moment
 `C 52` was saved a second later.
 
-## The preview table
+## The review table
 
-Before anything is written, the macro runs the queue's `preview` phase — the
-same comparison the sync macro reviews — and shows it as a read-only review
-table, so the timestamp pairs can be checked against what the export is about
-to overwrite. One row per logical item, carrying:
+Before anything is written, the macro runs the queue's `transfer_preview`
+phase and opens the shared review table — the same window, columns, and tick
+rules the Import macro opens. That window and the selection it remembers are
+described once, in
+[the shared ResQ transfer review](resq_reserving_class_transfer_review.md).
 
-- **Type** and **Dataset / Method Output** — the item, as the results window
-  names it.
-- **ArcRho Timestamp** and **ResQ Timestamp** — the pair the comparison read,
-  as text, never re-parsed by the macro.
-- **Newer** — `ArcRho`, `ResQ`, `Same`, or `Unknown` when one side has no
-  timestamp. It is `sync.newer_side`, the plain fact about the two times
-  beside it, and it carries no warning tone of its own: after an export ResQ
-  always holds the newer stamp, so on its own it means very little.
-- **Changed Since Last Export** — the column that decides the warning.
-  `ArcRho`, `ResQ`, `Both`, or `None`, measured by
-  `sync.changed_since_baseline` against the timestamp pair saved when the item
-  was last exported or synchronized. `No baseline yet` where no pair has been
-  saved, in which case the row falls back to the raw timestamp comparison.
-- **Export** — what the export would do: `Overwrites ResQ copy`,
-  `Overwrites newer ResQ copy` (a warning, raised only when `ResQ` or `Both`
-  changed since the saved pair), or `Not exported` when
-  `sync.export_supported` says a push of that item would write nothing.
-- **Details** — `sync.export_review`'s sentence for the row, written from the
-  export's one-way point of view rather than from the direction the sync macro
-  would choose for the whole class, with the reason an unsupported item cannot
-  be pushed appended.
+What is specific to the export:
 
-The header names the project, the reserving class and the ResQ connection,
-the latest change on each side, and the counts: how many items both systems
-hold, how many the export overwrites, how many of those were edited in ResQ
-since the last export, and how many have no saved pair yet.
+- The table is opened with **Export Selected to ResQ** and **Cancel**. It is
+  the only confirmation asked for; accepting it starts the write.
+- The **This Run** column reads `Overwrites ResQ copy`, `Overwrites newer
+  ResQ copy` (the warning, raised only when `ResQ` or `Both` changed since
+  the saved pair), or `Not exported`.
+- An ArcRho item ResQ does not hold is listed as `ArcRho only` and cannot be
+  ticked, because the export creates nothing in ResQ.
+- The ticked names go on the `export` request as `SelectedNames`, narrow the
+  rows before the dependency walk orders them, and are saved as the default
+  for the next export once the writes are done.
+- A comparison that fails is not a gate. The failure is shown with
+  `Export Anyway` and `Cancel`, and an `Export Anyway` sends no selection at
+  all, so the whole class is pushed exactly as it was before selection
+  existed. An unreachable Bridge is reported as such instead, since nothing
+  could be published either way.
 
-The verdicts come from the Bridge, in each preview row's `export_review`. A
-Bridge that has not been rebuilt sends rows without one; the table then shows
-`No baseline yet` everywhere and behaves exactly as it did before.
-
-The table lists only what both systems hold, because that is what the
-comparison compares. An ArcRho item ResQ does not have is not listed, and the
-export skips it, as it creates nothing.
-
-The export is all-or-nothing — it writes every item it supports, in ArcRho's
-dependency order — so the table has no tick column. It is the confirmation:
-`Export to ResQ` starts the write, `Cancel` and closing the window publish
-nothing.
-
-A comparison that fails is not a gate. The failure is shown with
-`Export Anyway` and `Cancel`, so a preview the Bridge could not produce does
-not block an export the person still wants; an unreachable Bridge is reported
-as such instead, since nothing could be published either way.
-
-## No review, but a baseline
+## No row-by-row review, but a baseline
 
 Beyond that table the export compares nothing and verifies nothing before a
-write. Whatever is accepted is written over the ResQ copy, however recently
+write. Every ticked item is written over the ResQ copy, however recently
 ResQ changed it. It is the tool for the moment ArcRho is the source of truth
 for a class and ResQ should simply follow; use `Sync Reserving Class with
 ResQ` when the two sides need reconciling row by row.
@@ -188,7 +163,7 @@ class is inspected; the macro keeps running until it is closed.
 
 Before anything is published, the macro refuses while the active nested
 window has unsaved changes, since an unsaved edit would not be part of the
-export. The preview table above is the only confirmation asked for.
+export. The review table above is the only confirmation asked for.
 
 ## Runtime
 
@@ -196,7 +171,7 @@ ResQ automation exists only where ResQ itself is installed, which is usually
 not the machine ArcRho runs on. The macro therefore owns no ResQ session and
 reads no reserving-class file: it publishes an `export` request to the same
 Bridge queue the sync macro uses (`SyncResQReservingClass`, contract version
-3, under `requests\RPC bridge\resq_reserving_class_sync\`), and a
+4, under `requests\RPC bridge\resq_reserving_class_sync\`), and a
 ResQ-connected ArcRho Bridge worker on the Server PC runs
 `resq_migration.sync_session.export_reserving_class` on its behalf. The
 worker takes the reserving-class job lease a ResQ import and a sync apply

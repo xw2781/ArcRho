@@ -12,6 +12,12 @@ imports, and runs its two phases:
 ``preview``
     Read-only.  Returns the review rows and the signature of each observation.
 
+``transfer_preview``
+    Read-only.  The whole-class review the Import and Export macros share:
+    every dataset and method output either side holds, what the named
+    direction would do to it, and the selection the last run in that direction
+    saved.
+
 ``apply``
     Takes the reserving class's job lease -- the same lease a ResQ import takes,
     so a synchronization and an import can never write one reserving class at
@@ -19,8 +25,9 @@ imports, and runs its two phases:
     every one of them still matches.
 
 ``export``
-    Takes the same lease and pushes the whole reserving class from ArcRho into
-    ResQ in dependency order, with no review and no signature.
+    Takes the same lease and pushes the reserving class from ArcRho into ResQ
+    in dependency order -- everything it supports, or the names the transfer
+    review ticked -- and remembers that selection for the next export.
 
 Like the import queue, the request carries logical identifiers only: the server
 root, queue folders, and status path are all derived from the Bridge's own
@@ -86,11 +93,14 @@ except ModuleNotFoundError:  # Source-run Bridge entry point.
 
 SYNC_CONTRACT = load_resq_reserving_class_sync_contract()
 ALLOWED_PHASES = frozenset(SYNC_CONTRACT["allowed_phases"])
+ALLOWED_DIRECTIONS = frozenset(SYNC_CONTRACT["allowed_directions"])
 SELECTION_FIELD = SYNC_CONTRACT["selection_field"]
+SELECTION_NAMES_FIELD = SYNC_CONTRACT["selection_names_field"]
+DIRECTION_FIELD = SYNC_CONTRACT["direction_field"]
 
 # The session API this Bridge was built against. A bundle that changed the
 # contract must not be driven by an older worker.
-SUPPORTED_SYNC_SESSION_API_VERSION = 3
+SUPPORTED_SYNC_SESSION_API_VERSION = 4
 
 _SESSION_MODULE_NAME = "resq_migration.sync_session"
 _EXPORTER_MODULE_NAME = "_arcrho_bridge_resq_sync_exporter"
@@ -122,6 +132,8 @@ def run_reserving_class_sync(
     rc_path = _rc_path_from_request(request)
     request_id = _request_id_from_request(request)
     reviewed_rows = _reviewed_rows_from_request(request) if phase == "apply" else []
+    selected_names = _selected_names_from_request(request)
+    requested_by = str(request.get("UserName") or "").strip()
 
     server_root = Path(get_project_root()).expanduser().resolve()
     bundle = configure_canonical_runtime(server_root)
@@ -138,6 +150,17 @@ def run_reserving_class_sync(
             runtime,
             project_name,
             rc_path,
+            server_root=server_root,
+            progress_callback=report,
+        )
+        return _json_safe(dict(result, phase=phase))
+
+    if phase == "transfer_preview":
+        result = session.preview_transfer(
+            runtime,
+            project_name,
+            rc_path,
+            direction=_direction_from_request(request),
             server_root=server_root,
             progress_callback=report,
         )
@@ -172,6 +195,8 @@ def run_reserving_class_sync(
                 project_name,
                 rc_path,
                 server_root=server_root,
+                selected_names=selected_names,
+                requested_by=requested_by,
                 progress_callback=report,
             )
         return _json_safe(dict(result, phase=phase))
@@ -276,6 +301,30 @@ def _phase_from_request(request: Mapping[str, Any]) -> str:
             "Phase must be one of: " + ", ".join(sorted(ALLOWED_PHASES)) + "."
         )
     return value
+
+
+def _direction_from_request(request: Mapping[str, Any]) -> str:
+    value = _required_text(request, DIRECTION_FIELD).casefold()
+    if value not in ALLOWED_DIRECTIONS:
+        raise ResQSyncRequestError(
+            f"{DIRECTION_FIELD} must be one of: " + ", ".join(sorted(ALLOWED_DIRECTIONS)) + "."
+        )
+    return value
+
+
+def _selected_names_from_request(request: Mapping[str, Any]) -> list[str] | None:
+    """The ticked dataset and method output names, or ``None`` for the whole class.
+
+    The field is absent when a caller wants everything, which is what a run
+    started before selection existed asked for.
+    """
+
+    names = request.get(SELECTION_NAMES_FIELD)
+    if names is None:
+        return None
+    if not isinstance(names, list) or any(not isinstance(name, str) for name in names):
+        raise ResQSyncRequestError(f"{SELECTION_NAMES_FIELD} must be a list of item names.")
+    return [name.strip() for name in names if name.strip()]
 
 
 def _reviewed_rows_from_request(request: Mapping[str, Any]) -> list[dict[str, Any]]:

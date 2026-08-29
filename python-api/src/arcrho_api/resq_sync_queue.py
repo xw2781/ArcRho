@@ -8,17 +8,21 @@ ResQ-connected Bridge worker runs the canonical session
 of that queue -- building, publishing, and waiting on a request -- so the two
 macros cannot drift apart in how they talk to the Bridge.
 
-The queue serves three phases:
+The queue serves four phases:
 
 ``preview``
     Compares both sides and returns the review rows, each carrying the
     signature of the observation it was drawn from.
+``transfer_preview``
+    The whole-class review the Import and Export macros share: every dataset
+    and method output either side holds, what the named direction would do to
+    it, and the selection the last run in that direction saved.
 ``apply``
     Receives the accepted rows *with those signatures* and writes only when
     every one of them still matches a freshly observed plan.
 ``export``
-    Pushes the whole reserving class from ArcRho into ResQ in ArcRho's
-    dependency order, with no review and no signature.
+    Pushes the reserving class from ArcRho into ResQ in ArcRho's dependency
+    order -- everything it supports, or the names the transfer review ticked.
 
 The constants below are pinned to
 ``server-components/src/arcrho_bridge/resq_reserving_class_sync_contract.json``
@@ -63,9 +67,11 @@ from .bridge_liveness import (  # noqa: F401 -- the worker facts are re-exported
 REQUEST_FUNCTION = "SyncResQReservingClass"
 # Version 2: the preview carries the reserving class's one direction and every
 # row's action follows it. Version 3: the export phase pushes the whole class
-# from ArcRho without a review. A Bridge still on an older version refuses the
-# request rather than answering with a shape the macro would misread.
-CONTRACT_VERSION = 3
+# from ArcRho without a review. Version 4: the transfer preview reviews either
+# direction and the export carries the names that review ticked. A Bridge still
+# on an older version refuses the request rather than answering with a shape
+# the macro would misread.
+CONTRACT_VERSION = 4
 QUEUE_NAME = "sync"
 STATUS_RELATIVE_DIR = QUEUE_STATUS_DIRS[QUEUE_NAME]
 REQUEST_RELATIVE_DIR = STATUS_RELATIVE_DIR.with_name("requests")
@@ -79,10 +85,16 @@ REQUIRED_REQUEST_FIELDS = (
     "Phase",
 )
 PHASE_PREVIEW = "preview"
+PHASE_TRANSFER_PREVIEW = "transfer_preview"
 PHASE_APPLY = "apply"
 PHASE_EXPORT = "export"
-ALLOWED_PHASES = frozenset({PHASE_PREVIEW, PHASE_APPLY, PHASE_EXPORT})
+ALLOWED_PHASES = frozenset({PHASE_PREVIEW, PHASE_TRANSFER_PREVIEW, PHASE_APPLY, PHASE_EXPORT})
+DIRECTION_IMPORT = "import"
+DIRECTION_EXPORT = "export"
+ALLOWED_DIRECTIONS = frozenset({DIRECTION_IMPORT, DIRECTION_EXPORT})
+DIRECTION_FIELD = "Direction"
 SELECTION_FIELD = "SelectedRows"
+SELECTION_NAMES_FIELD = "SelectedNames"
 SELECTION_ROW_FIELDS = ("Id", "Signature")
 FORBIDDEN_PATH_FIELDS = ("StatusPath", "DataPath", "TargetPath", "ServerRoot")
 STATUS_VALUES = frozenset({"processing", "success", "error"})
@@ -200,6 +212,8 @@ def create_sync_request(
     rc_path: object,
     phase: str,
     selected_rows: list[Mapping[str, Any]] | None = None,
+    selected_names: list[str] | None = None,
+    direction: str = "",
     request_id: str | None = None,
     user_name: str = "",
 ) -> tuple[str, dict[str, Any]]:
@@ -207,6 +221,8 @@ def create_sync_request(
 
     ``user_name`` is the person the request is for; the hosted publish passes
     the identity it acts under, and a direct caller leaves it to the process.
+    ``selected_names`` is what the transfer review ticked; omitting it asks the
+    export for everything, which is what it did before the review existed.
     """
 
     identifier = str(request_id or uuid.uuid4().hex).strip()
@@ -224,11 +240,38 @@ def create_sync_request(
         "UserName": str(user_name or "").strip() or _user_name(),
         "Phase": normalized_phase,
     }
+    if normalized_phase == PHASE_TRANSFER_PREVIEW:
+        payload[DIRECTION_FIELD] = _transfer_direction(direction)
+    elif direction:
+        raise ValueError(f"A {normalized_phase} request must not name a transfer direction.")
     if normalized_phase == PHASE_APPLY:
         payload[SELECTION_FIELD] = _selection_payload(selected_rows)
     elif selected_rows:
-        raise ValueError(f"A {normalized_phase} request must not carry a selection.")
+        raise ValueError(f"A {normalized_phase} request must not carry reviewed rows.")
+    if selected_names is not None:
+        if normalized_phase != PHASE_EXPORT:
+            raise ValueError(f"A {normalized_phase} request must not carry a selection.")
+        payload[SELECTION_NAMES_FIELD] = _selected_names_payload(selected_names)
     return identifier, payload
+
+
+def _transfer_direction(direction: object) -> str:
+    normalized = str(direction or "").strip().casefold()
+    if normalized not in ALLOWED_DIRECTIONS:
+        raise ValueError(
+            "Direction must be one of: " + ", ".join(sorted(ALLOWED_DIRECTIONS)) + "."
+        )
+    return normalized
+
+
+def _selected_names_payload(selected_names: list[str]) -> list[str]:
+    """The ticked names, cleaned; an empty selection would write nothing."""
+
+    names = [str(name or "").strip() for name in selected_names]
+    names = [name for name in names if name]
+    if not names:
+        raise ValueError("At least one dataset or method must be selected.")
+    return names
 
 
 def _selection_payload(selected_rows: list[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
@@ -409,14 +452,16 @@ def submit_sync_request(
     rc_path: str,
     phase: str,
     selected_rows: list[Mapping[str, Any]] | None = None,
+    selected_names: list[str] | None = None,
+    direction: str = "",
 ) -> str:
     """Publish one request and return its id, writing on the server host when the app can.
 
-    The payload is built here first so a bad project name, path, phase, or
-    selection is refused before anything is sent. Inside the app the write
-    then goes through the hosted mutation, whose local fallback is the same
-    on-disk publish; outside the app there is no Gateway client at all, so the
-    file is written directly.
+    The payload is built here first so a bad project name, path, phase,
+    direction, or selection is refused before anything is sent. Inside the app
+    the write then goes through the hosted mutation, whose local fallback is
+    the same on-disk publish; outside the app there is no Gateway client at
+    all, so the file is written directly.
     """
 
     request_id, payload = create_sync_request(
@@ -424,6 +469,8 @@ def submit_sync_request(
         rc_path=rc_path,
         phase=phase,
         selected_rows=selected_rows,
+        selected_names=selected_names,
+        direction=direction,
     )
     kwargs: dict[str, Any] = {
         "project_name": payload["ProjectName"],
@@ -433,6 +480,10 @@ def submit_sync_request(
     }
     if selected_rows:
         kwargs["selected_rows"] = [dict(row) for row in selected_rows]
+    if selected_names is not None:
+        kwargs["selected_names"] = list(payload[SELECTION_NAMES_FIELD])
+    if direction:
+        kwargs["direction"] = payload[DIRECTION_FIELD]
     try:
         from app_server.services import resq_sync_queue_service, workspace_mutation_client
     except ImportError:
@@ -461,6 +512,8 @@ def run_bridge_phase(
     rc_path: str,
     phase: str,
     selected_rows: list[Mapping[str, Any]] | None = None,
+    selected_names: list[str] | None = None,
+    direction: str = "",
     timeout_sec: float,
     progress=None,
     progress_label: str,
@@ -475,6 +528,8 @@ def run_bridge_phase(
         rc_path=rc_path,
         phase=phase,
         selected_rows=selected_rows,
+        selected_names=selected_names,
+        direction=direction,
     )
     status = wait_for_sync_result(
         server_root=server_root,

@@ -286,13 +286,22 @@ The session runs in two phases, one request each:
   review table was open is caught; the old single-process macro could only
   compare two observations taken seconds apart inside one call.
 
-The same queue serves a third phase, `export`, which the Export macro
-publishes: it takes the same lease and pushes the whole reserving class from
-ArcRho with no review and no signature. It does write to this same state file
-afterwards, baselining every item ResQ took and absorbing the ripple, so an
-export settles the next preview here for everything it wrote instead of
-leaving it to report the stamps the export left behind. See
-[resq_reserving_class_export.md](resq_reserving_class_export.md).
+The same queue serves two more phases, which the Import and Export macros
+publish between them:
+
+- `transfer_preview` is read-only, like `preview`, but reviews one named
+  direction rather than the plan's own: it returns every dataset and method
+  output either side holds, what that direction would do to each, and the
+  selection the last run in that direction saved. Both macros open it in one
+  shared window; see
+  [resq_reserving_class_transfer_review.md](resq_reserving_class_transfer_review.md).
+- `export` takes the same lease as `apply` and pushes the reserving class from
+  ArcRho, either whole or narrowed to the names that review ticked, with no
+  signature. It does write to this same state file afterwards, baselining every
+  item ResQ took and absorbing the ripple, so an export settles the next
+  preview here for everything it wrote instead of leaving it to report the
+  stamps the export left behind. See
+  [resq_reserving_class_export.md](resq_reserving_class_export.md).
 
 The Bridge runs its frozen copy of the session and of the ResQ exporter
 (`arcrho_bridge/bundled_sources.py` owns that list), so an edit to either has no

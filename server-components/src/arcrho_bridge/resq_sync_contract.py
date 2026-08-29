@@ -6,8 +6,9 @@ worker as an import, from a sibling queue folder.  Everything about that worker
 vocabulary and path-field ban are therefore not restated here: they are read
 from the import contract, which owns them.  This file adds only what is
 specific to synchronization: its own function, queue folders, request fields,
-and the phases it serves: the two a reviewed synchronization is split into and
-the export that pushes a whole reserving class without a review.
+and the phases it serves: the two a reviewed synchronization is split into, the
+whole-class review the Import and Export macros share, and the export that
+carries what that review ticked.
 """
 from __future__ import annotations
 
@@ -78,6 +79,8 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
         "contract_version": int,
         "function": str,
         "selection_field": str,
+        "direction_field": str,
+        "selection_names_field": str,
     }
     for key, value_type in required_scalars.items():
         value = payload.get(key)
@@ -89,6 +92,7 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
         "status_relative_dir",
         "required_request_fields",
         "allowed_phases",
+        "allowed_directions",
         "selection_row_fields",
     )
     normalized: dict[str, Any] = dict(payload)
@@ -132,8 +136,12 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
     for key in ("Function", "ContractVersion", "RequestId", "Phase"):
         if key not in normalized["required_request_fields"]:
             raise ResQSyncContractError(f"{key} must be required by the request contract.")
-    if set(normalized["allowed_phases"]) != {"preview", "apply", "export"}:
-        raise ResQSyncContractError("Phases must be exactly preview, apply, and export.")
+    if set(normalized["allowed_phases"]) != {"preview", "transfer_preview", "apply", "export"}:
+        raise ResQSyncContractError(
+            "Phases must be exactly preview, transfer_preview, apply, and export."
+        )
+    if set(normalized["allowed_directions"]) != {"import", "export"}:
+        raise ResQSyncContractError("Transfer directions must be exactly import and export.")
     if set(normalized["selection_row_fields"]) != {"Id", "Signature"}:
         raise ResQSyncContractError(
             "A selected review row must carry exactly its row ID and reviewed signature."

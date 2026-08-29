@@ -152,6 +152,10 @@ from resq_migration.merge import (  # noqa: E402
     merge_preserved_arcrho_artifacts,
     snapshot_reserving_class_artifacts,
 )
+from resq_migration.transfer_selection import (  # noqa: E402
+    DIRECTION_IMPORT,
+    save_selection as save_transfer_selection,
+)
 from resq_migration.engine import (  # noqa: E402
     EngineGenerationError,
     EngineRequestJob,
@@ -715,6 +719,37 @@ def resq_export_dataset_counts(
         "bssr_names": bssr_names,
         "bscra_names": bscra_names,
     }
+
+
+def _select_export_inventory(dataset_counts: dict, selected_names: list[str] | None) -> dict:
+    """Narrow a ResQ inventory to the dataset and method outputs a person ticked.
+
+    Every method is imported through its output dataset, so narrowing the two
+    dataset lists narrows the methods with them: the method name lists stay as
+    they are and simply stop matching anything that was left unticked.
+    """
+
+    if selected_names is None:
+        return dataset_counts
+    chosen = {_normalize_import_name(name).casefold() for name in selected_names}
+    chosen.discard("")
+    narrowed = dict(dataset_counts)
+    for field in ("triangle_names", "vector_names"):
+        narrowed[field] = [
+            name
+            for name in dataset_counts.get(field) or []
+            if _normalize_import_name(name).casefold() in chosen
+        ]
+    narrowed["triangles"] = len(narrowed["triangle_names"])
+    narrowed["vectors"] = len(narrowed["vector_names"])
+    narrowed["total"] = narrowed["triangles"] + narrowed["vectors"]
+    sr_names, cra_names = _berquist_sherman_export_names(
+        narrowed["triangle_names"],
+        dataset_counts.get("triangle_method_types") or {},
+    )
+    narrowed["bssr_names"], narrowed["bscra_names"] = sr_names, cra_names
+    narrowed["bssrs"], narrowed["bscras"] = len(sr_names), len(cra_names)
+    return narrowed
 
 
 def _is_engine_generated_instance(payload: dict) -> bool:
@@ -1727,6 +1762,34 @@ def refresh_migrated_dfm_dependents(
         return DfmPropagationResult((), (f"DFM propagation could not start: {exc}",))
 
 
+def record_import_selection(
+    project_name: str,
+    rc_path: str,
+    *,
+    server_root,
+    names,
+    connection_name: str = CONNECTION_NAME,
+    requested_by: str = "",
+) -> str:
+    """Remember what a committed import covered, as the next import's default.
+
+    The document is the one the Export macro writes its own direction into, so
+    both macros open their review table from the same saved answer.
+    """
+
+    return str(
+        save_transfer_selection(
+            server_root,
+            project_name,
+            rc_path,
+            connection_name,
+            DIRECTION_IMPORT,
+            names,
+            updated_by=requested_by,
+        )
+    )
+
+
 def import_reserving_class_from_resq(
     project_name: str,
     rc_path: str,
@@ -1753,6 +1816,7 @@ def _import_reserving_class_as_acting_user(
     server_root: str | Path | None = None,
     project_data_dir: str | Path | None = None,
     export_mode: str = "configured",
+    selected_names: list[str] | None = None,
     cleanup_target: bool | None = None,
     skip_unavailable_engine: bool = False,
     connection_name: str = CONNECTION_NAME,
@@ -1857,6 +1921,7 @@ def _import_reserving_class_as_acting_user(
                 run_dfms=run_dfms,
                 progress_callback=progress_callback,
             )
+            dataset_counts = _select_export_inventory(dataset_counts, selected_names)
             method_only_progress = bool(run_dfms and not run_triangles and not run_vectors)
             progress_total = int(dataset_counts.get("dfms") or 0) if method_only_progress else int(dataset_counts.get("total") or 0)
             progress_state = {
@@ -2047,6 +2112,7 @@ def _import_reserving_class_as_acting_user(
                 "bscras_total": dataset_counts.get("bscras", 0),
                 "methods_total": dataset_counts.get("methods", 0),
                 "grand_total": progress_state["total"],
+                "selected_names": None if selected_names is None else list(selected_names),
                 "dfm_dependents_refreshed": list(propagation.refreshed_outputs),
                 "propagation_warnings": list(propagation.warnings),
                 "error_details": progress_state.get("error_details", []),

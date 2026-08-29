@@ -212,13 +212,15 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
     # server's local disk instead of crossing the share from a Client PC.
     # Idempotent because the client owns the request id: an id that already
     # has a request or a status file is returned as-is rather than published
-    # again, so a lost response can never queue a second run. The selection is
-    # the reviewed rows exactly as the preview reported them, not a name list.
+    # again, so a lost response can never queue a second run. A reviewed
+    # synchronization sends back the rows exactly as the preview reported them;
+    # a whole-class transfer sends the direction it is reviewing, or the names
+    # that review ticked.
     "resq_sync_request_publish": WorkspaceMutationKind(
         "resq_sync_queue_service",
         "publish_resq_sync_request",
         ("project_name", "reserving_class", "request_id", "phase"),
-        ("selected_rows",),
+        ("selected_rows", "selected_names", "direction"),
     ),
 }
 

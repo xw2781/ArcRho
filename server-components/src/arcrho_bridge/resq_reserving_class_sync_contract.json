@@ -1,5 +1,5 @@
 {
-  "contract_version": 3,
+  "contract_version": 4,
   "function": "SyncResQReservingClass",
   "request_relative_dir": [
     "requests",
@@ -24,12 +24,19 @@
   ],
   "allowed_phases": [
     "preview",
+    "transfer_preview",
     "apply",
+    "export"
+  ],
+  "direction_field": "Direction",
+  "allowed_directions": [
+    "import",
     "export"
   ],
   "selection_field": "SelectedRows",
   "selection_row_fields": [
     "Id",
     "Signature"
-  ]
+  ],
+  "selection_names_field": "SelectedNames"
 }

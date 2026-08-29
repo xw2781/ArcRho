@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.5.0
-# Release Note: The import now opens the same review window the Export macro uses: every dataset and method either system holds, with its timestamps, and a tick box to leave it out. What was ticked is saved beside the reserving class on the ArcRho server and comes back ticked for everyone at the next import.
-# Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
+# Version: 1.4.0
+# Release Note: Judge the ArcRho Bridge alive from the server side through the Gateway and only give up after thirty silent seconds, instead of failing on one stale heartbeat reading over the mapped drive.
+# Description: Import all configured ResQ datasets and methods into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -34,10 +34,7 @@ from arcrho_api.bridge_liveness import (  # noqa: F401
 
 TITLE = "Import ResQ Reserving Class"
 REQUEST_FUNCTION = "ImportResQReservingClass"
-# Version 2: the request may carry the dataset and method names the shared
-# transfer review ticked. A Bridge still on version 1 would import everything
-# regardless, so it refuses the request instead.
-CONTRACT_VERSION = 2
+CONTRACT_VERSION = 1
 IMPORT_TIMEOUT_SEC = 60.0 * 60.0
 POLL_INTERVAL_SEC = 1.0
 REQUEST_CLAIM_TIMEOUT_SEC = 30.0
@@ -64,7 +61,6 @@ ALLOWED_EXPORT_MODES = frozenset(
 ALLOWED_IMPORT_POLICIES = frozenset({"merge", "overwrite"})
 IMPORT_POLICY_MERGE = "merge"
 IMPORT_POLICY_OVERWRITE = "overwrite"
-SELECTION_NAMES_FIELD = "SelectedNames"
 STATUS_VALUES = frozenset({"processing", "success", "error"})
 _INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
@@ -198,13 +194,8 @@ def create_import_request(
     rc_path: object,
     request_id: str | None = None,
     import_policy: str = IMPORT_POLICY_MERGE,
-    selected_names: list[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Build the location-independent payload consumed by ArcRho Bridge.
-
-    ``selected_names`` is what the shared transfer review ticked; omitting it
-    asks for every dataset and method ResQ offers.
-    """
+    """Build the location-independent payload consumed by ArcRho Bridge."""
 
     identifier = str(request_id or uuid.uuid4().hex).strip()
     if not identifier:
@@ -225,12 +216,6 @@ def create_import_request(
     # byte-compatible with a Bridge that predates the overwrite policy.
     if policy != IMPORT_POLICY_MERGE:
         payload["ImportPolicy"] = policy
-    if selected_names is not None:
-        names = [str(name or "").strip() for name in selected_names]
-        names = [name for name in names if name]
-        if not names:
-            raise ValueError("At least one dataset or method must be selected.")
-        payload[SELECTION_NAMES_FIELD] = names
     return identifier, payload
 
 
@@ -326,98 +311,6 @@ def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
         buttons=["Overwrite", "Cancel"],
     )
     return _message_button(confirm).strip().casefold() == IMPORT_POLICY_OVERWRITE
-
-
-def confirm_without_preview(ui, error) -> bool:
-    """Ask whether to import when the comparison with ResQ could not be made.
-
-    The comparison is a check, not a gate: a review the Bridge could not
-    produce is reported, and the person decides whether to import everything.
-    """
-
-    confirmation = _message(
-        ui,
-        "The comparison with ResQ failed, so the datasets and methods cannot be "
-        f"listed for review before the import.\n\n{error}\n\n"
-        "Importing without the review brings across everything ResQ offers.",
-        kind="warning",
-        buttons=["Import Anyway", "Cancel"],
-    )
-    return _message_button(confirmation).strip().casefold() == "import anyway"
-
-
-def review_import_plan(ui, root, project_name, rc_path, *, overwrite: bool) -> dict:
-    """Compare both sides and let the person tick what the import brings across.
-
-    Runs the shared queue's ``transfer_preview`` phase -- the same comparison
-    the Export macro reviews, in the same window -- and returns the ticked
-    names. Accepting the table is what starts the import; cancelling it
-    publishes nothing.
-    """
-
-    from arcrho_api.resq_sync_queue import (
-        DIRECTION_IMPORT,
-        PHASE_TRANSFER_PREVIEW,
-        PREVIEW_TIMEOUT_SEC,
-        run_bridge_phase,
-    )
-    from arcrho_api.resq_transfer_review import review_transfer
-
-    progress = ui.progress_bar(
-        progress_id="import-resq-reserving-class-preview",
-        title=TITLE,
-        label=f"Comparing ArcRho and ResQ: {rc_path}",
-        total=0,
-    )
-    preview_result = None
-    failure = None
-    try:
-        preview_result = run_bridge_phase(
-            server_root=root,
-            project_name=project_name,
-            rc_path=rc_path,
-            phase=PHASE_TRANSFER_PREVIEW,
-            direction=DIRECTION_IMPORT,
-            timeout_sec=PREVIEW_TIMEOUT_SEC,
-            progress=progress,
-            progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
-            on_poll=_report_macro_activity,
-        )
-    except Exception as exc:
-        failure = exc
-    finally:
-        try:
-            progress.close()
-        except Exception:
-            pass
-    if failure is not None:
-        return {
-            "status": "failed",
-            "error": str(failure),
-            "accepted": confirm_without_preview(ui, failure),
-            "names": None,
-        }
-    preview = [row for row in preview_result.get("preview") or [] if isinstance(row, dict)]
-    review = review_transfer(
-        ui,
-        preview,
-        direction=DIRECTION_IMPORT,
-        title=TITLE,
-        accept_label="Import Selected from ResQ",
-        project_name=project_name,
-        rc_path=rc_path,
-        connection_name=str(preview_result.get("connection_name") or ""),
-        class_direction=dict(preview_result.get("class_direction") or {}),
-        selection=dict(preview_result.get("selection") or {}),
-        overwrite=overwrite,
-        on_poll=_report_macro_activity,
-    )
-    return {
-        "status": "reviewed",
-        "accepted": review["accepted"],
-        "names": review["names"],
-        "preview": preview,
-    }
 
 
 def _report_macro_activity() -> None:
@@ -553,19 +446,6 @@ def _summary_count(result: dict[str, Any], *keys: str) -> int | None:
     return None
 
 
-def import_selection_sentence(selection) -> str:
-    """What the import remembered for the next review to open with."""
-
-    entry = selection if isinstance(selection, dict) else {}
-    error = str(entry.get("error") or "")
-    if error:
-        return f"The selection was not saved, so the next import opens with everything ticked. {error}"
-    saved = int(entry.get("saved") or 0)
-    if not saved:
-        return ""
-    return f"Saved the {saved} selected item(s) as the default for the next import."
-
-
 def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) -> str:
     result = _status_result(status)
     lines = ["Import from ResQ completed.", f"Project: {project_name}", f"Path: {rc_path}"]
@@ -586,9 +466,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
             "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
             *skipped,
         ))
-    selection = import_selection_sentence(result.get("selection"))
-    if selection:
-        lines.extend(("", selection))
     detail = str(status.get("message") or result.get("message") or "").strip()
     if detail:
         lines.extend(("", detail))
@@ -698,33 +575,6 @@ def run_macro(active_dfm=None, active_context=None):
         return {"success": False, "message": message, "reason": "cancelled"}
 
     try:
-        review = review_import_plan(
-            ui,
-            server_root,
-            project_name,
-            rc_path,
-            overwrite=import_policy == IMPORT_POLICY_OVERWRITE,
-        )
-    except Exception as exc:
-        message = f"The import could not be reviewed.\n\n{exc}"
-        _message(ui, message, kind="error")
-        return {"success": False, "message": message}
-    if not review.get("accepted"):
-        message = "Import cancelled; nothing was changed."
-        _message(ui, message, auto_close_ms=3000)
-        return {"success": False, "message": message, "reason": "cancelled", "review": review}
-    selected_names = review.get("names")
-    if selected_names is not None and not selected_names:
-        message = "Nothing was selected, so nothing was imported."
-        _message(ui, message, auto_close_ms=6000)
-        return {
-            "success": False,
-            "message": message,
-            "reason": "empty_selection",
-            "review": review,
-        }
-
-    try:
         progress = ui.progress_bar(
             progress_id="import-resq-reserving-class",
             title=TITLE,
@@ -739,7 +589,6 @@ def run_macro(active_dfm=None, active_context=None):
             project_name=project_name,
             rc_path=rc_path,
             import_policy=import_policy,
-            selected_names=selected_names,
         )
         publish_import_request(server_root=server_root, request_id=request_id, payload=payload)
         if progress is not None:

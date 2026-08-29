@@ -9,6 +9,7 @@ import tempfile
 import time
 import types
 import unittest
+import contextlib
 from unittest.mock import patch
 
 
@@ -25,6 +26,9 @@ _CONTRACT_PATH = (
     / "resq_reserving_class_import_contract.json"
 )
 _REQUEST_ID = "a1b2c3d4e5f6478899aabbccddeeff00"
+# The fixtures answer with the version the canonical contract names, so a
+# contract bump moves the whole file at once.
+_CONTRACT_VERSION = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))["contract_version"]
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
@@ -61,12 +65,12 @@ def _look(*, live: bool = True, status: dict | None = None, status_age: float = 
 
 
 def _processing_status() -> dict:
-    return {"contract_version": 1, "status": "processing", "request_id": _REQUEST_ID}
+    return {"contract_version": _CONTRACT_VERSION, "status": "processing", "request_id": _REQUEST_ID}
 
 
 def _success_status() -> dict:
     return {
-        "contract_version": 1,
+        "contract_version": _CONTRACT_VERSION,
         "status": "success",
         "request_id": _REQUEST_ID,
         "result": {"datasets_imported": 1, "errors": 0},
@@ -127,6 +131,8 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.addCleanup(self.tempdir.cleanup)
         self.server_root = Path(self.tempdir.name)
         self.ui = _UI()
+        self.review = {"status": "reviewed", "accepted": True, "names": None}
+        self.review_calls = []
         self.api_module = types.ModuleType("arcrho_api")
         self.api_module.ArcRhoUI = lambda: self.ui
         self.api_module.get_server_root = lambda **_kwargs: self.server_root
@@ -151,7 +157,24 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         return path
 
     def _macro_modules(self):
-        return patch.dict(sys.modules, {"arcrho_api": self.api_module})
+        """The macro's imports, with the shared transfer review answered.
+
+        The review opens a window against a live Bridge, which no unit test
+        has; ``self.review`` is the answer it returns, accepting everything
+        unless a test says otherwise, and ``self.review_calls`` records what
+        the macro asked for.
+        """
+
+        def review(_ui, _root, project_name, rc_path, *, overwrite):
+            self.review_calls.append(
+                {"project_name": project_name, "rc_path": rc_path, "overwrite": overwrite}
+            )
+            return dict(self.review)
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.dict(sys.modules, {"arcrho_api": self.api_module}))
+        stack.enter_context(patch.object(self.module, "review_import_plan", side_effect=review))
+        return stack
 
     def _contract(self) -> dict:
         with _CONTRACT_PATH.open(encoding="utf-8") as stream:
@@ -292,7 +315,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
     def test_non_dfm_macro_context_falls_back_to_project_instance_context(self):
         self._write_worker()
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "success",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,
@@ -344,7 +367,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
     def test_publishes_location_independent_request_and_waits_for_success_status(self):
         self._write_worker()
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "success",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,
@@ -380,7 +403,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
             },
         )
         self.assertEqual(payload["Function"], "ImportResQReservingClass")
-        self.assertEqual(payload["ContractVersion"], 1)
+        self.assertEqual(payload["ContractVersion"], _CONTRACT_VERSION)
         self.assertEqual(payload["RequestId"], _REQUEST_ID)
         self.assertEqual(payload["ProjectName"], "Demo")
         self.assertEqual(payload["Path"], r"Auto\PP")
@@ -396,7 +419,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self._write_worker()
         self.ui = _UI(button_script=["Overwrite", "Overwrite"])
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "success",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,
@@ -437,7 +460,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self._write_worker()
         self.ui = _UI(button_script=["Merge"])
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "success",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,
@@ -457,11 +480,104 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         payload = json.loads(request_path.read_text(encoding="utf-8"))
         self.assertNotIn("ImportPolicy", payload)
 
+    def test_the_ticked_names_travel_in_the_request_payload(self):
+        self._write_worker()
+        self.review = {"status": "reviewed", "accepted": True, "names": ["Paid Loss", "D 18 - BS Paid DFM"]}
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(
+                self.module,
+                "publish_import_request",
+                side_effect=self._publish_status(_success_status()),
+            ),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["SelectedNames"], ["Paid Loss", "D 18 - BS Paid DFM"])
+
+    def test_a_review_that_ticked_nothing_publishes_no_import(self):
+        self._write_worker()
+        self.review = {"status": "reviewed", "accepted": True, "names": []}
+
+        with self._macro_modules():
+            result = self.module.run_macro()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["reason"], "empty_selection")
+        self.assertFalse((self.server_root / self.module.REQUEST_ROOT / "requests").exists())
+
+    def test_a_cancelled_review_publishes_no_import(self):
+        self._write_worker()
+        self.review = {"status": "reviewed", "accepted": False, "names": []}
+
+        with self._macro_modules():
+            result = self.module.run_macro()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["reason"], "cancelled")
+        self.assertFalse((self.server_root / self.module.REQUEST_ROOT / "requests").exists())
+
+    def test_the_review_is_told_whether_the_run_overwrites(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Overwrite", "Overwrite"])
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(
+                self.module,
+                "publish_import_request",
+                side_effect=self._publish_status(_success_status()),
+            ),
+        ):
+            self.module.run_macro()
+
+        self.assertEqual(
+            self.review_calls,
+            [{"project_name": "Demo", "rc_path": r"Auto\PP", "overwrite": True}],
+        )
+
+    def test_a_comparison_that_failed_asks_before_importing_everything(self):
+        self.ui = _UI(button_script=["Import Anyway"])
+
+        self.assertTrue(self.module.confirm_without_preview(self.ui, RuntimeError("ResQ is busy")))
+
+        message, options = self.ui.messages[-1]
+        self.assertIn("ResQ is busy", message)
+        self.assertIn("everything ResQ offers", message)
+        self.assertEqual(options["buttons"], ["Import Anyway", "Cancel"])
+
+    def test_a_selection_saved_by_the_bridge_is_reported_in_the_completion(self):
+        message = self.module._success_message(
+            "Demo",
+            r"Auto\PP",
+            {"result": {"datasets_imported": 2, "errors": 0, "selection": {"saved": 2, "error": ""}}},
+        )
+
+        self.assertIn("Saved the 2 selected item(s) as the default for the next import.", message)
+
+    def test_a_selection_the_bridge_could_not_save_is_reported_as_such(self):
+        message = self.module._success_message(
+            "Demo",
+            r"Auto\PP",
+            {"result": {"selection": {"saved": 0, "error": "The share was read-only."}}},
+        )
+
+        self.assertIn("The selection was not saved", message)
+        self.assertIn("The share was read-only.", message)
+
     def test_a_success_status_with_skipped_items_lists_them_by_name(self):
         self._write_worker()
         self.ui = _UI(button_script=["Merge"])
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "success",
             "updated_at": "2026-08-21T10:00:00",
             "request_id": _REQUEST_ID,
@@ -500,7 +616,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
     def test_bridge_error_status_is_reported_without_reloading_dataset_table(self):
         self._write_worker()
         status = {
-            "contract_version": 1,
+            "contract_version": _CONTRACT_VERSION,
             "status": "error",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,
@@ -534,7 +650,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
     def test_incompatible_status_contract_is_not_accepted_as_success(self):
         self._write_worker()
         status = {
-            "contract_version": 2,
+            "contract_version": 99,
             "status": "success",
             "updated_at": "2026-07-26T10:00:00",
             "request_id": _REQUEST_ID,

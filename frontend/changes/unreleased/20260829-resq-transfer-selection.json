@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "Import ResQ Reserving Class and Export Reserving Class to ResQ now open the same review window, where you tick the datasets and methods the run should cover; what you ticked comes back ticked for everyone next time.",
+  "details": [
+    "Both macros show one table of every dataset and method either system holds, with where it lives, both timestamps, what changed since the last run, and what this run would do to it.",
+    "Each row has a tick box. Rows the direction cannot carry are shown greyed out with the reason instead of being left out.",
+    "The import can now bring across a dataset ResQ has and ArcRho does not, and leaving a dataset unticked leaves the ArcRho copy exactly as it was.",
+    "The merge-or-overwrite question is asked before the review, so the table says whether a newer ArcRho copy would be overwritten or kept.",
+    "The ticked list is saved beside the reserving class on the ArcRho server, one for importing and one for exporting, so the next person opens the same choice.",
+    "The ArcRho Bridge must be rebuilt and redeployed with this release; the macros and the Bridge refuse to work with an older counterpart rather than quietly moving everything."
+  ]
+}

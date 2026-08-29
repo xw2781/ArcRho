@@ -51,6 +51,7 @@ def _validated_contract(payload: object) -> Mapping[str, Any]:
         "function": str,
         "worker_role": str,
         "worker_heartbeat_max_age_seconds": int,
+        "selection_names_field": str,
     }
     for key, value_type in required_scalars.items():
         value = payload.get(key)

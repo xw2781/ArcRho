@@ -8,6 +8,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterable
 
 from arcrho_api.dataset_index_contract import (
     METHOD_DIR_NAME,
@@ -228,6 +229,7 @@ def merge_preserved_arcrho_artifacts(
     staged_rc_dir: Path,
     *,
     overwrite: bool = False,
+    requested_names: Iterable[object] | None = None,
 ) -> dict[str, object]:
     """Overlay ArcRho-owned or newer live groups onto a completed ResQ stage.
 
@@ -235,6 +237,11 @@ def merge_preserved_arcrho_artifacts(
     ResQ result always wins for anything ResQ provided. Groups whose ArcRho
     dataset type the stage did not produce at all are preserved either way:
     an overwrite must not delete work that exists only in ArcRho.
+
+    ``requested_names`` names what the import was asked to bring across. A live
+    group outside it was never offered to the stage, so its absence there says
+    nothing about ResQ and it is always kept -- which is what lets a person
+    import a few datasets without losing the rest of the reserving class.
     """
 
     live_rc = Path(live_rc_dir).resolve(strict=False)
@@ -252,10 +259,18 @@ def merge_preserved_arcrho_artifacts(
         if _normalize_import_name(group.get("dataset_type"))
     }
     arcrho_type_keys = _dataset_type_keys()
+    requested_keys = (
+        None
+        if requested_names is None
+        else {_normalize_import_name(name).casefold() for name in requested_names} - {""}
+    )
     preserved: list[dict] = []
     for key, live_group in live_groups.items():
         live_type_key = _normalize_import_name(live_group.get("dataset_type")).casefold()
         staged_group = staged_groups.get(key)
+        if requested_keys is not None and key not in requested_keys:
+            preserved.append(live_group)
+            continue
         arcrho_only_type = (
             bool(live_type_key)
             and live_type_key in arcrho_type_keys

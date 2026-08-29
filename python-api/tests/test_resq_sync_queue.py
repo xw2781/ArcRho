@@ -59,7 +59,10 @@ class QueueContractAdapterTests(unittest.TestCase):
         self.assertEqual(tuple(queue.STATUS_RELATIVE_DIR.parts), tuple(contract["status_relative_dir"]))
         self.assertEqual(queue.REQUIRED_REQUEST_FIELDS, tuple(contract["required_request_fields"]))
         self.assertEqual(queue.ALLOWED_PHASES, frozenset(contract["allowed_phases"]))
+        self.assertEqual(queue.ALLOWED_DIRECTIONS, frozenset(contract["allowed_directions"]))
+        self.assertEqual(queue.DIRECTION_FIELD, contract["direction_field"])
         self.assertEqual(queue.SELECTION_FIELD, contract["selection_field"])
+        self.assertEqual(queue.SELECTION_NAMES_FIELD, contract["selection_names_field"])
         self.assertEqual(queue.SELECTION_ROW_FIELDS, tuple(contract["selection_row_fields"]))
 
     def test_worker_and_status_facts_come_from_the_one_contract_that_owns_them(self):
@@ -133,15 +136,79 @@ class QueueRequestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "signature"):
             queue.create_sync_request(project_name="Demo", rc_path=r"Auto\PP", phase="apply", selected_rows=[row])
 
-    def test_a_preview_or_export_request_never_carries_a_selection(self):
+    def test_a_preview_or_export_request_never_carries_reviewed_rows(self):
         for phase in ("preview", "export"):
             with self.subTest(phase=phase):
-                with self.assertRaisesRegex(ValueError, f"{phase} request must not carry a selection"):
+                with self.assertRaisesRegex(ValueError, f"{phase} request must not carry reviewed rows"):
                     queue.create_sync_request(
                         project_name="Demo",
                         rc_path=r"Auto\PP",
                         phase=phase,
                         selected_rows=[_preview_row("paid-loss")],
+                    )
+
+    def test_a_transfer_preview_request_names_the_direction_it_reviews(self):
+        _request_id, payload = queue.create_sync_request(
+            project_name="Demo",
+            rc_path=r"Auto\PP",
+            phase=queue.PHASE_TRANSFER_PREVIEW,
+            direction=queue.DIRECTION_IMPORT,
+        )
+
+        self.assertEqual(payload["Phase"], "transfer_preview")
+        self.assertEqual(payload[queue.DIRECTION_FIELD], "import")
+        self.assertNotIn(queue.SELECTION_NAMES_FIELD, payload)
+
+    def test_a_transfer_preview_request_without_a_known_direction_is_refused(self):
+        for direction in ("", "sideways"):
+            with self.subTest(direction=direction):
+                with self.assertRaisesRegex(ValueError, "Direction must be one of"):
+                    queue.create_sync_request(
+                        project_name="Demo",
+                        rc_path=r"Auto\PP",
+                        phase=queue.PHASE_TRANSFER_PREVIEW,
+                        direction=direction,
+                    )
+
+    def test_only_a_transfer_preview_names_a_direction(self):
+        with self.assertRaisesRegex(ValueError, "must not name a transfer direction"):
+            queue.create_sync_request(
+                project_name="Demo",
+                rc_path=r"Auto\PP",
+                phase="export",
+                direction=queue.DIRECTION_EXPORT,
+            )
+
+    def test_an_export_request_carries_the_names_the_review_ticked(self):
+        _request_id, payload = queue.create_sync_request(
+            project_name="Demo",
+            rc_path=r"Auto\PP",
+            phase="export",
+            selected_names=["Paid Loss", "  ", " Ultimate Loss "],
+        )
+
+        self.assertEqual(payload[queue.SELECTION_NAMES_FIELD], ["Paid Loss", "Ultimate Loss"])
+
+    def test_an_export_request_that_selects_nothing_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "At least one dataset or method"):
+            queue.create_sync_request(
+                project_name="Demo",
+                rc_path=r"Auto\PP",
+                phase="export",
+                selected_names=[],
+            )
+
+    def test_only_an_export_request_carries_a_name_selection(self):
+        for phase in ("preview", "apply", queue.PHASE_TRANSFER_PREVIEW):
+            with self.subTest(phase=phase):
+                with self.assertRaisesRegex(ValueError, "must not carry a selection"):
+                    queue.create_sync_request(
+                        project_name="Demo",
+                        rc_path=r"Auto\PP",
+                        phase=phase,
+                        direction=queue.DIRECTION_IMPORT if phase == queue.PHASE_TRANSFER_PREVIEW else "",
+                        selected_rows=[_preview_row("paid-loss")] if phase == "apply" else None,
+                        selected_names=["Paid Loss"],
                     )
 
     def test_an_export_request_names_its_phase_and_nothing_to_select(self):

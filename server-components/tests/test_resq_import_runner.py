@@ -282,7 +282,7 @@ class ResQImportRunnerTests(unittest.TestCase):
 
         self.assertEqual(order, ["merge", "refresh"])
         # A request with no policy keeps today's merge behavior.
-        self.assertEqual(merge_kwargs, [{"overwrite": False}])
+        self.assertEqual(merge_kwargs, [{"overwrite": False, "requested_names": None}])
         self.assertEqual(result["import_policy"], "merge")
         self.assertEqual(result["arcrho_groups_preserved"], 1)
         self.assertEqual(result["arcrho_artifacts_preserved"], 2)
@@ -310,7 +310,98 @@ class ResQImportRunnerTests(unittest.TestCase):
 
         self.assertTrue(result["committed"])
         self.assertEqual(result["import_policy"], "overwrite")
-        self.assertEqual(merge_kwargs, [{"overwrite": True}])
+        self.assertEqual(merge_kwargs, [{"overwrite": True, "requested_names": None}])
+
+    def test_the_ticked_names_narrow_the_import_and_are_saved_afterwards(self):
+        server_root = self.root / "server"
+        importer_kwargs = {}
+        merge_kwargs = []
+        recorded = []
+        module = self._swap_module()
+        original_importer = module.import_reserving_class_from_resq
+        original_merge = module.merge_preserved_arcrho_artifacts
+
+        def importer(project_name, rc_path, **kwargs):
+            importer_kwargs.update(kwargs)
+            return original_importer(project_name, rc_path, **kwargs)
+
+        module.import_reserving_class_from_resq = importer
+        module.merge_preserved_arcrho_artifacts = (
+            lambda live, stage, **kwargs: merge_kwargs.append(kwargs) or original_merge(live, stage)
+        )
+        module.record_import_selection = lambda project_name, rc_path, **kwargs: (
+            recorded.append((project_name, rc_path, kwargs)) or "selection.json"
+        )
+        request = {
+            **self._swap_request("run-selection"),
+            "SelectedNames": [" Paid Loss ", "", "Paid LDF"],
+        }
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            result = runner.run_reserving_class_import(request)
+
+        self.assertTrue(result["committed"])
+        self.assertEqual(importer_kwargs["selected_names"], ["Paid Loss", "Paid LDF"])
+        # The live groups the run never asked for must survive the commit.
+        self.assertEqual(merge_kwargs[0]["requested_names"], ["Paid Loss", "Paid LDF"])
+        self.assertEqual(result["selection"], {"saved": 2, "path": "selection.json", "error": ""})
+        project_name, rc_path, kwargs = recorded[0]
+        self.assertEqual((project_name, rc_path), ("Demo", r"Business\Auto"))
+        self.assertEqual(kwargs["names"], ["Paid Loss", "Paid LDF"])
+        self.assertEqual(kwargs["requested_by"], "tester")
+
+    def test_an_import_without_a_selection_saves_none_and_asks_for_everything(self):
+        server_root = self.root / "server"
+        importer_kwargs = {}
+        module = self._swap_module()
+        original_importer = module.import_reserving_class_from_resq
+
+        def importer(project_name, rc_path, **kwargs):
+            importer_kwargs.update(kwargs)
+            return original_importer(project_name, rc_path, **kwargs)
+
+        module.import_reserving_class_from_resq = importer
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            result = runner.run_reserving_class_import(self._swap_request("run-no-selection"))
+
+        self.assertIsNone(importer_kwargs["selected_names"])
+        self.assertEqual(result["selection"], {"saved": 0, "path": "", "error": ""})
+
+    def test_a_selection_that_cannot_be_saved_never_fails_the_committed_import(self):
+        server_root = self.root / "server"
+        module = self._swap_module()
+
+        def refuse(*_args, **_kwargs):
+            raise OSError("the share was read-only")
+
+        module.record_import_selection = refuse
+        request = {**self._swap_request("run-selection-fails"), "SelectedNames": ["Paid Loss"]}
+
+        with (
+            patch.object(runner, "get_project_root", return_value=server_root),
+            patch.object(runner, "load_resq_data_migration", return_value=module),
+        ):
+            result = runner.run_reserving_class_import(request)
+
+        self.assertTrue(result["committed"])
+        self.assertIn("read-only", result["selection"]["error"])
+
+    def test_a_selection_that_is_not_a_list_of_names_is_rejected_before_any_work(self):
+        server_root = self.root / "server"
+
+        for names in ("Paid Loss", [{"Id": "paid-loss"}], [1]):
+            with self.subTest(names=names):
+                request = {**self._swap_request("run-bad-selection"), "SelectedNames": names}
+                with patch.object(runner, "get_project_root", return_value=server_root):
+                    with self.assertRaisesRegex(runner.ResQImportRequestError, "SelectedNames"):
+                        runner.run_reserving_class_import(request)
 
     def test_an_unknown_import_policy_is_rejected_before_any_work(self):
         server_root = self.root / "server"

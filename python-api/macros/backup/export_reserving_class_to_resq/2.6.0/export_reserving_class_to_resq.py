@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.7.0
-# Release Note: The review before the export is now a tick list, in the same window the Import macro opens: every dataset and method either system holds, with its timestamps, and a tick box to leave it out. What was ticked is saved beside the reserving class on the ArcRho server and comes back ticked for everyone at the next export.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
+# Version: 2.6.0
+# Release Note: The export now saves the ArcRho and ResQ timestamps of everything it writes, in a shared file beside the reserving class on the ArcRho server, and the review table before the next export measures against that saved pair: an item is only flagged as overwriting a ResQ change when ResQ was genuinely edited since the last export, not because the last export left the newer stamp.
+# Description: Push the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -15,13 +15,11 @@ canonical migration and loads it as its ResQ writer:
   canonical session (``resq_migration.sync_session``) owns the inventory, the
   dependency order, and the per-item bookkeeping, and calls the writers here
   for both the Sync macro's apply phase and this macro's export phase.
-- ``run_macro`` is the client side: it publishes a ``transfer_preview``
-  request to the shared Bridge queue through ``arcrho_api.resq_sync_queue``
-  and opens the shared review table (``arcrho_api.resq_transfer_review``) --
-  the same window the Import macro opens -- then, once rows are ticked and
-  accepted, an ``export`` request carrying those names, and shows the results
-  in a Project Instance window. It never touches ResQ or the reserving-class
-  files itself.
+- ``run_macro`` is the client side: it publishes a ``preview`` request to the
+  shared Bridge queue through ``arcrho_api.resq_sync_queue`` and shows the
+  timestamp comparison for review, then, once that is accepted, an ``export``
+  request, and shows the results in a Project Instance window. It never
+  touches ResQ or the reserving-class files itself.
 """
 
 from __future__ import annotations
@@ -1045,19 +1043,6 @@ def export_baseline_sentence(baseline) -> str:
     return sentence
 
 
-def export_selection_sentence(selection) -> str:
-    """What the export remembered for the next review to open with."""
-
-    entry = selection if isinstance(selection, dict) else {}
-    error = str(entry.get("error") or "")
-    if error:
-        return f"The selection was not saved, so the next export opens with everything ticked. {error}"
-    saved = int(entry.get("saved") or 0)
-    if not saved:
-        return "The whole reserving class was exported, so no selection was saved."
-    return f"Saved the {saved} selected item(s) as the default for the next export."
-
-
 def export_result_table_payload(result) -> dict:
     """Project the Bridge's export results into the read-only review-table contract.
 
@@ -1095,8 +1080,7 @@ def export_result_table_payload(result) -> dict:
             f"ResQ: {result.get('connection_name')}\n"
             f"Exported {counts['exported']} dataset/method item(s); saved {counts['saved']} method(s); "
             f"skipped {counts['skipped']}; failed {counts['failed']}.\n"
-            f"{export_baseline_sentence(result.get('baseline'))}\n"
-            f"{export_selection_sentence(result.get('selection'))}"
+            f"{export_baseline_sentence(result.get('baseline'))}"
         ),
         "columns": [
             {"key": "kind", "label": "Type", "width": 150},
@@ -1107,6 +1091,138 @@ def export_result_table_payload(result) -> dict:
         "rows": rows,
         "acceptLabel": "Close",
         "searchPlaceholder": "Filter results",
+    }
+
+
+_NEWER_CELLS = {
+    "arcrho": ("ArcRho", ""),
+    "resq": ("ResQ", ""),
+}
+
+# What the saved baseline says was edited since the last export. "None" is the
+# quiet, expected answer once a class has been exported and left alone.
+_CHANGED_CELLS = {
+    "both": ("Both", "warn"),
+    "resq": ("ResQ", "warn"),
+    "arcrho": ("ArcRho", "ok"),
+    "none": ("None", "muted"),
+}
+
+
+def export_review_of(row) -> dict:
+    """The row's baseline verdict, or an empty one when the Bridge did not send it.
+
+    A Bridge that has not been rebuilt yet sends the older preview rows, which
+    carry no verdict. The table then falls back to the plain timestamp
+    comparison rather than claiming a baseline it does not have.
+    """
+
+    review = row.get("export_review")
+    return review if isinstance(review, dict) else {}
+
+
+def export_preview_cells(row) -> dict:
+    """One preview row's cells: the timestamp pair, what changed, and what the export does.
+
+    Every verdict is the plan's own (``resq_migration.sync``), never a
+    re-reading of the displayed timestamps. The Newer column is the plain fact
+    about the two times beside it; the Changed column is the one that matters,
+    because it measures each side against the timestamp pair saved when the
+    item was last exported. That is what keeps the export from warning about a
+    ResQ copy whose only newness is the stamp the last export left on it.
+    """
+
+    review = export_review_of(row)
+    arcrho_timestamp = str(row.get("arcrho_timestamp") or "")
+    resq_timestamp = str(row.get("resq_timestamp") or "")
+    newer = str(row.get("newer_side") or "")
+    unknown = not arcrho_timestamp or not resq_timestamp
+    newer_text, newer_tone = _NEWER_CELLS.get(newer, ("Unknown", "muted") if unknown else ("Same", "muted"))
+    changed = str(review.get("changed") or "")
+    changed_text, changed_tone = _CHANGED_CELLS.get(changed, ("No baseline yet", "muted"))
+    overwrites_edit = bool(review.get("overwrites_edit")) if review else newer == "resq"
+    if not row.get("export_supported"):
+        plan_text, plan_tone = "Not exported", "muted"
+    elif overwrites_edit:
+        plan_text, plan_tone = "Overwrites newer ResQ copy", "warn"
+    else:
+        plan_text, plan_tone = "Overwrites ResQ copy", "info"
+    return {
+        "kind": str(row.get("kind") or KIND_DATASET),
+        "name": str(row.get("name") or ""),
+        "arcrho_timestamp": arcrho_timestamp,
+        "resq_timestamp": resq_timestamp,
+        "newer": {"text": newer_text, "tone": newer_tone},
+        "changed": {"text": changed_text, "tone": changed_tone},
+        "plan": {"text": plan_text, "tone": plan_tone},
+        "detail": str(review.get("detail") or row.get("detail") or row.get("status") or ""),
+    }
+
+
+def export_preview_table_payload(preview, project_name, rc_path, connection_name, direction) -> dict:
+    """Project the Bridge's preview rows into the read-only timestamp table shown before the write.
+
+    The export is all-or-nothing -- it writes every item it supports, in
+    ArcRho's dependency order -- so the table is not selectable: it is the
+    place to check the timestamp pairs, and it is accepted or cancelled.
+    """
+
+    rows = [
+        {"id": str(row.get("id") or f"preview-{index}"), "cells": export_preview_cells(row)}
+        for index, row in enumerate(preview, start=1)
+    ]
+    exported = [row for row in preview if row.get("export_supported")]
+    overwritten = sum(
+        1
+        for row in exported
+        if (
+            bool(export_review_of(row).get("overwrites_edit"))
+            if export_review_of(row)
+            else row.get("newer_side") == "resq"
+        )
+    )
+    unbaselined = sum(1 for row in exported if not export_review_of(row).get("changed"))
+    caution = (
+        f"{overwritten} of them were edited in ResQ since the last export and lose that edit."
+        if overwritten
+        else "None of them were edited in ResQ since the last export."
+    )
+    if unbaselined:
+        caution += (
+            f" {unbaselined} have no saved timestamp pair yet, so they are compared "
+            "by timestamp alone until this export saves one."
+        )
+    return {
+        "title": TITLE,
+        # Host the review inside the active Project Instance page as a nested
+        # window, so an item can be opened and checked while it stays open.
+        "host": "projectInstance",
+        "selectable": False,
+        "summary": (
+            f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
+            f"Latest ArcRho change: {direction.get('arcrho_timestamp') or 'Unknown'} | "
+            f"Latest ResQ change: {direction.get('resq_timestamp') or 'Unknown'}\n"
+            f"Compared {len(preview)} item(s) held by both systems; the export overwrites {len(exported)} of them "
+            f"in ResQ. {caution} Items ResQ does not have are not listed and the export skips them."
+        ),
+        "columns": [
+            {"key": "kind", "label": "Type", "width": 150},
+            {"key": "name", "label": "Dataset / Method Output", "width": 250},
+            {"key": "arcrho_timestamp", "label": "ArcRho Timestamp", "width": 220},
+            {"key": "resq_timestamp", "label": "ResQ Timestamp", "width": 220},
+            {"key": "newer", "label": "Newer", "width": 90},
+            {"key": "changed", "label": "Changed Since Last Export", "width": 190},
+            {"key": "plan", "label": "Export", "width": 210},
+            {"key": "detail", "label": "Details", "width": 320},
+        ],
+        "rows": rows,
+        "acceptLabel": "Export to ResQ",
+        "cancelLabel": "Cancel",
+        "searchPlaceholder": "Filter datasets and methods",
+        "emptyMessage": (
+            "No dataset or method exists in both ArcRho and ResQ for this reserving class, "
+            "so the export would write nothing."
+        ),
     }
 
 
@@ -1131,22 +1247,15 @@ def confirm_without_preview(ui, error) -> bool:
 
 
 def review_export_plan(ui, root, project_name, rc_path) -> dict:
-    """Compare both sides and let the person tick what the export writes.
+    """Compare every timestamp with ResQ and let the person review the pairs before the export writes.
 
-    Runs the queue's ``transfer_preview`` phase -- the same comparison the
-    Import macro reviews, in the same window -- and returns the ticked names.
-    Accepting the table is what starts the export; cancelling it publishes
-    nothing.
+    Runs the queue's ``preview`` phase -- the same comparison the Sync macro
+    reviews -- and shows it as the read-only table above. Accepting the table
+    is what starts the export; cancelling it publishes nothing.
     """
 
-    from arcrho_api.resq_sync_queue import (
-        DIRECTION_EXPORT,
-        PHASE_TRANSFER_PREVIEW,
-        PREVIEW_TIMEOUT_SEC,
-        BridgeUnavailableError,
-        run_bridge_phase,
-    )
-    from arcrho_api.resq_transfer_review import review_transfer
+    from arcrho_api.resq_sync_queue import PREVIEW_TIMEOUT_SEC, BridgeUnavailableError, run_bridge_phase
+    from arcrho_api.ui import await_review_table
 
     progress = ui.progress_bar(
         progress_id=f"{PROGRESS_ID}-preview",
@@ -1161,8 +1270,7 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
             server_root=root,
             project_name=project_name,
             rc_path=rc_path,
-            phase=PHASE_TRANSFER_PREVIEW,
-            direction=DIRECTION_EXPORT,
+            phase="preview",
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress,
             progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
@@ -1176,32 +1284,18 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
     finally:
         progress.close()
     if failure is not None:
-        return {
-            "status": "failed",
-            "error": str(failure),
-            "accepted": confirm_without_preview(ui, failure),
-            "names": None,
-        }
+        return {"status": "failed", "error": str(failure), "accepted": confirm_without_preview(ui, failure)}
     preview = [row for row in preview_result.get("preview") or [] if isinstance(row, dict)]
     connection_name = str(preview_result.get("connection_name") or "")
-    direction = dict(preview_result.get("class_direction") or {})
-    review = review_transfer(
+    direction = dict(preview_result.get("direction") or {})
+    completion = await_review_table(
         ui,
-        preview,
-        direction=DIRECTION_EXPORT,
-        title=TITLE,
-        accept_label="Export Selected to ResQ",
-        project_name=project_name,
-        rc_path=rc_path,
-        connection_name=connection_name,
-        class_direction=direction,
-        selection=dict(preview_result.get("selection") or {}),
+        export_preview_table_payload(preview, project_name, rc_path, connection_name, direction),
         on_poll=_report_activity,
     )
     return {
         "status": "reviewed",
-        "accepted": review["accepted"],
-        "names": review["names"],
+        "accepted": bool(completion.get("accepted")),
         "preview": preview,
         "connection_name": connection_name,
         "direction": direction,
@@ -1250,17 +1344,6 @@ def run_macro(active_dfm=None, active_context=None):
                 "review": review,
                 "message": "Export cancelled by user.",
             }
-        selected_names = review.get("names")
-        if selected_names is not None and not selected_names:
-            message = "Nothing was selected, so nothing was exported."
-            _message(ui, message, auto_close_ms=6000)
-            return {
-                "status": "cancelled",
-                "cancelled": True,
-                "reason": "empty_selection",
-                "review": review,
-                "message": message,
-            }
 
         progress = ui.progress_bar(
             progress_id=PROGRESS_ID,
@@ -1273,7 +1356,6 @@ def run_macro(active_dfm=None, active_context=None):
             project_name=project_name,
             rc_path=rc_path,
             phase="export",
-            selected_names=selected_names,
             timeout_sec=WRITE_TIMEOUT_SEC,
             progress=progress,
             progress_label=f"Exporting to ResQ: {rc_path}",

@@ -383,7 +383,7 @@ class BridgeImportRequestProtocolTests(unittest.TestCase):
         payload = json.loads(status_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["status"], "processing")
         self.assertEqual(payload["request_id"], request["RequestId"])
-        self.assertEqual(payload["contract_version"], 1)
+        self.assertEqual(payload["contract_version"], bridge_main.RESQ_IMPORT_CONTRACT_VERSION)
         self.assertEqual(payload["progress"]["stage"], "discovering")
         self.assertFalse(Path(request["StatusPath"]).exists())
         self.assertEqual(tuple(status_path.parent.glob("*.tmp")), ())
@@ -392,7 +392,7 @@ class BridgeImportRequestProtocolTests(unittest.TestCase):
         handler = bridge_main.BridgeRequestHandler(Mock())
 
         with self.assertRaisesRegex(ValueError, "Unsupported ContractVersion"):
-            handler._validate_resq_import_request(_import_request(ContractVersion=2))
+            handler._validate_resq_import_request(_import_request(ContractVersion=99))
         with self.assertRaisesRegex(ValueError, "must not supply path"):
             handler._validate_resq_import_request(
                 _import_request(StatusPath=r"Z:\ArcRho Server\status.json")

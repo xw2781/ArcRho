@@ -220,6 +220,7 @@ def run_reserving_class_import(
     rc_path = _rc_path_from_request(request)
     export_mode = _export_mode_from_request(request)
     import_policy = _import_policy_from_request(request)
+    selected_names = _selected_names_from_request(request)
     request_id = _request_id_from_request(request)
     server_root = Path(get_project_root()).expanduser().resolve()
     bundle = configure_canonical_runtime(server_root)
@@ -287,6 +288,7 @@ def run_reserving_class_import(
             server_root=server_root,
             project_data_dir=stage_data_dir,
             export_mode=export_mode,
+            selected_names=selected_names,
             cleanup_target=True,
             skip_unavailable_engine=True,
             progress_callback=_safe_progress_callback(progress_callback),
@@ -345,6 +347,7 @@ def run_reserving_class_import(
             target_rc_dir,
             stage_rc_dir,
             overwrite=import_policy == "overwrite",
+            requested_names=selected_names,
         )
         preserved_groups = int(merge_result.get("groups") or 0)
         if preserved_groups:
@@ -387,6 +390,15 @@ def run_reserving_class_import(
         result["engine_component_preserved"] = preserve_engine
         result["engine_artifacts_restored"] = restored_engine_artifacts
         result["import_policy"] = import_policy
+        result["selection"] = _remember_import_selection(
+            module,
+            project_name,
+            rc_path,
+            server_root,
+            selected_names,
+            str(request.get("UserName") or "").strip(),
+            str(connection.get("connection_name") or ""),
+        )
         result["arcrho_groups_preserved"] = preserved_groups
         result["arcrho_artifacts_preserved"] = int(merge_result.get("files") or 0)
         result["previous_data_deleted"] = previous_data_deleted
@@ -582,6 +594,25 @@ def _allowed_export_modes() -> frozenset[str]:
     if not normalized:
         raise ResQMigrationBundleError("The ResQ import contract has no usable export modes.")
     return normalized
+
+
+def _selected_names_from_request(request: Mapping[str, Any]) -> list[str] | None:
+    """The ticked dataset and method output names, or ``None`` for the whole class.
+
+    The field is optional, so a request that names nothing still imports
+    everything ResQ offers, which is what every import did before the review
+    table let a person choose.
+    """
+
+    if not isinstance(request, Mapping):
+        raise ResQImportRequestError("The ResQ import request must be a JSON object.")
+    field = load_resq_reserving_class_import_contract()["selection_names_field"]
+    names = request.get(field)
+    if names is None:
+        return None
+    if not isinstance(names, list) or any(not isinstance(name, str) for name in names):
+        raise ResQImportRequestError(f"{field} must be a list of item names.")
+    return [name.strip() for name in names if name.strip()]
 
 
 def _import_policy_from_request(request: Mapping[str, Any]) -> str:
@@ -895,6 +926,46 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _remember_import_selection(
+    module: ModuleType,
+    project_name: str,
+    rc_path: str,
+    server_root: Path,
+    selected_names: list[str] | None,
+    requested_by: str,
+    connection_name: str,
+) -> dict[str, object]:
+    """Save what this import covered as the next import's default.
+
+    Nothing is saved for an import that named no selection: it covered the
+    whole reserving class, which is what an empty saved list already means.
+    The commit is durable by the time this runs, so a document that cannot be
+    written is reported beside the result rather than failing the import.
+    """
+
+    if selected_names is None:
+        return {"saved": 0, "path": "", "error": ""}
+    recorder = getattr(module, "record_import_selection", None)
+    if not callable(recorder):
+        raise ResQMigrationBundleError(
+            "The deployed ResQ migration bundle does not expose record_import_selection()."
+        )
+    arguments: dict[str, object] = {
+        "server_root": server_root,
+        "names": selected_names,
+        "requested_by": requested_by,
+    }
+    if connection_name:
+        # The document is scoped by connection, so it must be the one the
+        # transfer review read it under, not the migration module's default.
+        arguments["connection_name"] = connection_name
+    try:
+        path = recorder(project_name, rc_path, **arguments)
+    except Exception as exc:
+        return {"saved": 0, "path": "", "error": f"The selection could not be saved: {exc}"}
+    return {"saved": len(selected_names), "path": str(path), "error": ""}
+
+
 def _refresh_stage_contract(
     module: ModuleType,
     project_name: str,
@@ -905,6 +976,7 @@ def _refresh_stage_contract(
     stage_rc_dir: Path,
     *,
     overwrite: bool = False,
+    requested_names: list[str] | None = None,
 ) -> dict[str, object]:
     apply_scope = getattr(module, "_apply_runtime_scope", None)
     restore_scope = getattr(module, "_restore_runtime_scope", None)
@@ -920,7 +992,12 @@ def _refresh_stage_contract(
         )
     previous_scope = apply_scope(project_name, server_root, stage_data_dir)
     try:
-        merge_result = merge_artifacts(live_rc_dir, stage_rc_dir, overwrite=overwrite)
+        merge_result = merge_artifacts(
+            live_rc_dir,
+            stage_rc_dir,
+            overwrite=overwrite,
+            requested_names=requested_names,
+        )
         if not isinstance(merge_result, Mapping):
             raise ResQMigrationBundleError("The canonical ArcRho merge returned a non-object result.")
         refresh_graphs(stage_rc_dir)

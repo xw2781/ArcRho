@@ -29,6 +29,18 @@ TIMESTAMP_TOLERANCE_SECONDS = 0.000001
 ACTION_ARCRHO_TO_RESQ = "arcrho_to_resq"
 ACTION_RESQ_TO_ARCRHO = "resq_to_arcrho"
 
+# The two ways a whole reserving class is moved by the Import and Export
+# macros, as opposed to the per-row action the Sync macro chooses. One
+# vocabulary serves the review table, the queue requests, and the saved
+# selection document.
+DIRECTION_IMPORT = "import"
+DIRECTION_EXPORT = "export"
+TRANSFER_DIRECTIONS = (DIRECTION_IMPORT, DIRECTION_EXPORT)
+_DIRECTION_ACTIONS = {
+    DIRECTION_IMPORT: ACTION_RESQ_TO_ARCRHO,
+    DIRECTION_EXPORT: ACTION_ARCRHO_TO_RESQ,
+}
+
 # Which sides carry an edit made since the recorded baseline. A blank answer is
 # not "nothing changed": it means no usable baseline exists to measure from.
 CHANGED_NEITHER = "none"
@@ -167,6 +179,38 @@ def export_supported(arcrho: Mapping[str, Any] | None, resq: Mapping[str, Any] |
     """Whether an ArcRho-to-ResQ push of this item would write anything."""
 
     return _support_for_action(ACTION_ARCRHO_TO_RESQ, arcrho, resq)[0]
+
+
+def transfer_direction(value: Any) -> str:
+    """Return one of the two whole-class transfer directions, or raise."""
+
+    direction = str(value or "").strip().casefold()
+    if direction not in TRANSFER_DIRECTIONS:
+        raise ValueError("Direction must be one of: " + ", ".join(TRANSFER_DIRECTIONS) + ".")
+    return direction
+
+
+def transfer_support(
+    direction: Any,
+    arcrho: Mapping[str, Any] | None,
+    resq: Mapping[str, Any] | None,
+) -> tuple[bool, str]:
+    """Whether one item can move in a transfer direction, and why not.
+
+    The review table shows every item either side holds, so an item the other
+    side does not have at all reaches this with one side missing. An import
+    can create it; an export cannot, because ResQ objects are written, never
+    created.
+    """
+
+    normalized = transfer_direction(direction)
+    if normalized == DIRECTION_EXPORT and not arcrho:
+        return False, "ArcRho has no copy of this item to export."
+    if normalized == DIRECTION_IMPORT and not resq:
+        return False, "ResQ has no copy of this item to import."
+    if normalized == DIRECTION_EXPORT and not resq:
+        return False, "ResQ has no matching dataset or method to overwrite."
+    return _support_for_action(_DIRECTION_ACTIONS[normalized], arcrho, resq)
 
 
 def changed_since_baseline(

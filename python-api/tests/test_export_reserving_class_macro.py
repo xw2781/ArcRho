@@ -436,158 +436,23 @@ class _Button:
         self.button = button
 
 
-def _preview_row(name, *, kind="Dataset", newer_side="resq", export_supported=True, **fields):
+def _preview_row(name, *, kind="Dataset", transfer_supported=True, selected=True, **fields):
+    """One row as the Bridge's transfer preview reports it."""
+
     row = {
         "id": name.casefold(),
+        "key": name.casefold(),
         "name": name,
         "kind": kind,
+        "presence": "both",
         "arcrho_timestamp": "2026-08-28 10:00:00",
         "resq_timestamp": "2026-08-28 11:00:00",
-        "newer_side": newer_side,
-        "export_supported": export_supported,
+        "newer_side": "resq",
+        "transfer_supported": transfer_supported,
+        "selected": selected,
     }
     row.update(fields)
     return row
-
-
-def _review(changed, *, overwrites_edit=False, detail="", supported=True):
-    """The baseline verdict the Bridge sends with a comparable preview row."""
-
-    return {
-        "changed": changed,
-        "status": changed,
-        "detail": detail,
-        "supported": supported,
-        "overwrites_edit": overwrites_edit,
-    }
-
-
-class ExportPreviewTableTests(unittest.TestCase):
-    """The timestamp table shown before the export writes anything."""
-
-    def setUp(self):
-        self.module = _load_macro()
-
-    def _payload(self, rows):
-        return self.module.export_preview_table_payload(
-            rows,
-            "Demo",
-            r"Auto\PP",
-            "ResQ Demo",
-            {"arcrho_timestamp": "2026-08-28 10:00:00", "resq_timestamp": "2026-08-28 11:00:00"},
-        )
-
-    def test_each_row_shows_the_timestamp_pair_the_newer_side_and_what_the_export_would_do(self):
-        payload = self._payload([
-            _preview_row("Paid Loss"),
-            _preview_row("Reported Loss", newer_side="arcrho"),
-            _preview_row("Case Reserves", newer_side=""),
-            _preview_row("Bootstrap Ult", newer_side="", export_supported=False, resq_timestamp=""),
-        ])
-
-        cells = [row["cells"] for row in payload["rows"]]
-        self.assertEqual(
-            [(cell["arcrho_timestamp"], cell["resq_timestamp"]) for cell in cells[:1]],
-            [("2026-08-28 10:00:00", "2026-08-28 11:00:00")],
-        )
-        self.assertEqual([cell["newer"]["text"] for cell in cells], ["ResQ", "ArcRho", "Same", "Unknown"])
-        self.assertEqual(
-            [cell["plan"]["text"] for cell in cells],
-            [
-                "Overwrites newer ResQ copy",
-                "Overwrites ResQ copy",
-                "Overwrites ResQ copy",
-                "Not exported",
-            ],
-        )
-        self.assertEqual([cell["plan"]["tone"] for cell in cells], ["warn", "info", "info", "muted"])
-
-    def test_the_baseline_decides_the_warning_not_the_newer_timestamp(self):
-        """The case the export itself creates: ResQ newer, but nothing edited there."""
-
-        payload = self._payload([
-            _preview_row(
-                "Paid Loss",
-                export_review=_review("none", detail="Neither side changed since the last export."),
-            ),
-            _preview_row("Reported Loss", export_review=_review("arcrho")),
-            _preview_row("Case Reserves", export_review=_review("resq", overwrites_edit=True)),
-            _preview_row("Claim Counts", export_review=_review("both", overwrites_edit=True)),
-        ])
-
-        cells = [row["cells"] for row in payload["rows"]]
-        self.assertEqual(
-            [cell["changed"]["text"] for cell in cells], ["None", "ArcRho", "ResQ", "Both"]
-        )
-        self.assertEqual(
-            [cell["changed"]["tone"] for cell in cells], ["muted", "ok", "warn", "warn"]
-        )
-        self.assertEqual(
-            [cell["plan"]["text"] for cell in cells],
-            [
-                "Overwrites ResQ copy",
-                "Overwrites ResQ copy",
-                "Overwrites newer ResQ copy",
-                "Overwrites newer ResQ copy",
-            ],
-        )
-        # Every row still carries the plain fact about its two timestamps.
-        self.assertEqual({cell["newer"]["text"] for cell in cells}, {"ResQ"})
-        self.assertEqual(cells[0]["detail"], "Neither side changed since the last export.")
-
-    def test_a_row_with_no_saved_pair_says_so_and_falls_back_to_the_timestamps(self):
-        payload = self._payload([
-            _preview_row("Paid Loss"),
-            _preview_row("Reported Loss", newer_side="arcrho"),
-        ])
-
-        cells = [row["cells"] for row in payload["rows"]]
-        self.assertEqual([cell["changed"]["text"] for cell in cells], ["No baseline yet", "No baseline yet"])
-        self.assertEqual(
-            [cell["plan"]["text"] for cell in cells],
-            ["Overwrites newer ResQ copy", "Overwrites ResQ copy"],
-        )
-
-    def test_the_header_counts_what_is_overwritten_and_what_resq_changed_since_the_export(self):
-        payload = self._payload([
-            _preview_row("Paid Loss", export_review=_review("resq", overwrites_edit=True)),
-            _preview_row("Reported Loss", export_review=_review("none")),
-            _preview_row("Bootstrap Ult", export_supported=False),
-        ])
-
-        self.assertIn("Project: Demo | Reserving class: Auto\\PP | ResQ: ResQ Demo", payload["summary"])
-        self.assertIn("the export overwrites 2 of them in ResQ", payload["summary"])
-        self.assertIn("1 of them were edited in ResQ since the last export", payload["summary"])
-        self.assertNotIn("no saved timestamp pair yet", payload["summary"])
-
-    def test_the_header_says_how_many_items_have_no_saved_pair_yet(self):
-        payload = self._payload([
-            _preview_row("Paid Loss"),
-            _preview_row("Reported Loss", newer_side="arcrho", export_review=_review("none")),
-        ])
-
-        self.assertIn("1 of them were edited in ResQ since the last export", payload["summary"])
-        self.assertIn("1 have no saved timestamp pair yet", payload["summary"])
-
-    def test_the_table_is_read_only_because_the_export_is_all_or_nothing(self):
-        payload = self._payload([_preview_row("Paid Loss")])
-
-        self.assertFalse(payload["selectable"])
-        self.assertEqual(payload["acceptLabel"], "Export to ResQ")
-        self.assertEqual(payload["cancelLabel"], "Cancel")
-        self.assertEqual(payload["host"], "projectInstance")
-        self.assertEqual(
-            [column["key"] for column in payload["columns"]],
-            ["kind", "name", "arcrho_timestamp", "resq_timestamp", "newer", "changed", "plan", "detail"],
-        )
-
-    def test_a_class_with_nothing_in_common_says_so(self):
-        payload = self._payload([])
-
-        self.assertEqual(payload["rows"], [])
-        self.assertIn("Compared 0 item(s)", payload["summary"])
-        self.assertIn("None of them were edited in ResQ since the last export.", payload["summary"])
-        self.assertIn("would write nothing", payload["emptyMessage"])
 
 
 class _ShellUI:
@@ -627,18 +492,21 @@ class ExportMacroRunTests(unittest.TestCase):
         preview_rows=None,
         preview_error=None,
         accepted=True,
+        ticked_ids=None,
     ):
         def run_phase(**kwargs):
-            if kwargs["phase"] == "preview":
+            if kwargs["phase"] == resq_sync_queue.PHASE_TRANSFER_PREVIEW:
                 if preview_error:
                     raise preview_error
                 return {
                     "preview": list(preview_rows or []),
                     "connection_name": "ResQ Demo",
-                    "direction": {
+                    "direction": "export",
+                    "class_direction": {
                         "arcrho_timestamp": "2026-08-28 10:00:00",
                         "resq_timestamp": "2026-08-28 11:00:00",
                     },
+                    "selection": {"names": [], "updated_at": "", "updated_by": ""},
                 }
             if phase_error:
                 raise phase_error
@@ -646,7 +514,12 @@ class ExportMacroRunTests(unittest.TestCase):
 
         def review_table(_ui, payload, **_kwargs):
             if payload.get("title") == self.module.TITLE:
-                return {"status": "completed", "accepted": accepted}
+                ticked = [row["id"] for row in payload["rows"] if row["selected"]]
+                return {
+                    "status": "completed",
+                    "accepted": accepted,
+                    "selectedRowIds": ticked if ticked_ids is None else list(ticked_ids),
+                }
             return {"status": "completed", "accepted": True}
 
         run_phase = Mock(side_effect=run_phase)
@@ -674,11 +547,16 @@ class ExportMacroRunTests(unittest.TestCase):
         result, run_phase, review = self._run(ui, preview_rows=rows, phase_result=bridge_result)
 
         # The comparison is reviewed first, and only then is the export published.
-        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview", "export"])
+        self.assertEqual(
+            [call.kwargs["phase"] for call in run_phase.call_args_list],
+            ["transfer_preview", "export"],
+        )
+        self.assertEqual(run_phase.call_args_list[0].kwargs["direction"], "export")
         self.assertEqual(run_phase.call_args_list[0].kwargs["timeout_sec"], resq_sync_queue.PREVIEW_TIMEOUT_SEC)
         kwargs = run_phase.call_args.kwargs
         self.assertEqual((kwargs["project_name"], kwargs["rc_path"], kwargs["phase"]), ("Demo", r"Auto\PP", "export"))
         self.assertEqual(kwargs["timeout_sec"], resq_sync_queue.WRITE_TIMEOUT_SEC)
+        self.assertEqual(kwargs["selected_names"], ["Paid Loss"])
         self.assertIs(kwargs["on_poll"], self.module._report_activity)
         preview_payload = review.call_args_list[0].args[1]
         self.assertEqual(preview_payload["title"], self.module.TITLE)
@@ -698,10 +576,33 @@ class ExportMacroRunTests(unittest.TestCase):
 
         result, run_phase, review = self._run(ui, preview_rows=[_preview_row("Paid Loss")], accepted=False)
 
-        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview"])
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["transfer_preview"])
         self.assertEqual(review.call_count, 1)
         self.assertTrue(result["cancelled"])
         self.assertEqual(result["reason"], "review_cancelled")
+
+    def test_a_review_that_ticked_nothing_publishes_no_export(self):
+        ui = _ShellUI()
+
+        result, run_phase, _review = self._run(
+            ui, preview_rows=[_preview_row("Paid Loss")], ticked_ids=[]
+        )
+
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["transfer_preview"])
+        self.assertTrue(result["cancelled"])
+        self.assertEqual(result["reason"], "empty_selection")
+
+    def test_only_the_ticked_rows_reach_the_export_request(self):
+        ui = _ShellUI()
+        rows = [_preview_row("Paid Loss"), _preview_row("Reported Loss", selected=False)]
+
+        _result, run_phase, _review = self._run(
+            ui,
+            preview_rows=rows,
+            phase_result={"status": "completed", "results": []},
+        )
+
+        self.assertEqual(run_phase.call_args.kwargs["selected_names"], ["Paid Loss"])
 
     def test_a_failed_comparison_asks_before_exporting_rather_than_blocking(self):
         ui = _ShellUI()
@@ -716,7 +617,12 @@ class ExportMacroRunTests(unittest.TestCase):
         self.assertIn("preview failed", text)
         self.assertEqual(kwargs["buttons"], ["Export Anyway", "Cancel"])
         self.assertEqual(kwargs["kind"], "warning")
-        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview", "export"])
+        self.assertEqual(
+            [call.kwargs["phase"] for call in run_phase.call_args_list],
+            ["transfer_preview", "export"],
+        )
+        # Without a review there is nothing ticked, so the whole class is pushed.
+        self.assertIsNone(run_phase.call_args.kwargs["selected_names"])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(review.call_count, 1)
 
@@ -727,7 +633,7 @@ class ExportMacroRunTests(unittest.TestCase):
             ui, preview_error=resq_sync_queue.BridgeRequestError("preview failed")
         )
 
-        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview"])
+        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["transfer_preview"])
         review.assert_not_called()
         self.assertTrue(result["cancelled"])
         self.assertEqual(result["review"]["status"], "failed")
@@ -764,7 +670,10 @@ class ExportMacroRunTests(unittest.TestCase):
             phase_error=resq_sync_queue.BridgeUnavailableError("No active ArcRho Bridge worker"),
         )
 
-        self.assertEqual([call.kwargs["phase"] for call in run_phase.call_args_list], ["preview", "export"])
+        self.assertEqual(
+            [call.kwargs["phase"] for call in run_phase.call_args_list],
+            ["transfer_preview", "export"],
+        )
         self.assertEqual(result["status"], "unavailable")
 
 

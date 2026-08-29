@@ -40,6 +40,8 @@ def publish_resq_sync_request(
     request_id: str,
     phase: str,
     selected_rows: List[Mapping[str, Any]] | None = None,
+    selected_names: List[str] | None = None,
+    direction: str = "",
 ) -> Dict[str, Any]:
     try:
         identifier = validate_request_id(request_id)
@@ -52,6 +54,8 @@ def publish_resq_sync_request(
             rc_path=reserving_class,
             phase=phase,
             selected_rows=selected_rows,
+            selected_names=selected_names,
+            direction=direction,
             request_id=identifier,
             user_name=user_identity_service.get_windows_login_name(),
         )

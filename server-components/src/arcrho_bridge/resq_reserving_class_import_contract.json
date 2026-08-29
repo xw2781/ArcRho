@@ -1,5 +1,5 @@
 {
-  "contract_version": 1,
+  "contract_version": 2,
   "function": "ImportResQReservingClass",
   "request_relative_dir": [
     "requests",
@@ -48,6 +48,7 @@
     "merge",
     "overwrite"
   ],
+  "selection_names_field": "SelectedNames",
   "status_values": [
     "processing",
     "success",

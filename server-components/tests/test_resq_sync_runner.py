@@ -60,8 +60,10 @@ class _StubSession(types.SimpleNamespace):
         super().__init__()
         self.SYNC_SESSION_API_VERSION = resq_sync_runner.SUPPORTED_SYNC_SESSION_API_VERSION
         self.preview_calls = []
+        self.transfer_preview_calls = []
         self.apply_calls = []
         self.export_calls = []
+        self.export_selections = []
         self._apply_result = apply_result or {"status": "completed", "results": []}
         self._apply_error = apply_error
 
@@ -78,6 +80,21 @@ class _StubSession(types.SimpleNamespace):
             progress_callback({"event": "scan", "completed": 0, "total": 0})
         return {"status": "review_required", "preview": [{"id": "paid-loss"}]}
 
+    def preview_transfer(
+        self,
+        runtime,
+        project_name,
+        rc_path,
+        *,
+        direction,
+        server_root,
+        progress_callback=None,
+    ):
+        self.transfer_preview_calls.append((project_name, rc_path, direction, server_root))
+        if progress_callback is not None:
+            progress_callback({"event": "scan", "completed": 0, "total": 0})
+        return {"status": "review_required", "direction": direction, "preview": [{"id": "paid loss"}]}
+
     def apply_sync(
         self,
         runtime,
@@ -93,8 +110,19 @@ class _StubSession(types.SimpleNamespace):
             raise self._apply_error
         return dict(self._apply_result)
 
-    def export_reserving_class(self, runtime, project_name, rc_path, *, server_root, progress_callback=None):
+    def export_reserving_class(
+        self,
+        runtime,
+        project_name,
+        rc_path,
+        *,
+        server_root,
+        selected_names=None,
+        requested_by="",
+        progress_callback=None,
+    ):
         self.export_calls.append((runtime, project_name, rc_path, server_root))
+        self.export_selections.append((selected_names, requested_by))
         if progress_callback is not None:
             progress_callback({"event": "write", "completed": 1, "total": 1, "status": "success"})
         return {"status": "completed", "results": [{"id": "paid-loss", "outcome": "exported"}]}
@@ -202,6 +230,49 @@ class ResQSyncRunnerPhaseTests(unittest.TestCase):
         self.assertEqual(server_root, self.server_root.resolve())
         self.assertEqual(runtime["resq_credentials"], account)
         self.assertEqual(events, [{"event": "write", "completed": 1, "total": 1, "status": "success"}])
+
+    def test_a_transfer_preview_reads_the_named_direction_without_the_lease(self):
+        events = []
+
+        result = self._run(
+            _request(Phase="transfer_preview", Direction="import"), progress=events.append
+        )
+
+        self.assertEqual(result["phase"], "transfer_preview")
+        self.assertEqual(result["direction"], "import")
+        self.acquire.assert_not_called()
+        self.release.assert_not_called()
+        self.assertEqual(self.session.preview_calls, [])
+        project_name, rc_path, direction, server_root = self.session.transfer_preview_calls[0]
+        self.assertEqual((project_name, rc_path, direction), ("Demo", r"Auto\PP", "import"))
+        self.assertEqual(server_root, self.server_root.resolve())
+
+    def test_a_transfer_preview_without_a_known_direction_is_refused(self):
+        for direction in (None, "", "sideways"):
+            with self.subTest(direction=direction):
+                request = _request(Phase="transfer_preview")
+                if direction is not None:
+                    request["Direction"] = direction
+                # A missing field is caught by the shared required-text check,
+                # an unknown one by the direction rule; both refuse the request.
+                with self.assertRaises(ValueError):
+                    self._run(request)
+
+    def test_an_export_carries_the_ticked_names_and_who_asked(self):
+        self._run(_request(Phase="export", SelectedNames=[" Paid Loss ", "", "Paid LDF"]))
+
+        self.assertEqual(self.session.export_selections, [(["Paid Loss", "Paid LDF"], "tester")])
+
+    def test_an_export_without_a_selection_asks_for_the_whole_class(self):
+        self._run(_request(Phase="export"))
+
+        self.assertEqual(self.session.export_selections, [(None, "tester")])
+
+    def test_a_selection_that_is_not_a_list_of_names_is_refused(self):
+        for names in ("Paid Loss", [{"Id": "paid-loss"}], [1, 2]):
+            with self.subTest(names=names):
+                with self.assertRaises(resq_sync_runner.ResQSyncRequestError):
+                    self._run(_request(Phase="export", SelectedNames=names))
 
     def test_a_reviewed_row_without_its_signature_is_refused_before_any_lease(self):
         for rows in ([{"Id": "paid-loss"}], [{"Signature": {"key": "x"}}], ["paid-loss"], []):

@@ -64,7 +64,9 @@ def _name_key(value: object) -> str:
 # not built against, the same way the macro used to pin the support release.
 # 2: ``build_runtime`` takes the ResQ account the session connects with.
 # 3: ``export_reserving_class`` pushes a whole class from ArcRho without a review.
-SYNC_SESSION_API_VERSION = 3
+# 4: ``preview_transfer`` reviews either direction and the export honours a
+#    ticked selection, which is remembered for the next run.
+SYNC_SESSION_API_VERSION = 4
 
 MAX_JSON_READ_WORKERS = 8
 
@@ -2277,6 +2279,159 @@ def _public_plan_rows(runtime: Mapping[str, Any], plan: list[dict[str, Any]]) ->
 
 
 
+def _inventory_groups(sync_contract, items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """One side's items keyed by the logical identity both sides are paired on."""
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        key = sync_contract.logical_key(item.get("name"))
+        if key:
+            groups.setdefault(key, []).append(item)
+    return groups
+
+
+def _transfer_row(
+    sync_contract,
+    direction: str,
+    key: str,
+    arcrho: Mapping[str, Any] | None,
+    resq: Mapping[str, Any] | None,
+    baseline: Mapping[str, Any] | None,
+    detail: str,
+    *,
+    name: str = "",
+    presence: str = "",
+) -> dict[str, Any]:
+    """One tickable row of the shared review table, from either or both sides.
+
+    The row id is the logical key itself, so an accepted row leads straight
+    back to the name the request and the saved selection are written with.
+    ``name`` and ``presence`` are given where the sides cannot supply them --
+    an ambiguous plan row holds neither side, yet both systems do have the
+    name, and it must still be named in the table.
+    """
+
+    arcrho = arcrho if isinstance(arcrho, Mapping) else None
+    resq = resq if isinstance(resq, Mapping) else None
+    kind = str((arcrho or resq or {}).get("kind") or KIND_DATASET)
+    supported, block_reason = sync_contract.transfer_support(direction, arcrho, resq)
+    if not (arcrho and resq) and (presence == "both" or not (arcrho or resq)):
+        # A side the caller says exists but that did not resolve to a single
+        # item: an ambiguous name. Nothing can be written either way, and the
+        # caller's own sentence explains it better than a missing-copy reason.
+        supported, block_reason = False, detail
+    elif not supported and direction == sync_contract.DIRECTION_EXPORT and arcrho and kind in _SAVE_ONLY_METHOD_CODES:
+        # The export does not write a field into these methods, it saves them
+        # so ResQ recalculates each from the datasets written before it. That
+        # is a real export, so the row is offered rather than greyed out.
+        supported, block_reason = True, ""
+    return {
+        "id": key,
+        "key": key,
+        "name": name or str((arcrho or resq or {}).get("name") or ""),
+        "kind": kind,
+        "dataset_type": str((arcrho or resq or {}).get("dataset_type") or ""),
+        "method_name": str((arcrho or {}).get("method_name") or ""),
+        "presence": presence or ("both" if arcrho and resq else ("arcrho" if arcrho else "resq")),
+        "arcrho_timestamp": _timestamp_cell(arcrho) if arcrho else "",
+        "resq_timestamp": _timestamp_cell(resq) if resq else "",
+        "newer_side": sync_contract.newer_side(arcrho or {}, resq or {}),
+        # The baseline verdict only means something where both sides are
+        # present and paired; elsewhere there is no pair to measure.
+        "export_review": (
+            sync_contract.export_review(arcrho, resq, baseline) if arcrho and resq else {}
+        ),
+        "transfer_supported": supported,
+        "transfer_block_reason": block_reason,
+        "selected": False,
+        "disabled": not supported,
+        "detail": block_reason or detail,
+    }
+
+
+def _transfer_rows(
+    runtime: Mapping[str, Any],
+    context: Mapping[str, Any],
+    direction: str,
+) -> list[dict[str, Any]]:
+    """Every dataset and method output either side holds, ready to be ticked.
+
+    The synchronization plan pairs what both systems have; an item only one
+    side holds never becomes a plan row, yet it is exactly what an import
+    brings across, so it is added here with the missing side left blank.
+    """
+
+    sync_contract = runtime["sync_contract"]
+    rows = [
+        _transfer_row(
+            sync_contract,
+            direction,
+            str(row.get("key") or ""),
+            row.get("arcrho"),
+            row.get("resq"),
+            row.get("state_signature") if row.get("comparable") else None,
+            str(row.get("detail") or ""),
+            # The plan only pairs items both systems hold, and an ambiguous
+            # row holds neither side yet is still named on both.
+            name=str(row.get("name") or ""),
+            presence="both",
+        )
+        for row in context["plan"]
+    ]
+    paired = {row["key"] for row in rows}
+    sides = (("arcrho", context["arcrho"]), ("resq", context["resq"]))
+    for side, items in sides:
+        for key, candidates in _inventory_groups(sync_contract, items).items():
+            if key in paired:
+                continue
+            paired.add(key)
+            if len(candidates) > 1:
+                row = _transfer_row(
+                    sync_contract,
+                    direction,
+                    key,
+                    None,
+                    None,
+                    None,
+                    f"Found {len(candidates)} {side} items with the same normalized name.",
+                    name=sync_contract.clean_name(candidates[0].get("name")),
+                    presence=side,
+                )
+                row["kind"] = str(candidates[0].get("kind") or KIND_DATASET)
+                rows.append(row)
+                continue
+            item = candidates[0]
+            other_side = "ResQ" if side == "arcrho" else "ArcRho"
+            rows.append(
+                _transfer_row(
+                    sync_contract,
+                    direction,
+                    key,
+                    item if side == "arcrho" else None,
+                    item if side == "resq" else None,
+                    None,
+                    f"{other_side} has no dataset or method with this name.",
+                )
+            )
+    rows.sort(key=lambda row: (str(row.get("name") or "").casefold(), row["key"]))
+    return rows
+
+
+def _tick_saved_rows(rows: list[dict[str, Any]], saved_keys: set[str]) -> int:
+    """Tick the rows the last run in this direction covered, or every row.
+
+    With nothing saved yet, every row the direction supports is ticked, which
+    is the whole-class behaviour both macros had before selection existed.
+    """
+
+    ticked = 0
+    for row in rows:
+        if row.get("transfer_supported") and (not saved_keys or row["key"] in saved_keys):
+            row["selected"] = True
+            ticked += 1
+    return ticked
+
+
 def _session_scope(project_name: str, rc_path: str, server_root: object) -> tuple[str, str, Path]:
     """Validate the logical identifiers one session is allowed to touch."""
 
@@ -2331,6 +2486,85 @@ def preview_sync(
             "rc_path": rc_path,
             "connection_name": _resq_credentials(runtime)["connection_name"],
             "direction": _direction_payload(preview["direction"]),
+            "preview": rows,
+        }
+    finally:
+        migration._restore_runtime_scope(previous_scope)
+
+
+def _saved_selection(
+    runtime: Mapping[str, Any],
+    project_name: str,
+    rc_path: str,
+    server_root: Path,
+    connection_name: str,
+    direction: str,
+) -> dict[str, Any]:
+    """The names the last run in this direction covered, with who saved them."""
+
+    selection_contract = runtime["transfer_selection"]
+    path = selection_contract.selection_path(server_root, project_name, rc_path, connection_name)
+    document = selection_contract.read_selection(path, project_name, rc_path, connection_name)
+    entry = document["selections"][direction]
+    return {
+        "names": list(entry.get("names") or []),
+        "updated_at": str(entry.get("updated_at") or ""),
+        "updated_by": str(entry.get("updated_by") or ""),
+    }
+
+
+def preview_transfer(
+    runtime: Mapping[str, Any],
+    project_name: str,
+    rc_path: str,
+    *,
+    direction: str,
+    server_root: object,
+    progress_callback=None,
+) -> dict[str, Any]:
+    """Compare both sides for a whole-class import or export, without writing anything.
+
+    Import and export review the same table: every dataset and method output
+    either system holds, its two timestamps, and what the run would do to it.
+    Only what the direction can carry is tickable, and the rows the last run
+    in that direction covered come back already ticked.
+    """
+
+    migration = runtime["migration"]
+    sync_contract = runtime["sync_contract"]
+    direction = sync_contract.transfer_direction(direction)
+    project_name, rc_path, root = _session_scope(project_name, rc_path, server_root)
+    previous_scope = migration._apply_runtime_scope(project_name, root)
+    try:
+        _emit_progress(progress_callback, {
+            "event": "scan",
+            "completed": 0,
+            "total": 0,
+            "message": f"Comparing ArcRho and ResQ: {rc_path}",
+        })
+        context = _plan_context(runtime, project_name, rc_path, root)
+        connection_name = _resq_credentials(runtime)["connection_name"]
+        selection = _saved_selection(
+            runtime, project_name, rc_path, root, connection_name, direction
+        )
+        rows = _transfer_rows(runtime, context, direction)
+        ticked = _tick_saved_rows(
+            rows, runtime["transfer_selection"].selection_keys(selection["names"])
+        )
+        _emit_progress(progress_callback, {
+            "event": "review",
+            "completed": 0,
+            "total": len(rows),
+            "message": f"Review {len(rows)} dataset/method output(s); {ticked} selected",
+        })
+        return {
+            "status": "review_required",
+            "project_name": project_name,
+            "rc_path": rc_path,
+            "connection_name": connection_name,
+            "direction": direction,
+            "class_direction": _direction_payload(context["direction"]),
+            "selection": selection,
             "preview": rows,
         }
     finally:
@@ -2490,12 +2724,49 @@ def _record_export_baseline(
     }
 
 
+def _remember_selection(
+    runtime: Mapping[str, Any],
+    project_name: str,
+    rc_path: str,
+    server_root: Path,
+    connection_name: str,
+    direction: str,
+    selected_names: list[str] | None,
+    requested_by: str,
+) -> dict[str, Any]:
+    """Save what this run covered as the next run's default in this direction.
+
+    Nothing is saved for a run that carried no selection: it covered the whole
+    class, which is what an empty saved list already means. The run's writes
+    are durable by the time this is called, so a document that cannot be
+    written is reported beside them and never fails the run.
+    """
+
+    if selected_names is None:
+        return {"saved": 0, "path": "", "error": ""}
+    try:
+        path = runtime["transfer_selection"].save_selection(
+            server_root,
+            project_name,
+            rc_path,
+            connection_name,
+            direction,
+            selected_names,
+            updated_by=requested_by,
+        )
+    except Exception as exc:
+        return {"saved": 0, "path": "", "error": f"The selection could not be saved: {exc}"}
+    return {"saved": len(selected_names), "path": str(path), "error": ""}
+
+
 def export_reserving_class(
     runtime: Mapping[str, Any],
     project_name: str,
     rc_path: str,
     *,
     server_root: object,
+    selected_names: list[str] | None = None,
+    requested_by: str = "",
     progress_callback=None,
 ) -> dict[str, Any]:
     """Push one reserving class from ArcRho into ResQ, in ArcRho's dependency order.
@@ -2505,6 +2776,10 @@ def export_reserving_class(
     Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method is saved so
     ResQ recalculates it from those writes. Calculated and engine datasets are
     left out, as is Bootstrap.
+
+    ``selected_names`` narrows that to the rows a person ticked in the review
+    table; without it the whole class is pushed. A selection is remembered for
+    the next export of this reserving class once the writes are done.
 
     Nothing is compared or verified before a write -- the export pushes
     everything it supports. What it does record afterwards is the timestamp
@@ -2536,6 +2811,9 @@ def export_reserving_class(
         })
         local = collect_arcrho_inventory(runtime, rc_dir)
         rows = _export_rows(runtime, local)
+        if selected_names is not None:
+            chosen = runtime["transfer_selection"].selection_keys(selected_names)
+            rows = [row for row in rows if row["key"] in chosen]
         edges = _reserving_class_edges(runtime, rc_dir, rows)
         rows = _dependency_ordered_rows(sync_contract, rows, edges)
         _emit_progress(progress_callback, {
@@ -2597,12 +2875,23 @@ def export_reserving_class(
                     "path": str(opening["state_path"]),
                     "error": f"The timestamps could not be recorded: {exc}",
                 }
+        selection = _remember_selection(
+            runtime,
+            project_name,
+            rc_path,
+            root,
+            base["connection_name"],
+            sync_contract.DIRECTION_EXPORT,
+            selected_names,
+            requested_by,
+        )
         failed = any(item["outcome"] == OUTCOME_FAILED for item in results)
         return {
             **base,
             "status": "completed_with_errors" if failed else "completed",
             "results": results,
             "baseline": baseline,
+            "selection": selection,
         }
     finally:
         if exporter is not None:
@@ -2628,6 +2917,7 @@ def build_runtime(migration, exporter_module, *, resq_credentials=None) -> dict[
 
     from arcrho_api.dataset_index_contract import _method_entry_from_payload
     from resq_migration import sync as sync_contract
+    from resq_migration import transfer_selection as selection_contract
 
     try:
         from app_server.helpers import parse_method_last_modified_timestamp
@@ -2642,5 +2932,6 @@ def build_runtime(migration, exporter_module, *, resq_credentials=None) -> dict[
         "parse_timestamp": parse_method_last_modified_timestamp,
         "method_entry": _method_entry_from_payload,
         "sync_contract": sync_contract,
+        "transfer_selection": selection_contract,
         "resq_credentials": dict(resq_credentials) if resq_credentials else None,
     }
