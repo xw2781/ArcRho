@@ -1,29 +1,36 @@
 ---
 name: dev-pc-and-client-pc-identity
-description: L-H2MQ6280FVP is the current local repo host and is a Client PC; NE7SASWPN02 is the Server PC (formerly called the Dev PC) that hosts E:\ArcRho Server and the old source repo
+description: Sessions run on either L-H2MQ6280FVP (Client PC) or NE7SASWPN02 (Server PC, formerly Dev PC, hosts E:\ArcRho Server and ResQ) - run hostname to tell which, never assume
 metadata:
   node_type: memory
   type: project
   originSessionId: 05c09575-2234-4404-bf4e-fcede99def6e
-  modified: 2026-08-13T18:22:10.822Z
+  modified: 2026-08-29T02:22:20.373Z
 ---
 
-Two machines matter for ArcRho work, and which one the repo is on changes what is reachable.
+Two machines matter for ArcRho work, and which one the session is on changes what is reachable.
+
+**Run `hostname` before claiming anything that depends on which machine this is.** Sessions happen
+on both, so neither box is "the current machine". A session in `E:\XWSpace\Repos\ArcRho` is usually
+on the Server PC; one in `c:\Users\xwei\Repos\ArcRho` is on the Client PC. Both profiles are named
+`xwei`, so the user name settles nothing.
 
 `AGENT_GUIDELINES.md` renamed the shared machine from **Dev PC** to **Server PC** on 2026-08-21,
 since development now happens on the client machine. Older memories and commit messages still
 say "Dev PC" and mean the same box.
 
-**Current machine — `L-H2MQ6280FVP`** (HP EliteBook, `PRCINS.NET`, user `xwei`). Since 2026-08-13
+**Client PC — `L-H2MQ6280FVP`** (HP EliteBook, `PRCINS.NET`, user `xwei`). Since 2026-08-13
 this holds the main local repo at `c:\Users\xwei\Repos\ArcRho`. It is a **Client PC** as
 `AGENTS.md` defines the term: it reaches the ArcRho Server workspace over the network rather
 than locally. It was chosen deliberately to reproduce network-latency issues that do not appear
 on the Server PC. `gh` is installed and authenticated here as `xw2781`, so releases can be
 published from this machine.
 
-**Server PC — `NE7SASWPN02`.** Hosts `E:\ArcRho Server`, `E:\XWSpace`, and the older source repo at
-`E:\XWSpace\Repos\ArcRho`. ResQ is installed there, so ResQ/COM work (see [[resq-com-probe]] and
-[[resq-percentage-developed-enum]]) still means going back to that machine.
+**Server PC — `NE7SASWPN02`** (Windows Server 2019, user profile `xwei.PRCINS`). Hosts
+`E:\ArcRho Server`, `E:\XWSpace`, and the source repo at `E:\XWSpace\Repos\ArcRho`. ResQ is
+installed and its COM class is registered here, so ResQ/COM work (see [[resq-com-probe]] and
+[[resq-percentage-developed-enum]]) can run in this session when the hostname says this is the box.
+Confirmed 2026-08-28 by `hostname` plus a `HKCR\ResQ3Automation.ResQApplication` registry read.
 
 On the Client PC, `E:` and `F:` are **mapped network drives onto the Server PC** (`\\NE7SASWPN02\E`,
 `\\NE7SASWPN02\F`). So every `E:\...` path in the repo instructions and in older memories —
