@@ -1,6 +1,7 @@
 # Memory Index
 
 - [Pointer-capture drag fix](pointer-capture-drag-fix.md) — mousemove-on-document drag/resize loses control on fast drags; fix is setPointerCapture, now codified as L16 in the arcrho-ui-design codex skill
+- [ArcRho dataset-types win over ResQ](arcrho-dataset-types-win-over-resq.md) — a sidecar is "calculated" only when dataset_types.json says so; ResQ's Calculated/Formula never decides it (81/82 Prior Qtr vectors are editable inputs); 138 sidecars re-stamped 2026-08-29, Bridge redeploy still pending
 
 - [Persisted JSON v4 progress](persisted-json-v4-progress.md) — steps 1-5 committed 2026-08-23; next is the step 6 conversion script, and /code-review ultra was deferred rather than run
 - [Commit authorship](commit-authorship.md) - commits are authored by xw2781 with no Claude co-author trailer; this clone needed its local git identity set
