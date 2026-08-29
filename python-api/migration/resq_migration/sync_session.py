@@ -158,7 +158,11 @@ def _row_precedent_names(row: Mapping[str, Any]) -> list[str]:
     return out
 
 
-def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _dependency_ordered_rows(
+    sync_contract,
+    rows: list[dict[str, Any]],
+    edges: Mapping[str, set[str]] | None = None,
+) -> list[dict[str, Any]]:
     """Order rows so every dependency accepted in the same batch is written first.
 
     This is the topological walk ArcRho's own recompute uses, restricted to
@@ -166,10 +170,22 @@ def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[
     with no dependency between them keep the kind rank and then the review
     order, and a cycle, which ArcRho's graph never contains, is broken at its
     back edge instead of failing.
+
+    ``edges`` is the whole reserving class's graph from
+    ``_reserving_class_edges``. A dependency that is not a row -- a
+    calculated dataset, which never reaches a batch -- is looked through to
+    the rows it reads in turn, so a Result Selection that loads a calculated
+    vector derived from a DFM is written after that DFM. Without it, a row
+    that reads a calculated dataset is ordered as if it read nothing.
     """
 
     def seed_order(index: int, row: Mapping[str, Any]) -> tuple[int, int]:
         return _WRITE_KIND_RANK.get(str(row.get("kind") or ""), len(_WRITE_KIND_RANK)), index
+
+    reads: dict[str, set[str]] = {}
+    for source_key, target_keys in (edges or {}).items():
+        for target_key in target_keys:
+            reads.setdefault(target_key, set()).add(source_key)
 
     indexed = sorted(enumerate(rows), key=lambda pair: seed_order(*pair))
     by_key: dict[str, tuple[int, dict[str, Any]]] = {}
@@ -184,17 +200,28 @@ def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[
     visited: set[str] = set()
     visiting: set[str] = set()
 
+    def row_dependencies(key: str, row: Mapping[str, Any]) -> list[tuple[str, tuple[int, dict[str, Any]]]]:
+        dependencies: list[tuple[str, tuple[int, dict[str, Any]]]] = []
+        seen: set[str] = {key}
+        frontier = [sync_contract.logical_key(name) for name in _row_precedent_names(row)]
+        frontier.extend(reads.get(key, ()))
+        while frontier:
+            dependency_key = frontier.pop()
+            if not dependency_key or dependency_key in seen:
+                continue
+            seen.add(dependency_key)
+            if dependency_key in by_key:
+                dependencies.append((dependency_key, by_key[dependency_key]))
+            else:
+                frontier.extend(reads.get(dependency_key, ()))
+        return dependencies
+
     def visit(key: str) -> None:
         if key in visited or key in visiting:
             return
         visiting.add(key)
         _index, row = by_key[key]
-        dependencies: list[tuple[str, tuple[int, dict[str, Any]]]] = []
-        for name in _row_precedent_names(row):
-            dependency_key = sync_contract.logical_key(name)
-            if dependency_key != key and dependency_key in by_key:
-                dependencies.append((dependency_key, by_key[dependency_key]))
-        for dependency_key, _pair in sorted(dependencies, key=lambda item: seed_order(*item[1])):
+        for dependency_key, _pair in sorted(row_dependencies(key, row), key=lambda item: seed_order(*item[1])):
             visit(dependency_key)
         visiting.discard(key)
         visited.add(key)
@@ -205,20 +232,18 @@ def _dependency_ordered_rows(sync_contract, rows: list[dict[str, Any]]) -> list[
     return ordered
 
 
-def _downstream_keys(
+def _reserving_class_edges(
     runtime: Mapping[str, Any],
     rc_dir: Path,
     plan_rows: list[dict[str, Any]],
-    source_keys: set[str],
-) -> set[str]:
-    """Name every review row downstream of ``source_keys`` in ArcRho's graph.
+) -> dict[str, set[str]]:
+    """ArcRho's dependency graph for one reserving class, as source key -> the keys that read it.
 
-    The walk follows the sidecar ``precedents``/``dependents`` edges across
-    the whole reserving class, calculated datasets included, plus the links
-    in the review rows' method tabs, so a Result Selection that reads a
-    calculated dataset derived from a written DFM is reached through it. ResQ
-    holds the same graph once the inputs are synchronized, so the same walk
-    names what ResQ recalculates after the writes.
+    The edges are the sidecar ``precedents``/``dependents`` across the whole
+    reserving class, calculated datasets included, plus the links in the
+    rows' method tabs. It is the graph ArcRho's own recompute walks, and ResQ
+    holds the same one once the inputs match, so it decides both the order
+    rows are written in and what ResQ recalculates after the writes.
     """
 
     migration = runtime["migration"]
@@ -245,6 +270,20 @@ def _downstream_keys(
     for row in plan_rows:
         for precedent in _row_precedent_names(row):
             add_edge(precedent, row.get("key"))
+    return edges
+
+
+def _downstream_keys(
+    edges: Mapping[str, set[str]],
+    plan_rows: list[dict[str, Any]],
+    source_keys: set[str],
+) -> set[str]:
+    """Name every review row downstream of ``source_keys`` in ``edges``.
+
+    A Result Selection that reads a calculated dataset derived from a written
+    DFM is reached through that dataset, so the result names what ResQ
+    recalculates after the writes.
+    """
 
     reached: set[str] = set()
     frontier = list(source_keys)
@@ -1944,15 +1983,17 @@ def apply_sync_plan(
         state_path = locked_observation["state_path"]
         # Each direction is written in ArcRho's dependency order: a row comes
         # after every accepted row it reads, whether that is a formula input,
-        # a method's linked dataset, or another method's output.
+        # a method's linked dataset, another method's output, or a calculated
+        # dataset derived from one of those.
+        edges = _reserving_class_edges(runtime, rc_dir, locked_observation["plan"])
         local_to_remote = _dependency_ordered_rows(sync_contract, [
             row for row in selected_rows
             if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ
-        ])
+        ], edges)
         remote_to_local = _dependency_ordered_rows(sync_contract, [
             row for row in selected_rows
             if row.get("action") == sync_contract.ACTION_RESQ_TO_ARCRHO
-        ])
+        ], edges)
 
         preflight_failed_ids: set[str] = set()
         for row in remote_to_local:
@@ -2139,7 +2180,7 @@ def apply_sync_plan(
                 # here rather than shown as changes at the next review.
                 selected_keys = {str(row.get("key") or "") for row in selected_rows}
                 ripple_keys = _downstream_keys(
-                    runtime, rc_dir, locked_observation["plan"], set(successful_keys)
+                    edges, locked_observation["plan"], set(successful_keys)
                 ) - selected_keys
                 updated_state, absorbed = sync_contract.absorb_propagated_changes(
                     updated_state,
@@ -2403,9 +2444,8 @@ def export_reserving_class(
             "total": 0,
             "message": f"Reading the ArcRho reserving class: {rc_path}",
         })
-        rows = _dependency_ordered_rows(
-            sync_contract, _export_rows(runtime, collect_arcrho_inventory(runtime, rc_dir))
-        )
+        rows = _export_rows(runtime, collect_arcrho_inventory(runtime, rc_dir))
+        rows = _dependency_ordered_rows(sync_contract, rows, _reserving_class_edges(runtime, rc_dir, rows))
         _emit_progress(progress_callback, {
             "event": "connect",
             "completed": 0,

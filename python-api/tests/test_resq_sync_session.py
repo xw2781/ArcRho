@@ -697,11 +697,48 @@ class SyncSessionRippleTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertEqual(
-                sync_session._downstream_keys(runtime, rc_dir, rows, {"c 22"}),
-                {"c 91", "c 92"},
+            edges = sync_session._reserving_class_edges(runtime, rc_dir, rows)
+
+        self.assertEqual(sync_session._downstream_keys(edges, rows, {"c 22"}), {"c 91", "c 92"})
+        self.assertEqual(sync_session._downstream_keys(edges, rows, {"c 12"}), set())
+
+    def test_write_order_looks_through_calculated_datasets(self):
+        from resq_migration import sync as sync_contract
+
+        runtime = {
+            "sync_contract": sync_contract,
+            "migration": types.SimpleNamespace(
+                DATASET_SIDECAR_DIR="sidecars",
+                _normalize_cached_dataset_name=lambda stem: stem,
+            ),
+        }
+        # The fake project's COL class: the B&S adjustment reads C 92, which
+        # loads C 91, which loads the calculated C 62 -- and C 62 is derived
+        # from the C 52 DFM. Visiting the adjustment early must not drag C 91
+        # in front of C 52, or ResQ marks C 91 "Needs Review" the moment C 52
+        # is saved after it.
+        rows = [
+            _write_row("Gross Loss--Paid - B&S", kind=sync_session.KIND_BS_SR, payload={"precedents": [{"dataset_name": "C 92"}]}),
+            _write_row("C 52", kind=sync_session.KIND_DFM, payload={"details_tab": {"input_triangle": "CWOP %"}}),
+            _write_row("C 91", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "C 62"}]}}),
+            _write_row("C 92", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "C 91"}]}}),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            rc_dir = Path(temp)
+            (rc_dir / "sidecars").mkdir()
+            (rc_dir / "sidecars" / "C 62.json").write_text(
+                json.dumps({
+                    "dataset_name": "C 62",
+                    "calculated": True,
+                    "precedents": [{"dataset_name": "C 52"}],
+                }),
+                encoding="utf-8",
             )
-            self.assertEqual(sync_session._downstream_keys(runtime, rc_dir, rows, {"c 12"}), set())
+            edges = sync_session._reserving_class_edges(runtime, rc_dir, rows)
+
+        ordered = sync_session._dependency_ordered_rows(sync_contract, rows, edges)
+
+        self.assertEqual([row["id"] for row in ordered], ["C 52", "C 91", "C 92", "Gross Loss--Paid - B&S"])
 
 
 class SyncSessionResQNameMappingTests(unittest.TestCase):
@@ -1191,6 +1228,7 @@ class SyncSessionExportTests(unittest.TestCase):
             (root / "data" / "RC").mkdir(parents=True)
             migration = Mock()
             migration.PROJECT_DATA_DIR = root / "data"
+            migration.DATASET_SIDECAR_DIR = "sidecars"
             migration._encode_rc_folder.return_value = "RC"
             migration._apply_runtime_scope.return_value = {"previous": True}
             migration.CONNECTION_NAME = "ResQ Test"
@@ -1231,6 +1269,7 @@ class SyncSessionExportTests(unittest.TestCase):
             (root / "data" / "RC").mkdir(parents=True)
             migration = Mock()
             migration.PROJECT_DATA_DIR = root / "data"
+            migration.DATASET_SIDECAR_DIR = "sidecars"
             migration._encode_rc_folder.return_value = "RC"
             migration.CONNECTION_NAME = "ResQ Test"
             migration.USER_NAME = ""

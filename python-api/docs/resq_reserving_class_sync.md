@@ -140,7 +140,9 @@ written, from the inputs the batch just synchronized and re-stamp it, so a
 move between the batch's opening and closing observations on such an item is
 the batch's own doing. The walk follows ArcRho's sidecar graph across the whole
 reserving class, calculated datasets included, plus the links in the review
-rows' method tabs; ResQ holds the same graph once the inputs match. Only the
+rows' method tabs; ResQ holds the same graph once the inputs match. The same
+graph decides the write order, so a row that reads a calculated dataset is
+written after the rows that dataset derives from. Only the
 side that moved takes its closing timestamp, so a change that was already
 pending before the batch stays pending, and an item with no baseline yet is
 baselined only when it showed no difference before the batch. These items
