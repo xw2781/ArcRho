@@ -206,7 +206,7 @@ test("a payload's ASCII direction arrow is drawn rather than typed", async () =>
   assert.match(styles, /\.reviewTableArrow \{[^}]*stroke: currentColor;/su);
 });
 
-test("a read-only review table drops the tick column and closes with one button", async () => {
+test("a read-only review table drops the tick column and closes with one button, or two when it names a Cancel", async () => {
   const [component, view] = await Promise.all([
     source("ui/shared/components/review_table/review_table.js"),
     source("ui/shared/components/review_table/review_table_view.js"),
@@ -220,14 +220,29 @@ test("a read-only review table drops the tick column and closes with one button"
   });
   assert.equal(report.selectable, false);
   assert.equal(report.acceptLabel, "Close");
+  assert.equal(report.cancellable, false);
   const review = normalizeReviewTableOptions({ rows: [{ id: "a", cells: { name: "Paid Loss" } }] });
   assert.equal(review.selectable, true);
   assert.equal(review.acceptLabel, "Accept Selected");
+  assert.equal(review.cancellable, true);
 
-  // The panel starts a report with nothing ticked, renders no Cancel button,
-  // and hands the grid the switch.
+  // A read-only table used as a confirmation - the ResQ export's timestamp
+  // preview - names its own Cancel, and gets one beside the accept button.
+  const confirmation = normalizeReviewTableOptions({
+    selectable: false,
+    acceptLabel: "Export to ResQ",
+    cancelLabel: "Cancel",
+    columns: [{ key: "name", label: "Name" }],
+    rows: [{ id: "a", cells: { name: "Paid Loss" } }],
+  });
+  assert.equal(confirmation.selectable, false);
+  assert.equal(confirmation.cancellable, true);
+  assert.equal(confirmation.acceptLabel, "Export to ResQ");
+
+  // The panel starts a report with nothing ticked, renders a Cancel button
+  // only where there is something to cancel, and hands the grid the switch.
   assert.match(component, /new Set\(model\.selectable \? model\.rows\.filter/u);
-  assert.match(component, /const cancelButton = model\.selectable \? element\(/u);
+  assert.match(component, /const cancelButton = model\.cancellable \? element\(/u);
   assert.match(component, /selectable: model\.selectable,/u);
   // The grid then draws no tick column or select-all, and neither a row click
   // nor the space bar ticks anything.
@@ -264,9 +279,9 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   // The modal host renders the same pi-table the nested window does, so it
   // loads the shared table sheet the grid is dressed by.
   assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
-  assert.match(index, /ui_shell\.js\?v=20260827a/u);
+  assert.match(index, /ui_shell\.js\?v=20260828f/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260828a/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260828f/u);
   }
   // Payload text reaches the DOM as text, never as markup, in both modules.
   assert.match(view, /textContent = toText\(text\)/u);
@@ -315,7 +330,7 @@ test("a projectInstance-hosted review table runs as a nested pi-window", async (
 
   // The nested-window page embeds the same shared panel the modal uses.
   assert.match(windowPage, /review_table\.css\?v=20260821b/u);
-  assert.match(windowPage, /review_table_window\.js\?v=20260827a/u);
+  assert.match(windowPage, /review_table_window\.js\?v=20260828f/u);
   // The nested window relays the footer option states with its completion.
   assert.match(windowScript, /optionStates/u);
   assert.match(piReviewTable, /optionStates/u);

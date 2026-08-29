@@ -174,12 +174,18 @@ export function normalizeReviewTableOptions(options = {}) {
   // Accept/Cancel. The completion still travels back through the same
   // status protocol, with an empty selection.
   const selectable = options.selectable !== false;
+  // A read-only report is normally closed by one button, but a caller can ask
+  // for a Cancel beside it by naming one: a read-only table used as a
+  // confirmation - the ResQ export's timestamp preview - is accepted or
+  // cancelled like a selectable review, it simply has nothing to tick.
+  const cancellable = selectable || cleanText(options.cancelLabel ?? options.cancel_label) !== "";
   return {
     title: cleanText(options.title) || "Review Sync Actions",
     message: toText(options.message ?? options.summary).trim(),
     columns,
     rows,
     selectable,
+    cancellable,
     // Caller-defined footer checkboxes; their final states travel back with
     // the completion result as `optionStates`, keyed by each option's key.
     options: normalizeReviewTableChoices(options.options),
@@ -362,10 +368,10 @@ export function createReviewTablePanel(options = {}, settings = {}) {
   const selectionStatus = element(doc, "span", "reviewTableSelectionStatus");
   selectionStatus.setAttribute("aria-live", "polite");
   const actions = element(doc, "div", "reviewTableActions");
-  // A read-only report has nothing to cancel, so its footer carries only the
-  // one button that closes it; the status span stays as the flex spacer that
-  // keeps that button at the right-hand edge.
-  const cancelButton = model.selectable ? element(doc, "button", "reviewTableButton", model.cancelLabel) : null;
+  // A read-only report with nothing to cancel carries only the one button that
+  // closes it; the status span stays as the flex spacer that keeps that button
+  // at the right-hand edge.
+  const cancelButton = model.cancellable ? element(doc, "button", "reviewTableButton", model.cancelLabel) : null;
   if (cancelButton) cancelButton.type = "button";
   const acceptButton = element(doc, "button", "reviewTableButton primary", model.acceptLabel);
   acceptButton.type = "button";

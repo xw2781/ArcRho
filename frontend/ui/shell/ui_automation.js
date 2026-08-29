@@ -3,7 +3,7 @@ import {
   captureActiveDfmContextForMacro,
   reviewAndApplyCapturedMacroResult,
 } from "../macro/macro_window.js?v=20260817a";
-import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260827a";
+import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260828f";
 
 const API_BASE = window.location.origin;
 const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;

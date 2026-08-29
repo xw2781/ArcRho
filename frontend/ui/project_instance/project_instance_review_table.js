@@ -1,4 +1,4 @@
-import { normalizeReviewTableOptions } from "/ui/shared/components/review_table/review_table.js?v=20260827a";
+import { normalizeReviewTableOptions } from "/ui/shared/components/review_table/review_table.js?v=20260828f";
 
 export function installProjectInstanceReviewTable(ctx) {
   const { api, state } = ctx;
