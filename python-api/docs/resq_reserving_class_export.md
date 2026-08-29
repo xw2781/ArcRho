@@ -6,8 +6,8 @@ reserving class into the identically scoped ResQ reserving class, one way and
 in one piece. It is the push counterpart of the
 [sync macro](resq_reserving_class_sync.md): the same Bridge queue, the same
 canonical session, the same ResQ writer, the same comparison shown before the
-write, and the same results window — minus the per-row choice, the
-signatures, and the baseline.
+write, the same shared baseline, and the same results window — minus the
+per-row choice and the signatures.
 
 The ArcRho project name is also used as the ResQ project name, and the
 selected reserving-class path must exist in that project on both sides. The
@@ -95,17 +95,32 @@ to overwrite. One row per logical item, carrying:
   names it.
 - **ArcRho Timestamp** and **ResQ Timestamp** — the pair the comparison read,
   as text, never re-parsed by the macro.
-- **Newer** — `ArcRho`, `ResQ` (a warning tone), `Same`, or `Unknown` when one
-  side has no timestamp. It is `sync.newer_side`, the plan's own verdict.
+- **Newer** — `ArcRho`, `ResQ`, `Same`, or `Unknown` when one side has no
+  timestamp. It is `sync.newer_side`, the plain fact about the two times
+  beside it, and it carries no warning tone of its own: after an export ResQ
+  always holds the newer stamp, so on its own it means very little.
+- **Changed Since Last Export** — the column that decides the warning.
+  `ArcRho`, `ResQ`, `Both`, or `None`, measured by
+  `sync.changed_since_baseline` against the timestamp pair saved when the item
+  was last exported or synchronized. `No baseline yet` where no pair has been
+  saved, in which case the row falls back to the raw timestamp comparison.
 - **Export** — what the export would do: `Overwrites ResQ copy`,
-  `Overwrites newer ResQ copy` (a warning), or `Not exported` when
+  `Overwrites newer ResQ copy` (a warning, raised only when `ResQ` or `Both`
+  changed since the saved pair), or `Not exported` when
   `sync.export_supported` says a push of that item would write nothing.
-- **Details** — the plan's own comparison detail for the row.
+- **Details** — `sync.export_review`'s sentence for the row, written from the
+  export's one-way point of view rather than from the direction the sync macro
+  would choose for the whole class, with the reason an unsupported item cannot
+  be pushed appended.
 
 The header names the project, the reserving class and the ResQ connection,
 the latest change on each side, and the counts: how many items both systems
-hold, how many the export overwrites, and how many of those ResQ changed more
-recently.
+hold, how many the export overwrites, how many of those were edited in ResQ
+since the last export, and how many have no saved pair yet.
+
+The verdicts come from the Bridge, in each preview row's `export_review`. A
+Bridge that has not been rebuilt sends rows without one; the table then shows
+`No baseline yet` everywhere and behaves exactly as it did before.
 
 The table lists only what both systems hold, because that is what the
 comparison compares. An ArcRho item ResQ does not have is not listed, and the
@@ -121,20 +136,43 @@ A comparison that fails is not a gate. The failure is shown with
 not block an export the person still wants; an unreachable Bridge is reported
 as such instead, since nothing could be published either way.
 
-## No review, no baseline
+## No review, but a baseline
 
-Beyond that table the export compares nothing, verifies nothing, and records
-no baseline. Whatever is accepted is written over the ResQ copy, however
-recently ResQ changed it. It is the tool for the moment ArcRho is the source
-of truth for a class and ResQ should simply follow; use `Sync Reserving Class
-with ResQ` when the two sides need reconciling row by row.
+Beyond that table the export compares nothing and verifies nothing before a
+write. Whatever is accepted is written over the ResQ copy, however recently
+ResQ changed it. It is the tool for the moment ArcRho is the source of truth
+for a class and ResQ should simply follow; use `Sync Reserving Class with
+ResQ` when the two sides need reconciling row by row.
 
-One consequence to know: ResQ's `Save()` re-stamps every written object, and
-no sync baseline records that this run did it. The next `Sync Reserving Class
-with ResQ` preview therefore reports every exported item as `ResQ changed`
-(or `Both changed`) and proposes the class direction ResQ to ArcRho. That
-preview is a review, not a write — untick the rows or cancel it — but expect
-it. Recording a paired baseline after an export is possible follow-up work.
+What the export does record, once the writes are done, is the baseline: the
+ArcRho and ResQ timestamps each written item ends up carrying. Without it,
+ResQ's `Save()` re-stamps every written object and the very next review — this
+macro's preview and the sync macro's alike — reports every exported item as
+`ResQ changed` or `Both changed`, which is noise, not information.
+
+- **Where** — the same shared document the sync macro keeps, one per project,
+  reserving class and ResQ connection, under `projects/<project>/sync/resq/`
+  on the ArcRho server (`sync.sync_state_path`). It is server-side and
+  scoped to the reserving class, so every user reviews against the same pair;
+  no copy of it lives on anyone's machine.
+- **What** — one entry per logical item, holding both timestamps and when
+  they were recorded (`sync.record_synced_items`). Only an item ResQ
+  confirmed as `Exported` or `Saved` is baselined; a skipped or failed one
+  keeps its old pair, so the next review still reports the difference.
+- **The ArcRho side** is baselined at the values the export actually pushed,
+  not at a fresh read, so an ArcRho edit made while the export ran stays
+  pending rather than being recorded as delivered.
+- **Ripple** — ResQ recalculates whatever reads a written item, which
+  re-stamps rows the export never wrote. Those moves are the export's own
+  doing, so they are absorbed into the baseline
+  (`sync.absorb_propagated_changes`) instead of surfacing as ResQ edits.
+- **Failure is never fatal** — the writes are already durable when the
+  baseline is saved, so a baseline that cannot be read or written is reported
+  in the results header and the export still reports its writes. The next
+  review simply falls back to comparing timestamps.
+
+Because the document is shared with `Sync Reserving Class with ResQ`, an
+export also settles that macro's next preview for everything it wrote.
 
 ## Results window
 
@@ -143,7 +181,8 @@ read-only review window the sync macro uses (`ui.reviewTableOpen` with
 `host: "projectInstance"` and `selectable: false`): one row per item in write
 order, with the type, the logical name, an outcome of `Exported`, `Saved`,
 `Skipped`, or `Failed`, and the Bridge's message for the item, under a header
-naming the project, the reserving class, the ResQ connection, and the counts.
+naming the project, the reserving class, the ResQ connection, the counts, and
+how many timestamp pairs were saved for the next review to compare against.
 The window is non-modal, so it can be minimized to the toolbar while the
 class is inspected; the macro keeps running until it is closed.
 

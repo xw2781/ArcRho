@@ -2239,6 +2239,13 @@ def _public_plan_rows(runtime: Mapping[str, Any], plan: list[dict[str, Any]]) ->
     for row in plan:
         arcrho = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
         resq = row.get("resq") if isinstance(row.get("resq"), Mapping) else {}
+        baseline = row.get("state_signature") if isinstance(row.get("state_signature"), Mapping) else {}
+        # Only a paired row whose two sides agree on identity has timestamps
+        # that mean the same thing, so only such a row gets an export verdict;
+        # everything else keeps the plan's own status and detail.
+        export_review = (
+            sync_contract.export_review(arcrho, resq, baseline) if row.get("comparable") else {}
+        )
         rows.append({
             "id": str(row.get("id") or ""),
             "signature": sync_contract.plan_signature(row),
@@ -2251,9 +2258,14 @@ def _public_plan_rows(runtime: Mapping[str, Any], plan: list[dict[str, Any]]) ->
             "arcrho_timestamp": _timestamp_cell(row.get("arcrho")),
             "resq_timestamp": _timestamp_cell(row.get("resq")),
             # Per-item facts the Export macro's timestamp check reads, decided
-            # by the same contract as the plan itself.
+            # by the same contract as the plan itself. ``newer_side`` states
+            # which timestamp is later; ``export_review`` says what that means
+            # against the baseline the last export or synchronization saved,
+            # which is the only way a ResQ edit is told apart from the stamp
+            # the last export left behind.
             "newer_side": sync_contract.newer_side(arcrho, resq),
             "export_supported": sync_contract.export_supported(arcrho, resq),
+            "export_review": export_review,
             "status": str(row.get("status") or ""),
             "action": str(row.get("action") or ""),
             "detail": str(row.get("detail") or ""),
@@ -2406,6 +2418,78 @@ def apply_sync(
         migration._restore_runtime_scope(previous_scope)
 
 
+def _open_export_baseline(
+    runtime: Mapping[str, Any],
+    project_name: str,
+    rc_path: str,
+    server_root: Path,
+    exporter,
+    arcrho_inventory: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Read the saved baseline and observe both sides before the export writes.
+
+    The baseline is the timestamp pair each item carried the last time it was
+    exported or synchronized. It belongs to the project on the ArcRho server,
+    one document per reserving class and ResQ connection, so every user's
+    review measures from the same pair rather than from a private copy.
+    """
+
+    sync_contract = runtime["sync_contract"]
+    connection_name = _resq_credentials(runtime)["connection_name"]
+    state_path = sync_contract.sync_state_path(server_root, project_name, rc_path, connection_name)
+    state = sync_contract.read_sync_state(state_path, project_name, rc_path, connection_name)
+    remote = collect_resq_inventory(runtime, exporter)
+    return {
+        "state": state,
+        "state_path": state_path,
+        "plan": sync_contract.build_sync_plan(arcrho_inventory, remote, state),
+    }
+
+
+def _record_export_baseline(
+    runtime: Mapping[str, Any],
+    opening: Mapping[str, Any],
+    arcrho_inventory: list[dict[str, Any]],
+    exporter,
+    written_keys: list[str],
+    edges: Mapping[str, set[str]],
+) -> dict[str, Any]:
+    """Save the timestamp pair every written item now carries on both sides.
+
+    Only an item ResQ confirmed as written is baselined; a skipped or failed
+    one keeps its old pair, so the next review still reports the difference.
+    The ArcRho side is baselined at the values the export actually pushed and
+    not at a fresh read, so an ArcRho edit made while the export ran stays
+    pending instead of being recorded as already delivered.
+
+    ResQ recalculates whatever reads a written item, which re-stamps rows the
+    export never wrote. Those moves are the export's own doing, so they are
+    absorbed into the baseline here rather than surfacing as ResQ edits at the
+    next review.
+    """
+
+    sync_contract = runtime["sync_contract"]
+    final_remote = collect_resq_inventory(runtime, exporter)
+    final_plan = sync_contract.build_sync_plan(arcrho_inventory, final_remote, opening["state"])
+    updated = sync_contract.record_synced_items(
+        opening["state"], written_keys, arcrho_inventory, final_remote
+    )
+    recorded = {str(key) for key in updated.get("_recorded_keys") or []}
+    absorbed: list[dict[str, Any]] = []
+    if recorded:
+        ripple = _downstream_keys(edges, opening["plan"], set(recorded)) - recorded
+        updated, absorbed = sync_contract.absorb_propagated_changes(
+            updated, opening["plan"], final_plan, keys=sorted(ripple)
+        )
+    sync_contract.write_sync_state(opening["state_path"], updated)
+    return {
+        "recorded": len(recorded),
+        "absorbed": len(absorbed),
+        "path": str(opening["state_path"]),
+        "error": "",
+    }
+
+
 def export_reserving_class(
     runtime: Mapping[str, Any],
     project_name: str,
@@ -2420,8 +2504,14 @@ def export_reserving_class(
     and Result Selection has its selections and Notes written, and every
     Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method is saved so
     ResQ recalculates it from those writes. Calculated and engine datasets are
-    left out, as is Bootstrap. Nothing is compared, verified, or baselined:
-    the result says what became of each item and nothing more.
+    left out, as is Bootstrap.
+
+    Nothing is compared or verified before a write -- the export pushes
+    everything it supports. What it does record afterwards is the timestamp
+    pair each written item ends up with on both sides, so the next review can
+    tell a real ResQ edit from the stamp this export just left behind. A
+    baseline that cannot be read or written never stops the export: the writes
+    are already durable, so the failure is reported beside them.
     """
 
     migration = runtime["migration"]
@@ -2444,8 +2534,10 @@ def export_reserving_class(
             "total": 0,
             "message": f"Reading the ArcRho reserving class: {rc_path}",
         })
-        rows = _export_rows(runtime, collect_arcrho_inventory(runtime, rc_dir))
-        rows = _dependency_ordered_rows(sync_contract, rows, _reserving_class_edges(runtime, rc_dir, rows))
+        local = collect_arcrho_inventory(runtime, rc_dir)
+        rows = _export_rows(runtime, local)
+        edges = _reserving_class_edges(runtime, rc_dir, rows)
+        rows = _dependency_ordered_rows(sync_contract, rows, edges)
         _emit_progress(progress_callback, {
             "event": "connect",
             "completed": 0,
@@ -2454,6 +2546,12 @@ def export_reserving_class(
         })
         exporter = _new_exporter(runtime, project_name, rc_path, root)
         exporter.connect()
+        opening = None
+        baseline = {"recorded": 0, "absorbed": 0, "path": "", "error": ""}
+        try:
+            opening = _open_export_baseline(runtime, project_name, rc_path, root, exporter, local)
+        except Exception as exc:
+            baseline["error"] = f"The saved baseline could not be read: {exc}"
         results: list[dict[str, Any]] = []
         for index, row in enumerate(rows, start=1):
             try:
@@ -2474,8 +2572,38 @@ def export_reserving_class(
                 "status": _EXPORT_PROGRESS_STATUS[outcome],
                 "message": f"{row['name']}: {message}",
             })
+        if opening is not None:
+            _emit_progress(progress_callback, {
+                "event": "baseline",
+                "completed": len(rows),
+                "total": len(rows),
+                "message": "Recording the ArcRho and ResQ timestamps",
+            })
+            # "Exported" and "saved" both mean ResQ took the write; only those
+            # two leave the two sides agreeing, so only those are baselined.
+            written_keys = [
+                str(row["key"])
+                for row, item in zip(rows, results)
+                if item["outcome"] in (EXPORT_OUTCOME_EXPORTED, EXPORT_OUTCOME_SAVED)
+            ]
+            try:
+                baseline = _record_export_baseline(
+                    runtime, opening, local, exporter, written_keys, edges
+                )
+            except Exception as exc:
+                baseline = {
+                    "recorded": 0,
+                    "absorbed": 0,
+                    "path": str(opening["state_path"]),
+                    "error": f"The timestamps could not be recorded: {exc}",
+                }
         failed = any(item["outcome"] == OUTCOME_FAILED for item in results)
-        return {**base, "status": "completed_with_errors" if failed else "completed", "results": results}
+        return {
+            **base,
+            "status": "completed_with_errors" if failed else "completed",
+            "results": results,
+            "baseline": baseline,
+        }
     finally:
         if exporter is not None:
             try:

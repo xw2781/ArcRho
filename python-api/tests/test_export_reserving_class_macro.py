@@ -399,6 +399,28 @@ class ExportMacroResultsTableTests(unittest.TestCase):
         )
         self.assertEqual(cells[3]["detail"], "The ArcRho dataset CSV cache is missing.")
 
+    def test_the_results_say_what_was_saved_for_the_next_review_to_compare_against(self):
+        def summary(baseline):
+            return self.module.export_result_table_payload({
+                "status": "completed",
+                "baseline": baseline,
+                "results": [{"id": "a", "name": "A", "kind": "Dataset", "outcome": "exported", "message": ""}],
+            })["summary"]
+
+        self.assertIn(
+            "Saved the ArcRho and ResQ timestamps of 3 written item(s)",
+            summary({"recorded": 3, "absorbed": 0, "error": ""}),
+        )
+        self.assertIn(
+            "2 further item(s) ResQ recalculated from those writes were saved with them.",
+            summary({"recorded": 3, "absorbed": 2, "error": ""}),
+        )
+        self.assertIn(
+            "The ArcRho and ResQ timestamps were not saved",
+            summary({"recorded": 0, "absorbed": 0, "error": "The share went away."}),
+        )
+        self.assertIn("because nothing was written", summary({}))
+
     def test_a_clean_export_reports_completion_without_errors(self):
         payload = self.module.export_result_table_payload({
             "status": "completed",
@@ -426,6 +448,18 @@ def _preview_row(name, *, kind="Dataset", newer_side="resq", export_supported=Tr
     }
     row.update(fields)
     return row
+
+
+def _review(changed, *, overwrites_edit=False, detail="", supported=True):
+    """The baseline verdict the Bridge sends with a comparable preview row."""
+
+    return {
+        "changed": changed,
+        "status": changed,
+        "detail": detail,
+        "supported": supported,
+        "overwrites_edit": overwrites_edit,
+    }
 
 
 class ExportPreviewTableTests(unittest.TestCase):
@@ -468,16 +502,72 @@ class ExportPreviewTableTests(unittest.TestCase):
         )
         self.assertEqual([cell["plan"]["tone"] for cell in cells], ["warn", "info", "info", "muted"])
 
-    def test_the_header_counts_what_is_overwritten_and_what_resq_changed_more_recently(self):
+    def test_the_baseline_decides_the_warning_not_the_newer_timestamp(self):
+        """The case the export itself creates: ResQ newer, but nothing edited there."""
+
+        payload = self._payload([
+            _preview_row(
+                "Paid Loss",
+                export_review=_review("none", detail="Neither side changed since the last export."),
+            ),
+            _preview_row("Reported Loss", export_review=_review("arcrho")),
+            _preview_row("Case Reserves", export_review=_review("resq", overwrites_edit=True)),
+            _preview_row("Claim Counts", export_review=_review("both", overwrites_edit=True)),
+        ])
+
+        cells = [row["cells"] for row in payload["rows"]]
+        self.assertEqual(
+            [cell["changed"]["text"] for cell in cells], ["None", "ArcRho", "ResQ", "Both"]
+        )
+        self.assertEqual(
+            [cell["changed"]["tone"] for cell in cells], ["muted", "ok", "warn", "warn"]
+        )
+        self.assertEqual(
+            [cell["plan"]["text"] for cell in cells],
+            [
+                "Overwrites ResQ copy",
+                "Overwrites ResQ copy",
+                "Overwrites newer ResQ copy",
+                "Overwrites newer ResQ copy",
+            ],
+        )
+        # Every row still carries the plain fact about its two timestamps.
+        self.assertEqual({cell["newer"]["text"] for cell in cells}, {"ResQ"})
+        self.assertEqual(cells[0]["detail"], "Neither side changed since the last export.")
+
+    def test_a_row_with_no_saved_pair_says_so_and_falls_back_to_the_timestamps(self):
         payload = self._payload([
             _preview_row("Paid Loss"),
             _preview_row("Reported Loss", newer_side="arcrho"),
+        ])
+
+        cells = [row["cells"] for row in payload["rows"]]
+        self.assertEqual([cell["changed"]["text"] for cell in cells], ["No baseline yet", "No baseline yet"])
+        self.assertEqual(
+            [cell["plan"]["text"] for cell in cells],
+            ["Overwrites newer ResQ copy", "Overwrites ResQ copy"],
+        )
+
+    def test_the_header_counts_what_is_overwritten_and_what_resq_changed_since_the_export(self):
+        payload = self._payload([
+            _preview_row("Paid Loss", export_review=_review("resq", overwrites_edit=True)),
+            _preview_row("Reported Loss", export_review=_review("none")),
             _preview_row("Bootstrap Ult", export_supported=False),
         ])
 
         self.assertIn("Project: Demo | Reserving class: Auto\\PP | ResQ: ResQ Demo", payload["summary"])
         self.assertIn("the export overwrites 2 of them in ResQ", payload["summary"])
-        self.assertIn("1 of them changed in ResQ more recently than in ArcRho.", payload["summary"])
+        self.assertIn("1 of them were edited in ResQ since the last export", payload["summary"])
+        self.assertNotIn("no saved timestamp pair yet", payload["summary"])
+
+    def test_the_header_says_how_many_items_have_no_saved_pair_yet(self):
+        payload = self._payload([
+            _preview_row("Paid Loss"),
+            _preview_row("Reported Loss", newer_side="arcrho", export_review=_review("none")),
+        ])
+
+        self.assertIn("1 of them were edited in ResQ since the last export", payload["summary"])
+        self.assertIn("1 have no saved timestamp pair yet", payload["summary"])
 
     def test_the_table_is_read_only_because_the_export_is_all_or_nothing(self):
         payload = self._payload([_preview_row("Paid Loss")])
@@ -488,7 +578,7 @@ class ExportPreviewTableTests(unittest.TestCase):
         self.assertEqual(payload["host"], "projectInstance")
         self.assertEqual(
             [column["key"] for column in payload["columns"]],
-            ["kind", "name", "arcrho_timestamp", "resq_timestamp", "newer", "plan", "detail"],
+            ["kind", "name", "arcrho_timestamp", "resq_timestamp", "newer", "changed", "plan", "detail"],
         )
 
     def test_a_class_with_nothing_in_common_says_so(self):
@@ -496,7 +586,7 @@ class ExportPreviewTableTests(unittest.TestCase):
 
         self.assertEqual(payload["rows"], [])
         self.assertIn("Compared 0 item(s)", payload["summary"])
-        self.assertIn("None of them changed in ResQ more recently", payload["summary"])
+        self.assertIn("None of them were edited in ResQ since the last export.", payload["summary"])
         self.assertIn("would write nothing", payload["emptyMessage"])
 
 

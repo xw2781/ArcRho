@@ -399,6 +399,93 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertEqual(sync.newer_side(_item(timestamp=None), _item(timestamp=100)), "")
         self.assertEqual(sync.newer_side({}, {}), "")
 
+    def test_changed_since_baseline_names_the_sides_edited_since_the_saved_pair(self):
+        entry = _baseline(arcrho_timestamp=100, resq_timestamp=150)["items"]["paid loss"]
+
+        self.assertEqual(
+            sync.changed_since_baseline(_item(timestamp=100), _item(timestamp=150), entry),
+            sync.CHANGED_NEITHER,
+        )
+        self.assertEqual(
+            sync.changed_since_baseline(_item(timestamp=200), _item(timestamp=150), entry),
+            sync.CHANGED_ARCRHO,
+        )
+        self.assertEqual(
+            sync.changed_since_baseline(_item(timestamp=100), _item(timestamp=300), entry),
+            sync.CHANGED_RESQ,
+        )
+        self.assertEqual(
+            sync.changed_since_baseline(_item(timestamp=200), _item(timestamp=300), entry),
+            sync.CHANGED_BOTH,
+        )
+
+    def test_changed_since_baseline_is_blank_when_no_pair_can_be_measured_against(self):
+        entry = _baseline()["items"]["paid loss"]
+        incomplete = dict(entry, resq_timestamp=None)
+
+        self.assertEqual(sync.changed_since_baseline(_item(), _item(), None), "")
+        self.assertEqual(sync.changed_since_baseline(_item(), _item(), {}), "")
+        self.assertEqual(
+            sync.changed_since_baseline(_item(), _item(), {"present": False, **entry}), ""
+        )
+        self.assertEqual(sync.changed_since_baseline(_item(), _item(), incomplete), "")
+
+    def test_the_export_review_warns_only_about_a_resq_edit_made_since_the_baseline(self):
+        # The stamp the last export left on ResQ is newer than ArcRho's, which
+        # is exactly the case the raw comparison used to call an overwrite.
+        arcrho = _item(timestamp=100)
+        resq = _item(timestamp=150)
+        entry = _baseline(arcrho_timestamp=100, resq_timestamp=150)["items"]["paid loss"]
+
+        settled = sync.export_review(arcrho, resq, entry)
+        self.assertEqual(settled["changed"], sync.CHANGED_NEITHER)
+        self.assertFalse(settled["overwrites_edit"])
+        self.assertEqual(settled["status"], "Synchronized")
+        self.assertEqual(settled["detail"], "Neither side changed since the last export.")
+
+        edited = sync.export_review(arcrho, _item(timestamp=300), entry)
+        self.assertEqual(edited["changed"], sync.CHANGED_RESQ)
+        self.assertTrue(edited["overwrites_edit"])
+        self.assertIn("overwrites that change", edited["detail"])
+
+        both = sync.export_review(_item(timestamp=200), _item(timestamp=300), entry)
+        self.assertEqual(both["changed"], sync.CHANGED_BOTH)
+        self.assertTrue(both["overwrites_edit"])
+
+        pushed = sync.export_review(_item(timestamp=200), resq, entry)
+        self.assertEqual(pushed["changed"], sync.CHANGED_ARCRHO)
+        self.assertFalse(pushed["overwrites_edit"])
+
+    def test_the_export_review_falls_back_to_the_timestamps_until_a_baseline_exists(self):
+        resq_newer = sync.export_review(_item(timestamp=100), _item(timestamp=200), None)
+        self.assertEqual(resq_newer["changed"], "")
+        self.assertTrue(resq_newer["overwrites_edit"])
+        self.assertEqual(resq_newer["status"], "ResQ newer")
+        self.assertIn("No baseline is recorded yet", resq_newer["detail"])
+
+        arcrho_newer = sync.export_review(_item(timestamp=200), _item(timestamp=100), None)
+        self.assertEqual(arcrho_newer["status"], "ArcRho newer")
+        self.assertFalse(arcrho_newer["overwrites_edit"])
+
+        self.assertEqual(
+            sync.export_review(_item(timestamp=100), _item(timestamp=100), None)["status"],
+            "Same timestamp",
+        )
+        self.assertEqual(
+            sync.export_review(_item(timestamp=None), _item(timestamp=100), None)["status"],
+            "Unknown timestamp",
+        )
+
+    def test_the_export_review_carries_the_reason_an_item_cannot_be_pushed(self):
+        calculated = _item()
+        calculated["can_receive_from_arcrho"] = False
+        calculated["receive_block_reason"] = "ResQ recalculates this dataset."
+
+        review = sync.export_review(_item(), calculated, None)
+
+        self.assertFalse(review["supported"])
+        self.assertTrue(review["detail"].endswith("ResQ recalculates this dataset."))
+
     def test_export_supported_follows_the_arcrho_to_resq_support_rule(self):
         self.assertTrue(sync.export_supported(_item(), _item()))
         blocked = _item()

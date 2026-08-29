@@ -1258,6 +1258,147 @@ class SyncSessionExportTests(unittest.TestCase):
         self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
         self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")
 
+    def _export_scope(self, root: Path):
+        """A migration bound to one temporary reserving class the export can read."""
+
+        (root / "data" / "RC").mkdir(parents=True, exist_ok=True)
+        migration = Mock()
+        migration.PROJECT_DATA_DIR = root / "data"
+        migration.DATASET_SIDECAR_DIR = "sidecars"
+        migration._encode_rc_folder.return_value = "RC"
+        migration._apply_runtime_scope.return_value = {"previous": True}
+        migration.CONNECTION_NAME = "ResQ Test"
+        migration.USER_NAME = ""
+        migration.PASSWORD = ""
+        return migration
+
+    def test_the_export_saves_the_timestamp_pair_of_everything_it_wrote(self):
+        """The pair the next review measures against, and what it then reports.
+
+        The export stamps ResQ, so afterwards ResQ always carries the newer
+        time. Only the saved pair can tell that apart from someone editing the
+        item in ResQ, which is what the second half of this test checks.
+        """
+
+        import tempfile
+
+        from resq_migration import sync as sync_contract
+
+        def side(name, timestamp):
+            return {
+                "name": name,
+                "kind": "Dataset",
+                "data_format": "Triangle",
+                "dataset_type": "Paid Loss",
+                "method_name": "",
+                "modified_timestamp": timestamp,
+                "can_export_to_resq": True,
+                "can_import_to_arcrho": True,
+                "can_receive_from_arcrho": True,
+            }
+
+        arcrho = [dict(side("Paid Loss", 100.0), payload={"csv_file": "Paid Loss.csv"})]
+        before_resq = [side("Paid Loss", 90.0)]
+        after_resq = [side("Paid Loss", 500.0)]
+        exporter = _push_exporter()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            migration = self._export_scope(root)
+            runtime = self._runtime(migration)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=arcrho),
+                patch.object(
+                    sync_session, "collect_resq_inventory", side_effect=[before_resq, after_resq]
+                ),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    runtime, "Demo", r"Auto\PP", server_root=root
+                )
+
+            state_path = sync_contract.sync_state_path(root, "Demo", r"Auto\PP", "ResQ Test")
+            saved = json.loads(state_path.read_text(encoding="utf-8"))
+            reported_path = Path(result["baseline"]["path"]).resolve()
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["baseline"]["recorded"], 1)
+        self.assertEqual(result["baseline"]["error"], "")
+        self.assertEqual(reported_path, state_path.resolve())
+        entry = saved["items"]["paid loss"]
+        self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (100.0, 500.0))
+
+        settled = sync_contract.build_sync_plan(arcrho, after_resq, saved)[0]
+        review = sync_contract.export_review(
+            settled["arcrho"], settled["resq"], settled["state_signature"]
+        )
+        self.assertEqual(review["changed"], sync_contract.CHANGED_NEITHER)
+        self.assertFalse(review["overwrites_edit"])
+
+        edited_in_resq = sync_contract.build_sync_plan(arcrho, [side("Paid Loss", 900.0)], saved)[0]
+        after_edit = sync_contract.export_review(
+            edited_in_resq["arcrho"], edited_in_resq["resq"], edited_in_resq["state_signature"]
+        )
+        self.assertEqual(after_edit["changed"], sync_contract.CHANGED_RESQ)
+        self.assertTrue(after_edit["overwrites_edit"])
+
+    def test_an_item_the_export_could_not_write_keeps_its_old_baseline(self):
+        import tempfile
+
+        from resq_migration import sync as sync_contract
+
+        exporter = _push_exporter()
+        exporter.export_datasets.side_effect = RuntimeError("COM went away")
+        arcrho = [{
+            "name": "Paid Loss",
+            "kind": "Dataset",
+            "modified_timestamp": 100.0,
+            "can_export_to_resq": True,
+            "can_receive_from_arcrho": True,
+            "payload": {"csv_file": "Paid Loss.csv"},
+        }]
+        resq = [{"name": "Paid Loss", "kind": "Dataset", "modified_timestamp": 500.0}]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            migration = self._export_scope(root)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=arcrho),
+                patch.object(sync_session, "collect_resq_inventory", return_value=resq),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    self._runtime(migration), "Demo", r"Auto\PP", server_root=root
+                )
+
+            state_path = sync_contract.sync_state_path(root, "Demo", r"Auto\PP", "ResQ Test")
+            saved = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "completed_with_errors")
+        self.assertEqual(result["baseline"]["recorded"], 0)
+        self.assertEqual(saved["items"], {})
+
+    def test_a_baseline_that_cannot_be_read_is_reported_and_never_stops_the_export(self):
+        import tempfile
+
+        exporter = _push_exporter()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            migration = self._export_scope(root)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=[_export_item("Paid Loss")]),
+                patch.object(
+                    sync_session, "collect_resq_inventory", side_effect=RuntimeError("ResQ went away")
+                ),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    self._runtime(migration), "Demo", r"Auto\PP", server_root=root
+                )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual([item["outcome"] for item in result["results"]], ["exported"])
+        self.assertIn("ResQ went away", result["baseline"]["error"])
+        self.assertEqual(result["baseline"]["recorded"], 0)
+
     def test_a_failed_item_marks_the_export_completed_with_errors_and_keeps_going(self):
         import tempfile
 

@@ -288,7 +288,10 @@ The session runs in two phases, one request each:
 
 The same queue serves a third phase, `export`, which the Export macro
 publishes: it takes the same lease and pushes the whole reserving class from
-ArcRho with no review and no signature. See
+ArcRho with no review and no signature. It does write to this same state file
+afterwards, baselining every item ResQ took and absorbing the ripple, so an
+export settles the next preview here for everything it wrote instead of
+leaving it to report the stamps the export left behind. See
 [resq_reserving_class_export.md](resq_reserving_class_export.md).
 
 The Bridge runs its frozen copy of the session and of the ResQ exporter

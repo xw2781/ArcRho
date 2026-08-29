@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.6.0
-# Release Note: The export now saves the ArcRho and ResQ timestamps of everything it writes, in a shared file beside the reserving class on the ArcRho server, and the review table before the next export measures against that saved pair: an item is only flagged as overwriting a ResQ change when ResQ was genuinely edited since the last export, not because the last export left the newer stamp.
+# Version: 2.5.0
+# Release Note: A read-only preview table now opens before the export, listing every item held by both systems with its ArcRho and ResQ timestamps, which side is newer, and what the export would do to it; accepting the table starts the export and cancelling it writes nothing.
 # Description: Push the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -1018,31 +1018,6 @@ def _report_activity() -> None:
         reporter()
 
 
-def export_baseline_sentence(baseline) -> str:
-    """What the export saved for the next review to measure against.
-
-    The saved pair is what makes the next review honest, so its absence is
-    told plainly rather than left out: the writes are already durable either
-    way, and a review with no pair falls back to comparing timestamps.
-    """
-
-    entry = baseline if isinstance(baseline, dict) else {}
-    error = str(entry.get("error") or "")
-    if error:
-        return f"The ArcRho and ResQ timestamps were not saved, so the next review compares timestamps only. {error}"
-    recorded = int(entry.get("recorded") or 0)
-    if not recorded:
-        return "No ArcRho and ResQ timestamps were saved, because nothing was written."
-    absorbed = int(entry.get("absorbed") or 0)
-    sentence = (
-        f"Saved the ArcRho and ResQ timestamps of {recorded} written item(s) "
-        "for the next export to compare against."
-    )
-    if absorbed:
-        sentence += f" {absorbed} further item(s) ResQ recalculated from those writes were saved with them."
-    return sentence
-
-
 def export_result_table_payload(result) -> dict:
     """Project the Bridge's export results into the read-only review-table contract.
 
@@ -1079,8 +1054,7 @@ def export_result_table_payload(result) -> dict:
             f"Project: {result.get('project_name')} | Reserving class: {result.get('rc_path')} | "
             f"ResQ: {result.get('connection_name')}\n"
             f"Exported {counts['exported']} dataset/method item(s); saved {counts['saved']} method(s); "
-            f"skipped {counts['skipped']}; failed {counts['failed']}.\n"
-            f"{export_baseline_sentence(result.get('baseline'))}"
+            f"skipped {counts['skipped']}; failed {counts['failed']}."
         ),
         "columns": [
             {"key": "kind", "label": "Type", "width": 150},
@@ -1095,55 +1069,29 @@ def export_result_table_payload(result) -> dict:
 
 
 _NEWER_CELLS = {
-    "arcrho": ("ArcRho", ""),
-    "resq": ("ResQ", ""),
-}
-
-# What the saved baseline says was edited since the last export. "None" is the
-# quiet, expected answer once a class has been exported and left alone.
-_CHANGED_CELLS = {
-    "both": ("Both", "warn"),
-    "resq": ("ResQ", "warn"),
     "arcrho": ("ArcRho", "ok"),
-    "none": ("None", "muted"),
+    "resq": ("ResQ", "warn"),
 }
-
-
-def export_review_of(row) -> dict:
-    """The row's baseline verdict, or an empty one when the Bridge did not send it.
-
-    A Bridge that has not been rebuilt yet sends the older preview rows, which
-    carry no verdict. The table then falls back to the plain timestamp
-    comparison rather than claiming a baseline it does not have.
-    """
-
-    review = row.get("export_review")
-    return review if isinstance(review, dict) else {}
 
 
 def export_preview_cells(row) -> dict:
-    """One preview row's cells: the timestamp pair, what changed, and what the export does.
+    """One preview row's cells: the timestamp pair, which side is newer, and what the export does.
 
-    Every verdict is the plan's own (``resq_migration.sync``), never a
-    re-reading of the displayed timestamps. The Newer column is the plain fact
-    about the two times beside it; the Changed column is the one that matters,
-    because it measures each side against the timestamp pair saved when the
-    item was last exported. That is what keeps the export from warning about a
-    ResQ copy whose only newness is the stamp the last export left on it.
+    ``newer_side`` and ``export_supported`` are the plan's own verdicts
+    (``resq_migration.sync``), never a re-reading of the displayed
+    timestamps. A blank ``newer_side`` means the two match or one timestamp is
+    unknown, which the Newer column tells apart by whether both cells carry a
+    time.
     """
 
-    review = export_review_of(row)
     arcrho_timestamp = str(row.get("arcrho_timestamp") or "")
     resq_timestamp = str(row.get("resq_timestamp") or "")
     newer = str(row.get("newer_side") or "")
     unknown = not arcrho_timestamp or not resq_timestamp
     newer_text, newer_tone = _NEWER_CELLS.get(newer, ("Unknown", "muted") if unknown else ("Same", "muted"))
-    changed = str(review.get("changed") or "")
-    changed_text, changed_tone = _CHANGED_CELLS.get(changed, ("No baseline yet", "muted"))
-    overwrites_edit = bool(review.get("overwrites_edit")) if review else newer == "resq"
     if not row.get("export_supported"):
         plan_text, plan_tone = "Not exported", "muted"
-    elif overwrites_edit:
+    elif newer == "resq":
         plan_text, plan_tone = "Overwrites newer ResQ copy", "warn"
     else:
         plan_text, plan_tone = "Overwrites ResQ copy", "info"
@@ -1153,9 +1101,8 @@ def export_preview_cells(row) -> dict:
         "arcrho_timestamp": arcrho_timestamp,
         "resq_timestamp": resq_timestamp,
         "newer": {"text": newer_text, "tone": newer_tone},
-        "changed": {"text": changed_text, "tone": changed_tone},
         "plan": {"text": plan_text, "tone": plan_tone},
-        "detail": str(review.get("detail") or row.get("detail") or row.get("status") or ""),
+        "detail": str(row.get("detail") or row.get("status") or ""),
     }
 
 
@@ -1171,27 +1118,13 @@ def export_preview_table_payload(preview, project_name, rc_path, connection_name
         {"id": str(row.get("id") or f"preview-{index}"), "cells": export_preview_cells(row)}
         for index, row in enumerate(preview, start=1)
     ]
-    exported = [row for row in preview if row.get("export_supported")]
-    overwritten = sum(
-        1
-        for row in exported
-        if (
-            bool(export_review_of(row).get("overwrites_edit"))
-            if export_review_of(row)
-            else row.get("newer_side") == "resq"
-        )
-    )
-    unbaselined = sum(1 for row in exported if not export_review_of(row).get("changed"))
+    exported = sum(1 for row in preview if row.get("export_supported"))
+    resq_newer = sum(1 for row in preview if row.get("export_supported") and row.get("newer_side") == "resq")
     caution = (
-        f"{overwritten} of them were edited in ResQ since the last export and lose that edit."
-        if overwritten
-        else "None of them were edited in ResQ since the last export."
+        f"{resq_newer} of them changed in ResQ more recently than in ArcRho."
+        if resq_newer
+        else "None of them changed in ResQ more recently than in ArcRho."
     )
-    if unbaselined:
-        caution += (
-            f" {unbaselined} have no saved timestamp pair yet, so they are compared "
-            "by timestamp alone until this export saves one."
-        )
     return {
         "title": TITLE,
         # Host the review inside the active Project Instance page as a nested
@@ -1202,7 +1135,7 @@ def export_preview_table_payload(preview, project_name, rc_path, connection_name
             f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
             f"Latest ArcRho change: {direction.get('arcrho_timestamp') or 'Unknown'} | "
             f"Latest ResQ change: {direction.get('resq_timestamp') or 'Unknown'}\n"
-            f"Compared {len(preview)} item(s) held by both systems; the export overwrites {len(exported)} of them "
+            f"Compared {len(preview)} item(s) held by both systems; the export overwrites {exported} of them "
             f"in ResQ. {caution} Items ResQ does not have are not listed and the export skips them."
         ),
         "columns": [
@@ -1211,7 +1144,6 @@ def export_preview_table_payload(preview, project_name, rc_path, connection_name
             {"key": "arcrho_timestamp", "label": "ArcRho Timestamp", "width": 220},
             {"key": "resq_timestamp", "label": "ResQ Timestamp", "width": 220},
             {"key": "newer", "label": "Newer", "width": 90},
-            {"key": "changed", "label": "Changed Since Last Export", "width": 190},
             {"key": "plan", "label": "Export", "width": 210},
             {"key": "detail", "label": "Details", "width": 320},
         ],

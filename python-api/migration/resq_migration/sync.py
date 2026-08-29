@@ -29,6 +29,13 @@ TIMESTAMP_TOLERANCE_SECONDS = 0.000001
 ACTION_ARCRHO_TO_RESQ = "arcrho_to_resq"
 ACTION_RESQ_TO_ARCRHO = "resq_to_arcrho"
 
+# Which sides carry an edit made since the recorded baseline. A blank answer is
+# not "nothing changed": it means no usable baseline exists to measure from.
+CHANGED_NEITHER = "none"
+CHANGED_ARCRHO = "arcrho"
+CHANGED_RESQ = "resq"
+CHANGED_BOTH = "both"
+
 _SPACE_RE = re.compile(r"\s+")
 
 
@@ -162,6 +169,105 @@ def export_supported(arcrho: Mapping[str, Any] | None, resq: Mapping[str, Any] |
     return _support_for_action(ACTION_ARCRHO_TO_RESQ, arcrho, resq)[0]
 
 
+def changed_since_baseline(
+    arcrho: Mapping[str, Any] | None,
+    resq: Mapping[str, Any] | None,
+    baseline: Mapping[str, Any] | None,
+) -> str:
+    """Which sides were edited since the timestamp pair the last run recorded.
+
+    ``CHANGED_ARCRHO``, ``CHANGED_RESQ``, ``CHANGED_BOTH`` or
+    ``CHANGED_NEITHER`` against a usable baseline, and ``""`` when no usable
+    baseline exists -- the pair was never recorded, or it is incomplete. A
+    blank answer means the question cannot be answered from a baseline at all,
+    which is why callers must fall back to comparing the two timestamps rather
+    than reading it as "nothing changed".
+
+    This is what separates a real ResQ edit from a ResQ timestamp that is only
+    newer because the last export stamped it.
+    """
+
+    if not isinstance(baseline, Mapping) or not baseline:
+        return ""
+    if "present" in baseline and not baseline.get("present"):
+        return ""
+    local_changed = _changed_from_baseline(arcrho or None, baseline, "arcrho")
+    remote_changed = _changed_from_baseline(resq or None, baseline, "resq")
+    if local_changed is None or remote_changed is None:
+        return ""
+    if local_changed and remote_changed:
+        return CHANGED_BOTH
+    if local_changed:
+        return CHANGED_ARCRHO
+    if remote_changed:
+        return CHANGED_RESQ
+    return CHANGED_NEITHER
+
+
+_EXPORT_REVIEW_TEXT = {
+    CHANGED_BOTH: (
+        "Both changed",
+        "Both sides changed since the last export; the ArcRho copy overwrites the ResQ change.",
+    ),
+    CHANGED_RESQ: (
+        "ResQ changed",
+        "Only ResQ changed since the last export; the ArcRho copy overwrites that change.",
+    ),
+    CHANGED_ARCRHO: ("ArcRho changed", "Only ArcRho changed since the last export."),
+    CHANGED_NEITHER: ("Synchronized", "Neither side changed since the last export."),
+}
+
+
+def export_review(
+    arcrho: Mapping[str, Any] | None,
+    resq: Mapping[str, Any] | None,
+    baseline: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """How one item reads in an ArcRho-to-ResQ export review.
+
+    The export only ever pushes ArcRho over ResQ, so an item is described by
+    what changed since the recorded baseline rather than by the direction the
+    Sync macro would choose for the whole reserving class. ``overwrites_edit``
+    is the one verdict the export warns on: a ResQ change this push would
+    destroy. Until a baseline exists there is nothing to measure against, so
+    the raw timestamp comparison stands in and says so.
+    """
+
+    supported, block_reason = _support_for_action(ACTION_ARCRHO_TO_RESQ, arcrho, resq)
+    changed = changed_since_baseline(arcrho, resq, baseline)
+    if changed:
+        status, detail = _EXPORT_REVIEW_TEXT[changed]
+        overwrites_edit = changed in (CHANGED_RESQ, CHANGED_BOTH)
+    else:
+        side = newer_side(arcrho or {}, resq or {})
+        overwrites_edit = side == "resq"
+        if side:
+            label = "ResQ" if side == "resq" else "ArcRho"
+            status = f"{label} newer"
+            detail = f"No baseline is recorded yet; {label} has the newer timestamp."
+        elif _timestamp((arcrho or {}).get("modified_timestamp")) is None or _timestamp(
+            (resq or {}).get("modified_timestamp")
+        ) is None:
+            status = "Unknown timestamp"
+            detail = "No baseline is recorded yet and one side has no usable timestamp."
+        else:
+            status = "Same timestamp"
+            detail = "No baseline is recorded yet; the two timestamps match."
+    if not supported:
+        detail = f"{detail} {block_reason}".strip()
+    else:
+        scope_note = clean_name((arcrho or {}).get("export_scope_note"))
+        if scope_note:
+            detail = f"{detail} {scope_note}".strip()
+    return {
+        "changed": changed,
+        "status": status,
+        "detail": detail,
+        "supported": supported,
+        "overwrites_edit": overwrites_edit,
+    }
+
+
 def plan_direction(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Decide the one direction a whole reserving class is pushed in.
 
@@ -273,6 +379,9 @@ def build_sync_plan(
             "selected": False,
             "disabled": True,
             "review": False,
+            # True once both sides are paired and agree on identity, so their
+            # timestamps mean the same thing and may be compared.
+            "comparable": False,
             "state_signature": _state_signature(baseline),
         }
         if len(local_candidates) > 1 or len(remote_candidates) > 1:
@@ -335,6 +444,7 @@ def build_sync_plan(
             rows.append(row)
             continue
 
+        row["comparable"] = True
         rows.append(row)
         comparable.append((row, baseline))
 
