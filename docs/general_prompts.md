@@ -26,7 +26,11 @@ Run the commit workflow.
 
 # JSON Contract Validations
 
-Datasets and methods are imported using the "Import ResQ Reserving Class" macro.
+Macros
+"Import ResQ Reserving Class"
+"Export Reserving Class to ResQ"
+"Sync Reserving Class with ResQ"
+
 
 Project: NJ_Annual_Prod_202605_Fake
 Path: PRNJ - PA\PA\All States\Direct Group\COL

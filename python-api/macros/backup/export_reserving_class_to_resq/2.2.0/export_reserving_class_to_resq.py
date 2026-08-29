@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.5.0
-# Release Note: A read-only preview table now opens before the export, listing every item held by both systems with its ArcRho and ResQ timestamps, which side is newer, and what the export would do to it; accepting the table starts the export and cancelling it writes nothing.
+# Version: 2.2.0
+# Release Note: Never create anything in ResQ: a dataset or method ResQ does not hold is shown as a warning and left alone. A DFM whose ResQ average formula cannot be evaluated is skipped with the formula named instead of failing inside ResQ.
 # Description: Push the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -15,11 +15,10 @@ canonical migration and loads it as its ResQ writer:
   canonical session (``resq_migration.sync_session``) owns the inventory, the
   dependency order, and the per-item bookkeeping, and calls the writers here
   for both the Sync macro's apply phase and this macro's export phase.
-- ``run_macro`` is the client side: it publishes a ``preview`` request to the
-  shared Bridge queue through ``arcrho_api.resq_sync_queue`` and shows the
-  timestamp comparison for review, then, once that is accepted, an ``export``
-  request, and shows the results in a Project Instance window. It never
-  touches ResQ or the reserving-class files itself.
+- ``run_macro`` is the client side: it publishes an ``export`` request to the
+  shared Bridge queue through ``arcrho_api.resq_sync_queue``, waits for the
+  ResQ-connected Bridge worker, and shows the results in a Project Instance
+  window. It never touches ResQ or the reserving-class files itself.
 """
 
 from __future__ import annotations
@@ -40,10 +39,6 @@ RESQ_METHOD_TYPE_CAPE_COD = 3
 RESQ_METHOD_TYPE_RESULT_SELECTION = 4
 RESQ_METHOD_TYPE_BS_SR = 8
 RESQ_METHOD_TYPE_BS_CRA = 9
-
-# Only used when ResQ will not say how many average formulas a DFM has; the
-# import probes the same distance. See ``_average_formula_count``.
-MAX_AVERAGE_FORMULA_PROBE = 30
 
 # A v4 sidecar names its owning method in ``method_type``; the numeric twin is
 # gone from the file, so the ResQ code is derived here from that name.
@@ -123,15 +118,6 @@ def _clean_label(value) -> str:
 
 def _label_key(value) -> str:
     return _clean_label(value).casefold()
-
-
-def _strip_formula_index(raw) -> str:
-    # ResQ names an average formula "10: User Entry"; the number is its position.
-    return _clean_label(re.sub(r"^\s*\d+\s*:\s*", "", str(raw or "")))
-
-
-def _is_user_entry_label(label) -> bool:
-    return _label_key(label).startswith("user entry")
 
 
 def _safe_number(value):
@@ -495,21 +481,6 @@ class ResQReservingClassExporter:
         target.Notes = notes
         return 1
 
-    def _average_formula_count(self, dfm):
-        """How many average formulas the DFM really has, 0 when ResQ will not say.
-
-        Asking is the only way to know: ``AverageFormula`` never ends. Past the
-        last real row -- 13 in every DFM of the fake project -- ResQ keeps
-        answering ``"14: User Entry"``, ``"15: User Entry"`` and so on out of
-        unallocated memory, and reading a value for one of those rows crashes
-        inside ResQ3Automation.dll.
-        """
-
-        try:
-            return max(int(dfm.RatioAverageCount), 0)
-        except Exception:
-            return 0
-
     def _probe_dfm_averages(self, dfm):
         """Skip a DFM whose ResQ average formulas cannot be evaluated.
 
@@ -519,28 +490,23 @@ class ResQReservingClassExporter:
         fails at its formula 7 on every read and every write -- surfaces as an
         access violation inside ResQ3Automation.dll rather than a clean error,
         so each formula's first column is read here before anything is written.
-        Only the DFM's own rows are read: the phantom ones past the end fail
-        the same way and would skip every DFM in the reserving class.
         """
 
-        count = self._average_formula_count(dfm)
-        for api_index in range(1, (count or MAX_AVERAGE_FORMULA_PROBE) + 1):
+        for api_index in range(1, 50):
             try:
-                label = _strip_formula_index(dfm.AverageFormula(api_index))
+                label = str(dfm.AverageFormula(api_index))
             except Exception:
                 return
             try:
                 dfm.AverageRatioValues(1, api_index)
             except Exception as exc:
                 # ResQ names a formula "7: Vol + 0.9 - all"; the number is already in the message.
+                label = re.sub(r"^\s*\d+\s*:\s*", "", label).strip()
                 raise ExportSkipped(
                     "resq_average_unreadable",
                     f"ResQ cannot evaluate average formula {api_index} ({label}); "
                     "fix or remove that formula in ResQ before exporting the DFM",
                 ) from exc
-            if not count and _is_user_entry_label(label):
-                # No count to bound the walk: stop where the labels turn to noise.
-                return
 
     def _dfm_development_column_count(self, dfm):
         try:
@@ -582,20 +548,8 @@ class ResQReservingClassExporter:
         return updates
 
     def _average_formula_display_indexes(self, dfm):
-        """Map each of the DFM's average formula labels to its ResQ row number.
-
-        A ResQ DFM repeats the User Entry row -- three of them sit between
-        ``Simple - 2`` and the reserving class's own ``Aug 2024`` in the fake
-        project -- and ArcRho keeps only the first, so the repeats are dropped
-        here the same way the import drops them. The walk stops at the DFM's
-        real row count; the phantom ``User Entry`` rows ResQ reports past the
-        end would otherwise hide every label that follows the first one.
-        """
-
-        count = self._average_formula_count(dfm)
         out = {}
-        user_entry_seen = False
-        for api_index in range(1, (count or MAX_AVERAGE_FORMULA_PROBE) + 1):
+        for api_index in range(1, 50):
             try:
                 raw_name = str(dfm.AverageFormula(api_index))
             except Exception:
@@ -604,13 +558,9 @@ class ResQReservingClassExporter:
             if match:
                 display_index, label = int(match.group(1)), match.group(2)
             else:
-                display_index, label = api_index, raw_name.strip()
-            is_user_entry = _is_user_entry_label(label)
-            if not (is_user_entry and user_entry_seen):
-                out.setdefault(label, display_index)
-            user_entry_seen = user_entry_seen or is_user_entry
-            if not count and is_user_entry:
-                # No count to bound the walk: stop where the labels turn to noise.
+                display_index, label = api_index - 1, raw_name.strip()
+            out.setdefault(label, display_index)
+            if label == "User Entry":
                 break
         return out
 
@@ -1068,170 +1018,87 @@ def export_result_table_payload(result) -> dict:
     }
 
 
-_NEWER_CELLS = {
-    "arcrho": ("ArcRho", "ok"),
-    "resq": ("ResQ", "warn"),
-}
+def resq_newer_rows(preview) -> list:
+    """The preview rows whose ResQ copy changed after the ArcRho one and that the export would overwrite."""
 
-
-def export_preview_cells(row) -> dict:
-    """One preview row's cells: the timestamp pair, which side is newer, and what the export does.
-
-    ``newer_side`` and ``export_supported`` are the plan's own verdicts
-    (``resq_migration.sync``), never a re-reading of the displayed
-    timestamps. A blank ``newer_side`` means the two match or one timestamp is
-    unknown, which the Newer column tells apart by whether both cells carry a
-    time.
-    """
-
-    arcrho_timestamp = str(row.get("arcrho_timestamp") or "")
-    resq_timestamp = str(row.get("resq_timestamp") or "")
-    newer = str(row.get("newer_side") or "")
-    unknown = not arcrho_timestamp or not resq_timestamp
-    newer_text, newer_tone = _NEWER_CELLS.get(newer, ("Unknown", "muted") if unknown else ("Same", "muted"))
-    if not row.get("export_supported"):
-        plan_text, plan_tone = "Not exported", "muted"
-    elif newer == "resq":
-        plan_text, plan_tone = "Overwrites newer ResQ copy", "warn"
-    else:
-        plan_text, plan_tone = "Overwrites ResQ copy", "info"
-    return {
-        "kind": str(row.get("kind") or KIND_DATASET),
-        "name": str(row.get("name") or ""),
-        "arcrho_timestamp": arcrho_timestamp,
-        "resq_timestamp": resq_timestamp,
-        "newer": {"text": newer_text, "tone": newer_tone},
-        "plan": {"text": plan_text, "tone": plan_tone},
-        "detail": str(row.get("detail") or row.get("status") or ""),
-    }
-
-
-def export_preview_table_payload(preview, project_name, rc_path, connection_name, direction) -> dict:
-    """Project the Bridge's preview rows into the read-only timestamp table shown before the write.
-
-    The export is all-or-nothing -- it writes every item it supports, in
-    ArcRho's dependency order -- so the table is not selectable: it is the
-    place to check the timestamp pairs, and it is accepted or cancelled.
-    """
-
-    rows = [
-        {"id": str(row.get("id") or f"preview-{index}"), "cells": export_preview_cells(row)}
-        for index, row in enumerate(preview, start=1)
+    return [
+        row
+        for row in preview
+        if isinstance(row, dict) and row.get("newer_side") == "resq" and row.get("export_supported")
     ]
-    exported = sum(1 for row in preview if row.get("export_supported"))
-    resq_newer = sum(1 for row in preview if row.get("export_supported") and row.get("newer_side") == "resq")
-    caution = (
-        f"{resq_newer} of them changed in ResQ more recently than in ArcRho."
-        if resq_newer
-        else "None of them changed in ResQ more recently than in ArcRho."
-    )
-    return {
-        "title": TITLE,
-        # Host the review inside the active Project Instance page as a nested
-        # window, so an item can be opened and checked while it stays open.
-        "host": "projectInstance",
-        "selectable": False,
-        "summary": (
-            f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
-            f"Latest ArcRho change: {direction.get('arcrho_timestamp') or 'Unknown'} | "
-            f"Latest ResQ change: {direction.get('resq_timestamp') or 'Unknown'}\n"
-            f"Compared {len(preview)} item(s) held by both systems; the export overwrites {exported} of them "
-            f"in ResQ. {caution} Items ResQ does not have are not listed and the export skips them."
-        ),
-        "columns": [
-            {"key": "kind", "label": "Type", "width": 150},
-            {"key": "name", "label": "Dataset / Method Output", "width": 250},
-            {"key": "arcrho_timestamp", "label": "ArcRho Timestamp", "width": 220},
-            {"key": "resq_timestamp", "label": "ResQ Timestamp", "width": 220},
-            {"key": "newer", "label": "Newer", "width": 90},
-            {"key": "plan", "label": "Export", "width": 210},
-            {"key": "detail", "label": "Details", "width": 320},
-        ],
-        "rows": rows,
-        "acceptLabel": "Export to ResQ",
-        "cancelLabel": "Cancel",
-        "searchPlaceholder": "Filter datasets and methods",
-        "emptyMessage": (
-            "No dataset or method exists in both ArcRho and ResQ for this reserving class, "
-            "so the export would write nothing."
-        ),
-    }
 
 
-def confirm_without_preview(ui, error) -> bool:
-    """Ask whether to export when the timestamp comparison could not be made.
+def open_link(row) -> dict:
+    """A message-box link that opens one preview row in the active Project Instance page.
 
-    The comparison is a check, not a gate: a preview the Bridge could not
-    produce is reported, and the person decides.
+    A dataset opens as a Dataset Viewer window; a method output opens its
+    method window, which for a DFM is found by the method name the Bridge
+    reported rather than the output dataset name.
     """
 
-    confirmation = _message(
-        ui,
-        (
-            "The ResQ timestamp comparison failed, so the ArcRho and ResQ timestamps "
-            f"cannot be shown before the export.\n\n{error}\n\n"
-            "Exporting overwrites the matching ResQ objects with the ArcRho copies."
-        ),
-        kind="warning",
-        buttons=["Export Anyway", "Cancel"],
-    )
-    return str(getattr(confirmation, "button", "") or "").strip().casefold() == "export anyway"
+    kind = str(row.get("kind") or KIND_DATASET)
+    name = str(row.get("name") or "")
+    args = {"datasetName": name}
+    if row.get("dataset_type"):
+        args["datasetTypeName"] = str(row["dataset_type"])
+    if kind != KIND_DATASET:
+        args["methodType"] = kind
+        args["openMethod"] = True
+        if kind == "DFM" and row.get("method_name"):
+            args["methodName"] = str(row["method_name"])
+    return {"label": name, "kind": kind, "args": args}
 
 
-def review_export_plan(ui, root, project_name, rc_path) -> dict:
-    """Compare every timestamp with ResQ and let the person review the pairs before the export writes.
+def check_resq_timestamps(ui, root, project_name, rc_path) -> dict:
+    """Compare every dataset and method timestamp with ResQ before the export writes.
 
-    Runs the queue's ``preview`` phase -- the same comparison the Sync macro
-    reviews -- and shows it as the read-only table above. Accepting the table
-    is what starts the export; cancelling it publishes nothing.
+    Runs the Bridge's preview phase and lists the items ResQ changed more
+    recently than ArcRho, each as a link that opens it in ArcRho, so the
+    person can double-check before the export overwrites them. The check is
+    a caution, not a gate: a failed comparison is reported and the export
+    goes ahead, and only the person's own Cancel stops it.
     """
 
-    from arcrho_api.resq_sync_queue import PREVIEW_TIMEOUT_SEC, BridgeUnavailableError, run_bridge_phase
-    from arcrho_api.ui import await_review_table
+    from arcrho_api.resq_sync_queue import PREVIEW_TIMEOUT_SEC, run_bridge_phase
 
     progress = ui.progress_bar(
-        progress_id=f"{PROGRESS_ID}-preview",
+        progress_id=f"{PROGRESS_ID}-check",
         title=TITLE,
-        label=f"Comparing ArcRho and ResQ: {rc_path}",
+        label=f"Checking ResQ timestamps: {rc_path}",
         total=0,
     )
-    preview_result = None
-    failure = None
     try:
-        preview_result = run_bridge_phase(
+        preview = run_bridge_phase(
             server_root=root,
             project_name=project_name,
             rc_path=rc_path,
             phase="preview",
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress,
-            progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
+            progress_label=f"Checking ResQ timestamps: {rc_path}",
             on_poll=_report_activity,
         )
-    except BridgeUnavailableError:
-        # Nothing was published; the caller reports this as a precondition.
-        raise
     except Exception as exc:
-        failure = exc
+        return {"status": "failed", "error": str(exc)}
     finally:
         progress.close()
-    if failure is not None:
-        return {"status": "failed", "error": str(failure), "accepted": confirm_without_preview(ui, failure)}
-    preview = [row for row in preview_result.get("preview") or [] if isinstance(row, dict)]
-    connection_name = str(preview_result.get("connection_name") or "")
-    direction = dict(preview_result.get("direction") or {})
-    completion = await_review_table(
+    rows = resq_newer_rows(preview.get("preview") or [])
+    if not rows:
+        return {"status": "checked", "resq_newer": []}
+    confirmation = _message(
         ui,
-        export_preview_table_payload(preview, project_name, rc_path, connection_name, direction),
-        on_poll=_report_activity,
+        (
+            f"ResQ changed {len(rows)} item(s) more recently than ArcRho. "
+            "Exporting overwrites them with the ArcRho copies.\n\n"
+            "Click an item to open it in ArcRho and double-check before continuing."
+        ),
+        kind="warning",
+        buttons=["Export Anyway", "Cancel"],
+        links=[open_link(row) for row in rows],
+        presentation="floating",
     )
-    return {
-        "status": "reviewed",
-        "accepted": bool(completion.get("accepted")),
-        "preview": preview,
-        "connection_name": connection_name,
-        "direction": direction,
-    }
+    proceed = str(getattr(confirmation, "button", "") or "").strip().casefold() == "export anyway"
+    return {"status": "checked", "resq_newer": [row["name"] for row in rows], "cancelled": not proceed}
 
 
 def run_macro(active_dfm=None, active_context=None):
@@ -1266,17 +1133,31 @@ def run_macro(active_dfm=None, active_context=None):
             _message(ui, message, kind="warning", auto_close_ms=9000)
             return {"status": "cancelled", "cancelled": True, "reason": "active_window_dirty", "message": message}
 
+        confirmation = _message(
+            ui,
+            (
+                "Export this ArcRho reserving class to ResQ?\n\n"
+                f"Project: {project_name}\n"
+                f"Path: {rc_path}\n\n"
+                "ArcRho datasets, method selections and Notes overwrite the matching ResQ "
+                "objects, and ResQ recalculates its methods from them."
+            ),
+            kind="warning",
+            buttons=["Export", "Cancel"],
+        )
+        if str(getattr(confirmation, "button", "") or "").strip().casefold() != "export":
+            return {"status": "cancelled", "cancelled": True, "message": "Export cancelled by user."}
+
         root = get_server_root(required=True)
-        review = review_export_plan(ui, root, project_name, rc_path)
-        if not review.get("accepted"):
+        timestamp_check = check_resq_timestamps(ui, root, project_name, rc_path)
+        if timestamp_check.get("cancelled"):
             return {
                 "status": "cancelled",
                 "cancelled": True,
-                "reason": "review_cancelled",
-                "review": review,
-                "message": "Export cancelled by user.",
+                "reason": "resq_newer",
+                "timestamp_check": timestamp_check,
+                "message": "Export cancelled by user after the ResQ timestamp check.",
             }
-
         progress = ui.progress_bar(
             progress_id=PROGRESS_ID,
             title=TITLE,
@@ -1297,7 +1178,7 @@ def run_macro(active_dfm=None, active_context=None):
         progress = None
         payload = export_result_table_payload(result)
         result["message"] = payload["summary"]
-        result["preview"] = review.get("preview") or []
+        result["timestamp_check"] = timestamp_check
         await_review_table(ui, payload, on_poll=_report_activity)
         return result
     except BridgeUnavailableError as exc:
