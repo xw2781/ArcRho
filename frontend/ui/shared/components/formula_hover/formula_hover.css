@@ -2,7 +2,8 @@
 ===============================================================================
 Linked-Cell Formula Editor
 Only what the Dataset Viewer's editor adds to the shared `.arFormulaBar`: where
-it sits, and the inline error it shows under the formula.
+it sits, how the `fx` badge says it can be dragged, and the inline error it
+shows under the formula.
 ===============================================================================
 */
 .arFormulaHover {
@@ -11,6 +12,24 @@ it sits, and the inline error it shows under the formula.
   top: 0;
   z-index: 10040;
   flex-wrap: wrap;
+}
+
+/* The `fx` badge carries the bar off its cell when it covers something the user
+   needs to read. Nothing else on the bar is a handle. */
+.arFormulaHover .arFormulaBarFxIcon {
+  cursor: grab;
+  touch-action: none;
+}
+
+.arFormulaHover.isDragging .arFormulaBarFxIcon {
+  cursor: grabbing;
+}
+
+/* A hand-placed bar is no longer tied to a cell, so it rides above the grid it
+   was moved away from and drops the settling slide it opens with. */
+.arFormulaHover.isDragPlaced {
+  z-index: 10050;
+  transition: none;
 }
 
 .arFormulaHover.has-error {

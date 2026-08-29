@@ -7,9 +7,9 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829b";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
-import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260812b";
+import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260829b";
 import {
   buildInternalDatasetReferenceText,
   isInternalDatasetReference,
@@ -37,18 +37,35 @@ export function wireDatasetGridInteractions(deps) {
 
   // Digits typed against a multi-cell selection accumulate here until the selection changes.
   let rangeFillSession = null;
-  // Cross-window reference pick: armed while this window's cell edit holds a
+  // Cross-window reference pick: armed while an edit in this window holds a
   // formula draft that can accept a [Dataset][rows] reference picked from
-  // another open Dataset window; the gesture flag tracks a pick drag in the
+  // another open Dataset window. The owner says which editor is waiting for it
+  // — a cell being typed into, or the floating formula bar — so a picked range
+  // goes back to the right one. The gesture flag tracks a pick drag in the
   // window doing the picking.
   let referencePickArmed = false;
+  let referencePickOwner = "";
   let referencePickGesture = false;
+  // Whether this window has offered a range yet. Until it has, the selection it
+  // happened to be carrying is not part of anyone's formula and is left alone.
+  let referencePickOffered = false;
+  // Whether the grid is currently wearing the pick treatment, so the sweep that
+  // applies it can be skipped entirely on the ordinary selection changes that
+  // have nothing to do with a pick.
+  let referencePickDecorated = false;
 
   const formulaHover = createFormulaHoverEditor({
     onCommit: commitHoveredExternalFormula,
     onDismiss: () => document.getElementById("keySink")?.focus?.({ preventScroll: true }),
     onEditStart: cancelExternalReference,
     onStatus: setStatus,
+    onDraftChange: (value) => syncReferencePickSession(value, "bar"),
+    onClosed: () => {
+      if (referencePickOwner === "bar") stopReferencePickSession();
+    },
+    // Picking cells in another window takes focus out of this one; the formula
+    // bar has to survive that or there is nothing to pick into.
+    shouldStayOpenUnfocused: () => referencePickArmed && referencePickOwner === "bar",
   });
 
   const spreadsheetTable = createSpreadsheetTableController({
@@ -67,7 +84,10 @@ export function wireDatasetGridInteractions(deps) {
       state.activeCell = activeCell;
       state.selectionAnchor = anchorCell;
     },
-    onAfterWrite: resetRangeFillSession,
+    onAfterWrite: () => {
+      resetRangeFillSession();
+      applyReferencePickDecoration();
+    },
     cellSelector: "td[data-r][data-c]",
     rowHeaderSelector: "th.rowhdr[data-r]",
     columnHeaderSelector: "th.colhdr[data-c]",
@@ -309,17 +329,27 @@ export function wireDatasetGridInteractions(deps) {
     return !!raw && (raw.startsWith("=") || !!parseExcelReference(raw));
   }
 
-  function syncReferencePickSession(rawValue) {
-    const armed = !!state.editingCell && isInternalReferencePickDraft(rawValue);
+  function syncReferencePickSession(rawValue, owner = "cell") {
+    const editing = owner === "bar" ? !!formulaHover.isEditing?.() : !!state.editingCell;
+    const armed = editing && isInternalReferencePickDraft(rawValue);
+    // One editor at a time: a draft that has stopped looking like a reference
+    // only ends the pick if it is the draft the pick was armed for.
+    if (!armed && referencePickOwner && referencePickOwner !== owner) return;
+    if (armed) referencePickOwner = owner;
     if (armed === referencePickArmed) return;
     referencePickArmed = armed;
-    if (armed) beginReferencePick();
-    else endReferencePick();
+    if (armed) {
+      beginReferencePick();
+      return;
+    }
+    referencePickOwner = "";
+    endReferencePick();
   }
 
   function stopReferencePickSession() {
     if (!referencePickArmed) return;
     referencePickArmed = false;
+    referencePickOwner = "";
     endReferencePick();
   }
 
@@ -330,8 +360,7 @@ export function wireDatasetGridInteractions(deps) {
    * picks re-aim it the way Excel re-aims the reference under the caret.
    */
   function applyDatasetReferencePick(message = {}) {
-    const edit = state.editingCell;
-    if (!edit || !referencePickArmed) return false;
+    if (!referencePickArmed) return false;
     const text = buildInternalDatasetReferenceText({
       datasetName: message.datasetName,
       rowStart: message.rowStart,
@@ -341,6 +370,11 @@ export function wireDatasetGridInteractions(deps) {
       isVector: String(message.dataFormat || "").trim().toLowerCase() === "vector",
     });
     if (!text) return false;
+    if (referencePickOwner === "bar") {
+      return formulaHover.setDraft(text, { focus: !!message.final });
+    }
+    const edit = state.editingCell;
+    if (!edit) return false;
     const input = document.querySelector(`#tableWrap .dsCellInput[data-r="${edit.r}"][data-c="${edit.c}"]`);
     if (!input) return false;
     input.value = text;
@@ -378,7 +412,9 @@ export function wireDatasetGridInteractions(deps) {
     const colStart = Math.max(0, Math.min(cornerA.c, cornerB.c));
     const colEnd = Math.min(colLimit, Math.max(cornerA.c, cornerB.c));
     if (rowEnd < rowStart || colEnd < colStart) return;
+    referencePickOffered = true;
     publishReferencePick({ rowStart, rowEnd, colStart, colEnd, final: !!final });
+    applyReferencePickDecoration();
   }
 
   async function commitHoveredExternalFormula({ formula, context }) {
@@ -756,6 +792,63 @@ export function wireDatasetGridInteractions(deps) {
 
   function applySelectionFromState() {
     spreadsheetTable.applyDom();
+    applyReferencePickDecoration();
+  }
+
+  /**
+   * The rectangle this window is offering to the window that is writing a
+   * formula: the last range the user drew, which is also the one published.
+   */
+  function referencePickRange() {
+    if (!state.referencePickRequester || !referencePickOffered) return null;
+    const ranges = Array.isArray(state.selRanges) ? state.selRanges : [];
+    return ranges.length ? ranges[ranges.length - 1] : null;
+  }
+
+  /**
+   * Mark what this window is offering, the way a spreadsheet does while a
+   * formula is reading from it: the picked range is ringed by moving dashes,
+   * and the whole grid says its cells can be pointed at.
+   */
+  function applyReferencePickDecoration() {
+    const picking = !!state.referencePickRequester;
+    // No pick running and none painted, which is every ordinary selection.
+    if (!picking && !referencePickDecorated) return;
+    const wrap = document.getElementById("tableWrap");
+    if (!wrap) return;
+    if (!picking) referencePickOffered = false;
+    referencePickDecorated = picking;
+    wrap.querySelector("table")?.classList?.toggle("isReferencePickSource", picking);
+    const range = referencePickRange();
+    wrap.querySelectorAll("td[data-r][data-c]").forEach((cell) => {
+      const row = Number(cell.dataset?.r);
+      const column = Number(cell.dataset?.c);
+      const inside = !!range
+        && row >= range.r0 && row <= range.r1
+        && column >= range.c0 && column <= range.c1;
+      const top = inside && row === range.r0;
+      const bottom = inside && row === range.r1;
+      const left = inside && column === range.c0;
+      const right = inside && column === range.c1;
+      // Only the perimeter carries the dashes, so a cell in the middle of a
+      // large range is left without an overlay to animate.
+      cell.classList.toggle("arReferencePickCell", top || bottom || left || right);
+      cell.classList.toggle("arReferencePickEdgeTop", top);
+      cell.classList.toggle("arReferencePickEdgeBottom", bottom);
+      cell.classList.toggle("arReferencePickEdgeLeft", left);
+      cell.classList.toggle("arReferencePickEdgeRight", right);
+      if (!picking) cell.classList.remove("arReferencePickHover");
+    });
+  }
+
+  /** The cell under the pointer, lit up before it has been picked. */
+  function setReferencePickHover(cell) {
+    const wrap = document.getElementById("tableWrap");
+    if (!wrap) return;
+    wrap.querySelectorAll("td.arReferencePickHover").forEach((hovered) => {
+      if (hovered !== cell) hovered.classList.remove("arReferencePickHover");
+    });
+    if (cell && state.referencePickRequester) cell.classList.add("arReferencePickHover");
   }
 
   function clearGridSelection() {
@@ -828,6 +921,14 @@ export function wireDatasetGridInteractions(deps) {
 
     const wrap = document.getElementById("tableWrap");
     if (!wrap) return;
+
+    // While another window is waiting for a range, the cell under the pointer
+    // lights up before it is picked, so it is clear what a click would take.
+    wrap.addEventListener("mouseover", (e) => {
+      if (!state.referencePickRequester) return;
+      setReferencePickHover(e.target.closest?.("td[data-r][data-c]") || null);
+    });
+    wrap.addEventListener("mouseleave", () => setReferencePickHover(null));
 
     // start drag
     wrap.addEventListener("mousedown", (e) => {

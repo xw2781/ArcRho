@@ -19,7 +19,7 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829b";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
@@ -37,7 +37,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260829a";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260829b";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -90,7 +90,7 @@ import {
 } from "/ui/shell/browsing_history.js";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
-import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260829a";
+import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260829b";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";

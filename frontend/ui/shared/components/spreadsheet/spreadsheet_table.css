@@ -15,6 +15,29 @@
   --ar-spreadsheet-selected-label-fill: #a6a6a6;
   --ar-spreadsheet-anchor-color: #0f172a;
   --ar-spreadsheet-link-error-text: #b91c1c;
+  /* A linked range is outlined in the color of where its values come from:
+     Excel's own green for a workbook, ArcRho's blue for another dataset. The
+     same two colors name the two kinds of link everywhere they are shown. */
+  --ar-spreadsheet-excel-link-border: #217346;
+  --ar-spreadsheet-excel-link-glow: rgba(33, 115, 70, 0.28);
+  --ar-spreadsheet-excel-link-glow-active: rgba(33, 115, 70, 0.5);
+  --ar-spreadsheet-internal-link-border: #2b6df6;
+  --ar-spreadsheet-internal-link-glow: rgba(43, 109, 246, 0.28);
+  --ar-spreadsheet-internal-link-glow-active: rgba(43, 109, 246, 0.5);
+  --ar-spreadsheet-reference-pick-hover-fill: rgba(43, 109, 246, 0.1);
+}
+
+/* The two link colors keep their identities on a dark cell fill, where both the
+   Excel green and the light-theme blue go muddy. Kept beside the light values
+   they answer rather than in the theme sheet, so one file owns the pair. */
+:root[data-arcrho-theme="dark"] {
+  --ar-spreadsheet-excel-link-border: #3fbf7f;
+  --ar-spreadsheet-excel-link-glow: rgba(63, 191, 127, 0.3);
+  --ar-spreadsheet-excel-link-glow-active: rgba(63, 191, 127, 0.52);
+  --ar-spreadsheet-internal-link-border: #6ba5ff;
+  --ar-spreadsheet-internal-link-glow: rgba(107, 165, 255, 0.3);
+  --ar-spreadsheet-internal-link-glow-active: rgba(107, 165, 255, 0.52);
+  --ar-spreadsheet-reference-pick-hover-fill: rgba(107, 165, 255, 0.16);
 }
 
 .arSpreadsheetTable {
@@ -85,9 +108,13 @@
   outline-offset: -2px;
 }
 
-/* Multi-cell formula arrays use real grid edges so the perimeter stays continuous across cells. */
+/* A linked cell or range uses real grid edges rather than an outline, so the
+   perimeter stays continuous across the cells of one range. The default color
+   is Excel's; the rule below re-tints it for a link to another dataset. */
 .arSpreadsheetTable td.arArrayFormulaCell {
-  --ar-array-formula-border: #2b6df6;
+  --ar-array-formula-border: var(--ar-spreadsheet-excel-link-border);
+  --ar-array-formula-glow: var(--ar-spreadsheet-excel-link-glow);
+  --ar-array-formula-glow-active: var(--ar-spreadsheet-excel-link-glow-active);
   --ar-array-formula-top-glow: transparent;
   --ar-array-formula-right-glow: transparent;
   --ar-array-formula-bottom-glow: transparent;
@@ -100,62 +127,146 @@
   transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
-/* An ArcRho dataset link wears the same range perimeter as an Excel array
-   formula, re-tinted teal so an internal link reads apart from an Excel one. */
+/* An ArcRho dataset link wears the same perimeter in ArcRho's blue, so the two
+   kinds of link stay apart at a glance. */
 .arSpreadsheetTable td.arArrayFormulaCell.arInternalLinkCell {
-  --ar-array-formula-border: #0e9f6e;
+  --ar-array-formula-border: var(--ar-spreadsheet-internal-link-border);
+  --ar-array-formula-glow: var(--ar-spreadsheet-internal-link-glow);
+  --ar-array-formula-glow-active: var(--ar-spreadsheet-internal-link-glow-active);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeTop {
   border-top: 1px solid var(--ar-array-formula-border) !important;
-  --ar-array-formula-top-glow: rgba(43, 109, 246, 0.28);
-}
-
-.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeTop {
-  --ar-array-formula-top-glow: rgba(14, 159, 110, 0.28);
-}
-
-.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeRight {
-  --ar-array-formula-right-glow: rgba(14, 159, 110, 0.28);
-}
-
-.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeBottom {
-  --ar-array-formula-bottom-glow: rgba(14, 159, 110, 0.28);
-}
-
-.arSpreadsheetTable td.arInternalLinkCell.arArrayFormulaEdgeLeft {
-  --ar-array-formula-left-glow: rgba(14, 159, 110, 0.28);
+  --ar-array-formula-top-glow: var(--ar-array-formula-glow);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeRight {
   border-right-color: var(--ar-array-formula-border) !important;
-  --ar-array-formula-right-glow: rgba(43, 109, 246, 0.28);
+  --ar-array-formula-right-glow: var(--ar-array-formula-glow);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeBottom {
   position: relative;
   z-index: 1;
   border-bottom: 1px solid var(--ar-array-formula-border) !important;
-  --ar-array-formula-bottom-glow: rgba(43, 109, 246, 0.28);
+  --ar-array-formula-bottom-glow: var(--ar-array-formula-glow);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeLeft {
   border-left: 1px solid var(--ar-array-formula-border) !important;
-  --ar-array-formula-left-glow: rgba(43, 109, 246, 0.28);
+  --ar-array-formula-left-glow: var(--ar-array-formula-glow);
 }
 
 .arSpreadsheetTable td.arArrayFormulaActive.arArrayFormulaEdgeTop {
-  --ar-array-formula-top-glow: rgba(43, 109, 246, 0.5);
+  --ar-array-formula-top-glow: var(--ar-array-formula-glow-active);
 }
 
 .arSpreadsheetTable td.arArrayFormulaActive.arArrayFormulaEdgeRight {
-  --ar-array-formula-right-glow: rgba(43, 109, 246, 0.5);
+  --ar-array-formula-right-glow: var(--ar-array-formula-glow-active);
 }
 
 .arSpreadsheetTable td.arArrayFormulaActive.arArrayFormulaEdgeBottom {
-  --ar-array-formula-bottom-glow: rgba(43, 109, 246, 0.5);
+  --ar-array-formula-bottom-glow: var(--ar-array-formula-glow-active);
 }
 
 .arSpreadsheetTable td.arArrayFormulaActive.arArrayFormulaEdgeLeft {
-  --ar-array-formula-left-glow: rgba(43, 109, 246, 0.5);
+  --ar-array-formula-left-glow: var(--ar-array-formula-glow-active);
+}
+
+/* ---------------------------------------------------------------------------
+   Picking cells for a formula being written in another window.
+
+   While a Dataset window is waiting for a range, this table answers the pointer
+   the way a spreadsheet does: the cell under the pointer lights up, and the
+   range picked so far is ringed by moving dashes. The dash period divides both
+   the cell width and the cell height, so the dashes carry on unbroken from one
+   cell into the next.
+   --------------------------------------------------------------------------- */
+.arSpreadsheetTable.isReferencePickSource td[data-r][data-c] {
+  cursor: cell;
+}
+
+/* Painted as an overlay rather than a cell background, because a theme owns the
+   cell's own fill and would win over anything set here. */
+.arSpreadsheetTable td.arReferencePickHover {
+  position: relative;
+}
+
+.arSpreadsheetTable td.arReferencePickHover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--ar-spreadsheet-reference-pick-hover-fill);
+  box-shadow: inset 0 0 0 1px var(--ar-spreadsheet-internal-link-border);
+}
+
+.arSpreadsheetTable td.arReferencePickCell {
+  position: relative;
+}
+
+/* Above the neighboring cells' own fills, and below the sticky header and
+   row-label panes, which must keep covering it as the grid scrolls. */
+.arSpreadsheetTable td.arReferencePickCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image:
+    var(--ar-reference-pick-top, none),
+    var(--ar-reference-pick-right, none),
+    var(--ar-reference-pick-bottom, none),
+    var(--ar-reference-pick-left, none);
+  background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
+  background-size: 4px 1px, 1px 4px, 4px 1px, 1px 4px;
+  background-position: 0 0, 100% 0, 0 100%, 0 0;
+  animation: arSpreadsheetReferencePickAnts 480ms linear infinite;
+}
+
+.arSpreadsheetTable td.arReferencePickEdgeTop {
+  --ar-reference-pick-top: repeating-linear-gradient(
+    90deg,
+    var(--ar-spreadsheet-internal-link-border) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.arSpreadsheetTable td.arReferencePickEdgeRight {
+  --ar-reference-pick-right: repeating-linear-gradient(
+    180deg,
+    var(--ar-spreadsheet-internal-link-border) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.arSpreadsheetTable td.arReferencePickEdgeBottom {
+  --ar-reference-pick-bottom: repeating-linear-gradient(
+    90deg,
+    var(--ar-spreadsheet-internal-link-border) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.arSpreadsheetTable td.arReferencePickEdgeLeft {
+  --ar-reference-pick-left: repeating-linear-gradient(
+    180deg,
+    var(--ar-spreadsheet-internal-link-border) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+/* One period of travel, opposite ways on opposite edges, so the dashes read as
+   one ring turning around the range rather than four edges sliding. */
+@keyframes arSpreadsheetReferencePickAnts {
+  to {
+    background-position: 4px 0, 100% 4px, -4px 100%, 0 -4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arSpreadsheetTable td.arReferencePickCell::after {
+    animation: none;
+  }
 }

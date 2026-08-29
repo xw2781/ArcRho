@@ -140,7 +140,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260829a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260829b"
 );
 
 const postLinksStatus = (message, tone = "") => {

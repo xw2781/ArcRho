@@ -93,7 +93,13 @@ lives here.
   white-space: pre;
   cursor: text;
 }
+/* A reference is written in the color of where its values come from, matching
+   the outline the linked cells themselves wear in the grid. */
 .arFormulaBarDisplay .fmtExcelRef {
   color: #217346;
+  font-weight: 600;
+}
+.arFormulaBarDisplay .fmtInternalRef {
+  color: #2b6df6;
   font-weight: 600;
 }

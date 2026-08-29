@@ -259,3 +259,66 @@ test("break and hard-code remove ownership and mark the model dirty state", () =
   controller.restoreSaved();
   assert.deepEqual(controller.serialize(), [LINK]);
 });
+
+const spreadsheetCss = await readFile(
+  new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
+  "utf8",
+);
+
+test("a link is outlined in the color of where its values come from", () => {
+  // Excel green is the default a linked range wears; a dataset link re-tints it.
+  assert.match(
+    spreadsheetCss,
+    /td\.arArrayFormulaCell \{[^}]*--ar-array-formula-border: var\(--ar-spreadsheet-excel-link-border\)/u,
+  );
+  assert.match(
+    spreadsheetCss,
+    /td\.arArrayFormulaCell\.arInternalLinkCell \{[^}]*--ar-array-formula-border: var\(--ar-spreadsheet-internal-link-border\)/u,
+  );
+  assert.match(spreadsheetCss, /--ar-spreadsheet-excel-link-border: #217346;/u);
+  assert.match(spreadsheetCss, /--ar-spreadsheet-internal-link-border: #2b6df6;/u);
+  // Every edge takes its glow from the one token the two rules above set, so a
+  // color can never be swapped on the border and missed on the glow.
+  for (const edge of ["top", "right", "bottom", "left"]) {
+    assert.ok(
+      spreadsheetCss.includes(`--ar-array-formula-${edge}-glow: var(--ar-array-formula-glow);`),
+      `the ${edge} edge glow follows the link's own color`,
+    );
+  }
+  // Both kinds stay legible on a dark cell fill.
+  assert.match(
+    spreadsheetCss,
+    /:root\[data-arcrho-theme="dark"\] \{[^}]*--ar-spreadsheet-excel-link-border: #3fbf7f;/u,
+  );
+});
+
+test("a range offered to another window's formula is ringed by moving dashes", () => {
+  assert.match(spreadsheetCss, /\.isReferencePickSource td\[data-r\]\[data-c\] \{\s*cursor: cell;/u);
+  // Drawn as an overlay, so a theme's own cell background cannot swallow it.
+  assert.match(
+    spreadsheetCss,
+    /td\.arReferencePickHover::before \{[^}]*box-shadow: inset 0 0 0 1px var\(--ar-spreadsheet-internal-link-border\)/u,
+  );
+  assert.match(
+    spreadsheetCss,
+    /td\.arReferencePickHover::before \{[^}]*background: var\(--ar-spreadsheet-reference-pick-hover-fill\)/u,
+  );
+  for (const edge of ["top", "right", "bottom", "left"]) {
+    const name = `${edge[0].toUpperCase()}${edge.slice(1)}`;
+    assert.ok(
+      spreadsheetCss.includes(`td.arReferencePickEdge${name} {`),
+      `the ${edge} edge of a picked range has a rule`,
+    );
+    assert.ok(
+      spreadsheetCss.includes(`--ar-reference-pick-${edge}: repeating-linear-gradient(`),
+      `the ${edge} edge of a picked range is drawn as dashes`,
+    );
+  }
+  // The dash period divides both the cell width and the cell height, so the
+  // dashes carry on unbroken from one cell into the next.
+  assert.match(spreadsheetCss, /background-size: 4px 1px, 1px 4px, 4px 1px, 1px 4px;/u);
+  assert.match(spreadsheetCss, /--ar-spreadsheet-cell-width: 100px;/u);
+  assert.match(spreadsheetCss, /--ar-spreadsheet-cell-height: 20px;/u);
+  assert.match(spreadsheetCss, /@keyframes arSpreadsheetReferencePickAnts \{/u);
+  assert.match(spreadsheetCss, /prefers-reduced-motion: reduce[\s\S]*?animation: none;/u);
+});

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Dataset formula bar can be dragged out of the way, and the window you point a formula at now shows what it is about to hand over.",
+  "details": [
+    "Drag the formula bar by its round fx badge when it covers a value you need to read; it goes back over its own cell as soon as it closes or shows another formula.",
+    "While you are writing a formula, the other dataset window follows the pointer: the cell under it lights up before you click, and the range you have picked is ringed by moving dashes.",
+    "The formula bar of a cell that is already linked now accepts a picked range too, so an existing link can be re-aimed without retyping it.",
+    "A link is coloured by where its values come from: green for Excel, blue for another ArcRho dataset, both around the cells and in the formula bar."
+  ]
+}

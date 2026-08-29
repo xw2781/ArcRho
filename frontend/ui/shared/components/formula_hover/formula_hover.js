@@ -1,12 +1,14 @@
 /*
 ===============================================================================
 Linked-Cell Formula Editor
-The floating formula bar for an Excel-linked Dataset cell. It wears the shared
+The floating formula bar for a linked Dataset cell. It wears the shared
 `.arFormulaBar` look and follows the same rules as the DFM Ratios bar: it sits
 above the linked cell — or the whole spilled range — sized to the formula it
 shows and never wider than the visible grid frame, it renders a colorized
 read-only view until the input is focused, and a click on the cell pins it open
-or closed.
+or closed. The `fx` badge carries it out of the way when it covers something the
+user needs to read, and it stays open while the formula is being pointed at
+cells in another Dataset window.
 ===============================================================================
 */
 import {
@@ -15,12 +17,13 @@ import {
   getFormulaBarContentWidth,
   invalidateFormulaBarWidthCache,
 } from "/ui/shared/components/formula_bar/formula_bar_layout.js?v=20260812a";
+import { createFormulaBarDragController } from "/ui/shared/components/formula_bar/formula_bar_drag.js?v=20260829b";
 import { tokenizeFormula } from "/ui/shared/components/formula_bar/formula_text.js?v=20260812a";
 
 const FORMULA_HOVER_STYLE_ID = "arcrho-formula-hover-style";
 const FORMULA_HOVER_STYLESHEETS = [
-  "/ui/shared/components/formula_bar/formula_bar.css?v=20260812a",
-  "/ui/shared/components/formula_hover/formula_hover.css?v=20260812a",
+  "/ui/shared/components/formula_bar/formula_bar.css?v=20260829b",
+  "/ui/shared/components/formula_hover/formula_hover.css?v=20260829b",
 ];
 const DEFAULT_HIDE_DELAY_MS = 140;
 const VIEWPORT_MARGIN_PX = 8;
@@ -77,7 +80,11 @@ function normalizedFormulaContext(rawContext) {
   return { ...rawContext, formula };
 }
 
-/** Colorized read-only rendering: Excel references carry the workbook color. */
+/**
+ * Colorized read-only rendering. A reference is shown in the color of where its
+ * values come from, the same pair the linked cells themselves are outlined in:
+ * green for a workbook, blue for another dataset in this reserving class.
+ */
 function renderFormulaDisplay(displayEl, rawText) {
   if (!displayEl) return;
   displayEl.textContent = "";
@@ -87,6 +94,15 @@ function renderFormulaDisplay(displayEl, rawText) {
     if (token.type === "excel") {
       const span = displayEl.ownerDocument.createElement("span");
       span.className = "fmtExcelRef";
+      span.textContent = token.text;
+      displayEl.appendChild(span);
+      continue;
+    }
+    // A dataset reference is two bracket groups — the name and the coordinates
+    // — which the tokenizer has already paired up for us.
+    if (token.type === "bracket" && (token.datasetName || token.datasetCoordinate)) {
+      const span = displayEl.ownerDocument.createElement("span");
+      span.className = "fmtInternalRef";
       span.textContent = token.text;
       displayEl.appendChild(span);
       continue;
@@ -111,6 +127,13 @@ export function createFormulaHoverEditor(options = {}) {
   const onEditStart = typeof options.onEditStart === "function" ? options.onEditStart : () => {};
   const onDismiss = typeof options.onDismiss === "function" ? options.onDismiss : () => {};
   const onStatus = typeof options.onStatus === "function" ? options.onStatus : () => {};
+  const onDraftChange = typeof options.onDraftChange === "function" ? options.onDraftChange : () => {};
+  const onClosed = typeof options.onClosed === "function" ? options.onClosed : () => {};
+  // True while the formula is being aimed at cells in another window, where
+  // losing focus is part of the gesture rather than the end of the edit.
+  const shouldStayOpenUnfocused = typeof options.shouldStayOpenUnfocused === "function"
+    ? options.shouldStayOpenUnfocused
+    : () => false;
   const getFrameElement = typeof options.getFrameElement === "function"
     ? options.getFrameElement
     : () => documentRef.getElementById?.("tableWrap") || null;
@@ -131,6 +154,23 @@ export function createFormulaHoverEditor(options = {}) {
   let barHovered = false;
   let commitPending = false;
   let commitSequence = 0;
+
+  // A hand-placed bar may go anywhere on screen: it is a fixed overlay, so the
+  // window is the only thing that has to keep it reachable.
+  const dragController = createFormulaBarDragController({
+    getBar: () => root,
+    getFrame: () => {
+      const width = Number(windowRef?.innerWidth || documentRef.documentElement?.clientWidth || 0);
+      const height = Number(windowRef?.innerHeight || documentRef.documentElement?.clientHeight || 0);
+      return {
+        left: VIEWPORT_MARGIN_PX,
+        top: VIEWPORT_MARGIN_PX,
+        right: Math.max(VIEWPORT_MARGIN_PX, width - VIEWPORT_MARGIN_PX),
+        bottom: Math.max(VIEWPORT_MARGIN_PX, height - VIEWPORT_MARGIN_PX),
+      };
+    },
+    getBarSize: (barEl) => barEl?.getBoundingClientRect?.() || null,
+  });
 
   function handleDocumentMouseDown(event) {
     if (!root?.classList?.contains("isOpen") || commitPending) return;
@@ -163,6 +203,7 @@ export function createFormulaHoverEditor(options = {}) {
     formulaMark.className = "arFormulaBarFxIcon";
     formulaMark.textContent = "fx";
     formulaMark.setAttribute("aria-hidden", "true");
+    formulaMark.title = "Drag to move this formula bar";
 
     input = documentRef.createElement("input");
     input.className = "arFormulaBarInput";
@@ -189,6 +230,8 @@ export function createFormulaHoverEditor(options = {}) {
     root.appendChild(errorMessage);
     documentRef.body.appendChild(root);
 
+    dragController.wireHandle(formulaMark, () => activeKey);
+
     root.addEventListener("mouseenter", () => {
       barHovered = true;
       clearHideTimer();
@@ -211,11 +254,15 @@ export function createFormulaHoverEditor(options = {}) {
       onEditStart(activeContext);
     });
     input.addEventListener("blur", () => {
+      // Clicking cells in another Dataset window takes focus out of this one.
+      // That is part of writing the formula, so the edit is left standing.
+      if (shouldStayOpenUnfocused()) return;
       setEditing(false);
       scheduleHide();
     });
     input.addEventListener("input", () => {
       clearError();
+      onDraftChange(String(input.value || ""));
       reposition();
     });
     input.addEventListener("keydown", (event) => {
@@ -297,8 +344,28 @@ export function createFormulaHoverEditor(options = {}) {
     ].map((part) => `${part.length}:${part}`).join("|");
   }
 
+  /** Pin the bar to one width, so its three clamps cannot disagree. */
+  function applyBarWidth(width) {
+    if (!(width > 0) || !root?.style) return;
+    const px = `${Math.round(width)}px`;
+    root.style.width = px;
+    root.style.minWidth = px;
+    root.style.maxWidth = px;
+  }
+
   function reposition() {
-    if (!root?.classList?.contains("isOpen") || !activeAnchor?.isConnected) return;
+    if (!root?.classList?.contains("isOpen")) return;
+    // A hand-placed bar still sizes itself to what it shows; only where it sits
+    // is the user's, so swapping between the input and the rendered display
+    // still fits.
+    if (dragController.hasPlacement()) {
+      const viewportWidth = Number(windowRef?.innerWidth || documentRef.documentElement?.clientWidth || 0);
+      const available = Math.max(0, viewportWidth - VIEWPORT_MARGIN_PX * 2);
+      applyBarWidth(Math.min(available, getFormulaBarContentWidth(root, contentKey(), input)));
+      dragController.applyPlacement();
+      return;
+    }
+    if (!activeAnchor?.isConnected) return;
     const resolvedPositionRect = typeof activePositionRect === "function"
       ? activePositionRect()
       : activePositionRect;
@@ -333,12 +400,7 @@ export function createFormulaHoverEditor(options = {}) {
       },
       frame,
     );
-    if (layout.width > 0) {
-      const px = `${layout.width}px`;
-      root.style.width = px;
-      root.style.minWidth = px;
-      root.style.maxWidth = px;
-    }
+    applyBarWidth(layout.width);
     root.style.left = `${layout.left}px`;
     root.style.top = `${layout.top}px`;
     root.dataset.placement = layout.placement;
@@ -354,6 +416,9 @@ export function createFormulaHoverEditor(options = {}) {
     activePositionRect = openOptions.positionRect || null;
     activeContext = context;
     activeKey = String(openOptions.key || context.reference || context.formula || "");
+    // A hand-placed bar belongs to the cell it was moved for; showing any other
+    // formula hands the bar back to its anchor.
+    dragController.syncTarget(activeKey);
     input.value = context.formula;
     input.readOnly = !!context.readOnly;
     input.setAttribute("aria-readonly", context.readOnly ? "true" : "false");
@@ -373,9 +438,12 @@ export function createFormulaHoverEditor(options = {}) {
 
   function hide() {
     if (!root || commitPending) return false;
+    const wasOpen = root.classList.contains("isOpen");
     const dismissedContext = activeContext;
     const shouldRestoreFocus = documentRef.activeElement === input;
     clearHideTimer();
+    // Where the user put the bar lasts as long as the formula it was moved for.
+    dragController.clearPlacement();
     root.classList.remove("isOpen", "has-error");
     root.setAttribute("aria-hidden", "true");
     input?.removeAttribute("aria-invalid");
@@ -388,13 +456,16 @@ export function createFormulaHoverEditor(options = {}) {
     activeContext = null;
     activeKey = "";
     barHovered = false;
+    // Hiding a bar that was already closed — every grid re-render does it — is
+    // not a close, and must not end an edit session someone else owns.
+    if (wasOpen) onClosed(dismissedContext);
     if (shouldRestoreFocus) onDismiss(dismissedContext);
     return true;
   }
 
   function scheduleHide() {
     clearHideTimer();
-    if (commitPending) return;
+    if (commitPending || shouldStayOpenUnfocused()) return;
     // A pinned editor stays put until it is clicked away or dismissed.
     if (pinnedKey && pinnedKey === activeKey) return;
     hideTimer = windowRef.setTimeout(() => {
@@ -489,10 +560,41 @@ export function createFormulaHoverEditor(options = {}) {
     return true;
   }
 
+  /** True while the raw formula is the thing on show, rather than the reading of it. */
+  function isEditing() {
+    return !!root?.classList?.contains("isOpen")
+      && !!input
+      && input.style?.display !== "none"
+      && !activeContext?.readOnly;
+  }
+
+  /**
+   * Replace the draft from outside — a range picked in another Dataset window.
+   * The caret goes to the end once the pick is settled, so typing carries on
+   * after the reference rather than inside it.
+   */
+  function setDraft(text, draftOptions = {}) {
+    if (!isEditing() || commitPending) return false;
+    input.value = String(text ?? "");
+    clearError();
+    reposition();
+    if (draftOptions.focus) {
+      windowRef.requestAnimationFrame?.(() => {
+        if (!isEditing()) return;
+        input.focus?.({ preventScroll: true });
+        try {
+          input.setSelectionRange(input.value.length, input.value.length);
+        } catch { /* keep browser default cursor placement */ }
+      });
+    }
+    return true;
+  }
+
   function destroy() {
     commitSequence += 1;
     commitPending = false;
     pinnedKey = "";
+    dragController.clearPlacement();
     clearHideTimer();
     invalidateFormulaBarWidthCache();
     windowRef?.removeEventListener?.("scroll", reposition, true);
@@ -514,8 +616,10 @@ export function createFormulaHoverEditor(options = {}) {
     commit,
     destroy,
     hide,
+    isEditing,
     open,
     reposition,
+    setDraft,
     togglePinned,
   };
 }

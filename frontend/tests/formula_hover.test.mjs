@@ -14,16 +14,38 @@ const sharedModuleUrl = (name) => new URL(
   `../ui/shared/components/formula_bar/${name}`,
   import.meta.url,
 ).href;
-// Resolved to real file URLs so the test exercises the shared layout and
-// tokenizer rather than a stand-in.
-const patchedSource = ["formula_bar_layout.js", "formula_text.js"].reduce((text, name) => {
-  const specifier = new RegExp(
-    `"/ui/shared/components/formula_bar/${name.replace(".", "\\.")}\\?v=[^"]*"`,
-    "u",
-  );
-  if (!specifier.test(text)) throw new Error(`${name} import not found in formula_hover.js`);
-  return text.replace(specifier, JSON.stringify(sharedModuleUrl(name)));
-}, source);
+const sharedSpecifier = (name) => new RegExp(
+  `"/ui/shared/components/formula_bar/${name.replace(".", "\\.")}\\?v=[^"]*"`,
+  "u",
+);
+const replaceSharedImport = (text, name, replacement, origin) => {
+  const specifier = sharedSpecifier(name);
+  if (!specifier.test(text)) throw new Error(`${name} import not found in ${origin}`);
+  return text.replace(specifier, JSON.stringify(replacement));
+};
+const asModule = (text) => `data:text/javascript;base64,${Buffer.from(text).toString("base64")}`;
+// The drag controller reaches for the layout module by the same runtime path,
+// so it is inlined with that import resolved rather than loaded from disk.
+const dragSource = await readFile(
+  new URL("../ui/shared/components/formula_bar/formula_bar_drag.js", import.meta.url),
+  "utf8",
+);
+const dragModuleUrl = asModule(replaceSharedImport(
+  dragSource,
+  "formula_bar_layout.js",
+  sharedModuleUrl("formula_bar_layout.js"),
+  "formula_bar_drag.js",
+));
+// Resolved to real modules so the test exercises the shared layout, tokenizer,
+// and drag controller rather than stand-ins.
+const patchedSource = [
+  ["formula_bar_layout.js", sharedModuleUrl("formula_bar_layout.js")],
+  ["formula_text.js", sharedModuleUrl("formula_text.js")],
+  ["formula_bar_drag.js", dragModuleUrl],
+].reduce(
+  (text, [name, replacement]) => replaceSharedImport(text, name, replacement, "formula_hover.js"),
+  source,
+);
 const formulaHover = await import(
   `data:text/javascript;base64,${Buffer.from(patchedSource).toString("base64")}`
 );
@@ -238,6 +260,8 @@ function setup(options = {}) {
   const dismisses = [];
   const editStarts = [];
   const statuses = [];
+  const drafts = [];
+  const closes = [];
   const controller = formulaHover.createFormulaHoverEditor({
     documentRef,
     windowRef,
@@ -245,12 +269,23 @@ function setup(options = {}) {
     onDismiss: (context) => dismisses.push(context),
     onEditStart: (context) => editStarts.push(context),
     onStatus: (message) => statuses.push(message),
+    onDraftChange: (value) => drafts.push(value),
+    onClosed: (context) => closes.push(context),
+    shouldStayOpenUnfocused: () => !!options.stayOpenUnfocused,
     onCommit: async (request) => {
       commits.push(request);
       return options.commitResult || { ok: true };
     },
   });
-  return { anchor, commits, controller, dismisses, documentRef, editStarts, statuses };
+  return { anchor, closes, commits, controller, dismisses, documentRef, drafts, editStarts, statuses, windowRef };
+}
+
+/** Open the editor and give the bar a real size, which the fake DOM will not. */
+function openSizedBar(context, linkContext = LINK_CONTEXT, openOptions = {}) {
+  context.controller.open(context.anchor, linkContext, openOptions);
+  const root = byClass(context.documentRef, "arFormulaHover");
+  root._rect = { left: 0, top: 0, right: 300, bottom: 30, width: 300, height: 30 };
+  return root;
 }
 
 const LINK_CONTEXT = {
@@ -462,4 +497,100 @@ test("a link in the grid's first row still gets its bar above the range", () => 
   // 57 - 30 - 4, which is above the grid's own top edge and still on screen.
   assert.equal(root.style.top, "23px");
   assert.equal(root.style.left, "150px");
+});
+
+test("the fx badge carries the bar off its cell, and a press alone moves nothing", () => {
+  const context = setup();
+  const root = openSizedBar(context);
+  const badge = byClass(context.documentRef, "arFormulaBarFxIcon");
+
+  badge.dispatch("pointerdown", { pointerId: 1, button: 0, clientX: 100, clientY: 200 });
+  badge.dispatch("pointermove", { pointerId: 1, clientX: 102, clientY: 201 });
+  assert.equal(root.classList.contains("isDragPlaced"), false, "under the slop of an ordinary press");
+
+  badge.dispatch("pointermove", { pointerId: 1, clientX: 160, clientY: 260 });
+  assert.equal(root.classList.contains("isDragPlaced"), true);
+  assert.equal(root.classList.contains("isDragging"), true);
+  assert.equal(root.style.left, "60px");
+  assert.equal(root.style.top, "60px");
+
+  badge.dispatch("pointerup", { pointerId: 1 });
+  assert.equal(root.classList.contains("isDragging"), false);
+  assert.equal(root.classList.contains("isDragPlaced"), true, "where it was dropped is where it stays");
+
+  // Re-measuring must not pull the bar back over the cell it was moved off.
+  context.controller.reposition();
+  assert.equal(root.style.left, "60px");
+  assert.equal(root.style.top, "60px");
+});
+
+test("a dropped bar is kept on screen", () => {
+  const context = setup();
+  const root = openSizedBar(context);
+  const badge = byClass(context.documentRef, "arFormulaBarFxIcon");
+
+  badge.dispatch("pointerdown", { pointerId: 2, button: 0, clientX: 0, clientY: 0 });
+  badge.dispatch("pointermove", { pointerId: 2, clientX: 4000, clientY: 4000 });
+
+  // 800 - 8 - 300 wide, and 600 - 8 - 30 tall.
+  assert.equal(root.style.left, "492px");
+  assert.equal(root.style.top, "562px");
+});
+
+test("a hand-placed bar belongs to one formula and is handed back for any other", () => {
+  const context = setup();
+  const root = openSizedBar(context);
+  const badge = byClass(context.documentRef, "arFormulaBarFxIcon");
+  badge.dispatch("pointerdown", { pointerId: 3, button: 0, clientX: 100, clientY: 100 });
+  badge.dispatch("pointermove", { pointerId: 3, clientX: 200, clientY: 180 });
+  assert.equal(root.classList.contains("isDragPlaced"), true);
+
+  context.controller.open(context.anchor, {
+    ...LINK_CONTEXT,
+    reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!D4",
+  });
+  assert.equal(root.classList.contains("isDragPlaced"), false);
+  assert.equal(root.dataset.placement, "above");
+});
+
+test("a dataset reference is colorized apart from an Excel one", () => {
+  const context = setup();
+  openSizedBar(context, { ...LINK_CONTEXT, reference: "=[C 82 - Prior Qtr Selected][1:7]" });
+  const display = byClass(context.documentRef, "arFormulaBarDisplay");
+
+  const internal = display.children.filter((child) => child.classList.contains("fmtInternalRef"));
+  assert.deepEqual(
+    internal.map((child) => child.textContent),
+    ["[C 82 - Prior Qtr Selected]", "[1:7]"],
+  );
+  assert.equal(display.children.some((child) => child.classList.contains("fmtExcelRef")), false);
+});
+
+test("the editor survives losing focus while its formula is being pointed at another window", () => {
+  const context = setup({ stayOpenUnfocused: true });
+  const root = openSizedBar(context, LINK_CONTEXT, { focus: true });
+  const input = byClass(context.documentRef, "arFormulaBarInput");
+
+  input.value = "=[";
+  input.dispatch("input");
+  assert.deepEqual(context.drafts, ["=["]);
+
+  // Clicking a cell in the other window takes focus out of this one.
+  input.dispatch("blur");
+  assert.equal(root.classList.contains("isOpen"), true);
+  assert.equal(input.style.display, "", "the draft is still the thing on show");
+  assert.equal(context.controller.isEditing(), true);
+
+  assert.equal(context.controller.setDraft("=[Paid Claims][1:3]", { focus: true }), true);
+  assert.equal(input.value, "=[Paid Claims][1:3]");
+  assert.equal(context.documentRef.activeElement, input);
+});
+
+test("closing the editor is reported once, whether or not it held focus", () => {
+  const context = setup();
+  openSizedBar(context);
+  context.controller.hide();
+  assert.equal(context.closes.length, 1);
+  assert.equal(context.dismisses.length, 0, "nothing had focus to give back");
+  assert.deepEqual(context.closes[0], { ...LINK_CONTEXT, formula: LINK_CONTEXT.reference });
 });

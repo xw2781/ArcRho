@@ -11,13 +11,13 @@
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260714a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260829a"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260829a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260829b"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260811c"/>
-  <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260812a"/>
+  <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260829b"/>
   <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260829a"/>
@@ -377,7 +377,7 @@
       // The window is held blank until the opening tab is rendered; see
       // ui/shared/tabbed_page/initial_tab_paint.js.
       try {
-        await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260828a");
+        await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260829b");
         try {
           await window.ADA_DATASET_READY;
         } catch (err) {

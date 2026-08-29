@@ -37,3 +37,6 @@ Path: PRNJ - PA\PA\All States\Direct Group\COL
 
 Project: NJ_Annual_Prod_202605_Fake
 Path: HPPREF\HO+DF\NJ\Legacy\HOL
+
+# Server Components Rebuild and Deploy
+commit, rebuild and deploy server components

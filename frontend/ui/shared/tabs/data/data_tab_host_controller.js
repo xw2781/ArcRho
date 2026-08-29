@@ -443,12 +443,16 @@ export function registerDataTabHostController(runtime) {
     if (!left || !right || left !== right) return;
     state.referencePickRequester = String(msg.inst);
     setStatus(`Select cells here to insert them into the ${String(msg.datasetName || "dataset").trim() || "dataset"} formula.`);
+    // Repaint so the grid picks up the pointer and dashed-range treatment it
+    // wears only while it is answering someone else's formula.
+    runtime.applyGridSelectionFromState?.();
   }
 
   function handleDatasetReferencePickEnd(msg = {}) {
     if (String(state.referencePickRequester || "") !== String(msg?.inst || "")) return;
     state.referencePickRequester = "";
     setStatus("");
+    runtime.applyGridSelectionFromState?.();
   }
 
   function collectCurrentDatasetNamesForMatch() {
