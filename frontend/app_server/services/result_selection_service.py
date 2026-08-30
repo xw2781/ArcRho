@@ -1392,6 +1392,11 @@ def refresh_dependents(
     errors = []
     downstream_fresh_names: List[str] = []
     downstream_blocked_names: List[str] = []
+    # Outputs queued for their dependents although their values did not move:
+    # a status-only refresh, or a recompute that came out the same. A DFM or
+    # calculated dependent reached only through these is still current as it
+    # stands, so it is skipped without being marked a failed precedent.
+    unchanged_source_keys: set[str] = set()
     index_error = ""
     dependency_value_cache: Dict[Tuple[str, int, bool], List[Any]] = {}
     sidecar_snapshot: Dict[str, Dict[str, Any]] = {}
@@ -1473,6 +1478,21 @@ def refresh_dependents(
                 )
                 if method_type != dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
                     dependent_key = _key(dependent_name)
+                    if dependent_key not in fresh_precedent_keys and all(
+                        _key(source_name) in unchanged_source_keys
+                        for source_name in dependent_sources[dependent_name]
+                    ):
+                        # Every source that led here kept its values, so this
+                        # DFM or calculated output needs no recompute and is
+                        # not blocked: blocking it would refuse every Result
+                        # Selection further down that also loads it with
+                        # "Precedent refresh failed" over a refresh nothing
+                        # needed.
+                        skipped.append({
+                            "dataset_name": dependent_name,
+                            "reason": "non_result_selection_dependent_inputs_unchanged",
+                        })
+                        continue
                     if dependent_key not in fresh_precedent_keys:
                         blocked_precedent_keys.add(dependent_key)
                     skipped.append({
@@ -1541,8 +1561,10 @@ def refresh_dependents(
                     if not output_is_current:
                         continue
                     if not result.get("output_changed"):
+                        unchanged_source_keys.add(dependent_key)
                         queue.append(dependent_name)
                         continue
+                    unchanged_source_keys.discard(dependent_key)
                     status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
                         project, reserving, [dependent_name]
                     )
@@ -1612,6 +1634,19 @@ def refresh_dependents(
                             for cache_key in list(dependency_value_cache):
                                 if cache_key[0] == calculated_key:
                                     dependency_value_cache.pop(cache_key, None)
+                        # A nested DFM output that was only status-refreshed
+                        # kept its values; the rest of the fresh names moved.
+                        nested_changed_keys = {
+                            _key(item.get("dataset_name") or item.get("dataset_type"))
+                            for item in nested_dfm.get("updated", [])
+                            if isinstance(item, dict) and item.get("output_changed", True)
+                        }
+                        nested_changed_keys.update(_key(name) for name in calculated_names)
+                        for nested_name in nested_fresh_names:
+                            if _key(nested_name) in nested_changed_keys:
+                                unchanged_source_keys.discard(_key(nested_name))
+                            else:
+                                unchanged_source_keys.add(_key(nested_name))
                         queue.extend(nested_fresh_names)
                         if not calculated.get("ok", True):
                             failed_steps = calculated.get("skipped") or []
@@ -1633,6 +1668,7 @@ def refresh_dependents(
                 else:
                     if result.get("status_refreshed"):
                         status_refreshed.append({"dataset_name": dependent_name})
+                        unchanged_source_keys.add(dependent_key)
                         queue.append(dependent_name)
                     skipped.append({
                         "dataset_name": dependent_name,

@@ -1066,6 +1066,91 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(downstream_sidecar["status"], 2)
         rebuild_index.assert_called_once_with("Project", "Class")
 
+    def test_unchanged_output_does_not_block_its_non_rs_dependents_for_a_later_fan_in(self) -> None:
+        # Mirrors the live NJ walk: a BF output is only status-refreshed, so
+        # "F 91" (Selection) re-reads unchanged inputs; its calculated
+        # dependent "G 23" (Calc A) is not a Result Selection and gets
+        # skipped; then "G 91" (Selection Two), which loads both, must not be
+        # refused with "Precedent refresh failed: G 23" over that skip.
+        self.write_selection()
+        self.write_source("Paid", [10, 20])
+        self.write_source("Calc A", [30, 40])
+        calc_sidecar_path = self.sidecars / "Calc A.json"
+        calc_sidecar = json.loads(calc_sidecar_path.read_text(encoding="utf-8"))
+        calc_sidecar.update({
+            "source_kind": "calculated",
+            "calculated": True,
+            "status": 2,
+            "precedents": ["Selection"],
+            "dependents": ["Selection Two"],
+        })
+        self.write_json(calc_sidecar_path, calc_sidecar)
+        downstream = self.method_payload()
+        downstream["details_tab"]["name"] = "Selection Two"
+        first = downstream["method_tab"]["loaded_datasets"][0]
+        first.update({
+            "name": "Selection",
+            "dataset_type": "Selected Ultimate",
+            "method_type": "Result Selection",
+            "source_kind": "result_selection",
+            "values": [10, 99],
+        })
+        second = {
+            **first,
+            "name": "Calc A",
+            "dataset_type": "Calc A",
+            "method_type": "None",
+            "source_kind": "calculated",
+            "values": [30, 40],
+        }
+        downstream["method_tab"]["loaded_datasets"] = [first, second]
+        downstream["method_tab"]["calculated_ultimate"] = [20, 69.5]
+        downstream["method_tab"]["selected_ultimate"] = [20, 99]
+        self.write_json(self.methods / "RS@Selection Two.json", downstream)
+        self.write_json(self.sidecars / "Selection Two.json", {
+            "dataset_name": "Selection Two",
+            "dataset_type": "Selected Ultimate",
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "source_kind": "result_selection",
+            "method_type": "Result Selection",
+            "data_format": "Vector",
+            "period_length": 12,
+            "csv_file": "Selection Two@12.csv",
+            "status": 2,
+            "precedents": ["Selection", "Calc A"],
+            "dependents": [],
+            "audit_log": [],
+        })
+        (self.datasets / "Selection Two@12.csv").write_text("20\n99\n", encoding="utf-8")
+        selection_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        selection_sidecar["dependents"] = ["Calc A", "Selection Two"]
+        self.write_json(self.sidecars / "Selection.json", selection_sidecar)
+        downstream_method_path = self.methods / "RS@Selection Two.json"
+        downstream_method_before = downstream_method_path.read_bytes()
+
+        with (
+            mock.patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value={"updated": []},
+            ) as recalculate_dependents,
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["updated"], [])
+        self.assertEqual(
+            result["status_refreshed"],
+            [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
+        )
+        skipped_by_name = {item["dataset_name"]: item["reason"] for item in result["skipped"]}
+        self.assertEqual(skipped_by_name["Calc A"], "non_result_selection_dependent_inputs_unchanged")
+        # Nothing changed in value, so no calculated cascade ran for the skip.
+        recalculate_dependents.assert_not_called()
+        self.assertEqual(downstream_method_path.read_bytes(), downstream_method_before)
+
     def test_result_selection_refresh_propagates_transitively_once(self) -> None:
         first = self.method_payload()
         first["details_tab"]["name"] = "Selection One"
