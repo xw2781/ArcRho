@@ -1,6 +1,6 @@
 ---
 name: result-selection-unchanged-dependent-block
-description: "2026-08-30 fix — a status-only Result Selection refresh no longer marks its DFM/calculated dependents as failed precedents; Engine+Gateway deploy still pending, and NJ HOL G 41 - BF Paid has a blank 2026 value that will fail G 92 once the walk gets that far"
+description: "2026-08-30 fix — a status-only Result Selection refresh no longer marks its DFM/calculated dependents as failed precedents; deployed 2026-08-30, and the NJ HOL G 41 - BF Paid blank 2026 value is gone now that percentage developed comes from the DFM factors"
 metadata: 
   node_type: memory
   type: project
@@ -8,7 +8,7 @@ metadata:
   modified: 2026-08-30T15:37:00.324Z
 ---
 
-Fixed on 2026-08-30 (uncommitted, NOT yet deployed): `result_selection_service.refresh_dependents`
+Fixed on 2026-08-30 (uncommitted, deployed the same day): `result_selection_service.refresh_dependents`
 blocked every non-Result-Selection dependent (a DFM or calculated output) of an output it had
 only status-refreshed, so a later fan-in such as G 91 (loads G 12 DFM + G 23 calculated + F 91)
 was refused with "Precedent refresh failed: G 12, G 23". That surfaced to the user as the
@@ -20,12 +20,12 @@ via `calculated_dataset_service.cascade_failure_reasons`.
 the client and hosted_saves.log), which cost a full replay to diagnose.
 
 **How to apply:**
-- The fix runs on the Engine's bundled app_server copy: redeploy Engine + Gateway
-  (`server-components/deploy.py`) before expecting the save to succeed; the tree held another
-  session's uncommitted dataset-viewer work on 2026-08-30 so the deploy was left for the user.
-- Second, real data problem behind it in project `NJ_Annual_Prod_2026 Q2-May Test`, class
-  `HPPREF\HO+DF\NJ\Legacy\HOL`: `G 41 - BF Paid` publishes a blank 2026 ultimate (its
-  percentage developed for 2026 is None), G 91 weights G 41 at 100% for 2026, so a refreshed
-  G 91 has 9 values and G 92 fails "Source 'G 91' returned 9 values; expected 10". The user
-  needs to fix the G 41 / G 43 setup or the G 91 weights; the code fix does not do that.
+- The fix runs on the Engine's bundled app_server copy. Engine + Gateway were deployed from
+  the working tree on 2026-08-30 (`a5ccedf7+edits`), carrying this change along with the
+  percentage-developed one, so it is live.
+- The second, real data problem behind it is RESOLVED. `G 41 - BF Paid` published a blank 2026
+  ultimate because its percentage developed for 2026 was None -- the old `Latest / DFM Ultimate`
+  derivation divides by zero whenever an origin's latest paid is 0. Percentage developed now
+  comes from the DFM's selected development factors, so 2026 reads 1.36% and G 41 publishes
+  328 for 2026, ten values. See [[percentage-developed-from-dfm-factors]].
 - Replaying this walk offline is dangerous: see [[offline-dependent-walk-replay]].
