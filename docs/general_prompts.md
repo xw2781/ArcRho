@@ -23,6 +23,7 @@ git clean -fd
 If you'd rather not touch this working copy at all, just clone it fresh next to it: git clone https://github.com/xw2781/ArcRho.git ArcRho-fresh.
 
 Run the commit workflow.
+Run the commit workflow and push.
 
 [$arcrho-commit-workflow](E:\\XWSpace\\Repos\\ArcRho\\.claude\\skills\\arcrho-commit-workflow\\SKILL.md)
 
