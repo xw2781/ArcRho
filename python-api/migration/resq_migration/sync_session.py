@@ -734,9 +734,12 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             ) or name
             known_type = bool(migration._is_known_dataset_type(dataset_type))
             calculated = bool(_required_resq_attr(obj, "Calculated", f"{collection_kind} dataset"))
-            if kind == KIND_DATASET and calculated:
-                # ResQ recomputes it from its formula, as ArcRho does on its
-                # side, so the row would only ever report propagation times.
+            if kind == KIND_DATASET and migration._is_calculated_dataset_type(dataset_type):
+                # ArcRho's own dataset-types library says propagation recomputes
+                # it from its formula, so the row would only ever report
+                # propagation times. ResQ's Calculated flag does not decide
+                # this: a type ResQ derives but ArcRho lists as an input is an
+                # editable input in ArcRho and stays in the review.
                 continue
             if kind == KIND_DATASET and migration._is_engine_generated_instance(
                 {"name": name, "dataset_type": dataset_type}
@@ -769,6 +772,11 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}:
                 can_receive = False
                 receive_reason = f"ArcRho-to-ResQ write-back is not supported for {kind}."
+            elif kind == KIND_DATASET and calculated:
+                # ResQ derives this one from its own formula and would only
+                # recompute over whatever ArcRho wrote.
+                can_receive = False
+                receive_reason = "ResQ computes this dataset from its own formula, so ArcRho values cannot be written to it."
             items.append({
                 "name": name,
                 "kind": kind,

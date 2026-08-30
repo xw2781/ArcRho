@@ -73,6 +73,7 @@ from arcrho_api.dfm_propagation import (  # noqa: E402
 from resq_migration.catalog import (  # noqa: E402
     _dataset_type_rows,
     _dataset_type_keys,
+    _is_calculated_dataset_type,
     _is_generated_dataset_type,
     _is_known_dataset_type,
     _unknown_dataset_type_skip_detail,

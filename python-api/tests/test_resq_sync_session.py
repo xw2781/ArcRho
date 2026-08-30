@@ -559,6 +559,7 @@ class SyncSessionInventoryTests(unittest.TestCase):
             _safe_attr=lambda source, name, default=None: getattr(source, name, default),
             _iso_or_text=lambda value: str(value or ""),
             _is_known_dataset_type=lambda _name: True,
+            _is_calculated_dataset_type=lambda _name: False,
             _is_engine_generated_instance=lambda _payload: False,
             _find_berquist_sherman_for_triangle=(
                 __import__(
@@ -1058,6 +1059,14 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
         self.assertTrue(inventory[0]["can_export_to_resq"])
 
     def test_resq_inventory_leaves_out_calculated_and_generated_datasets(self):
+        """ArcRho's dataset-types library decides what is calculated, not ResQ.
+
+        ``Reported CDF`` is calculated in both libraries and stays out. ``Prior
+        Qtr Indicated`` is derived in ResQ from a formula ArcRho does not have,
+        while ArcRho's library lists it as a plain input: it is an editable
+        input on the ArcRho side, so it stays in the review and can be imported,
+        but ArcRho values cannot be pushed into a dataset ResQ recomputes.
+        """
         def dataset(name: str, calculated: bool):
             return types.SimpleNamespace(
                 Name=name,
@@ -1075,7 +1084,9 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
                 dataset("Reported CDF", True),
                 dataset("Reported Loss", False),
             ]),
-            Vectors=lambda: empty,
+            Vectors=lambda: _ResQCollection([
+                dataset("Prior Qtr Indicated", True),
+            ]),
             DFMMethods=lambda: empty,
             BFMethods=lambda: empty,
             CapeCodMethods=lambda: empty,
@@ -1085,6 +1096,7 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
             _safe_attr=lambda source, name, default=None: getattr(source, name, default),
             _iso_or_text=lambda value: str(value or ""),
             _is_known_dataset_type=lambda _name: True,
+            _is_calculated_dataset_type=lambda name: name == "Reported CDF",
             _is_engine_generated_instance=lambda payload: payload["name"] == "Reported Loss",
         )
         runtime = {
@@ -1099,8 +1111,13 @@ class SyncSessionCalculatedDatasetTests(unittest.TestCase):
 
         inventory = sync_session.collect_resq_inventory(runtime, exporter)
 
-        self.assertEqual([item["name"] for item in inventory], ["Paid Loss"])
+        self.assertEqual([item["name"] for item in inventory], ["Paid Loss", "Prior Qtr Indicated"])
         self.assertTrue(inventory[0]["can_receive_from_arcrho"])
+        prior_qtr = inventory[1]
+        self.assertTrue(prior_qtr["can_import_to_arcrho"])
+        self.assertFalse(prior_qtr["can_receive_from_arcrho"])
+        self.assertIn("ResQ computes this dataset", prior_qtr["receive_block_reason"])
+        self.assertTrue(prior_qtr["calculated"])
 
 
 class SyncSessionMethodNotesTests(unittest.TestCase):

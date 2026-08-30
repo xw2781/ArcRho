@@ -23,7 +23,8 @@ every item below is written, each after the items it reads:
   neither `calculated` nor an `engine` dataset, and that has a CSV cache on
   disk. Triangle and vector values are written cell by cell
   (`SetValuesByIndex`) and the sidecar Notes go into the ResQ `Notes`. A
-  dataset that is `Calculated` in ResQ is skipped, because ResQ recomputes it.
+  dataset that is `Calculated` in ResQ is skipped, because ResQ recomputes it,
+  even when ArcRho's library treats the type as an editable input.
 - **DFM methods** — ratio exclusions (`SetExcludedRatios`), User Entry factors
   (`SetUserRatios`), the selected average per column (`SetSelectedRatios`),
   and Notes, the writer the sync's apply phase uses too. Before anything is

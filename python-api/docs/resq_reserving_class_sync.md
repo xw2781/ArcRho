@@ -156,7 +156,13 @@ them.
 - Calculated datasets are left out of the review entirely, on both sides.
   Propagation recomputes them from their formula inputs in ArcRho and in
   ResQ alike and nobody edits them directly, so their timestamps only ever
-  record the last propagation and there is nothing to reconcile.
+  record the last propagation and there is nothing to reconcile. ArcRho's
+  own dataset-types library decides which types are calculated; ResQ's
+  `Calculated` flag is not consulted. A type ResQ derives from a formula
+  ArcRho does not have (the `81 - Prior Qtr Indicated` and `82 - Prior Qtr
+  Selected` vectors, for instance) is an ordinary editable input in ArcRho:
+  it stays in the review and can be imported from ResQ, but it cannot
+  receive ArcRho values, because ResQ would only recompute over them.
 - Engine-generated datasets are left out the same way: ArcRho rebuilds them
   through the Engine and ResQ through its own generator, so neither side holds
   a hand-edited copy. On the ArcRho side that is every `engine` sidecar; on the

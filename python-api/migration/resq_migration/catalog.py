@@ -178,6 +178,18 @@ def _is_generated_dataset_type(dataset_type_name: object, rows: list[dict] | Non
     row = _dataset_type_row(dataset_type_name, rows)
     return bool(row and row.get("generated"))
 
+def _is_calculated_dataset_type(dataset_type_name: object, rows: list[dict] | None = None) -> bool:
+    """True when ArcRho's own dataset-types library computes this type from a formula.
+
+    This is the one rule for "calculated" on the ArcRho side, the same one the
+    app server's sidecar writer applies. ResQ's own ``Calculated`` flag or
+    ``Formula`` on a dataset is never consulted: when the two libraries
+    disagree, ArcRho's wins, so a type ResQ derives (a prior-quarter lookup,
+    say) that ArcRho lists as a plain input imports as an editable input.
+    """
+    row = _dataset_type_row(dataset_type_name, rows)
+    return bool(row and row.get("calculated") and not row.get("generated") and _clean_name(row.get("formula")))
+
 def _unknown_dataset_type_skip_detail(kind: str, name: object, dataset_type_name: object) -> str:
     display_type = _clean_name(dataset_type_name) or "<blank>"
     return f"    SKIP {kind} {_clean_name(name) or '<unnamed>'}: dataset type {display_type!r} not found in dataset_types.json"

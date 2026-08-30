@@ -62,6 +62,7 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
                 ["", True, "Generated Premium", False, "Vector", "Premium", "Generated_Premium"],
                 ["\"Paid Loss\" + \"DFM Ultimate\"", False, "Net Ultimate", True, "Vector", "Loss", ""],
                 ["\"Net Ultimate\" * 1.1", False, "Loaded Ultimate", True, "Vector", "Loss", ""],
+                ["", False, "Prior Qtr Indicated", False, "Vector", "Loss", ""],
             ],
         }), encoding="utf-8")
 
@@ -212,6 +213,58 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             )
 
         self.assertEqual(apply_graph.call_count, 1)
+
+    def _vector_payload(self, name: str, *, formula: str = "") -> dict:
+        return {
+            "name": name,
+            "dataset_type": name,
+            "category": "Loss",
+            "data_format": 1,
+            "method_type": "None",
+            "method_type_code": 0,
+            "origin_length": 12,
+            "development_length": 12,
+            "origin_count": 1,
+            "development_count": 1,
+            "origin_labels": ["2026"],
+            "development_labels": ["Value"],
+            "values": [[123.0]],
+            "formula": formula,
+            "user": "tester",
+            "created": "2026-01-01T00:00:00",
+            "modified": "2026-01-02T00:00:00",
+        }
+
+    def test_vector_calculated_only_in_resq_imports_as_editable_input(self) -> None:
+        # ResQ derives "Prior Qtr Indicated" from a formula ArcRho does not
+        # have; ArcRho's library lists the type as a plain input, and ArcRho's
+        # library wins, so the dataset is an ordinary editable input here.
+        self.extractors.write_vector_export(
+            self._vector_payload("Prior Qtr Indicated", formula='"Current Qtr Indicated - Feb 2026"'),
+            r"Auto\PP",
+            self.rc_dir,
+        )
+
+        payload = json.loads((self.sidecars_dir / "Prior Qtr Indicated.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["source_kind"], "input")
+        self.assertFalse(payload["calculated"])
+        self.assertEqual(payload["source"], "resq_vector")
+        self.assertNotIn("formula", payload)
+        self.assertEqual(payload["precedents"], [])
+
+    def test_vector_calculated_in_arcrho_library_stays_calculated(self) -> None:
+        # The reverse disagreement: ArcRho computes "Loaded Ultimate" from
+        # "Net Ultimate" even though ResQ holds it as a plain vector.
+        self.extractors.write_vector_export(
+            self._vector_payload("Loaded Ultimate"),
+            r"Auto\PP",
+            self.rc_dir,
+        )
+
+        payload = json.loads((self.sidecars_dir / "Loaded Ultimate.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["source_kind"], "calculated")
+        self.assertTrue(payload["calculated"])
+        self.assertEqual([entry["dataset_name"] for entry in payload["precedents"]], ["Net Ultimate"])
 
     def test_generated_vector_ignores_resq_formula_metadata(self) -> None:
         self.extractors.write_vector_export({

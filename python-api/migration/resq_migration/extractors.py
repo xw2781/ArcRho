@@ -40,7 +40,7 @@ from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_
 from arcrho_api.sidecar_core_contract import dependency_entries
 from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
-from .catalog import _apply_sidecar_graph_meta, _is_generated_dataset_type
+from .catalog import _apply_sidecar_graph_meta, _is_calculated_dataset_type, _is_generated_dataset_type
 from .engine import import_user_identity_service
 from .core import (
     BS_CRA_FILE_PREFIX,
@@ -1220,7 +1220,6 @@ def write_vector_export(
     _write_csv_matrix(csv_path, payload["values"])
     _write_aggregated_vector_cache_exports(payload, rc_dir)
 
-    raw_formula = _clean_name(payload.get("formula"))
     method_type = _method_type_name(payload.get("method_type"))
     is_result_selection = _is_result_selection_method_type(method_type)
     raw_method_type_code = _method_type_code(method_type, -1)
@@ -1241,7 +1240,17 @@ def write_vector_export(
         meta_method_type_code = payload.get("method_type_code", _method_type_code(method_type, 0))
     is_method_output = is_bornhuetter_ferguson or is_cape_cod
     is_engine_generated = (not is_result_selection) and (not is_method_output) and _is_generated_dataset_type(dataset_type)
-    formula = "" if is_engine_generated or is_method_output else raw_formula
+    # ArcRho's own dataset-types library decides whether the dataset is
+    # calculated. The ResQ Formula on the vector is deliberately ignored: a
+    # formula only ResQ knows (a prior-quarter lookup, say) is one ArcRho can
+    # neither store nor evaluate, and stamping the sidecar "calculated" for it
+    # left the dataset read-only with nothing able to regenerate it.
+    is_app_calculated = (
+        (not is_result_selection)
+        and (not is_method_output)
+        and (not is_engine_generated)
+        and _is_calculated_dataset_type(dataset_type)
+    )
     updated_at = payload.get("modified") or utc_now_text()
     if is_result_selection:
         source_kind = "result_selection"
@@ -1251,7 +1260,7 @@ def write_vector_export(
         source_kind = CC_SOURCE_KIND
     elif is_engine_generated:
         source_kind = "engine"
-    elif formula:
+    elif is_app_calculated:
         source_kind = "calculated"
     else:
         source_kind = "input"
@@ -1264,7 +1273,7 @@ def write_vector_export(
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": bool((formula and not is_engine_generated) or is_result_selection or is_method_output),
+        "calculated": bool(is_app_calculated or is_result_selection or is_method_output),
         "source": (
             "resq_result_selection_vector"
             if is_result_selection
