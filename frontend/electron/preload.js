@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
   getDocumentsPath: () => invoke("get-documents-path"),
   loadHomeFolderPreferences: () => invoke("home-folders-preferences-load"),
   saveHomeFolderPreferences: (preferences) => invoke("home-folders-preferences-save", { preferences }),
+  loadMacroPreferences: () => invoke("macro-preferences-load"),
+  saveMacroPreferences: (preferences) => invoke("macro-preferences-save", { preferences }),
   saveJsonFile: (payload) => invoke("save-json-file", payload),
   saveTextFile: (payload) => invoke("save-text-file", payload),
   readTextFile: (payload) => invoke("read-text-file", payload),

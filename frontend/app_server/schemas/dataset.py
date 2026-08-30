@@ -127,6 +127,26 @@ class DatasetInternalLink(BaseModel):
         return normalized
 
 
+class DatasetFormulaLinkTargetCell(BaseModel):
+    row: int = Field(..., ge=0, strict=True)
+    column: int = Field(..., ge=0, strict=True)
+    result_row: int = Field(..., ge=0, strict=True)
+    result_column: int = Field(..., ge=0, strict=True)
+
+
+class DatasetFormulaLink(BaseModel):
+    formula: str = Field(..., min_length=1, strict=True)
+    target_cells: List[DatasetFormulaLinkTargetCell] = Field(..., min_length=1)
+
+    @field_validator("formula")
+    @classmethod
+    def normalize_formula(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("formula must not be blank")
+        return normalized
+
+
 class DatasetInternalLinksResolveRequest(BaseModel):
     project_name: str
     reserving_class: str
@@ -157,6 +177,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     precedents: Optional[List[str]] = None
     external_links: Optional[List[DatasetExternalLink]] = None
     internal_links: Optional[List[DatasetInternalLink]] = None
+    formula_links: Optional[List[DatasetFormulaLink]] = None
     values: Optional[List[List[Optional[float]]]] = None
     mask: Optional[List[List[bool]]] = None
     # Fingerprint of the dependent-update plan the user confirmed. The Engine

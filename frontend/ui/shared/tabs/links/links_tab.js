@@ -1,24 +1,64 @@
+/*
+===============================================================================
+Links Tab
+One compact table per kind of link a page holds, stacked in sections: ArcRho
+dataset links first, Excel workbook links next, and formulas over both last.
+A section is shown only while it has rows. The whole stack sits in one framed
+scrolling area, so the tab has a single scrollbar and the sections scroll past
+one another instead of each one scrolling inside its own frame. Each row says
+where the values come from (Source), the exact address or formula (Reference),
+and the cells it fills (Destination, Cells); the section title names the kind,
+and only a formula row repeats it as a small tinted badge in the Source cell.
+
+The page owns link discovery, refresh, break, and dirty state; this module
+owns the tables: rendering, selection, the row context menu, column widths,
+and the empty, loading, warning, and error states.
+===============================================================================
+*/
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
 
-const EXTERNAL_LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
-const EXTERNAL_LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260829a";
-const MOUNTED_EXTERNAL_LINKS_TABS = new WeakMap();
+const LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
+const LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260901a";
+const MOUNTED_LINKS_TABS = new WeakMap();
 
-function ensureExternalLinksStylesheet(documentRef) {
-  const existingById = documentRef.getElementById?.(EXTERNAL_LINKS_STYLESHEET_ID);
+// Every column carries an explicit width, the colgroup sets it, and the table
+// is the sum, so a drag resizes one column and lets the table grow or shrink
+// instead of redistributing its neighbours (the pi-table pattern). The
+// sections share one set of widths, so their columns always line up.
+export const LINK_COLUMNS = [
+  { key: "source", label: "Source", width: 260, minWidth: 120 },
+  { key: "reference", label: "Reference", width: 200, minWidth: 90 },
+  { key: "destination", label: "Destination", width: 200, minWidth: 90 },
+  { key: "cells", label: "Cells", width: 64, minWidth: 48 },
+];
+const COLUMN_BY_KEY = new Map(LINK_COLUMNS.map((column) => [column.key, column]));
+const MAX_COLUMN_WIDTH = 3000;
+// Widths a user has dragged survive a re-mount within the page session, so
+// switching tabs never undoes a deliberate resize.
+const sessionColumnWidths = new Map();
+
+const KIND_LABELS = { excel: "Excel", internal: "ArcRho", formula: "Formula" };
+// Section order on the page, top to bottom.
+export const LINK_SECTIONS = [
+  { kind: "internal", title: "ArcRho Links" },
+  { kind: "excel", title: "Excel Links" },
+  { kind: "formula", title: "Formula Links" },
+];
+
+function ensureLinksStylesheet(documentRef) {
+  const existingById = documentRef.getElementById?.(LINKS_STYLESHEET_ID);
   if (existingById) return existingById;
 
   const matchingLink = Array.from(
     documentRef.querySelectorAll?.('link[rel="stylesheet"]') || [],
-  ).find((link) => link.getAttribute("href") === EXTERNAL_LINKS_STYLESHEET_HREF);
+  ).find((link) => link.getAttribute("href") === LINKS_STYLESHEET_HREF);
   if (matchingLink) return matchingLink;
 
   const link = documentRef.createElement("link");
-  link.id = EXTERNAL_LINKS_STYLESHEET_ID;
+  link.id = LINKS_STYLESHEET_ID;
   link.rel = "stylesheet";
-  link.href = EXTERNAL_LINKS_STYLESHEET_HREF;
+  link.href = LINKS_STYLESHEET_HREF;
   (documentRef.head || documentRef.documentElement)?.appendChild(link);
   return link;
 }
@@ -55,45 +95,57 @@ function normalizeAffectedCellCount(value) {
   return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
-// The default (Excel) identity columns; the ArcRho internal-links variant
-// swaps these for dataset-oriented ones while reusing the same table core.
-const EXTERNAL_LINK_IDENTITY_COLUMNS = [
-  {
-    key: "workbookPath",
-    header: "Workbook",
-    colClassName: "arExternalLinksWorkbookColumn",
-    cellClassName: "arExternalLinksWorkbookCell",
-  },
-  {
-    key: "worksheet",
-    header: "Worksheet",
-    colClassName: "arExternalLinksWorksheetColumn",
-    cellClassName: "arExternalLinksWorksheetCell",
-  },
-  {
-    key: "address",
-    header: "Cell Address",
-    colClassName: "arExternalLinksAddressColumn",
-    cellClassName: "arExternalLinksAddressCell",
-  },
-];
+function fileName(path) {
+  return String(path || "").split(/[\\/]/).pop() || "";
+}
 
-function normalizeLinkRecord(record, index, identityColumns, idPrefix) {
-  const source = record && typeof record === "object" && !Array.isArray(record)
-    ? record
-    : {};
-  const id = String(source.id ?? "").trim() || `${idPrefix}-${index + 1}`;
-  const normalized = {
-    id,
+function linkKind(record) {
+  if (KIND_LABELS[record.sourceKind]) return record.sourceKind;
+  if (record.workbookPath) return "excel";
+  if (record.datasetName) return "internal";
+  return record.formula ? "formula" : "excel";
+}
+
+/**
+ * One row's presentation from a record of any kind: the page's Excel, ArcRho,
+ * and formula controllers each describe a link in their own words, and the
+ * table reads those into the same four columns.
+ */
+export function normalizeLinkRecord(record, index, idPrefix = "link") {
+  const source = record && typeof record === "object" && !Array.isArray(record) ? record : {};
+  const kind = linkKind(source);
+  const workbookPath = String(source.workbookPath ?? "").trim();
+  const worksheet = String(source.worksheet ?? "").trim();
+  const address = String(source.address ?? "").trim();
+  const datasetName = String(source.datasetName ?? "").trim();
+  const sourceRange = String(source.sourceRange ?? "").trim();
+  const formula = String(source.formula ?? "").trim();
+  const sources = Array.isArray(source.sources) ? source.sources.map((name) => String(name)) : [];
+  let sourceText = "";
+  let reference = "";
+  if (kind === "excel") {
+    sourceText = fileName(workbookPath);
+    reference = worksheet && address ? `${worksheet}!${address}` : (address || worksheet);
+  } else if (kind === "internal") {
+    sourceText = datasetName;
+    reference = sourceRange ? `[${sourceRange}]` : "";
+  } else {
+    sourceText = sources.join(", ");
+    reference = formula;
+  }
+  return {
+    id: String(source.id ?? "").trim() || `${idPrefix}-${index + 1}`,
+    kind,
+    kindLabel: KIND_LABELS[kind],
+    workbookPath,
+    datasetName,
+    formula,
+    source: sourceText,
+    reference,
     destination: String(source.destination ?? "").trim(),
-    value: String(source.value ?? ""),
     affectedCellCount: normalizeAffectedCellCount(source.affectedCellCount),
     readOnly: source.readOnly === true,
   };
-  for (const column of identityColumns) {
-    normalized[column.key] = String(source[column.key] ?? "").trim();
-  }
-  return normalized;
 }
 
 function errorMessage(error, fallback) {
@@ -119,75 +171,66 @@ function actionFailureMessage(result, fallback) {
   return "";
 }
 
+function clampWidth(key, width) {
+  const column = COLUMN_BY_KEY.get(key);
+  const value = Number(width);
+  if (!Number.isFinite(value)) return column.width;
+  return Math.max(column.minWidth, Math.min(MAX_COLUMN_WIDTH, Math.round(value)));
+}
+
 /**
- * Mounts a reusable external-links table into a page-owned container.
- * Domain adapters retain ownership of link discovery, refresh, persistence, and dirty state.
+ * Mounts the links table into a page-owned container.
+ *
+ * `getLinks` returns the page's records; `onRefreshLinks(records)` and
+ * `onBreakLinks(records)` act on a selection of them. `onOpenWorkbook(path,
+ * {readOnly})` and `onOpenDataset(record)` serve the row context menu's open
+ * entries for Excel and ArcRho rows.
  */
-export function createExternalLinksTab({
+export function createLinksTab({
   container,
-  ariaLabel = "External links",
-  emptyDescription = "External workbook links used by this page will appear here.",
+  ariaLabel = "Links",
+  emptyDescription = "Links used by this page will appear here.",
   getLinks,
   onRefreshLinks,
   onBreakLinks,
   onOpenWorkbook = openPathThroughDesktopHost,
+  onOpenDataset = null,
   onStatus,
   documentRef = container?.ownerDocument || globalThis.document,
-  noun = "external links",
-  idPrefix = "external-link",
-  identityColumns = EXTERNAL_LINK_IDENTITY_COLUMNS,
-  openMenuItems = null,
+  noun = "links",
+  idPrefix = "link",
 } = {}) {
   if (!documentRef || typeof documentRef.createElement !== "function") {
-    throw new TypeError("createExternalLinksTab requires a document.");
+    throw new TypeError("createLinksTab requires a document.");
   }
   if (!container || typeof container.appendChild !== "function") {
-    throw new TypeError("createExternalLinksTab requires a container element.");
+    throw new TypeError("createLinksTab requires a container element.");
   }
   if (typeof getLinks !== "function") {
-    throw new TypeError("createExternalLinksTab requires getLinks to be a function.");
+    throw new TypeError("createLinksTab requires getLinks to be a function.");
   }
   if (typeof onRefreshLinks !== "function") {
-    throw new TypeError("createExternalLinksTab requires onRefreshLinks to be a function.");
+    throw new TypeError("createLinksTab requires onRefreshLinks to be a function.");
   }
   if (typeof onBreakLinks !== "function") {
-    throw new TypeError("createExternalLinksTab requires onBreakLinks to be a function.");
+    throw new TypeError("createLinksTab requires onBreakLinks to be a function.");
   }
   if (typeof onOpenWorkbook !== "function") {
-    throw new TypeError("createExternalLinksTab onOpenWorkbook must be a function.");
+    throw new TypeError("createLinksTab onOpenWorkbook must be a function.");
+  }
+  if (onOpenDataset !== null && typeof onOpenDataset !== "function") {
+    throw new TypeError("createLinksTab onOpenDataset must be a function when provided.");
   }
   if (onStatus !== undefined && typeof onStatus !== "function") {
-    throw new TypeError("createExternalLinksTab onStatus must be a function when provided.");
+    throw new TypeError("createLinksTab onStatus must be a function when provided.");
   }
-  if (MOUNTED_EXTERNAL_LINKS_TABS.has(container)) {
-    throw new Error(
-      "createExternalLinksTab requires an unused container; destroy the existing Links tab first.",
-    );
+  if (MOUNTED_LINKS_TABS.has(container)) {
+    throw new Error("createLinksTab requires an unused container; destroy the existing Links tab first.");
   }
 
-  ensureExternalLinksStylesheet(documentRef);
+  ensureLinksStylesheet(documentRef);
 
-  // "Open ..." context entries: the Excel table opens the workbook two ways;
-  // a variant passes its own entries (for example "Open source dataset").
-  const resolvedOpenMenuItems = Array.isArray(openMenuItems) ? openMenuItems : [
-    {
-      action: "open-workbook",
-      label: "Open workbook",
-      availableFor: (record) => !!record?.workbookPath,
-      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: false }),
-      failure: "The workbook could not be opened.",
-      success: "Workbook opened.",
-    },
-    {
-      action: "open-workbook-read-only",
-      label: "Open workbook as Read-Only",
-      availableFor: (record) => !!record?.workbookPath,
-      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: true }),
-      failure: "The workbook could not be opened read-only.",
-      success: "Workbook opened read-only.",
-    },
-  ];
-  const nounText = String(noun || "external links");
+  const nounText = String(noun || "links");
   const nounSentence = nounText.charAt(0).toUpperCase() + nounText.slice(1);
 
   const root = documentRef.createElement("div");
@@ -197,17 +240,43 @@ export function createExternalLinksTab({
   const menu = documentRef.createElement("div");
   menu.className = "ctx-menu arExternalLinksMenu";
   menu.setAttribute("role", "menu");
-  menu.setAttribute("aria-label", `${String(ariaLabel || "External links")} actions`);
+  menu.setAttribute("aria-label", `${String(ariaLabel || "Links")} actions`);
   menu.style.display = "none";
   const menuInner = documentRef.createElement("div");
   menuInner.className = "ctx-menu-inner";
   menu.appendChild(menuInner);
-  const openItems = resolvedOpenMenuItems.map((item) => ({
+  // "Open ..." entries act on the row that was right-clicked; which ones show
+  // depends on what that row reads from.
+  const openItems = [
+    {
+      action: "open-workbook",
+      label: "Open workbook",
+      availableFor: (record) => record.kind === "excel" && !!record.workbookPath,
+      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: false }),
+      failure: "The workbook could not be opened.",
+      success: "Workbook opened.",
+    },
+    {
+      action: "open-workbook-read-only",
+      label: "Open workbook as Read-Only",
+      availableFor: (record) => record.kind === "excel" && !!record.workbookPath,
+      run: (record) => onOpenWorkbook(record.workbookPath, { readOnly: true }),
+      failure: "The workbook could not be opened read-only.",
+      success: "Workbook opened read-only.",
+    },
+    {
+      action: "open-dataset",
+      label: "Open source dataset",
+      availableFor: (record) => !!onOpenDataset && record.kind === "internal" && !!record.datasetName,
+      run: (record) => onOpenDataset(record),
+      failure: "The source dataset could not be opened.",
+      success: "Dataset opened.",
+    },
+  ].map((item) => ({
     ...item,
     element: appendMenuItem(documentRef, menuInner, item.action, item.label),
   }));
-  const openWorkbookSeparator = appendMenuSeparator(documentRef, menuInner);
-  openWorkbookSeparator.hidden = !openItems.length;
+  const openSeparator = appendMenuSeparator(documentRef, menuInner);
   const refreshSelectedItem = appendMenuItem(documentRef, menuInner, "refresh-selected", "Refresh selected");
   const breakSelectedItem = appendMenuItem(documentRef, menuInner, "break-selected", "Break selected");
   const menuSeparator = appendMenuSeparator(documentRef, menuInner);
@@ -220,13 +289,7 @@ export function createExternalLinksTab({
   state.setAttribute("role", "status");
   state.setAttribute("aria-live", "polite");
   state.setAttribute("aria-atomic", "true");
-  const stateTitle = appendTextElement(
-    documentRef,
-    state,
-    "strong",
-    "arExternalLinksStateTitle",
-    `No ${nounText}`,
-  );
+  const stateTitle = appendTextElement(documentRef, state, "strong", "arExternalLinksStateTitle", `No ${nounText}`);
   const stateDescription = appendTextElement(
     documentRef,
     state,
@@ -237,51 +300,181 @@ export function createExternalLinksTab({
   stateDescription.hidden = !stateDescription.textContent;
   root.appendChild(state);
 
+  // One framed scrolling area for the whole tab. The sections stack inside it
+  // and share its scrollbar, so a long ArcRho list scrolls the Excel and
+  // formula tables into view instead of every section scrolling on its own.
   const scrollHost = documentRef.createElement("div");
   scrollHost.className = "arExternalLinksScroll";
   scrollHost.tabIndex = 0;
   scrollHost.hidden = true;
   scrollHost.setAttribute("role", "region");
-  scrollHost.setAttribute("aria-label", `${String(ariaLabel || "External links")} table`);
+  scrollHost.setAttribute("aria-label", `${String(ariaLabel || "Links")} tables`);
   scrollHost.setAttribute("aria-haspopup", "menu");
   root.appendChild(scrollHost);
 
-  const table = documentRef.createElement("table");
-  table.className = "arExternalLinksTable";
-  table.setAttribute("role", "grid");
-  table.setAttribute("aria-multiselectable", "true");
-  table.setAttribute("aria-label", String(ariaLabel || "External links"));
-  scrollHost.appendChild(table);
+  const sectionsHost = documentRef.createElement("div");
+  sectionsHost.className = "arLinksSections";
+  scrollHost.appendChild(sectionsHost);
 
-  const colgroup = documentRef.createElement("colgroup");
-  for (const className of [
-    ...identityColumns.map((column) => column.colClassName),
-    "arExternalLinksDestinationColumn",
-    "arExternalLinksValueColumn",
-  ]) {
-    const column = documentRef.createElement("col");
-    column.className = className;
-    colgroup.appendChild(column);
+  const widths = new Map(LINK_COLUMNS.map((column) => [
+    column.key,
+    sessionColumnWidths.get(column.key) || column.width,
+  ]));
+  const manualWidths = new Set(sessionColumnWidths.keys());
+
+  // One table per section, all of them inside the shared scrolling frame;
+  // every table carries the same colgroup and header so the shared widths
+  // land in each of them.
+  const sections = LINK_SECTIONS.map(({ kind, title }) => {
+    const section = documentRef.createElement("section");
+    section.className = "arLinksSection";
+    section.dataset.linkKind = kind;
+    section.hidden = true;
+    appendTextElement(documentRef, section, "h3", "arLinksSectionTitle", title);
+
+    const table = documentRef.createElement("table");
+    table.className = "arExternalLinksTable";
+    table.setAttribute("role", "grid");
+    table.setAttribute("aria-multiselectable", "true");
+    table.setAttribute("aria-label", `${String(ariaLabel || "Links")}: ${title}`);
+    section.appendChild(table);
+
+    const colElements = new Map();
+    const colgroup = documentRef.createElement("colgroup");
+    for (const column of LINK_COLUMNS) {
+      const col = documentRef.createElement("col");
+      col.dataset.colKey = column.key;
+      colgroup.appendChild(col);
+      colElements.set(column.key, col);
+    }
+    table.appendChild(colgroup);
+    const body = documentRef.createElement("tbody");
+
+    sectionsHost.appendChild(section);
+    return { kind, section, table, colElements, body };
+  });
+
+  function totalWidth() {
+    let total = 0;
+    for (const column of LINK_COLUMNS) total += widths.get(column.key);
+    return total;
   }
-  table.appendChild(colgroup);
 
-  const head = documentRef.createElement("thead");
-  const headerRow = documentRef.createElement("tr");
-  for (const label of [
-    ...identityColumns.map((column) => column.header),
-    "Destination",
-    "Values",
-  ]) {
-    const header = documentRef.createElement("th");
-    header.scope = "col";
-    header.textContent = label;
-    headerRow.appendChild(header);
+  /**
+   * The width the tables have to sit in: the sections' own box, which is what
+   * the shared frame leaves once its scrollbar has taken its lane.
+   */
+  function availableWidth() {
+    return Number(sectionsHost.clientWidth) || 0;
   }
-  head.appendChild(headerRow);
-  table.appendChild(head);
 
-  const body = documentRef.createElement("tbody");
-  table.appendChild(body);
+  /**
+   * A table narrower than its frame draws its own right edge on the last
+   * column, so a deliberately shrunk table never looks cut off; a table that
+   * fills or overflows the frame leaves that edge to the frame.
+   */
+  function syncTableEdges() {
+    const available = availableWidth();
+    scrollHost.classList.toggle("isTableShort", available > 0 && totalWidth() < available);
+  }
+
+  function syncTableWidth() {
+    const total = `${totalWidth()}px`;
+    for (const { table, colElements } of sections) {
+      table.style.width = total;
+      table.style.minWidth = total;
+      for (const [key, col] of colElements) col.style.width = `${widths.get(key)}px`;
+    }
+    syncTableEdges();
+  }
+
+  function setColumnWidth(key, width) {
+    widths.set(key, clampWidth(key, width));
+    syncTableWidth();
+  }
+
+  /**
+   * Until a column has been dragged, the defaults are stretched to fill the
+   * host, so the tables open edge to edge rather than short of the frame, and
+   * they follow the host whenever it is resized. The single frame decides for
+   * every section, so the stack never gains a horizontal scrollbar from the
+   * fit even once its vertical one appears.
+   */
+  function fitColumnsToHost() {
+    if (manualWidths.size) return;
+    const available = availableWidth();
+    if (available <= 0) return;
+    const defaultTotal = LINK_COLUMNS.reduce((sum, column) => sum + column.width, 0);
+    const scale = Math.max(1, available / defaultTotal);
+    let assigned = 0;
+    LINK_COLUMNS.forEach((column, index) => {
+      const width = index === LINK_COLUMNS.length - 1 && scale > 1
+        ? available - assigned
+        : Math.floor(column.width * scale);
+      widths.set(column.key, clampWidth(column.key, width));
+      assigned += widths.get(column.key);
+    });
+    syncTableWidth();
+  }
+
+  function startColumnResize(event, key) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    closeMenu();
+    const handle = event.currentTarget;
+    const startX = Number(event.clientX) || 0;
+    const startWidth = widths.get(key);
+    manualWidths.add(key);
+    root.classList.add("isResizingColumn");
+    handle.setPointerCapture?.(event.pointerId);
+    const onMove = (moveEvent) => {
+      setColumnWidth(key, startWidth + (Number(moveEvent.clientX) || 0) - startX);
+    };
+    const onUp = () => {
+      sessionColumnWidths.set(key, widths.get(key));
+      root.classList.remove("isResizingColumn");
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
+  for (const { table, body } of sections) {
+    const head = documentRef.createElement("thead");
+    const headerRow = documentRef.createElement("tr");
+    for (const column of LINK_COLUMNS) {
+      const header = documentRef.createElement("th");
+      header.scope = "col";
+      header.dataset.colKey = column.key;
+      const inner = documentRef.createElement("div");
+      inner.className = "arLinksHead";
+      appendTextElement(documentRef, inner, "span", "arLinksHeadLabel", column.label);
+      const resizer = documentRef.createElement("div");
+      resizer.className = "arLinksColResizer";
+      resizer.addEventListener("pointerdown", (event) => startColumnResize(event, column.key));
+      // Double-click hands the column back to its default width.
+      resizer.addEventListener("dblclick", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        manualWidths.delete(column.key);
+        sessionColumnWidths.delete(column.key);
+        widths.set(column.key, column.width);
+        syncTableWidth();
+        fitColumnsToHost();
+      });
+      inner.appendChild(resizer);
+      header.appendChild(inner);
+      headerRow.appendChild(header);
+    }
+    head.appendChild(headerRow);
+    table.appendChild(head);
+    table.appendChild(body);
+  }
+  syncTableWidth();
 
   container.classList?.add("arExternalLinksMount");
   container.appendChild(root);
@@ -306,9 +499,9 @@ export function createExternalLinksTab({
     scrollIdleTimer = null;
   };
 
-  const closeMenu = () => {
+  function closeMenu() {
     menu.style.display = "none";
-  };
+  }
 
   const handleScroll = () => {
     closeMenu();
@@ -330,10 +523,7 @@ export function createExternalLinksTab({
     const nearHorizontalScrollbar = scrollHost.scrollWidth > scrollHost.clientWidth
       && horizontalScrollbarHeight > 0
       && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
-    scrollHost.classList.toggle(
-      "isScrollbarHover",
-      nearVerticalScrollbar || nearHorizontalScrollbar,
-    );
+    scrollHost.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
   };
 
   const handlePointerLeave = () => {
@@ -344,6 +534,16 @@ export function createExternalLinksTab({
   scrollHost.addEventListener("pointermove", handlePointerMove, { passive: true });
   scrollHost.addEventListener("pointerleave", handlePointerLeave, { passive: true });
 
+  // The host is resized by the window, the tab, and the panel splitters, and
+  // a tab that was hidden while its links loaded measured no width at all.
+  const resizeObserver = typeof timerHost.ResizeObserver === "function"
+    ? new timerHost.ResizeObserver(() => {
+      fitColumnsToHost();
+      syncTableEdges();
+    })
+    : null;
+  resizeObserver?.observe(sectionsHost);
+
   const reportStatus = (message, tone = "") => {
     try {
       statusHandler(String(message || ""), tone);
@@ -352,7 +552,7 @@ export function createExternalLinksTab({
     }
   };
 
-  const hasRows = () => body.children.length > 0;
+  const hasRows = () => renderedRows.size > 0;
   const hasSelection = () => selectedIds.size > 0;
 
   const scopedRecords = () => (
@@ -380,7 +580,7 @@ export function createExternalLinksTab({
     for (const item of openItems) {
       item.element.hidden = !contextRecord || item.availableFor(contextRecord) !== true;
     }
-    openWorkbookSeparator.hidden = !openItems.length || openItems.every((item) => item.element.hidden);
+    openSeparator.hidden = openItems.every((item) => item.element.hidden);
     refreshSelectedItem.hidden = selectedScope.length === 0;
     breakSelectedItem.hidden = breakableSelected.length === 0;
     refreshAllItem.hidden = records.length === 0;
@@ -388,14 +588,8 @@ export function createExternalLinksTab({
     menuSeparator.hidden = (refreshSelectedItem.hidden && breakSelectedItem.hidden)
       || (refreshAllItem.hidden && breakAllItem.hidden);
 
-    refreshSelectedItem.setAttribute(
-      "aria-label",
-      `Refresh ${selectedScope.length} selected ${nounText}`,
-    );
-    breakSelectedItem.setAttribute(
-      "aria-label",
-      `Break ${breakableSelected.length} selected ${nounText}`,
-    );
+    refreshSelectedItem.setAttribute("aria-label", `Refresh ${selectedScope.length} selected ${nounText}`);
+    breakSelectedItem.setAttribute("aria-label", `Break ${breakableSelected.length} selected ${nounText}`);
     refreshAllItem.setAttribute("aria-label", `Refresh all ${nounText}`);
     breakAllItem.setAttribute("aria-label", `Break all ${nounText}`);
 
@@ -405,8 +599,7 @@ export function createExternalLinksTab({
       breakSelectedItem,
       refreshAllItem,
       breakAllItem,
-    ]
-      .some((item) => !item.hidden);
+    ].some((item) => !item.hidden);
   };
 
   const restoreTableFocus = () => {
@@ -426,7 +619,7 @@ export function createExternalLinksTab({
       return;
     }
     openContextMenu(menu, {
-      anchorEl: contextRowId ? renderedRows.get(contextRowId) || scrollHost : scrollHost,
+      anchorEl: (contextRowId && renderedRows.get(contextRowId)) || scrollHost,
       clientX: Number(event?.clientX),
       clientY: Number(event?.clientY),
       offset: 8,
@@ -488,23 +681,37 @@ export function createExternalLinksTab({
     scrollHost.hidden = false;
   };
 
+  const appendCell = (row, key, className, text) => {
+    const cell = documentRef.createElement("td");
+    cell.className = `arLinksCell arLinksCell-${key}${className ? ` ${className}` : ""}`;
+    cell.dataset.colKey = key;
+    appendTextElement(documentRef, cell, "span", "arLinksCellText", text);
+    row.appendChild(cell);
+    return cell;
+  };
+
+  const sectionOrder = new Map(LINK_SECTIONS.map(({ kind }, index) => [kind, index]));
+
   const render = (nextRecords) => {
     if (destroyed) return;
-    records = nextRecords.map(
-      (record, index) => normalizeLinkRecord(record, index, identityColumns, idPrefix),
-    );
+    // Rows keep the page's order within a section, and the sections keep
+    // their order on the page, so Shift-click ranges follow what is seen.
+    records = nextRecords
+      .map((record, index) => normalizeLinkRecord(record, index, idPrefix))
+      .sort((left, right) => sectionOrder.get(left.kind) - sectionOrder.get(right.kind));
     const availableIds = new Set(records.map((record) => record.id));
     Array.from(selectedIds).forEach((id) => {
       if (!availableIds.has(id)) selectedIds.delete(id);
     });
     if (selectionAnchorId && !availableIds.has(selectionAnchorId)) selectionAnchorId = "";
 
-    body.replaceChildren();
+    for (const { body } of sections) body.replaceChildren();
     renderedRows.clear();
 
     records.forEach((record) => {
       const row = documentRef.createElement("tr");
       row.tabIndex = 0;
+      row.dataset.linkKind = record.kind;
       row.setAttribute("aria-selected", selectedIds.has(record.id) ? "true" : "false");
       row.classList.toggle("isSelected", selectedIds.has(record.id));
       row.addEventListener("click", (event) => selectRecord(record, event));
@@ -521,46 +728,33 @@ export function createExternalLinksTab({
         openMenu(event);
       });
 
-      for (const column of identityColumns) {
-        const value = record[column.key];
-        const cell = documentRef.createElement("td");
-        cell.className = column.cellClassName;
-        cell.textContent = value;
-        attachArcrhoTooltip(cell, value, { document: documentRef });
-        row.appendChild(cell);
-      }
-
-      const destinationCell = documentRef.createElement("td");
-      destinationCell.className = "arExternalLinksDestinationCell";
-      const destinationText = appendTextElement(
-        documentRef,
-        destinationCell,
-        "span",
-        "arExternalLinksDestinationText",
-        record.destination,
-      );
-      attachArcrhoTooltip(destinationText, record.destination, { document: documentRef });
-      if (record.affectedCellCount > 0) {
-        const countLabel = `${record.affectedCellCount} ${record.affectedCellCount === 1 ? "cell" : "cells"}`;
-        appendTextElement(
+      const sourceCell = documentRef.createElement("td");
+      sourceCell.className = "arLinksCell arLinksCell-source";
+      sourceCell.dataset.colKey = "source";
+      // The section title already names the kind, so ArcRho and Excel rows
+      // carry no badge; a formula row keeps its one, since its Source column
+      // names the datasets the formula reads rather than the formula itself.
+      if (record.kind === "formula") {
+        const badge = appendTextElement(
           documentRef,
-          destinationCell,
+          sourceCell,
           "span",
-          "arExternalLinksAffectedCount",
-          countLabel,
+          `arLinksKind arLinksKind-${record.kind}`,
+          record.kindLabel,
         );
+        badge.setAttribute("aria-label", `${record.kindLabel} link`);
       }
-      row.appendChild(destinationCell);
+      appendTextElement(documentRef, sourceCell, "span", "arLinksCellText", record.source);
+      row.appendChild(sourceCell);
 
-      const valueCell = documentRef.createElement("td");
-      valueCell.className = "arExternalLinksValueCell";
-      valueCell.textContent = record.value;
-      attachArcrhoTooltip(valueCell, record.value, { document: documentRef });
-      row.appendChild(valueCell);
+      appendCell(row, "reference", "", record.reference);
+      appendCell(row, "destination", "", record.destination);
+      appendCell(row, "cells", "", record.affectedCellCount ? String(record.affectedCellCount) : "");
 
       renderedRows.set(record.id, row);
-      body.appendChild(row);
+      sections[sectionOrder.get(record.kind)].body.appendChild(row);
     });
+    for (const { section, body } of sections) section.hidden = body.children.length === 0;
 
     loading = false;
     if (advisory) {
@@ -570,6 +764,7 @@ export function createExternalLinksTab({
     } else {
       showState("Empty", `No ${nounText}`, emptyDescription);
     }
+    fitColumnsToHost();
     syncBusyState();
   };
 
@@ -581,11 +776,7 @@ export function createExternalLinksTab({
 
   const setError = (message) => {
     loading = false;
-    showState(
-      "Error",
-      `Unable to load ${nounText}`,
-      message || `The ${nounText} could not be loaded.`,
-    );
+    showState("Error", `Unable to load ${nounText}`, message || `The ${nounText} could not be loaded.`);
     syncBusyState();
   };
 
@@ -615,7 +806,7 @@ export function createExternalLinksTab({
       const nextRecords = await getLinks();
       if (destroyed || generation !== refreshGeneration) return false;
       if (!Array.isArray(nextRecords)) {
-        throw new TypeError("External link provider must return an array.");
+        throw new TypeError("Link provider must return an array.");
       }
       render(nextRecords);
       return true;
@@ -638,12 +829,9 @@ export function createExternalLinksTab({
 
     activeAction = kind;
     syncBusyState();
-    // The bulk actions moved into the row context menu, so the in-tab state banner is the
-    // only place left that can report progress while the domain handler runs.
-    showState(
-      "Loading",
-      kind === "break" ? `Breaking ${nounText}...` : `Refreshing ${nounText}...`,
-    );
+    // The bulk actions live in the row context menu, so the in-tab state banner
+    // is the only place that can report progress while the page handler runs.
+    showState("Loading", kind === "break" ? `Breaking ${nounText}...` : `Refreshing ${nounText}...`);
     const handler = kind === "break" ? onBreakLinks : onRefreshLinks;
     const title = kind === "break" ? "Unable to break links" : "Unable to refresh links";
     const fallback = kind === "break"
@@ -662,9 +850,7 @@ export function createExternalLinksTab({
 
       const refreshed = await refresh();
       if (destroyed || !refreshed) return false;
-      const defaultMessage = kind === "break"
-        ? `${nounSentence} broken.`
-        : `${nounSentence} refreshed.`;
+      const defaultMessage = kind === "break" ? `${nounSentence} broken.` : `${nounSentence} refreshed.`;
       reportStatus(String(result?.message || defaultMessage), "success");
       return true;
     } catch (error) {
@@ -755,20 +941,21 @@ export function createExternalLinksTab({
     renderedRows.clear();
     contextRowId = "";
     closeMenu();
+    resizeObserver?.disconnect();
     scrollHost.removeEventListener("scroll", handleScroll);
     scrollHost.removeEventListener("pointermove", handlePointerMove);
     scrollHost.removeEventListener("pointerleave", handlePointerLeave);
     scrollHost.removeEventListener("contextmenu", handleContextMenu);
+    scrollHost.classList.remove("isScrolling", "isScrollbarHover");
     documentRef.removeEventListener?.("mousedown", handleDocumentPointerDown, true);
     documentRef.removeEventListener?.("keydown", handleDocumentKeyDown, true);
     timerHost.removeEventListener?.("resize", closeMenu);
     timerHost.removeEventListener?.("blur", closeMenu);
-    scrollHost.classList.remove("isScrolling", "isScrollbarHover");
     menu.remove();
     root.remove();
     container.classList?.remove("arExternalLinksMount");
-    if (MOUNTED_EXTERNAL_LINKS_TABS.get(container) === controller) {
-      MOUNTED_EXTERNAL_LINKS_TABS.delete(container);
+    if (MOUNTED_LINKS_TABS.get(container) === controller) {
+      MOUNTED_LINKS_TABS.delete(container);
     }
   };
 
@@ -778,61 +965,9 @@ export function createExternalLinksTab({
     setError,
     setWarning,
     clearWarning,
+    getColumnWidth: (key) => widths.get(key),
     destroy,
   };
-  MOUNTED_EXTERNAL_LINKS_TABS.set(container, controller);
+  MOUNTED_LINKS_TABS.set(container, controller);
   return controller;
-}
-
-/**
- * The ArcRho internal-links variant of the same table: links from this
- * dataset's cells into other datasets of the reserving class. Columns become
- * Dataset / Source Range, and the context menu opens the source dataset
- * instead of a workbook.
- */
-export function createInternalLinksTab({
-  container,
-  ariaLabel = "Dataset links",
-  emptyDescription = "ArcRho dataset links used by editable cells in the Data tab will appear here.",
-  getLinks,
-  onRefreshLinks,
-  onBreakLinks,
-  onOpenDataset,
-  onStatus,
-  documentRef = container?.ownerDocument || globalThis.document,
-} = {}) {
-  return createExternalLinksTab({
-    container,
-    ariaLabel,
-    emptyDescription,
-    getLinks,
-    onRefreshLinks,
-    onBreakLinks,
-    onStatus,
-    documentRef,
-    noun: "dataset links",
-    idPrefix: "internal-link",
-    identityColumns: [
-      {
-        key: "datasetName",
-        header: "Dataset",
-        colClassName: "arInternalLinksDatasetColumn",
-        cellClassName: "arExternalLinksWorkbookCell",
-      },
-      {
-        key: "sourceRange",
-        header: "Source Range",
-        colClassName: "arInternalLinksRangeColumn",
-        cellClassName: "arExternalLinksAddressCell",
-      },
-    ],
-    openMenuItems: typeof onOpenDataset === "function" ? [{
-      action: "open-dataset",
-      label: "Open source dataset",
-      availableFor: (record) => !!record?.datasetName,
-      run: (record) => onOpenDataset(record),
-      failure: "The source dataset could not be opened.",
-      success: "Dataset opened.",
-    }] : [],
-  });
 }

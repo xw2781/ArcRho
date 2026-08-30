@@ -163,6 +163,11 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
       hardCodeTargetCells: () => 0, getLinkFailures: () => [],
       serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
     }),
+    createDatasetFormulaLinksController: () => ({
+      abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
+      hardCodeTargetCells: () => 0, getLinkFailures: () => [],
+      serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
+    }),
   };
   const runtime = new Proxy(base, {
     get(target, prop) {

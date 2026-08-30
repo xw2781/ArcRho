@@ -24,6 +24,10 @@
   --ar-spreadsheet-internal-link-border: #2b6df6;
   --ar-spreadsheet-internal-link-glow: rgba(43, 109, 246, 0.28);
   --ar-spreadsheet-internal-link-glow-active: rgba(43, 109, 246, 0.5);
+  /* A formula reads from either kind, so it wears a third colour of its own. */
+  --ar-spreadsheet-formula-link-border: #7c3aed;
+  --ar-spreadsheet-formula-link-glow: rgba(124, 58, 237, 0.28);
+  --ar-spreadsheet-formula-link-glow-active: rgba(124, 58, 237, 0.5);
   --ar-spreadsheet-reference-pick-hover-fill: rgba(43, 109, 246, 0.1);
 }
 
@@ -37,6 +41,9 @@
   --ar-spreadsheet-internal-link-border: #6ba5ff;
   --ar-spreadsheet-internal-link-glow: rgba(107, 165, 255, 0.3);
   --ar-spreadsheet-internal-link-glow-active: rgba(107, 165, 255, 0.52);
+  --ar-spreadsheet-formula-link-border: #b08cff;
+  --ar-spreadsheet-formula-link-glow: rgba(176, 140, 255, 0.3);
+  --ar-spreadsheet-formula-link-glow-active: rgba(176, 140, 255, 0.52);
   --ar-spreadsheet-reference-pick-hover-fill: rgba(107, 165, 255, 0.16);
 }
 
@@ -99,8 +106,15 @@
    dismissed and until it is fixed. Declared after the selection rule so a
    selected cell still reads as broken. */
 .arSpreadsheetTable td.arExternalLinkErrorCell,
-.arSpreadsheetTable td.arInternalLinkErrorCell {
+.arSpreadsheetTable td.arInternalLinkErrorCell,
+.arSpreadsheetTable td.arFormulaLinkErrorCell {
   color: var(--ar-spreadsheet-link-error-text);
+}
+
+/* The Dark deviation for the two copied-link kinds lives in themes/dark.css;
+   the formula kind keeps its whole look in this one file. */
+:root[data-arcrho-theme="dark"] .arSpreadsheetTable td.arFormulaLinkErrorCell {
+  color: var(--ar-color-danger);
 }
 
 .arSpreadsheetTable td.arSpreadsheetSelectionAnchor {
@@ -133,6 +147,14 @@
   --ar-array-formula-border: var(--ar-spreadsheet-internal-link-border);
   --ar-array-formula-glow: var(--ar-spreadsheet-internal-link-glow);
   --ar-array-formula-glow-active: var(--ar-spreadsheet-internal-link-glow-active);
+}
+
+/* A calculated range wears the formula colour, so a cell whose value was
+   worked out reads apart from one whose value was copied. */
+.arSpreadsheetTable td.arArrayFormulaCell.arFormulaLinkCell {
+  --ar-array-formula-border: var(--ar-spreadsheet-formula-link-border);
+  --ar-array-formula-glow: var(--ar-spreadsheet-formula-link-glow);
+  --ar-array-formula-glow-active: var(--ar-spreadsheet-formula-link-glow-active);
 }
 
 .arSpreadsheetTable td.arArrayFormulaEdgeTop {

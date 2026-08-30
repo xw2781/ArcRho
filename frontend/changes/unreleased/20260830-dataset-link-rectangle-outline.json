@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A linked range in the Data tab is now framed as the rectangle you picked instead of following the shape of the triangle.",
+  "details": [
+    "The coloured frame around a linked range used to step down the diagonal of a triangle, because it followed only the cells that received a value.",
+    "It now closes over the empty corner, so the frame matches the Excel or dataset range the link actually covers.",
+    "The same applies to all three kinds of link: green for a workbook, blue for another dataset, purple for a calculated range."
+  ]
+}

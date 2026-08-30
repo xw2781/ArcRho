@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260829a";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260830a";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -21,10 +21,7 @@ import {
   renderDatasetChart,
 } from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
-import {
-  createExternalLinksTab,
-  createInternalLinksTab,
-} from "/ui/shared/tabs/links/links_tab.js?v=20260829a";
+import { createLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260901a";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
 import { configureDataTabChangeWatch } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import {
@@ -140,7 +137,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260829b"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260830a"
 );
 
 const postLinksStatus = (message, tone = "") => {
@@ -152,31 +149,15 @@ const postLinksStatus = (message, tone = "") => {
   }, "*");
 };
 
-const datasetExternalLinksTab = createExternalLinksTab({
-  container: document.getElementById("datasetExternalLinksMount"),
-  ariaLabel: "Dataset external links",
-  emptyDescription: "Excel links used by editable cells in the Data tab will appear here.",
-  getLinks: () => datasetDataTab.getDatasetExternalLinkRecords(),
-  onRefreshLinks: (records) => datasetDataTab.refreshDatasetExternalLinkRecords(
-    records.map((record) => record?.id).filter(Boolean),
-  ),
-  onBreakLinks: (records) => datasetDataTab.breakDatasetExternalLinks(
-    records.map((record) => record?.id).filter(Boolean),
-  ),
-  onStatus: postLinksStatus,
-});
-
-const datasetInternalLinksTab = createInternalLinksTab({
-  container: document.getElementById("datasetInternalLinksMount"),
-  ariaLabel: "ArcRho dataset links",
-  emptyDescription: "ArcRho dataset links used by editable cells in the Data tab will appear here.",
-  getLinks: () => datasetDataTab.getDatasetInternalLinkRecords(),
-  onRefreshLinks: (records) => datasetDataTab.refreshDatasetInternalLinkRecords(
-    records.map((record) => record?.id).filter(Boolean),
-  ),
-  onBreakLinks: (records) => datasetDataTab.breakDatasetInternalLinks(
-    records.map((record) => record?.id).filter(Boolean),
-  ),
+// One table lists every link the Data tab holds - Excel, ArcRho, and formula -
+// and the Data tab routes each row back to the controller that owns it.
+const datasetLinksTab = createLinksTab({
+  container: document.getElementById("datasetLinksMount"),
+  ariaLabel: "Dataset links",
+  emptyDescription: "Links used by editable cells in the Data tab will appear here.",
+  getLinks: () => datasetDataTab.getDatasetLinkRecords(),
+  onRefreshLinks: (records) => datasetDataTab.refreshDatasetLinkRecords(records),
+  onBreakLinks: (records) => datasetDataTab.breakDatasetLinks(records),
   onOpenDataset: (record) => {
     const params = new URLSearchParams(window.location.search);
     window.parent?.postMessage?.({
@@ -190,13 +171,7 @@ const datasetInternalLinksTab = createInternalLinksTab({
   onStatus: postLinksStatus,
 });
 
-// Both sections refresh together whenever the Data tab reports a link change.
-configureDataTabLinks({
-  refresh: () => Promise.all([
-    datasetExternalLinksTab.refresh(),
-    datasetInternalLinksTab.refresh(),
-  ]),
-});
+configureDataTabLinks({ refresh: () => datasetLinksTab.refresh() });
 
 window.ADA_DATASET_READY = datasetDataTab.bootDatasetDataTab();
 

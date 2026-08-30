@@ -36,6 +36,17 @@ const formulaHoverStubUrl = dataUrl(`
   }
 `);
 
+const internalReferenceUrl = dataUrl(await readFile(
+  new URL("../ui/shared/dataset/dataset_internal_reference.js", import.meta.url),
+  "utf8",
+));
+const datasetFormulaUrl = dataUrl((await readFile(
+  new URL("../ui/shared/dataset/dataset_formula.js", import.meta.url),
+  "utf8",
+))
+  .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(dataUrl(referenceSource)))
+  .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl)));
+
 let interactionSource = await readFile(
   new URL("../ui/shared/tabs/data/dataset_grid_interactions.js", import.meta.url),
   "utf8",
@@ -69,15 +80,16 @@ interactionSource = interactionSource
     JSON.stringify(dataUrl(referenceSource)),
   )
   .replace(
-    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260829b"',
+    '"/ui/shared/components/formula_hover/formula_hover.js?v=20260830a"',
     JSON.stringify(formulaHoverStubUrl),
   )
   .replace(
-    '"/ui/shared/dataset/dataset_internal_reference.js?v=20260829a"',
-    JSON.stringify(dataUrl(await readFile(
-      new URL("../ui/shared/dataset/dataset_internal_reference.js", import.meta.url),
-      "utf8",
-    ))),
+    '"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"',
+    JSON.stringify(internalReferenceUrl),
+  )
+  .replace(
+    '"/ui/shared/dataset/dataset_formula.js?v=20260830a"',
+    JSON.stringify(datasetFormulaUrl),
   );
 const interactions = await import(dataUrl(interactionSource));
 

@@ -1,4 +1,4 @@
-import { createExternalLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260829a";
+import { createLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260901a";
 import {
   breakDfmExternalLinks,
   getDfmExternalLinkRecords,
@@ -51,10 +51,11 @@ export function initDfmLinks() {
   if (dfmLinksController) return dfmLinksController;
   const container = document.getElementById("dfmLinksMount");
   if (!container) return null;
-  dfmLinksController = createExternalLinksTab({
+  dfmLinksController = createLinksTab({
     container,
     ariaLabel: "DFM external links",
     emptyDescription: "Excel links used by User Entry cells in the Ratios tab will appear here.",
+    noun: "external links",
     getLinks: () => getDfmExternalLinkRecords(),
     onRefreshLinks: async (records) => {
       const result = await refreshAllExcelLinks({

@@ -10,12 +10,6 @@ const spreadsheetStylesheetSource = await readFile(
   new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
   "utf8",
 );
-const tooltipStubSource = `
-  export function attachArcrhoTooltip(target, text) {
-    if (target && text) target.setAttribute("aria-description", String(text));
-  }
-`;
-const tooltipStubUrl = `data:text/javascript;base64,${Buffer.from(tooltipStubSource).toString("base64")}`;
 // The real positioner needs a layout engine; record the placement request instead.
 const contextMenuStubSource = `
   export const openedMenus = [];
@@ -33,10 +27,6 @@ const openPathStubSource = `
 `;
 const openPathStubUrl = `data:text/javascript;base64,${Buffer.from(openPathStubSource).toString("base64")}`;
 const testableComponentSource = componentSource
-  .replace(
-    '"/ui/shared/components/tooltip/tooltip.js?v=20260812a"',
-    JSON.stringify(tooltipStubUrl),
-  )
   .replace(
     '"/ui/shared/components/context_menu/context_menu.js"',
     JSON.stringify(contextMenuStubUrl),
@@ -171,6 +161,7 @@ class FakeElement {
       metaKey: false,
       shiftKey: false,
       preventDefault() {},
+      stopPropagation() {},
       ...eventInit,
     };
     const results = Array.from(this.listeners.get(type) || []).map((listener) => listener(event));
@@ -255,6 +246,11 @@ function byClass(root, className) {
   return descendants(root).filter((element) => element.classList.contains(className));
 }
 
+/** Every rendered row, in page order across the ArcRho, Excel, and Formula sections. */
+function allRows(root) {
+  return byTag(root, "tbody").flatMap((body) => body.children);
+}
+
 function renderedText(element) {
   return [element.textContent, ...element.children.map(renderedText)].join("");
 }
@@ -277,7 +273,7 @@ function visibleMenuLabels(documentRef) {
     .map(renderedText);
 }
 
-/** Right-clicks the scroll host below the rows, which never changes the selection. */
+/** Right-clicks the tab's one scroll host below the rows, which never changes the selection. */
 async function openHostMenu(documentRef, container) {
   const scrollHost = byClass(container.children[0], "arExternalLinksScroll")[0];
   await scrollHost.dispatch("contextmenu", { clientX: 40, clientY: 60 });
@@ -293,15 +289,17 @@ function setup(options = {}) {
   const documentRef = new FakeDocument();
   const container = documentRef.createElement("div");
   documentRef.body.appendChild(container);
-  const controller = linksTab.createExternalLinksTab({
+  const controller = linksTab.createLinksTab({
     container,
     documentRef,
-    ariaLabel: "Dataset external links",
-    emptyDescription: "No workbook cells are linked.",
+    ariaLabel: "Dataset links",
+    emptyDescription: "No cells are linked.",
+    noun: "external links",
     getLinks: options.getLinks || (() => []),
     onRefreshLinks: options.onRefreshLinks || (() => ({ ok: true })),
     onBreakLinks: options.onBreakLinks || (() => ({ ok: true })),
     onOpenWorkbook: options.onOpenWorkbook || (() => ({ ok: true })),
+    onOpenDataset: options.onOpenDataset || null,
     onStatus: options.onStatus,
   });
   return { documentRef, container, controller };
@@ -324,7 +322,27 @@ const sampleLinks = [
   { ...sampleLink, id: "link-4", address: "F6", destination: "2027 / 12m", value: "70" },
 ];
 
-test("renders no toolbar and offers the bulk actions through the table context menu", async () => {
+const internalLink = {
+  id: "internal-1",
+  sourceKind: "internal",
+  datasetName: "C 82 - Prior Qtr Selected",
+  sourceRange: "1:7",
+  destination: "2017 / Value + 6 more",
+  value: "14802...",
+  affectedCellCount: 7,
+};
+
+const formulaLink = {
+  id: "formula-1",
+  sourceKind: "formula",
+  formula: "=[C 82 - Prior Qtr Selected][1:7] * 2",
+  sources: ["C 82 - Prior Qtr Selected"],
+  destination: "2017 / Value + 6 more",
+  value: "29604...",
+  affectedCellCount: 7,
+};
+
+test("renders one compact row per link and offers the bulk actions through the context menu", async () => {
   const { documentRef, container, controller } = setup({ getLinks: () => [sampleLink] });
 
   assert.equal(await controller.refresh(), true);
@@ -344,6 +362,7 @@ test("renders no toolbar and offers the bulk actions through the table context m
     [
       "Open workbook",
       "Open workbook as Read-Only",
+      "Open source dataset",
       "Refresh selected",
       "Break selected",
       "Refresh all",
@@ -357,26 +376,95 @@ test("renders no toolbar and offers the bulk actions through the table context m
   assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
   assert.equal(byClass(menu, "ctx-sep")[0].hidden, true);
 
-  const table = byTag(root, "table")[0];
+  // One framed scroll host for the whole tab, with one table per section
+  // stacked inside it in page order; only the Excel one shows.
+  const scrollHosts = byClass(root, "arExternalLinksScroll");
+  assert.equal(scrollHosts.length, 1);
+  assert.equal(scrollHosts[0].hidden, false);
+  assert.equal(byClass(root, "arLinksSections")[0].parentElement, scrollHosts[0]);
+  const sections = byClass(root, "arLinksSection");
+  assert.deepEqual(sections.map((section) => section.dataset.linkKind), ["internal", "excel", "formula"]);
   assert.deepEqual(
-    byTag(table, "th").map((header) => header.textContent),
-    ["Workbook", "Worksheet", "Cell Address", "Destination", "Values"],
+    sections.map((section) => renderedText(byClass(section, "arLinksSectionTitle")[0])),
+    ["ArcRho Links", "Excel Links", "Formula Links"],
   );
+  assert.deepEqual(sections.map((section) => section.hidden), [true, false, true]);
+  assert.equal(byClass(root, "arLinksSections")[0].hidden, false);
+
+  const table = byTag(sections[1], "table")[0];
+  assert.deepEqual(byTag(table, "th").map(renderedText), ["Source", "Reference", "Destination", "Cells"]);
   assert.equal(table.getAttribute("role"), "grid");
   assert.equal(table.getAttribute("aria-multiselectable"), "true");
-  assert.equal(table.getAttribute("aria-label"), "Dataset external links");
+  assert.equal(table.getAttribute("aria-label"), "Dataset links: Excel Links");
+  // Every column has its explicit width, and every table is their sum, so
+  // the sections' columns always line up.
+  for (const candidate of byTag(root, "table")) {
+    assert.deepEqual(byTag(candidate, "col").map((col) => col.style.width), ["260px", "200px", "200px", "64px"]);
+    assert.equal(candidate.style.width, "724px");
+    assert.equal(candidate.style.minWidth, "724px");
+  }
 
-  const row = byTag(table, "tbody")[0].children[0];
+  const row = allRows(root)[0];
   const cells = row.children;
+  assert.equal(row.parentElement, byTag(table, "tbody")[0]);
+  assert.equal(cells.length, 4);
   assert.equal(row.getAttribute("aria-selected"), "false");
-  assert.equal(cells[0].textContent, sampleLink.workbookPath);
-  assert.equal(cells[0].getAttribute("aria-description"), sampleLink.workbookPath);
-  assert.equal(cells[1].textContent, sampleLink.worksheet);
-  assert.equal(cells[2].textContent, sampleLink.address);
-  assert.match(renderedText(cells[3]), /2024 \/ 12m/u);
-  assert.match(renderedText(cells[3]), /6 cells/u);
-  assert.equal(cells[4].textContent, "125.4 ...");
+  assert.equal(row.dataset.linkKind, "excel");
+  assert.equal(byClass(cells[0], "arLinksKind").length, 0);
+  assert.equal(byClass(cells[0], "arLinksCellText")[0].textContent, "Quarterly Book.xlsx");
+  assert.equal(renderedText(cells[1]), "Paid Loss!A1:C2");
+  assert.equal(renderedText(cells[2]), "2024 / 12m");
+  assert.equal(renderedText(cells[3]), "6");
   assert.equal(byClass(root, "arExternalLinksState")[0].hidden, true);
+});
+
+test("ArcRho links sit in the top section, Excel below, and formulas last, with only the formula badge and its own open entry", async () => {
+  const opened = [];
+  const { documentRef, container, controller } = setup({
+    getLinks: () => [sampleLink, internalLink, formulaLink],
+    onOpenDataset: (record) => {
+      opened.push(record.datasetName);
+      return { ok: true };
+    },
+  });
+  await controller.refresh();
+
+  const root = container.children[0];
+  const sections = byClass(root, "arLinksSection");
+  assert.deepEqual(sections.map((section) => section.hidden), [false, false, false]);
+  // Rows follow the section order on the page, not the order the page gave them.
+  const rows = allRows(root);
+  assert.deepEqual(rows.map((row) => row.dataset.linkKind), ["internal", "excel", "formula"]);
+  rows.forEach((row, index) => assert.equal(row.parentElement, byTag(sections[index], "tbody")[0]));
+  assert.equal(byClass(rows[0].children[0], "arLinksKind").length, 0);
+  assert.equal(byClass(rows[1].children[0], "arLinksKind").length, 0);
+  assert.equal(byClass(rows[0].children[0], "arLinksCellText")[0].textContent, "C 82 - Prior Qtr Selected");
+  assert.equal(renderedText(rows[0].children[1]), "[1:7]");
+  assert.equal(renderedText(rows[0].children[2]), internalLink.destination);
+  assert.equal(renderedText(byClass(rows[2].children[0], "arLinksKind")[0]), "Formula");
+  assert.equal(byClass(rows[2].children[0], "arLinksCellText")[0].textContent, "C 82 - Prior Qtr Selected");
+  assert.equal(renderedText(rows[2].children[1]), formulaLink.formula);
+  assert.equal(renderedText(rows[2].children[3]), "7");
+
+  await rows[0].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.deepEqual(visibleMenuLabels(documentRef), [
+    "Open source dataset",
+    "Refresh selected",
+    "Break selected",
+    "Refresh all",
+    "Break all",
+  ]);
+  await menuItem(documentRef, "open-dataset").click();
+  assert.deepEqual(opened, ["C 82 - Prior Qtr Selected"]);
+
+  // A formula row has nothing to open, so the menu starts at the actions.
+  await rows[2].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.deepEqual(visibleMenuLabels(documentRef), [
+    "Refresh selected",
+    "Break selected",
+    "Refresh all",
+    "Break all",
+  ]);
 });
 
 test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection", async () => {
@@ -391,7 +479,7 @@ test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection
   await controller.refresh();
 
   const root = container.children[0];
-  const rows = byTag(root, "tbody")[0].children;
+  const rows = allRows(root);
 
   await rows[0].click();
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false", "false", "false"]);
@@ -430,7 +518,7 @@ test("the all-scope entries stay available and ignore the current selection", as
   });
   await controller.refresh();
 
-  const rows = byTag(container.children[0], "tbody")[0].children;
+  const rows = allRows(container.children[0]);
   await rows[1].click();
 
   await runMenuAction(documentRef, container, "refresh-all");
@@ -440,7 +528,7 @@ test("the all-scope entries stay available and ignore the current selection", as
   assert.deepEqual(brokenRecords.map((record) => record.id), sampleLinks.map((record) => record.id));
 
   // The selection survives an all-scope action.
-  const rerenderedRows = byTag(container.children[0], "tbody")[0].children;
+  const rerenderedRows = allRows(container.children[0]);
   assert.deepEqual(
     rerenderedRows.map((row) => row.getAttribute("aria-selected")),
     ["false", "true", "false", "false"],
@@ -458,7 +546,7 @@ test("right-clicking a row keeps an existing selection but claims an unselected 
   });
   await controller.refresh();
 
-  const rows = byTag(container.children[0], "tbody")[0].children;
+  const rows = allRows(container.children[0]);
   await rows[0].click();
   await rows[1].click({ ctrlKey: true });
 
@@ -472,7 +560,7 @@ test("right-clicking a row keeps an existing selection but claims an unselected 
   assert.equal(isMenuOpen(documentRef), false);
 
   // Outside the selection: the target row becomes the whole selection first.
-  const refreshedRows = byTag(container.children[0], "tbody")[0].children;
+  const refreshedRows = allRows(container.children[0]);
   await refreshedRows[3].dispatch("contextmenu", { clientX: 12, clientY: 24 });
   assert.deepEqual(
     refreshedRows.map((row) => row.getAttribute("aria-selected")),
@@ -495,7 +583,7 @@ test("row context menu opens its workbook normally or read-only from the top ent
   });
   await controller.refresh();
 
-  const rows = byTag(container.children[0], "tbody")[0].children;
+  const rows = allRows(container.children[0]);
   await rows[1].dispatch("contextmenu", { clientX: 12, clientY: 24 });
   assert.deepEqual(visibleMenuLabels(documentRef), [
     "Open workbook",
@@ -524,21 +612,21 @@ test("selection is retained by link id and pruned when records disappear", async
   let records = sampleLinks;
   const { documentRef, container, controller } = setup({ getLinks: () => records });
   await controller.refresh();
-  let rows = byTag(container.children[0], "tbody")[0].children;
+  let rows = allRows(container.children[0]);
   await rows[0].click();
   await rows[2].click({ ctrlKey: true });
 
   records = [sampleLinks[0], sampleLinks[1]];
   await controller.refresh();
 
-  rows = byTag(container.children[0], "tbody")[0].children;
+  rows = allRows(container.children[0]);
   assert.deepEqual(rows.map((row) => row.getAttribute("aria-selected")), ["true", "false"]);
   await openHostMenu(documentRef, container);
   assert.equal(menuItem(documentRef, "refresh-selected").hidden, false);
 
   records = [sampleLinks[1]];
   await controller.refresh();
-  rows = byTag(container.children[0], "tbody")[0].children;
+  rows = allRows(container.children[0]);
   assert.equal(rows[0].getAttribute("aria-selected"), "false");
   await openHostMenu(documentRef, container);
   assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
@@ -605,7 +693,7 @@ test("Break all excludes read-only records and hides the break action when none 
   await runMenuAction(documentRef, container, "break-all");
 
   assert.deepEqual(received.map((record) => record.id), ["link-1", "link-2"]);
-  assert.equal(byTag(root, "tbody")[0].children.length, 1);
+  assert.equal(allRows(root).length, 1);
 
   await openHostMenu(documentRef, container);
   assert.equal(isMenuOpen(documentRef), true);
@@ -625,7 +713,7 @@ test("failed bulk actions retain rows, selection, and restored controls", async 
   await controller.refresh();
 
   const root = container.children[0];
-  const rows = byTag(root, "tbody")[0].children;
+  const rows = allRows(root);
   await rows[1].click();
   await openHostMenu(documentRef, container);
   const pendingClick = menuItem(documentRef, "break-selected").click();
@@ -635,7 +723,7 @@ test("failed bulk actions retain rows, selection, and restored controls", async 
   resolveBreak({ ok: false, error: "Workbook is locked." });
   await pendingClick;
 
-  assert.equal(byTag(root, "tbody")[0].children.length, 4);
+  assert.equal(allRows(root).length, 4);
   assert.equal(rows[1].getAttribute("aria-selected"), "true");
   assert.equal(root.getAttribute("aria-busy"), "false");
   await openHostMenu(documentRef, container);
@@ -671,21 +759,20 @@ test("explicit loading and error states retain rendered rows and destroy cleanly
   const { documentRef, container, controller } = setup({ getLinks: () => [sampleLink] });
   await controller.refresh();
   const root = container.children[0];
-  const body = byTag(root, "tbody")[0];
   const menu = menuOf(documentRef);
 
   controller.setLoading("Refreshing workbook values...");
   assert.equal(root.getAttribute("aria-busy"), "true");
   await openHostMenu(documentRef, container);
   assert.equal(isMenuOpen(documentRef), false);
-  assert.equal(body.children.length, 1);
+  assert.equal(allRows(root).length, 1);
   assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Refreshing workbook values/u);
 
   controller.setError("Excel is unavailable.");
   assert.equal(root.getAttribute("aria-busy"), "false");
   await openHostMenu(documentRef, container);
   assert.equal(isMenuOpen(documentRef), true);
-  assert.equal(body.children.length, 1);
+  assert.equal(allRows(root).length, 1);
   assert.match(renderedText(byClass(root, "arExternalLinksState")[0]), /Excel is unavailable\./u);
 
   controller.destroy();
@@ -717,8 +804,123 @@ test("persistent warnings survive link refreshes until explicitly cleared", asyn
   assert.equal(state.hidden, true);
 });
 
-test("shared styling drops the toolbar, keeps every row border, and leaves linked cell text neutral", () => {
+test("dragging a header edge resizes only that column and the table follows", async () => {
+  const { container, controller } = setup({ getLinks: () => [sampleLink] });
+  await controller.refresh();
+  const table = byTag(container.children[0], "table")[0];
+  const referenceHeader = byTag(table, "th").find((header) => header.dataset.colKey === "reference");
+  const resizer = byClass(referenceHeader, "arLinksColResizer")[0];
+
+  await resizer.dispatch("pointerdown", { clientX: 100, pointerId: 1 });
+  await resizer.dispatch("pointermove", { clientX: 160 });
+  assert.equal(container.children[0].classList.contains("isResizingColumn"), true);
+  await resizer.dispatch("pointerup", { clientX: 160 });
+
+  assert.equal(controller.getColumnWidth("reference"), 260);
+  assert.equal(controller.getColumnWidth("source"), 260);
+  // Every section's table follows the shared width.
+  for (const candidate of byTag(container.children[0], "table")) {
+    assert.equal(byTag(candidate, "col")[1].style.width, "260px");
+    assert.equal(candidate.style.width, "784px");
+  }
+  assert.equal(container.children[0].classList.contains("isResizingColumn"), false);
+
+  // A column cannot shrink below its minimum, can grow far past its default,
+  // and a double-click restores the default.
+  await resizer.dispatch("pointerdown", { clientX: 100, pointerId: 2 });
+  await resizer.dispatch("pointermove", { clientX: -900 });
+  await resizer.dispatch("pointerup", { clientX: -900 });
+  assert.equal(controller.getColumnWidth("reference"), 90);
+  await resizer.dispatch("pointerdown", { clientX: 100, pointerId: 3 });
+  await resizer.dispatch("pointermove", { clientX: 2600 });
+  await resizer.dispatch("pointerup", { clientX: 2600 });
+  assert.equal(controller.getColumnWidth("reference"), 2590);
+  await resizer.dispatch("dblclick");
+  assert.equal(controller.getColumnWidth("reference"), 200);
+  assert.equal(table.style.width, "724px");
+});
+
+test("the shared columns re-fit whenever the host resizes, and a short table keeps its right edge", async () => {
+  const observers = [];
+  class FakeResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
+
+    observe(target) {
+      this.target = target;
+    }
+
+    disconnect() {
+      this.disconnected = true;
+    }
+  }
+  globalThis.ResizeObserver = FakeResizeObserver;
+  try {
+    const { container, controller } = setup({ getLinks: () => [sampleLink, internalLink] });
+    await controller.refresh();
+    const root = container.children[0];
+    const scrollHost = byClass(root, "arExternalLinksScroll")[0];
+    const sectionsHost = byClass(root, "arLinksSections")[0];
+    const tables = byTag(root, "table");
+    assert.equal(byClass(root, "arExternalLinksScroll").length, 1);
+    assert.equal(observers.length, 1);
+    assert.equal(observers[0].target, sectionsHost);
+
+    // The host gains width: the defaults stretch to the width the shared
+    // frame leaves once its own scrollbar has taken its lane, so the stack
+    // never gains a horizontal scrollbar from the fit.
+    sectionsHost.clientWidth = 986;
+    observers[0].callback();
+    assert.equal(controller.getColumnWidth("source"), 354);
+    assert.equal(controller.getColumnWidth("cells"), 88);
+    for (const table of tables) assert.equal(table.style.width, "986px");
+    assert.equal(scrollHost.classList.contains("isTableShort"), false);
+
+    // The host shrinks: the defaults scale back down, never below themselves.
+    sectionsHost.clientWidth = 600;
+    observers[0].callback();
+    for (const table of tables) assert.equal(table.style.width, "724px");
+    assert.equal(scrollHost.classList.contains("isTableShort"), false);
+
+    // A dragged column ends the fitting; the tables keep their width and a
+    // wider host only asks the last column for its own right edge.
+    const resizer = byClass(byTag(tables[0], "th")[1], "arLinksColResizer")[0];
+    await resizer.dispatch("pointerdown", { clientX: 100, pointerId: 1 });
+    await resizer.dispatch("pointermove", { clientX: 60 });
+    await resizer.dispatch("pointerup", { clientX: 60 });
+    sectionsHost.clientWidth = 1000;
+    observers[0].callback();
+    for (const table of tables) assert.equal(table.style.width, "684px");
+    assert.equal(scrollHost.classList.contains("isTableShort"), true);
+
+    // Restoring the default hands the column back to the fit, which resumes.
+    await resizer.dispatch("dblclick");
+    assert.equal(controller.getColumnWidth("reference"), 276);
+    for (const table of tables) assert.equal(table.style.width, "1000px");
+    assert.equal(scrollHost.classList.contains("isTableShort"), false);
+    controller.destroy();
+    assert.equal(observers[0].disconnected, true);
+  } finally {
+    delete globalThis.ResizeObserver;
+  }
+});
+
+test("shared styling keeps the compact framed tables and colours the kind badges by link", () => {
   assert.doesNotMatch(stylesheetSource, /arExternalLinksToolbar/u);
+  // One quiet section label per kind, and a table narrower than its frame
+  // draws its own right edge on the last column.
+  assert.match(stylesheetSource, /\.arLinksSectionTitle \{[^}]*font: 700 11px/u);
+  assert.match(
+    stylesheetSource,
+    /\.isTableShort \.arExternalLinksTable td:last-child \{\s*border-right: 1px solid #e2e8f0;/u,
+  );
+  // The kind badge reads as the name is written (ArcRho, not ARCRHO), and no
+  // cell carries a tooltip.
+  assert.doesNotMatch(stylesheetSource, /text-transform:\s*uppercase/u);
+  assert.doesNotMatch(componentSource, /tooltip/iu);
+  assert.doesNotMatch(stylesheetSource, /arLinksCell-value/u);
   // The last row must keep its bottom rule so the table does not look unfinished
   // when the rows are shorter than the framed scroll host.
   assert.doesNotMatch(stylesheetSource, /tbody tr:last-child td\s*\{[^}]*border-bottom:\s*0;/su);
@@ -726,10 +928,17 @@ test("shared styling drops the toolbar, keeps every row border, and leaves linke
     /\.arExternalLinksTable th,\s*\.arExternalLinksTable td\s*\{([^}]*)\}/u,
   )?.[1] || "";
   assert.match(cellRule, /border-bottom:\s*1px solid #e2e8f0;/u);
+  assert.match(cellRule, /white-space:\s*nowrap;/u);
   assert.match(stylesheetSource, /border-collapse:\s*separate;/u);
+  assert.match(stylesheetSource, /table-layout:\s*fixed;/u);
   assert.match(stylesheetSource, /position:\s*sticky;/u);
   assert.match(stylesheetSource, /height:\s*31px;/u);
   assert.match(stylesheetSource, /tbody tr\[aria-selected="true"\]/u);
+  assert.match(stylesheetSource, /\.arLinksColResizer \{[^}]*cursor:\s*col-resize;/u);
+  // Only the formula badge survives, so only its colour token is declared.
+  assert.match(stylesheetSource, /--ar-links-formula: var\(--ar-spreadsheet-formula-link-border, #7c3aed\);/u);
+  assert.doesNotMatch(stylesheetSource, /--ar-links-excel:/u);
+  assert.doesNotMatch(stylesheetSource, /--ar-links-internal:/u);
   assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkCell\s*\{/u);
   assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkAnchor::after/u);
   const arrayRule = spreadsheetStylesheetSource.match(

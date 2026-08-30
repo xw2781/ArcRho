@@ -47,13 +47,31 @@ test("formats canonical text and matches the parse round trip", () => {
   assert.equal(reference.formatInternalDatasetReference(triangle), "=[Paid Claims][2, 1:2]");
 });
 
-test("pick drafts cover '=' and bracket drafts but never Excel drafts", () => {
+test("pick drafts cover '=', bracket drafts, and formulas waiting on an operand, never Excel drafts", () => {
   assert.equal(reference.isInternalReferencePickDraft("="), true);
   assert.equal(reference.isInternalReferencePickDraft("=[C 8"), true);
   assert.equal(reference.isInternalReferencePickDraft("=[C 82][1:6]"), true);
+  assert.equal(reference.isInternalReferencePickDraft("=[C 82][1:6] * "), true);
+  assert.equal(reference.isInternalReferencePickDraft("=2 * ([C 82][1:6] + [C 84][1:6])"), false);
   assert.equal(reference.isInternalReferencePickDraft("='C:\\Data\\[Book.xlsx]Sheet 1'!A1"), false);
   assert.equal(reference.isInternalReferencePickDraft("=1.5"), false);
   assert.equal(reference.isInternalReferencePickDraft("12"), false);
+});
+
+test("a picked reference replaces the trailing reference or follows an operator", () => {
+  const picked = "=[C 84][1:6]";
+  assert.equal(reference.insertPickedDatasetReference("=", picked), "=[C 84][1:6]");
+  assert.equal(reference.insertPickedDatasetReference("=[C 8", picked), "=[C 84][1:6]");
+  assert.equal(reference.insertPickedDatasetReference("=[C 82][1:6]", picked), "=[C 84][1:6]");
+  assert.equal(reference.insertPickedDatasetReference("=[C 82][1:6] * ", picked), "=[C 82][1:6] * [C 84][1:6]");
+  assert.equal(reference.insertPickedDatasetReference("=2 * (", picked), "=2 * ([C 84][1:6]");
+  assert.equal(reference.insertPickedDatasetReference("=[C 82][1:6] + [C 8", picked), "=[C 82][1:6] + [C 84][1:6]");
+  assert.equal(
+    reference.insertPickedDatasetReference("=[C 82][1:6] + [C 83][1]", picked),
+    "=[C 82][1:6] + [C 84][1:6]",
+  );
+  assert.equal(reference.insertPickedDatasetReference("=[C 82][1:6] * 2", picked), "");
+  assert.equal(reference.insertPickedDatasetReference("12", picked), "");
 });
 
 test("builds reference text from a picked rectangle", () => {

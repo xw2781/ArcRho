@@ -9,12 +9,13 @@ import {
   setDatasetGridEditConfig,
 } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260829b";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
-import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260829b";
+import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260830a";
 import {
   buildInternalDatasetReferenceText,
-  isInternalDatasetReference,
+  insertPickedDatasetReference,
   isInternalReferencePickDraft,
-} from "/ui/shared/dataset/dataset_internal_reference.js?v=20260829a";
+} from "/ui/shared/dataset/dataset_internal_reference.js?v=20260830a";
+import { classifyDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260830a";
 
 export function wireDatasetGridInteractions(deps) {
   const {
@@ -26,6 +27,7 @@ export function wireDatasetGridInteractions(deps) {
     refreshDatasetSettingsDirty = () => {},
     commitExternalReference = async () => ({ handled: false, ok: false }),
     commitInternalReference = async () => ({ handled: false, ok: false }),
+    commitFormulaReference = async () => ({ handled: false, ok: false }),
     cancelExternalReference = () => {},
     hardCodeExternalLinkCells = () => 0,
     decorateExternalLinkCell = () => {},
@@ -137,14 +139,10 @@ export function wireDatasetGridInteractions(deps) {
       // blur still commits because the document keeps focus for those.
       if (referencePickArmed && document.hasFocus?.() === false) return;
       if (isExternalReferenceDraft(rawValue)) {
-        const isInternal = isInternalDatasetReference(rawValue);
         edit.commitPending = true;
         input.readOnly = true;
         input.setAttribute("aria-busy", "true");
-        setStatus(isInternal
-          ? "Loading linked values from the referenced dataset..."
-          : "Loading linked values from Excel...");
-        const result = await (isInternal ? commitInternalReference : commitExternalReference)({
+        const result = await commitReferenceDraft({
           displayRow: displayR,
           displayColumn: displayC,
           reference: rawValue,
@@ -165,7 +163,7 @@ export function wireDatasetGridInteractions(deps) {
         renderTable();
         notifyDatasetUpdated();
         applySelectionFromState();
-        setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+        setStatus(result.message || linkedCellsMessage(result));
         return;
       }
       stopReferencePickSession();
@@ -329,6 +327,31 @@ export function wireDatasetGridInteractions(deps) {
     return !!raw && (raw.startsWith("=") || !!parseExcelReference(raw));
   }
 
+  function linkedCellsMessage(result) {
+    const count = Number(result?.affectedCellCount) || 0;
+    return `Linked ${count} dataset cell${count === 1 ? "" : "s"}.`;
+  }
+
+  /**
+   * One door for every formula draft — typed into a cell, committed from the
+   * floating formula bar, or pasted. The draft is read once by the shared
+   * grammar, and a standalone Excel or dataset link keeps its own controller
+   * while anything with arithmetic in it is calculated as a formula.
+   */
+  async function commitReferenceDraft({ displayRow, displayColumn, reference }) {
+    const classified = classifyDatasetFormula(reference);
+    if (classified.kind === "invalid") return { handled: true, ok: false, error: classified.error };
+    const commit = classified.kind === "excel"
+      ? commitExternalReference
+      : (classified.kind === "internal" ? commitInternalReference : commitFormulaReference);
+    setStatus(classified.kind === "excel"
+      ? "Loading linked values from Excel..."
+      : (classified.kind === "internal"
+        ? "Loading linked values from the referenced dataset..."
+        : "Calculating the formula..."));
+    return commit({ displayRow, displayColumn, reference });
+  }
+
   function syncReferencePickSession(rawValue, owner = "cell") {
     const editing = owner === "bar" ? !!formulaHover.isEditing?.() : !!state.editingCell;
     const armed = editing && isInternalReferencePickDraft(rawValue);
@@ -355,9 +378,10 @@ export function wireDatasetGridInteractions(deps) {
 
   /**
    * A reference picked in another Dataset window lands here, routed by the
-   * Project Instance host. The picked rectangle replaces the whole draft
-   * after "=": an internal link is one standalone reference, so repeated
-   * picks re-aim it the way Excel re-aims the reference under the caret.
+   * Project Instance host. The picked rectangle goes where the draft has room
+   * for it: it replaces the dataset reference the draft ends with, so repeated
+   * picks re-aim it the way Excel re-aims the reference under the caret, or
+   * follows the operator a formula is waiting on.
    */
   function applyDatasetReferencePick(message = {}) {
     if (!referencePickArmed) return false;
@@ -371,14 +395,17 @@ export function wireDatasetGridInteractions(deps) {
     });
     if (!text) return false;
     if (referencePickOwner === "bar") {
-      return formulaHover.setDraft(text, { focus: !!message.final });
+      const draft = insertPickedDatasetReference(formulaHover.getDraft?.(), text);
+      return !!draft && formulaHover.setDraft(draft, { focus: !!message.final });
     }
     const edit = state.editingCell;
     if (!edit) return false;
     const input = document.querySelector(`#tableWrap .dsCellInput[data-r="${edit.r}"][data-c="${edit.c}"]`);
     if (!input) return false;
-    input.value = text;
-    edit.pendingExternalReference = text;
+    const draft = insertPickedDatasetReference(input.value, text);
+    if (!draft) return false;
+    input.value = draft;
+    edit.pendingExternalReference = draft;
     if (message.final) {
       requestAnimationFrame(() => {
         if (!input.isConnected) return;
@@ -432,11 +459,7 @@ export function wireDatasetGridInteractions(deps) {
     }
 
     cancelExternalReference();
-    const isInternal = isInternalDatasetReference(formula);
-    setStatus(isInternal
-      ? "Loading linked values from the referenced dataset..."
-      : "Loading linked values from Excel...");
-    const result = await (isInternal ? commitInternalReference : commitExternalReference)({
+    const result = await commitReferenceDraft({
       displayRow,
       displayColumn,
       reference: formula,
@@ -452,7 +475,7 @@ export function wireDatasetGridInteractions(deps) {
     renderTable();
     notifyDatasetUpdated();
     applySelectionFromState();
-    setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+    setStatus(result.message || linkedCellsMessage(result));
     return result;
   }
 
@@ -639,11 +662,7 @@ export function wireDatasetGridInteractions(deps) {
     if (rows.length === 1 && rows[0].length === 1 && isExternalReferenceDraft(rows[0][0])) {
       const rawReference = rows[0][0];
       void (async () => {
-        const isInternal = isInternalDatasetReference(rawReference);
-        setStatus(isInternal
-          ? "Loading linked values from the referenced dataset..."
-          : "Loading linked values from Excel...");
-        const result = await (isInternal ? commitInternalReference : commitExternalReference)({
+        const result = await commitReferenceDraft({
           displayRow: start.r,
           displayColumn: start.c,
           reference: rawReference,
@@ -659,7 +678,7 @@ export function wireDatasetGridInteractions(deps) {
         renderTable();
         notifyDatasetUpdated();
         applySelectionFromState();
-        setStatus(result.message || `Linked ${result.affectedCellCount} dataset cell${result.affectedCellCount === 1 ? "" : "s"} to Excel.`);
+        setStatus(result.message || linkedCellsMessage(result));
       })();
       return 1;
     }

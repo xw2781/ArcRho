@@ -567,7 +567,7 @@ test("exposes the range anchor for linked-cell formula editing", () => {
   });
 });
 
-test("decorates only the outside contour of a clipped Dataset array formula", () => {
+test("frames a clipped Dataset array formula as the rectangle its reference covers", () => {
   const state = { model: model2x2(), dirty: new Map() };
   const controller = externalLinks.createDatasetExternalLinksController({ state });
   controller.load([{
@@ -595,7 +595,6 @@ test("decorates only the outside contour of a clipped Dataset array formula", ()
   ]);
   assert.deepEqual(arrayOutlineClasses(topRight), [
     "arArrayFormulaCell",
-    "arArrayFormulaEdgeBottom",
     "arArrayFormulaEdgeRight",
     "arArrayFormulaEdgeTop",
   ]);
@@ -603,9 +602,15 @@ test("decorates only the outside contour of a clipped Dataset array formula", ()
     "arArrayFormulaCell",
     "arArrayFormulaEdgeBottom",
     "arArrayFormulaEdgeLeft",
+  ]);
+  // The mask kept a value out of the fourth corner, but the corner is still
+  // part of the range, so it closes the frame instead of leaving a staircase.
+  assert.deepEqual(arrayOutlineClasses(unlinked), [
+    "arArrayFormulaCell",
+    "arArrayFormulaEdgeBottom",
     "arArrayFormulaEdgeRight",
   ]);
-  assert.deepEqual(arrayOutlineClasses(unlinked), []);
+  assert.equal(unlinked.classes.has("arExternalLinkCell"), false);
 
   controller.load([{
     reference: REF,
@@ -948,6 +953,25 @@ test("the grid shows a blank linked value as a muted zero rather than an empty c
   assert.match(dataTabCss, /#tableWrap td\.dsNullValue[\s\S]*?color:\s*#7a858f/u);
 });
 
+test("a blank cell inside a linked rectangle keeps that rectangle's edge", async () => {
+  const dataTabCss = await readFile(
+    new URL("../ui/shared/tabs/data/data_tab.css", import.meta.url),
+    "utf8",
+  );
+  // A blank drops every grid line, so each edge has to be restored by a rule
+  // naming three classes: two would lose to the border the last column keeps.
+  ["Top", "Right", "Bottom", "Left"].forEach((side) => {
+    assert.match(
+      dataTabCss,
+      new RegExp(
+        `#tableWrap td\\.na\\.arArrayFormulaCell\\.arArrayFormulaEdge${side} \\{\\s*`
+        + `border-${side.toLowerCase()}: 1px solid var\\(--ar-array-formula-border\\) !important;`,
+        "u",
+      ),
+    );
+  });
+});
+
 test("the shared grid stylesheet paints a failed link red in both themes", async () => {
   const spreadsheetCss = await readFile(
     new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
@@ -959,9 +983,13 @@ test("the shared grid stylesheet paints a failed link red in both themes", async
   );
   assert.match(
     spreadsheetCss,
-    /\.arSpreadsheetTable td\.arExternalLinkErrorCell,\s*\.arSpreadsheetTable td\.arInternalLinkErrorCell \{\s*color: var\(--ar-spreadsheet-link-error-text\);/u,
+    /\.arSpreadsheetTable td\.arExternalLinkErrorCell,\s*\.arSpreadsheetTable td\.arInternalLinkErrorCell,\s*\.arSpreadsheetTable td\.arFormulaLinkErrorCell \{\s*color: var\(--ar-spreadsheet-link-error-text\);/u,
   );
   assert.match(spreadsheetCss, /--ar-spreadsheet-link-error-text: #b91c1c;/u);
+  assert.match(
+    spreadsheetCss,
+    /:root\[data-arcrho-theme="dark"\] \.arSpreadsheetTable td\.arFormulaLinkErrorCell \{\s*color: var\(--ar-color-danger\);/u,
+  );
   // The Dark rule for a plain cell is more specific than the base rule, so the
   // deviation has to be declared in the theme or the red is lost.
   assert.match(

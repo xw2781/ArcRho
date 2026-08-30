@@ -470,20 +470,19 @@ function collectDfmExternalLinkGroups() {
   });
 }
 
-function dfmExternalTargetLabel(target, ratioLabels) {
-  const rowLabel = String(target?.cfg?.label || target?.cfg?.id || "User Entry");
-  const columnLabel = String(ratioLabels?.[target?.col] || `Column ${Number(target?.col) + 1}`);
-  return `${rowLabel} / ${columnLabel}`;
-}
-
 export function getDfmExternalLinkRecords() {
   const ratioLabels = getRatioHeaderLabels(getEffectiveDevLabelsForModel(state?.model || {}));
+  // The destination is the block the range fills, named by its first and
+  // last User Entry row and its first and last development column.
+  const span = (first, last) => (first === last ? first : `${first}~${last}`);
   return Array.from(collectDfmExternalLinkGroups().values()).map((group) => {
     const targets = Array.from(group.targets.values());
-    const labels = targets.map((target) => dfmExternalTargetLabel(target, ratioLabels));
-    const destination = labels.length <= 1
-      ? (labels[0] || "Ratios")
-      : `${labels[0]} + ${labels.length - 1} more`;
+    const rowLabels = targets.map((target) => String(target?.cfg?.label || target?.cfg?.id || "User Entry"));
+    const columns = targets.map((target) => Number(target?.col));
+    const columnLabel = (col) => String(ratioLabels?.[col] || `Column ${col + 1}`);
+    const destination = targets.length
+      ? `${span(rowLabels[0], rowLabels.at(-1))} / ${span(columnLabel(Math.min(...columns)), columnLabel(Math.max(...columns)))}`
+      : "Ratios";
     const start = String(group.reference.cell || "");
     const end = String(group.reference.endCell || start);
     const firstTarget = targets[0];
@@ -876,7 +875,6 @@ registerSummaryFunctions({
   commitExcelFormulaAsync,
   refreshAllExcelLinks,
   collectDfmExternalLinkGroups,
-  dfmExternalTargetLabel,
   getDfmExternalLinkRecords,
   hardCodeDfmUserEntryTarget,
   breakDfmExternalLinks,

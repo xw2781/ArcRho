@@ -145,6 +145,7 @@ const ARCODE_USER_SETTINGS_FILE = "user_settings.json";
 const ARCODE_LEGACY_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
+const MACRO_PREFS_FILE = "macro_prefs.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
@@ -228,6 +229,10 @@ function getScriptingNotebookPrefsPath() {
 
 function getHomeFoldersPrefsPath() {
   return path.join(getPrefsDir(), HOME_FOLDERS_PREFS_FILE);
+}
+
+function getMacroPrefsPath() {
+  return path.join(getPrefsDir(), MACRO_PREFS_FILE);
 }
 
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
@@ -1759,6 +1764,34 @@ ipcMain.handle("home-folders-preferences-save", async (_event, payload) => {
     return { ok: true, path: filePath, preferences: stored };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Could not save Home folder preferences.") };
+  }
+});
+
+ipcMain.handle("macro-preferences-load", async () => {
+  const filePath = getMacroPrefsPath();
+  try {
+    if (!fs.existsSync(filePath)) return { ok: true, preferences: {} };
+    return { ok: true, preferences: JSON.parse(fs.readFileSync(filePath, "utf8")) };
+  } catch (err) {
+    return { ok: false, preferences: {}, error: String(err?.message || err || "Could not load macro preferences.") };
+  }
+});
+
+ipcMain.handle("macro-preferences-save", async (_event, payload) => {
+  const preferences = payload?.preferences;
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
+    return { ok: false, error: "Invalid macro preferences payload." };
+  }
+  const filePath = getMacroPrefsPath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const stored = { ...preferences, updatedAt: new Date().toISOString() };
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
+    fs.renameSync(tmpPath, filePath);
+    return { ok: true, path: filePath, preferences: stored };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not save macro preferences.") };
   }
 });
 

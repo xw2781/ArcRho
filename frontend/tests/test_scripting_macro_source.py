@@ -51,7 +51,9 @@ class MacroSourceExecutionTests(unittest.TestCase):
         ])
 
     def test_apply_growth_adjustments_is_valid_unregistered_macro_source(self) -> None:
-        macro_path = Path(__file__).resolve().parents[2] / "python-api" / "macros" / "apply_growth_adjustments.py"
+        # A retired macro, kept as a frozen fixture: it exercises the source
+        # runner against a real macro file without being maintained itself.
+        macro_path = Path(__file__).resolve().parents[2] / "python-api" / "macros" / "archive" / "apply_growth_adjustments.py"
         source = macro_path.read_text(encoding="utf-8-sig")
         namespace = {"__name__": "__arcrho_macro_contract_test__", "__file__": str(macro_path)}
 

@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Links tab lists ArcRho links above Excel links in their own sections, names the destination as the real range such as 2017~2023, and keeps its tables filling the frame.",
+  "details": [
+    "The Value column and the hover tooltips on the link rows are gone, and the kind badge reads ArcRho, Excel, or Formula.",
+    "Columns re-fit whenever the window or tab is resized, can be dragged much wider, and a table narrower than its frame keeps a right edge."
+  ]
+}

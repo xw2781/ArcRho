@@ -25,6 +25,16 @@ its `<arcrho-macro>` metadata block:
 The `backup/` directory is only for prior macro versions. Its structure and rules
 are documented in `backup/README.md`.
 
+## Retired macros
+
+`archive/` holds macros that were withdrawn from service and are kept only as a
+reference copy. They are no longer maintained: do not update them, version them,
+deploy them, or publish them. `publish_macro_library.py` reads only the active
+`*.py` files directly in this folder, so nothing under `archive/` reaches the
+shared library. Retiring a macro also means deleting its published copy from the
+shared library, which keeps its own copy under `<library>/archive/`. See
+`archive/README.md`.
+
 ## Deployment
 
 After adding or editing a macro here, deploy every macro in this folder to:

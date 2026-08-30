@@ -30,7 +30,7 @@ test("Arcode routes its single Run action from the current source", () => {
 
   const classifierSource = js.match(/function isArcRhoMacroSource\(code\) \{[\s\S]*?\n\}/)?.[0] || "";
   const classify = Function(`${classifierSource}\nreturn isArcRhoMacroSource;`)();
-  const maintainedMacro = read("../../python-api/macros/apply_growth_adjustments.py");
+  const maintainedMacro = read("../../python-api/macros/show_diagnostic_triangle.py");
   assert.equal(classify(maintainedMacro), true);
   assert.equal(classify("def run_macro(active_dfm):\n    return active_dfm\n"), true);
   assert.equal(classify("print('ordinary local script')\n"), false);
@@ -71,6 +71,43 @@ test("Macro windows keep their size while the host window is resized", () => {
   assert.match(library, /createMacroWindowFrame/);
   assert.match(macro, /macroWindowFrame\?\.lockSize\(\)/);
   assert.match(library, /libraryWindowFrame\?\.lockSize\(\)/);
+});
+
+test("Macro lists share keyboard selection and pointer-captured drag", () => {
+  const macro = read("../ui/macro/macro_window.js");
+  const library = read("../ui/macro/macro_library_window.js");
+  const interactions = read("../ui/macro/macro_list_interactions.js");
+  const css = read("../ui/macro/macro_window.css");
+
+  assert.match(interactions, /setPointerCapture\(event\.pointerId\)/);
+  assert.match(interactions, /event\.key === "ArrowDown"/);
+  assert.match(interactions, /event\.key === "ArrowUp"/);
+  assert.match(macro, /initMacroListKeyboard\(macroList/);
+  assert.match(macro, /initMacroListDrag\(macroList, macroWindow, \{[\s\S]*?reorder: true/);
+  assert.match(macro, /outsideTarget: \(\) => \(\{ kind: "remove" \}\)/);
+  assert.match(library, /initMacroListKeyboard\(libraryList/);
+  assert.match(library, /initMacroListDrag\(libraryList, libraryWindow/);
+  assert.match(library, /closest\?\.\("#macroWindow"\)/);
+  assert.doesNotMatch(library, /reorder: true/);
+  // Rows carry no native tooltip; the description pane holds that text.
+  assert.doesNotMatch(macro, /item\.title = /);
+  assert.doesNotMatch(library, /item\.title = /);
+  // The display order is a local-user preference under %APPDATA%\ArcRho\prefs,
+  // written by the desktop host, never browser storage.
+  const preload = read("../electron/preload.js");
+  const main = read("../electron/main.js");
+  assert.match(macro, /getHostApi\(\)\?\.loadMacroPreferences\?\.\(\)/);
+  assert.match(macro, /getHostApi\(\)\?\.saveMacroPreferences\?\.\(\{ version: 1, order \}\)/);
+  assert.doesNotMatch(macro, /arcrho_macro_order|MACRO_ORDER_KEY/);
+  assert.match(preload, /loadMacroPreferences:\s*\(\)\s*=>\s*invoke\("macro-preferences-load"\)/u);
+  assert.match(preload, /saveMacroPreferences:\s*\(preferences\)\s*=>\s*invoke\("macro-preferences-save",\s*\{ preferences \}\)/u);
+  assert.match(main, /const MACRO_PREFS_FILE = "macro_prefs\.json"/u);
+  assert.match(main, /ipcMain\.handle\("macro-preferences-load"/u);
+  assert.match(main, /ipcMain\.handle\("macro-preferences-save"/u);
+  // Both windows open at the same default size.
+  const macroHeight = css.match(/#macroWindow \{[^}]*height: min\((\d+)px/)?.[1];
+  const libraryHeight = css.match(/#macroLibraryWindow \{[^}]*height: min\((\d+)px/)?.[1];
+  assert.equal(libraryHeight, macroHeight);
 });
 
 test("ArcRho automation error dialogs render the close mark as SVG", () => {

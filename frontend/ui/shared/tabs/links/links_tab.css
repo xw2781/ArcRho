@@ -17,10 +17,17 @@
   box-sizing: border-box;
   color: #1f2937;
   font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  /* The formula badge wears the same colour here as its cells wear in the
+     grid; the spreadsheet sheet owns the token and this is its fallback for
+     a page that has not loaded it. */
+  --ar-links-formula: var(--ar-spreadsheet-formula-link-border, #7c3aed);
 }
 
 /* The Links context menu itself is styled by the shared context_menu.css. */
 
+/* The one framed scrolling area the whole tab shares: every section's table
+   sits inside it, so there is a single scrollbar for the tab and the tables
+   move together sideways instead of drifting apart. */
 .arExternalLinksScroll {
   flex: 1 1 auto;
   min-width: 0;
@@ -37,75 +44,50 @@
   display: none;
 }
 
-.arExternalLinksTable {
-  width: 100%;
-  min-width: 760px;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-  background: #fff;
-}
-
-.arExternalLinksWorkbookColumn {
-  width: 34%;
-}
-
-.arExternalLinksWorksheetColumn {
-  width: 15%;
-}
-
-.arExternalLinksAddressColumn {
-  width: 14%;
-}
-
-.arExternalLinksDestinationColumn {
-  width: 23%;
-}
-
-.arExternalLinksValueColumn {
-  width: 14%;
-}
-
-.arInternalLinksDatasetColumn {
-  width: 44%;
-}
-
-.arInternalLinksRangeColumn {
-  width: 19%;
-}
-
-/* Two-section Links page: Excel workbook links above, ArcRho dataset links
-   below, each section owning half the page with its own scrolling table. */
+/* One section per kind of link, stacked top to bottom inside the shared
+   frame and shown only while it has rows: ArcRho, then Excel, then Formula.
+   Each section is as tall as its rows; the frame does the scrolling. */
 .arLinksSections {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 100%;
-  height: 100%;
+  padding: 7px 0;
   min-width: 0;
-  min-height: 0;
-  box-sizing: border-box;
+}
+
+.arLinksSections[hidden] {
+  display: none;
 }
 
 .arLinksSection {
   display: flex;
-  flex: 1 1 50%;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
-  min-height: 0;
 }
 
+.arLinksSection[hidden] {
+  display: none;
+}
+
+/* The title holds the left edge while the tables are scrolled sideways. */
 .arLinksSectionTitle {
+  position: sticky;
+  left: 0;
   margin: 0;
-  color: #334155;
-  font: 700 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  padding: 0 9px;
+  color: #64748b;
+  font: 700 11px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  line-height: 14px;
 }
 
-.arLinksSectionBody {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
+/* Column widths are set on the colgroup and the table is their sum, so a
+   drag resizes one column and the table grows or shrinks with it. */
+.arExternalLinksTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  background: #fff;
 }
 
 .arExternalLinksTable th,
@@ -120,6 +102,8 @@
   line-height: 20px;
   text-align: left;
   vertical-align: middle;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .arExternalLinksTable th {
@@ -129,7 +113,6 @@
   background: #f1f4f8;
   color: #334155;
   font-weight: 700;
-  white-space: nowrap;
 }
 
 .arExternalLinksTable th::before {
@@ -146,6 +129,53 @@
 .arExternalLinksTable th:last-child,
 .arExternalLinksTable td:last-child {
   border-right: 0;
+}
+
+/* A table narrower than its frame draws its own right edge; the module
+   marks the host whenever the column widths add up to less than it. */
+.arExternalLinksScroll.isTableShort .arExternalLinksTable th:last-child,
+.arExternalLinksScroll.isTableShort .arExternalLinksTable td:last-child {
+  border-right: 1px solid #e2e8f0;
+}
+
+.arLinksHead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.arLinksHeadLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The handle straddles the column border, outside normal layout flow. */
+.arLinksColResizer {
+  position: absolute;
+  top: -5px;
+  right: -14px;
+  width: 12px;
+  height: 31px;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+
+.arLinksColResizer:hover::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 5px;
+  border-left: 1px solid var(--ar-color-accent, #2b6df6);
+}
+
+.arExternalLinks.isResizingColumn,
+.arExternalLinks.isResizingColumn * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .arExternalLinksTable tbody tr:hover td {
@@ -166,36 +196,50 @@
   outline-offset: -2px;
 }
 
-.arExternalLinksWorkbookCell,
-.arExternalLinksWorksheetCell,
-.arExternalLinksAddressCell,
-.arExternalLinksDestinationText,
-.arExternalLinksValueCell {
+.arLinksCellText {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.arExternalLinksDestinationCell {
+.arLinksCell-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
-.arExternalLinksDestinationText {
-  display: block;
+.arLinksCell-source .arLinksCellText {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.arExternalLinksAffectedCount {
-  display: block;
-  overflow: hidden;
-  color: #64748b;
-  font-size: 11px;
+.arLinksCell-cells {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The kind badge: a quiet tinted chip in the link's own colour, written as
+   the name reads. Only a formula row carries one; the section title names
+   the kind for every other row. */
+.arLinksKind {
+  flex: 0 0 auto;
+  display: inline-block;
+  min-width: 44px;
+  padding: 0 5px;
+  border: 1px solid var(--ar-links-kind, #64748b);
+  border-radius: 2px;
+  color: var(--ar-links-kind, #64748b);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
   line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
 }
 
-.arExternalLinksDestinationCell:has(.arExternalLinksAffectedCount) {
-  height: 40px;
+.arLinksKind-formula {
+  --ar-links-kind: var(--ar-links-formula);
 }
 
 .arExternalLinksState {

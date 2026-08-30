@@ -1,5 +1,6 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
+import { initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260829a";
 
 const API_BASE = window.location.origin;
 const LIBRARY_WINDOW_FRAGMENT_URL = "/ui/macro/macro_library_window.html?v=20260731a";
@@ -87,6 +88,12 @@ function getSelectedLibraryMacro() {
   return libraryMacros.find((macro) => macro.id === selectedLibraryMacroId) || null;
 }
 
+function selectLibraryMacro(id) {
+  selectedLibraryMacroId = id;
+  syncMacroListSelection(libraryList, id);
+  renderLibraryDescription();
+}
+
 async function loadLibraryMacros() {
   setLibraryStatus("Loading macro library...");
   try {
@@ -152,14 +159,7 @@ function renderLibraryList() {
     status.textContent = meta.label;
     topRow.appendChild(status);
     item.appendChild(topRow);
-    item.title = [macro.description, macro.release_note ? `Release note: ${macro.release_note}` : "", macro.path || macro.id]
-      .filter(Boolean)
-      .join("\n");
-    item.addEventListener("click", () => {
-      selectedLibraryMacroId = macro.id;
-      renderLibraryList();
-      renderLibraryDescription();
-    });
+    item.addEventListener("click", () => selectLibraryMacro(macro.id));
     libraryList.appendChild(item);
   });
 }
@@ -199,8 +199,7 @@ function renderLibraryDescription() {
   }
 }
 
-async function installSelectedLibraryMacro() {
-  const macro = getSelectedLibraryMacro();
+async function installLibraryMacro(macro = getSelectedLibraryMacro()) {
   if (!macro) {
     setLibraryStatus("Select a shared macro before loading.", "error", { statusBar: true });
     return;
@@ -253,7 +252,25 @@ export async function initMacroLibraryWindow() {
   libraryWindowWired = true;
   libraryCloseBtn?.addEventListener("click", closeMacroLibraryWindow);
   libraryRefreshBtn?.addEventListener("click", () => loadLibraryMacros());
-  libraryLoadBtn?.addEventListener("click", installSelectedLibraryMacro);
+  libraryLoadBtn?.addEventListener("click", () => installLibraryMacro());
+  initMacroListKeyboard(libraryList, {
+    getIds: () => libraryMacros.map((macro) => macro.id),
+    onSelect: selectLibraryMacro,
+  });
+  initMacroListDrag(libraryList, libraryWindow, {
+    getMacro: (id) => libraryMacros.find((macro) => macro.id === id) || null,
+    outsideTarget: (element) => {
+      const macroList = element?.closest?.("#macroWindow")?.querySelector("#macroList");
+      return macroList ? { kind: "install", highlight: macroList } : null;
+    },
+    label: (macro, target) => {
+      const name = macro.name || macro.id;
+      if (!target) return name;
+      return macro.status === "up_to_date" ? `${name} is already loaded` : `${libraryStatusMeta(macro).action} ${name}`;
+    },
+    onStart: (macro) => selectLibraryMacro(macro.id),
+    onDrop: (macro) => void installLibraryMacro(macro),
+  });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!libraryWindow?.classList.contains("open")) return;

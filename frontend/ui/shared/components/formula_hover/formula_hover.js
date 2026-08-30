@@ -568,6 +568,11 @@ export function createFormulaHoverEditor(options = {}) {
       && !activeContext?.readOnly;
   }
 
+  /** The raw formula being typed, or "" when the bar is not in edit mode. */
+  function getDraft() {
+    return isEditing() ? String(input.value || "") : "";
+  }
+
   /**
    * Replace the draft from outside — a range picked in another Dataset window.
    * The caret goes to the end once the pick is settled, so typing carries on
@@ -615,6 +620,7 @@ export function createFormulaHoverEditor(options = {}) {
     attach,
     commit,
     destroy,
+    getDraft,
     hide,
     isEditing,
     open,

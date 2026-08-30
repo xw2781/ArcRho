@@ -117,13 +117,38 @@ export function isInternalDatasetReference(rawText) {
   return parseInternalDatasetReference(rawText).ok === true;
 }
 
+// The tail of a draft a picked reference may replace: one complete
+// `[Dataset][coords]` reference, or one still being typed from its first "[".
+const TRAILING_REFERENCE_RE = /\[[^\]]*(?:\](?:\s*\[[^\]]*\]?)?)?\s*$/;
+// The tail a picked reference may follow: the formula's "=", an operator, or
+// an opening parenthesis, so `=[A][1:6] * ` accepts a pick where Excel would.
+const REFERENCE_SLOT_RE = /(?:^=|[-+*/^(])\s*$/;
+
 /**
- * True while the draft could still become an internal reference: a lone "="
- * or "=" followed by an opening bracket. Excel drafts (`='C:\...`) never
+ * True while the draft has a place for a picked reference: a lone "=", a
+ * formula waiting on its next operand, or one whose last operand is a
+ * dataset reference that a new pick re-aims. Excel drafts (`='C:\...`) never
  * match, so their commit-on-blur behavior is unchanged.
  */
 export function isInternalReferencePickDraft(rawText) {
-  return /^=\s*(\[[\s\S]*)?$/.test(String(rawText || "").trim());
+  const text = String(rawText || "").trim();
+  if (!text.startsWith("=")) return false;
+  return REFERENCE_SLOT_RE.test(text) || TRAILING_REFERENCE_RE.test(text);
+}
+
+/**
+ * The draft with `referenceText` (without its leading "=") in the place the
+ * pick is aimed at: replacing the trailing dataset reference the way Excel
+ * re-aims the reference under the caret, or appended after an operator.
+ * Returns "" when the draft has no such place.
+ */
+export function insertPickedDatasetReference(rawDraft, referenceText) {
+  const draft = String(rawDraft || "").trim();
+  const reference = String(referenceText || "").replace(/^=/, "");
+  if (!draft.startsWith("=") || !reference) return "";
+  if (TRAILING_REFERENCE_RE.test(draft)) return draft.replace(TRAILING_REFERENCE_RE, reference);
+  if (REFERENCE_SLOT_RE.test(draft)) return `${draft}${/[-+*/^]$/.test(draft) ? " " : ""}${reference}`;
+  return "";
 }
 
 function axisText(spec) {

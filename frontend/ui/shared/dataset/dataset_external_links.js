@@ -184,6 +184,70 @@ function actualToDisplayCell(row, column, transposed) {
   return transposed ? { row: column, column: row } : { row, column };
 }
 
+/* The perimeter a linked range wears is the rectangle the reference covers,
+   not the outline of the cells the range happened to land on. A triangle's
+   mask keeps the lower-right corner of the grid empty, so a border that
+   followed the cells holding a value would climb down as a staircase instead
+   of framing the range the user picked. The rectangle is measured in display
+   coordinates, so it turns with the grid, and the perimeter cells the mask
+   left empty are listed as gaps so the frame can close across them. */
+export function buildDatasetLinkOutline(targetCells, transposed = false) {
+  const cells = Array.isArray(targetCells) ? targetCells : [];
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  let minColumn = Infinity;
+  let maxColumn = -Infinity;
+  cells.forEach((target) => {
+    const display = actualToDisplayCell(target.row, target.column, transposed);
+    if (display.row < minRow) minRow = display.row;
+    if (display.row > maxRow) maxRow = display.row;
+    if (display.column < minColumn) minColumn = display.column;
+    if (display.column > maxColumn) maxColumn = display.column;
+  });
+  if (!Number.isFinite(minRow) || !Number.isFinite(minColumn)) return null;
+  const edgesAt = (displayRow, displayColumn) => ({
+    edgeTop: displayRow === minRow,
+    edgeRight: displayColumn === maxColumn,
+    edgeBottom: displayRow === maxRow,
+    edgeLeft: displayColumn === minColumn,
+  });
+  const owned = new Set(cells.map(targetCellKey));
+  const gapCells = [];
+  for (let row = minRow; row <= maxRow; row += 1) {
+    for (let column = minColumn; column <= maxColumn; column += 1) {
+      const onPerimeter = row === minRow || row === maxRow
+        || column === minColumn || column === maxColumn;
+      if (!onPerimeter) continue;
+      const actual = displayToActualCell(row, column, transposed);
+      if (owned.has(targetCellKey(actual))) continue;
+      gapCells.push({ cell: actual, edges: edgesAt(row, column) });
+    }
+  }
+  return { edgesAt, gapCells };
+}
+
+/* Three link controllers decorate every cell in turn and at most one of them
+   owns a given rectangle, so each records its claim on the cell: a controller
+   clears the shared perimeter classes only when the claim is its own or the
+   cell carries none. Without that, the pass of a controller owning nothing
+   would strip the frame an earlier pass had just drawn. */
+export function applyDatasetLinkOutlineClasses(cell, outline, owner) {
+  if (!cell) return;
+  const claimed = cell.dataset?.arrayFormulaOwner;
+  if (outline) {
+    if (cell.dataset) cell.dataset.arrayFormulaOwner = owner;
+  } else if (claimed && claimed !== owner) {
+    return;
+  } else if (cell.dataset) {
+    delete cell.dataset.arrayFormulaOwner;
+  }
+  cell.classList.toggle("arArrayFormulaCell", !!outline);
+  cell.classList.toggle("arArrayFormulaEdgeTop", !!outline?.edgeTop);
+  cell.classList.toggle("arArrayFormulaEdgeRight", !!outline?.edgeRight);
+  cell.classList.toggle("arArrayFormulaEdgeBottom", !!outline?.edgeBottom);
+  cell.classList.toggle("arArrayFormulaEdgeLeft", !!outline?.edgeLeft);
+}
+
 export function buildDatasetExternalLinkTargets({
   model,
   transposed = false,
@@ -289,6 +353,29 @@ function targetDestinationLabel(model, target) {
   return development ? `${origin} / ${development}` : origin;
 }
 
+/**
+ * Names the block of cells a link fills in the grid's own labels: the first
+ * and last origin label joined by `~`, then the same for the development
+ * labels when the dataset has more than one column. A seven-year vector
+ * reads `2017~2023`, one cell of a triangle `2024 / 12m`, and a block of it
+ * `2024~2025 / 12m~24m`. Shared by the Excel, ArcRho, and formula link
+ * records so the Links tab describes every kind the same way.
+ */
+export function describeTargetDestination(model, targets) {
+  const cells = Array.isArray(targets) ? targets : [];
+  if (!cells.length) return "";
+  const span = (indexes, labels, fallback) => {
+    const label = (index) => String(labels?.[index] ?? fallback(index));
+    const first = label(Math.min(...indexes));
+    const last = label(Math.max(...indexes));
+    return first === last ? first : `${first}~${last}`;
+  };
+  const rows = span(cells.map((cell) => cell.row), model?.origin_labels, (index) => `Row ${index + 1}`);
+  if (!(model?.dev_labels?.length > 1)) return rows;
+  const columns = span(cells.map((cell) => cell.column), model?.dev_labels, (index) => `Column ${index + 1}`);
+  return `${rows} / ${columns}`;
+}
+
 function targetValuePreview(model, targets, isRange) {
   const first = targets[0];
   if (!first) return "";
@@ -372,30 +459,30 @@ export function createDatasetExternalLinksController({
 
   function getTargetDecorationIndex() {
     const transposed = !!isTransposed();
-    if (targetDecorationIndex?.transposed === transposed) return targetDecorationIndex.targets;
+    if (targetDecorationIndex?.transposed === transposed) return targetDecorationIndex;
     const targets = new Map();
+    const outlineGaps = new Map();
     links.forEach((link) => {
       const description = describeExcelReference(link.reference);
-      const linkTargetKeys = new Set(link.target_cells.map(targetCellKey));
+      const isArrayFormula = !!description?.isRange;
+      const outline = buildDatasetLinkOutline(link.target_cells, transposed);
       link.target_cells.forEach((target) => {
         const display = actualToDisplayCell(target.row, target.column, transposed);
-        const neighborBelongsToLink = (row, column) => linkTargetKeys.has(targetCellKey(
-          displayToActualCell(row, column, transposed),
-        ));
         targets.set(targetCellKey(target), {
           link,
           target,
           description,
-          isArrayFormula: !!description?.isRange,
-          edgeTop: !neighborBelongsToLink(display.row - 1, display.column),
-          edgeRight: !neighborBelongsToLink(display.row, display.column + 1),
-          edgeBottom: !neighborBelongsToLink(display.row + 1, display.column),
-          edgeLeft: !neighborBelongsToLink(display.row, display.column - 1),
+          isArrayFormula,
+          ...(outline ? outline.edgesAt(display.row, display.column) : {}),
         });
       });
+      if (!isArrayFormula || !outline) return;
+      outline.gapCells.forEach((gap) => {
+        outlineGaps.set(targetCellKey(gap.cell), gap.edges);
+      });
     });
-    targetDecorationIndex = { transposed, targets };
-    return targets;
+    targetDecorationIndex = { transposed, targets, outlineGaps };
+    return targetDecorationIndex;
   }
 
   function abort() {
@@ -488,17 +575,13 @@ export function createDatasetExternalLinksController({
     });
     return Array.from(groups.values()).map((group) => {
       const targets = Array.from(group.targets.values());
-      const labels = targets.map((target) => targetDestinationLabel(state?.model, target));
-      const destination = labels.length <= 1
-        ? (labels[0] || "Data")
-        : `${labels[0]} + ${labels.length - 1} more`;
       return {
         id: group.id,
         workbookPath: group.workbookPath,
         worksheet: group.worksheet,
         address: group.address,
         value: targetValuePreview(state?.model, targets, group.isRange),
-        destination,
+        destination: describeTargetDestination(state?.model, targets) || "Data",
         affectedCellCount: targets.length,
         readOnly: !!isReadOnly(),
       };
@@ -666,7 +749,7 @@ export function createDatasetExternalLinksController({
     if (!state?.model) return null;
     const actual = displayToActualCell(displayRow, displayColumn, !!isTransposed());
     const key = targetCellKey(actual);
-    const decoration = getTargetDecorationIndex().get(key);
+    const decoration = getTargetDecorationIndex().targets.get(key);
     const link = decoration?.link;
     if (!link) return null;
     const description = decoration.description;
@@ -686,17 +769,16 @@ export function createDatasetExternalLinksController({
     if (!cell || !state?.model) return;
     const actual = displayToActualCell(displayRow, displayColumn, !!isTransposed());
     const key = targetCellKey(actual);
-    const decoration = getTargetDecorationIndex().get(key);
+    const index = getTargetDecorationIndex();
+    const decoration = index.targets.get(key);
     const link = decoration?.link;
-    const isArrayFormula = !!decoration?.isArrayFormula;
     const failure = failuresByTargetKey.get(key);
+    // A blank the mask left inside a linked rectangle still carries that
+    // rectangle's edge, so the frame closes across the empty corner.
+    const outline = decoration?.isArrayFormula ? decoration : index.outlineGaps.get(key);
     cell.classList.toggle("arExternalLinkCell", !!link);
     cell.classList.toggle("arExternalLinkErrorCell", !!failure);
-    cell.classList.toggle("arArrayFormulaCell", isArrayFormula);
-    cell.classList.toggle("arArrayFormulaEdgeTop", isArrayFormula && decoration.edgeTop);
-    cell.classList.toggle("arArrayFormulaEdgeRight", isArrayFormula && decoration.edgeRight);
-    cell.classList.toggle("arArrayFormulaEdgeBottom", isArrayFormula && decoration.edgeBottom);
-    cell.classList.toggle("arArrayFormulaEdgeLeft", isArrayFormula && decoration.edgeLeft);
+    applyDatasetLinkOutlineClasses(cell, outline, "external");
     cell.classList.remove("arExternalLinkAnchor");
     if (link) {
       cell.dataset.externalLinkReference = link.reference;

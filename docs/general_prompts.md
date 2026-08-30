@@ -2,6 +2,8 @@
 
 # Set model to Opus 4.8 (1M context) for a session
 /model claude-opus-4-8[1m]
+/model claude-opus-4-8
+/model claude-opus-4-6
 
 # Commit and Push Workflow
 

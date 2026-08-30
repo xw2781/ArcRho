@@ -1,14 +1,14 @@
-import { shell } from "../shell/shell_context.js?v=20260510a";
+import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
 import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
-import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260817a";
+import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260829a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
+import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260829a";
 
 const API_BASE = window.location.origin;
 const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260731b";
 const TASK_DESIGNER_COMMAND_MESSAGE = "arcrho:task-designer-automation-command";
 const MACRO_WINDOW_POSITION_KEY = "arcrho_macro_window_position";
 const MACRO_SPLIT_HEIGHT_KEY = "arcrho_macro_window_split_height";
-const MACRO_ORDER_KEY = "arcrho_macro_order";
 const MACRO_PINNED_KEY = "arcrho_macro_window_pinned";
 const MACRO_MIN_LIST_HEIGHT = 100;
 const MACRO_MIN_DESCRIPTION_HEIGHT = 76;
@@ -20,6 +20,7 @@ const MACRO_SCOPE_LABELS = {
   "restult selection": "Result Selection",
   "reserving class": "Reserving Class",
   reserving_class: "Reserving Class",
+  project: "Project",
 };
 
 let macroWindow = null;
@@ -182,24 +183,21 @@ function canDeleteMacro(macro) {
   return !!macro?.path;
 }
 
-function readMacroOrder() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(MACRO_ORDER_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.map((id) => String(id || "")).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
+// The display order is a local-user preference, so it lives in
+// %APPDATA%\ArcRho\prefs\macro_prefs.json through the desktop host, like the
+// File Explorer favorites, rather than in browser storage.
+async function readMacroOrder() {
+  const result = await getHostApi()?.loadMacroPreferences?.();
+  const order = result?.preferences?.order;
+  return Array.isArray(order) ? order.map((id) => String(id || "")).filter(Boolean) : [];
 }
 
 function saveMacroOrder(order) {
-  try {
-    localStorage.setItem(MACRO_ORDER_KEY, JSON.stringify(Array.isArray(order) ? order : []));
-  } catch {}
+  void getHostApi()?.saveMacroPreferences?.({ version: 1, order });
 }
 
-function orderedMacroList(items) {
+function orderedMacroList(items, order) {
   const list = Array.isArray(items) ? items : [];
-  const order = readMacroOrder();
   if (!order.length) return list;
   const rank = new Map(order.map((id, index) => [id, index]));
   return [...list].sort((a, b) => {
@@ -233,8 +231,20 @@ function moveSelectedMacro(delta) {
   setMacroStatus(`Moved ${item.name || item.id} ${delta < 0 ? "up" : "down"}.`, "", { statusBar: true });
 }
 
-function buildMacroDisplayList(loadedMacros) {
-  return orderedMacroList(Array.isArray(loadedMacros) ? loadedMacros : []);
+function reorderMacro(id, beforeId) {
+  const [item] = macros.splice(macros.findIndex((macro) => macro.id === id), 1);
+  const to = beforeId ? macros.findIndex((macro) => macro.id === beforeId) : macros.length;
+  macros.splice(to, 0, item);
+  persistCurrentMacroOrder();
+  renderMacroList();
+  focusMacroListItem(macroList, id);
+  setMacroStatus(`Moved ${item.name || item.id}.`, "", { statusBar: true });
+}
+
+function selectMacro(id) {
+  selectedMacroId = id;
+  syncMacroListSelection(macroList, id);
+  renderMacroDescription();
 }
 
 function renderMacroList() {
@@ -274,18 +284,11 @@ function renderMacroList() {
     });
     topRow.appendChild(tags);
     item.appendChild(topRow);
-    item.title = [macro.description, `Scope: ${macroScopes(macro).join(", ")}`, macro.path || macro.id].filter(Boolean).join("\n");
-    item.addEventListener("click", () => {
-      selectedMacroId = macro.id;
-      renderMacroList();
-      renderMacroDescription();
-    });
+    item.addEventListener("click", () => selectMacro(macro.id));
     item.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      selectedMacroId = macro.id;
-      renderMacroList();
-      renderMacroDescription();
+      selectMacro(macro.id);
       showMacroItemContextMenu(event.clientX, event.clientY);
     });
     macroList.appendChild(item);
@@ -309,15 +312,17 @@ function renderMacroDescription() {
 async function loadMacros() {
   setMacroStatus("Loading macros...");
   try {
-    const response = await fetch(`${API_BASE}/scripting/macros`);
-    const loadedMacros = await response.json();
+    const [loadedMacros, order] = await Promise.all([
+      fetch(`${API_BASE}/scripting/macros`).then((response) => response.json()),
+      readMacroOrder(),
+    ]);
     const liveMacros = Array.isArray(loadedMacros) ? loadedMacros : [];
-    macros = buildMacroDisplayList(liveMacros);
+    macros = orderedMacroList(liveMacros, order);
     renderMacroList();
     renderMacroDescription();
     setMacroStatus(`${liveMacros.length} macro(s) available.`);
   } catch (err) {
-    macros = buildMacroDisplayList([]);
+    macros = [];
     renderMacroList();
     renderMacroDescription();
     const message = String(err?.message || err || "Failed to load macros.");
@@ -1100,8 +1105,7 @@ function openSelectedMacroInTaskDesigner() {
   setMacroStatus("Opened Task Designer.", "", { statusBar: true });
 }
 
-async function deleteSelectedMacro() {
-  const macro = getSelectedMacro();
+async function deleteMacro(macro = getSelectedMacro()) {
   if (!canDeleteMacro(macro)) {
     setMacroStatus("Select a macro before deleting.", "error", { statusBar: true });
     return;
@@ -1156,8 +1160,7 @@ async function renameSelectedMacro() {
     }
     const nextId = String(result.macro_id || "").trim();
     if (nextId) {
-      const order = readMacroOrder().map((id) => (id === macro.id ? nextId : id));
-      saveMacroOrder(order);
+      saveMacroOrder(macros.map((item) => (item.id === macro.id ? nextId : item.id)));
       selectedMacroId = nextId;
     }
     await loadMacros();
@@ -1238,7 +1241,7 @@ function ensureMacroSplitContextMenu() {
     hideMacroContextMenus();
     if (action === "run") void runSelectedMacro();
     else if (action === "edit") editSelectedMacro();
-    else if (action === "delete") void deleteSelectedMacro();
+    else if (action === "delete") void deleteMacro();
   });
   document.body.appendChild(menu);
   macroSplitContextMenu = menu;
@@ -1289,7 +1292,7 @@ function ensureMacroItemContextMenu() {
     hideMacroItemContextMenu();
     if (action === "run") void runSelectedMacro();
     else if (action === "rename") void renameSelectedMacro();
-    else if (action === "delete") void deleteSelectedMacro();
+    else if (action === "delete") void deleteMacro();
     else if (action === "move-up") moveSelectedMacro(-1);
     else if (action === "move-down") moveSelectedMacro(1);
   });
@@ -1504,6 +1507,21 @@ export async function initMacroWindow() {
   applyMacroPinned(readMacroPinned());
   initTaskDesignerButton();
   initMacroContentSplit();
+  initMacroListKeyboard(macroList, {
+    getIds: () => macros.map((macro) => macro.id),
+    onSelect: selectMacro,
+  });
+  initMacroListDrag(macroList, macroWindow, {
+    getMacro: (id) => macros.find((macro) => macro.id === id) || null,
+    reorder: true,
+    outsideTarget: () => ({ kind: "remove" }),
+    label: (macro, target) => (target?.kind === "remove" ? `Delete ${macro.name || macro.id}` : (macro.name || macro.id)),
+    onStart: (macro) => selectMacro(macro.id),
+    onDrop: (macro, target) => {
+      if (target.kind === "reorder") reorderMacro(macro.id, target.beforeId);
+      else void deleteMacro(macro);
+    },
+  });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (isMacroContextMenuOpen()) {

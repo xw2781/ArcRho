@@ -54,6 +54,7 @@ _MACRO_SCOPE_LABELS = {
     "restult selection": "Result Selection",
     "reserving class": "Reserving Class",
     "reserving_class": "Reserving Class",
+    "project": "Project",
 }
 
 

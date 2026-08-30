@@ -29,12 +29,18 @@ const dataTabExports = [
   "bootDatasetDataTab",
   "breakDatasetExternalLink",
   "breakDatasetExternalLinks",
+  "breakDatasetFormulaLinks",
   "breakDatasetInternalLinks",
+  "breakDatasetLinks",
   "getDatasetExternalLinkCellInfo",
   "getDatasetExternalLinkRecords",
+  "getDatasetFormulaLinkRecords",
   "getDatasetInternalLinkRecords",
+  "getDatasetLinkRecords",
   "refreshDatasetExternalLinkRecords",
+  "refreshDatasetFormulaLinkRecords",
   "refreshDatasetInternalLinkRecords",
+  "refreshDatasetLinkRecords",
 ];
 
 const dfmSummaryExports = [

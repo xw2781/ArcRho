@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "The Macros and Macro Library windows now support arrow-key selection and drag gestures: reorder macros by dragging, drag a macro out of the Macros window to delete it, and drag a library macro onto the Macros window to load it.",
+  "details": [
+    "Up/Down (and Home/End) move the selection in either list; the description pane follows.",
+    "Rows no longer show a hover tooltip; the description pane already holds that text.",
+    "The macro order is now kept in your local ArcRho preferences folder instead of browser storage, so Clear Cache & Reload no longer resets it. Any order saved by an earlier version is not carried over; reorder once.",
+    "The Macro Library window opens at the same size as the Macros window."
+  ]
+}

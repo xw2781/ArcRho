@@ -314,6 +314,61 @@ body.macroSplitResizeActive * {
   text-align: left;
   cursor: pointer;
   font: inherit;
+  user-select: none;
+  touch-action: none;
+}
+
+.macroListItem.dragSource {
+  opacity: 0.45;
+}
+
+.macroListItem.dropBefore {
+  box-shadow: inset 0 2px 0 #3b82f6;
+}
+
+.macroListItem.dropAfter {
+  box-shadow: inset 0 -2px 0 #3b82f6;
+}
+
+.macroList.macroDropTarget {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+body.macroListDragActive,
+body.macroListDragActive * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+.macroDragGhost {
+  position: fixed;
+  z-index: 12500;
+  max-width: 280px;
+  padding: 4px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
+  color: #243244;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.macroDragGhost[data-kind="install"] {
+  border-color: #93b5e8;
+  background: #e7f0ff;
+  color: #1d4ed8;
+}
+
+.macroDragGhost[data-kind="remove"] {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .macroListItemTop {
@@ -378,12 +433,18 @@ body.macroSplitResizeActive * {
   color: #92400e;
 }
 
+.macroScopeTag.project {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
 #macroLibraryWindow {
   position: fixed;
   right: 64px;
   top: 96px;
   width: min(430px, calc(100vw - 24px));
-  height: min(480px, calc(100vh - var(--statusbar-h) - 112px));
+  height: min(598px, calc(100vh - var(--statusbar-h) - 112px));
   min-width: 360px;
   min-height: 320px;
   display: flex;

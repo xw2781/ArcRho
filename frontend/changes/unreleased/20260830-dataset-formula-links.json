@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset cells now accept formulas that combine Excel links, ArcRho dataset links, and numbers with Excel-style array arithmetic, and the Links tab lists every kind of link in one resizable table.",
+  "details": [
+    "Type =[C 82 - Prior Qtr Selected][1:7] * 2, or mix an Excel range and a dataset range in one formula; a range acts as an array, a number applies to every cell, and the result spills from the cell you typed into.",
+    "A standalone Excel or dataset reference still creates a plain link, so the same formula bar reads all three kinds and shows one hint when a draft fits none of them.",
+    "Calculated ranges wear a purple outline beside the green Excel and blue ArcRho outlines; refreshing a formula re-evaluates it and the sidecar stores it under a new formula_links field.",
+    "Picking cells in another dataset window now drops the reference where the formula has room for it, after an operator or in place of the reference at the end.",
+    "The Links tab in the Dataset and DFM windows is now one table: a kind badge and source, the reference or formula, the destination, the cell count, and the current value on one line per link, with columns you can drag to resize."
+  ]
+}

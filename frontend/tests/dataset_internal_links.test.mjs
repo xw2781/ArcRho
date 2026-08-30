@@ -31,8 +31,8 @@ let controllerSource = await readFile(
   "utf8",
 );
 controllerSource = controllerSource
-  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260829a"', JSON.stringify(externalUrl))
-  .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260829a"', JSON.stringify(internalReferenceUrl));
+  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260830d"', JSON.stringify(externalUrl))
+  .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl));
 const internalLinks = await import(
   `data:text/javascript;base64,${Buffer.from(controllerSource).toString("base64")}`
 );
@@ -211,7 +211,7 @@ test("lists one record per link with dataset name and source range", () => {
   assert.equal(records.length, 1);
   assert.equal(records[0].datasetName, "C 82 - Prior Qtr Selected");
   assert.equal(records[0].sourceRange, "1:2");
-  assert.equal(records[0].destination, "2017 / Value + 1 more");
+  assert.equal(records[0].destination, "2017~2018");
   assert.equal(records[0].affectedCellCount, 2);
 });
 
@@ -264,6 +264,48 @@ const spreadsheetCss = await readFile(
   new URL("../ui/shared/components/spreadsheet/spreadsheet_table.css", import.meta.url),
   "utf8",
 );
+
+test("a frame survives the pass of a controller that owns nothing", async () => {
+  // The Data tab hands every cell to the Excel, ArcRho, and formula
+  // controllers in turn. They share one set of perimeter classes, so a
+  // controller owning no link must leave another's frame alone.
+  const external = await import(externalUrl);
+  const state = { model: vectorModel(), dirty: new Map() };
+  const excelLinks = external.createDatasetExternalLinksController({ state });
+  excelLinks.load([{
+    reference: "='C:\\Data\\[Book.xlsx]Sheet 1'!A1:A2",
+    target_cells: [
+      { row: 0, column: 0, source_cell: "A1" },
+      { row: 1, column: 0, source_cell: "A2" },
+    ],
+  }]);
+  const emptyInternal = internalLinks.createDatasetInternalLinksController({
+    state,
+    resolveReferences: async () => ({ ok: true, status: 200, data: { ok: true, results: [] } }),
+  });
+  const excelCell = decoratedCell();
+  excelLinks.decorateCell(excelCell, 0, 0);
+  emptyInternal.decorateCell(excelCell, 0, 0);
+
+  assert.equal(excelCell.classes.has("arArrayFormulaCell"), true);
+  assert.equal(excelCell.classes.has("arArrayFormulaEdgeTop"), true);
+  assert.equal(excelCell.classes.has("arInternalLinkCell"), false);
+
+  // The Excel pass comes first and equally has to leave an ArcRho frame alone.
+  const { controller } = controllerWith();
+  controller.load([LINK]);
+  const emptyExcel = external.createDatasetExternalLinksController({
+    state,
+    isTransposed: () => false,
+  });
+  const arcRhoCell = decoratedCell();
+  emptyExcel.decorateCell(arcRhoCell, 0, 0);
+  controller.decorateCell(arcRhoCell, 0, 0);
+
+  assert.equal(arcRhoCell.classes.has("arArrayFormulaCell"), true);
+  assert.equal(arcRhoCell.classes.has("arArrayFormulaEdgeTop"), true);
+  assert.equal(arcRhoCell.classes.has("arInternalLinkCell"), true);
+});
 
 test("a link is outlined in the color of where its values come from", () => {
   // Excel green is the default a linked range wears; a dataset link re-tints it.

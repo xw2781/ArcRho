@@ -37,7 +37,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260829b";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260830a";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -65,8 +65,9 @@ import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
 import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
-import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260829a";
-import { createDatasetInternalLinksController } from "/ui/shared/dataset/dataset_internal_links.js?v=20260829a";
+import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260830d";
+import { createDatasetInternalLinksController } from "/ui/shared/dataset/dataset_internal_links.js?v=20260830d";
+import { createDatasetFormulaLinksController } from "/ui/shared/dataset/dataset_formula_links.js?v=20260830d";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -95,7 +96,7 @@ import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260829a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260830a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -166,6 +167,7 @@ const runtime = {
   getDataTabLinksController,
   createDatasetExternalLinksController,
   createDatasetInternalLinksController,
+  createDatasetFormulaLinksController,
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
   loadProjectValidValueList,
@@ -211,6 +213,7 @@ const runtime = {
   datasetDependencyGuard: null,
   datasetExternalLinks: null,
   datasetInternalLinks: null,
+  datasetFormulaLinks: null,
   datasetHeadersService: null,
   datasetInstanceNameConflict: false,
   datasetInstanceNameConflictMessage: "",
@@ -274,6 +277,91 @@ export async function refreshDatasetInternalLinkRecords(ids) {
   return runtime.refreshDatasetInternalLinks({ ids });
 }
 
+export function getDatasetFormulaLinkRecords() {
+  return runtime.datasetFormulaLinks.listRecords();
+}
+
+export async function breakDatasetFormulaLinks(ids) {
+  const result = runtime.datasetFormulaLinks.breakLinks(ids);
+  if (!result.ok) return result;
+  renderTable();
+  runtime.notifyDatasetUpdated({ publishPreview: false });
+  runtime.setStatus(result.message || "Links broken. Current dataset values are now hard-coded.");
+  return result;
+}
+
+export async function refreshDatasetFormulaLinkRecords(ids) {
+  return runtime.refreshDatasetFormulaLinks({ ids });
+}
+
+// The Links tab shows every kind of link in one table; these three route a
+// mixed selection back to the controller that owns each record.
+const LINK_KIND_HANDLERS = {
+  excel: {
+    refresh: refreshDatasetExternalLinkRecords,
+    break: (ids) => runtime.datasetExternalLinks.breakLinks(ids),
+  },
+  internal: {
+    refresh: refreshDatasetInternalLinkRecords,
+    break: (ids) => runtime.datasetInternalLinks.breakLinks(ids),
+  },
+  formula: {
+    refresh: refreshDatasetFormulaLinkRecords,
+    break: (ids) => runtime.datasetFormulaLinks.breakLinks(ids),
+  },
+};
+
+export function getDatasetLinkRecords() {
+  return [
+    ...getDatasetExternalLinkRecords().map((record) => ({ ...record, sourceKind: "excel" })),
+    ...getDatasetInternalLinkRecords(),
+    ...getDatasetFormulaLinkRecords(),
+  ];
+}
+
+function groupLinkRecordIdsByKind(records) {
+  const groups = new Map();
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    const kind = LINK_KIND_HANDLERS[record?.sourceKind] ? record.sourceKind : "excel";
+    if (!record?.id) return;
+    if (!groups.has(kind)) groups.set(kind, []);
+    groups.get(kind).push(record.id);
+  });
+  return groups;
+}
+
+export async function refreshDatasetLinkRecords(records) {
+  const results = [];
+  for (const [kind, ids] of groupLinkRecordIdsByKind(records)) {
+    results.push(await LINK_KIND_HANDLERS[kind].refresh(ids));
+  }
+  const failures = results.flatMap((result) => result?.failures || []);
+  return {
+    linkedCellCount: results.reduce((sum, result) => sum + (Number(result?.linkedCellCount) || 0), 0),
+    changedCount: results.reduce((sum, result) => sum + (Number(result?.changedCount) || 0), 0),
+    failedCount: results.reduce((sum, result) => sum + (Number(result?.failedCount) || 0), 0),
+    failures,
+    error: results.map((result) => result?.error).filter(Boolean).join(" "),
+  };
+}
+
+export async function breakDatasetLinks(records) {
+  let affectedCellCount = 0;
+  let brokenLinkCount = 0;
+  for (const [kind, ids] of groupLinkRecordIdsByKind(records)) {
+    const result = LINK_KIND_HANDLERS[kind].break(ids);
+    if (!result.ok) return result;
+    affectedCellCount += Number(result.affectedCellCount) || 0;
+    brokenLinkCount += ids.length;
+  }
+  if (!brokenLinkCount) return { ok: false, error: "No links were selected." };
+  renderTable();
+  runtime.notifyDatasetUpdated({ publishPreview: false });
+  const message = `${brokenLinkCount === 1 ? "Link" : `${brokenLinkCount} links`} broken. Current dataset values are now hard-coded.`;
+  runtime.setStatus(message);
+  return { ok: true, affectedCellCount, message };
+}
+
 async function openProjectNameTreeForDataset(targetInput) {
   const initialProject = runtime.getResolvedProjectValue() || targetInput?.value || "";
   await openProjectNameTreePicker({
@@ -330,6 +418,11 @@ function wireGridInteractions() {
     row: Number(cell?.row ?? cell?.r),
     column: Number(cell?.column ?? cell?.c),
   }));
+  const linkControllers = () => [
+    runtime.datasetExternalLinks,
+    runtime.datasetInternalLinks,
+    runtime.datasetFormulaLinks,
+  ];
   datasetGridInteractions = wireDatasetGridInteractions({
     state,
     renderTable,
@@ -347,23 +440,27 @@ function wireGridInteractions() {
         ? dfmLinksRefused()
         : runtime.datasetInternalLinks.commitReference(request)
     ),
-    cancelExternalReference: () => {
-      runtime.datasetExternalLinks.abort();
-      runtime.datasetInternalLinks.abort();
-    },
+    commitFormulaReference: (request) => (
+      isDfmDataTabHost()
+        ? dfmLinksRefused()
+        : runtime.datasetFormulaLinks.commitReference(request)
+    ),
+    cancelExternalReference: () => linkControllers().forEach((controller) => controller.abort()),
     hardCodeExternalLinkCells: (cells) => {
       const mapped = mapLinkCells(cells);
-      return runtime.datasetExternalLinks.hardCodeTargetCells(mapped)
-        + runtime.datasetInternalLinks.hardCodeTargetCells(mapped);
+      return linkControllers().reduce(
+        (count, controller) => count + controller.hardCodeTargetCells(mapped),
+        0,
+      );
     },
     decorateExternalLinkCell: (cell, displayRow, displayColumn) => {
-      runtime.datasetExternalLinks.decorateCell(cell, displayRow, displayColumn);
-      runtime.datasetInternalLinks.decorateCell(cell, displayRow, displayColumn);
+      linkControllers().forEach((controller) => controller.decorateCell(cell, displayRow, displayColumn));
     },
-    // A cell holds at most one link (Excel or ArcRho), enforced on commit and
-    // save, so the first answer wins here.
+    // A cell holds at most one link (Excel, ArcRho, or formula), enforced on
+    // commit and save, so the first answer wins here.
     getExternalLinkCellInfo: (displayRow, displayColumn) => (
-      runtime.datasetInternalLinks.getCellLinkInfo(displayRow, displayColumn)
+      runtime.datasetFormulaLinks.getCellLinkInfo(displayRow, displayColumn)
+      || runtime.datasetInternalLinks.getCellLinkInfo(displayRow, displayColumn)
       || runtime.datasetExternalLinks.getCellLinkInfo(displayRow, displayColumn)
     ),
     beginReferencePick: () => runtime.publishDatasetReferencePickBegin?.(),

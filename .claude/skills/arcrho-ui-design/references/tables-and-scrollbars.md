@@ -40,6 +40,10 @@ Do not rely on `element.scrollIntoView({ block: "nearest" })` alone because a st
 
 Follow the `pi-table` pattern. Store an explicit width for every column, render a `colgroup`, set each `col` width directly, and set table `width` and `min-width` to the sum of current column widths. During drag, update only the target column width and resync the total table width; let the table grow or shrink instead of redistributing neighboring columns. Use fixed table layout and keep resize handles outside normal layout flow.
 
+### T11 - Tables that are the sum of their columns fill their frame
+
+A table whose width is the sum of explicit column widths (T09) must never sit short of its framed scroll host with no right edge. Stretch the default widths to the host width on first render and again whenever the host resizes (observe the host; a tab hidden while its rows loaded measured no width), and let the defaults scale back down when the host shrinks. Once a column has been dragged, keep the dragged widths, and mark the host so the last column draws its own right rule while the table is narrower than the frame; a table that fills or overflows the frame leaves that edge to the frame border.
+
 ### T10 - Method table spreadsheet selection and editing
 
 Use this spreadsheet-style table pattern across interactive method tabs. The Bornhuetter Ferguson Method table is the reference implementation when exact styling or behavior needs to be checked:

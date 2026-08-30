@@ -3,18 +3,13 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
-import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
 
 
 _TMP_ROOT = Path(__file__).resolve().parent / "logs" / "tmp"
 _MIGRATION_PATH = Path(__file__).resolve().parents[1] / "migration" / "resq_data_migration.py"
-_MACRO_PATH = Path(__file__).resolve().parents[1] / "macros" / "import_resq_dataset.py"
 
 
 def _load_module(path: Path, name: str):
@@ -398,90 +393,6 @@ class ResqBerquistShermanMigrationTests(unittest.TestCase):
         self.assertEqual(item["origin_length"], 12)
         self.assertEqual(item["development_length"], 12)
         self.assertNotIn("origin_labels", item)
-
-    def test_macro_resolves_active_berquist_sherman_method_to_triangle_export(self):
-        macro = _load_module(_MACRO_PATH, "import_resq_dataset_bs_under_test")
-        properties = SimpleNamespace(
-            dataset_name=self.reserving_class.cra_triangle.Name,
-            item_name="",
-            name="",
-            kind="berquist_sherman_cra",
-            method_type="B&S Case Reserve Adequacy Adjustment",
-        )
-
-        target = macro._resolve_single_export(
-            self.migration,
-            self.reserving_class,
-            properties,
-        )
-
-        self.assertEqual(target["export_kind"], "triangle")
-        self.assertEqual(target["names"], [self.reserving_class.cra_triangle.Name])
-        self.assertIn("Case Reserve", target["display_kind"])
-
-    def test_macro_target_resolution_failure_does_not_create_reserving_class(self):
-        macro = _load_module(
-            _MACRO_PATH,
-            "import_resq_dataset_early_failure_under_test",
-        )
-        project_data_dir = self.root / "projects" / "Early Project" / "data"
-        rebuild = Mock()
-        migration = SimpleNamespace(
-            PROJECT_DATA_DIR=project_data_dir,
-            PROJECT_NAME="Early Project",
-            CONNECTION_NAME="Test",
-            USER_NAME="user",
-            PASSWORD="password",
-            DATASET_CACHE_DIR="datasets",
-            METHOD_DATA_DIR="methods",
-            DATASET_SIDECAR_DIR="sidecars",
-            _apply_runtime_scope=Mock(return_value=("previous",)),
-            _restore_runtime_scope=Mock(),
-            _encode_rc_folder=Mock(return_value="Auto_%5C_PP"),
-            rebuild_dataset_instance_index=rebuild,
-        )
-        reserving_class = object()
-        project = SimpleNamespace(
-            ReservingClasses=lambda: SimpleNamespace(
-                Item=lambda _path: reserving_class
-            )
-        )
-        application = SimpleNamespace(
-            ConnectByName=Mock(),
-            Projects=lambda: SimpleNamespace(Item=lambda _name: project),
-        )
-        client_module = types.ModuleType("win32com.client")
-        client_module.Dispatch = Mock(return_value=application)
-        win32com_module = types.ModuleType("win32com")
-        win32com_module.client = client_module
-
-        with (
-            patch.dict(
-                sys.modules,
-                {
-                    "win32com": win32com_module,
-                    "win32com.client": client_module,
-                },
-            ),
-            patch.object(
-                macro,
-                "_resolve_single_export",
-                side_effect=ValueError("target missing"),
-            ),
-            self.assertRaisesRegex(ValueError, "target missing"),
-        ):
-            macro._import_active_dataset_from_resq(
-                migration,
-                "Early Project",
-                r"Auto\PP",
-                SimpleNamespace(),
-                self.root,
-                lambda _event: None,
-            )
-
-        self.assertFalse(project_data_dir.exists())
-        rebuild.assert_not_called()
-        migration._restore_runtime_scope.assert_called_once_with(("previous",))
 
     def test_nonannual_method_is_rejected_by_mvp_extractor(self):
         output = self.migration.export_triangle(self.reserving_class.sr_triangle)

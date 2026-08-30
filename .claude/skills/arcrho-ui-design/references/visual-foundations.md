@@ -44,6 +44,8 @@ Use 11px bold, neutral-gray section labels. Do not set them in uppercase.
 
 Capitalize the first letter of every word in interface labels, such as `Origin Span`, `File Size`, and `Column Name`, and never set a label in full uppercase. This should cover section labels, tile and stat labels, table column headers, form field labels, group titles, and inline tags. Action button text, helper sentences, and status text stay in sentence case.
 
+The rule holds in the stylesheet as much as in the markup: do not apply `text-transform: uppercase` to any label, and in particular not to kind badges and chips, which must show a product or object name exactly as it is written (`ArcRho`, `Excel`, `Formula`), never `ARCRHO`. Keep their letter spacing at `0` like every other label.
+
 ### V10 - Tight hierarchy
 
 Keep letter spacing at `0`. Use weight and spacing, not oversized type, to create hierarchy.

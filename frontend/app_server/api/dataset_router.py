@@ -259,6 +259,7 @@ def _dataset_sidecar_save_call(req: DatasetSidecarSaveRequest) -> Dict[str, Any]
             "precedents": req.precedents,
             "external_links": req.external_links,
             "internal_links": req.internal_links,
+            "formula_links": req.formula_links,
             "values": req.values,
             "mask": req.mask,
         },

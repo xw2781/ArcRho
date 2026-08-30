@@ -264,6 +264,27 @@
   border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
 }
 
+/* A blank cell drops every grid line, but one standing inside a linked range
+   still belongs to that range: the frame is the rectangle the reference
+   covers, so it has to close across the empty corner a triangle leaves. Each
+   rule names three classes so it outranks the blanket border above and the
+   grid line the last column keeps. */
+#tableWrap td.na.arArrayFormulaCell.arArrayFormulaEdgeTop {
+  border-top: 1px solid var(--ar-array-formula-border) !important;
+}
+
+#tableWrap td.na.arArrayFormulaCell.arArrayFormulaEdgeRight {
+  border-right: 1px solid var(--ar-array-formula-border) !important;
+}
+
+#tableWrap td.na.arArrayFormulaCell.arArrayFormulaEdgeBottom {
+  border-bottom: 1px solid var(--ar-array-formula-border) !important;
+}
+
+#tableWrap td.na.arArrayFormulaCell.arArrayFormulaEdgeLeft {
+  border-left: 1px solid var(--ar-array-formula-border) !important;
+}
+
 #tableWrap tfoot th,
 #tableWrap tfoot td {
   border-top: 1px solid var(--ar-spreadsheet-grid-border);
