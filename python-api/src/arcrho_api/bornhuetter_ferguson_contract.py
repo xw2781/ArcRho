@@ -123,23 +123,37 @@ def _snapshot_revision(name: str, origin_labels: list[str], values: list[Any]) -
     })
 
 
-def _calculate_vectors(method_tab: Mapping[str, Any]) -> tuple[list[Any], list[Any], list[Any]]:
+def _dfm_snapshot_revision(
+    name: str, origin_labels: list[str], ultimates: list[Any], percentages: list[Any]
+) -> str:
+    """Fingerprint both vectors the DFM precedent supplies.
+
+    The percentage developed is not implied by the ultimate -- an origin whose
+    latest observation is zero has a zero ultimate under any pattern -- so a
+    revision covering only the ultimate could miss a changed selection.
+    """
+
+    if not name or not origin_labels or len(origin_labels) != len(ultimates) \
+            or len(origin_labels) != len(percentages):
+        return ""
+    return fingerprint({
+        "name": name,
+        "origin_labels": origin_labels,
+        "values": [_number(value) for value in ultimates],
+        "percentage_developed": [_number(value) for value in percentages],
+    })
+
+
+def _calculate_vectors(method_tab: Mapping[str, Any]) -> tuple[list[Any], list[Any]]:
     origins = _labels(method_tab.get("origin_labels"))
     latest = _fit(_numbers(method_tab.get("latest_values")), len(origins), None)
-    dfm = _fit(_numbers(method_tab.get("dfm_ultimate_values")), len(origins), None)
+    percentages = _fit(_numbers(method_tab.get("percentage_developed")), len(origins), None)
     priors = method_tab.get("prior_datasets") if isinstance(method_tab.get("prior_datasets"), list) else []
-    percentages: list[Any] = []
     selected: list[Any] = []
     ultimates: list[Any] = []
     for index in range(len(origins)):
         latest_value = latest[index]
-        dfm_value = dfm[index]
-        percentage_raw = (
-            float(latest_value) / float(dfm_value)
-            if latest_value is not None and dfm_value not in {None, 0, 0.0}
-            else None
-        )
-        percentage = _number(percentage_raw)
+        percentage_raw = percentages[index]
         numerator = 0.0
         denominator = 0.0
         for prior in priors:
@@ -164,12 +178,11 @@ def _calculate_vectors(method_tab: Mapping[str, Any]) -> tuple[list[Any], list[A
             ultimate = None
         else:
             ultimate = _whole_number(
-                float(latest_value) + (1.0 - percentage_raw) * float(selected_raw)
+                float(latest_value) + (1.0 - float(percentage_raw)) * float(selected_raw)
             )
-        percentages.append(percentage)
         selected.append(selected_value)
         ultimates.append(ultimate)
-    return percentages, selected, ultimates
+    return selected, ultimates
 
 
 def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -312,6 +325,7 @@ def normalize_bornhuetter_ferguson_method(
     dfm_name = _clean(method_source.get("dfm_dataset"))
     latest_values = _fit(_numbers(method_source.get("latest_values")), row_count, None)
     dfm_values = _fit(_numbers(method_source.get("dfm_ultimate_values")), row_count, None)
+    dfm_percentages = _fit(_numbers(method_source.get("percentage_developed")), row_count, None)
 
     raw_priors = method_source.get("prior_datasets") if isinstance(method_source.get("prior_datasets"), list) else []
     if not raw_priors and _clean(method_source.get("prior_dataset")):
@@ -356,12 +370,12 @@ def normalize_bornhuetter_ferguson_method(
             "latest_source_revision": _snapshot_revision(latest_name, origins, latest_values),
             "dfm_dataset": dfm_name,
             "dfm_ultimate_values": dfm_values,
-            "dfm_source_revision": _snapshot_revision(dfm_name, origins, dfm_values),
+            "dfm_source_revision": _dfm_snapshot_revision(dfm_name, origins, dfm_values, dfm_percentages),
             "show_weights": method_source.get("show_weights") is not False,
             "show_effective_weights": bool(method_source.get("show_effective_weights", False)),
             "prior_datasets": priors,
             "origin_labels": origins,
-            "percentage_developed": _fit(_numbers(method_source.get("percentage_developed")), row_count, None),
+            "percentage_developed": dfm_percentages,
             "selected_prior_values": _fit(_numbers(method_source.get("selected_prior_values")), row_count, None),
             "new_ultimate": _fit(_numbers(method_source.get("new_ultimate")), row_count, None),
         },
@@ -420,10 +434,10 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
             raise BornhuetterFergusonContractError("BF Prior values and weights must align to origin_labels.")
         if not _clean(prior.get("source_revision")):
             raise BornhuetterFergusonContractError("Every BF Prior dataset requires a source_revision.")
+    if len(method.get("percentage_developed") or []) != len(origins):
+        raise BornhuetterFergusonContractError("BF percentage_developed must align to origin_labels.")
     expected = _calculate_vectors(method)
-    for key, values in zip(
-        ("percentage_developed", "selected_prior_values", "new_ultimate"), expected
-    ):
+    for key, values in zip(("selected_prior_values", "new_ultimate"), expected):
         if method.get(key) != values:
             raise BornhuetterFergusonContractError(f"BF {key} does not match the embedded source snapshots.")
 
@@ -453,13 +467,7 @@ def _snapshot_vector(snapshot: Mapping[str, Any], *, latest: bool) -> tuple[list
     return labels, _fit(values, len(labels), None)
 
 
-def _aligned_snapshot(
-    snapshot: Mapping[str, Any],
-    origins: list[str],
-    *,
-    latest: bool,
-) -> list[Any]:
-    labels, values = _snapshot_vector(snapshot, latest=latest)
+def _align_by_labels(labels: list[str], values: list[Any], origins: list[str]) -> list[Any]:
     duplicates = _duplicates(labels)
     if duplicates:
         raise BornhuetterFergusonContractError("BF source snapshot has duplicate origins: " + ", ".join(duplicates))
@@ -467,6 +475,24 @@ def _aligned_snapshot(
         raise BornhuetterFergusonContractError("BF source snapshot origins must match the Latest origins exactly.")
     lookup = {label: values[index] for index, label in enumerate(labels)}
     return [lookup[label] for label in origins]
+
+
+def _aligned_snapshot(
+    snapshot: Mapping[str, Any],
+    origins: list[str],
+    *,
+    latest: bool,
+) -> list[Any]:
+    labels, values = _snapshot_vector(snapshot, latest=latest)
+    return _align_by_labels(labels, values, origins)
+
+
+def _aligned_percentages(snapshot: Mapping[str, Any], origins: list[str]) -> list[Any]:
+    """Align the DFM precedent's percentage-developed pattern onto BF origins."""
+
+    labels = _labels(snapshot.get("origin_labels"))
+    values = _fit(_numbers(snapshot.get("percentage_developed")), len(labels), None)
+    return _align_by_labels(labels, values, origins)
 
 
 def _source_snapshot(
@@ -537,6 +563,7 @@ def recalculate_bornhuetter_ferguson_method(
         elif snapshot_name and snapshot_name.casefold() != tab["dfm_dataset"].casefold():
             raise BornhuetterFergusonContractError("BF DFM snapshot identity does not match its configured source.")
         tab["dfm_ultimate_values"] = _aligned_snapshot(dfm_snapshot, origins, latest=False)
+        tab["percentage_developed"] = _aligned_percentages(dfm_snapshot, origins)
     for index, prior in enumerate(tab.get("prior_datasets", [])):
         snapshot = _source_snapshot(snapshots, "priors", _clean(prior.get("name")), index)
         if snapshot is not None:
@@ -549,8 +576,11 @@ def recalculate_bornhuetter_ferguson_method(
 
     tab["latest_values"] = _fit(_numbers(tab.get("latest_values")), len(origins), None)
     tab["dfm_ultimate_values"] = _fit(_numbers(tab.get("dfm_ultimate_values")), len(origins), None)
+    tab["percentage_developed"] = _fit(_numbers(tab.get("percentage_developed")), len(origins), None)
     tab["latest_source_revision"] = _snapshot_revision(tab["latest_dataset"], origins, tab["latest_values"])
-    tab["dfm_source_revision"] = _snapshot_revision(tab["dfm_dataset"], origins, tab["dfm_ultimate_values"])
+    tab["dfm_source_revision"] = _dfm_snapshot_revision(
+        tab["dfm_dataset"], origins, tab["dfm_ultimate_values"], tab["percentage_developed"]
+    )
     for prior in tab.get("prior_datasets", []):
         prior["values"] = _fit(_numbers(prior.get("values")), len(origins), None)
         prior["weights"] = [
@@ -558,8 +588,7 @@ def recalculate_bornhuetter_ferguson_method(
             for value in _fit(_numbers(prior.get("weights")), len(origins), 1.0)
         ]
         prior["source_revision"] = _snapshot_revision(prior["name"], origins, prior["values"])
-    percentages, selected, ultimates = _calculate_vectors(tab)
-    tab["percentage_developed"] = percentages
+    selected, ultimates = _calculate_vectors(tab)
     tab["selected_prior_values"] = selected
     tab["new_ultimate"] = ultimates
     if update_refresh_timestamp:
@@ -586,13 +615,14 @@ def apply_owned_patch(
     method["details_tab"] = deepcopy(incoming["details_tab"])
     old_tab["show_weights"] = incoming_tab["show_weights"]
     old_tab["show_effective_weights"] = incoming_tab["show_effective_weights"]
-    for name_key, values_key, revision_key in (
-        ("latest_dataset", "latest_values", "latest_source_revision"),
-        ("dfm_dataset", "dfm_ultimate_values", "dfm_source_revision"),
+    for name_key, values_keys, revision_key in (
+        ("latest_dataset", ("latest_values",), "latest_source_revision"),
+        ("dfm_dataset", ("dfm_ultimate_values", "percentage_developed"), "dfm_source_revision"),
     ):
         new_name = incoming_tab[name_key]
         if _clean(new_name).casefold() != _clean(old_tab.get(name_key)).casefold():
-            old_tab[values_key] = []
+            for values_key in values_keys:
+                old_tab[values_key] = []
             old_tab[revision_key] = ""
         old_tab[name_key] = new_name
     rebased_priors: list[dict[str, Any]] = []
@@ -613,8 +643,7 @@ def apply_owned_patch(
             "source_revision": str(old.get("source_revision") or ""),
         })
     old_tab["prior_datasets"] = rebased_priors
-    percentages, selected, ultimates = _calculate_vectors(old_tab)
-    old_tab["percentage_developed"] = percentages
+    selected, ultimates = _calculate_vectors(old_tab)
     old_tab["selected_prior_values"] = selected
     old_tab["new_ultimate"] = ultimates
     method["method_metadata"]["last_modified"] = _timestamp(timestamp)

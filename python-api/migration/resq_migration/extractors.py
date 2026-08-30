@@ -1872,6 +1872,61 @@ def _bf_origin_labels(method, output_vector, fallback_count: int = 0) -> list[st
     return labels
 
 
+def _resq_percentage_developed(
+    method,
+    origin_labels: list[str],
+    *,
+    context: str,
+    fallback: list,
+) -> list:
+    """Copy the percentage developed ResQ shows for each origin of a method.
+
+    ResQ exposes ``PercentageDevelopedValues(i)`` for origin rows ``1..N``.
+    Under its DFM development-factor settings that figure is the pattern of
+    the DFM's cumulative factors at each origin's own age -- the same thing
+    ArcRho reads from the DFM behind the precedent -- so the import copies it
+    as-is rather than deriving a ratio: it is defined for an origin whose
+    latest is zero and never drifts against a Latest the DFM was not built on.
+    ``fallback`` is what a method that will not expose the values lands
+    instead; strict extraction refuses such a method.
+    """
+
+    percentages: list = []
+    for origin_index in range(1, len(origin_labels) + 1):
+        try:
+            value = _try_call_member(
+                method,
+                "PercentageDevelopedValues",
+                [((origin_index,), {}), ((), {"OriginIndex": origin_index})],
+            )
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read {context} PercentageDevelopedValues for origin index "
+                    f"{origin_index}.",
+                    exc,
+                )
+            return list(fallback)
+        percentages.append(float(value) if _rs_json_number(value) is not None else None)
+    return percentages
+
+
+def _latest_ultimate_ratio(latest_snapshot: dict, dfm_snapshot: dict) -> list:
+    """Latest / imported ultimate, the fallback for a method without ResQ percentages."""
+
+    latest = latest_snapshot.get("values") or []
+    ultimates = dfm_snapshot.get("values") or []
+    percentages: list = []
+    for index in range(len(ultimates)):
+        latest_value = latest[index] if index < len(latest) else None
+        ultimate = ultimates[index]
+        if latest_value is None or ultimate in (None, 0):
+            percentages.append(None)
+            continue
+        percentages.append(float(latest_value) / float(ultimate))
+    return percentages
+
+
 def _bf_source_snapshot(
     source,
     origin_labels: list[str],
@@ -2013,6 +2068,12 @@ def export_bornhuetter_ferguson(method, *, strict: bool = False) -> dict:
     prior_source = _extract_attr(method, "Prior", None, context=f"Bornhuetter Ferguson {name!r}")
     latest_snapshot = _bf_source_snapshot(latest_source, origin_labels, latest=True, role="Latest")
     dfm_snapshot = _bf_source_snapshot(dfm_source, origin_labels, latest=False, role="Perc Developed")
+    dfm_snapshot["percentage_developed"] = _resq_percentage_developed(
+        method,
+        origin_labels,
+        context=f"Bornhuetter Ferguson {name!r}",
+        fallback=_latest_ultimate_ratio(latest_snapshot, dfm_snapshot),
+    )
     prior_snapshot = _bf_source_snapshot(prior_source, origin_labels, latest=False, role="Prior")
     try:
         notes = _clean_name(method.Notes)
@@ -2292,6 +2353,15 @@ def export_cape_cod(method, *, strict: bool = False) -> dict:
     )
     if int(pd_type_code) in CC_DFM_FACTOR_TYPE_CODES:
         _apply_dfm_factor_prior_ultimates(method, latest_snapshot, prior_snapshot)
+    # The pattern behind the prior ultimate, copied from ResQ; a method that
+    # exposes none leaves the snapshot without one and Cape Cod falls back to
+    # Latest / Prior Ultimate, the way it treats a prior with no DFM behind it.
+    prior_snapshot["percentage_developed"] = _resq_percentage_developed(
+        method,
+        origin_labels,
+        context=f"Cape Cod {name!r}",
+        fallback=[],
+    )
     scaling_type = _cc_code_label(
         _extract_attr(method, "ScalingType", 0, context=f"Cape Cod {name!r}"),
         CC_SCALING_TYPES,

@@ -458,6 +458,27 @@ async function loadConfiguredSourcePayload(datasetName, details = getDetails()) 
   });
 }
 
+async function loadDevelopmentPattern(datasetName) {
+  // The percentage developed comes from the DFM's selected development factors.
+  // Reading it here keeps the BF grid showing the same figure the DFM's
+  // % Developed row shows, and the same one a save embeds.
+  const name = text(datasetName);
+  if (!state.project || !state.reservingClass || !name) return [];
+  const qs = new URLSearchParams({
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    dataset_name: name,
+  });
+  const resp = await fetch(`/dfm/development-pattern?${qs.toString()}`, { cache: "no-store" });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.detail || payload?.error || `Development pattern load failed (${resp.status}).`);
+  }
+  return Array.isArray(payload?.percentage_developed)
+    ? payload.percentage_developed.map(numberOrNull)
+    : [];
+}
+
 function latestDiagonal(values) {
   const rows = Array.isArray(values) ? values : [];
   return rows.map((row) => {
@@ -562,7 +583,7 @@ function dependencyPreviewValues(message = {}) {
     : vectorValues(matrix);
 }
 
-function applyDependencyValuesToRole(role, values) {
+function applyDependencyValuesToRole(role, values, message = {}) {
   const normalizedValues = Array.isArray(values) ? values.map(numberOrNull) : [];
   if (role.kind === "latest") {
     state.latestValues = normalizedValues;
@@ -570,6 +591,8 @@ function applyDependencyValuesToRole(role, values) {
   }
   if (role.kind === "dfm") {
     state.dfmUltimateValues = normalizedValues;
+    const pattern = message.percentageDeveloped || message.percentage_developed;
+    if (Array.isArray(pattern)) state.percentDevelopedValues = pattern.map(numberOrNull);
     return true;
   }
   if (role.kind === "prior") {
@@ -590,7 +613,7 @@ function reapplyActiveDependencyPreviews() {
       activeDependencyPreviews.delete(roleKey);
       continue;
     }
-    changed = applyDependencyValuesToRole(role, preview.values) || changed;
+    changed = applyDependencyValuesToRole(role, preview.values, preview.message) || changed;
   }
   return changed;
 }
@@ -602,7 +625,7 @@ function applyDependencySourcePreview(message = {}) {
   let changed = false;
   for (const role of roles) {
     activeDependencyPreviews.set(role.key, { message: { ...message }, values: values.slice() });
-    changed = applyDependencyValuesToRole(role, values) || changed;
+    changed = applyDependencyValuesToRole(role, values, message) || changed;
   }
   if (!changed) return false;
   calculateOutputs();
@@ -735,7 +758,6 @@ async function refreshOriginLabels({ render = true } = {}) {
 }
 
 function clearCalculatedOutputs() {
-  state.percentDevelopedValues = [];
   state.selectedPriorValues = [];
   state.newUltimateValues = [];
 }
@@ -745,8 +767,9 @@ function calculateOutputs() {
   clearCalculatedOutputs();
   for (let i = 0; i < count; i += 1) {
     const latest = numberOrNull(state.latestValues[i]);
-    const dfmUltimate = numberOrNull(state.dfmUltimateValues[i]);
-    const pct = latest !== null && dfmUltimate !== null && dfmUltimate !== 0 ? latest / dfmUltimate : null;
+    // Percentage Developed belongs to the development pattern, never to the
+    // Latest figure: an origin whose latest is zero still has a development age.
+    const pct = numberOrNull(state.percentDevelopedValues[i]);
     let priorNumerator = 0;
     let priorDenominator = 0;
     for (const source of state.priorSources) {
@@ -765,7 +788,6 @@ function calculateOutputs() {
           ? roundBornhuetterFergusonWholeNumber(latest + (1 - pct) * selectedPrior)
           : null;
     }
-    state.percentDevelopedValues.push(pct);
     state.selectedPriorValues.push(selectedPrior);
     state.newUltimateValues.push(ultimate);
   }
@@ -797,6 +819,7 @@ async function refreshOriginLabelsForCalculations() {
 async function refreshCalculations({ mark = false } = {}) {
   const details = getDetails();
   if (!details.latestDataset || !details.dfmDataset) {
+    if (!details.dfmDataset) state.percentDevelopedValues = [];
     reapplyActiveDependencyPreviews();
     await refreshOriginLabelsForCalculations();
     calculateOutputs();
@@ -833,6 +856,7 @@ async function refreshCalculations({ mark = false } = {}) {
   const priorSources = loaded.slice(2).map((item) => item.source);
   state.latestValues = latestDiagonal(latestPayload?.values);
   state.dfmUltimateValues = vectorValues(dfmPayload?.values);
+  state.percentDevelopedValues = await loadDevelopmentPattern(details.dfmDataset);
   state.priorSources = priorSources;
   reapplyActiveDependencyPreviews();
   const labels = Array.isArray(latestPayload?.origin_labels) ? latestPayload.origin_labels : [];
@@ -1352,6 +1376,7 @@ function captureLocalOwnedState() {
     originLabels: state.originLabels.slice(),
     latestValues: state.latestValues.slice(),
     dfmUltimateValues: state.dfmUltimateValues.slice(),
+    percentDevelopedValues: state.percentDevelopedValues.slice(),
     priorSources: state.priorSources.map((source) => ({
       name: source.name,
       values: Array.isArray(source.values) ? source.values.slice() : [],
@@ -1382,9 +1407,13 @@ function restoreLocalOwnedState(local, persisted) {
   state.latestValues = norm(localDetails.latestDataset) === norm(persistedDetails.latestDataset)
     ? persisted.latestValues.slice()
     : local.latestValues.slice();
-  state.dfmUltimateValues = norm(localDetails.dfmDataset) === norm(persistedDetails.dfmDataset)
+  const dfmUnchanged = norm(localDetails.dfmDataset) === norm(persistedDetails.dfmDataset);
+  state.dfmUltimateValues = dfmUnchanged
     ? persisted.dfmUltimateValues.slice()
     : local.dfmUltimateValues.slice();
+  state.percentDevelopedValues = dfmUnchanged
+    ? persisted.percentDevelopedValues.slice()
+    : local.percentDevelopedValues.slice();
   const persistedPriors = new Map(
     persisted.priorSources.map((source) => [norm(source.name), source]),
   );

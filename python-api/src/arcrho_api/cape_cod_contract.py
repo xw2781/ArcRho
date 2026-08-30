@@ -134,6 +134,26 @@ def _snapshot_revision(name: str, origin_labels: list[str], values: list[Any]) -
     })
 
 
+def _prior_ultimate_snapshot_revision(
+    name: str, origin_labels: list[str], values: list[Any], pattern: list[Any]
+) -> str:
+    """Fingerprint both vectors the prior ultimate precedent supplies.
+
+    The percentage developed is not implied by the ultimate -- an origin whose
+    latest observation is zero has a zero ultimate under any pattern -- so a
+    revision covering only the ultimate could miss a changed selection.
+    """
+
+    if not name or not origin_labels or len(origin_labels) != len(values)             or len(origin_labels) != len(pattern):
+        return ""
+    return fingerprint({
+        "name": name,
+        "origin_labels": origin_labels,
+        "values": [_number(value) for value in values],
+        "percentage_developed": [_number(value) for value in pattern],
+    })
+
+
 def _finite(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -204,13 +224,28 @@ def fit_cape_cod_trend_rate(latest: list[Any], developed_exposure: list[Any]) ->
 
 
 def _percentage_developed(
-    latest: list[Any], prior_values: list[Any], mode: str, row_count: int
+    latest: list[Any], prior_values: list[Any], pattern: list[Any], mode: str, row_count: int
 ) -> list[Any]:
+    """Return the percentage developed for each origin.
+
+    In ``pattern`` mode the selected vector *is* the pattern. In
+    ``latest_ultimates`` mode the figure belongs to the development factors
+    behind the prior ultimate, so a prior ultimate a DFM published carries its
+    own pattern and that pattern is used directly -- an origin whose latest
+    observation is zero has a zero ultimate under any pattern, and dividing one
+    by the other would describe it as undeveloped. Only a prior ultimate with no
+    DFM behind it, which Cape Cod also accepts, falls back to the ratio.
+    """
+
     percentages: list[Any] = []
     for index in range(row_count):
         prior = _finite(prior_values[index] if index < len(prior_values) else None)
         if mode == "pattern":
             percentages.append(_number(prior))
+            continue
+        developed = _finite(pattern[index] if index < len(pattern) else None)
+        if developed is not None:
+            percentages.append(_number(developed))
             continue
         latest_value = _finite(latest[index] if index < len(latest) else None)
         if latest_value is None or prior is None or prior == 0:
@@ -250,6 +285,7 @@ def _calculate_columns(method_tab: Mapping[str, Any]) -> dict[str, Any]:
     latest = _fit(_numbers(method_tab.get("latest_values")), row_count, None)
     exposure = _fit(_numbers(method_tab.get("exposure_values")), row_count, None)
     prior = _fit(_numbers(method_tab.get("prior_ultimate_values")), row_count, None)
+    pattern = _fit(_numbers(method_tab.get("prior_ultimate_percentage_developed")), row_count, None)
     mode = _prior_mode(method_tab.get("prior_ultimate_mode"))
     decay_value = _finite(method_tab.get("decay_factor"))
     decay = decay_value if decay_value is not None else 0.0
@@ -258,7 +294,7 @@ def _calculate_columns(method_tab: Mapping[str, Any]) -> dict[str, Any]:
     if auto_fit:
         overrides = [None] * row_count
 
-    percentages = _percentage_developed(latest, prior, mode, row_count)
+    percentages = _percentage_developed(latest, prior, pattern, mode, row_count)
     developed_exposure: list[Any] = []
     for index in range(row_count):
         exposure_value = _finite(exposure[index])
@@ -408,6 +444,9 @@ def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         "exposure_values": deepcopy(method.get("exposure_values") or []),
         "exposure_source_revision": method.get("exposure_source_revision", ""),
         "prior_ultimate_values": deepcopy(method.get("prior_ultimate_values") or []),
+        "prior_ultimate_percentage_developed": deepcopy(
+            method.get("prior_ultimate_percentage_developed") or []
+        ),
         "prior_ultimate_source_revision": method.get("prior_ultimate_source_revision", ""),
     }
     if bool(method.get("auto_trend_fit", False)):
@@ -500,6 +539,9 @@ def normalize_cape_cod_method(
     latest_values = _fit(_numbers(method_source.get("latest_values")), row_count, None)
     exposure_values = _fit(_numbers(method_source.get("exposure_values")), row_count, None)
     prior_values = _fit(_numbers(method_source.get("prior_ultimate_values")), row_count, None)
+    prior_pattern = _fit(
+        _numbers(method_source.get("prior_ultimate_percentage_developed")), row_count, None
+    )
     auto_fit = bool(method_source.get("auto_trend_fit", False))
     overrides = _fit(_numbers(method_source.get("trend_factor_overrides")), row_count, None)
     if auto_fit:
@@ -530,7 +572,10 @@ def normalize_cape_cod_method(
             "prior_ultimate_dataset": prior_name,
             "prior_ultimate_mode": _prior_mode(method_source.get("prior_ultimate_mode")),
             "prior_ultimate_values": prior_values,
-            "prior_ultimate_source_revision": _snapshot_revision(prior_name, origins, prior_values),
+            "prior_ultimate_percentage_developed": prior_pattern,
+            "prior_ultimate_source_revision": _prior_ultimate_snapshot_revision(
+                prior_name, origins, prior_values, prior_pattern
+            ),
             "trend_rate": _rate(method_source.get("trend_rate")),
             "auto_trend_fit": auto_fit,
             "decay_factor": _rate(method_source.get("decay_factor")),
@@ -625,13 +670,7 @@ def _snapshot_vector(snapshot: Mapping[str, Any], *, latest: bool) -> tuple[list
     return labels, _fit(values, len(labels), None)
 
 
-def _aligned_snapshot(
-    snapshot: Mapping[str, Any],
-    origins: list[str],
-    *,
-    latest: bool,
-) -> list[Any]:
-    labels, values = _snapshot_vector(snapshot, latest=latest)
+def _align_by_labels(labels: list[str], values: list[Any], origins: list[str]) -> list[Any]:
     duplicates = _duplicates(labels)
     if duplicates:
         raise CapeCodContractError(
@@ -643,6 +682,24 @@ def _aligned_snapshot(
         )
     lookup = {label: values[index] for index, label in enumerate(labels)}
     return [lookup[label] for label in origins]
+
+
+def _aligned_snapshot(
+    snapshot: Mapping[str, Any],
+    origins: list[str],
+    *,
+    latest: bool,
+) -> list[Any]:
+    labels, values = _snapshot_vector(snapshot, latest=latest)
+    return _align_by_labels(labels, values, origins)
+
+
+def _aligned_percentages(snapshot: Mapping[str, Any], origins: list[str]) -> list[Any]:
+    """Align a precedent's percentage-developed pattern onto Cape Cod origins."""
+
+    labels = _labels(snapshot.get("origin_labels"))
+    values = _fit(_numbers(snapshot.get("percentage_developed")), len(labels), None)
+    return _align_by_labels(labels, values, origins)
 
 
 def _source_snapshot(source_snapshots: Mapping[str, Any], role: str, name: str) -> Mapping[str, Any] | None:
@@ -708,16 +765,24 @@ def recalculate_cape_cod_method(
                 f"Cape Cod {role} snapshot identity does not match its configured source."
             )
         tab[values_key] = _aligned_snapshot(snapshot, origins, latest=False)
+        if role == "prior_ultimate":
+            tab["prior_ultimate_percentage_developed"] = _aligned_percentages(snapshot, origins)
 
     row_count = len(origins)
     tab["latest_values"] = _fit(_numbers(tab.get("latest_values")), row_count, None)
     tab["exposure_values"] = _fit(_numbers(tab.get("exposure_values")), row_count, None)
     tab["prior_ultimate_values"] = _fit(_numbers(tab.get("prior_ultimate_values")), row_count, None)
+    tab["prior_ultimate_percentage_developed"] = _fit(
+        _numbers(tab.get("prior_ultimate_percentage_developed")), row_count, None
+    )
     tab["trend_factor_overrides"] = _fit(_numbers(tab.get("trend_factor_overrides")), row_count, None)
     tab["latest_source_revision"] = _snapshot_revision(tab["latest_dataset"], origins, tab["latest_values"])
     tab["exposure_source_revision"] = _snapshot_revision(tab["exposure_dataset"], origins, tab["exposure_values"])
-    tab["prior_ultimate_source_revision"] = _snapshot_revision(
-        tab["prior_ultimate_dataset"], origins, tab["prior_ultimate_values"]
+    tab["prior_ultimate_source_revision"] = _prior_ultimate_snapshot_revision(
+        tab["prior_ultimate_dataset"],
+        origins,
+        tab["prior_ultimate_values"],
+        tab["prior_ultimate_percentage_developed"],
     )
     columns = _calculate_columns(tab)
     tab["trend_rate"] = columns["trend_rate"]
@@ -741,14 +806,19 @@ def apply_owned_patch(
     old_tab = method["method_tab"]
     incoming_tab = incoming["method_tab"]
     method["details_tab"] = deepcopy(incoming["details_tab"])
-    for name_key, values_key, revision_key in (
-        ("latest_dataset", "latest_values", "latest_source_revision"),
-        ("exposure_dataset", "exposure_values", "exposure_source_revision"),
-        ("prior_ultimate_dataset", "prior_ultimate_values", "prior_ultimate_source_revision"),
+    for name_key, values_keys, revision_key in (
+        ("latest_dataset", ("latest_values",), "latest_source_revision"),
+        ("exposure_dataset", ("exposure_values",), "exposure_source_revision"),
+        (
+            "prior_ultimate_dataset",
+            ("prior_ultimate_values", "prior_ultimate_percentage_developed"),
+            "prior_ultimate_source_revision",
+        ),
     ):
         new_name = incoming_tab[name_key]
         if _clean(new_name).casefold() != _clean(old_tab.get(name_key)).casefold():
-            old_tab[values_key] = []
+            for values_key in values_keys:
+                old_tab[values_key] = []
             old_tab[revision_key] = ""
         old_tab[name_key] = new_name
     old_tab["prior_ultimate_mode"] = incoming_tab["prior_ultimate_mode"]

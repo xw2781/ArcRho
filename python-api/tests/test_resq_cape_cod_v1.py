@@ -336,11 +336,29 @@ class ResqCapeCodV1Tests(unittest.TestCase):
         # recovers the same effective prior ultimates the baseline reads directly.
         baseline = extractors.export_cape_cod(_ManualCcMethod())
         payload = extractors.export_cape_cod(_EmptyDfmCcMethod())
+        for item in (baseline, payload):
+            item.pop("_sidecar_notes")
+            item.pop("_sidecar_status")
         self.assertEqual(
             payload["method_tab"]["prior_ultimate_values"], [100, 120, 140]
         )
         self.assertEqual(payload["method_tab"]["percentage_developed"], [1, 0.75, 0.5])
-        self.assertEqual(payload, baseline)
+        # ResQ's PercentageDevelopedValues also land as the pattern behind the
+        # prior ultimate, which the manual method (no such property) lacks.
+        self.assertEqual(
+            payload["method_tab"]["prior_ultimate_percentage_developed"], [1, 0.75, 0.5]
+        )
+        self.assertEqual(baseline["method_tab"]["prior_ultimate_percentage_developed"], [None, None, None])
+        expected = normalize_cape_cod_method(
+            {
+                **baseline,
+                "method_tab": {
+                    **baseline["method_tab"],
+                    "prior_ultimate_percentage_developed": [1, 0.75, 0.5],
+                },
+            }
+        )
+        self.assertEqual(payload, expected)
 
     def test_unknown_percentage_developed_type_is_rejected(self) -> None:
         method = _ManualCcMethod()

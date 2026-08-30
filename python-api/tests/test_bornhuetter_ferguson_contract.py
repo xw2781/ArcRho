@@ -72,6 +72,7 @@ def snapshots(*, latest_values: list[int] | None = None) -> dict:
             "name": "Paid DFM Ultimate",
             "origin_labels": list(reversed(labels)),
             "values": list(reversed([200, 400, 600, 800])),
+            "percentage_developed": list(reversed([0.5, 0.5, 0.5, 0.5])),
         },
         "priors": [
             {"name": "Plan A", "origin_labels": labels, "values": [300, 500, 700, 900]},
@@ -153,7 +154,12 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
         ]
         source_data = {
             "latest": {"name": "Paid Loss", "origin_labels": ["2020"], "values": [1]},
-            "dfm": {"name": "Paid DFM Ultimate", "origin_labels": ["2020"], "values": [2]},
+            "dfm": {
+                "name": "Paid DFM Ultimate",
+                "origin_labels": ["2020"],
+                "values": [2],
+                "percentage_developed": [0.5],
+            },
             "priors": [{"name": "Plan A", "origin_labels": ["2020"], "values": [-5]}],
         }
 
@@ -169,13 +175,71 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
         ]
         source_data = {
             "latest": {"name": "Paid Loss", "origin_labels": ["2020"], "values": [1]},
-            "dfm": {"name": "Paid DFM Ultimate", "origin_labels": ["2020"], "values": [2]},
+            "dfm": {
+                "name": "Paid DFM Ultimate",
+                "origin_labels": ["2020"],
+                "values": [2],
+                "percentage_developed": [0.5],
+            },
             "priors": [{"name": "Plan A", "origin_labels": ["2020"], "values": [0.999999]}],
         }
 
         method = recalculate_bornhuetter_ferguson_method(payload, source_snapshots=source_data)
 
         self.assertEqual(method["method_tab"]["new_ultimate"], [1])
+
+    def test_percentage_developed_comes_from_the_pattern_not_the_ultimate(self) -> None:
+        """A zero latest still develops: the pattern is a property of the DFM alone.
+
+        Dividing Latest by the DFM ultimate cannot describe the newest origin,
+        whose ultimate is zero whenever its latest observation is. Reading the
+        percentage from the DFM's own selected factors keeps that origin usable.
+        """
+
+        payload = owned_payload()
+        payload["method_tab"]["origin_labels"] = ["2020", "2021"]
+        payload["method_tab"]["prior_datasets"] = [
+            {"name": "Plan A", "values": [], "weights": [1, 1]}
+        ]
+        source_data = {
+            "latest": {
+                "name": "Paid Loss",
+                "origin_labels": ["2020", "2021"],
+                "values": [[100], [0]],
+            },
+            "dfm": {
+                "name": "Paid DFM Ultimate",
+                # Reversed so an aligned read is the only one that passes.
+                "origin_labels": ["2021", "2020"],
+                "values": [0, 125],
+                "percentage_developed": [0.25, 0.8],
+            },
+            "priors": [
+                {"name": "Plan A", "origin_labels": ["2020", "2021"], "values": [200, 400]}
+            ],
+        }
+
+        method = recalculate_bornhuetter_ferguson_method(payload, source_snapshots=source_data)
+
+        self.assertEqual(method["method_tab"]["percentage_developed"], [0.8, 0.25])
+        self.assertEqual(method["method_tab"]["new_ultimate"], [140, 300])
+
+    def test_dfm_revision_moves_when_only_the_pattern_changes(self) -> None:
+        first = complete_method()
+        moved = snapshots()
+        moved["dfm"]["percentage_developed"] = [0.25, 0.25, 0.25, 0.25]
+        second = recalculate_bornhuetter_ferguson_method(
+            owned_payload(), source_snapshots=moved, timestamp="2026-01-02T00:00:00Z"
+        )
+
+        self.assertEqual(
+            first["method_tab"]["dfm_ultimate_values"],
+            second["method_tab"]["dfm_ultimate_values"],
+        )
+        self.assertNotEqual(
+            first["method_tab"]["dfm_source_revision"],
+            second["method_tab"]["dfm_source_revision"],
+        )
 
     def test_null_submitted_weight_uses_ui_default_of_one(self) -> None:
         method = complete_method()

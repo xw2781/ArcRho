@@ -216,5 +216,41 @@ class ResqBornhuetterFergusonV3Tests(unittest.TestCase):
         self.assertEqual(written_sidecar["status"], 2)
 
 
+class _PatternBfMethod(_BfMethod):
+    """A BF whose ResQ object exposes its per-origin percentage developed."""
+
+    def PercentageDevelopedValues(self, index: int):
+        return [0.6, 0.25][index - 1]
+
+
+class ResqBornhuetterFergusonPercentageDevelopedTests(unittest.TestCase):
+    def setUp(self) -> None:
+        extractors.configure_extractors(
+            project_name="Demo",
+            rs_json_format="arcrho-result-selection-v4",
+            bf_json_format=BF_JSON_FORMAT,
+            method_data_dir="methods",
+        )
+
+    def test_percentage_developed_is_copied_from_resq(self) -> None:
+        # ResQ's PercentageDevelopedValues(i) is the pattern of the DFM's
+        # factors, so it lands as-is rather than as latest / ultimate.
+        payload = extractors.export_bornhuetter_ferguson(_PatternBfMethod())
+        payload.pop("_sidecar_notes")
+        payload.pop("_sidecar_status")
+        method = payload["method_tab"]
+        self.assertEqual(method["percentage_developed"], [0.6, 0.25])
+        self.assertEqual(method["new_ultimate"], [220, 650])
+        self.assertEqual(payload, normalize_bornhuetter_ferguson_method(payload))
+
+    def test_method_without_resq_percentages_falls_back_to_the_ratio(self) -> None:
+        payload = extractors.export_bornhuetter_ferguson(_BfMethod())
+        self.assertEqual(payload["method_tab"]["percentage_developed"], [0.5, 0.5])
+
+    def test_strict_extraction_refuses_a_method_without_resq_percentages(self) -> None:
+        with self.assertRaises(extractors.StrictResQExtractionError):
+            extractors.export_bornhuetter_ferguson(_BfMethod(), strict=True)
+
+
 if __name__ == "__main__":
     unittest.main()

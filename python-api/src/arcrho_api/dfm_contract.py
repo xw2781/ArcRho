@@ -1525,13 +1525,20 @@ def selected_ratio_values(payload: Mapping[str, Any]) -> list[float]:
     return ratios
 
 
-def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
-    data = payload["data_tab"]
-    formulas = payload["ratios_tab"]["average_formulas"]
+def _stored_selected_ratios(method: Mapping[str, Any]) -> list[float]:
+    """Return the selected ratio per column exactly as the method stores it.
+
+    This is the six-decimal projection a reader sees on the Ratios tab, not the
+    re-derived full precision of :func:`selected_ratio_values`. The ultimate and
+    the percentage developed are two views of the same chain, so both read the
+    stored value and a reader can reproduce either one from the file.
+    """
+
+    formulas = method["ratios_tab"]["average_formulas"]
     values = formulas["values"]
     selected = formulas["selected"]
-    col_count = len(payload["ratios_tab"]["ratio_triangle"]["development_labels"])
-    selected_values: list[float] = []
+    col_count = len(method["ratios_tab"]["ratio_triangle"]["development_labels"])
+    ratios: list[float] = []
     for col in range(col_count):
         chosen = 0
         for row, selected_row in enumerate(selected):
@@ -1539,24 +1546,75 @@ def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
                 chosen = row
                 break
         value = canonical_number(values[chosen][col] if chosen < len(values) and col < len(values[chosen]) else None)
-        selected_values.append(float(value) if value is not None else 1.0)
+        ratios.append(float(value) if value is not None else 1.0)
+    return ratios
+
+
+def _cumulative_from_normalized(method: Mapping[str, Any]) -> list[float | None]:
+    ratios = _stored_selected_ratios(method)
+    col_count = len(ratios)
     cumulative: list[float | None] = [None] * col_count
     running: float | None = None
     for col in range(col_count - 1, -1, -1):
-        value = selected_values[col]
+        value = ratios[col]
         running = value if col == col_count - 1 else (value * running if running is not None else None)
         cumulative[col] = running
+    return cumulative
+
+
+def _latest_column(data: Mapping[str, Any], row: int) -> int | None:
+    """Return the development column holding the row's latest observation.
+
+    A zero is an observation, so the column is found by presence rather than by
+    value; an origin whose newest figure happens to be zero still sits at a
+    known development age.
+    """
+
+    row_values = data["input_data_triangle_values"][row]
+    row_mask = data["input_data_triangle_mask"][row]
+    return next(
+        (
+            col
+            for col in range(min(len(row_values), len(row_mask), len(data["development_labels"])) - 1, -1, -1)
+            if row_mask[col] and canonical_number(row_values[col]) is not None
+        ),
+        None,
+    )
+
+
+def selected_cumulative_factors(payload: Mapping[str, Any]) -> list[float | None]:
+    """Return the cumulative development factor per column, latest column first."""
+
+    return _cumulative_from_normalized(normalize_dfm_method(payload, require_complete=False))
+
+
+def dfm_percent_developed_vector(payload: Mapping[str, Any]) -> list[float | int | None]:
+    """Return the percentage developed for each origin, one entry per origin row.
+
+    The figure is the reciprocal of the cumulative development factor at the
+    origin's own development age -- the same ``% Developed`` the Ratios tab
+    shows, read at the column that origin has reached. It is a property of the
+    selected factors alone, so an origin whose latest observation is zero, or
+    whose ultimate is therefore zero, still carries a meaningful percentage.
+    """
+
+    method = normalize_dfm_method(payload, require_complete=False)
+    data = method["data_tab"]
+    cumulative = _cumulative_from_normalized(method)
+    out: list[float | int | None] = []
+    for row in range(len(data["input_data_triangle_values"])):
+        latest_col = _latest_column(data, row)
+        factor = cumulative[latest_col] if latest_col is not None and latest_col < len(cumulative) else None
+        out.append(canonical_number(1.0 / float(factor)) if factor else None)
+    return out
+
+
+def _calculate_ultimate(payload: dict[str, Any]) -> list[Any]:
+    data = payload["data_tab"]
+    cumulative = _cumulative_from_normalized(payload)
     out: list[Any] = []
     for row, row_values in enumerate(data["input_data_triangle_values"]):
-        row_mask = data["input_data_triangle_mask"][row]
-        latest_col = next(
-            (
-                col
-                for col in range(min(len(row_values), len(row_mask), len(data["development_labels"])) - 1, -1, -1)
-                if row_mask[col] and canonical_number(row_values[col]) is not None
-            ),
-            None,
-        )
+        latest_col = _latest_column(data, row)
         if latest_col is None or latest_col >= len(cumulative) or cumulative[latest_col] is None:
             out.append(None)
             continue
@@ -1779,9 +1837,12 @@ __all__ = [
     "canonical_number",
     "contains_excel_reference",
     "derived_projection",
+    "dfm_percent_developed_vector",
     "dfm_precedent_names",
     "dfm_output_variants",
     "method_revisions",
+    "selected_cumulative_factors",
+    "selected_ratio_values",
     "normalize_dfm_method",
     "default_average_formulas",
     "owned_projection",

@@ -13,6 +13,7 @@ Routes:
 | --- | --- | --- |
 | `GET` | `/dfm/method-index?project_name=<name>&reserving_class=<path>&refresh=false` | Return the cached dataset instance index for a project/reserving-class path, rebuilding it only when it is missing, invalid, outdated, or `refresh=true`. |
 | `GET` | `/dfm/percent-developed-curve?project_name=<name>&reserving_class=<path>&method_name=<name>` | Read the matching local DFM method JSON from a project and return computed `% Developed` curve points for prior-project comparison overlays. |
+| `GET` | `/dfm/development-pattern?project_name=<name>&reserving_class=<path>&dataset_name=<name>` | Return the percentage developed for each origin of the DFM that published `dataset_name`: `1 / cumulative development factor` at each origin's own development age. Resolves the dataset's sidecar to its DFM method, then projects the method JSON through `arcrho_api.dfm_contract.dfm_percent_developed_vector`. `422` when the dataset is not a DFM output, `404` when its method file is missing. Bornhuetter Ferguson and Cape Cod windows read their Percentage Developed from it. |
 | `POST` | `/dfm/method-index/refresh` | Rebuild the reserving-class dataset instance index after a DFM method save, generated dataset cache write, or explicit chooser refresh. |
 <!-- MANUAL:END -->
 

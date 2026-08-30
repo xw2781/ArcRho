@@ -23,6 +23,7 @@ from arcrho_api.dataset_index_contract import (
     scan_folder_signature,
     write_index_json_unlocked,
 )
+from arcrho_api.dfm_contract import dfm_percent_developed_vector
 from fastapi import HTTPException
 
 from app_server import config
@@ -1132,6 +1133,64 @@ def get_percent_developed_curve(project_name: str, reserving_class: str, method_
         "reserving_class": _clean_text(reserving_class),
         "method_name": _clean_text(method_name),
         "points": points,
+    }
+
+
+def development_pattern_values(project_name: str, reserving_class: str, method_name: str) -> List[Any]:
+    """Return a DFM's percentage developed for each of its origin periods.
+
+    This is the pattern a downstream method applies: the reciprocal of the
+    cumulative development factor at each origin's own development age. It comes
+    from the selected factors alone, so it stays meaningful for an origin whose
+    latest observation, and therefore whose ultimate, is zero.
+    """
+
+    # The canonical method path helper, the one a Bootstrap already reads its
+    # own DFM precedent through, rather than this module's index-scoped path:
+    # a caller refreshing a method must resolve the file the same way its own
+    # service does.
+    path = dataset_sidecar_status_service.method_json_path(
+        project_name,
+        reserving_class,
+        dataset_sidecar_status_service.METHOD_TYPE_DFM,
+        method_name,
+    )
+    if not os.path.exists(path):
+        raise HTTPException(404, f"DFM method not found: {_clean_text(method_name)}")
+    try:
+        return dfm_percent_developed_vector(_safe_load_required_json(path))
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(
+            422,
+            f"DFM method '{_clean_text(method_name)}' has no usable development factors: {str(err)}",
+        )
+
+
+def get_development_pattern(project_name: str, reserving_class: str, dataset_name: str) -> Dict[str, Any]:
+    """Return the development pattern behind a published DFM output dataset."""
+
+    project = _clean_text(project_name)
+    rc = _clean_text(reserving_class)
+    sidecar = dataset_sidecar_status_service.read_sidecar(
+        dataset_sidecar_status_service.sidecar_path(project, rc, dataset_name)
+    ) or {}
+    method_type = dataset_sidecar_status_service.normalize_method_type(
+        sidecar.get("method_type"), sidecar.get("source_kind")
+    )
+    if method_type != dataset_sidecar_status_service.METHOD_TYPE_DFM:
+        raise HTTPException(422, f"Dataset '{_clean_text(dataset_name)}' is not a DFM output.")
+    method_name = _clean_text(sidecar.get("method_name")) or _clean_text(dataset_name)
+    origin_labels = sidecar.get("origin_labels")
+    return {
+        "ok": True,
+        "project_name": project,
+        "reserving_class": rc,
+        "dataset_name": _clean_text(sidecar.get("dataset_name")) or _clean_text(dataset_name),
+        "method_name": method_name,
+        "origin_labels": origin_labels if isinstance(origin_labels, list) else [],
+        "percentage_developed": development_pattern_values(project, rc, method_name),
     }
 
 

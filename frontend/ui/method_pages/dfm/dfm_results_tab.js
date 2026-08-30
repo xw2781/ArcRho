@@ -16,6 +16,7 @@ import {
   getRatioHeaderLabels,
   getCumulativeFactors,
   getLatestRowValue,
+  roundRatio,
   ensureDefaultSummarySelectionForColumns,
   getOriginLabelTextForRatio,
   getResolvedProjectName,
@@ -925,6 +926,28 @@ export function buildResultsVector() {
     } else {
       out.push(null);
     }
+  }
+  return out;
+}
+
+export function buildPercentDevelopedVector() {
+  // The pattern a dependent method applies: one over the cumulative factor at
+  // each origin's own development age. It comes from the selected factors
+  // alone, so an origin whose latest observation is zero still develops.
+  const model = state.model;
+  if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return [];
+  const origins = model.origin_labels || [];
+  const devs = getEffectiveDevLabelsForModel(model);
+  if (!devs.length) return [];
+  const cumulative = getCumulativeFactors(model, devs);
+  const vals = model.values;
+  const mask = model.mask;
+  const out = [];
+  for (let r = 0; r < origins.length; r++) {
+    const maxCol = Math.min(devs.length - 1, (vals?.[r] || []).length - 1);
+    const latest = getLatestRowValue(vals, mask, r, maxCol);
+    const factor = latest ? cumulative[latest.col] : null;
+    out.push(Number.isFinite(factor) && factor !== 0 ? roundRatio(1 / factor, 6) : null);
   }
   return out;
 }

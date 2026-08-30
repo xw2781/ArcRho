@@ -34,6 +34,19 @@ def get_dfm_percent_developed_curve(
     )
 
 
+@router.get("/dfm/development-pattern")
+def get_dfm_development_pattern(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+) -> Dict[str, Any]:
+    return dataset_instance_index_service.get_development_pattern(
+        project_name,
+        reserving_class,
+        dataset_name,
+    )
+
+
 @router.post("/dfm/method-index/refresh")
 def refresh_dfm_method_index(req: DfmMethodIndexRefreshRequest) -> Dict[str, Any]:
     return dataset_instance_index_service.rebuild_index(req.project_name, req.reserving_class)

@@ -44,8 +44,9 @@ import {
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
+  buildPercentDevelopedVector,
   buildResultsVector,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260814a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260830a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
 import {
@@ -303,6 +304,9 @@ function buildDfmDependencySourceMessage(type, reason = "") {
   };
   if (type === "arcrho:dependency-source-preview") {
     payload.values = buildResultsVector();
+    // A dependent method reads its percentage developed from this pattern, so a
+    // dirty DFM has to preview the pattern alongside the ultimates.
+    payload.percentageDeveloped = buildPercentDevelopedVector();
     payload.originLabels = Array.isArray(model?.origin_labels) ? model.origin_labels.map(String) : [];
   }
   if (type === "arcrho:dependency-source-cleared") {

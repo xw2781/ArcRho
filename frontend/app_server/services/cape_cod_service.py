@@ -32,6 +32,7 @@ from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
+    dataset_instance_index_service,
     dataset_sidecar_status_service,
     dependent_propagation_service,
     user_identity_service,
@@ -301,12 +302,50 @@ def _read_source_snapshot_from_sidecar(
             f"Cape Cod precedent '{requested_name}' has {len(raw_values)} rows; "
             f"expected {len(method_origin_labels)}.",
         )
-    return {
+    snapshot = {
         "name": _clean(sidecar.get("dataset_name")) or requested_name,
         "origin_labels": method_origin_labels,
         "values": raw_values,
         "mask": [[value is not None for value in row] for row in raw_values],
     }
+    if role == "prior_ultimate" and method_type == dataset_sidecar_status_service.METHOD_TYPE_DFM:
+        snapshot["percentage_developed"] = _prior_ultimate_percentage_developed(
+            project_name, reserving_class, sidecar, requested_name, len(method_origin_labels)
+        )
+    return snapshot
+
+
+def _prior_ultimate_percentage_developed(
+    project_name: str,
+    reserving_class: str,
+    sidecar: Mapping[str, Any],
+    requested_name: str,
+    row_count: int,
+) -> List[Any]:
+    """Read the development pattern behind a DFM-published prior ultimate.
+
+    The percentage developed belongs to the DFM's selected development factors,
+    so it is read from the DFM method rather than divided out of the published
+    ultimates: dividing cannot describe an origin whose latest figure is zero.
+    A prior ultimate with no DFM behind it carries no pattern, and Cape Cod
+    falls back to the ratio for it.
+
+    The DFM method is read the way a Bootstrap reads its own DFM precedent: the
+    dependency graph edge stays on the dataset the DFM publishes, and only the
+    embedded snapshot comes from the method JSON.
+    """
+
+    method_name = _clean(sidecar.get("method_name")) or requested_name
+    values = dataset_instance_index_service.development_pattern_values(
+        project_name, reserving_class, method_name
+    )
+    if len(values) != row_count:
+        raise HTTPException(
+            422,
+            f"Cape Cod Prior Ultimate pattern '{method_name}' has {len(values)} origins; "
+            f"expected {row_count}.",
+        )
+    return values
 
 
 def _read_sidecars(
@@ -1391,9 +1430,13 @@ def refresh_dependents(
                     for name in [*fresh_names, *failed_names]:
                         sidecar_cache.pop(_key(name), None)
                     if not cascade.get("ok", True):
+                        from app_server.services import calculated_dataset_service
+
+                        reasons = calculated_dataset_service.cascade_failure_reasons(cascade)
                         errors.append({
                             "dataset_name": dependent_name,
-                            "reason": "Downstream refresh failed after Cape Cod publication.",
+                            "reason": "Downstream refresh failed after Cape Cod publication"
+                            + (": " + "; ".join(reasons) if reasons else "."),
                             "cascade": cascade,
                         })
                 except Exception as exc:

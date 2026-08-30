@@ -48,7 +48,7 @@ import {
   rebaseCapeCodTrendFactorOverridesByOriginLabel,
   roundCapeCodRate,
   roundCapeCodVector,
-} from "/ui/method_pages/cape_cod/cape_cod_json_contract.js?v=20260804a";
+} from "/ui/method_pages/cape_cod/cape_cod_json_contract.js?v=20260830a";
 import {
   loadCapeCodMethod,
   saveCapeCodMethod,
@@ -59,6 +59,7 @@ import {
 } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 
 const DEFAULT_ORIGIN_LENGTH = 12;
+const DFM_METHOD_TYPE = "DFM";
 const VALID_ORIGIN_LENGTHS = [12, 6, 3, 1];
 const CC_TABS = CAPE_COD_TAB_DEFS;
 const ALLOWED_CC_TABS = windowTabIds("cape_cod");
@@ -105,6 +106,7 @@ const state = {
   latestDevelopmentLabels: [],
   exposureValues: [],
   priorUltimateValues: [],
+  priorUltimatePercentageDeveloped: [],
   priorUltimateMode: "latest_ultimates",
   trendRate: 0,
   autoTrendFit: false,
@@ -454,6 +456,29 @@ function csvBaseName(value) {
   return text(value).split(/[\\/]/).pop();
 }
 
+async function loadDevelopmentPattern(datasetName) {
+  // Only a DFM has development factors. Cape Cod also accepts a prior ultimate
+  // from anywhere else, and that one legitimately has no pattern, so the
+  // dataset's own method type decides whether there is anything to read.
+  const name = text(datasetName);
+  const record = cachedRecordByName(name);
+  if (!state.project || !state.reservingClass || !name) return [];
+  if (norm(record?.methodType) !== norm(DFM_METHOD_TYPE)) return [];
+  const qs = new URLSearchParams({
+    project_name: state.project,
+    reserving_class: state.reservingClass,
+    dataset_name: name,
+  });
+  const resp = await fetch(`/dfm/development-pattern?${qs.toString()}`, { cache: "no-store" });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.detail || payload?.error || `Development pattern load failed (${resp.status}).`);
+  }
+  return Array.isArray(payload?.percentage_developed)
+    ? payload.percentage_developed.map(numberOrNull)
+    : [];
+}
+
 function normalizeCachedRow(row) {
   const rawName = text(row?.datasetName || row?.dataset_name || row?.name || row?.datasetTypeName || row?.dataset_type);
   const name = rawName;
@@ -638,7 +663,7 @@ function dependencyPreviewMatrix(message = {}) {
   return matrix;
 }
 
-function applyDependencyValuesToRole(role, values, matrix = []) {
+function applyDependencyValuesToRole(role, values, matrix = [], message = {}) {
   const normalizedValues = Array.isArray(values) ? values.map(numberOrNull) : [];
   if (role.kind === "latest") {
     state.latestValues = normalizedValues;
@@ -651,6 +676,8 @@ function applyDependencyValuesToRole(role, values, matrix = []) {
   }
   if (role.kind === "prior_ultimate") {
     state.priorUltimateValues = normalizedValues;
+    const pattern = message.percentageDeveloped || message.percentage_developed;
+    if (Array.isArray(pattern)) state.priorUltimatePercentageDeveloped = pattern.map(numberOrNull);
     return true;
   }
   return false;
@@ -664,7 +691,7 @@ function reapplyActiveDependencyPreviews() {
       activeDependencyPreviews.delete(roleKey);
       continue;
     }
-    changed = applyDependencyValuesToRole(role, preview.values, preview.matrix) || changed;
+    changed = applyDependencyValuesToRole(role, preview.values, preview.matrix, preview.message) || changed;
   }
   return changed;
 }
@@ -683,7 +710,7 @@ function applyDependencySourcePreview(message = {}) {
       values: values.slice(),
       matrix: matrix.slice(),
     });
-    changed = applyDependencyValuesToRole(role, values, matrix) || changed;
+    changed = applyDependencyValuesToRole(role, values, matrix, message) || changed;
   }
   if (!changed) return false;
   calculateOutputs();
@@ -734,6 +761,7 @@ function calculateOutputs() {
     latestValues: state.latestValues,
     exposureValues: state.exposureValues,
     priorUltimateValues: state.priorUltimateValues,
+    priorUltimatePercentageDeveloped: state.priorUltimatePercentageDeveloped,
     priorUltimateMode: state.priorUltimateMode,
     trendRate: state.trendRate,
     autoTrendFit: state.autoTrendFit,
@@ -841,6 +869,7 @@ async function refreshCalculations({ mark = false } = {}) {
       state.priorUltimateValues = vectorValues(payload?.values);
     }
   }
+  state.priorUltimatePercentageDeveloped = await loadDevelopmentPattern(details.priorUltimateDataset);
   reapplyActiveDependencyPreviews();
   if (!state.originLabels.length && latestLabels.length) state.originLabels = latestLabels.map(String);
   await refreshOriginLabelsForCalculations();
@@ -1307,6 +1336,7 @@ function buildPayload(options = {}) {
     latestValues: state.latestValues,
     exposureValues: state.exposureValues,
     priorUltimateValues: state.priorUltimateValues,
+    priorUltimatePercentageDeveloped: state.priorUltimatePercentageDeveloped,
     priorUltimateMode: state.priorUltimateMode,
     trendRate: state.trendRate,
     autoTrendFit: state.autoTrendFit,
@@ -1348,6 +1378,7 @@ async function applyPayload(payload) {
   state.latestValues = columnFrom(method.latest_values);
   state.exposureValues = columnFrom(method.exposure_values);
   state.priorUltimateValues = columnFrom(method.prior_ultimate_values);
+  state.priorUltimatePercentageDeveloped = columnFrom(method.prior_ultimate_percentage_developed);
   state.latestTriangleRows = [];
   state.latestDevelopmentLabels = [];
   state.localUltimatesTriangle = null;
@@ -1418,6 +1449,7 @@ function captureLocalOwnedState() {
     latestValues: state.latestValues.slice(),
     exposureValues: state.exposureValues.slice(),
     priorUltimateValues: state.priorUltimateValues.slice(),
+    priorUltimatePercentageDeveloped: state.priorUltimatePercentageDeveloped.slice(),
     priorUltimateMode: state.priorUltimateMode,
     trendRate: state.trendRate,
     autoTrendFit: state.autoTrendFit,
@@ -1456,9 +1488,14 @@ function restoreLocalOwnedState(local, persisted) {
   state.exposureValues = norm(localDetails.exposureDataset) === norm(persistedDetails.exposureDataset)
     ? persisted.exposureValues.slice()
     : local.exposureValues.slice();
-  state.priorUltimateValues = norm(localDetails.priorUltimateDataset) === norm(persistedDetails.priorUltimateDataset)
+  const priorUltimateUnchanged =
+    norm(localDetails.priorUltimateDataset) === norm(persistedDetails.priorUltimateDataset);
+  state.priorUltimateValues = priorUltimateUnchanged
     ? persisted.priorUltimateValues.slice()
     : local.priorUltimateValues.slice();
+  state.priorUltimatePercentageDeveloped = priorUltimateUnchanged
+    ? persisted.priorUltimatePercentageDeveloped.slice()
+    : local.priorUltimatePercentageDeveloped.slice();
   const usePersistedOriginLabels = validOriginLength(localDetails.originLength)
     === validOriginLength(persistedDetails.originLength)
     && persisted.originLabels.length > 0;

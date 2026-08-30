@@ -90,12 +90,20 @@ export function fitCapeCodTrendRate(latestValues, developedExposureValues) {
   return roundCapeCodRate(Math.exp(sxy / sxx) - 1);
 }
 
-function percentageDevelopedColumn(latest, prior, mode, rowCount) {
+function percentageDevelopedColumn(latest, prior, pattern, mode, rowCount) {
   const percentages = [];
   for (let index = 0; index < rowCount; index += 1) {
     const priorValue = finiteNumber(prior[index]);
     if (mode === "pattern") {
       percentages.push(roundCapeCodNumber(priorValue));
+      continue;
+    }
+    // A prior ultimate a DFM published carries its own development pattern, and
+    // that pattern is the percentage developed. Only a prior ultimate with no
+    // DFM behind it falls back to the ratio against Latest.
+    const developed = finiteNumber(pattern[index]);
+    if (developed !== null) {
+      percentages.push(roundCapeCodNumber(developed));
       continue;
     }
     const latestValue = finiteNumber(latest[index]);
@@ -137,6 +145,7 @@ export function calculateCapeCodColumns({
   latestValues,
   exposureValues,
   priorUltimateValues,
+  priorUltimatePercentageDeveloped,
   priorUltimateMode,
   trendRate,
   autoTrendFit,
@@ -149,6 +158,7 @@ export function calculateCapeCodColumns({
   const latest = fitVector(latestValues, rowCount);
   const exposure = fitVector(exposureValues, rowCount);
   const prior = fitVector(priorUltimateValues, rowCount);
+  const pattern = fitVector(priorUltimatePercentageDeveloped, rowCount);
   const mode = normalizeCapeCodPriorUltimateMode(priorUltimateMode);
   const decayValue = finiteNumber(decayFactor);
   const decay = decayValue === null ? 0 : decayValue;
@@ -156,7 +166,7 @@ export function calculateCapeCodColumns({
   let overrides = fitVector(trendFactorOverrides, rowCount);
   if (autoFit) overrides = new Array(rowCount).fill(null);
 
-  const percentages = percentageDevelopedColumn(latest, prior, mode, rowCount);
+  const percentages = percentageDevelopedColumn(latest, prior, pattern, mode, rowCount);
   const developedExposure = [];
   for (let index = 0; index < rowCount; index += 1) {
     const exposureValue = finiteNumber(exposure[index]);
@@ -375,6 +385,7 @@ export function buildCapeCodMethodPayload({
   latestValues,
   exposureValues,
   priorUltimateValues,
+  priorUltimatePercentageDeveloped,
   priorUltimateMode,
   trendRate,
   autoTrendFit = false,
@@ -398,6 +409,7 @@ export function buildCapeCodMethodPayload({
     latestValues,
     exposureValues,
     priorUltimateValues,
+    priorUltimatePercentageDeveloped,
     priorUltimateMode,
     trendRate,
     autoTrendFit,
@@ -430,6 +442,7 @@ export function buildCapeCodMethodPayload({
       ),
       prior_ultimate_mode: normalizeCapeCodPriorUltimateMode(priorUltimateMode),
       prior_ultimate_values: fitVector(priorUltimateValues, rowCount),
+      prior_ultimate_percentage_developed: fitVector(priorUltimatePercentageDeveloped, rowCount),
       trend_rate: columns.trendRate,
       auto_trend_fit: autoTrendFit === true,
       decay_factor: roundCapeCodRate(decayFactor),

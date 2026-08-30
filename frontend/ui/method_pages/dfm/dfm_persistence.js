@@ -83,7 +83,7 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260814a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260830a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
 import {
   buildDfmAverageFormulaObject,

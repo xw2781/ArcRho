@@ -5,11 +5,12 @@ Cape Cod method page replicating the ResQ Generalised Cape Cod method: an ultima
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.cape_cod.entry_points -->
-- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260824e`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
+- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260830a`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
 - `/datasets/cached?${qs.toString()}`
+- `/dfm/development-pattern?${qs.toString()}`
 
 Detected `arcrho:*` message types in key JS files:
 - `arcrho:cc-tab-changed`
@@ -42,7 +43,7 @@ Detected `arcrho:*` message types in key JS files:
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - The canonical method type label is exactly `Cape Cod` in UI, method JSON, and sidecar metadata.
-- V1 inputs are one latest triangle, one exposure vector, and one prior ultimate vector (`latest_ultimates` mode derives Percentage Developed as `Latest / Prior Ultimate`; `pattern` mode reads percentages directly from the selected vector).
+- V1 inputs are one latest triangle, one exposure vector, and one prior ultimate vector. `pattern` mode reads percentages directly from the selected vector. `latest_ultimates` mode takes Percentage Developed from the development factors of the DFM that published the prior ultimate -- `1 / cumulative development factor` at each origin's own development age, read from that DFM's method JSON the way a Bootstrap reads its DFM precedent, and stored as the `prior_ultimate_percentage_developed` snapshot covered by `prior_ultimate_source_revision`. Dividing Latest by the prior ultimate cannot describe an origin whose latest observation is zero, and produced percentages above 100% whenever the Latest triangle was not the one the DFM was built on. Cape Cod also accepts a prior ultimate with no DFM behind it, which carries no pattern; only that case still falls back to `Latest / Prior Ultimate`.
 - Owned parameters mirror ResQ one-to-one: Trend Rate (decimal, displayed as a six-decimal percentage), Fit and Auto Fit, Decay Factor, Scaling (`percentage`/`unscaled`/`auto_scaled`), Decimal Places, Alternative Ultimate Calculation, and per-origin manual Trend Factor overrides. Fitting or changing the trend rate clears the overrides, and Auto Fit keeps trend factor cells read-only, matching ResQ.
 - The Method grid columns and totals follow the ResQ Cape Cod Method tab: Origin, Latest, Exposure, Trend Factor, Trended [Latest], Percentage Developed, Development Factor, Developed [Exposure], Future [Exposure], Trended Developed Ratio, Expected Ultimate Ratio, Detrended Expected Ratio, Future [Latest], Cape Cod Ultimate, and Cape Cod Ultimate Ratio, with dataset names embedded in the bracketed captions.
 - Every calculation is owned by `python-api/src/arcrho_api/cape_cod_contract.py` and mirrored exactly by `cape_cod_json_contract.js`; the formulas were verified against the ResQ COM output of a production Cape Cod method (see `frontend/docs/plans/cape_cod_method_plan.md`).

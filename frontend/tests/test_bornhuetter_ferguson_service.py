@@ -12,12 +12,22 @@ from fastapi import HTTPException
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 PYTHON_API_SRC = REPO_ROOT / "python-api" / "src"
 for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from arcrho_api.dfm_contract import (
+    DFM_JSON_FORMAT,
+    default_average_formulas,
+    recalculate_dfm_method,
+)
 from arcrho_api.bornhuetter_ferguson_contract import (
     BF_JSON_FORMAT,
     build_bornhuetter_ferguson_output_sidecar,
@@ -34,7 +44,7 @@ from app_server.services import (
 
 class BornhuetterFergusonServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory(dir=REPO_ROOT)
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         root = Path(self.temp.name)
         self.methods = root / "methods"
         self.datasets = root / "datasets"
@@ -98,6 +108,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                     "name": "Development Output",
                     "origin_labels": ["2024", "2025"],
                     "values": [[300], [400]],
+                    "percentage_developed": [0.5, 0.5],
                 },
                 "priors": {
                     "Prior": {
@@ -108,6 +119,40 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 },
             },
             timestamp="2026-01-01T00:00:00Z",
+        )
+
+    @staticmethod
+    def dfm_method_payload() -> dict:
+        """A DFM whose selected factors develop both origins to 50%.
+
+        Its factors chain to a cumulative 2.0 at each origin's own development
+        age, so it publishes the same 300/400 ultimates the other fixtures use
+        and a percentage-developed pattern of 0.5 for both origins.
+        """
+
+        formulas = default_average_formulas()
+        formulas["selected"] = [[0, 0, 0], [0, 0, 0], [1, 1, 1]]
+        formulas["inputs"] = [["", "", ""], ["", "", ""], ["1", "2", "1"]]
+        return recalculate_dfm_method(
+            {
+                "json_format": DFM_JSON_FORMAT,
+                "details_tab": {
+                    "name": "Development Output",
+                    "output_dataset": "Development Output",
+                    "output_type": "Development Output",
+                    "input_triangle": "Paid",
+                    "origin_length": 12,
+                },
+                "data_tab": {
+                    "origin_labels": ["2024", "2025"],
+                    "development_labels": ["12", "24", "36"],
+                    "input_data_triangle_values": [[100, 150], [200]],
+                },
+                "ratios_tab": {"average_formulas": formulas},
+                "results_tab": {},
+            },
+            timestamp="2026-01-01T00:00:00Z",
+            update_refresh_timestamp=False,
         )
 
     @staticmethod
@@ -172,6 +217,11 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         if include_origin_labels:
             sidecar["origin_labels"] = ["2024", "2025"]
         self.write_json(self.sidecars / f"{name}.json", sidecar)
+        if method_type == "DFM":
+            # A dependent reads its percentage developed from the DFM method,
+            # not by dividing the published ultimates, so a DFM source is only
+            # complete once its method file is on disk beside the sidecar.
+            self.write_json(self.methods / f"DFM@{name}.json", self.dfm_method_payload())
 
     def write_all_sources(self, *, paid_csv: str = "100,150\n200,\n") -> None:
         self.write_source("Paid", paid_csv, data_format="Triangle", dependents=["BF Method"])

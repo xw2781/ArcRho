@@ -1,0 +1,15 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson and Cape Cod now take Percentage Developed from the development factors you selected in the DFM, instead of dividing the latest figure by the ultimate.",
+  "details": [
+    "The figure now matches the % Developed row on that DFM's Ratios tab, read at each origin's own development age.",
+    "An origin whose latest figure is zero, usually the newest year of a paid triangle, used to leave Percentage Developed and the ultimate blank; it now develops normally.",
+    "Percentages above 100%, which appeared when the Latest triangle was not the one the DFM was built on, no longer occur.",
+    "A DFM window you are still editing previews its pattern to any open Bornhuetter Ferguson or Cape Cod window, so their figures follow your unsaved factor selections.",
+    "A Cape Cod Prior Ultimate that no DFM produced has no pattern to read and keeps its previous behaviour.",
+    "Import ResQ Reserving Class now copies each method's Percentage Developed column straight from ResQ, so an imported Bornhuetter Ferguson or Cape Cod shows the same figures ResQ does instead of a ratio that went blank for a zero latest.",
+    "Saved methods keep their old figures until they are recalculated; tools/restate_percentage_developed.py restates a whole project in one pass."
+  ]
+}
