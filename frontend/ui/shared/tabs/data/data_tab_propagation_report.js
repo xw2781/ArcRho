@@ -73,7 +73,9 @@ export function collectDatasetPropagationFailures(report) {
     if (!payload || typeof payload !== "object" || visitedReports.has(payload)) return;
     visitedReports.add(payload);
 
-    if (payload.ok === false && cleanText(payload.reason)) addFailure(payload, scope);
+    // An Engine-hosted save runs the walk inline and answers with one
+    // finished payload whose failure text lives in `message`, not `reason`.
+    if (payload.ok === false && cleanText(payload.reason || payload.message)) addFailure(payload, scope);
     for (const error of Array.isArray(payload.errors) ? payload.errors : []) {
       addFailure(error, scope);
       if (error && typeof error === "object" && error.cascade) {

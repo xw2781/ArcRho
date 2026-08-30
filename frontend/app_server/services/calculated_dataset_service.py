@@ -8,7 +8,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, NamedTuple, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -2267,6 +2267,60 @@ def _recalculate_dependents_impl(
         "index_ok": not index_error,
         "index_error": index_error,
     }
+
+
+_CASCADE_DOMAIN_FIELDS = (
+    "dfm_updates",
+    "result_selection_updates",
+    "berquist_sherman_updates",
+    "bornhuetter_ferguson_updates",
+    "cape_cod_updates",
+    "bootstrap_updates",
+)
+
+
+def cascade_failure_reasons(report: Mapping[str, Any]) -> List[str]:
+    """Name every dependent that declined inside a walk report, and why.
+
+    A method wave reports a failed downstream walk as a single line per
+    output ("Downstream refresh failed after BF publication.") and tucks the
+    walk itself under ``cascade``, which the flattened save message drops.
+    Flattening the walk's own failures into ``"<dataset>: <reason>"`` lines
+    lets that message say which dependent declined instead of only that one
+    did. Nested cascades are unwound the same way so the innermost reason
+    surfaces.
+    """
+    reasons: List[str] = []
+    if not isinstance(report, Mapping):
+        return reasons
+
+    def add(name: Any, reason: Any) -> None:
+        text_name = _clean_text(name)
+        text_reason = _clean_text(reason)
+        text = f"{text_name}: {text_reason}" if text_name and text_reason else (text_name or text_reason)
+        if text and text not in reasons:
+            reasons.append(text)
+
+    for item in report.get("skipped") or []:
+        if not isinstance(item, Mapping):
+            continue
+        details = [_clean_text(error) for error in item.get("errors") or [] if _clean_text(error)]
+        add(item.get("dataset_type_name") or item.get("dataset_name"), "; ".join(details) or item.get("reason"))
+    for field in _CASCADE_DOMAIN_FIELDS:
+        domain = report.get(field)
+        if not isinstance(domain, Mapping) or domain.get("ok", True):
+            continue
+        for error in domain.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            nested = cascade_failure_reasons(error.get("cascade")) if isinstance(error.get("cascade"), Mapping) else []
+            if nested:
+                for text in nested:
+                    if text not in reasons:
+                        reasons.append(text)
+                continue
+            add(error.get("dataset_name") or error.get("method_name"), error.get("reason"))
+    return reasons
 
 
 def recalculate_dependents(

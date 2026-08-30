@@ -61,13 +61,12 @@ import {
 } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
 import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
-import { decodeFileNameSegment } from "/ui/shared/utils/filename.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";
 import { getDataTabCloseConfirm } from "/ui/shared/tabs/data/data_tab_close_port.js";
 import { getDataTabLinksController } from "/ui/shared/tabs/data/data_tab_links_port.js";
 import { createDatasetExternalLinksController } from "/ui/shared/dataset/dataset_external_links.js?v=20260830d";
 import { createDatasetInternalLinksController } from "/ui/shared/dataset/dataset_internal_links.js?v=20260830d";
-import { createDatasetFormulaLinksController } from "/ui/shared/dataset/dataset_formula_links.js?v=20260830d";
+import { createDatasetFormulaLinksController } from "/ui/shared/dataset/dataset_formula_links.js?v=20260830f";
 import {
   loadProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
@@ -91,12 +90,12 @@ import {
 } from "/ui/shell/browsing_history.js";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
-import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260829b";
+import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260830b";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260830a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260830c";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -161,7 +160,6 @@ const runtime = {
   normalizeDatasetNumberFormat,
   isDfmDataTabHost,
   isPersistedDfmMethodBootstrap,
-  decodeFileNameSegment,
   getDataTabAuditController,
   getDataTabCloseConfirm,
   getDataTabLinksController,

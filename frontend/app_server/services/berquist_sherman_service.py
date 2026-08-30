@@ -903,9 +903,13 @@ def refresh_dependents(
                     for name in [*fresh_names, *failed_names]:
                         sidecar_cache.pop(_key(name), None)
                     if not cascade.get("ok", True):
+                        from app_server.services import calculated_dataset_service
+
+                        reasons = calculated_dataset_service.cascade_failure_reasons(cascade)
                         errors.append({
                             "dataset_name": dependent_name,
-                            "reason": "Downstream refresh failed after B&S publication.",
+                            "reason": "Downstream refresh failed after B&S publication"
+                            + (": " + "; ".join(reasons) if reasons else "."),
                             "cascade": cascade,
                         })
                 except Exception as exc:

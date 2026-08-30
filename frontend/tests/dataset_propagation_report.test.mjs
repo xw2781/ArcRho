@@ -9,6 +9,34 @@ import {
 } from "../ui/shared/tabs/data/data_tab_propagation_report.js";
 
 
+test("an Engine-hosted save's inline walk failure keeps the server's message", () => {
+  // The inline walk answers with one finished payload: no steps, no method
+  // buckets, and the failure text under `message`.
+  const report = {
+    ok: false,
+    status: "completed",
+    message: "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed",
+    refreshed_datasets: ["F 23 C - Adjusted Incurred DFM", "F 43 C - Adjusted Incurred DFM for BF"],
+  };
+
+  assert.deepEqual(
+    collectDatasetPropagationFailures(report).map(({ scope, datasetName, reason }) => [scope, datasetName, reason]),
+    [["Downstream", "", "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed"]],
+  );
+
+  const status = buildDatasetSaveStatus({ propagation_ok: false, calculated_updates: report });
+  assert.equal(status.tone, "warn");
+  assert.match(status.text, /Prior vector refresh failed/u);
+  assert.doesNotMatch(status.text, /did not return a specific refresh error/u);
+});
+
+
+test("a failed inline walk without any message still names the gap", () => {
+  const failures = collectDatasetPropagationFailures({ ok: false, status: "completed", refreshed_datasets: [] });
+  assert.deepEqual(failures.map(({ reason }) => reason), ["The server did not return a specific refresh error."]);
+});
+
+
 test("dataset propagation failures include calculated, DFM, Result Selection, BF, Cape Cod, and Bootstrap details", () => {
   const report = {
     ok: false,

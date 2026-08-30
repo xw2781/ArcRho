@@ -3,7 +3,7 @@
 import {
   collectDatasetPropagationFailures,
   datasetPropagationFailureStep,
-} from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260827a";
+} from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260830a";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
@@ -11,7 +11,7 @@ import {
 } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 
 export function registerDataTabHostController(runtime) {
-  const { state, config, $, instanceId, stepId, workflowId, WF_GLOBAL_CTRL_PREFIX, decodeFileNameSegment } = runtime;
+  const { state, config, $, instanceId, stepId, workflowId, WF_GLOBAL_CTRL_PREFIX } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
   const { updateDatasetSaveUi, getDatasetInstanceNameValue, getResolvedProjectValue, getResolvedReservingClassValue, hasManualInputGridChanges, previewCalculatedDatasetDependents, normalizeDatasetModeText, normalizeReservingClassPath, hasUnsavedDatasetChanges, validateDatasetOriginLabels, getTriInputs, renderTable, renderChart, loadDataset, handleDatasetSaveCommand, handleWorkflowGlobalChange, clearValidValueListCache, logLine, loadCachedDataset, saveLastDsId, syncSidecarForCurrentDataset, applyGridSelectionFromState, recordDatasetBrowsingHistory, saveTriInputsToStorage, setDatasetRenderNumberFormatSettings, hasResultSelectionUpdates, createDatasetHeadersService, createDatasetRunController, validateTriInputsBeforeRun, buildTriRequestPayload, buildVecRequestPayload, getDatasetRunDataFormat, invalidateDatasetContextLoads, isDatasetReadOnly, getDataset, patchDataset, isDfmDataTabHost } = new Proxy({}, { get: (_target, name) => defer(name) });
   const FONT_STORAGE_KEY = "arcrho_app_font";
@@ -831,57 +831,6 @@ export function registerDataTabHostController(runtime) {
     });
   }
 
-  function calculationStepReservingPath(step, report = null) {
-    const explicit = String(step?.reserving_class || report?.reserving_class || "").trim();
-    if (explicit) return decodeFileNameSegment(explicit);
-    const path = String(step?.path || step?.sidecar_path || "").trim();
-    const match = path.match(/[\\/]data[\\/](.*?)[\\/](?:datasets|sidecars|methods)[\\/]/i);
-    return match ? decodeFileNameSegment(match[1]) : "";
-  }
-
-  function showCalculationUpdatesDialog(report, source = "Dataset save") {
-    const steps = collectCalculationSteps(report);
-    if (!steps.length) return;
-    const overlay = document.getElementById("datasetRecalcOverlay");
-    const summary = document.getElementById("datasetRecalcSummary");
-    const list = document.getElementById("datasetRecalcList");
-    if (!overlay || !summary || !list) return;
-
-    const updatedCount = steps.filter((step) => step?.ok || String(step?.status || "").toLowerCase() === "updated").length;
-    const skippedCount = steps.length - updatedCount;
-    summary.textContent = `${source} refreshed ${updatedCount} downstream item${updatedCount === 1 ? "" : "s"}${skippedCount ? `; ${skippedCount} failed or skipped` : ""}.`;
-    list.replaceChildren();
-    steps.forEach((step, index) => {
-      const item = document.createElement("div");
-      const skipped = !(step?.ok || String(step?.status || "").toLowerCase() === "updated");
-      item.className = `datasetRecalcItem${skipped ? " is-skipped" : ""}`;
-
-      const badge = document.createElement("span");
-      badge.className = "datasetRecalcBadge";
-      badge.title = skipped ? "Refresh failed or skipped" : "Updated";
-
-      const body = document.createElement("div");
-      const name = document.createElement("div");
-      name.className = "datasetRecalcName";
-      name.textContent = `${index + 1}. ${String(step?.dataset_type_name || "Calculated dataset")}`;
-
-      const meta = document.createElement("div");
-      meta.className = "datasetRecalcMeta";
-      const parts = [];
-      const reservingPath = calculationStepReservingPath(step, report);
-      if (reservingPath) parts.push(reservingPath);
-      if (step?.reason) parts.push(`Reason: ${step.reason}`);
-      if (Array.isArray(step?.errors) && step.errors.length) parts.push(`Errors: ${step.errors.join("; ")}`);
-      meta.textContent = parts.join(" | ") || (skipped ? "Skipped" : "CSV refreshed");
-
-      body.append(name, meta);
-      item.append(badge, body);
-      list.appendChild(item);
-    });
-    overlay.hidden = false;
-    document.getElementById("datasetRecalcOk")?.focus();
-  }
-
   function publishCalculatedDatasetUpdates(report, source = "Dataset save") {
     if (!collectCalculationSteps(report).some(isCalculationStepUpdated) && !hasResultSelectionUpdates(report)) return;
     try {
@@ -895,14 +844,11 @@ export function registerDataTabHostController(runtime) {
     }
   }
 
+  // The post-save "Saved" notice (shared with the method pages) is the only
+  // dialog a dataset save opens; this hands the report to the Project
+  // Instance so its dataset table and open windows refresh.
   function handleCalculationUpdates(report, source = "Dataset save") {
-    showCalculationUpdatesDialog(report, source);
     publishCalculatedDatasetUpdates(report, source);
-  }
-
-  function hideCalculationUpdatesDialog() {
-    const overlay = document.getElementById("datasetRecalcOverlay");
-    if (overlay) overlay.hidden = true;
   }
 
   runtime.datasetHeadersService = createDatasetHeadersService({
@@ -999,10 +945,7 @@ export function registerDataTabHostController(runtime) {
     updateCurrentTabTitle,
     setStatus,
     collectCalculationSteps,
-    calculationStepReservingPath,
-    showCalculationUpdatesDialog,
     publishCalculatedDatasetUpdates,
     handleCalculationUpdates,
-    hideCalculationUpdatesDialog,
   });
 }

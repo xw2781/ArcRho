@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260830a";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260830b";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -21,7 +21,7 @@ import {
   renderDatasetChart,
 } from "/ui/dataset_viewer/tabs/dataset_chart_tab.js?v=20260805a";
 import { wireDatasetNotesEditor } from "/ui/dataset_viewer/tabs/dataset_notes_tab.js?v=20260715a";
-import { createLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260901a";
+import { createLinksTab } from "/ui/shared/tabs/links/links_tab.js?v=20260901c";
 import { configureDataTabLinks } from "/ui/shared/tabs/data/data_tab_links_port.js";
 import { configureDataTabChangeWatch } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
 import {
@@ -137,7 +137,7 @@ configureDataTabNotes({ mountNotes: wireDatasetNotesEditor });
 configureDataTabPageHost(mountDatasetViewerTabs);
 
 const datasetDataTab = await import(
-  "/ui/shared/tabs/data/data_tab_controller.js?v=20260830a"
+  "/ui/shared/tabs/data/data_tab_controller.js?v=20260830b"
 );
 
 const postLinksStatus = (message, tone = "") => {

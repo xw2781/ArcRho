@@ -543,6 +543,25 @@ class InlineWalkSummaryTests(unittest.TestCase):
         })
         self.assertEqual(summary, "walk refreshed 1: C 30 - Ultimate")
 
+    def test_dataset_sidecar_save_reports_its_top_level_payload(self) -> None:
+        # ``dataset_service.save_dataset_sidecar`` returns ``calculated_updates``
+        # at the top of its own dict; the ``data`` wrapper is the HTTP client's.
+        # A save whose walk failed used to log only "success" with no reason.
+        summary = save_jobs._inline_walk_summary({
+            "ok": True,
+            "dataset_name": "Net Loss--Incurred Adjusted*",
+            "calculated_updates": {
+                "ok": False, "status": "completed",
+                "refreshed_datasets": ["F 23 C - Adjusted Incurred DFM"],
+                "message": "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed",
+            },
+        })
+        self.assertEqual(
+            summary,
+            "walk refreshed 1: F 23 C - Adjusted Incurred DFM; walk FAILED: "
+            "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed",
+        )
+
     def test_a_walk_that_touched_nothing_still_records_that(self) -> None:
         self.assertEqual(
             save_jobs._inline_walk_summary({"propagation": {"ok": True, "refreshed_datasets": []}}),

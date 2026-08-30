@@ -93,8 +93,13 @@ def _log(root: Path, message: str) -> None:
 
 # Where a save response carries the outcome of the walk that ran inside it.
 # Method saves answer under ``propagation``; the dataset sidecar save answers
-# under ``data.calculated_updates``.
-_INLINE_WALK_RESPONSE_PATHS = (("propagation",), ("data", "calculated_updates"))
+# under ``calculated_updates`` at the top of the service's own return value
+# (the ``data`` wrapper only exists on the client's side of the HTTP call).
+_INLINE_WALK_RESPONSE_PATHS = (
+    ("propagation",),
+    ("calculated_updates",),
+    ("data", "calculated_updates"),
+)
 # Enough names to recognise the walk, short enough to keep one line readable.
 _INLINE_WALK_LOG_NAME_LIMIT = 12
 

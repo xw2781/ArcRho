@@ -1,6 +1,6 @@
 // Owns sidecar, settings, notes, external-link, dirty, save, and close lifecycles.
 import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
-import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260827a";
+import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260830a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260830a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
@@ -11,7 +11,7 @@ export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
   if (typeof state.showSubtotal !== "boolean") state.showSubtotal = true;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, hideCalculationUpdatesDialog, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController, createDatasetInternalLinksController, createDatasetFormulaLinksController, resolveDatasetInternalLinks } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { getResolvedProjectValue, getResolvedReservingClassValue, getDatasetInstanceNameValue, normalizeDatasetInstanceKey, getTriInputs, getProjectInstanceDraftDataFormat, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, isDfmDataTabHost, clampDatasetDecimalPlaces, normalizeDatasetNumberFormat, applyDecimalPlacesToDatasetNumberFormat, updateTabbedPageSaveControls, setDatasetRenderNumberFormatSettings, renderTable, notifyDatasetUpdated, getDatasetNumberFormatDefaults, getDataTabLinksController, loadDatasetSidecar, renderDatasetAuditLog, getDatasetAuditLog, normalizeDatasetDependencyEntries, renderDetailFormula, getDatasetTypeFormulaByName, renderDatasetPrecedents, renderDatasetDependents, saveTriInputsToStorage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, refreshLenDropdowns, validateDatasetOriginLabels, refreshDatasetInstanceNameConflict, saveDatasetSidecar, saveLastDsId, handleCalculationUpdates, invalidateCachedDatasetInstances, clearDatasetDependencyPreview, requestProjectInstanceDatasetTableRefresh, setStatus, requestTabbedPageWindowClose, isInputDefaultBound, loadWorkflowDefaults, saveDatasetNotes, publishDataTabHostInputs, mountDataTabNotes, ensureHeadersForProject, ensureDevHeadersForProject, scheduleAutoRun, applyGridSelectionFromState, setLenSelectValue, getDataTabCloseConfirm, createDatasetExternalLinksController, createDatasetInternalLinksController, createDatasetFormulaLinksController, resolveDatasetInternalLinks } = new Proxy({}, { get: (_target, name) => defer(name) });
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
@@ -814,7 +814,7 @@ export function registerDataTabPersistenceController(runtime) {
       onComplete: () => requestProjectInstanceDatasetTableRefresh(),
     });
     // The write and its dependent walk are done; drop the spinner before the
-    // recalculation dialog.
+    // "Saved" notice that follows the save command.
     progress?.finish();
     handleCalculationUpdates(resp.data?.calculated_updates, "Dataset settings save");
     state.sidecarUpdatedAt = String(resp.data?.updated_at || state.sidecarUpdatedAt || "");
@@ -915,17 +915,6 @@ export function registerDataTabPersistenceController(runtime) {
     document.getElementById("datasetCancelBtn")?.addEventListener("click", async () => {
       const ok = await confirmCancelDatasetChanges("close");
       if (ok) requestConfirmedDatasetClose();
-    });
-    document.getElementById("datasetRecalcOk")?.addEventListener("click", hideCalculationUpdatesDialog);
-    document.getElementById("datasetRecalcClose")?.addEventListener("click", hideCalculationUpdatesDialog);
-    document.getElementById("datasetRecalcOverlay")?.addEventListener("click", (event) => {
-      if (event.target === event.currentTarget) hideCalculationUpdatesDialog();
-    });
-    document.getElementById("datasetRecalcOverlay")?.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        hideCalculationUpdatesDialog();
-      }
     });
     window.__arcrho_request_close = () => {
       if (!hasUnsavedDatasetChanges()) return false;

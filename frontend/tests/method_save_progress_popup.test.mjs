@@ -527,10 +527,10 @@ test("each save drops the spinner before its post-save review dialog", async () 
 
   sources.forEach((text, index) => {
     const surface = reviewSurfaces[index];
-    // The Dataset window opens the recalculation dialog instead of the
-    // method review warning; both must follow the same dismissal rule.
+    // The Dataset window opens the shared "Saved" dependents notice instead
+    // of the method review warning; both must follow the same dismissal rule.
     const dialogIndex = surface.label === "Dataset"
-      ? text.indexOf("handleCalculationUpdates(resp.data?.calculated_updates")
+      ? text.indexOf("await showSavedDependentsNotice(result.refreshedDatasets)")
       : text.indexOf("await showMethodSaveReviewWarning(");
     assert.ok(dialogIndex > 0, `${surface.label} must open a post-save dialog`);
     const finishIndex = text.lastIndexOf("progress?.finish()", dialogIndex) >= 0
