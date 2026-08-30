@@ -14,6 +14,11 @@ import openpyxl
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 MODULE_PATH = REPO_ROOT / "tools" / "migrate_eex_formulas.py"
 SPEC = importlib.util.spec_from_file_location("migrate_eex_formulas", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -103,7 +108,7 @@ def _create_project(root: Path, *, rows: list[list[str]] | None = None) -> Path:
 
 class EexFormulaMigrationTests(unittest.TestCase):
     def test_main_dry_run_reports_success_without_writing(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             output = io.StringIO()
 
@@ -119,7 +124,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             self.assertFalse((project / migration.RULES_FILENAME).exists())
 
     def test_dry_run_builds_rules_without_writing(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             json_path = project / migration.RESERVING_CLASS_JSON_FILENAME
             xlsx_path = project / migration.RESERVING_CLASS_XLSX_FILENAME
@@ -144,7 +149,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             self.assertFalse((project / migration.RULES_FILENAME).exists())
 
     def test_apply_migrates_json_xlsx_and_creates_rules(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             plan = migration.build_migration_plan(project)
 
@@ -189,7 +194,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             )
 
     def test_refuses_existing_rules_file(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             existing = project / migration.RULES_FILENAME
             existing.write_text('{"rules":[]}\n', encoding="utf-8")
@@ -200,7 +205,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             self.assertEqual('{"rules":[]}\n', existing.read_text(encoding="utf-8"))
 
     def test_refuses_inconsistent_json_xlsx_pair(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             workbook_path = project / migration.RESERVING_CLASS_XLSX_FILENAME
             workbook = openpyxl.load_workbook(workbook_path)
@@ -221,7 +226,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             self.assertFalse((project / migration.RULES_FILENAME).exists())
 
     def test_refuses_eex_member_outside_normal_source(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             rows = [list(row) for row in LEGACY_ROWS]
             rows[-1][3] = '"UMBI"'
             project = _create_project(Path(temp_dir), rows=rows)
@@ -230,7 +235,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
                 migration.build_migration_plan(project)
 
     def test_refuses_unsupported_multiplication(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             rows = [list(row) for row in LEGACY_ROWS]
             rows[-1][3] = '"PD" * "CMP_CAT"'
             project = _create_project(Path(temp_dir), rows=rows)
@@ -239,7 +244,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
                 migration.build_migration_plan(project)
 
     def test_rolls_back_pair_when_rules_creation_fails(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             json_path = project / migration.RESERVING_CLASS_JSON_FILENAME
             xlsx_path = project / migration.RESERVING_CLASS_XLSX_FILENAME
@@ -256,7 +261,7 @@ class EexFormulaMigrationTests(unittest.TestCase):
             self.assertFalse((project / migration.RULES_FILENAME).exists())
 
     def test_refuses_ambiguous_field_mapping_level(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             project = _create_project(Path(temp_dir))
             mapping_path = project / migration.FIELD_MAPPING_FILENAME
             payload = json.loads(mapping_path.read_text(encoding="utf-8"))

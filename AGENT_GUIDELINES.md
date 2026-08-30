@@ -158,6 +158,20 @@ The frontend includes a bundled portable Node runtime. When validating or runnin
 Validation commands must not write files to the C drive. If temporary files are needed, write them only inside the current repository folder, and follow the temporary-file rule below.
 
 ## Temporary Files (MUST)
-- Never create temporary files or folders loose in the repository root or beside the code under test. Put every scratch file under `temp/` at the repository root (already gitignored at any depth; create it if missing), or under the harness scratchpad directory when one is provided. Point `tempfile` calls and shell scratch paths at that folder explicitly — for example `tempfile.mkdtemp(dir=temp_dir)` — rather than relying on the default location.
+- Never create temporary files or folders loose in the repository root or beside the code under test. Two gitignored folders at the repository root own every scratch path, and each is created on demand if missing: **`test/` for anything a test writes**, and **`temp/` for an agent's own scratch** during validation or an experiment (or the harness scratchpad directory when one is provided). Point `tempfile` calls and shell scratch paths at the right one explicitly — for example `tempfile.mkdtemp(dir=temp_dir)` — rather than relying on the default location.
 - Delete whatever you created before finishing the task: remove the scratch files and any folder you made for them once the validation or experiment is done. Wrap them in `tempfile.TemporaryDirectory()` or an equivalent so cleanup happens even when a command fails.
 - Before ending a task, check `git status --short --ignored` for anything new that you left behind — a stray `tmp*` folder, a generated spreadsheet, a copied JSON — and remove it. A gitignored leftover is still litter: it clutters the working tree for the next person and other agents.
+
+### Test temporary files (MUST)
+Every temporary directory a test creates must live under `test/` at the repository root, whichever test tree the test belongs to — `frontend/tests`, `python-api/tests`, `server-components/tests`, or `tools/tests`. Anchor it on the repository root rather than on the test file, so one folder collects the output of every suite:
+
+```python
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[N] / "test"   # N reaches the repository root
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+```
+
+- **Never pass the repository root, a package root, or a test folder as `dir=`.** `tempfile.TemporaryDirectory(dir=REPO_ROOT)` drops a `tmp<random>` folder beside the code, and a test that raises in `setUp` never reaches the teardown that would remove it — one interrupted suite run left 33 of them loose in the root. `test/` keeps that failure mode in one place a single `rm -rf` can clear.
+- **Create the directory in the test, not by hand.** `mkdir(parents=True, exist_ok=True)` at import time is enough; the folder is gitignored and must never be committed or relied on existing.
+- **Still clean up.** Use `TemporaryDirectory` (or an equivalent that survives a failure) so a passing run leaves `test/` empty. The folder is a backstop for the runs that fail, not a licence to leak.
+- **Applies to new and edited tests.** Do not mass-migrate existing suites as a side effect of unrelated work; when you touch a test that anchors its temp directory anywhere else, move that one onto `test/` as part of the change.

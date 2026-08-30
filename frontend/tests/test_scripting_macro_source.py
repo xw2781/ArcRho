@@ -9,6 +9,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(REPO_ROOT / "frontend"))
 if str(REPO_ROOT / "python-api" / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "python-api" / "src"))
@@ -208,7 +213,7 @@ def run_macro(active_dfm, active_context=None):
         # payload still carries the revision stamps of the last save.
         dirty["ratios_tab"]["average_formulas"]["inputs"][0][0] = formula
 
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir, patch.object(
             scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
         ):
             dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})
@@ -218,7 +223,7 @@ def run_macro(active_dfm, active_context=None):
         # The UI stamps its live Notes tab text on the transient carrier so the
         # macro reads the dirty notes instead of the persisted sidecar.
         dirty.setdefault("method_metadata", {})["method_notes"] = "Unsaved UI note"
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir, patch.object(
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir, patch.object(
             scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
         ):
             seeded_dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})

@@ -10,6 +10,12 @@ from unittest.mock import Mock, patch
 
 from tools.arcrho_dev_control import runtime
 
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = Path(runtime.REPO_ROOT) / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
 
 class ArcRhoDevControlRuntimeTests(unittest.TestCase):
     def test_launcher_handoff_does_not_capture_detached_supervisor_output(self) -> None:
@@ -74,7 +80,7 @@ class ArcRhoDevControlRuntimeTests(unittest.TestCase):
         self.assertEqual({item.pid for item in selected}, {90, 100, 101, 102})
 
     def test_cache_paths_are_children_of_appdata_root(self) -> None:
-        with tempfile.TemporaryDirectory(dir=runtime.REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             appdata = Path(temp_dir)
             with patch.dict(os.environ, {"APPDATA": str(appdata)}, clear=False):
                 root = runtime._electron_user_data_root().resolve()
@@ -85,7 +91,7 @@ class ArcRhoDevControlRuntimeTests(unittest.TestCase):
         self.assertNotIn(root / "logs", paths)
 
     def test_preference_discovery_uses_configured_project_root(self) -> None:
-        with tempfile.TemporaryDirectory(dir=runtime.REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             projects = Path(temp_dir) / "projects"
             preference = projects / "Sample" / "users" / "alice" / "preferences.json"
             preference.parent.mkdir(parents=True)
@@ -137,7 +143,7 @@ class ArcRhoDevControlRuntimeTests(unittest.TestCase):
         self.assertTrue(state["folders"])
 
     def test_clear_preference_moves_file_to_backup_before_relaunch(self) -> None:
-        with tempfile.TemporaryDirectory(dir=runtime.REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             preference = Path(temp_dir) / "preferences.json"
             preference.write_text('{"saved": true}', encoding="utf-8")
             selected = {"id": "pref-id", "project": "Sample", "user": "alice", "path": str(preference)}

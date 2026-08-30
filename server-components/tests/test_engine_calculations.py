@@ -15,6 +15,11 @@ from urllib.request import Request, urlopen
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 ENGINE_SOURCE = REPOSITORY_ROOT / "server-components" / "src"
 API_SOURCE = REPOSITORY_ROOT / "python-api" / "src"
 FRONTEND_ROOT = REPOSITORY_ROOT / "frontend"
@@ -249,7 +254,7 @@ class HostedExecutionTests(unittest.TestCase):
     """``execute_hosted_engine_calculation`` against a workspace on local disk."""
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         self.request_dir = self.root / "requests"
         self.request_dir.mkdir()
@@ -370,7 +375,7 @@ class HostedExecutionTests(unittest.TestCase):
 
 class EngineCalculationExecutorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         config = default_gateway_config()
         config["host"] = "127.0.0.1"
@@ -456,7 +461,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
     """The client transport against a live gateway, both ends in this process."""
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         self.server_root = self.root / "server"
         self.client_root = self.root / "client-mapped"

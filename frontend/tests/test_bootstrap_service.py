@@ -20,6 +20,11 @@ from fastapi import HTTPException
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 PYTHON_API_SRC = REPO_ROOT / "python-api" / "src"
 for path in (FRONTEND_ROOT, PYTHON_API_SRC):
@@ -51,7 +56,7 @@ SIMULATION_COUNT = 200
 
 class BootstrapServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory(dir=REPO_ROOT)
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         root = Path(self.temp.name)
         self.methods = root / "methods"
         self.datasets = root / "datasets"

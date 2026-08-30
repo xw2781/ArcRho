@@ -13,6 +13,12 @@ import contextlib
 from unittest.mock import patch
 
 
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
 _MACRO_PATH = (
     Path(__file__).resolve().parents[1]
     / "macros"
@@ -127,7 +133,7 @@ class _UI:
 class ImportResqReservingClassMacroTests(unittest.TestCase):
     def setUp(self):
         self.module = load_macro_module()
-        self.tempdir = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2])
+        self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.tempdir.cleanup)
         self.server_root = Path(self.tempdir.name)
         self.ui = _UI()

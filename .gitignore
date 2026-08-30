@@ -62,6 +62,7 @@ logs/
 output/
 cache/
 temp/
+test/
 tmp_data/
 runtime/
 *.tmp

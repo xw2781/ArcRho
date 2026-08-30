@@ -11,6 +11,11 @@ from unittest.mock import MagicMock, patch
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 ENGINE_SOURCE = REPOSITORY_ROOT / "server-components" / "src"
 API_SOURCE = REPOSITORY_ROOT / "python-api" / "src"
 FRONTEND_ROOT = REPOSITORY_ROOT / "frontend"
@@ -83,7 +88,7 @@ class HostedSaveHttpContractTests(unittest.TestCase):
     def test_provisioning_drops_a_pilot_era_save_kind_allowlist(self) -> None:
         """An upgraded gateway must not stay narrowed by a stored pilot list."""
 
-        with tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT)) as temporary:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temporary:
             root = Path(temporary)
             server_config = default_gateway_config()
             server_config["allowed_save_kinds"] = ["dataset_sidecar"]
@@ -160,7 +165,7 @@ class HostedSaveHttpContractTests(unittest.TestCase):
 
 class GatewayTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(REPOSITORY_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         (self.root / "projects").mkdir()
         config = default_gateway_config()

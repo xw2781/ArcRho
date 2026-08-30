@@ -17,6 +17,12 @@ if str(_SRC_DIR) not in sys.path:
 
 from arcrho_api import bridge_liveness  # noqa: E402
 
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[2]
     / "server-components"
@@ -37,7 +43,7 @@ class _Clock:
 
 class ObserveOnDiskTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2])
+        self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
 

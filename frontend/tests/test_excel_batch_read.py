@@ -12,6 +12,11 @@ from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
@@ -65,7 +70,7 @@ class ExcelBatchReadTests(unittest.TestCase):
         repository so a validation run never writes outside it.
         """
 
-        temp_dir = tempfile.TemporaryDirectory(dir=REPO_ROOT)
+        temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(temp_dir.cleanup)
         return Path(temp_dir.name)
 

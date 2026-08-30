@@ -10,6 +10,11 @@ from unittest.mock import patch
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = _REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 _MACROS_DIR = Path(__file__).resolve().parents[1] / "macros"
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 for path in (_SRC_DIR, _MACROS_DIR):
@@ -105,7 +110,7 @@ class ListReservingClassesTests(unittest.TestCase):
     def test_index_owns_the_name_and_the_folder_is_the_fallback(self):
         import tempfile
 
-        with tempfile.TemporaryDirectory(dir=_REPO_ROOT) as root:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as root:
             data = Path(root) / "projects" / "Demo" / "data"
             indexed = data / "HPPREF_%5C_HO+DF"
             indexed.mkdir(parents=True)
@@ -141,7 +146,7 @@ class BatchImportMacroTests(unittest.TestCase):
 
         self.module = load_macro_module()
         self.single = self.module._load_single_import_macro()
-        self.tempdir = tempfile.TemporaryDirectory(dir=_REPO_ROOT)
+        self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.tempdir.cleanup)
         self.server_root = Path(self.tempdir.name)
         self._write_worker()

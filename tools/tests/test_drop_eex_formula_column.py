@@ -12,6 +12,11 @@ from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Every test temp directory lives under one gitignored folder at the
+# repository root, so a suite that dies before teardown cannot scatter
+# tmp folders beside the code.
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 MODULE_PATH = REPO_ROOT / "tools" / "drop_eex_formula_column.py"
 SPEC = importlib.util.spec_from_file_location("drop_eex_formula_column", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -79,7 +84,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             dropper.drop_eex_formula_column(payload)
 
     def test_dry_run_reports_without_writing(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             path = Path(temp_dir) / "reserving_class_types.json"
             _write_json(path, _legacy_payload())
             original = path.read_bytes()
@@ -99,7 +104,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             )
 
     def test_dry_run_resolves_configured_project_name(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             projects_root = Path(temp_dir)
             project_dir = projects_root / "Selected Project"
             project_dir.mkdir()
@@ -118,7 +123,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             self.assertEqual(str(path.resolve()), json.loads(output.getvalue())["path"])
 
     def test_project_name_argument_overrides_configured_project(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             projects_root = Path(temp_dir)
             project_dir = projects_root / "Runtime Project"
             project_dir.mkdir()
@@ -139,7 +144,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             self.assertEqual(str(path.resolve()), json.loads(output.getvalue())["path"])
 
     def test_no_arguments_uses_configured_dry_run_mode(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             projects_root = Path(temp_dir)
             project_dir = projects_root / "Direct Run Project"
             project_dir.mkdir()
@@ -164,7 +169,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             self.assertEqual(original, path.read_bytes())
 
     def test_no_arguments_can_use_configured_apply_mode(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             projects_root = Path(temp_dir)
             project_dir = projects_root / "Direct Apply Project"
             project_dir.mkdir()
@@ -194,7 +199,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             dropper._project_file_path("../Another Project")
 
     def test_apply_creates_backup_and_updates_json(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             path = Path(temp_dir) / "reserving_class_types.json"
             payload = _legacy_payload()
             _write_json(path, payload)
@@ -212,7 +217,7 @@ class DropEexFormulaColumnTests(unittest.TestCase):
             self.assertNotIn("PD", migrated["rows"][1][3:])
 
     def test_apply_refuses_existing_backup(self) -> None:
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             path = Path(temp_dir) / "reserving_class_types.json"
             _write_json(path, _legacy_payload())
             backup_path = path.with_name(path.name + dropper.BACKUP_SUFFIX)
