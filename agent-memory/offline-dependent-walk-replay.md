@@ -1,15 +1,40 @@
 ---
 name: offline-dependent-walk-replay
-description: "Replay a save's dependent walk offline against a scratch copy of one reserving class (mock config.load_workspace_paths); scratchpad paths overflow MAX_PATH for dataset CSVs so use a short junction; an already-consistent copy cannot reproduce a stale-state failure"
-metadata: 
+description: "Replaying a dependent walk offline WRITES TO THE LIVE CLASS unless the three per-project dir helpers are patched; mocking config.load_workspace_paths alone does not redirect project data (it did on 2026-08-30 and stamped the live NJ HOL class)"
+metadata:
   node_type: memory
-  type: project
+  type: feedback
   originSessionId: a6f90213-cbce-468a-b2ce-e215fcde55b6
-  modified: 2026-08-30T00:53:57.358Z
+  modified: 2026-08-30T15:37:45.652Z
 ---
 
-To replay `calculated_dataset_service.recalculate_dependents` offline (2026-08-29): copy the project's root JSON files plus `data/<class>` into a scratch workspace, then in the harness `mock.patch.object(app_server.config, "load_workspace_paths", return_value={"workspace_root": <root>, "paths": {"projects_dir": "projects", "requests_dir": "requests"}}).start()` before importing the services. `C:\Program Files\Python310\python.exe` with `frontend`, `python-api/src`, `server-components/src` on `sys.path` runs it; each stage bucket returns `updated` / `status_refreshed` / `skipped` / `errors`, so print all four — a DFM that only re-stamped status is in `status_refreshed`, not `skipped`.
+Mocking `app_server.config.load_workspace_paths` at a scratch root does NOT redirect project
+data: `get_project_dataset_cache_dir` / `get_project_method_data_dir` /
+`get_project_dataset_sidecar_dir` resolve through the project map and still point at
+`E:\ArcRho Server\projects\...`. On 2026-08-30 four "scratch" replays of
+`calculated_dataset_service.recalculate_dependents` ran against the live NJ HOL class:
+they appended audit rows by the Windows user `xwei`, moved `updated_at`/`modified_by` on
+F 91, F 92 and Severity, and refreshed G 91 (method, CSV, sidecar). The walk is idempotent on
+consistent state, so nothing looked wrong until `find "<class>" -newermt "<start>"` on the
+live folder showed mtimes matching the replay times.
 
-**Why:** the harness scratchpad path is ~150 chars, and `...\datasets\Net Loss--Incurred Adjusted_%2A_ - B&S ...@12@12@cum@dev.csv` pushes the full path past MAX_PATH (260). Python then reports `FileNotFoundError` on a file that `os.listdir`, Bash and PowerShell all see — a silent, confusing failure. A junction such as `C:\Users\xwei.PRCINS\AppData\Local\Temp\2\arw -> <scratchpad>\ws` (PowerShell `New-Item -ItemType Junction`) keeps the data in the scratchpad with short paths.
+**Why:** the only earlier symptom was subtle — a perturbed scratch input produced exactly the
+same walk output as the untouched one, because reads and writes were both hitting E:.
 
-**How to apply:** a copy taken after the save is already consistent (every method's `*_source_revision` matches), so the replay reports `ok: True` with nothing updated and cannot reproduce a failure the live walk hit on stale dependents. Bumping a CSV cell, re-stamping the root sidecar's `updated_at`, or setting a method's `latest_source_revision` to a bogus value only re-stamps statuses — it did not make the DFM recompute — so to see the real reason, make it visible instead: since 2026-08-29 the refresh dialog shows the inline walk's `message` and `refreshed_datasets`, and `hosted_saves.log` records `walk FAILED: <reason>` for dataset sidecar saves (the Engine used to look for `calculated_updates` only under `data`). Related: [[dfm-offline-recompute-repro]], [[propagation-hold-and-test-isolation]].
+**How to apply:**
+- Isolate the way `frontend/tests/test_result_selection_service.py` does: patch the three
+  `config.get_project_*_dir` helpers at the scratch folders and use
+  `tests/dependent_propagation_workspace_stub.py` for the hold/queue; then PROBE the resolved
+  paths with a no-walk script before running anything that writes.
+- Take a byte copy of the class folder first and keep it: audit rows and stamps are not
+  otherwise recoverable. After a replay, run `find` with `-newermt` on the live folder.
+- Restoring live files is a live-data overwrite the harness blocks; hand the user the
+  pristine/current pairs and the copy command instead.
+- A post-save copy is already consistent, so it cannot reproduce a stale-state walk failure
+  on its own. Prefer reading the Gateway receipt:
+  `E:\ArcRho Server\runtime\arcrho_gateway\receipts\<request id>.json` holds the whole save
+  response, and since 2026-08-30 the "Downstream refresh failed after <method> publication"
+  reason carries the nested walk reasons (see [[result-selection-unchanged-dependent-block]]).
+- Scratchpad paths overflow MAX_PATH for dataset CSVs; use a short root such as
+  `C:\Users\XWEI~1.PRC\AppData\Local\Temp\2\rw`. Related: [[dfm-offline-recompute-repro]],
+  [[propagation-hold-and-test-isolation]].
