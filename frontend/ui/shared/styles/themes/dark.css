@@ -190,6 +190,11 @@
   --ar-audit-scrollbar-button-active: var(--ar-color-surface-selected);
   --ar-audit-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
   --ar-audit-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
+  --ar-links-scrollbar-chrome: var(--ar-color-scrollbar-track);
+  --ar-links-scrollbar-button-hover: var(--ar-color-surface-hover);
+  --ar-links-scrollbar-button-active: var(--ar-color-surface-selected);
+  --ar-links-scrollbar-thumb: var(--ar-color-scrollbar-thumb);
+  --ar-links-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
   --dpr-blue: var(--ar-color-accent);
   --dpr-blue-soft: var(--ar-color-accent-soft);
   --dpr-blue-border: var(--ar-color-border-focus);
@@ -1124,10 +1129,6 @@
   color: var(--ar-color-danger);
 }
 
-:root[data-arcrho-theme="dark"] .arLinksSectionTitle {
-  color: var(--ar-color-text);
-}
-
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable thead th:not(.arSpreadsheetSelectedLabel) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-spreadsheet-header-fill);
@@ -1439,22 +1440,6 @@
   border-color: var(--ar-color-border-focus);
   background-color: var(--ar-color-accent-soft);
   color: var(--ar-color-text-strong);
-}
-
-:root[data-arcrho-theme="dark"] .datasetRecalcOverlay {
-  background-color: var(--ar-color-overlay);
-}
-
-:root[data-arcrho-theme="dark"] .datasetRecalcBox {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-surface-raised);
-  color: var(--ar-color-text);
-  box-shadow: var(--ar-shadow-dialog);
-}
-
-:root[data-arcrho-theme="dark"] :is(.datasetRecalcList, .datasetRecalcItem) {
-  border-color: var(--ar-color-border);
-  background-color: var(--ar-color-canvas-subtle);
 }
 
 /* Development Factor Method. Selection/highlight paint remains feature-owned. */

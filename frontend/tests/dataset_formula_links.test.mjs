@@ -160,6 +160,17 @@ test("a formula over an Excel range and a dataset range reads the workbook cells
     controller.serialize()[0].formula,
     "='C:\\Data\\[Book.xlsx]Sheet 1'!A1:A2 + [C 82 - Prior Qtr Selected][1:2]",
   );
+
+  // The Links tab gets one row per source the formula reads, and breaking
+  // through either row's id breaks the whole formula.
+  const records = controller.listRecords();
+  assert.deepEqual(
+    records.map((record) => [record.id.split("#component-")[1], record.workbookPath, record.datasetName]),
+    [["0", "C:\\Data\\Book.xlsx", undefined], ["1", undefined, "C 82 - Prior Qtr Selected"]],
+  );
+  assert.equal(new Set(records.map((record) => record.id.split("#component-")[0])).size, 1);
+  assert.equal(controller.breakLinks([records[1].id]).ok, true);
+  assert.deepEqual(controller.serialize(), []);
 });
 
 test("commitReference leaves standalone references to the other controllers and names failures", async () => {
@@ -224,7 +235,9 @@ test("decorates calculated cells in the formula colour and describes the link", 
   const [record] = controller.listRecords();
   assert.equal(record.sourceKind, "formula");
   assert.equal(record.formula, FORMULA);
-  assert.deepEqual(record.sources, ["C 82 - Prior Qtr Selected"]);
+  assert.match(record.id, /#component-0$/u);
+  assert.equal(record.datasetName, "C 82 - Prior Qtr Selected");
+  assert.equal(record.workbookPath, undefined);
   assert.equal(record.destination, "2017~2018");
   assert.equal(record.affectedCellCount, 2);
 });

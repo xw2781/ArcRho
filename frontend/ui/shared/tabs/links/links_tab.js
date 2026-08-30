@@ -1,14 +1,14 @@
 /*
 ===============================================================================
 Links Tab
-One compact table per kind of link a page holds, stacked in sections: ArcRho
-dataset links first, Excel workbook links next, and formulas over both last.
-A section is shown only while it has rows. The whole stack sits in one framed
-scrolling area, so the tab has a single scrollbar and the sections scroll past
-one another instead of each one scrolling inside its own frame. Each row says
-where the values come from (Source), the exact address or formula (Reference),
-and the cells it fills (Destination, Cells); the section title names the kind,
-and only a formula row repeats it as a small tinted badge in the Source cell.
+One compact table per kind of link a page holds, in two framed panes: ArcRho
+dataset links above, Excel workbook links below, a formula listed once per
+source it reads under that source's kind. A draggable divider separates the panes and starts at the
+middle of the tab; double-clicking it puts it back there. Both tables share
+one set of column widths and scroll sideways together. Each row says where
+the values come from (Source), the exact address or formula (Reference), and
+the cells it fills (Destination, Cells); a stamp above each table names the
+kind, so no row carries a badge.
 
 The page owns link discovery, refresh, break, and dirty state; this module
 owns the tables: rendering, selection, the row context menu, column widths,
@@ -19,7 +19,7 @@ import { openContextMenu } from "/ui/shared/components/context_menu/context_menu
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260812a";
 
 const LINKS_STYLESHEET_ID = "arExternalLinksStylesheet";
-const LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260901a";
+const LINKS_STYLESHEET_HREF = "/ui/shared/tabs/links/links_tab.css?v=20260901b";
 const MOUNTED_LINKS_TABS = new WeakMap();
 
 // Every column carries an explicit width, the colgroup sets it, and the table
@@ -37,13 +37,19 @@ const MAX_COLUMN_WIDTH = 3000;
 // Widths a user has dragged survive a re-mount within the page session, so
 // switching tabs never undoes a deliberate resize.
 const sessionColumnWidths = new Map();
+// The divider's place, as the share of the split the ArcRho pane takes, also
+// survives a re-mount within the page session. Neither pane may be dragged
+// shorter than its stamp and header row.
+const DEFAULT_SPLIT_RATIO = 0.5;
+const MIN_PANE_HEIGHT = 64;
+let sessionSplitRatio = DEFAULT_SPLIT_RATIO;
 
-const KIND_LABELS = { excel: "Excel", internal: "ArcRho", formula: "Formula" };
-// Section order on the page, top to bottom.
+const KIND_LABELS = { excel: "Excel", internal: "ArcRho" };
+// Section order on the page, top to bottom. A formula arrives as one record
+// per source it reads, each sitting in that source's section.
 export const LINK_SECTIONS = [
   { kind: "internal", title: "ArcRho Links" },
   { kind: "excel", title: "Excel Links" },
-  { kind: "formula", title: "Formula Links" },
 ];
 
 function ensureLinksStylesheet(documentRef) {
@@ -99,11 +105,14 @@ function fileName(path) {
   return String(path || "").split(/[\\/]/).pop() || "";
 }
 
+function isFormulaRecord(record) {
+  if (record.sourceKind === "formula") return true;
+  return !KIND_LABELS[record.sourceKind] && !record.workbookPath && !record.datasetName && !!record.formula;
+}
+
 function linkKind(record) {
   if (KIND_LABELS[record.sourceKind]) return record.sourceKind;
-  if (record.workbookPath) return "excel";
-  if (record.datasetName) return "internal";
-  return record.formula ? "formula" : "excel";
+  return record.datasetName && !record.workbookPath ? "internal" : "excel";
 }
 
 /**
@@ -120,23 +129,23 @@ export function normalizeLinkRecord(record, index, idPrefix = "link") {
   const datasetName = String(source.datasetName ?? "").trim();
   const sourceRange = String(source.sourceRange ?? "").trim();
   const formula = String(source.formula ?? "").trim();
-  const sources = Array.isArray(source.sources) ? source.sources.map((name) => String(name)) : [];
   let sourceText = "";
   let reference = "";
-  if (kind === "excel") {
+  if (isFormulaRecord(source)) {
+    // A formula row names the one source it stands for and shows the whole
+    // formula, so it reads apart from a plain link to the same source.
+    sourceText = workbookPath ? fileName(workbookPath) : datasetName;
+    reference = formula;
+  } else if (kind === "excel") {
     sourceText = fileName(workbookPath);
     reference = worksheet && address ? `${worksheet}!${address}` : (address || worksheet);
-  } else if (kind === "internal") {
+  } else {
     sourceText = datasetName;
     reference = sourceRange ? `[${sourceRange}]` : "";
-  } else {
-    sourceText = sources.join(", ");
-    reference = formula;
   }
   return {
     id: String(source.id ?? "").trim() || `${idPrefix}-${index + 1}`,
     kind,
-    kindLabel: KIND_LABELS[kind],
     workbookPath,
     datasetName,
     formula,
@@ -300,21 +309,21 @@ export function createLinksTab({
   stateDescription.hidden = !stateDescription.textContent;
   root.appendChild(state);
 
-  // One framed scrolling area for the whole tab. The sections stack inside it
-  // and share its scrollbar, so a long ArcRho list scrolls the Excel and
-  // formula tables into view instead of every section scrolling on its own.
-  const scrollHost = documentRef.createElement("div");
-  scrollHost.className = "arExternalLinksScroll";
-  scrollHost.tabIndex = 0;
-  scrollHost.hidden = true;
-  scrollHost.setAttribute("role", "region");
-  scrollHost.setAttribute("aria-label", `${String(ariaLabel || "Links")} tables`);
-  scrollHost.setAttribute("aria-haspopup", "menu");
-  root.appendChild(scrollHost);
+  // The split holds the two panes and the divider between them; it stands in
+  // for the whole table area whenever the tab shows a state instead.
+  const split = documentRef.createElement("div");
+  split.className = "arLinksSplit";
+  split.hidden = true;
+  split.setAttribute("role", "region");
+  split.setAttribute("aria-label", `${String(ariaLabel || "Links")} tables`);
+  split.setAttribute("aria-haspopup", "menu");
+  root.appendChild(split);
 
-  const sectionsHost = documentRef.createElement("div");
-  sectionsHost.className = "arLinksSections";
-  scrollHost.appendChild(sectionsHost);
+  const divider = documentRef.createElement("div");
+  divider.className = "arLinksDivider";
+  divider.setAttribute("role", "separator");
+  divider.setAttribute("aria-orientation", "horizontal");
+  divider.setAttribute("aria-label", "Resize the ArcRho and Excel panes");
 
   const widths = new Map(LINK_COLUMNS.map((column) => [
     column.key,
@@ -322,15 +331,30 @@ export function createLinksTab({
   ]));
   const manualWidths = new Set(sessionColumnWidths.keys());
 
-  // One table per section, all of them inside the shared scrolling frame;
-  // every table carries the same colgroup and header so the shared widths
-  // land in each of them.
-  const sections = LINK_SECTIONS.map(({ kind, title }) => {
+  // One framed scrolling pane per section, each with its own scrollbar; every
+  // table carries the same colgroup and header so the shared widths land in
+  // both of them.
+  const sections = LINK_SECTIONS.map(({ kind, title }, index) => {
+    if (index > 0) split.appendChild(divider);
+    const pane = documentRef.createElement("div");
+    pane.className = "arExternalLinksScroll";
+    pane.dataset.linkKind = kind;
+    pane.tabIndex = 0;
+    split.appendChild(pane);
+
     const section = documentRef.createElement("section");
     section.className = "arLinksSection";
     section.dataset.linkKind = kind;
-    section.hidden = true;
-    appendTextElement(documentRef, section, "h3", "arLinksSectionTitle", title);
+    pane.appendChild(section);
+    // The section is headed by a stamp in its kind's colour, reading as the
+    // kind's name; the longer title names the table for assistive technology.
+    appendTextElement(
+      documentRef,
+      section,
+      "h3",
+      `arLinksSectionStamp arLinksKind arLinksKind-${kind}`,
+      KIND_LABELS[kind],
+    );
 
     const table = documentRef.createElement("table");
     table.className = "arExternalLinksTable";
@@ -350,9 +374,9 @@ export function createLinksTab({
     table.appendChild(colgroup);
     const body = documentRef.createElement("tbody");
 
-    sectionsHost.appendChild(section);
-    return { kind, section, table, colElements, body };
+    return { kind, pane, section, table, colElements, body };
   });
+  const panes = sections.map(({ pane }) => pane);
 
   function totalWidth() {
     let total = 0;
@@ -361,11 +385,13 @@ export function createLinksTab({
   }
 
   /**
-   * The width the tables have to sit in: the sections' own box, which is what
-   * the shared frame leaves once its scrollbar has taken its lane.
+   * The width the tables have to sit in: the narrower of the two panes' own
+   * boxes, which is what a frame leaves once its scrollbar has taken its lane,
+   * so neither pane gains a horizontal scrollbar from the fit.
    */
   function availableWidth() {
-    return Number(sectionsHost.clientWidth) || 0;
+    const measured = panes.map((pane) => Number(pane.clientWidth) || 0).filter((width) => width > 0);
+    return measured.length ? Math.min(...measured) : 0;
   }
 
   /**
@@ -375,8 +401,63 @@ export function createLinksTab({
    */
   function syncTableEdges() {
     const available = availableWidth();
-    scrollHost.classList.toggle("isTableShort", available > 0 && totalWidth() < available);
+    const short = available > 0 && totalWidth() < available;
+    for (const pane of panes) pane.classList.toggle("isTableShort", short);
   }
+
+  /**
+   * The divider's place. The panes split the height by flex growth, so the
+   * stylesheet's equal growth is the middle and only a drag writes a value.
+   */
+  function applySplitRatio(ratio) {
+    sessionSplitRatio = ratio;
+    panes[0].style.flexGrow = String(ratio);
+    panes[1].style.flexGrow = String(1 - ratio);
+  }
+
+  function resetSplitRatio() {
+    sessionSplitRatio = DEFAULT_SPLIT_RATIO;
+    for (const pane of panes) pane.style.flexGrow = "";
+  }
+
+  function startSplitDrag(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    closeMenu();
+    // The divider moves with the pointer from where it was grabbed, so it
+    // never jumps to the pointer on the first move.
+    const track = (Number(split.getBoundingClientRect().height) || 0) - (Number(divider.offsetHeight) || 0);
+    if (track <= 0) return;
+    const minRatio = Math.min(0.5, MIN_PANE_HEIGHT / track);
+    const startY = Number(event.clientY) || 0;
+    const startRatio = sessionSplitRatio;
+    root.classList.add("isResizingSplit");
+    divider.setPointerCapture?.(event.pointerId);
+    const onMove = (moveEvent) => {
+      const ratio = startRatio + ((Number(moveEvent.clientY) || 0) - startY) / track;
+      applySplitRatio(Math.min(1 - minRatio, Math.max(minRatio, ratio)));
+    };
+    const onUp = () => {
+      root.classList.remove("isResizingSplit");
+      divider.removeEventListener("pointermove", onMove);
+      divider.removeEventListener("pointerup", onUp);
+      divider.removeEventListener("pointercancel", onUp);
+    };
+    divider.addEventListener("pointermove", onMove);
+    divider.addEventListener("pointerup", onUp);
+    divider.addEventListener("pointercancel", onUp);
+  }
+
+  const handleDividerDoubleClick = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    resetSplitRatio();
+  };
+
+  divider.addEventListener("pointerdown", startSplitDrag);
+  divider.addEventListener("dblclick", handleDividerDoubleClick);
+  if (sessionSplitRatio !== DEFAULT_SPLIT_RATIO) applySplitRatio(sessionSplitRatio);
 
   function syncTableWidth() {
     const total = `${totalWidth()}px`;
@@ -395,10 +476,8 @@ export function createLinksTab({
 
   /**
    * Until a column has been dragged, the defaults are stretched to fill the
-   * host, so the tables open edge to edge rather than short of the frame, and
-   * they follow the host whenever it is resized. The single frame decides for
-   * every section, so the stack never gains a horizontal scrollbar from the
-   * fit even once its vertical one appears.
+   * panes, so the tables open edge to edge rather than short of the frame, and
+   * they follow the panes whenever those are resized.
    */
   function fitColumnsToHost() {
     if (manualWidths.size) return;
@@ -503,46 +582,54 @@ export function createLinksTab({
     menu.style.display = "none";
   }
 
-  const handleScroll = () => {
-    closeMenu();
-    scrollHost.classList.add("isScrolling");
-    clearScrollIdleTimer();
-    scrollIdleTimer = timerHost.setTimeout(() => {
-      scrollIdleTimer = null;
-      scrollHost.classList.remove("isScrolling");
-    }, 550);
-  };
+  // Each pane scrolls on its own, but the two share their sideways position
+  // so the columns stay lined up across the divider.
+  const paneListeners = panes.map((pane, index) => {
+    const other = panes[1 - index];
+    const handleScroll = () => {
+      closeMenu();
+      if (other.scrollLeft !== pane.scrollLeft) other.scrollLeft = pane.scrollLeft;
+      pane.classList.add("isScrolling");
+      clearScrollIdleTimer();
+      scrollIdleTimer = timerHost.setTimeout(() => {
+        scrollIdleTimer = null;
+        for (const candidate of panes) candidate.classList.remove("isScrolling");
+      }, 550);
+    };
 
-  const handlePointerMove = (event) => {
-    const rect = scrollHost.getBoundingClientRect();
-    const verticalScrollbarWidth = Math.max(0, scrollHost.offsetWidth - scrollHost.clientWidth);
-    const horizontalScrollbarHeight = Math.max(0, scrollHost.offsetHeight - scrollHost.clientHeight);
-    const nearVerticalScrollbar = scrollHost.scrollHeight > scrollHost.clientHeight
-      && verticalScrollbarWidth > 0
-      && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
-    const nearHorizontalScrollbar = scrollHost.scrollWidth > scrollHost.clientWidth
-      && horizontalScrollbarHeight > 0
-      && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
-    scrollHost.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
-  };
+    const handlePointerMove = (event) => {
+      const rect = pane.getBoundingClientRect();
+      const verticalScrollbarWidth = Math.max(0, pane.offsetWidth - pane.clientWidth);
+      const horizontalScrollbarHeight = Math.max(0, pane.offsetHeight - pane.clientHeight);
+      const nearVerticalScrollbar = pane.scrollHeight > pane.clientHeight
+        && verticalScrollbarWidth > 0
+        && event.clientX >= rect.right - Math.max(verticalScrollbarWidth, 16);
+      const nearHorizontalScrollbar = pane.scrollWidth > pane.clientWidth
+        && horizontalScrollbarHeight > 0
+        && event.clientY >= rect.bottom - Math.max(horizontalScrollbarHeight, 16);
+      pane.classList.toggle("isScrollbarHover", nearVerticalScrollbar || nearHorizontalScrollbar);
+    };
 
-  const handlePointerLeave = () => {
-    scrollHost.classList.remove("isScrollbarHover");
-  };
+    const handlePointerLeave = () => {
+      pane.classList.remove("isScrollbarHover");
+    };
 
-  scrollHost.addEventListener("scroll", handleScroll, { passive: true });
-  scrollHost.addEventListener("pointermove", handlePointerMove, { passive: true });
-  scrollHost.addEventListener("pointerleave", handlePointerLeave, { passive: true });
+    pane.addEventListener("scroll", handleScroll, { passive: true });
+    pane.addEventListener("pointermove", handlePointerMove, { passive: true });
+    pane.addEventListener("pointerleave", handlePointerLeave, { passive: true });
+    return { pane, handleScroll, handlePointerMove, handlePointerLeave };
+  });
 
-  // The host is resized by the window, the tab, and the panel splitters, and
-  // a tab that was hidden while its links loaded measured no width at all.
+  // The panes are resized by the window, the tab, the panel splitters, and
+  // the divider, and a tab that was hidden while its links loaded measured no
+  // width at all.
   const resizeObserver = typeof timerHost.ResizeObserver === "function"
     ? new timerHost.ResizeObserver(() => {
       fitColumnsToHost();
       syncTableEdges();
     })
     : null;
-  resizeObserver?.observe(sectionsHost);
+  for (const pane of panes) resizeObserver?.observe(pane);
 
   const reportStatus = (message, tone = "") => {
     try {
@@ -604,7 +691,7 @@ export function createLinksTab({
 
   const restoreTableFocus = () => {
     const row = contextRowId ? renderedRows.get(contextRowId) : null;
-    const target = row || scrollHost;
+    const target = row || panes[0];
     try {
       target.focus?.({ preventScroll: true });
     } catch {
@@ -619,7 +706,7 @@ export function createLinksTab({
       return;
     }
     openContextMenu(menu, {
-      anchorEl: (contextRowId && renderedRows.get(contextRowId)) || scrollHost,
+      anchorEl: (contextRowId && renderedRows.get(contextRowId)) || split,
       clientX: Number(event?.clientX),
       clientY: Number(event?.clientY),
       offset: 8,
@@ -672,13 +759,13 @@ export function createLinksTab({
     stateDescription.textContent = String(description || "");
     stateDescription.hidden = !stateDescription.textContent;
     state.hidden = false;
-    scrollHost.hidden = !retainRows;
+    split.hidden = !retainRows;
   };
 
   const hideState = () => {
     if (destroyed) return;
     state.hidden = true;
-    scrollHost.hidden = false;
+    split.hidden = false;
   };
 
   const appendCell = (row, key, className, text) => {
@@ -731,19 +818,7 @@ export function createLinksTab({
       const sourceCell = documentRef.createElement("td");
       sourceCell.className = "arLinksCell arLinksCell-source";
       sourceCell.dataset.colKey = "source";
-      // The section title already names the kind, so ArcRho and Excel rows
-      // carry no badge; a formula row keeps its one, since its Source column
-      // names the datasets the formula reads rather than the formula itself.
-      if (record.kind === "formula") {
-        const badge = appendTextElement(
-          documentRef,
-          sourceCell,
-          "span",
-          `arLinksKind arLinksKind-${record.kind}`,
-          record.kindLabel,
-        );
-        badge.setAttribute("aria-label", `${record.kindLabel} link`);
-      }
+      // The section stamp already names the kind, so no row carries a badge.
       appendTextElement(documentRef, sourceCell, "span", "arLinksCellText", record.source);
       row.appendChild(sourceCell);
 
@@ -754,7 +829,6 @@ export function createLinksTab({
       renderedRows.set(record.id, row);
       sections[sectionOrder.get(record.kind)].body.appendChild(row);
     });
-    for (const { section, body } of sections) section.hidden = body.children.length === 0;
 
     loading = false;
     if (advisory) {
@@ -923,7 +997,7 @@ export function createLinksTab({
   breakSelectedItem.addEventListener("click", () => handleMenuAction("break", "selection"));
   refreshAllItem.addEventListener("click", () => handleMenuAction("refresh", "all"));
   breakAllItem.addEventListener("click", () => handleMenuAction("break", "all"));
-  scrollHost.addEventListener("contextmenu", handleContextMenu);
+  split.addEventListener("contextmenu", handleContextMenu);
   documentRef.addEventListener?.("mousedown", handleDocumentPointerDown, true);
   documentRef.addEventListener?.("keydown", handleDocumentKeyDown, true);
   timerHost.addEventListener?.("resize", closeMenu);
@@ -942,11 +1016,16 @@ export function createLinksTab({
     contextRowId = "";
     closeMenu();
     resizeObserver?.disconnect();
-    scrollHost.removeEventListener("scroll", handleScroll);
-    scrollHost.removeEventListener("pointermove", handlePointerMove);
-    scrollHost.removeEventListener("pointerleave", handlePointerLeave);
-    scrollHost.removeEventListener("contextmenu", handleContextMenu);
-    scrollHost.classList.remove("isScrolling", "isScrollbarHover");
+    for (const { pane, handleScroll, handlePointerMove, handlePointerLeave } of paneListeners) {
+      pane.removeEventListener("scroll", handleScroll);
+      pane.removeEventListener("pointermove", handlePointerMove);
+      pane.removeEventListener("pointerleave", handlePointerLeave);
+      pane.classList.remove("isScrolling", "isScrollbarHover");
+    }
+    divider.removeEventListener("pointerdown", startSplitDrag);
+    divider.removeEventListener("dblclick", handleDividerDoubleClick);
+    split.removeEventListener("contextmenu", handleContextMenu);
+    root.classList.remove("isResizingSplit");
     documentRef.removeEventListener?.("mousedown", handleDocumentPointerDown, true);
     documentRef.removeEventListener?.("keydown", handleDocumentKeyDown, true);
     timerHost.removeEventListener?.("resize", closeMenu);
@@ -966,6 +1045,7 @@ export function createLinksTab({
     setWarning,
     clearWarning,
     getColumnWidth: (key) => widths.get(key),
+    getSplitRatio: () => sessionSplitRatio,
     destroy,
   };
   MOUNTED_LINKS_TABS.set(container, controller);

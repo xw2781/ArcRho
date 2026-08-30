@@ -134,16 +134,33 @@ function linkRecordId(link) {
   return `${link.formula}${link.target_cells.map(targetCellKey).join(";")}`;
 }
 
-/** Short names of the sources a formula reads: dataset names and workbook file names. */
-function formulaSourceNames(parsed) {
-  const names = [];
+/**
+ * The sources a formula reads, one per dataset or workbook however many
+ * references it makes to each: the Links tab lists a formula once per source,
+ * under that source's own kind.
+ */
+function formulaComponents(parsed) {
+  const components = new Map();
   for (const reference of parsed.references) {
-    const name = reference.kind === "internal"
-      ? reference.parsed.datasetName
-      : String(reference.parsed.filename || reference.parsed.bookPath || "");
-    if (name && !names.includes(name)) names.push(name);
+    const component = reference.kind === "internal"
+      ? { datasetName: String(reference.parsed.datasetName || "") }
+      : { workbookPath: String(reference.parsed.bookPath || "") };
+    const key = component.datasetName || component.workbookPath;
+    if (key && !components.has(key)) components.set(key, component);
   }
-  return names;
+  return Array.from(components.values());
+}
+
+// A component row's id carries its formula's id, so refreshing or breaking
+// any one row acts on the whole formula.
+const COMPONENT_ID_SEPARATOR = "#component-";
+
+function requestedLinkIds(ids) {
+  return new Set(
+    (Array.isArray(ids) ? ids : [ids])
+      .map((id) => String(id || "").split(COMPONENT_ID_SEPARATOR)[0])
+      .filter(Boolean),
+  );
 }
 
 function excelCellValue(result) {
@@ -348,20 +365,28 @@ export function createDatasetFormulaLinksController({
   }
 
   function listRecords() {
-    return links.map((link) => {
+    return links.flatMap((link) => {
       const targets = link.target_cells;
       const parsed = parseDatasetFormula(link.formula);
-      return {
-        id: linkRecordId(link),
+      const linkId = linkRecordId(link);
+      const record = {
         sourceKind: "formula",
         formula: link.formula,
         reference: link.formula,
-        sources: parsed.ok ? formulaSourceNames(parsed) : [],
         value: targetValuePreview(state?.model, targets, targets.length > 1),
         destination: describeTargetDestination(state?.model, targets) || "Data",
         affectedCellCount: targets.length,
         readOnly: !!isReadOnly(),
       };
+      // One row per source the formula reads, each filed under that source's
+      // kind; a formula the grammar rejects keeps a single row.
+      const components = parsed.ok ? formulaComponents(parsed) : [];
+      if (!components.length) return [{ id: linkId, ...record }];
+      return components.map((component, index) => ({
+        id: `${linkId}${COMPONENT_ID_SEPARATOR}${index}`,
+        ...record,
+        ...component,
+      }));
     });
   }
 
@@ -533,9 +558,7 @@ export function createDatasetFormulaLinksController({
    */
   async function refreshAll(ids = null, options = {}) {
     const markRefreshedCellsDirty = options?.markRefreshedCellsDirty === true;
-    const requestedIds = Array.isArray(ids)
-      ? new Set(ids.map((id) => String(id || "")).filter(Boolean))
-      : null;
+    const requestedIds = Array.isArray(ids) ? requestedLinkIds(ids) : null;
     const scopedLinks = requestedIds
       ? links.filter((link) => requestedIds.has(linkRecordId(link)))
       : links.slice();
@@ -605,9 +628,7 @@ export function createDatasetFormulaLinksController({
 
   function breakLinks(ids) {
     if (isReadOnly()) return { ok: false, error: "This dataset is read-only." };
-    const requestedIds = new Set(
-      (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean),
-    );
+    const requestedIds = requestedLinkIds(ids);
     const indexes = new Set();
     let affectedCellCount = 0;
     links.forEach((link, index) => {

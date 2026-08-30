@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Links tab in Dataset and DFM windows now has two sections, ArcRho and Excel, each headed by a colour stamp - blue for ArcRho, green for Excel - matching the outline those linked cells wear in the Data tab.",
+  "details": [
+    "The stamp replaces the grey section title and reads as the kind's name; no row carries a chip of its own.",
+    "The separate Formula section is gone: a formula is listed once per source it reads - each dataset under ArcRho and each workbook under Excel - and refreshing or breaking any of those rows acts on the whole formula.",
+    "A divider separates the two sections, starting at the middle of the tab; drag it to resize them or double-click it to put it back.",
+    "Each section's scrollbar now matches the Data and Audit Log tabs, with the same width and step arrows."
+  ]
+}

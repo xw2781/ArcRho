@@ -17,19 +17,40 @@
   box-sizing: border-box;
   color: #1f2937;
   font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
-  /* The formula badge wears the same colour here as its cells wear in the
-     grid; the spreadsheet sheet owns the token and this is its fallback for
-     a page that has not loaded it. */
-  --ar-links-formula: var(--ar-spreadsheet-formula-link-border, #7c3aed);
+  /* Each kind's stamp wears the same colour here as its cells' perimeter
+     wears in the Data tab grid — Excel green, ArcRho blue; the spreadsheet
+     sheet owns the tokens and these are its fallbacks for a page that has
+     not loaded it. */
+  --ar-links-excel: var(--ar-spreadsheet-excel-link-border, #217346);
+  --ar-links-internal: var(--ar-spreadsheet-internal-link-border, #2b6df6);
 }
 
 /* The Links context menu itself is styled by the shared context_menu.css. */
 
-/* The one framed scrolling area the whole tab shares: every section's table
-   sits inside it, so there is a single scrollbar for the tab and the tables
-   move together sideways instead of drifting apart. */
-.arExternalLinksScroll {
+/* The two framed panes, ArcRho above Excel, and the divider between them.
+   Each pane takes its share of the split by flex growth, so equal growth here
+   puts the divider in the middle until it is dragged. */
+.arLinksSplit {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.arLinksSplit[hidden] {
+  display: none;
+}
+
+/* A pane is a framed scrolling area of its own; the module keeps the two
+   scrolled to the same sideways position so their columns stay lined up. */
+.arExternalLinksScroll {
+  --ar-links-scrollbar-chrome: #f1f3f5;
+  --ar-links-scrollbar-button-hover: #e5e9ef;
+  --ar-links-scrollbar-button-active: #d9dee7;
+  --ar-links-scrollbar-thumb: rgba(182, 182, 182, 0.2);
+  --ar-links-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -40,45 +61,52 @@
   scrollbar-gutter: auto;
 }
 
-.arExternalLinksScroll[hidden] {
-  display: none;
+/* The divider: a grab lane between the panes drawing a 1px line in the
+   frame's own colour, tinted while it is hovered or dragged. */
+.arLinksDivider {
+  position: relative;
+  flex: 0 0 auto;
+  height: 7px;
+  cursor: row-resize;
+  touch-action: none;
 }
 
-/* One section per kind of link, stacked top to bottom inside the shared
-   frame and shown only while it has rows: ArcRho, then Excel, then Formula.
-   Each section is as tall as its rows; the frame does the scrolling. */
-.arLinksSections {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 7px 0;
-  min-width: 0;
+.arLinksDivider::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 0;
+  left: 0;
+  border-top: 1px solid #cbd5e1;
 }
 
-.arLinksSections[hidden] {
-  display: none;
+.arLinksDivider:hover::after,
+.arExternalLinks.isResizingSplit .arLinksDivider::after {
+  border-top-color: var(--ar-color-accent, #2b6df6);
 }
 
+.arExternalLinks.isResizingSplit,
+.arExternalLinks.isResizingSplit * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+/* One section per pane, as tall as its rows; the pane does the scrolling. */
 .arLinksSection {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  padding: 7px 0;
 }
 
-.arLinksSection[hidden] {
-  display: none;
-}
-
-/* The title holds the left edge while the tables are scrolled sideways. */
-.arLinksSectionTitle {
+/* The section label is a stamp in its kind's colour — the same chip a formula
+   row carries — and holds the left edge while the tables scroll sideways. */
+.arLinksSectionStamp {
   position: sticky;
-  left: 0;
-  margin: 0;
-  padding: 0 9px;
-  color: #64748b;
-  font: 700 11px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
-  line-height: 14px;
+  left: 9px;
+  align-self: flex-start;
+  margin: 0 0 0 9px;
 }
 
 /* Column widths are set on the colgroup and the table is their sum, so a
@@ -203,28 +231,14 @@
   white-space: nowrap;
 }
 
-.arLinksCell-source {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.arLinksCell-source .arLinksCellText {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .arLinksCell-cells {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-/* The kind badge: a quiet tinted chip in the link's own colour, written as
-   the name reads. Only a formula row carries one; the section title names
-   the kind for every other row. */
+/* The kind stamp: a quiet tinted chip in the link's own colour, written as
+   the name reads. Every section is headed by one; the rows carry none. */
 .arLinksKind {
-  flex: 0 0 auto;
   display: inline-block;
   min-width: 44px;
   padding: 0 5px;
@@ -238,8 +252,12 @@
   text-align: center;
 }
 
-.arLinksKind-formula {
-  --ar-links-kind: var(--ar-links-formula);
+.arLinksKind-excel {
+  --ar-links-kind: var(--ar-links-excel);
+}
+
+.arLinksKind-internal {
+  --ar-links-kind: var(--ar-links-internal);
 }
 
 .arExternalLinksState {
@@ -308,28 +326,71 @@
   line-height: 1.35;
 }
 
+/* The same framed scrollbar the Data and Audit Log tabs draw: a 20px lane
+   with a step arrow at each end. */
 .arExternalLinksScroll::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
 }
 
 .arExternalLinksScroll::-webkit-scrollbar-track,
 .arExternalLinksScroll::-webkit-scrollbar-corner {
-  background: #f1f3f5;
+  background: var(--ar-links-scrollbar-chrome);
 }
 
 .arExternalLinksScroll::-webkit-scrollbar-thumb {
-  min-width: 28px;
-  min-height: 28px;
-  border: 4px solid #f1f3f5;
+  border: 3px solid var(--ar-links-scrollbar-chrome);
   border-radius: 5px;
-  background: rgba(182, 182, 182, 0.2);
+  background-color: var(--ar-links-scrollbar-thumb);
   background-clip: content-box;
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-color: var(--ar-links-scrollbar-chrome);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:hover {
+  background-color: var(--ar-links-scrollbar-button-hover);
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:active {
+  background-color: var(--ar-links-scrollbar-button-active);
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:horizontal:start:increment,
+.arExternalLinksScroll::-webkit-scrollbar-button:horizontal:end:decrement,
+.arExternalLinksScroll::-webkit-scrollbar-button:vertical:start:increment,
+.arExternalLinksScroll::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background-image: none;
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+}
+
+.arExternalLinksScroll::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
 }
 
 .arExternalLinksScroll.isScrolling::-webkit-scrollbar-thumb,
 .arExternalLinksScroll.isScrollbarHover::-webkit-scrollbar-thumb,
 .arExternalLinksScroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 120, 120, 0.267);
-  background-clip: content-box;
+  background-color: var(--ar-links-scrollbar-thumb-active);
 }

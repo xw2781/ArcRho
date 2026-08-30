@@ -246,7 +246,7 @@ function byClass(root, className) {
   return descendants(root).filter((element) => element.classList.contains(className));
 }
 
-/** Every rendered row, in page order across the ArcRho, Excel, and Formula sections. */
+/** Every rendered row, in page order across the ArcRho and Excel sections. */
 function allRows(root) {
   return byTag(root, "tbody").flatMap((body) => body.children);
 }
@@ -273,11 +273,11 @@ function visibleMenuLabels(documentRef) {
     .map(renderedText);
 }
 
-/** Right-clicks the tab's one scroll host below the rows, which never changes the selection. */
+/** Right-clicks the split below the rows, which never changes the selection. */
 async function openHostMenu(documentRef, container) {
-  const scrollHost = byClass(container.children[0], "arExternalLinksScroll")[0];
-  await scrollHost.dispatch("contextmenu", { clientX: 40, clientY: 60 });
-  return scrollHost;
+  const splitHost = byClass(container.children[0], "arLinksSplit")[0];
+  await splitHost.dispatch("contextmenu", { clientX: 40, clientY: 60 });
+  return splitHost;
 }
 
 async function runMenuAction(documentRef, container, action) {
@@ -333,10 +333,10 @@ const internalLink = {
 };
 
 const formulaLink = {
-  id: "formula-1",
+  id: "formula-1#component-0",
   sourceKind: "formula",
   formula: "=[C 82 - Prior Qtr Selected][1:7] * 2",
-  sources: ["C 82 - Prior Qtr Selected"],
+  datasetName: "C 82 - Prior Qtr Selected",
   destination: "2017 / Value + 6 more",
   value: "29604...",
   affectedCellCount: 7,
@@ -376,20 +376,33 @@ test("renders one compact row per link and offers the bulk actions through the c
   assert.deepEqual(visibleMenuLabels(documentRef), ["Refresh all", "Break all"]);
   assert.equal(byClass(menu, "ctx-sep")[0].hidden, true);
 
-  // One framed scroll host for the whole tab, with one table per section
-  // stacked inside it in page order; only the Excel one shows.
-  const scrollHosts = byClass(root, "arExternalLinksScroll");
-  assert.equal(scrollHosts.length, 1);
-  assert.equal(scrollHosts[0].hidden, false);
-  assert.equal(byClass(root, "arLinksSections")[0].parentElement, scrollHosts[0]);
+  // Two framed panes in page order, ArcRho above Excel, with the divider
+  // between them; both stay in view even while one of them has no rows.
+  const splitHost = byClass(root, "arLinksSplit")[0];
+  assert.equal(splitHost.hidden, false);
+  const panes = byClass(root, "arExternalLinksScroll");
+  assert.equal(panes.length, 2);
+  assert.deepEqual(panes.map((pane) => pane.dataset.linkKind), ["internal", "excel"]);
+  const divider = byClass(root, "arLinksDivider")[0];
+  assert.deepEqual(splitHost.children, [panes[0], divider, panes[1]]);
+  assert.equal(divider.getAttribute("role"), "separator");
   const sections = byClass(root, "arLinksSection");
-  assert.deepEqual(sections.map((section) => section.dataset.linkKind), ["internal", "excel", "formula"]);
+  assert.deepEqual(sections.map((section) => section.parentElement), panes);
+  assert.deepEqual(sections.map((section) => section.dataset.linkKind), ["internal", "excel"]);
+  // Each section is headed by a stamp in its kind's colour that reads as the
+  // kind's name; it is the only place the kind is written.
+  const stamps = sections.map((section) => byClass(section, "arLinksSectionStamp")[0]);
+  assert.deepEqual(stamps.map(renderedText), ["ArcRho", "Excel"]);
   assert.deepEqual(
-    sections.map((section) => renderedText(byClass(section, "arLinksSectionTitle")[0])),
-    ["ArcRho Links", "Excel Links", "Formula Links"],
+    stamps.map((stamp) => stamp.className),
+    [
+      "arLinksSectionStamp arLinksKind arLinksKind-internal",
+      "arLinksSectionStamp arLinksKind arLinksKind-excel",
+    ],
   );
-  assert.deepEqual(sections.map((section) => section.hidden), [true, false, true]);
-  assert.equal(byClass(root, "arLinksSections")[0].hidden, false);
+  assert.equal(byClass(root, "arLinksSectionTitle").length, 0);
+  assert.deepEqual(sections.map((section) => section.hidden), [false, false]);
+  assert.deepEqual(byTag(sections[0], "tbody")[0].children, []);
 
   const table = byTag(sections[1], "table")[0];
   assert.deepEqual(byTag(table, "th").map(renderedText), ["Source", "Reference", "Destination", "Cells"]);
@@ -418,12 +431,27 @@ test("renders one compact row per link and offers the bulk actions through the c
   assert.equal(byClass(root, "arExternalLinksState")[0].hidden, true);
 });
 
-test("ArcRho links sit in the top section, Excel below, and formulas last, with only the formula badge and its own open entry", async () => {
+test("ArcRho links sit in the top section, Excel below, and a formula's rows join the sections of what it reads", async () => {
   const opened = [];
+  const openedWorkbooks = [];
+  // The page lists a formula once per source it reads; this is the workbook
+  // row of a formula that also reads a dataset.
+  const workbookFormulaLink = {
+    id: "formula-2#component-1",
+    sourceKind: "formula",
+    formula: "=[C 82 - Prior Qtr Selected][1:7] * 'C:\\Claims\\[Quarterly Book.xlsx]Paid Loss'!A1",
+    workbookPath: "C:\\Claims\\Quarterly Book.xlsx",
+    destination: "2017 / Value + 6 more",
+    affectedCellCount: 7,
+  };
   const { documentRef, container, controller } = setup({
-    getLinks: () => [sampleLink, internalLink, formulaLink],
+    getLinks: () => [sampleLink, internalLink, formulaLink, workbookFormulaLink],
     onOpenDataset: (record) => {
       opened.push(record.datasetName);
+      return { ok: true };
+    },
+    onOpenWorkbook: (path) => {
+      openedWorkbooks.push(path);
       return { ok: true };
     },
   });
@@ -431,20 +459,28 @@ test("ArcRho links sit in the top section, Excel below, and formulas last, with 
 
   const root = container.children[0];
   const sections = byClass(root, "arLinksSection");
-  assert.deepEqual(sections.map((section) => section.hidden), [false, false, false]);
-  // Rows follow the section order on the page, not the order the page gave them.
+  assert.deepEqual(sections.map((section) => section.hidden), [false, false]);
+  // Rows follow the section order on the page, not the order the page gave
+  // them: a formula's dataset row files under ArcRho and its workbook row
+  // under Excel, each after the plain links of its section.
   const rows = allRows(root);
-  assert.deepEqual(rows.map((row) => row.dataset.linkKind), ["internal", "excel", "formula"]);
-  rows.forEach((row, index) => assert.equal(row.parentElement, byTag(sections[index], "tbody")[0]));
-  assert.equal(byClass(rows[0].children[0], "arLinksKind").length, 0);
-  assert.equal(byClass(rows[1].children[0], "arLinksKind").length, 0);
+  assert.deepEqual(rows.map((row) => row.dataset.linkKind), ["internal", "internal", "excel", "excel"]);
+  assert.deepEqual(
+    rows.map((row) => row.parentElement),
+    [0, 0, 1, 1].map((index) => byTag(sections[index], "tbody")[0]),
+  );
+  // The section stamp names the kind, so no row carries a chip of its own.
+  for (const row of rows) assert.equal(byClass(row.children[0], "arLinksKind").length, 0);
   assert.equal(byClass(rows[0].children[0], "arLinksCellText")[0].textContent, "C 82 - Prior Qtr Selected");
   assert.equal(renderedText(rows[0].children[1]), "[1:7]");
   assert.equal(renderedText(rows[0].children[2]), internalLink.destination);
-  assert.equal(renderedText(byClass(rows[2].children[0], "arLinksKind")[0]), "Formula");
-  assert.equal(byClass(rows[2].children[0], "arLinksCellText")[0].textContent, "C 82 - Prior Qtr Selected");
-  assert.equal(renderedText(rows[2].children[1]), formulaLink.formula);
-  assert.equal(renderedText(rows[2].children[3]), "7");
+  assert.equal(byClass(rows[1].children[0], "arLinksCellText")[0].textContent, "C 82 - Prior Qtr Selected");
+  assert.equal(renderedText(rows[1].children[1]), formulaLink.formula);
+  assert.equal(renderedText(rows[1].children[3]), "7");
+  assert.equal(renderedText(rows[2].children[0]), "Quarterly Book.xlsx");
+  assert.equal(renderedText(rows[2].children[1]), "Paid Loss!A1:C2");
+  assert.equal(renderedText(rows[3].children[0]), "Quarterly Book.xlsx");
+  assert.equal(renderedText(rows[3].children[1]), workbookFormulaLink.formula);
 
   await rows[0].dispatch("contextmenu", { clientX: 12, clientY: 24 });
   assert.deepEqual(visibleMenuLabels(documentRef), [
@@ -457,14 +493,28 @@ test("ArcRho links sit in the top section, Excel below, and formulas last, with 
   await menuItem(documentRef, "open-dataset").click();
   assert.deepEqual(opened, ["C 82 - Prior Qtr Selected"]);
 
-  // A formula row has nothing to open, so the menu starts at the actions.
-  await rows[2].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  // A formula's rows open the source each one stands for, like a plain link.
+  await rows[1].dispatch("contextmenu", { clientX: 12, clientY: 24 });
   assert.deepEqual(visibleMenuLabels(documentRef), [
+    "Open source dataset",
     "Refresh selected",
     "Break selected",
     "Refresh all",
     "Break all",
   ]);
+  await menuItem(documentRef, "open-dataset").click();
+  assert.deepEqual(opened, ["C 82 - Prior Qtr Selected", "C 82 - Prior Qtr Selected"]);
+  await rows[3].dispatch("contextmenu", { clientX: 12, clientY: 24 });
+  assert.deepEqual(visibleMenuLabels(documentRef), [
+    "Open workbook",
+    "Open workbook as Read-Only",
+    "Refresh selected",
+    "Break selected",
+    "Refresh all",
+    "Break all",
+  ]);
+  await menuItem(documentRef, "open-workbook").click();
+  assert.deepEqual(openedWorkbooks, ["C:\\Claims\\Quarterly Book.xlsx"]);
 });
 
 test("plain, Ctrl, Meta, and Shift clicks provide accessible multi-row selection", async () => {
@@ -849,7 +899,7 @@ test("the shared columns re-fit whenever the host resizes, and a short table kee
     }
 
     observe(target) {
-      this.target = target;
+      (this.targets ||= []).push(target);
     }
 
     disconnect() {
@@ -861,25 +911,26 @@ test("the shared columns re-fit whenever the host resizes, and a short table kee
     const { container, controller } = setup({ getLinks: () => [sampleLink, internalLink] });
     await controller.refresh();
     const root = container.children[0];
-    const scrollHost = byClass(root, "arExternalLinksScroll")[0];
-    const sectionsHost = byClass(root, "arLinksSections")[0];
+    const panes = byClass(root, "arExternalLinksScroll");
+    const [scrollHost] = panes;
     const tables = byTag(root, "table");
-    assert.equal(byClass(root, "arExternalLinksScroll").length, 1);
+    assert.equal(panes.length, 2);
     assert.equal(observers.length, 1);
-    assert.equal(observers[0].target, sectionsHost);
+    assert.deepEqual(observers[0].targets, panes);
 
-    // The host gains width: the defaults stretch to the width the shared
-    // frame leaves once its own scrollbar has taken its lane, so the stack
-    // never gains a horizontal scrollbar from the fit.
-    sectionsHost.clientWidth = 986;
+    // The panes gain width: the defaults stretch to the width the narrower
+    // pane leaves once its own scrollbar has taken its lane, so neither pane
+    // gains a horizontal scrollbar from the fit.
+    panes[0].clientWidth = 1006;
+    panes[1].clientWidth = 986;
     observers[0].callback();
     assert.equal(controller.getColumnWidth("source"), 354);
     assert.equal(controller.getColumnWidth("cells"), 88);
     for (const table of tables) assert.equal(table.style.width, "986px");
     assert.equal(scrollHost.classList.contains("isTableShort"), false);
 
-    // The host shrinks: the defaults scale back down, never below themselves.
-    sectionsHost.clientWidth = 600;
+    // The panes shrink: the defaults scale back down, never below themselves.
+    for (const pane of panes) pane.clientWidth = 600;
     observers[0].callback();
     for (const table of tables) assert.equal(table.style.width, "724px");
     assert.equal(scrollHost.classList.contains("isTableShort"), false);
@@ -890,10 +941,10 @@ test("the shared columns re-fit whenever the host resizes, and a short table kee
     await resizer.dispatch("pointerdown", { clientX: 100, pointerId: 1 });
     await resizer.dispatch("pointermove", { clientX: 60 });
     await resizer.dispatch("pointerup", { clientX: 60 });
-    sectionsHost.clientWidth = 1000;
+    for (const pane of panes) pane.clientWidth = 1000;
     observers[0].callback();
     for (const table of tables) assert.equal(table.style.width, "684px");
-    assert.equal(scrollHost.classList.contains("isTableShort"), true);
+    for (const pane of panes) assert.equal(pane.classList.contains("isTableShort"), true);
 
     // Restoring the default hands the column back to the fit, which resumes.
     await resizer.dispatch("dblclick");
@@ -907,11 +958,66 @@ test("the shared columns re-fit whenever the host resizes, and a short table kee
   }
 });
 
+test("the divider starts at the middle, drags between the panes, and double-clicks back", async () => {
+  const { container, controller } = setup({ getLinks: () => [sampleLink, internalLink] });
+  await controller.refresh();
+  const root = container.children[0];
+  const splitHost = byClass(root, "arLinksSplit")[0];
+  const panes = byClass(root, "arExternalLinksScroll");
+  const divider = byClass(root, "arLinksDivider")[0];
+  // Until it is dragged the stylesheet's equal growth places it; the module
+  // writes nothing.
+  assert.equal(controller.getSplitRatio(), 0.5);
+  for (const pane of panes) assert.equal(pane.style.flexGrow, undefined);
+
+  splitHost.getBoundingClientRect = () => ({ top: 100, height: 407 });
+  divider.offsetHeight = 7;
+  await divider.dispatch("pointerdown", { clientY: 303, pointerId: 1 });
+  assert.equal(root.classList.contains("isResizingSplit"), true);
+  // The divider follows the pointer from where it was grabbed: 100px up over
+  // a 400px track (the split less the divider) is a quarter of the way.
+  await divider.dispatch("pointermove", { clientY: 203 });
+  assert.equal(controller.getSplitRatio(), 0.25);
+  assert.equal(panes[0].style.flexGrow, "0.25");
+  assert.equal(panes[1].style.flexGrow, "0.75");
+  // Neither pane may be dragged shorter than its stamp and header row.
+  await divider.dispatch("pointermove", { clientY: 100 });
+  assert.equal(controller.getSplitRatio(), 0.16);
+  await divider.dispatch("pointermove", { clientY: 900 });
+  assert.equal(controller.getSplitRatio(), 0.84);
+  await divider.dispatch("pointerup", { clientY: 900 });
+  assert.equal(root.classList.contains("isResizingSplit"), false);
+
+  // The place survives a re-mount within the page session, like a dragged
+  // column width, and a double-click hands it back to the middle.
+  controller.destroy();
+  const remounted = setup({ getLinks: () => [sampleLink, internalLink] });
+  await remounted.controller.refresh();
+  const remountedPanes = byClass(remounted.container.children[0], "arExternalLinksScroll");
+  assert.equal(remounted.controller.getSplitRatio(), 0.84);
+  assert.equal(remountedPanes[0].style.flexGrow, "0.84");
+  await byClass(remounted.container.children[0], "arLinksDivider")[0].dispatch("dblclick");
+  assert.equal(remounted.controller.getSplitRatio(), 0.5);
+  for (const pane of remountedPanes) assert.equal(pane.style.flexGrow, "");
+  remounted.controller.destroy();
+});
+
 test("shared styling keeps the compact framed tables and colours the kind badges by link", () => {
   assert.doesNotMatch(stylesheetSource, /arExternalLinksToolbar/u);
-  // One quiet section label per kind, and a table narrower than its frame
-  // draws its own right edge on the last column.
-  assert.match(stylesheetSource, /\.arLinksSectionTitle \{[^}]*font: 700 11px/u);
+  // One stamp per kind heads its section, each in the colour that kind's cells
+  // wear in the Data tab grid, and a table narrower than its frame draws its
+  // own right edge on the last column.
+  assert.doesNotMatch(stylesheetSource, /arLinksSectionTitle/u);
+  assert.match(stylesheetSource, /\.arLinksSectionStamp \{[^}]*position: sticky;/u);
+  assert.match(stylesheetSource, /--ar-links-excel: var\(--ar-spreadsheet-excel-link-border, #217346\);/u);
+  assert.match(stylesheetSource, /--ar-links-internal: var\(--ar-spreadsheet-internal-link-border, #2b6df6\);/u);
+  assert.match(stylesheetSource, /\.arLinksKind-excel \{\s*--ar-links-kind: var\(--ar-links-excel\);/u);
+  assert.match(stylesheetSource, /\.arLinksKind-internal \{\s*--ar-links-kind: var\(--ar-links-internal\);/u);
+  // The framed scrollbar matches the Data and Audit Log tabs: a 20px lane with
+  // step arrows, on the same chrome tokens the dark theme re-points.
+  assert.match(stylesheetSource, /\.arExternalLinksScroll::-webkit-scrollbar \{\s*width: 20px;\s*height: 20px;/u);
+  assert.match(stylesheetSource, /\.arExternalLinksScroll::-webkit-scrollbar-button \{\s*display: block;/u);
+  assert.match(stylesheetSource, /--ar-links-scrollbar-chrome: #f1f3f5;/u);
   assert.match(
     stylesheetSource,
     /\.isTableShort \.arExternalLinksTable td:last-child \{\s*border-right: 1px solid #e2e8f0;/u,
@@ -935,10 +1041,8 @@ test("shared styling keeps the compact framed tables and colours the kind badges
   assert.match(stylesheetSource, /height:\s*31px;/u);
   assert.match(stylesheetSource, /tbody tr\[aria-selected="true"\]/u);
   assert.match(stylesheetSource, /\.arLinksColResizer \{[^}]*cursor:\s*col-resize;/u);
-  // Only the formula badge survives, so only its colour token is declared.
-  assert.match(stylesheetSource, /--ar-links-formula: var\(--ar-spreadsheet-formula-link-border, #7c3aed\);/u);
-  assert.doesNotMatch(stylesheetSource, /--ar-links-excel:/u);
-  assert.doesNotMatch(stylesheetSource, /--ar-links-internal:/u);
+  // With no Formula section there is no formula stamp, so no formula token.
+  assert.doesNotMatch(stylesheetSource, /--ar-links-formula|arLinksKind-formula/u);
   assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkCell\s*\{/u);
   assert.doesNotMatch(stylesheetSource, /td\.arExternalLinkAnchor::after/u);
   const arrayRule = spreadsheetStylesheetSource.match(
