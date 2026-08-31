@@ -20,7 +20,7 @@ import {
   shouldShowDatasetGridTotals,
   sumDatasetGridColumn,
   sumDatasetGridRow,
-} from "/ui/shared/tabs/data/dataset_grid_totals.js?v=20260811a";
+} from "/ui/shared/tabs/data/dataset_grid_totals.js?v=20260830a";
 
 let ctxMenuWired = false;
 let renderNumberFormatSettings = null;

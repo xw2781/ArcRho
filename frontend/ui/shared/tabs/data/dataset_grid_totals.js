@@ -1,6 +1,8 @@
 export function shouldShowDatasetGridTotals({ isDfmHost = false, formula = "", showSubtotal = true } = {}) {
-  const normalizedFormula = String(formula || "").trim();
-  if (isDfmHost) return !/[*/]/.test(normalizedFormula);
+  // Quoted dataset names may themselves contain / or *; only bare operators count.
+  const formulaOperators = String(formula || "").replace(/"[^"]*"/g, "").trim();
+  if (isDfmHost) return !/[*/]/.test(formulaOperators);
+  if (formulaOperators.includes("/")) return false;
   return showSubtotal !== false;
 }
 

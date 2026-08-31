@@ -47,9 +47,28 @@ const {
 } = await import(helperModuleUrl);
 
 test("Dataset Viewer follows the persisted Show subtotal setting", () => {
-  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid / Reported", showSubtotal: true }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid + Reported", showSubtotal: true }), true);
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid + Reported", showSubtotal: false }), false);
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false }), true);
+});
+
+test("Dataset Viewer hides the total row for ratio formulas", () => {
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid / Reported", showSubtotal: true }), false);
+  assert.equal(
+    shouldShowDatasetGridTotals({
+      isDfmHost: false,
+      formula: '"Claim Counts--Total Closed" / "Claim Counts--Reported"',
+      showSubtotal: true,
+    }),
+    false,
+  );
+  // A slash inside a quoted dataset name is not a division operator.
+  assert.equal(
+    shouldShowDatasetGridTotals({ isDfmHost: false, formula: '"Closed w/ Payment" + "Closed w/o Payment"', showSubtotal: true }),
+    true,
+  );
+  // Products keep the total row in the Dataset Viewer; only ratios lose it.
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid * 0.80", showSubtotal: true }), true);
 });
 
 test("Dataset Viewer exposes a standard Show/Hide subtotal context-menu command", () => {
@@ -152,6 +171,7 @@ test("DFM retains its multiplication and division total-row policy", () => {
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: true, formula: "Paid / Reported" }), false);
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: true, formula: "Paid + Reported" }), true);
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: true, formula: "" }), true);
+  assert.equal(shouldShowDatasetGridTotals({ isDfmHost: true, formula: '"Closed w/ Payment" + "Closed w/o Payment"' }), true);
 });
 
 test("the standard Total row extends the selectable row boundary", () => {
