@@ -5,8 +5,10 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d511dbf6-2709-4c0e-8cd6-0f920620fee8
-  modified: 2026-08-31T15:40:04.631Z
+  modified: 2026-08-31T16:23:59.488Z
 ---
+
+**Implemented 2026-08-31** (same session, uncommitted at first write): items 1, 2, and 4 below are coded, tested (unit suites green; pre-existing failures baselined via a HEAD worktree), and documented (business_logic_contract rules 15/19, dataset + dependent_propagation domain docs, ui docs, three release fragments). Key new pieces: `arcrho_api/dataset_link_contract.py` (canonical grammar/eval/edges, services delegate), `app_server/services/dataset_link_refresh_service.py` (Engine-side link evaluation, Excel keep-stale warnings), `_refresh_link_driven_dependents` waves in `calculated_dataset_service`, `known_instance_names`-gated translation in `resq_migration.extractors`, delete `downstream_closure` + busy preflight + PI chain-delete dialog. Deploy via deploy.py ran at session end — verify components landed before relying on server behavior.
 
 Design decisions agreed with the user on 2026-08-31 (session following [[resq-formula-belongs-to-type]]):
 
