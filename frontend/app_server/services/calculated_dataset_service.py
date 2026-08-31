@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.dataset_link_contract import link_precedent_names
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -338,6 +339,8 @@ def apply_sidecar_graph_fields(
         _clean_text(payload.get("reserving_class")),
     )
     reserving_class = _clean_text(payload.get("reserving_class"))
+    own_dataset_name = _clean_text(payload.get("dataset_name")) or dataset_type
+    own_key = _canon_dataset_name(own_dataset_name)
     preserved_method_dependents: List[str] = []
     if reserving_class and existing_dependent_names:
         futures = {
@@ -349,10 +352,17 @@ def apply_sidecar_graph_fields(
         }
         for name in existing_dependent_names:
             dependent = futures[name].result()
+            # A dependent survives the type-graph rebuild when it is a method
+            # (the graph cannot re-derive a method edge) or when its own
+            # sidecar still names this dataset as a precedent -- the
+            # instance-level edge an ArcRho cell link put there.
             if not dependent or dataset_sidecar_status_service.normalize_method_type(
                 dependent.get("method_type"),
                 dependent.get("source_kind"),
-            ) != dataset_sidecar_status_service.METHOD_TYPE_NONE:
+            ) != dataset_sidecar_status_service.METHOD_TYPE_NONE or own_key in {
+                _canon_dataset_name(entry_name)
+                for entry_name in dataset_sidecar_status_service.entry_names(dependent.get("precedents"))
+            }:
                 preserved_method_dependents.append(name)
     graph_fields["dependents"] = dataset_sidecar_status_service.merge_name_entries(
         graph_fields.get("dependents"),
@@ -360,6 +370,25 @@ def apply_sidecar_graph_fields(
     )
     if owning_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE:
         graph_fields["precedents"] = existing_precedents if isinstance(existing_precedents, list) else []
+    else:
+        # ArcRho cell links are instance-level precedent edges on top of the
+        # dataset-type formula graph: the dependent-propagation walk follows
+        # them to re-evaluate the linked cells when a source dataset changes.
+        # Excel references contribute no edge, and a self-reference never
+        # records one.
+        linked_names = [
+            name
+            for name in link_precedent_names(
+                payload.get("internal_links"),
+                payload.get("formula_links"),
+            )
+            if _canon_dataset_name(name) != own_key
+        ]
+        if linked_names:
+            graph_fields["precedents"] = dataset_sidecar_status_service.merge_name_entries(
+                graph_fields.get("precedents"),
+                dataset_sidecar_status_service.name_entries(linked_names),
+            )
     payload.update(graph_fields)
     payload.pop("dependencies", None)
     return payload
@@ -1601,6 +1630,90 @@ def recalculate_dataset(
         )
 
 
+def _refresh_link_driven_dependents(
+    project_name: str,
+    reserving_class: str,
+    root_names: Sequence[str],
+    visited_keys: Set[str],
+    link_updates: Dict[str, List[Any]],
+) -> List[str]:
+    """Refresh every link-driven dataset a set of fresh roots reaches.
+
+    Follows the roots' persisted ``dependents`` edges to plain input datasets
+    whose cells are driven by ArcRho links, re-evaluates each one through
+    ``dataset_link_refresh_service``, and chains onward through link-driven
+    dependents of what it refreshed. ``visited_keys`` carries everything this
+    walk already rewrote or visited, which is the cycle guard: a dataset is
+    refreshed at most once per walk, so a link that points back upstream (a
+    candidate ultimate reading the Result Selection it feeds, say) converges
+    instead of looping. Returns the datasets whose values changed; failures
+    and Excel keep-stale warnings accumulate into ``link_updates``.
+    """
+
+    from app_server.services import dataset_link_refresh_service
+
+    queue: List[str] = [_clean_text(name) for name in root_names if _clean_text(name)]
+    fresh: List[str] = []
+    walked_roots: Set[str] = set()
+    while queue:
+        root = queue.pop(0)
+        root_key = _canon_dataset_name(root)
+        if not root_key or root_key in walked_roots:
+            continue
+        walked_roots.add(root_key)
+        root_payload = dataset_sidecar_status_service.read_sidecar(
+            dataset_sidecar_status_service.sidecar_path(project_name, reserving_class, root)
+        )
+        for name in dataset_sidecar_status_service.entry_names((root_payload or {}).get("dependents")):
+            key = _canon_dataset_name(name)
+            if not key or key in visited_keys:
+                continue
+            dependent = dataset_sidecar_status_service.read_sidecar(
+                dataset_sidecar_status_service.sidecar_path(project_name, reserving_class, name)
+            )
+            if not dependent:
+                continue
+            if dataset_sidecar_status_service.normalize_method_type(
+                dependent.get("method_type"), dependent.get("source_kind")
+            ) != dataset_sidecar_status_service.METHOD_TYPE_NONE:
+                continue
+            if _clean_text(dependent.get("source_kind")).casefold() != "input":
+                continue
+            if not (dependent.get("internal_links") or dependent.get("formula_links")):
+                continue
+            visited_keys.add(key)
+            try:
+                result = dataset_link_refresh_service.refresh_dataset_links(
+                    project_name, reserving_class, name
+                )
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "dataset_name": name,
+                    "reason": "link_error",
+                    "errors": [str(exc)],
+                }
+            for warning in result.get("warnings") or []:
+                link_updates["warnings"].append({
+                    "dataset_name": name,
+                    "reference": str(warning.get("reference") or ""),
+                    "reason": str(warning.get("reason") or ""),
+                })
+            if not result.get("ok"):
+                link_updates["failed"].append(name)
+                link_updates["errors"].append({
+                    "dataset_name": name,
+                    "reason": _clean_text(result.get("reason")) or "link_error",
+                    "errors": [str(item) for item in result.get("errors") or []],
+                })
+                continue
+            if result.get("changed"):
+                fresh.append(name)
+                link_updates["refreshed"].append(name)
+                queue.append(name)
+    return fresh
+
+
 def _recalculate_dependents_impl(
     project_name: str,
     reserving_class: str,
@@ -1674,6 +1787,30 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
     changed.extend([*dfm_output_names, *failed_dfm_names])
+    # Link-driven datasets (plain inputs whose cells are driven by ArcRho
+    # links) refresh in the wave order their sources publish in: once here for
+    # links reading the saved roots and DFM outputs, once per recalculated
+    # dataset inside the loop below, and once more after the method waves for
+    # links reading method outputs. ``visited_link_keys`` is the cycle guard.
+    link_updates: Dict[str, List[Any]] = {
+        "refreshed": [],
+        "failed": [],
+        "warnings": [],
+        "errors": [],
+    }
+    visited_link_keys: Set[str] = {
+        _canon_dataset_name(name) for name in changed if _canon_dataset_name(name)
+    }
+    _notify("linked_datasets", 0, 0, "Refreshing link-driven datasets")
+    changed.extend(
+        _refresh_link_driven_dependents(
+            project_name,
+            reserving_class,
+            changed,
+            visited_link_keys,
+            link_updates,
+        )
+    )
     dataset_type_rows = _dataset_type_rows(project_name)
     targets = list(_existing_downstream_keys(project_name, reserving_class, changed, dataset_type_rows))
     rows_by_key = {
@@ -1801,6 +1938,23 @@ def _recalculate_dependents_impl(
                 ):
                     if next_key not in processed_target_keys and next_key not in targets:
                         targets.append(next_key)
+        if result.get("ok"):
+            link_fresh_names = _refresh_link_driven_dependents(
+                project_name,
+                reserving_class,
+                [_clean_text(result.get("dataset_type_name") or row["name"])],
+                visited_link_keys,
+                link_updates,
+            )
+            for name in link_fresh_names:
+                for next_key in _existing_downstream_keys(
+                    project_name,
+                    reserving_class,
+                    [name],
+                    dataset_type_rows,
+                ):
+                    if next_key not in processed_target_keys and next_key not in targets:
+                        targets.append(next_key)
 
     failed_dataset_names = [
         _clean_text(result.get("dataset_type_name"))
@@ -1825,6 +1979,8 @@ def _recalculate_dependents_impl(
                 *changed_root_names,
                 *dfm_output_names,
                 *failed_dfm_names,
+                *link_updates["refreshed"],
+                *link_updates["failed"],
             ]
             fresh_names.extend(
                 item.get("dataset_type_name")
@@ -1837,7 +1993,11 @@ def _recalculate_dependents_impl(
                 fresh_names,
                 rebuild_index=False,
                 allow_status_current=True,
-                blocked_precedent_names=[*failed_dfm_names, *failed_dataset_names],
+                blocked_precedent_names=[
+                    *failed_dfm_names,
+                    *failed_dataset_names,
+                    *link_updates["failed"],
+                ],
                 finalize_method_review_status=False,
             )
         except Exception as err:
@@ -1903,6 +2063,8 @@ def _recalculate_dependents_impl(
                 *failed_dfm_names,
                 *calculated_fresh_names,
                 *failed_dataset_names,
+                *link_updates["refreshed"],
+                *link_updates["failed"],
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
             ]
@@ -1915,6 +2077,7 @@ def _recalculate_dependents_impl(
                     *failed_dfm_names,
                     *failed_dataset_names,
                     *failed_result_selection_names,
+                    *link_updates["failed"],
                 ],
                 finalize_method_review_status=False,
             )
@@ -1997,6 +2160,8 @@ def _recalculate_dependents_impl(
                 *failed_dfm_names,
                 *calculated_fresh_names,
                 *failed_dataset_names,
+                *link_updates["refreshed"],
+                *link_updates["failed"],
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
                 *berquist_sherman_fresh_names,
@@ -2012,6 +2177,7 @@ def _recalculate_dependents_impl(
                     *failed_dataset_names,
                     *failed_result_selection_names,
                     *failed_berquist_sherman_names,
+                    *link_updates["failed"],
                 ],
                 finalize_method_review_status=False,
             )
@@ -2082,6 +2248,8 @@ def _recalculate_dependents_impl(
                 *failed_dfm_names,
                 *calculated_fresh_names,
                 *failed_dataset_names,
+                *link_updates["refreshed"],
+                *link_updates["failed"],
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
                 *berquist_sherman_fresh_names,
@@ -2100,6 +2268,7 @@ def _recalculate_dependents_impl(
                     *failed_result_selection_names,
                     *failed_berquist_sherman_names,
                     *failed_bornhuetter_ferguson_names,
+                    *link_updates["failed"],
                 ],
                 finalize_method_review_status=False,
             )
@@ -2184,6 +2353,8 @@ def _recalculate_dependents_impl(
                 *failed_dfm_names,
                 *calculated_fresh_names,
                 *failed_dataset_names,
+                *link_updates["refreshed"],
+                *link_updates["failed"],
                 *result_selection_fresh_names,
                 *failed_result_selection_names,
                 *berquist_sherman_fresh_names,
@@ -2205,6 +2376,7 @@ def _recalculate_dependents_impl(
                     *failed_berquist_sherman_names,
                     *failed_bornhuetter_ferguson_names,
                     *failed_cape_cod_names,
+                    *link_updates["failed"],
                 ],
                 finalize_method_review_status=False,
             )
@@ -2214,6 +2386,46 @@ def _recalculate_dependents_impl(
                 "errors": [{"reason": str(err)}],
                 "updated": [],
             }
+
+    # The late link pass covers links that read method outputs — a candidate
+    # ultimate computed from the Result Selection's published indicated, say.
+    # Methods reading what it refreshed cannot be re-walked inside this walk
+    # (the cycle guard is what makes such loops converge), so they are marked
+    # review-needed instead and the next explicit save picks them up.
+    late_link_roots: List[str] = []
+    for updates in (
+        dfm_updates,
+        result_selection_updates,
+        berquist_sherman_updates,
+        bornhuetter_ferguson_updates,
+        cape_cod_updates,
+        bootstrap_updates,
+    ):
+        for field in ("updated", "status_refreshed"):
+            late_link_roots.extend(
+                _clean_text(value)
+                for item in (updates or {}).get(field, [])
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            )
+        late_link_roots.extend(
+            _clean_text(name)
+            for name in (updates or {}).get("downstream_fresh_names", [])
+            if _clean_text(name)
+        )
+    late_link_fresh = _refresh_link_driven_dependents(
+        project_name,
+        reserving_class,
+        late_link_roots,
+        visited_link_keys,
+        link_updates,
+    )
+    if late_link_fresh or link_updates["failed"]:
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            project_name,
+            reserving_class,
+            [*late_link_fresh, *link_updates["failed"]],
+        )
 
     index_error = ""
     if finalize_method_review_status:
@@ -2244,6 +2456,7 @@ def _recalculate_dependents_impl(
         overall_ok = overall_ok and bool(cape_cod_updates.get("ok"))
     if bootstrap_updates is not None:
         overall_ok = overall_ok and bool(bootstrap_updates.get("ok"))
+    overall_ok = overall_ok and not link_updates["failed"]
     return {
         "ok": overall_ok,
         "project_name": project_name,
@@ -2264,6 +2477,7 @@ def _recalculate_dependents_impl(
         "bornhuetter_ferguson_updates": bornhuetter_ferguson_updates,
         "cape_cod_updates": cape_cod_updates,
         "bootstrap_updates": bootstrap_updates,
+        "link_updates": link_updates,
         "index_ok": not index_error,
         "index_error": index_error,
     }
@@ -2306,6 +2520,13 @@ def cascade_failure_reasons(report: Mapping[str, Any]) -> List[str]:
             continue
         details = [_clean_text(error) for error in item.get("errors") or [] if _clean_text(error)]
         add(item.get("dataset_type_name") or item.get("dataset_name"), "; ".join(details) or item.get("reason"))
+    link_domain = report.get("link_updates")
+    if isinstance(link_domain, Mapping):
+        for error in link_domain.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            details = [_clean_text(text) for text in error.get("errors") or [] if _clean_text(text)]
+            add(error.get("dataset_name"), "; ".join(details) or error.get("reason"))
     for field in _CASCADE_DOMAIN_FIELDS:
         domain = report.get(field)
         if not isinstance(domain, Mapping) or domain.get("ok", True):

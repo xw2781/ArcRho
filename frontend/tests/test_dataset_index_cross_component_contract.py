@@ -727,6 +727,12 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 }
             ],
         )
+        # The refusal also names the full downstream chain, so the page can
+        # offer deleting the selection together with everything that reads it.
+        self.assertEqual(
+            detail["downstream_closure"],
+            [{"dataset_name": "Selected Ultimate", "method_type": "None"}],
+        )
         self.assertTrue((self.datasets_dir / "Paid Loss@12@24@cum@dev.csv").exists())
         self.assertTrue((self.sidecars_dir / "Paid Loss.json").exists())
 

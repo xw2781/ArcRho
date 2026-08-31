@@ -168,6 +168,14 @@ class FormulaLinkSidecarTests(unittest.TestCase):
                 "refresh_method_statuses_for_dependents",
                 return_value=[],
             ),
+            # Link edges write dependents entries onto the referenced sidecars,
+            # which needs a real workspace; the edge write is covered by
+            # test_dataset_link_refresh.py.
+            patch.object(
+                dataset_service.dataset_sidecar_status_service,
+                "update_precedent_dependents",
+                return_value=[],
+            ),
             patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
             patch.object(
                 calculated_dataset_service,

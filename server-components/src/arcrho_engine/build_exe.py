@@ -95,7 +95,13 @@ def _hosted_service_modules():
     """
 
     modules = {module for module, _function in SAVE_JOB_KINDS.values()}
-    modules.update({"calculated_dataset_service", "arcrho_runtime_service"})
+    # dataset_link_refresh_service is the walk's link-driven dataset
+    # evaluator, imported lazily inside calculated_dataset_service.
+    modules.update({
+        "calculated_dataset_service",
+        "dataset_link_refresh_service",
+        "arcrho_runtime_service",
+    })
     modules.update(SOURCE_REFRESH_SERVICE_MODULES)
     modules.update(DATASET_TYPES_CHANGE_SERVICE_MODULES)
     return sorted(modules)

@@ -18,6 +18,7 @@ import pandas as pd
 from fastapi import HTTPException
 
 from arcrho_api.dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
+from arcrho_api.dataset_link_contract import link_precedent_names
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import (
     AUDIT_ACTION_INSERT,
@@ -29,6 +30,7 @@ from arcrho_api.sidecar_core_contract import finalize_sidecar
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
+    _canon_dataset_name,
     atomic_write_csv,
     build_dataset_cache_file_name,
     sanitize_dataset_file_name,
@@ -2088,6 +2090,36 @@ def _save_dataset_sidecar_impl(
                 method_type_value == dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION
             ),
         )
+    elif method_type_value == dataset_sidecar_status_service.METHOD_TYPE_NONE:
+        # ArcRho cell links are instance-level graph edges: the datasets this
+        # save's links read gain (or lose) a dependents entry naming this
+        # dataset, so the dependent-propagation walk and the delete check see
+        # the link the same way they see a formula edge.
+        own_key = _canon_dataset_name(ds)
+        old_link_names = [
+            name
+            for name in link_precedent_names(
+                _normalize_dataset_internal_links(existing.get("internal_links")),
+                _normalize_dataset_formula_links(existing.get("formula_links")),
+            )
+            if _canon_dataset_name(name) != own_key
+        ]
+        new_link_names = [
+            name
+            for name in link_precedent_names(
+                payload.get("internal_links"),
+                payload.get("formula_links"),
+            )
+            if _canon_dataset_name(name) != own_key
+        ]
+        if old_link_names or new_link_names:
+            dataset_sidecar_status_service.update_precedent_dependents(
+                p,
+                rc,
+                ds,
+                old_link_names,
+                new_link_names,
+            )
     unreviewed_precedents = dataset_sidecar_status_service.review_needed_precedent_names(
         p,
         rc,

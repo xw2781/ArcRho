@@ -656,7 +656,33 @@ def _collect_refreshed_dataset_names(walk_result: Mapping[str, Any]) -> List[str
         for item in updates.get("updated") or []:
             if isinstance(item, Mapping):
                 add(item.get("dataset_name") or item.get("method_name"))
+    link_updates = walk_result.get("link_updates")
+    if isinstance(link_updates, Mapping):
+        for name in link_updates.get("refreshed") or []:
+            add(name)
     return names
+
+
+def _collect_link_warnings(walk_result: Mapping[str, Any]) -> List[Dict[str, str]]:
+    """The Excel keep-stale warnings a walk collected, shaped for the client."""
+
+    link_updates = walk_result.get("link_updates")
+    if not isinstance(link_updates, Mapping):
+        return []
+    warnings: List[Dict[str, str]] = []
+    for item in link_updates.get("warnings") or []:
+        if not isinstance(item, Mapping):
+            continue
+        warning = {
+            "dataset_name": str(item.get("dataset_name") or "").strip(),
+            "reference": str(item.get("reference") or "").strip(),
+            # The reason reaches the client alert; a quoted workbook error
+            # must not leak server paths.
+            "reason": _WALK_FAILURE_PATH_RE.sub("[path]", str(item.get("reason") or "").strip()),
+        }
+        if warning["dataset_name"]:
+            warnings.append(warning)
+    return warnings
 
 
 def _run_inline_save_propagation(
@@ -702,6 +728,9 @@ def _run_inline_save_propagation(
         "status": "completed",
         "refreshed_datasets": _collect_refreshed_dataset_names(result),
     }
+    link_warnings = _collect_link_warnings(result)
+    if link_warnings:
+        payload["link_warnings"] = link_warnings
     if not payload["ok"]:
         # Without this the client and the hosted-save log can only report a
         # generic scheduling warning; the walk knows exactly which dependent
@@ -741,9 +770,26 @@ def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
             text = f"{name}: {reason}" if name and reason else (name or reason)
             if text:
                 method_failures.append(text)
+    link_failures: List[str] = []
+    link_updates = result.get("link_updates")
+    if isinstance(link_updates, Mapping):
+        for error in link_updates.get("errors") or []:
+            if not isinstance(error, Mapping):
+                continue
+            name = str(error.get("dataset_name") or "").strip()
+            details = "; ".join(
+                str(item).strip() for item in error.get("errors") or [] if str(item).strip()
+            )
+            text = f"{name}: {details}" if name and details else (name or details)
+            if text:
+                link_failures.append(text)
     parts: List[str] = []
     if failed:
         parts.append("Dependent update(s) did not refresh: " + ", ".join(failed))
+    if link_failures:
+        parts.append(
+            "Linked dataset refresh failure(s): " + "; ".join(sorted(set(link_failures)))
+        )
     if method_failures:
         parts.append(
             "Method refresh failure(s): " + "; ".join(sorted(set(method_failures)))

@@ -939,12 +939,67 @@ def _surviving_dependents(
     return blocked
 
 
-def _dependents_refusal_detail(blocked: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _downstream_closure(
+    folder_paths: Dict[str, str],
+    dataset_names: List[str],
+) -> List[Dict[str, str]]:
+    """Every object downstream of the requested datasets, breadth-first.
+
+    Walks the persisted ``dependents`` edges transitively so a refusal can
+    offer "delete the whole chain": the closure names each reachable object
+    once with its method type, in the order the walk reached it, excluding the
+    requested datasets themselves. Resubmitting the delete with the closure
+    included passes the whole-request dependents check, because a dependent
+    named in the same request is not a blocker.
+    """
+
+    sidecar_dir = _clean_text(folder_paths.get("sidecars"))
+    requested_keys = {
+        _canon_dataset_name(name)
+        for name in dataset_names or []
+        if _canon_dataset_name(name)
+    }
+    closure: List[Dict[str, str]] = []
+    visited: Set[str] = set(requested_keys)
+    queue: List[str] = [_clean_text(name) for name in dataset_names or [] if _clean_text(name)]
+    while queue:
+        batch = queue
+        queue = []
+        payloads = _read_sidecars_by_name(sidecar_dir, batch)
+        dependent_names: List[str] = []
+        for name in batch:
+            payload = payloads.get(_canon_dataset_name(name)) or {}
+            for dependent_name in dataset_sidecar_status_service.entry_names(payload.get("dependents")):
+                key = _canon_dataset_name(dependent_name)
+                if not key or key in visited:
+                    continue
+                visited.add(key)
+                dependent_names.append(dependent_name)
+        if not dependent_names:
+            continue
+        dependent_payloads = _read_sidecars_by_name(sidecar_dir, dependent_names)
+        for dependent_name in dependent_names:
+            dependent_payload = dependent_payloads.get(_canon_dataset_name(dependent_name)) or {}
+            closure.append({
+                "dataset_name": dependent_name,
+                "method_type": dataset_sidecar_status_service.normalize_method_type(
+                    dependent_payload.get("method_type"),
+                    dependent_payload.get("source_kind"),
+                ),
+            })
+            queue.append(dependent_name)
+    return closure
+
+
+def _dependents_refusal_detail(
+    blocked: List[Dict[str, Any]],
+    downstream_closure: List[Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
     if len(blocked) == 1:
         subject = f"'{blocked[0]['dataset_name']}' is"
     else:
         subject = f"{len(blocked)} of the selected datasets are"
-    return {
+    detail = {
         "error": DELETE_BLOCKED_BY_DEPENDENTS,
         "message": (
             f"{subject} used as input by other objects in this reserving class. "
@@ -952,6 +1007,9 @@ def _dependents_refusal_detail(blocked: List[Dict[str, Any]]) -> Dict[str, Any]:
         ),
         "blocked_datasets": blocked,
     }
+    if downstream_closure:
+        detail["downstream_closure"] = downstream_closure
+    return detail
 
 
 def delete_cached_datasets(project_name: str, reserving_class: str, dataset_names: List[str]) -> Dict[str, Any]:
@@ -963,13 +1021,32 @@ def delete_cached_datasets(project_name: str, reserving_class: str, dataset_name
     requested = _requested_dataset_keys(dataset_names)
     folder_paths = _folder_paths(project, rc)
 
+    # A delete during a running dependent walk would race the walk's own
+    # writes, so it takes the same busy-class refusal a save does. The probe
+    # alone decides: a delete needs no live Engine.
+    from app_server.services import dependent_propagation_service
+
+    if dependent_propagation_service.get_reserving_class_busy(project, rc).get("busy"):
+        raise HTTPException(
+            423,
+            "This reserving class is being refreshed. Wait for the running "
+            "update to finish, then delete again.",
+        )
+
     # Nothing is removed while another object still names this one as an input.
     # The check covers the whole request before the first unlink, so a refused
     # delete leaves the selection exactly as the user found it rather than
-    # half-applied.
+    # half-applied. The refusal carries the full downstream closure so the
+    # client can offer deleting the whole chain in one confirmed resubmission.
     blocked = _surviving_dependents(folder_paths, list(dataset_names or []))
     if blocked:
-        raise HTTPException(409, _dependents_refusal_detail(blocked))
+        raise HTTPException(
+            409,
+            _dependents_refusal_detail(
+                blocked,
+                _downstream_closure(folder_paths, list(dataset_names or [])),
+            ),
+        )
 
     def resolve(*, read_sidecar_payloads: bool) -> Tuple[List[Dict[str, str]], Set[str]]:
         try:

@@ -8,12 +8,14 @@ DFM dataset-reference style, extended with an inclusive ``start:end`` range::
     =[Paid Claims][2024, 12]
     =[Paid Claims][1:6, 2]
 
-Each axis coordinate uses the DFM index semantics (quoted label, 1-based
-position, negative from the valid boundary, bare label fallback), owned by
-``dfm_service._dataset_reference_axis_index``. This module owns only the
-standalone-reference syntax and the rectangle expansion; values come from the
-same ``dataset_service.load_cached_dataset_values`` read the DFM resolver uses,
-one read per unique dataset.
+The reference syntax and canonical stored text are owned by
+``arcrho_api.dataset_link_contract``; this module translates its refusals into
+``422`` responses and owns only the value resolution. Each axis coordinate
+uses the DFM index semantics (quoted label, 1-based position, negative from
+the valid boundary, bare label fallback), owned by
+``dfm_service._dataset_reference_axis_index``; values come from the same
+``dataset_service.load_cached_dataset_values`` read the DFM resolver uses, one
+read per unique dataset.
 """
 
 from __future__ import annotations
@@ -22,6 +24,12 @@ import math
 from typing import Any, Dict, Iterable, List, Mapping
 
 from fastapi import HTTPException
+
+from arcrho_api.dataset_link_contract import (
+    INTERNAL_REFERENCE_SYNTAX_HINT,
+    DatasetLinkError,
+)
+from arcrho_api import dataset_link_contract
 
 from app_server.services.dfm_service import (
     _READ_EXECUTOR,
@@ -32,118 +40,23 @@ from app_server.services.dfm_service import (
     _key,
 )
 
-INTERNAL_REFERENCE_SYNTAX_HINT = (
-    "Use =[Dataset][row] or =[Dataset][start:end] for a vector, and "
-    "=[Dataset][row, col] or =[Dataset][rows, cols] for a triangle."
-)
-
-
-def _split_quote_aware(raw: str, separator: str) -> List[str]:
-    parts: List[str] = []
-    current = ""
-    quote = ""
-    for character in str(raw or ""):
-        if quote:
-            current += character
-            if character == quote:
-                quote = ""
-            continue
-        if character in {'"', "'"}:
-            quote = character
-            current += character
-            continue
-        if character == separator:
-            parts.append(current.strip())
-            current = ""
-            continue
-        current += character
-    if quote:
-        raise HTTPException(422, "Dataset reference contains an unclosed quote.")
-    parts.append(current.strip())
-    return parts
-
-
-def _parse_axis_spec(raw: str, *, axis_name: str) -> Dict[str, Any]:
-    endpoints = _split_quote_aware(raw, ":")
-    if len(endpoints) > 2 or not endpoints[0] or (len(endpoints) == 2 and not endpoints[1]):
-        raise HTTPException(
-            422,
-            f"{axis_name.capitalize()} range must be one index or start:end. "
-            + INTERNAL_REFERENCE_SYNTAX_HINT,
-        )
-    return {
-        "start": endpoints[0],
-        "end": endpoints[1] if len(endpoints) == 2 else None,
-    }
-
 
 def parse_internal_reference(raw_text: Any) -> Dict[str, Any]:
     """Parse one standalone internal reference; 422 when the text is not one."""
 
-    text = _clean(raw_text)
-    if text.startswith("="):
-        text = text[1:].lstrip()
-    if not text.startswith("["):
-        raise HTTPException(422, INTERNAL_REFERENCE_SYNTAX_HINT)
-    name_end = text.find("]", 1)
-    if name_end < 0:
-        raise HTTPException(422, "Dataset reference is missing its closing bracket.")
-    dataset_name = text[1:name_end].strip()
-    if not dataset_name:
-        raise HTTPException(422, "Dataset reference name cannot be blank.")
-    remainder = text[name_end + 1 :].lstrip()
-    if not remainder.startswith("["):
-        raise HTTPException(422, INTERNAL_REFERENCE_SYNTAX_HINT)
-    quote = ""
-    coordinate_end = -1
-    for index in range(1, len(remainder)):
-        character = remainder[index]
-        if quote:
-            if character == quote:
-                quote = ""
-            continue
-        if character in {'"', "'"}:
-            quote = character
-            continue
-        if character == "]":
-            coordinate_end = index
-            break
-    if coordinate_end < 0:
-        raise HTTPException(422, "Dataset reference is missing its closing bracket.")
-    if remainder[coordinate_end + 1 :].strip():
-        raise HTTPException(
-            422,
-            "An internal dataset link must be a single standalone reference. "
-            + INTERNAL_REFERENCE_SYNTAX_HINT,
-        )
-    coordinates = _split_quote_aware(remainder[1:coordinate_end], ",")
-    if not coordinates[0]:
-        raise HTTPException(422, "Dataset reference row index is required.")
-    if len(coordinates) > 2 or (len(coordinates) == 2 and not coordinates[1]):
-        raise HTTPException(422, INTERNAL_REFERENCE_SYNTAX_HINT)
-    return {
-        "dataset_name": dataset_name,
-        "row": _parse_axis_spec(coordinates[0], axis_name="row"),
-        "col": _parse_axis_spec(coordinates[1], axis_name="column") if len(coordinates) == 2 else None,
-    }
+    try:
+        return dataset_link_contract.parse_internal_reference(raw_text)
+    except DatasetLinkError as err:
+        raise HTTPException(422, str(err))
 
 
 def canonical_internal_reference(raw_text: Any) -> str:
     """Return the normalized stored text for a valid internal reference."""
 
-    parsed = parse_internal_reference(raw_text)
-
-    def axis_text(spec: Mapping[str, Any] | None) -> str:
-        if not spec:
-            return ""
-        start = str(spec["start"])
-        end = spec.get("end")
-        return f"{start}:{end}" if end is not None else start
-
-    coordinates = axis_text(parsed["row"])
-    if parsed["col"] is not None:
-        coordinates = f"{coordinates}, {axis_text(parsed['col'])}"
-    return f"=[{parsed['dataset_name']}][{coordinates}]"
+    try:
+        return dataset_link_contract.canonical_internal_reference(raw_text)
+    except DatasetLinkError as err:
+        raise HTTPException(422, str(err))
 
 
 def _axis_span(
