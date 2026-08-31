@@ -1469,6 +1469,9 @@ body {
   color: #374151;
   min-width: 64px;
 }
+.dfmResultsControls label[for="dfmUltimateRatioDecimalPlacesInput"] {
+  margin-left: 16px;
+}
 .dfmResultsControls input {
   min-width: 240px;
   max-width: min(420px, 100%);
@@ -1484,9 +1487,9 @@ body {
   position: relative;
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   min-width: 240px;
-  max-width: min(420px, 100%);
-  width: 260px;
+  max-width: 518px;
 }
 .dfmResultsControls .dfmResultsPickerWrap input {
   width: 100%;
