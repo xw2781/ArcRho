@@ -32,6 +32,7 @@ import {
   evaluateDatasetFormula,
   parseDatasetFormula,
 } from "/ui/shared/dataset/dataset_formula.js?v=20260830a";
+import { formatInternalDatasetReference } from "/ui/shared/dataset/dataset_internal_reference.js?v=20260830a";
 
 function targetCellKey(target) {
   return `${target.row},${target.column}`;
@@ -134,17 +135,40 @@ function linkRecordId(link) {
   return `${link.formula}${link.target_cells.map(targetCellKey).join(";")}`;
 }
 
+/** Just the coordinates an internal reference token names, e.g. "[1:12]". */
+function internalReferenceCoordinateText(parsed) {
+  const formatted = formatInternalDatasetReference(parsed);
+  const open = formatted.lastIndexOf("][");
+  return open >= 0 ? `[${formatted.slice(open + 2, -1)}]` : "";
+}
+
+/** Just the sheet and address an Excel reference token names, e.g. "Sheet1!A1:A12". */
+function excelReferenceAddressText(parsed) {
+  const sheet = String(parsed.sheet || "").trim();
+  const cell = String(parsed.cell || "").trim();
+  const endCell = String(parsed.endCell || cell).trim();
+  const address = cell && endCell && cell !== endCell ? `${cell}:${endCell}` : cell;
+  return sheet && address ? `${sheet}!${address}` : (address || sheet);
+}
+
 /**
  * The sources a formula reads, one per dataset or workbook however many
  * references it makes to each: the Links tab lists a formula once per source,
- * under that source's own kind.
+ * under that source's own kind, showing that source's own reference rather
+ * than the whole formula.
  */
 function formulaComponents(parsed) {
   const components = new Map();
   for (const reference of parsed.references) {
     const component = reference.kind === "internal"
-      ? { datasetName: String(reference.parsed.datasetName || "") }
-      : { workbookPath: String(reference.parsed.bookPath || "") };
+      ? {
+        datasetName: String(reference.parsed.datasetName || ""),
+        reference: internalReferenceCoordinateText(reference.parsed),
+      }
+      : {
+        workbookPath: String(reference.parsed.bookPath || ""),
+        reference: excelReferenceAddressText(reference.parsed),
+      };
     const key = component.datasetName || component.workbookPath;
     if (key && !components.has(key)) components.set(key, component);
   }

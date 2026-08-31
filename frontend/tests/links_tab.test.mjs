@@ -404,8 +404,17 @@ test("renders one compact row per link and offers the bulk actions through the c
   assert.deepEqual(sections.map((section) => section.hidden), [false, false]);
   assert.deepEqual(byTag(sections[0], "tbody")[0].children, []);
 
+  const internalTable = byTag(sections[0], "table")[0];
+  assert.deepEqual(
+    byTag(internalTable, "th").map(renderedText),
+    ["Source Dataset", "Cell Range", "Destination", "Total Cells"],
+  );
+
   const table = byTag(sections[1], "table")[0];
-  assert.deepEqual(byTag(table, "th").map(renderedText), ["Source", "Reference", "Destination", "Cells"]);
+  assert.deepEqual(
+    byTag(table, "th").map(renderedText),
+    ["Source Workbook", "Cell Address", "Destination", "Total Cells"],
+  );
   assert.equal(table.getAttribute("role"), "grid");
   assert.equal(table.getAttribute("aria-multiselectable"), "true");
   assert.equal(table.getAttribute("aria-label"), "Dataset links: Excel Links");

@@ -5,10 +5,12 @@ One compact table per kind of link a page holds, in two framed panes: ArcRho
 dataset links above, Excel workbook links below, a formula listed once per
 source it reads under that source's kind. A draggable divider separates the panes and starts at the
 middle of the tab; double-clicking it puts it back there. Both tables share
-one set of column widths and scroll sideways together. Each row says where
-the values come from (Source), the exact address or formula (Reference), and
-the cells it fills (Destination, Cells); a stamp above each table names the
-kind, so no row carries a badge.
+one set of column widths and scroll sideways together, though the source and
+reference headers read as Source Dataset/Cell Range for ArcRho and Source
+Workbook/Cell Address for Excel, since each section names its own kind of
+link. Each row says where the values come from, the exact address the source
+contributes, the cells it fills (Destination), and how many they are (Total
+Cells); a stamp above each table names the kind, so no row carries a badge.
 
 The page owns link discovery, refresh, break, and dirty state; this module
 owns the tables: rendering, selection, the row context menu, column widths,
@@ -27,10 +29,22 @@ const MOUNTED_LINKS_TABS = new WeakMap();
 // instead of redistributing its neighbours (the pi-table pattern). The
 // sections share one set of widths, so their columns always line up.
 export const LINK_COLUMNS = [
-  { key: "source", label: "Source", width: 260, minWidth: 120 },
-  { key: "reference", label: "Reference", width: 200, minWidth: 90 },
+  {
+    key: "source",
+    label: "Source",
+    labels: { internal: "Source Dataset", excel: "Source Workbook" },
+    width: 260,
+    minWidth: 120,
+  },
+  {
+    key: "reference",
+    label: "Reference",
+    labels: { internal: "Cell Range", excel: "Cell Address" },
+    width: 200,
+    minWidth: 90,
+  },
   { key: "destination", label: "Destination", width: 200, minWidth: 90 },
-  { key: "cells", label: "Cells", width: 64, minWidth: 48 },
+  { key: "cells", label: "Total Cells", width: 64, minWidth: 48 },
 ];
 const COLUMN_BY_KEY = new Map(LINK_COLUMNS.map((column) => [column.key, column]));
 const MAX_COLUMN_WIDTH = 3000;
@@ -129,13 +143,16 @@ export function normalizeLinkRecord(record, index, idPrefix = "link") {
   const datasetName = String(source.datasetName ?? "").trim();
   const sourceRange = String(source.sourceRange ?? "").trim();
   const formula = String(source.formula ?? "").trim();
+  const componentReference = String(source.reference ?? "").trim();
   let sourceText = "";
   let reference = "";
   if (isFormulaRecord(source)) {
-    // A formula row names the one source it stands for and shows the whole
-    // formula, so it reads apart from a plain link to the same source.
+    // A formula row names the one source it stands for and shows only that
+    // source's own component of the formula (its cell range or address), not
+    // the whole formula; a formula the grammar rejected has no component, so
+    // it falls back to the whole formula text.
     sourceText = workbookPath ? fileName(workbookPath) : datasetName;
-    reference = formula;
+    reference = componentReference || formula;
   } else if (kind === "excel") {
     sourceText = fileName(workbookPath);
     reference = worksheet && address ? `${worksheet}!${address}` : (address || worksheet);
@@ -522,7 +539,7 @@ export function createLinksTab({
     handle.addEventListener("pointercancel", onUp);
   }
 
-  for (const { table, body } of sections) {
+  for (const { kind, table, body } of sections) {
     const head = documentRef.createElement("thead");
     const headerRow = documentRef.createElement("tr");
     for (const column of LINK_COLUMNS) {
@@ -531,7 +548,8 @@ export function createLinksTab({
       header.dataset.colKey = column.key;
       const inner = documentRef.createElement("div");
       inner.className = "arLinksHead";
-      appendTextElement(documentRef, inner, "span", "arLinksHeadLabel", column.label);
+      const label = column.labels?.[kind] ?? column.label;
+      appendTextElement(documentRef, inner, "span", "arLinksHeadLabel", label);
       const resizer = documentRef.createElement("div");
       resizer.className = "arLinksColResizer";
       resizer.addEventListener("pointerdown", (event) => startColumnResize(event, column.key));

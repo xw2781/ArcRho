@@ -20,7 +20,8 @@ const controllerSource = (await read("../ui/shared/dataset/dataset_formula_links
   .replace('"/ui/shared/integrations/excel_api.js?v=20260819a"', JSON.stringify(excelApiStubUrl))
   .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(referenceUrl))
   .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260830d"', JSON.stringify(externalUrl))
-  .replace('"/ui/shared/dataset/dataset_formula.js?v=20260830a"', JSON.stringify(formulaUrl));
+  .replace('"/ui/shared/dataset/dataset_formula.js?v=20260830a"', JSON.stringify(formulaUrl))
+  .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl));
 const formulaLinks = await import(dataUrl(controllerSource));
 
 const FORMULA = "=[C 82 - Prior Qtr Selected][1:2] * 2";
@@ -168,6 +169,9 @@ test("a formula over an Excel range and a dataset range reads the workbook cells
     records.map((record) => [record.id.split("#component-")[1], record.workbookPath, record.datasetName]),
     [["0", "C:\\Data\\Book.xlsx", undefined], ["1", undefined, "C 82 - Prior Qtr Selected"]],
   );
+  // Each row's reference names only the component it stands for, not the
+  // whole formula.
+  assert.deepEqual(records.map((record) => record.reference), ["Sheet 1!A1:A2", "[1:2]"]);
   assert.equal(new Set(records.map((record) => record.id.split("#component-")[0])).size, 1);
   assert.equal(controller.breakLinks([records[1].id]).ok, true);
   assert.deepEqual(controller.serialize(), []);
