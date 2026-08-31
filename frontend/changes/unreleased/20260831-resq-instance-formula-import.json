@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The ResQ import now translates a vector's own ResQ formula into an ArcRho in-cell formula, so the imported dataset keeps recalculating instead of freezing the copied values.",
+  "details": [
+    "Applies to vectors whose Dataset Type has no formula in ArcRho while the ResQ instance carries one, such as the Claim Count times Severity candidates.",
+    "Every dataset the formula names must be another imported vector of the same reserving class; a formula referencing something ArcRho does not hold, such as a frozen prior-quarter snapshot, imports as plain hardcoded values exactly as before.",
+    "The translated formula joins the dependency graph and recalculates automatically with everything else."
+  ]
+}

@@ -20,6 +20,7 @@ from arcrho_api.dataset_index_contract import (
     resolve_canonical_index_identity,
     write_index_json_unlocked,
 )
+from arcrho_api.dataset_link_contract import link_precedent_names
 
 from .core import (
     BS_CRA_FILE_PREFIX,
@@ -409,6 +410,24 @@ def _apply_sidecar_graph_meta(
         meta["dependents"] = fields["dependents"]
     else:
         meta.update(fields)
+        # ArcRho cell links are instance-level precedent edges on top of the
+        # dataset-type formula graph, exactly as the app server's
+        # ``apply_sidecar_graph_fields`` merges them; ``_reconcile_sidecar_dependents``
+        # then writes the matching dependents entry on each linked source.
+        own_key = _canon_dataset_name(meta.get("dataset_name") or dataset_type_name)
+        linked_names = [
+            name
+            for name in link_precedent_names(
+                meta.get("internal_links"),
+                meta.get("formula_links"),
+            )
+            if _canon_dataset_name(name) != own_key
+        ]
+        if linked_names:
+            meta["precedents"] = _merge_dependency_entries(
+                meta.get("precedents"),
+                [{"dataset_name": name} for name in linked_names],
+            )
     meta.pop("dependencies", None)
 
 

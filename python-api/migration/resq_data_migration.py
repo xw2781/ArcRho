@@ -1519,6 +1519,7 @@ def export_vectors_for_rc(
                 rc_dir,
                 bf_method_payload=bf_payload,
                 cc_method_payload=cc_payload,
+                known_instance_names=vector_names,
             )
             detail = (
                 f"    OK  {_method_type_name(method_type)} vector "

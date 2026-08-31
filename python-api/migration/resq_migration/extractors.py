@@ -35,12 +35,18 @@ from arcrho_api.cape_cod_contract import (
 )
 from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.dataset_link_contract import DatasetLinkError, canonical_dataset_formula
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_UPDATE
 from arcrho_api.sidecar_core_contract import dependency_entries
 from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
-from .catalog import _apply_sidecar_graph_meta, _is_calculated_dataset_type, _is_generated_dataset_type
+from .catalog import (
+    _apply_sidecar_graph_meta,
+    _canon_dataset_name,
+    _is_calculated_dataset_type,
+    _is_generated_dataset_type,
+)
 from .engine import import_user_identity_service
 from .core import (
     BS_CRA_FILE_PREFIX,
@@ -1204,6 +1210,79 @@ def _vector_payload_period_length(payload: dict) -> int:
     return int(payload.get("period_length") or payload.get("origin_length") or 0)
 
 
+# One ResQ instance-formula token: a double-quoted dataset name, a number, or
+# an operator/parenthesis, each after optional whitespace. Anything else in the
+# text makes the formula untranslatable.
+_RESQ_INSTANCE_FORMULA_TOKEN_RE = re.compile(
+    r'\s*(?:"(?P<name>[^"]+)"'
+    r"|(?P<number>(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)"
+    r"|(?P<op>[+\-*/^()]))"
+)
+
+
+def _translated_instance_formula_links(
+    payload: dict,
+    dataset_name: str,
+    period_length: int,
+    known_instance_names: object,
+) -> list[dict] | None:
+    """Translate a ResQ instance formula into one ArcRho in-cell formula link.
+
+    ResQ keeps per-instance formulas on vectors whose dataset type ArcRho
+    treats as a plain input — quoted dataset names combined with arithmetic,
+    ``"C 91 - Current Qtr Indicated" * "H 01 - ..." / 1000``. Each quoted name
+    becomes a whole-vector dataset reference (``[C 91 - ...][1:N]``), the text
+    is canonicalized through ``arcrho_api.dataset_link_contract`` so a later
+    save round-trips it byte for byte, and the link owns every cell of the
+    vector. The translation is all-or-nothing: a name not among
+    ``known_instance_names`` (a frozen prior-quarter snapshot ArcRho never
+    imports, say), a self-reference, or any text outside the token grammar
+    falls back to the hardcoded imported values by returning ``None``.
+    """
+
+    formula = _clean_name(payload.get("formula"))
+    if not formula or period_length <= 0 or known_instance_names is None:
+        return None
+    known_keys = {
+        _canon_dataset_name(name)
+        for name in known_instance_names
+        if _canon_dataset_name(name)
+    }
+    own_key = _canon_dataset_name(dataset_name)
+    pieces: list[str] = []
+    referenced = False
+    cursor = 0
+    while cursor < len(formula) and formula[cursor:].strip():
+        match = _RESQ_INSTANCE_FORMULA_TOKEN_RE.match(formula, cursor)
+        if not match or match.end() == cursor:
+            return None
+        if match.group("name") is not None:
+            referenced_name = _normalize_import_name(match.group("name"))
+            key = _canon_dataset_name(referenced_name)
+            if not key or key == own_key or key not in known_keys:
+                return None
+            pieces.append(f"[{referenced_name}][1:{period_length}]")
+            referenced = True
+        elif match.group("number") is not None:
+            pieces.append(match.group("number"))
+        else:
+            pieces.append(match.group("op"))
+        cursor = match.end()
+    if not referenced:
+        return None
+    try:
+        canonical = canonical_dataset_formula("=" + " ".join(pieces))
+    except DatasetLinkError:
+        return None
+    return [{
+        "formula": canonical,
+        "target_cells": [
+            {"row": row, "column": 0, "result_row": row, "result_column": 0}
+            for row in range(period_length)
+        ],
+    }]
+
+
 def write_vector_export(
     payload: dict,
     rc_path: str,
@@ -1211,6 +1290,7 @@ def write_vector_export(
     *,
     bf_method_payload: dict | None = None,
     cc_method_payload: dict | None = None,
+    known_instance_names: object = None,
 ) -> Path:
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
@@ -1358,6 +1438,20 @@ def write_vector_export(
         ])
         meta["dependents"] = []
     else:
+        if source_kind == "input":
+            # A ResQ instance formula on a plain-input vector imports as an
+            # in-cell formula link, so ArcRho re-evaluates it through the
+            # dependent-propagation walk instead of freezing the copied
+            # values; an untranslatable formula keeps today's hardcoded
+            # values.
+            translated = _translated_instance_formula_links(
+                payload,
+                name,
+                period_length,
+                known_instance_names,
+            )
+            if translated:
+                meta["formula_links"] = translated
         _apply_graph_meta_best_effort(meta, dataset_type, rc_dir)
     _write_sidecar_json(meta_path, meta)
     return csv_path

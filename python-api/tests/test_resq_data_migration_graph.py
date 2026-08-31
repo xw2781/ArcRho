@@ -266,6 +266,98 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         self.assertTrue(payload["calculated"])
         self.assertEqual([entry["dataset_name"] for entry in payload["precedents"]], ["Net Ultimate"])
 
+    def _instance_formula_payload(self, name: str, formula: str) -> dict:
+        return {
+            "name": name,
+            "dataset_type": name,
+            "category": "Loss",
+            "data_format": 1,
+            "method_type": "None",
+            "method_type_code": 0,
+            "origin_length": 2,
+            "development_length": 2,
+            "origin_count": 2,
+            "development_count": 1,
+            "origin_labels": ["2025", "2026"],
+            "development_labels": ["Value"],
+            "values": [[10.0], [20.0]],
+            "formula": formula,
+            "user": "tester",
+            "created": "2026-01-01T00:00:00",
+            "modified": "2026-01-02T00:00:00",
+        }
+
+    def test_instance_formula_translates_into_a_formula_link_and_edges(self) -> None:
+        known = ["Vector A", "Vector B", "Vector C"]
+        self.extractors.write_vector_export(
+            self._instance_formula_payload("Vector A", ""),
+            r"Auto\PP",
+            self.rc_dir,
+            known_instance_names=known,
+        )
+        self.extractors.write_vector_export(
+            self._instance_formula_payload("Vector C", '"Vector A" * "Vector B" / 1000'),
+            r"Auto\PP",
+            self.rc_dir,
+            known_instance_names=known,
+        )
+
+        sidecar = json.loads((self.sidecars_dir / "Vector C.json").read_text(encoding="utf-8"))
+        self.assertEqual(sidecar["source_kind"], "input")
+        self.assertEqual(
+            sidecar["formula_links"],
+            [{
+                "formula": "=[Vector A][1:2] * [Vector B][1:2] / 1000",
+                "target_cells": [
+                    {"row": 0, "column": 0, "result_row": 0, "result_column": 0},
+                    {"row": 1, "column": 0, "result_row": 1, "result_column": 0},
+                ],
+            }],
+        )
+        # The link contributes instance-level precedent edges alongside the
+        # type graph, and the RC-wide refresh writes the matching dependents
+        # entry on each linked source that exists in the class.
+        self.assertEqual(
+            [entry["dataset_name"] for entry in sidecar["precedents"]],
+            ["Vector A", "Vector B"],
+        )
+        self.catalog.refresh_sidecar_graphs_for_rc(self.rc_dir)
+        source = json.loads((self.sidecars_dir / "Vector A.json").read_text(encoding="utf-8"))
+        self.assertIn(
+            {"dataset_name": "Vector C"},
+            source["dependents"],
+        )
+        refreshed = json.loads((self.sidecars_dir / "Vector C.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            [entry["dataset_name"] for entry in refreshed["precedents"]],
+            ["Vector A", "Vector B"],
+        )
+
+    def test_instance_formula_falls_back_to_hardcoded_values(self) -> None:
+        cases = [
+            # A frozen prior-quarter snapshot ArcRho never imports.
+            ('"Current Qtr Indicated - Feb 2026"', ["Vector A"]),
+            # Text outside the quoted-name / number / operator grammar.
+            ('"Vector A" @ 2', ["Vector A"]),
+            # A self-reference cannot become a link.
+            ('"Vector D" * 2', ["Vector A", "Vector D"]),
+            # No caller-supplied inventory means no translation.
+            ('"Vector A" * 2', None),
+        ]
+        for formula, known in cases:
+            with self.subTest(formula=formula, known=known):
+                self.extractors.write_vector_export(
+                    self._instance_formula_payload("Vector D", formula),
+                    r"Auto\PP",
+                    self.rc_dir,
+                    known_instance_names=known,
+                )
+                sidecar = json.loads(
+                    (self.sidecars_dir / "Vector D.json").read_text(encoding="utf-8")
+                )
+                self.assertNotIn("formula_links", sidecar)
+                self.assertEqual(sidecar["source_kind"], "input")
+
     def test_generated_vector_ignores_resq_formula_metadata(self) -> None:
         self.extractors.write_vector_export({
             "name": "Generated Premium",
