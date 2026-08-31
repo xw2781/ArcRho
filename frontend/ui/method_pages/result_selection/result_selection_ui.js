@@ -1424,7 +1424,7 @@
             // close dismiss it.
             .then(async (saved) => {
               if (saved?.ok && saved?.propagationClean) {
-                await showSavedDependentsNotice(saved.refreshedDatasets);
+                await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
               }
             })
             .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));
@@ -1449,7 +1449,7 @@
             saveResultSelection()
               .then(async (saved) => {
                 if (saved?.ok && saved?.propagationClean) {
-                  await showSavedDependentsNotice(saved.refreshedDatasets);
+                  await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
                 }
               })
               .catch((err) => postStatus(`Result Selection save failed: ${err?.message || err}`, "error"));

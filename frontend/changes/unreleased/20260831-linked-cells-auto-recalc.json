@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Dataset cells driven by ArcRho links now recalculate automatically when the dataset they read is refreshed, instead of keeping the value of the last manual refresh.",
+  "details": [
+    "A saved link now shows up in the dependency graph: the linked sources appear as Precedents on the Details tab, and the source dataset lists the linked one as a Dependent.",
+    "The dependent-update walk that runs after every save re-evaluates the linked cells on the server, including formulas that mix ArcRho and Excel references, and everything downstream of them follows in the same walk.",
+    "An Excel workbook the server cannot reach never blocks the update: those cells keep their last values and the post-save notice lists each affected dataset with the reason, one clickable name per row.",
+    "Only cells the links own are rewritten; hand-typed values in the same dataset are untouched."
+  ]
+}

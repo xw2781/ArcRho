@@ -6,7 +6,7 @@ function ensureStyles(doc) {
   const link = doc.createElement("link");
   link.id = STYLE_ID;
   link.rel = "stylesheet";
-  link.href = "/ui/shared/components/message_box/message_box.css?v=20260811a";
+  link.href = "/ui/shared/components/message_box/message_box.css?v=20260831a";
   doc.head.appendChild(link);
 }
 
@@ -86,6 +86,15 @@ export function showPageMessageBox({
     button.setAttribute("aria-label", String(item?.ariaLabel || `Open dataset ${label}`));
     linkButtons.push({ button, item });
     row.appendChild(button);
+    // A row may explain itself in place - the keep-stale warning under a
+    // linked dataset, say - so the reason sits with the name it belongs to.
+    const note = String(item?.note ?? "").trim();
+    if (note) {
+      const noteEl = doc.createElement("div");
+      noteEl.className = "pageMessageBoxLinkNote";
+      noteEl.textContent = note;
+      row.appendChild(noteEl);
+    }
     linksEl.appendChild(row);
   }
   linksEl.hidden = !linksEl.children.length;

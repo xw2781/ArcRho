@@ -24,7 +24,7 @@ strand the overlay by adding a new early return.
 */
 
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
 import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 
 /**
@@ -201,29 +201,60 @@ export const inertArcRhoSaveProgress = {
  * notice is up, so a save that refreshed several dependents can be walked
  * through one at a time.
  *
+ * When the walk kept some Excel-linked values because their workbook could
+ * not be read (`propagation.link_warnings`), the notice lists those datasets
+ * too, each with the reason under its name, so the user can open one and
+ * investigate rather than discovering a stale value later. A warning never
+ * blocks the save or the rest of the chain; the notice is the record of it.
+ *
  * @param {string[]} refreshedDatasets - Names from the save response's
  *   `propagation.refreshed_datasets`.
  * @param {Object} [options]
+ * @param {Array<{dataset_name: string, reason: string}>} [options.linkWarnings]
+ *   - Entries from the save response's `propagation.link_warnings`.
  * @param {Document} [options.documentRef] - Document that owns the notice.
  * @param {Window} [options.windowRef] - Window whose parent Project Instance
  *   opens a clicked dataset; defaults to the page's own window.
  * @returns {Promise<void>} Resolves when the user dismisses the notice,
  *   immediately when no dependent was refreshed.
  */
-export async function showSavedDependentsNotice(refreshedDatasets, { documentRef, windowRef } = {}) {
+export async function showSavedDependentsNotice(refreshedDatasets, { linkWarnings, documentRef, windowRef } = {}) {
   const names = (Array.isArray(refreshedDatasets) ? refreshedDatasets : [])
     .map((name) => String(name || "").trim())
     .filter(Boolean);
-  if (!names.length) return;
+  const warnings = (Array.isArray(linkWarnings) ? linkWarnings : [])
+    .map((item) => ({
+      name: String(item?.dataset_name || "").trim(),
+      reason: String(item?.reason || "").trim(),
+    }))
+    .filter((item) => item.name);
+  if (!names.length && !warnings.length) return;
+  const messageParts = [];
+  if (names.length) {
+    messageParts.push(names.length === 1
+      ? "1 dependent dataset was updated:"
+      : `${names.length} dependent datasets were updated:`);
+  }
+  if (warnings.length) {
+    messageParts.push(warnings.length === 1
+      ? "1 linked value could not be refreshed from Excel and keeps its last value:"
+      : `${warnings.length} linked values could not be refreshed from Excel and keep their last values:`);
+  }
   await showPageMessageBox({
     title: "Saved",
-    message: names.length === 1
-      ? "1 dependent dataset was updated:"
-      : `${names.length} dependent datasets were updated:`,
-    links: names.map((name) => ({
-      label: name,
-      ariaLabel: `Open related method or dataset ${name} in Project Instance`,
-    })),
+    tone: warnings.length ? "warn" : "",
+    message: messageParts.join("\n"),
+    links: [
+      ...names.map((name) => ({
+        label: name,
+        ariaLabel: `Open related method or dataset ${name} in Project Instance`,
+      })),
+      ...warnings.map((item) => ({
+        label: item.name,
+        note: item.reason,
+        ariaLabel: `Open dataset ${item.name} in Project Instance to investigate its Excel link`,
+      })),
+    ],
     onLinkClick: (item) => openMethodReviewDataset(item?.label, windowRef ? { windowRef } : {}),
     documentRef: documentRef || document,
   });

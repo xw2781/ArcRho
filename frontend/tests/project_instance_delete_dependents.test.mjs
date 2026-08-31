@@ -17,7 +17,7 @@ const testableSource = guardSource.replace(
   [
     "const showPageMessageBox = async (options) => {",
     "  globalThis.__messageBoxCalls.push(options);",
-    "  await globalThis.__messageBoxBehavior(options);",
+    "  return await globalThis.__messageBoxBehavior(options);",
     "};",
     "",
   ].join("\n"),
@@ -114,7 +114,69 @@ test("a blocked refusal is normalized into dataset and dependent names", () => {
         dependents: [{ datasetName: "Paid DFM", methodType: "DFM" }],
       },
     ],
+    downstreamClosure: [],
   });
+});
+
+test("a refusal carrying the downstream closure lists the chain and offers deleting it", async () => {
+  const { api } = createGuard();
+  messageBoxCalls.length = 0;
+  messageBoxBehavior = () => {};
+
+  const payload = blockedPayload([
+    {
+      dataset_name: "Paid Loss",
+      dependents: [{ dataset_name: "Paid DFM", method_type: "DFM" }],
+    },
+  ]);
+  payload.detail.downstream_closure = [
+    { dataset_name: "Paid DFM", method_type: "DFM" },
+    { dataset_name: "Selected Ultimate", method_type: "Result Selection" },
+  ];
+  const detail = api.readDeleteBlockedDetail(payload);
+  assert.deepEqual(detail.downstreamClosure, [
+    { datasetName: "Paid DFM", methodType: "DFM" },
+    { datasetName: "Selected Ultimate", methodType: "Result Selection" },
+  ]);
+
+  const decision = await api.showDeleteBlockedByDependents(detail);
+  const options = messageBoxCalls.at(-1);
+  assert.deepEqual(
+    options.links.map((link) => link.label),
+    ["Paid DFM — DFM", "Selected Ultimate — Result Selection"],
+    "with a closure the listed chain replaces the direct-dependent rows",
+  );
+  assert.deepEqual(
+    options.actions.map((action) => action.id),
+    ["delete-chain"],
+  );
+  assert.equal(decision, null, "a dismissed box asks for no chain delete");
+});
+
+test("choosing the delete-chain action resolves with the chain names", async () => {
+  const { api, opened } = createGuard();
+  messageBoxCalls.length = 0;
+  messageBoxBehavior = () => "delete-chain";
+
+  const payload = blockedPayload([
+    {
+      dataset_name: "Paid Loss",
+      dependents: [{ dataset_name: "Paid DFM", method_type: "DFM" }],
+    },
+  ]);
+  payload.detail.downstream_closure = [
+    { dataset_name: "Paid DFM", method_type: "DFM" },
+    { dataset_name: "Selected Ultimate", method_type: "Result Selection" },
+  ];
+
+  const decision = await api.showDeleteBlockedByDependents(
+    api.readDeleteBlockedDetail(payload),
+  );
+
+  assert.deepEqual(decision, {
+    deleteChainNames: ["Paid DFM", "Selected Ultimate"],
+  });
+  assert.deepEqual(opened, [], "confirming the chain delete opens no window");
 });
 
 test("one blocked dataset lists its dependents without repeating its own name", async () => {

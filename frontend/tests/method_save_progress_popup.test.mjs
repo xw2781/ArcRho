@@ -510,7 +510,7 @@ test("every method and dataset window saves behind the shared save progress", as
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260824a/u,
+      /save_progress\.js\?v=20260831a/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.
@@ -530,7 +530,7 @@ test("each save drops the spinner before its post-save review dialog", async () 
     // The Dataset window opens the shared "Saved" dependents notice instead
     // of the method review warning; both must follow the same dismissal rule.
     const dialogIndex = surface.label === "Dataset"
-      ? text.indexOf("await showSavedDependentsNotice(result.refreshedDatasets)")
+      ? text.indexOf("await showSavedDependentsNotice(result.refreshedDatasets, { linkWarnings: result.linkWarnings })")
       : text.indexOf("await showMethodSaveReviewWarning(");
     assert.ok(dialogIndex > 0, `${surface.label} must open a post-save dialog`);
     const finishIndex = text.lastIndexOf("progress?.finish()", dialogIndex) >= 0

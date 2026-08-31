@@ -21,7 +21,7 @@ import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/clos
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
@@ -2309,6 +2309,7 @@ async function runBerquistShermanSave(progress) {
     csvPath: text(sidecar?.output_csv_path),
     propagationClean: propagationOutcome !== null,
     refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+    linkWarnings: propagationOutcome?.link_warnings || [],
   };
 }
 
@@ -2450,7 +2451,7 @@ function wireInputs() {
       // A save keeps the window open; only Cancel and a confirmed dirty close
       // dismiss it.
       if (saved?.ok && saved?.propagationClean) {
-        await showSavedDependentsNotice(saved.refreshedDatasets);
+        await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
       }
     } catch (error) {
       console.error(error);
@@ -2475,7 +2476,7 @@ function wireMessages() {
       try {
         const saved = await saveMethod();
         if (saved?.ok && saved?.propagationClean) {
-          await showSavedDependentsNotice(saved.refreshedDatasets);
+          await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
         }
       } catch (error) {
         postStatus(`Save failed: ${text(error?.message || error)}`, "error");

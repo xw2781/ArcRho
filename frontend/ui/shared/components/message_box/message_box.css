@@ -123,6 +123,14 @@
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
 }
 
+.pageMessageBoxLinkNote {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .pageMessageBoxActions {
   display: flex;
   justify-content: flex-end;

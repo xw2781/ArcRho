@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Deleting a dataset that other objects still read now lists the whole downstream chain and offers deleting all of it together, instead of only refusing.",
+  "details": [
+    "The refusal window lists every downstream object with its method type; clicking one still opens it so the input can be cleared instead.",
+    "A new Delete all button resubmits the delete with the whole chain included, after the list has shown exactly what it covers.",
+    "A delete is refused while a dependent update is running on the same reserving class, the same way a save is, so the two can never race."
+  ]
+}

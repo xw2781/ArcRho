@@ -4,8 +4,8 @@ import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagatio
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260830a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
@@ -824,6 +824,7 @@ export function registerDataTabPersistenceController(runtime) {
       data: resp.data,
       propagationClean: propagationOutcome !== null,
       refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+      linkWarnings: propagationOutcome?.link_warnings || [],
     };
   }
   async function saveDatasetChanges(options = {}) {
@@ -844,6 +845,7 @@ export function registerDataTabPersistenceController(runtime) {
     // counts as clean for the close-on-save decision.
     let propagationClean = true;
     let refreshedDatasets = [];
+    let linkWarnings = [];
     try {
       if (datasetSettingsDirty || hasManualInputGridChanges() || linkControllerNames.some((name) => runtime[name].isDirty()) || notesDirty || isUnsavedProjectInstanceDraft()) {
         const sidecarResult = await saveDatasetSidecarForCurrentContext(progress);
@@ -851,11 +853,12 @@ export function registerDataTabPersistenceController(runtime) {
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
         propagationClean = sidecarResult.propagationClean !== false;
         refreshedDatasets = sidecarResult.refreshedDatasets || [];
+        linkWarnings = sidecarResult.linkWarnings || [];
       }
       updateDatasetSaveUi();
       if (!options?.silentStatus) setStatus(saveStatus.text, saveStatus.tone);
       requestProjectInstanceDatasetTableRefresh();
-      return { ok: true, propagationClean, refreshedDatasets };
+      return { ok: true, propagationClean, refreshedDatasets, linkWarnings };
     } finally {
       runtime.datasetSaveInFlight = false;
       updateDatasetSaveUi();
@@ -944,7 +947,7 @@ export function registerDataTabPersistenceController(runtime) {
     // clean dependent walk the notice names what the walk refreshed, except for
     // the Data tab hosted inside a DFM window, which reports through DFM's save.
     if (result.ok && result.propagationClean && !isDfmDataTabHost()) {
-      await showSavedDependentsNotice(result.refreshedDatasets);
+      await showSavedDependentsNotice(result.refreshedDatasets, { linkWarnings: result.linkWarnings });
     }
     return result;
   }

@@ -2780,11 +2780,17 @@ function showDatasetDeleteConfirm(records) {
 }
 
 async function deleteSelectedDatasetRows(records) {
-  const names = records.map((record) => toText(record?.datasetName)).filter(Boolean);
-  if (!projectName || !state.selectedPath || !names.length) return;
+  const requestedNames = records.map((record) => toText(record?.datasetName)).filter(Boolean);
+  if (!projectName || !state.selectedPath || !requestedNames.length) return;
   const confirmed = await showDatasetDeleteConfirm(records);
   if (!confirmed) return;
-  const label = names.length === 1 ? names[0] : `${names.length} datasets`;
+  // A refusal naming the downstream chain may turn into one confirmed
+  // resubmission carrying the chain, and that wider request can itself be
+  // refused when the graph moved in between, so the delete runs as a loop:
+  // each round either succeeds, stops, or grows the name list the user
+  // approved in the blocked-chain dialog.
+  let names = requestedNames;
+  const label = requestedNames.length === 1 ? requestedNames[0] : `${requestedNames.length} datasets`;
   setStatus(`Deleting cached files for ${label}...`);
   // The server removes the files and rebuilds index.json in one request with no
   // intermediate progress to report, so this shows the shared indeterminate
@@ -2794,27 +2800,42 @@ async function deleteSelectedDatasetRows(records) {
     message: `Removing cached files for ${label} and rebuilding the dataset index...`,
   });
   try {
-    const resp = await fetch("/datasets/cached/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: projectName,
-        reserving_class: state.selectedPath,
-        dataset_names: names,
-      }),
-    });
-    const payload = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
+    let resp;
+    let payload;
+    for (;;) {
+      resp = await fetch("/datasets/cached/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_name: projectName,
+          reserving_class: state.selectedPath,
+          dataset_names: names,
+        }),
+      });
+      payload = await resp.json().catch(() => ({}));
+      if (resp.ok) break;
       // Nothing was deleted when dependents block the request, so the table is
-      // still correct; the user gets the dependents window instead of an error
-      // line and works from there.
+      // still correct; the user gets the chain window instead of an error line
+      // and either opens a dependent to clear the input or confirms deleting
+      // the whole chain, which resubmits with the chain included.
       const blocked = api.readDeleteBlockedDetail?.(payload);
-      if (blocked) {
-        finishPageLoading("delete-datasets");
-        setStatus("Delete blocked: the selection is still used as input.", true);
-        await api.showDeleteBlockedByDependents(blocked);
-        return;
+      if (!blocked) break;
+      finishPageLoading("delete-datasets");
+      setStatus("Delete blocked: the selection is still used as input.", true);
+      const decision = await api.showDeleteBlockedByDependents(blocked);
+      if (!decision?.deleteChainNames?.length) return;
+      const seen = new Set(names.map((name) => name.toLowerCase()));
+      for (const name of decision.deleteChainNames) {
+        if (!seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          names = [...names, name];
+        }
       }
+      setStatus(`Deleting cached files for ${names.length} datasets...`);
+      beginPageLoading("delete-datasets", {
+        title: "Deleting cached files",
+        message: `Removing cached files for ${names.length} datasets and rebuilding the dataset index...`,
+      });
     }
     if (!resp.ok || payload?.ok === false) {
       const detail = payload?.detail;

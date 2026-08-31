@@ -13,7 +13,7 @@ import {
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
 import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260824a";
+import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
 import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   state as dfmState,
@@ -360,6 +360,7 @@ async function saveCurrentDfmMethodFromBar() {
   updateDfmSaveUi();
   let savedCleanly = false;
   let refreshedDatasets = [];
+  let linkWarnings = [];
   try {
     const result = await saveRatioSelectionPattern(false);
     if (!result?.ok && result?.error) {
@@ -369,11 +370,12 @@ async function saveCurrentDfmMethodFromBar() {
     // a refreshed-dependents list to report.
     savedCleanly = Boolean(result?.ok && result?.propagationClean);
     refreshedDatasets = result?.refreshedDatasets || [];
+    linkWarnings = result?.linkWarnings || [];
   } finally {
     dfmSaveInFlight = false;
     updateDfmSaveUi();
   }
-  if (savedCleanly) await showSavedDependentsNotice(refreshedDatasets);
+  if (savedCleanly) await showSavedDependentsNotice(refreshedDatasets, { linkWarnings });
 }
 
 async function cancelCurrentDfmChangesFromBar() {

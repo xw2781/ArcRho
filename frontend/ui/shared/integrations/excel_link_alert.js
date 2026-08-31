@@ -8,7 +8,7 @@
 // for this: it is where a refresh reports how many cells changed, and a link
 // the user must go and repair should not scroll past in the same line.
 import { openExcelWorkbook } from "/ui/shared/integrations/excel_api.js?v=20260819a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260827a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
 
 const MAX_LISTED_FAILURES = 6;
 

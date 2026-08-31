@@ -347,6 +347,7 @@
             ...payload,
             propagationClean: propagationOutcome !== null,
             refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+            linkWarnings: propagationOutcome?.link_warnings || [],
           };
         } finally {
           rsWatch.resume();
