@@ -4,17 +4,19 @@
 - Add/Modify RC Class Types
 - Add/Modify Date Processing Rules
 - Project Duplication
+
 ##  Project View
 - Enhanced Navigation Panel
 - Dataset Table Group/Filter UX
 - Temp View Mode
+
 ## Import Datasets and Methods
 - Import Datasets from ResQ - Macro
+
 ## Method Page - DFM
 - Chart
 - Edit Mode
 - User entry value formula
-
 
 
 # Phase 2 - 8/17
@@ -25,7 +27,13 @@
 - Sync Reserving Class (Macro)
 
 
+# Phase 3 - 9/2
 
-# Phase 3 - 8/24
-- AI assisted workflow
-- Link across projects (Prior Vectors)
+## Core Features
+- Dataset in-cell formula
+- Export to ResQ (Macro)
+
+## Enhancements
+- Show diagnostic triangles
+
+## 
