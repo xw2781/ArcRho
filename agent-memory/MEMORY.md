@@ -3,6 +3,7 @@
 - [Pointer-capture drag fix](pointer-capture-drag-fix.md) — mousemove-on-document drag/resize loses control on fast drags; fix is setPointerCapture, now codified as L16 in the arcrho-ui-design codex skill
 - [ArcRho dataset-types win over ResQ](arcrho-dataset-types-win-over-resq.md) — a sidecar is "calculated" only when dataset_types.json says so; ResQ's Calculated/Formula never decides it (81/82 Prior Qtr vectors are editable inputs); 138 sidecars re-stamped 2026-08-29, Bridge redeploy still pending
 - [When a ResQ formula belongs to the type](resq-formula-belongs-to-type.md) — promote an instance-only formula to the ArcRho dataset type when no instance holds data without it; blank+empty is a stub, blank+numbers is a real input (validated over 260 types / 3,962 classes)
+- [Instance formula import design](instance-formula-import-design.md) — 2026-08-31 decisions: import translates ResQ instance formulas to in-cell links, ArcRho-linked cells join the propagation chain with auto-recalc (Excel links stay manual), 81/82 stay hardcoded until cross-project links, delete becomes cascade-with-confirm
 
 - [Persisted JSON v4 progress](persisted-json-v4-progress.md) — steps 1-5 committed 2026-08-23; next is the step 6 conversion script, and /code-review ultra was deferred rather than run
 - [Commit authorship](commit-authorship.md) - commits are authored by xw2781 with no Claude co-author trailer; this clone needed its local git identity set
