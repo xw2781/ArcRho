@@ -1210,6 +1210,23 @@ def _vector_payload_period_length(payload: dict) -> int:
     return int(payload.get("period_length") or payload.get("origin_length") or 0)
 
 
+def _vector_payload_row_count(payload: dict) -> int:
+    """The vector's actual cell/row count (ResQ ``OriginCount``).
+
+    Not ``origin_length``/``period_length``: those hold the number of months in
+    one origin/development period (12 for annual data), never how many rows the
+    vector has.
+    """
+    count = int(payload.get("origin_count") or 0)
+    if count <= 0:
+        labels = payload.get("origin_labels")
+        count = len(labels) if isinstance(labels, list) else 0
+    if count <= 0:
+        values = payload.get("values")
+        count = len(values) if isinstance(values, list) else 0
+    return count
+
+
 # One ResQ instance-formula token: a double-quoted dataset name, a number, or
 # an operator/parenthesis, each after optional whitespace. Anything else in the
 # text makes the formula untranslatable.
@@ -1223,7 +1240,7 @@ _RESQ_INSTANCE_FORMULA_TOKEN_RE = re.compile(
 def _translated_instance_formula_links(
     payload: dict,
     dataset_name: str,
-    period_length: int,
+    row_count: int,
     known_instance_names: object,
 ) -> list[dict] | None:
     """Translate a ResQ instance formula into one ArcRho in-cell formula link.
@@ -1231,7 +1248,8 @@ def _translated_instance_formula_links(
     ResQ keeps per-instance formulas on vectors whose dataset type ArcRho
     treats as a plain input — quoted dataset names combined with arithmetic,
     ``"C 91 - Current Qtr Indicated" * "H 01 - ..." / 1000``. Each quoted name
-    becomes a whole-vector dataset reference (``[C 91 - ...][1:N]``), the text
+    becomes a whole-vector dataset reference (``[C 91 - ...][1:N]`` where N is
+    the vector's row count, never its period length in months), the text
     is canonicalized through ``arcrho_api.dataset_link_contract`` so a later
     save round-trips it byte for byte, and the link owns every cell of the
     vector. The translation is all-or-nothing: a name not among
@@ -1241,7 +1259,7 @@ def _translated_instance_formula_links(
     """
 
     formula = _clean_name(payload.get("formula"))
-    if not formula or period_length <= 0 or known_instance_names is None:
+    if not formula or row_count <= 0 or known_instance_names is None:
         return None
     known_keys = {
         _canon_dataset_name(name)
@@ -1261,7 +1279,7 @@ def _translated_instance_formula_links(
             key = _canon_dataset_name(referenced_name)
             if not key or key == own_key or key not in known_keys:
                 return None
-            pieces.append(f"[{referenced_name}][1:{period_length}]")
+            pieces.append(f"[{referenced_name}][1:{row_count}]")
             referenced = True
         elif match.group("number") is not None:
             pieces.append(match.group("number"))
@@ -1278,7 +1296,7 @@ def _translated_instance_formula_links(
         "formula": canonical,
         "target_cells": [
             {"row": row, "column": 0, "result_row": row, "result_column": 0}
-            for row in range(period_length)
+            for row in range(row_count)
         ],
     }]
 
@@ -1447,7 +1465,7 @@ def write_vector_export(
             translated = _translated_instance_formula_links(
                 payload,
                 name,
-                period_length,
+                _vector_payload_row_count(payload),
                 known_instance_names,
             )
             if translated:

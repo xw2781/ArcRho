@@ -274,8 +274,10 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
             "data_format": 1,
             "method_type": "None",
             "method_type_code": 0,
-            "origin_length": 2,
-            "development_length": 2,
+            # Annual granularity: origin_length is months per period (12), not
+            # the row count. The formula link must span origin_count rows (2).
+            "origin_length": 12,
+            "development_length": 12,
             "origin_count": 2,
             "development_count": 1,
             "origin_labels": ["2025", "2026"],
