@@ -1,0 +1,719 @@
+/* Flight Deck - a slim, always-on-top strip of one-press macro buttons that the user parks
+   anywhere over the workspace. Every colour comes from the shared --ar-* theme tokens so Light,
+   Dark, and High Contrast are covered without per-theme rules. */
+
+#flightDeck {
+  position: fixed;
+  left: 50%;
+  top: 96px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 5px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  background: var(--ar-color-surface-muted, #eef2f6);
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--shell-floating-radius, 8px);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+  color: var(--ar-color-text, #1f2937);
+  font-family: inherit;
+  z-index: 12200;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 150ms ease, transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+#flightDeck.open {
+  display: flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#flightDeck[data-orientation="vertical"] {
+  flex-direction: column;
+  max-width: none;
+  max-height: calc(100vh - var(--statusbar-h, 24px) - 24px);
+}
+
+/* Drop target while a macro is being dragged in from the Macros window. */
+#flightDeck.macroDropTarget {
+  border-color: var(--ar-color-accent, #2b6df6);
+  background: var(--ar-color-accent-soft, #eaf2ff);
+}
+
+.flightDeckGrip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 26px;
+  cursor: move;
+  touch-action: none;
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckGrip {
+  width: 26px;
+  height: 10px;
+  transform: rotate(90deg);
+}
+
+.flightDeckGrip svg {
+  width: 8px;
+  height: 20px;
+  fill: var(--ar-color-text-subtle, #94a3b8);
+}
+
+.flightDeckSlots {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckSlots {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.flightDeckSlots:empty {
+  display: none;
+}
+
+.flightDeckBtn {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+  touch-action: none;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.flightDeckBtn:hover {
+  background: var(--ar-color-surface, #ffffff);
+  border-color: var(--ar-color-border, #d8dde3);
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckBtn:focus-visible {
+  outline: none;
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.flightDeckBtn.dragSource {
+  opacity: 0.35;
+}
+
+.flightDeckBtn.missing {
+  border-style: dashed;
+  border-color: var(--ar-color-border, #d8dde3);
+  color: var(--ar-color-text-disabled, #9ca3af);
+}
+
+.flightDeckBtn.running {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  border-color: var(--ar-color-accent, #2b6df6);
+  color: var(--ar-color-accent, #2b6df6);
+  cursor: progress;
+}
+
+/* A running light for real work only, stopped the moment the macro returns. */
+.flightDeckBtn.running::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 4px;
+  border: 1px solid var(--ar-color-accent, #2b6df6);
+  animation: flightDeckRunPulse 1100ms ease-in-out infinite;
+}
+
+@keyframes flightDeckRunPulse {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.75; }
+}
+
+.flightDeckBtn.succeeded {
+  color: var(--ar-color-success, #15803d);
+  border-color: var(--ar-color-success, #15803d);
+  background: var(--ar-color-success-soft, #f0fdf4);
+}
+
+.flightDeckBtn.failed {
+  color: var(--ar-color-danger, #be123c);
+  border-color: var(--ar-color-danger, #be123c);
+  background: var(--ar-color-danger-soft, #fff1f2);
+}
+
+.flightDeckBtn.dropBefore {
+  box-shadow: inset 2px 0 0 var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckBtn.dropAfter {
+  box-shadow: inset -2px 0 0 var(--ar-color-accent, #2b6df6);
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckBtn.dropBefore {
+  box-shadow: inset 0 2px 0 var(--ar-color-accent, #2b6df6);
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckBtn.dropAfter {
+  box-shadow: inset 0 -2px 0 var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckGlyph {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Pasted drawings usually arrive as filled shapes rather than strokes. */
+.flightDeckGlyph.custom {
+  fill: currentColor;
+  stroke: none;
+}
+
+.flightDeckHint {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  border: 1px dashed var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ar-color-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckHint {
+  writing-mode: vertical-rl;
+  height: auto;
+  padding: 8px 0;
+}
+
+.flightDeckHint[hidden] {
+  display: none;
+}
+
+.flightDeckDivider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  background: var(--ar-color-border, #d8dde3);
+}
+
+#flightDeck[data-orientation="vertical"] .flightDeckDivider {
+  width: 18px;
+  height: 1px;
+}
+
+.flightDeckSysBtn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.flightDeckSysBtn:hover {
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.flightDeckSysBtn[aria-expanded="true"] {
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckSysBtn:focus-visible {
+  outline: none;
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.flightDeckSysBtn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#flightDeckMenuBtn svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* Deck and button menus. */
+.flightDeckMenu {
+  position: fixed;
+  min-width: 176px;
+  padding: 4px;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 6px;
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  font-size: 12px;
+  color: var(--ar-color-text, #1f2937);
+  z-index: 12400;
+}
+
+.flightDeckMenu[hidden] {
+  display: none;
+}
+
+.flightDeckMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flightDeckMenuItem:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.flightDeckMenuItem[aria-checked="true"]::after {
+  content: "\2713";
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckMenuItem.danger:hover {
+  color: var(--ar-color-danger, #be123c);
+}
+
+.flightDeckMenuShortcut {
+  color: var(--ar-color-text-subtle, #94a3b8);
+}
+
+.flightDeckMenuSep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--ar-color-border, #d8dde3);
+}
+
+/* Button editor - label text and icon choice for one deck button. */
+#flightDeckEditorOverlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--ar-color-overlay, rgba(15, 23, 42, 0.18));
+  z-index: 12600;
+}
+
+#flightDeckEditorOverlay.open {
+  display: flex;
+}
+
+.flightDeckEditor {
+  width: 384px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 8px;
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  font-size: 12px;
+  color: var(--ar-color-text, #1f2937);
+}
+
+.flightDeckEditorTitle {
+  flex: 0 0 auto;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flightDeckEditorBody {
+  flex: 1 1 auto;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.flightDeckEditorLabel {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.flightDeckEditorField {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  background: var(--ar-color-input, #ffffff);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+}
+
+textarea.flightDeckEditorField {
+  height: 68px;
+  padding: 6px 8px;
+  resize: vertical;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+}
+
+.flightDeckEditorField:focus {
+  outline: none;
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 3px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.flightDeckEditorSection {
+  margin-top: 12px;
+}
+
+.flightDeckIconGrid {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 3px;
+  padding: 5px;
+  background: var(--ar-color-canvas-subtle, #f8fafc);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+}
+
+.flightDeckIconSwatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.flightDeckIconSwatch:hover {
+  background: var(--ar-color-surface, #ffffff);
+  border-color: var(--ar-color-border, #d8dde3);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.flightDeckIconSwatch[aria-pressed="true"] {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  border-color: var(--ar-color-accent, #2b6df6);
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckEditorSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flightDeckEditorSectionHead .flightDeckEditorLabel {
+  margin-bottom: 5px;
+}
+
+/* Draw or Paste - the two ways to give a button a drawing of the user's own. */
+.flightDeckDrawModes {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 5px;
+}
+
+.flightDeckDrawMode {
+  height: 22px;
+  padding: 0 10px;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  color: var(--ar-color-text-muted, #64748b);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.flightDeckDrawMode:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.flightDeckDrawMode[aria-pressed="true"] {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  border-color: var(--ar-color-accent, #2b6df6);
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+.flightDeckEditorCustom[data-mode="draw"] .flightDeckPastePanel,
+.flightDeckEditorCustom[data-mode="paste"] .flightDeckDrawPanel {
+  display: none;
+}
+
+.flightDeckDrawPanel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.flightDeckDrawPadWrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 132px;
+  height: 132px;
+}
+
+.flightDeckDrawPad {
+  width: 100%;
+  height: 100%;
+  display: block;
+  box-sizing: border-box;
+  background: var(--ar-color-input, #ffffff);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  color: var(--ar-color-accent, #2b6df6);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.flightDeckDrawPad:hover {
+  border-color: var(--ar-color-border-strong, #cbd5e1);
+}
+
+.flightDeckDrawHint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--ar-color-text-muted, #64748b);
+  pointer-events: none;
+}
+
+.flightDeckDrawHint[hidden] {
+  display: none;
+}
+
+.flightDeckDrawPad[data-tool="erase"] {
+  cursor: cell;
+}
+
+/* What the eraser would clear, shown under the pointer as it is moved over the pad. */
+.flightDeckEraserRing {
+  fill: none;
+  stroke: var(--ar-color-danger, #be123c);
+  stroke-width: 0.3;
+  stroke-dasharray: 1 0.8;
+}
+
+.flightDeckDrawTools {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flightDeckDrawToolGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.flightDeckDrawTool {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 7px;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  color: var(--ar-color-text-muted, #64748b);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.flightDeckDrawTool .flightDeckGlyph {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.flightDeckDrawTool:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.flightDeckDrawTool[aria-pressed="true"] {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  border-color: var(--ar-color-accent, #2b6df6);
+  color: var(--ar-color-accent, #2b6df6);
+}
+
+/* The eraser takes away rather than adds, so it sits on its own row under the four that draw. */
+.flightDeckDrawTool[data-tool="erase"] {
+  grid-column: 1 / -1;
+}
+
+.flightDeckDrawTool[data-tool="erase"][aria-pressed="true"] {
+  background: var(--ar-color-danger-soft, #fff1f2);
+  border-color: var(--ar-color-danger, #be123c);
+  color: var(--ar-color-danger, #be123c);
+}
+
+.flightDeckDrawActions {
+  display: flex;
+  gap: 6px;
+}
+
+.flightDeckDrawActions .flightDeckEditorBtn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.flightDeckEditorBtn.slim {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.flightDeckEditorNote {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.flightDeckEditorNote[data-tone="error"] {
+  color: var(--ar-color-danger, #be123c);
+}
+
+.flightDeckEditorPreview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 7px 9px;
+  background: var(--ar-color-surface-muted, #eef2f6);
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+}
+
+.flightDeckEditorPreview .flightDeckBtn {
+  background: var(--ar-color-surface, #ffffff);
+  border-color: var(--ar-color-border, #d8dde3);
+  color: var(--ar-color-accent, #2b6df6);
+  cursor: default;
+}
+
+.flightDeckEditorPreviewText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.flightDeckEditorButtons {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ar-color-border, #d8dde3);
+}
+
+.flightDeckEditorBtn {
+  height: 28px;
+  padding: 0 14px;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.flightDeckEditorBtn:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.flightDeckEditorBtn.primary {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  border-color: var(--ar-color-accent, #2b6df6);
+  color: var(--ar-color-accent-strong, #1d4ed8);
+}
+
+/* Ghost that follows the pointer while a deck button is dragged out or reordered. */
+.flightDeckDragGhost {
+  position: fixed;
+  padding: 3px 8px;
+  background: var(--ar-color-surface, #ffffff);
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+  font-size: 11px;
+  color: var(--ar-color-text, #1f2937);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 12500;
+}
+
+.flightDeckDragGhost[data-kind="remove"] {
+  border-color: var(--ar-color-danger, #be123c);
+  color: var(--ar-color-danger, #be123c);
+  background: var(--ar-color-danger-soft, #fff1f2);
+}

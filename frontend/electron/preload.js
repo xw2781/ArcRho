@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
   saveHomeFolderPreferences: (preferences) => invoke("home-folders-preferences-save", { preferences }),
   loadMacroPreferences: () => invoke("macro-preferences-load"),
   saveMacroPreferences: (preferences) => invoke("macro-preferences-save", { preferences }),
+  loadFlightDeckPreferences: () => invoke("flight-deck-preferences-load"),
+  saveFlightDeckPreferences: (preferences) => invoke("flight-deck-preferences-save", { preferences }),
   saveJsonFile: (payload) => invoke("save-json-file", payload),
   saveTextFile: (payload) => invoke("save-text-file", payload),
   readTextFile: (payload) => invoke("read-text-file", payload),

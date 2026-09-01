@@ -1,6 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
-import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260829d";
+import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260831a";
+import { isFlightDeckVisible, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260831e";
 import { initUpdateProgressBridge } from "./update_progress.js?v=20260828f";
 import { initReleaseNotesDialog, openReleaseHistory } from "./release_notes_dialog.js?v=20260820a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "../shared/components/cascade_menu/cascade_menu.js?v=20260817a";
@@ -322,6 +323,8 @@ export function updateViewMenuState() {
   const isScripting = isActiveScriptingTab();
   const aiBotIconLabel = viewMenuDropdown.querySelector('.menuItem[data-action="toggle-ai-bot-icon"] > span:not(.menuShortcut)');
   if (aiBotIconLabel) aiBotIconLabel.textContent = isAiAssistantLauncherVisible() ? "Hide AI Bot Icon" : "Show AI Bot Icon";
+  const flightDeckLabel = viewMenuDropdown.querySelector('.menuItem[data-action="toggle-flight-deck"] > span:not(.menuShortcut)');
+  if (flightDeckLabel) flightDeckLabel.textContent = isFlightDeckVisible() ? "Hide Flight Deck" : "Show Flight Deck";
   viewMenuDropdown.querySelectorAll(".menuItem").forEach((el) => {
     if (el.hidden) { el.classList.remove("disabled"); return; }
     const action = el.getAttribute("data-action") || "";
@@ -462,7 +465,9 @@ export function initShellMenus() {
     const action = item?.getAttribute("data-action");
     if (!action || item.classList.contains("disabled")) return;
     toggleViewMenu(false);
-    if (action === "toggle-ai-bot-icon") {
+    if (action === "toggle-flight-deck") {
+      toggleFlightDeck();
+    } else if (action === "toggle-ai-bot-icon") {
       const visible = toggleAiAssistantLauncherVisible();
       shell.updateStatusBar?.(`AI bot icon ${visible ? "shown" : "hidden"}.`);
     } else if (action === "toggle-nav") {

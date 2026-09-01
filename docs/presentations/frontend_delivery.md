@@ -35,5 +35,6 @@
 
 ## Enhancements
 - Show diagnostic triangles
+- Flight Deck Shortcut
 
 ## 

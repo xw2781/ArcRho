@@ -8,14 +8,15 @@ import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabS
 import { buildShellActivityEntry, closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBornhuetterFergusonTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openFileExplorerTab, openProjectInstanceTab, openProjectSettingsTab, openResultSelectionTab, openScriptingTab, openShellActivityHistoryEntry, openTaskDesigner, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260808a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260808a";
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260821a";
-import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260829d";
-import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260816a";
+import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260831a";
+import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260831a";
 import { initShellMessages } from "./shell_messages.js?v=20260828f";
 import { initUiAutomation } from "./ui_automation.js?v=20260829d";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";
-import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260829d";
+import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260831a";
+import { addMacroToFlightDeck, closeFlightDeck, initFlightDeck, isFlightDeckVisible, openFlightDeck, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260831e";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const CLEAR_CACHE_RESTORE_KIND = "arcrho-clear-cache-reload-restore-v1";
@@ -45,10 +46,12 @@ function wire() {
   initAppLifecycle();
   initAiAssistant();
   void initMacroWindow();
+  void initFlightDeck();
 }
 
 registerShellApi({
   ZOOM_STEP,
+  addMacroToFlightDeck,
   adjustZoomByDelta,
   applyAppFont,
   applyDockedIframeLayout,
@@ -64,6 +67,7 @@ registerShellApi({
   clearSavedStatusOnDirty,
   clearTestData,
   closeAllShellMenus,
+  closeFlightDeck,
   closeFontSettingsModal,
   closeForceRebuildSettingsModal,
   closeMacroWindow,
@@ -101,6 +105,7 @@ registerShellApi({
   isActiveProjectSettingsReservingClassTypesTab,
   isActiveScriptingTab,
   isActiveWorkflowTab,
+  isFlightDeckVisible,
   loadAppFont,
   loadColorTheme,
   loadState,
@@ -115,6 +120,7 @@ registerShellApi({
   openDFMTab,
   openFileExplorerTab,
   openDevPanel,
+  openFlightDeck,
   openFontSettingsModal,
   openForceRebuildSettingsModal,
   openMacroWindow,
@@ -159,6 +165,7 @@ registerShellApi({
   showGlobalTooltip,
   shutdownApplication,
   state,
+  toggleFlightDeck,
   toggleNavigationPanel,
   togglePlusMenu,
   uiVersionParam: UI_VERSION_PARAM,

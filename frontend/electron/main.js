@@ -146,6 +146,7 @@ const ARCODE_LEGACY_USER_SETTINGS_FILE = "settings.json";
 const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const MACRO_PREFS_FILE = "macro_prefs.json";
+const FLIGHT_DECK_PREFS_FILE = "flight_deck.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
@@ -233,6 +234,10 @@ function getHomeFoldersPrefsPath() {
 
 function getMacroPrefsPath() {
   return path.join(getPrefsDir(), MACRO_PREFS_FILE);
+}
+
+function getFlightDeckPrefsPath() {
+  return path.join(getPrefsDir(), FLIGHT_DECK_PREFS_FILE);
 }
 
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
@@ -1792,6 +1797,36 @@ ipcMain.handle("macro-preferences-save", async (_event, payload) => {
     return { ok: true, path: filePath, preferences: stored };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Could not save macro preferences.") };
+  }
+});
+
+// The Flight Deck keeps its own file rather than sharing macro_prefs.json: both are written
+// whole, so one window saving would otherwise erase what the other had just stored.
+ipcMain.handle("flight-deck-preferences-load", async () => {
+  const filePath = getFlightDeckPrefsPath();
+  try {
+    if (!fs.existsSync(filePath)) return { ok: true, exists: false, preferences: {} };
+    return { ok: true, exists: true, preferences: JSON.parse(fs.readFileSync(filePath, "utf8")) };
+  } catch (err) {
+    return { ok: false, exists: false, preferences: {}, error: String(err?.message || err || "Could not load Flight Deck preferences.") };
+  }
+});
+
+ipcMain.handle("flight-deck-preferences-save", async (_event, payload) => {
+  const preferences = payload?.preferences;
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
+    return { ok: false, error: "Invalid Flight Deck preferences payload." };
+  }
+  const filePath = getFlightDeckPrefsPath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const stored = { ...preferences, updatedAt: new Date().toISOString() };
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
+    fs.renameSync(tmpPath, filePath);
+    return { ok: true, path: filePath, preferences: stored };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "Could not save Flight Deck preferences.") };
   }
 });
 

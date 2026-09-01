@@ -365,6 +365,12 @@ body.macroListDragActive * {
   color: #1d4ed8;
 }
 
+.macroDragGhost[data-kind="deck"] {
+  border-color: #93b5e8;
+  background: #e7f0ff;
+  color: #1d4ed8;
+}
+
 .macroDragGhost[data-kind="remove"] {
   border-color: #fecaca;
   background: #fef2f2;

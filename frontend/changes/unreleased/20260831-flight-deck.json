@@ -1,0 +1,17 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Added the Flight Deck, a slim floating strip of one-press macro buttons you can park anywhere on screen.",
+  "details": [
+    "View > Show Flight Deck, or Ctrl+B, shows and hides it.",
+    "Drag a macro out of the Macros window and drop it on the deck to give it a button.",
+    "Each button carries an icon plus a label of your choosing. Pick the icon from the built-in set, draw your own on the pad, or paste one in.",
+    "The pad has a pen, a straight line, a box and an oval, plus an eraser that lifts whole lines and shapes away, with Undo and Clear beside them. Hold Shift for a level line, a square or a circle.",
+    "Picking a built-in glyph lays it out on the pad, so you can add to it or rub parts of it out rather than only replacing it.",
+    "Reopening a button puts its icon back on the pad, so you carry on from where you left off instead of starting again.",
+    "The deck stays above the rest of the app, is dragged by the grip on its end, and can stand upright as well as lie flat.",
+    "Buttons are reordered by dragging, and removed by dragging them off the deck.",
+    "The whole arrangement is kept permanently on your PC, in its own file beside the other desktop preferences, so it survives Clear Cache & Reload."
+  ]
+}

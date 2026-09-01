@@ -84,7 +84,8 @@ test("Macro lists share keyboard selection and pointer-captured drag", () => {
   assert.match(interactions, /event\.key === "ArrowUp"/);
   assert.match(macro, /initMacroListKeyboard\(macroList/);
   assert.match(macro, /initMacroListDrag\(macroList, macroWindow, \{[\s\S]*?reorder: true/);
-  assert.match(macro, /outsideTarget: \(\) => \(\{ kind: "remove" \}\)/);
+  // Dragged clear of the window a macro is deleted, unless it lands on the Flight Deck.
+  assert.match(macro, /outsideTarget: \(element\) => \{[\s\S]*?kind: "deck"[\s\S]*?kind: "remove"/);
   assert.match(library, /initMacroListKeyboard\(libraryList/);
   assert.match(library, /initMacroListDrag\(libraryList, libraryWindow/);
   assert.match(library, /closest\?\.\("#macroWindow"\)/);

@@ -1005,15 +1005,13 @@ export async function reviewAndApplyCapturedMacroResult(args = {}) {
   }, capture, { beforeApply: validateCapturedContext, expiresAt });
 }
 
-async function runSelectedMacro() {
-  const macro = getSelectedMacro();
-  if (!macro) {
-    setMacroStatus("Select a macro before running.", "error", { statusBar: true });
-    return;
-  }
-  if (!macro.id) {
-    setMacroStatus("Selected macro is missing an id.", "error", { statusBar: true });
-    return;
+// One run path for every caller: the Run button, the macro context menu, and the Flight Deck.
+// Returns whether the run finished so a caller can show its own success or failure feedback.
+async function runMacro(macro) {
+  if (!macro?.id) {
+    const message = "Selected macro is missing an id.";
+    setMacroStatus(message, "error", { statusBar: true });
+    return { ok: false, message };
   }
   setMacroStatus(`Running macro: ${macro.name || macro.id}...`, "", { statusBar: true });
   if (macroRunBtn) macroRunBtn.disabled = true;
@@ -1056,28 +1054,56 @@ async function runSelectedMacro() {
     const result = await response.json();
     if (!result?.success) {
       if (isTaskWrapper) {
-        setMacroStatus(result?.message || "Task Designer validation completed with issues.", "error", { statusBar: true });
-        return;
+        const message = result?.message || "Task Designer validation completed with issues.";
+        setMacroStatus(message, "error", { statusBar: true });
+        return { ok: false, message };
       }
       throw new Error(result?.message || "Macro failed.");
     }
     const reviewed = await reviewAndApplyMacroResult(result);
     if (!reviewed?.ok) throw new Error(reviewed?.error || "Macro ran, but its result could not be applied.");
     if (reviewed?.cancelled || (result.preview?.type === "notes_diff" && !result.preview?.has_changes)) {
-      setMacroStatus(reviewed.message || "Macro result was not applied.", "", { statusBar: true });
-      return;
+      const skipped = reviewed.message || "Macro result was not applied.";
+      setMacroStatus(skipped, "", { statusBar: true });
+      return { ok: true, cancelled: true, message: skipped };
     }
     const output = String(result.stdout || "").trim();
     const message = output
       ? `Macro completed. ${output}`
       : (reviewed.message || (result.payload ? "Macro applied to the active DFM." : "Macro completed."));
     setMacroStatus(message, "", { statusBar: true });
+    return { ok: true, message };
   } catch (err) {
     const message = String(err?.message || err || "Macro failed.");
     setMacroStatus(`Macro failed: ${message}`, "error", { statusBar: true });
+    return { ok: false, message };
   } finally {
     if (macroRunBtn) macroRunBtn.disabled = false;
   }
+}
+
+async function runSelectedMacro() {
+  const macro = getSelectedMacro();
+  if (!macro) {
+    setMacroStatus("Select a macro before running.", "error", { statusBar: true });
+    return { ok: false, message: "Select a macro before running." };
+  }
+  return runMacro(macro);
+}
+
+// Entry point for the Flight Deck, which knows a macro only by its id.
+export async function runMacroById(macroId) {
+  const id = String(macroId || "").trim();
+  if (!id) return { ok: false, message: "That button is not pointing at a macro." };
+  if (!(await initMacroWindow())) return { ok: false, message: "The macro runner is not available." };
+  if (!macros.length) await loadMacros();
+  const macro = macros.find((item) => item.id === id);
+  if (!macro) {
+    const message = `Macro "${id}" is no longer installed.`;
+    setMacroStatus(message, "error", { statusBar: true });
+    return { ok: false, message };
+  }
+  return runMacro(macro);
 }
 
 function editSelectedMacro() {
@@ -1514,11 +1540,19 @@ export async function initMacroWindow() {
   initMacroListDrag(macroList, macroWindow, {
     getMacro: (id) => macros.find((macro) => macro.id === id) || null,
     reorder: true,
-    outsideTarget: () => ({ kind: "remove" }),
-    label: (macro, target) => (target?.kind === "remove" ? `Delete ${macro.name || macro.id}` : (macro.name || macro.id)),
+    outsideTarget: (element) => {
+      const flightDeck = element?.closest?.("#flightDeck");
+      return flightDeck ? { kind: "deck", highlight: flightDeck } : { kind: "remove" };
+    },
+    label: (macro, target) => {
+      const name = macro.name || macro.id;
+      if (target?.kind === "deck") return `Add ${name} to the Flight Deck`;
+      return target?.kind === "remove" ? `Delete ${name}` : name;
+    },
     onStart: (macro) => selectMacro(macro.id),
     onDrop: (macro, target) => {
       if (target.kind === "reorder") reorderMacro(macro.id, target.beforeId);
+      else if (target.kind === "deck") window.dispatchEvent(new CustomEvent("arcrho:flight-deck-add-macro", { detail: { macro } }));
       else void deleteMacro(macro);
     },
   });

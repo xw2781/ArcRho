@@ -50,6 +50,7 @@ const hotkeys = {
   "Ctrl+Shift+S": "file_save_as",
   "Ctrl+O": "file_import",
   "Ctrl+P": "file_print",
+  "Ctrl+B": "view_toggle_flight_deck",
   "Ctrl+Shift+F": "view_toggle_nav",
   "Ctrl+Shift+L": "view_toggle_line_numbers",
   "Ctrl+Shift+E": "view_toggle_exec_time",
@@ -137,6 +138,7 @@ export function runHotkeyAction(action) {
     return;
   }
   if (action === "file_print") return shell.printActiveTab?.();
+  if (action === "view_toggle_flight_deck") return shell.toggleFlightDeck?.();
   if (action === "view_toggle_nav") return shell.toggleNavigationPanel?.();
   if (action === "view_toggle_line_numbers") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-line-numbers"); return; }
   if (action === "view_toggle_exec_time") { if (shell.isActiveScriptingTab?.()) shell.sendScriptingCommand?.("arcrho:scripting-toggle-exec-time"); return; }
