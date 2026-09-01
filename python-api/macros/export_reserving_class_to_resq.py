@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.7.0
-# Release Note: The review before the export is now a tick list, in the same window the Import macro opens: every dataset and method either system holds, with its timestamps, and a tick box to leave it out. What was ticked is saved beside the reserving class on the ArcRho server and comes back ticked for everyone at the next export.
+# Version: 2.7.1
+# Release Note: Leave ResQ's own "User Calculation" average rows alone. ResQ recalculates them from its own formula, so the export writes only the row ResQ calls User Entry and can no longer send a Benchmark row's numbers there by mistake.
 # Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -617,19 +617,39 @@ class ResQReservingClassExporter:
         return out
 
     def _user_entry_payload_row_index(self, average_formulas):
-        settings = average_formulas.get("custom_average_formula_settings")
-        average_types = settings.get("average_type") if isinstance(settings, dict) else None
-        if isinstance(average_types, list):
-            for index, average_type in enumerate(average_types):
-                if str(average_type or "").strip().casefold() == "user_entry":
-                    return index
+        """The payload row that holds ResQ's own User Entry values.
+
+        A ResQ User Calculation row -- the house "Benchmark" row -- imports as a
+        User Entry row as well, so being the first row of that type no longer
+        identifies the one ResQ will accept values for. Prefer the row ResQ
+        itself calls "User Entry", then a User Entry row that is not driven by a
+        formula over the other rows. ResQ keeps recalculating its own User
+        Calculation rows, so nothing is ever written back to them.
+        """
+
         labels = average_formulas.get("label")
         if isinstance(labels, list):
             for index, label in enumerate(labels):
-                normalized = _label_key(label)
-                if normalized == "user entry" or normalized.startswith("user entry "):
+                if _is_user_entry_label(label):
                     return index
-        return None
+
+        settings = average_formulas.get("custom_average_formula_settings")
+        average_types = settings.get("average_type") if isinstance(settings, dict) else None
+        if not isinstance(average_types, list):
+            return None
+        inputs = average_formulas.get("inputs")
+        if not isinstance(inputs, list):
+            inputs = average_formulas.get("formulas")
+        user_entry_rows = [
+            index
+            for index, average_type in enumerate(average_types)
+            if str(average_type or "").strip().casefold() == "user_entry"
+        ]
+        for index in user_entry_rows:
+            row_inputs = inputs[index] if isinstance(inputs, list) and index < len(inputs) else None
+            if not isinstance(row_inputs, list) or not any('"' in str(cell or "") for cell in row_inputs):
+                return index
+        return user_entry_rows[0] if user_entry_rows else None
 
     def _sync_dfm_user_entry_values(self, dfm, payload):
         average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))

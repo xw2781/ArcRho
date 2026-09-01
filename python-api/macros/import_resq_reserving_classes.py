@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.3.0
-# Release Note: Skip the rest of the batch only when the sibling macro has judged the ArcRho Bridge silent for thirty seconds, not on one stale heartbeat reading over the mapped drive.
+# Version: 1.4.0
+# Release Note: Each class in the batch now brings ResQ's "User Calculation" average rows across as live rows that keep recalculating, instead of as frozen numbers.
 # Description: List every reserving class in the active project in a review table with the canonical default classes preselected and an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>

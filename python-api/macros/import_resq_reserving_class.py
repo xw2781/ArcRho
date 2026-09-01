@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.5.0
-# Release Note: The import now opens the same review window the Export macro uses: every dataset and method either system holds, with its timestamps, and a tick box to leave it out. What was ticked is saved beside the reserving class on the ArcRho server and comes back ticked for everyone at the next import.
+# Version: 1.6.0
+# Release Note: A ResQ "User Calculation" average row -- the Benchmark row -- now arrives as a live row instead of frozen numbers: it comes in under its ResQ name with its formula rewritten into ArcRho's own, so it keeps recalculating when ratios are excluded or the triangle changes. A row whose formula cannot be carried across faithfully still arrives as the fixed values ResQ computed.
 # Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>

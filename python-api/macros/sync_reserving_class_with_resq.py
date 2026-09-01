@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.4.1
-# Release Note: Talk to the ArcRho Bridge through the shared arcrho_api queue client the Export macro now uses as well; what the sync does is unchanged.
+# Version: 1.5.0
+# Release Note: A ResQ "User Calculation" average row now syncs across as a live row that keeps recalculating, under its ResQ name, instead of as frozen numbers.
 # Description: Compare every dataset and supported method output in the selected reserving class, push the whole class from whichever side changed last, and mark rows whose own timestamps disagree with that direction for review.
 # Scope: Reserving Class
 # </arcrho-macro>

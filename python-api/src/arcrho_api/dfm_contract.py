@@ -1255,7 +1255,11 @@ def _selected_rows(
     lookback = 0 if isinstance(periods, str) and periods.lower() == "all" else _integer(periods, 0, minimum=0)
     if lookback:
         candidates = sorted(candidates, key=lambda item: item[0], reverse=True)[:lookback]
-    trim = min(max(0, int(extra_exclude)), len(candidates) // 2)
+    # ResQ drops pairs of highest and lowest ratios "for as long as the
+    # remaining number of ratios is greater than two", so a column down to two
+    # ratios keeps both and averages them rather than excluding itself empty.
+    # Allowing (n - 1) // 2 pairs is that rule written as a count.
+    trim = max(0, min(int(extra_exclude), (len(candidates) - 1) // 2))
     if trim:
         sorted_values = sorted(candidates, key=lambda item: item[1])
         removed = {row for pair in (sorted_values[:trim], sorted_values[-trim:]) for row, _ratio in pair}

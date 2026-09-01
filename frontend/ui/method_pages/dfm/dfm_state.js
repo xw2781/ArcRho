@@ -557,7 +557,11 @@ export function buildExcludedSetForColumn(model, col, cfg, baseExcludedSet) {
     }
   }
 
-  const n = Math.min(excludeCount, Math.floor(candidates.length / 2));
+  // ResQ drops pairs of highest and lowest ratios "for as long as the remaining
+  // number of ratios is greater than two", so a column down to two ratios keeps
+  // both and averages them rather than excluding itself empty. Allowing
+  // (n - 1) / 2 pairs is that rule written as a count.
+  const n = Math.min(excludeCount, Math.floor((candidates.length - 1) / 2));
   if (n <= 0) return baseSet;
 
   const sorted = [...candidates].sort((a, b) => a.ratio - b.ratio);

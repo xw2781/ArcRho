@@ -278,6 +278,33 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
         dfm.SetSelectedRatios.assert_any_call(DevIndex=1, arg1=10)
         dfm.SetSelectedRatios.assert_any_call(DevIndex=2, arg1=13)
 
+    def test_an_imported_user_calculation_row_is_never_written_back_as_user_entry(self):
+        """ResQ's Benchmark row imports as a User Entry row, and stays ResQ's.
+
+        Picking the first row of that type would send Benchmark's numbers into
+        ResQ's own User Entry row. ResQ keeps recalculating row 8 from its own
+        formula, so the export leaves it alone and writes only the row ResQ
+        calls User Entry.
+        """
+        exporter = self._exporter()
+        dfm = self._resq_dfm()
+        dfm.OriginCount = 2
+        dfm.DevelopmentCount.side_effect = lambda _origin: 2
+        payload = {"ratios_tab": {"average_formulas": {
+            "label": ["Volume - all", "Benchmark", "User Entry"],
+            "custom_average_formula_settings": {
+                "average_type": ["custom", "user_entry", "user_entry"],
+            },
+            "inputs": [["", ""], ['="Volume - all"*2'] * 2, ["1.25", "1.1"]],
+            "values": [[1.0, 1.0], [7.7, 7.7], [1.25, 1.1]],
+        }}}
+
+        self.assertEqual(exporter._sync_dfm_user_entry_values(dfm, payload), 2)
+        dfm.SetUserRatios.assert_any_call(DevIndex=1, AvgIndex=10, arg2=1.25)
+        dfm.SetUserRatios.assert_any_call(DevIndex=2, AvgIndex=10, arg2=1.1)
+        for call in dfm.SetUserRatios.call_args_list:
+            self.assertNotIn(7.7, call.kwargs.values())
+
     def test_a_dfm_whose_count_resq_will_not_give_stops_at_the_first_user_entry(self):
         exporter = self._exporter()
         dfm = self._resq_dfm()

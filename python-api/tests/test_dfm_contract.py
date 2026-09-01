@@ -122,6 +122,41 @@ def basis_snapshot() -> dict:
     }
 
 
+class DfmExcludeHighLowTests(unittest.TestCase):
+    """ResQ stops dropping high/low pairs once two ratios are left.
+
+    The automation help states the rule as excluding pairs "for as long as the
+    remaining number of ratios is greater than two", so a column down to two
+    ratios averages both instead of excluding itself empty. Measured against
+    ResQ on the fake project: an Ex hi/lo row read 1.00457 there where ArcRho
+    used to fall back to 1.0.
+    """
+
+    @staticmethod
+    def _average(ratios: list[float], exclude: int) -> float:
+        from arcrho_api.dfm_contract import _calculate_average
+
+        values = [[1.0, ratio] for ratio in ratios]
+        mask = [[True, True] for _ in ratios]
+        excluded = [[0] for _ in ratios]
+        return _calculate_average(
+            values, mask, excluded, 0, base="simple", periods="all", extra_exclude=exclude
+        )
+
+    def test_two_ratios_keep_both_instead_of_excluding_the_column_empty(self) -> None:
+        self.assertAlmostEqual(self._average([1.0, 1.00914], 1), 1.00457)
+
+    def test_one_ratio_is_kept(self) -> None:
+        self.assertAlmostEqual(self._average([1.25], 1), 1.25)
+
+    def test_three_ratios_still_drop_the_highest_and_lowest_pair(self) -> None:
+        self.assertAlmostEqual(self._average([1.0, 2.0, 9.0], 1), 2.0)
+
+    def test_a_second_pass_stops_before_it_would_leave_two_behind(self) -> None:
+        # Four ratios allow one pair only: dropping a second would empty the column.
+        self.assertAlmostEqual(self._average([1.0, 2.0, 3.0, 9.0], 2), 2.5)
+
+
 class DfmContractTests(unittest.TestCase):
     def test_canonical_number_rounds_half_away_from_zero(self) -> None:
         self.assertEqual(canonical_number("1.0000005"), 1.000001)

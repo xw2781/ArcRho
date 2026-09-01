@@ -314,6 +314,100 @@ class ResqDfmV2Tests(unittest.TestCase):
         row = method["ratios_tab"]["average_formulas"]["label"].index("Benchmark")
         self.assertEqual(method["ratios_tab"]["average_formulas"]["values"][row], [1.8, 1.7, 1.0])
 
+    def test_resq_user_calculation_formula_translates_to_arcrho_references(self) -> None:
+        labels = ["Volume - all", "Simple - 5", "Simple - 3", "Benchmark", "User Entry"]
+        index_map = list(range(5))
+        translate = migration_dfm._translate_resq_average_formula
+
+        self.assertEqual(
+            translate("(Average(2)+Average(3))/2", index_map, labels, 3),
+            '=("Simple - 5"+"Simple - 3")/2',
+        )
+        self.assertEqual(
+            translate("(Average(1) + 2 * Average(2))/3", index_map, labels, 3),
+            '=("Volume - all" + 2 * "Simple - 5")/3',
+        )
+        # A row ArcRho never imported, a self reference, a bare constant and
+        # anything beyond arithmetic all decline rather than mistranslate.
+        self.assertIsNone(translate("(Average(2)+Average(9))/2", index_map, labels, 3))
+        self.assertIsNone(translate("(Average(4)+Average(2))/2", index_map, labels, 3))
+        self.assertIsNone(translate("1", index_map, labels, 3))
+        self.assertIsNone(translate("Min(Average(1),Average(2))", index_map, labels, 3))
+        self.assertIsNone(translate("", index_map, labels, 3))
+
+    def test_translation_declines_when_the_named_row_label_is_ambiguous(self) -> None:
+        labels = ["Simple - 5", "Simple - 5", "Benchmark"]
+        self.assertIsNone(
+            migration_dfm._translate_resq_average_formula(
+                "Average(1)*2", [0, 1, 2], labels, 2
+            )
+        )
+
+    def test_resq_average_definition_reads_type_and_formula(self) -> None:
+        class _Average:
+            def __init__(self, average_type, formula):
+                self.AverageType = average_type
+                self.Formula = formula
+
+        class _Dfm:
+            def CustomAverages(self, index):
+                return {
+                    1: _Average(0, "(Average(1))"),   # a stale formula on a plain row
+                    2: _Average(6, "(Average(1)+Average(2))/2"),
+                }.get(index)
+
+        self.assertEqual(
+            migration_dfm._read_resq_average_definition(_Dfm(), 1),
+            {"average_type": 0, "formula": "(Average(1))"},
+        )
+        self.assertEqual(
+            migration_dfm._read_resq_average_definition(_Dfm(), 2),
+            {"average_type": 6, "formula": "(Average(1)+Average(2))/2"},
+        )
+        self.assertEqual(
+            migration_dfm._read_resq_average_definition(_Dfm(), 3),
+            {"average_type": None, "formula": ""},
+        )
+
+    def test_imported_user_calculation_row_recalculates_with_the_triangle(self) -> None:
+        payload = _owned_payload()
+        formulas = payload["ratios_tab"]["average_formulas"]
+        formulas["label"].insert(1, "Benchmark")
+        settings = formulas["custom_average_formula_settings"]
+        settings["average_type"].insert(1, "user_entry")
+        settings["base"].insert(1, "simple")
+        settings["periods"].insert(1, "all")
+        settings["exclude"].insert(1, 0)
+        formulas["selected"].insert(1, [0, 0, 0])
+        formulas["values"].insert(1, [9.9, 9.9, 9.9])
+        formulas["inputs"].insert(1, ['="Simple - all"*2'] * 3)
+        formulas["display_inputs"].insert(1, ["", "", ""])
+
+        method = recalculate_dfm_method(
+            payload, input_snapshot=_input(), ratio_basis_snapshot=_basis()
+        )
+        values = method["ratios_tab"]["average_formulas"]["values"]
+        row = method["ratios_tab"]["average_formulas"]["label"].index("Benchmark")
+        source = method["ratios_tab"]["average_formulas"]["label"].index("Simple - all")
+        self.assertEqual(values[row][0], values[source][0] * 2)
+        self.assertNotEqual(values[row][0], 9.9)
+
+    def test_user_entry_row_is_found_past_an_imported_user_calculation_row(self) -> None:
+        formulas = {
+            "label": ["Simple - all", "Benchmark", "User Entry"],
+            "custom_average_formula_settings": {
+                "average_type": ["custom", "user_entry", "user_entry"],
+            },
+            "inputs": [["", ""], ['="Simple - all"*2', '="Simple - all"*2'], ["1.2", ""]],
+        }
+        self.assertEqual(migration_dfm._average_formula_user_entry_index(formulas), 2)
+
+        # A renamed row still resolves, because a row driven by a formula over
+        # the other rows is never ResQ's own User Entry row.
+        renamed = deepcopy(formulas)
+        renamed["label"] = ["Simple - all", "Benchmark", "My ratios"]
+        self.assertEqual(migration_dfm._average_formula_user_entry_index(renamed), 2)
+
     def test_migration_sidecar_exactly_matches_canonical_projection(self) -> None:
         owned = _owned_payload()
         owned["ratios_tab"]["average_formulas"]["inputs"][1][0] = \
