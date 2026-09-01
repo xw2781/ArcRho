@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 _MACRO_PATH = (
     Path(__file__).resolve().parents[1]
@@ -362,6 +365,31 @@ class OriginGridTests(unittest.TestCase):
         _basis, result = plan(dfm, quarterly)
         self.assertEqual(result["grid_mismatch"], "")
         self.assertEqual(len(result["plans"]), 1)
+
+
+class RealDfmCellNoteTableTests(unittest.TestCase):
+    """The macro leans on the DfmMethod helpers' default table name.
+
+    A production run failed with "Unknown DFM cell-note table:
+    'ratio_summary_table'" because the resolver folded underscores to spaces
+    before looking the name up in a table that still spelled it with
+    underscores, so its own default could never match.
+    """
+
+    def test_helper_default_table_names_resolve(self):
+        from arcrho_api.dfm import _cell_note_table_name
+
+        for spelled in ("ratio_summary_table", "ratio-summary-table", "Ratio Summary Table", "summary", "average_formulas"):
+            self.assertEqual(_cell_note_table_name(spelled), "ratio_summary_table", spelled)
+        for spelled in ("ratio_main_table", "ratio main", "main", "ratio"):
+            self.assertEqual(_cell_note_table_name(spelled), "ratio_main_table", spelled)
+
+    def test_unknown_table_name_is_still_rejected(self):
+        from arcrho_api.dfm import _cell_note_table_name
+        from arcrho_api.exceptions import DfmDataError
+
+        with self.assertRaises(DfmDataError):
+            _cell_note_table_name("ultimate_vector")
 
 
 if __name__ == "__main__":

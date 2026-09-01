@@ -203,17 +203,20 @@ def _display_average_label(value: Any) -> str:
 
 
 def _cell_note_table_name(table: str) -> str:
-    key = clean_text(table).lower().replace("_", " ").replace("-", " ")
+    # The lookup key has every ``_``/``-`` folded to a space, so the alias keys
+    # are written in that folded form too -- the canonical names themselves
+    # (``ratio_summary_table``) must resolve, as they are the helpers' defaults.
+    key = " ".join(clean_text(table).lower().replace("_", " ").replace("-", " ").split())
     aliases = {
         "main": "ratio_main_table",
         "ratio": "ratio_main_table",
         "ratio main": "ratio_main_table",
-        "ratio_main_table": "ratio_main_table",
+        "ratio main table": "ratio_main_table",
         "summary": "ratio_summary_table",
         "average": "ratio_summary_table",
-        "average_formulas": "ratio_summary_table",
+        "average formulas": "ratio_summary_table",
         "ratio summary": "ratio_summary_table",
-        "ratio_summary_table": "ratio_summary_table",
+        "ratio summary table": "ratio_summary_table",
     }
     if key in aliases:
         return aliases[key]
