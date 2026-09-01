@@ -11,4 +11,4 @@ BF and Cape Cod refuse a precedent whose sidecar `period_length` differs from th
 
 **How to apply:** before blaming a change for these 422s, run the same check against a HEAD worktree — they reproduce identically. If per-origin aggregation is ever wanted, note that a percentage developed can only be aggregated by weighting with the DFM's own latest and ultimate per bucket; there is no latest-free aggregate.
 
-Related: [[bulk-method-restatement-hold]], [[python-test-runner]]
+Related: [[bulk-method-restatement-hold]], [[python-test-runner]], [[reserve-review-input-vectors-script]] (the same mixed bases seen from the dataset side)
