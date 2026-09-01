@@ -1,6 +1,7 @@
 26/8/27
 
 # Set model to Opus 4.8 (1M context) for a session
+
 /model claude-opus-4-8[1m]
 /model claude-opus-4-8
 /model claude-opus-4-6
@@ -27,6 +28,7 @@ Run the commit workflow and push.
 
 [$arcrho-commit-workflow](E:\\XWSpace\\Repos\\ArcRho\\.claude\\skills\\arcrho-commit-workflow\\SKILL.md)
 
+
 # JSON Contract Validations
 
 Macros
@@ -41,5 +43,13 @@ Path: PRNJ - PA\PA\All States\Direct Group\COL
 Project: NJ_Annual_Prod_202605_Fake
 Path: HPPREF\HO+DF\NJ\Legacy\HOL
 
+
 # Server Components Rebuild and Deploy
+
 commit, rebuild and deploy server components
+
+
+# Create 4 Adjustment Vectors
+
+& "C:\Program Files\Python310\python.exe" tools/create_reserve_review_input_datasets.py --project "NJ_Annual_Prod_2026 Q2-May Test" --quarter "2026Q2" --dry-run
+
