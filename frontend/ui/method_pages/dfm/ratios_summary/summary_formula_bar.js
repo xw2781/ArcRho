@@ -83,7 +83,7 @@ function isNeutralDatasetFactor(value) {
 /**
  * Render colorized formula display in the overlay div.
  * - Excel refs → dark green
- * - Quoted row references → blue
+ * - Quoted row references → one palette colour each, matching the cells they name
  * - Dataset references → clickable DSV pills, grey when the value is 1
  * - Operators get spaces around them
  * - Always shows leading '='
@@ -96,6 +96,9 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
     return;
   }
 
+  // Optional: this module is also loaded standalone, without the model module.
+  const referenceColors = summaryRuntime.buildSummaryFormulaReferenceColorsByLabel?.(sourceText)
+    || new Map();
   displayEl.innerHTML = "";
   const sourceDatasetTokens = tokenizeFormula(sourceText).filter((token) => token.datasetName);
   // Values come from the session cache the page warms when it opens, keyed by
@@ -114,8 +117,11 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
       displayEl.appendChild(span);
     } else if (tok.type === "ref") {
       const span = document.createElement("span");
+      const label = tok.text.slice(1, -1);
       span.className = "fmtRowRef";
-      span.textContent = tok.text.slice(1, -1);
+      const colorClass = referenceColors.get(label.trim().toLowerCase());
+      if (colorClass) span.classList.add(colorClass);
+      span.textContent = label;
       displayEl.appendChild(span);
     } else if (tok.type === "bracket" && tok.datasetName) {
       const referenceIndex = datasetIndex;

@@ -45,6 +45,7 @@ const showAvgModal = (...args) => summaryRuntime.showAvgModal(...args);
 const scrollSummaryFormulaInputToEnd = (...args) => summaryRuntime.scrollSummaryFormulaInputToEnd(...args);
 const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBarDisplayMode(...args);
 const applyExcelRangeHighlights = (...args) => summaryRuntime.applyExcelRangeHighlights(...args);
+const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserEntryReferenceHighlights(...args);
 const pasteUserEntryClipboardGrid = (...args) => summaryRuntime.pasteUserEntryClipboardGrid(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
@@ -340,6 +341,7 @@ export function selectSummaryCell(summaryTable, rowId, col) {
   cell.classList.add("summaryActiveCell");
   summaryRuntime.summaryActiveCellState = { rowId: rowKey, col: colIndex };
   applyExcelRangeHighlights(summaryTable);
+  applyUserEntryReferenceHighlights(summaryTable);
   ensureSelectedRowValues(summaryTable, selectedTable);
   updateSummaryFormulaBarForCell(cell);
   summaryRuntime._onRatioStateMutated();
@@ -574,6 +576,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       summaryTable.querySelectorAll("td.summaryCell.summaryActiveCell")
         .forEach((el) => el.classList.remove("summaryActiveCell"));
       applyExcelRangeHighlights(summaryTable);
+      applyUserEntryReferenceHighlights(summaryTable);
       updateSummaryFormulaBarForCell(null);
       return;
     }
@@ -592,6 +595,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     pasteArmed = true;
     if (syncSelection) selectCell(cell);
     applyExcelRangeHighlights(summaryTable);
+    applyUserEntryReferenceHighlights(summaryTable);
     updateSummaryFormulaBarForCell(cell);
   };
 

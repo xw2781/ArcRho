@@ -94,6 +94,31 @@ function getRatioBasisBtnEl() {
   return document.getElementById("dfmRatioBasisBtn");
 }
 
+function measureRatioBasisTextWidth(input, text) {
+  if (!text) return 0;
+  const canvas = measureRatioBasisTextWidth._canvas
+    || (measureRatioBasisTextWidth._canvas = document.createElement("canvas"));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return text.length * 7;
+  const cs = getComputedStyle(input);
+  ctx.font = `${cs.fontStyle} ${cs.fontVariant} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const measured = Number(ctx.measureText(text).width || 0);
+  return Number.isFinite(measured) ? measured : text.length * 7;
+}
+
+function syncRatioBasisInputWidth() {
+  const input = getRatioBasisInputEl();
+  const wrap = input?.closest(".dfmResultsPickerWrap");
+  if (!input || !wrap) return;
+  const text = toText(input.value) || input.placeholder || "";
+  const cs = getComputedStyle(input);
+  const chrome = (Number.parseFloat(cs.paddingLeft) || 0)
+    + (Number.parseFloat(cs.paddingRight) || 0)
+    + (Number.parseFloat(cs.borderLeftWidth) || 0)
+    + (Number.parseFloat(cs.borderRightWidth) || 0);
+  wrap.style.width = `${Math.ceil(measureRatioBasisTextWidth(input, text) + chrome + 6)}px`;
+}
+
 function getRatioBasisStatusEl() {
   return document.getElementById("dfmRatioBasisStatus");
 }
@@ -357,6 +382,7 @@ export function applyPersistedResultsSnapshot(resultsTab = {}) {
     : null;
   ratioBasisSourceRevision = toText(source["ratio_basis_source_revision"]);
   if (input) input.value = datasetName;
+  syncRatioBasisInputWidth();
 
   const valuesByOrigin = new Map();
   originLabels.forEach((label, index) => {
@@ -712,6 +738,7 @@ async function commitRatioBasisSelectionFromInput(options = {}) {
   const raw = toText(input.value);
   if (!raw || normalizeKey(raw) === "none") {
     input.value = "";
+    syncRatioBasisInputWidth();
     ratioBasisSelectedName = "";
     ratioBasisSelectedFormat = "";
     clearRatioBasisColumnState();
@@ -743,6 +770,7 @@ async function commitRatioBasisSelectionFromInput(options = {}) {
   }
 
   input.value = selected.name;
+  syncRatioBasisInputWidth();
   ratioBasisSelectedName = selected.name;
   ratioBasisSelectedFormat = selected.dataFormat;
   setRatioBasisStatus("", "");
@@ -764,6 +792,7 @@ export function wireResultsRatioBasisControls() {
   if (!input && !ultRatioDecimalInput) return;
 
   if (input) {
+    syncRatioBasisInputWidth();
     input.addEventListener("focus", () => {
       ratioBasisEmbeddedSnapshot = false;
       void ensureRatioBasisOptionsForCurrentProject().catch((err) => {
@@ -776,6 +805,7 @@ export function wireResultsRatioBasisControls() {
 
     input.addEventListener("input", () => {
       ratioBasisEmbeddedSnapshot = false;
+      syncRatioBasisInputWidth();
       const raw = toText(input.value);
       if (!raw) {
         ratioBasisSelectedName = "";
@@ -821,6 +851,7 @@ export function wireResultsRatioBasisControls() {
           const selected = toText(name);
           if (!selected) return;
           input.value = selected;
+          syncRatioBasisInputWidth();
           input.dispatchEvent(new Event("change", { bubbles: true }));
         },
       });
@@ -865,6 +896,7 @@ export async function setResultsRatioBasisSelection(value, options = {}) {
 
   const next = toText(value);
   input.value = next;
+  syncRatioBasisInputWidth();
   ratioBasisProgrammaticUpdate = true;
   try {
     if (!next) {

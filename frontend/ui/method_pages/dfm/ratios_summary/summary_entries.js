@@ -465,6 +465,8 @@ function refreshSummaryFormulaBar() {
 
 function handleSummaryTableSelectionChange(summaryTable, selection) {
   refreshRatioHighlightHeaders();
+  // The reference colours belong to the highlighted cell, so they move with it.
+  applyUserEntryReferenceHighlights(summaryTable);
   if (isRatioEditMode() || isSummaryFormulaEditSessionActive(summaryTable)) return;
   const active = selection?.activeCell;
   const cell = active

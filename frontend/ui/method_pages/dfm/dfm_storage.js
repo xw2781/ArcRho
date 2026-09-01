@@ -5,6 +5,7 @@
 
 const NA_BORDER_KEY = "arcrho_dfm_ratio_na_borders";
 const RATIO_INTERACTION_MODE_KEY = "arcrho_dfm_ratio_interaction_mode";
+const RATIO_COLUMN_WIDTHS_KEY = "arcrho_dfm_ratio_column_widths";
 let _storageInstanceId = "";
 
 function getResolvedProjectNameForStorage() {
@@ -91,6 +92,17 @@ export function loadRatioInteractionMode() {
   }
 }
 
+export function loadRatioColumnWidths() {
+  try {
+    const raw = localStorage.getItem(RATIO_COLUMN_WIDTHS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 // --- Save functions ---
 
 export function saveCustomSummaryRows(key, rows) {
@@ -110,6 +122,12 @@ export function saveRatioInteractionMode(mode) {
   const normalized = mode === "select" ? "select" : "edit";
   try {
     localStorage.setItem(RATIO_INTERACTION_MODE_KEY, normalized);
+  } catch {}
+}
+
+export function saveRatioColumnWidths(widths) {
+  try {
+    localStorage.setItem(RATIO_COLUMN_WIDTHS_KEY, JSON.stringify(widths || {}));
   } catch {}
 }
 

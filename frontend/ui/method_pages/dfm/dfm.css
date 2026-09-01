@@ -603,6 +603,21 @@ body {
   white-space: nowrap;
   background-clip: padding-box;
 }
+
+.dfmRatioColResizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.dfmRatioColResizer:hover,
+.dfmRatioColResizer.isResizing {
+  background: rgba(15, 23, 42, 0.18);
+}
 #ratioWrap thead th:first-child { z-index: 6; }
 
 #ratioWrap table + table {
@@ -727,19 +742,50 @@ body {
   background: var(--ar-spreadsheet-weighted-selection-fill);
   color: #111827;
 }
+/*
+ * A spreadsheet gives every reference in one formula its own colour, so a
+ * formula naming several rows can be read a part at a time. Six colours cover
+ * any formula the table takes; a seventh reference starts again at the first.
+ * The palette is written once here and read by both the average-formula cell
+ * and the formula bar's pill for that same reference, so the two always agree.
+ */
+.summaryFormulaRefColor0 {
+  --dfm-formula-ref-fill: #dbeafe;
+  --dfm-formula-ref-line: #2b6df6;
+}
+.summaryFormulaRefColor1 {
+  --dfm-formula-ref-fill: #ffe4e6;
+  --dfm-formula-ref-line: #be123c;
+}
+.summaryFormulaRefColor2 {
+  --dfm-formula-ref-fill: #ede9fe;
+  --dfm-formula-ref-line: #7c3aed;
+}
+.summaryFormulaRefColor3 {
+  --dfm-formula-ref-fill: #dcfce7;
+  --dfm-formula-ref-line: #15803d;
+}
+.summaryFormulaRefColor4 {
+  --dfm-formula-ref-fill: #fef3c7;
+  --dfm-formula-ref-line: #b45309;
+}
+.summaryFormulaRefColor5 {
+  --dfm-formula-ref-fill: #ccfbf1;
+  --dfm-formula-ref-line: #0f766e;
+}
 #ratioWrap td.summaryCell.summaryFormulaReferencedCell,
 #ratioWrap td.summaryCell.summaryFormulaReferencedCell.ratioSelectedCell,
 #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableHighlight,
 #ratioWrap td.summaryCell.summaryFormulaReferencedCell.dfmTableActive {
-  background: #dbeafe;
+  background: var(--dfm-formula-ref-fill, #dbeafe);
 }
 #ratioWrap td.summaryCell.summaryFormulaActiveRefCell,
 #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.ratioSelectedCell,
 #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableHighlight,
 #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.dfmTableActive {
   position: relative;
-  background: #dbeafe;
-  outline: 2px solid #2563eb;
+  background: var(--dfm-formula-ref-fill, #dbeafe);
+  outline: 2px solid var(--dfm-formula-ref-line, #2b6df6);
   outline-offset: -2px;
   z-index: 5;
 }
@@ -1041,10 +1087,13 @@ body {
 /* Clicking a candidate picks the reference, but the active one is also dragged
    from its border the way a spreadsheet moves a range, so the cursor has to say
    which of the two is under the pointer. Kept beside the Edit-mode pen cursor it
-   has to outrank, which it does on source order at equal specificity. */
+   has to outrank, which it does on source order at equal specificity. Select
+   mode sets its own cursor on every cell with `!important`, and the formula bar
+   is editable in that mode too, so this has to answer in kind or the drag
+   affordance only ever appears in Edit mode. */
 #ratioWrap td.summaryCell.summaryFormulaActiveRefCell.summaryFormulaRefDragReady,
 #ratioWrap table.ratioSummaryTable.summaryFormulaRefDragging td.summaryCell {
-  cursor: move;
+  cursor: move !important;
 }
 /* Visuals come from the shared .arFormulaBar; the Ratios bar owns only where it sits. */
 .dfmSummaryFormulaBar {
@@ -1091,6 +1140,13 @@ body {
 }
 .dfmSummaryFormulaBarDisplay .fmtRowRef {
   cursor: text;
+}
+/* A reference pill wears the colour its cell wears, so the formula and the
+   average-formula table can be read against each other. */
+.dfmSummaryFormulaBarDisplay .fmtRowRef[class*="summaryFormulaRefColor"] {
+  border-color: var(--dfm-formula-ref-line);
+  background: var(--dfm-formula-ref-fill);
+  color: var(--dfm-formula-ref-line);
 }
 .dfmSummaryFormulaBarDisplay .fmtDatasetRef {
   appearance: none;

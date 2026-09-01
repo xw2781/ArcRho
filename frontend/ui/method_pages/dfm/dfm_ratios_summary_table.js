@@ -8,13 +8,13 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
-import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260819a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260820a";
+import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260831a";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260831a";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260819a";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260819a";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260830b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260820a";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260819a";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260831a";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260831a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -195,6 +195,7 @@ export const applySelectedSummaryFromSaved = delegate("applySelectedSummaryFromS
 export const applyAverageSelectionFromSaved = delegate("applyAverageSelectionFromSaved");
 export const wireSummaryRowDrag = delegate("wireSummaryRowDrag");
 export const clearSummaryTableHighlight = delegate("clearSummaryTableHighlight");
+export const applyUserEntryReferenceHighlights = delegate("applyUserEntryReferenceHighlights");
 export const isUserEntryConfig = delegate("isUserEntryConfig");
 export const getUserEntryValueForCol = delegate("getUserEntryValueForCol");
 export const refreshAllExcelLinks = delegate("refreshAllExcelLinks");

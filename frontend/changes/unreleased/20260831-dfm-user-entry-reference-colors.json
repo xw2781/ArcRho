@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The average-formula table now colours a User Entry row's source cells only while that cell is the one you are on, and gives each part of the formula its own colour.",
+  "details": [
+    "The pale blue fill used to sit on every referenced cell all the time; it now appears only when the User Entry cell that names them is selected or being edited.",
+    "A formula built from several rows colours each one differently, in the order the formula names them, the way a spreadsheet does.",
+    "Each name in the formula bar carries the same colour as the cell it points at, so you can tell at a glance which part of the formula a cell belongs to.",
+    "The colours follow the formula as you type or drag a reference onto another row."
+  ]
+}

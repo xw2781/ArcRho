@@ -16,8 +16,10 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import {
   loadRatioInteractionMode,
+  loadRatioColumnWidths,
   saveNaBorders,
   saveRatioInteractionMode,
+  saveRatioColumnWidths,
 } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   invalidatePersistedResultsDerivations,
@@ -51,7 +53,8 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260820a";
+  applyUserEntryReferenceHighlights,
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260831b";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -72,6 +75,162 @@ import {
   commitRatioHistoryAction,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
+
+// =============================================================================
+// Ratio Column Resizing
+// =============================================================================
+// The default width doubles as the floor for a manual resize: a column never
+// drags narrower than where it started. Ratio/data columns share the grid's
+// default cell width; the label column's default is measured from its text
+// and passed in by the caller instead (see wireRatioColumnResizeHandles).
+const RATIO_COLUMN_DEFAULT_WIDTH = 100;
+let ratioColumnWidths = loadRatioColumnWidths();
+
+function getStoredRatioColumnWidth(key) {
+  const value = Number(ratioColumnWidths?.[key]);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+}
+
+function commitRatioColumnWidth(key, width, minWidth = RATIO_COLUMN_DEFAULT_WIDTH) {
+  if (!key) return;
+  ratioColumnWidths = { ...ratioColumnWidths, [key]: Math.max(minWidth, Math.round(width)) };
+  saveRatioColumnWidths(ratioColumnWidths);
+}
+
+function resetAllRatioColumnWidths() {
+  ratioColumnWidths = {};
+  saveRatioColumnWidths(ratioColumnWidths);
+  renderRatioTable();
+}
+
+function applyStoredRatioColumnWidth(cell, key, minWidth = RATIO_COLUMN_DEFAULT_WIDTH) {
+  const stored = getStoredRatioColumnWidth(key);
+  if (stored == null) return;
+  const width = Math.max(minWidth, stored);
+  cell.style.width = `${width}px`;
+  cell.style.minWidth = `${width}px`;
+  cell.style.maxWidth = `${width}px`;
+}
+
+// Mirrors the main ratio table's header cell widths onto the summary and
+// selected tables, which are separate <table> elements and so cannot share a
+// column layout on their own.
+function syncRatioColumnWidthsToTables(table, summaryTable, selectedTable) {
+  const headerCells = table.querySelectorAll("thead th");
+  const otherRows = [...summaryTable.querySelectorAll("tr"), ...selectedTable.querySelectorAll("tr")];
+  if (!headerCells.length || !otherRows.length) return;
+  headerCells.forEach((cell, idx) => {
+    const w = Math.round(cell.getBoundingClientRect().width);
+    if (!w) return;
+    otherRows.forEach((row) => {
+      const target = row.children[idx];
+      if (!target) return;
+      target.style.width = `${w}px`;
+      target.style.minWidth = `${w}px`;
+      target.style.maxWidth = `${w}px`;
+    });
+  });
+}
+
+// Kept observing the main table for the life of its render, so the summary
+// and selected tables stay aligned with it even when their widths change for
+// a reason other than a drag or a fresh render (e.g. the Ratios tab becoming
+// visible after a background render left header cells measuring 0 width).
+let ratioColumnResizeObserver = null;
+
+function observeRatioColumnWidths(table, summaryTable, selectedTable) {
+  ratioColumnResizeObserver?.disconnect();
+  ratioColumnResizeObserver = null;
+  const sync = () => syncRatioColumnWidthsToTables(table, summaryTable, selectedTable);
+  if (typeof ResizeObserver !== "function") {
+    requestAnimationFrame(sync);
+    return;
+  }
+  ratioColumnResizeObserver = new ResizeObserver(sync);
+  ratioColumnResizeObserver.observe(table);
+}
+
+function wireRatioColumnResizeHandle(th, colKey, {
+  onWidthChange, table, summaryTable, selectedTable, minWidth = RATIO_COLUMN_DEFAULT_WIDTH,
+} = {}) {
+  if (!th || !colKey) return;
+  const handle = document.createElement("div");
+  handle.className = "dfmRatioColResizer";
+  handle.setAttribute("aria-hidden", "true");
+  th.appendChild(handle);
+
+  let startX = 0;
+  let startWidth = 0;
+  let dragWidth = null;
+
+  const applyWidth = (width) => {
+    if (onWidthChange) {
+      onWidthChange(width);
+    } else {
+      th.style.width = `${width}px`;
+      th.style.minWidth = `${width}px`;
+      th.style.maxWidth = `${width}px`;
+    }
+    if (table && summaryTable && selectedTable) {
+      syncRatioColumnWidthsToTables(table, summaryTable, selectedTable);
+    }
+  };
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startX = event.clientX;
+    startWidth = th.getBoundingClientRect().width;
+    dragWidth = null;
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("isResizing");
+  });
+
+  handle.addEventListener("pointermove", (event) => {
+    if (!handle.hasPointerCapture?.(event.pointerId)) return;
+    const next = Math.max(minWidth, startWidth + (event.clientX - startX));
+    dragWidth = next;
+    applyWidth(next);
+  });
+
+  const finishResize = (event) => {
+    if (!handle.hasPointerCapture?.(event.pointerId)) return;
+    handle.releasePointerCapture(event.pointerId);
+    handle.classList.remove("isResizing");
+    if (dragWidth != null) commitRatioColumnWidth(colKey, dragWidth, minWidth);
+    dragWidth = null;
+  };
+
+  handle.addEventListener("pointerup", finishResize);
+  handle.addEventListener("pointercancel", finishResize);
+  handle.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  handle.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resetAllRatioColumnWidths();
+  });
+}
+
+function wireRatioColumnResizeHandles(table, summaryTable, selectedTable, wrap, labelMinWidth) {
+  table.querySelectorAll("thead th[data-col-width-key]").forEach((th) => {
+    const key = th.dataset.colWidthKey;
+    if (!key) return;
+    if (key === "label") {
+      wireRatioColumnResizeHandle(th, key, {
+        minWidth: labelMinWidth,
+        onWidthChange: (width) => {
+          wrap.style.setProperty("--dfm-ratio-label-column-width", `${Math.round(width)}px`);
+        },
+      });
+    } else {
+      wireRatioColumnResizeHandle(th, key, { table, summaryTable, selectedTable });
+    }
+  });
+}
 
 let persistedRatioTriangleValues = null;
 
@@ -95,7 +254,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260820a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260831b";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -142,6 +301,10 @@ function applyRatioInteractionMode(mode, options = {}) {
   wrap.dataset.interactionMode = nextMode;
   if (options.persist !== false) saveRatioInteractionMode(nextMode);
   updateRatioMenuLabel();
+  // Each mode marks the cell in view its own way, so the formula reference
+  // colours are repainted from the marker the new mode uses.
+  const summaryTable = wrap.querySelector("table.ratioSummaryTable");
+  if (summaryTable) applyUserEntryReferenceHighlights(summaryTable);
 }
 
 function toggleRatioInteractionMode() {
@@ -746,6 +909,7 @@ export function renderRatioTable() {
   const corner = document.createElement("th");
   corner.textContent = getOriginLabelTextForRatio();
   corner.dataset.col = "all";
+  corner.dataset.colWidthKey = "label";
   headRow.appendChild(corner);
 
   for (let c = 0; c < ratioLabels.length; c++) {
@@ -754,6 +918,8 @@ export function renderRatioTable() {
       dataTh.classList.add("ratioDataHeader");
       dataTh.textContent = String(devs[c] ?? "");
       dataTh.dataset.copyCol = String(dataDisplayCol(c));
+      dataTh.dataset.colWidthKey = `data-${c}`;
+      applyStoredRatioColumnWidth(dataTh, dataTh.dataset.colWidthKey);
       headRow.appendChild(dataTh);
     }
     const th = document.createElement("th");
@@ -765,6 +931,8 @@ export function renderRatioTable() {
     }
     th.dataset.col = String(c);
     th.dataset.copyCol = String(ratioDisplayCol(c));
+    th.dataset.colWidthKey = `ratio-${c}`;
+    applyStoredRatioColumnWidth(th, th.dataset.colWidthKey);
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
@@ -922,8 +1090,13 @@ export function renderRatioTable() {
   wrap.appendChild(table);
   wrap.appendChild(summaryTable);
   wrap.appendChild(selectedTable);
+  // The label column's default (natural) width is measured from its text
+  // rather than fixed, and always computed so it can act as the resize floor
+  // even when a stored override is in play (a stale override narrower than
+  // the current default self-heals back up to it).
   const cornerStyle = getComputedStyle(corner);
   const labelMeasure = document.createElement("canvas").getContext("2d");
+  let naturalLabelWidth = RATIO_COLUMN_DEFAULT_WIDTH;
   if (labelMeasure) {
     labelMeasure.font = `${cornerStyle.fontWeight} ${cornerStyle.fontSize} ${cornerStyle.fontFamily}`;
     const horizontalChrome = [
@@ -934,13 +1107,16 @@ export function renderRatioTable() {
     ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
     const sharedWidth = Number.parseFloat(
       cornerStyle.getPropertyValue("--ar-spreadsheet-cell-width"),
-    ) || 100;
-    const labelWidth = Math.max(
+    ) || RATIO_COLUMN_DEFAULT_WIDTH;
+    naturalLabelWidth = Math.max(
       sharedWidth,
       Math.ceil(labelMeasure.measureText(corner.textContent || "").width + horizontalChrome + 1),
     );
-    wrap.style.setProperty("--dfm-ratio-label-column-width", `${labelWidth}px`);
   }
+  const storedLabelWidth = getStoredRatioColumnWidth("label");
+  const labelWidth = Math.max(naturalLabelWidth, storedLabelWidth ?? 0);
+  wrap.style.setProperty("--dfm-ratio-label-column-width", `${labelWidth}px`);
+  wireRatioColumnResizeHandles(table, summaryTable, selectedTable, wrap, naturalLabelWidth);
   applyNaBorderVisibility();
 
   wireSummaryRowDrag(summaryBody);
@@ -971,24 +1147,7 @@ export function renderRatioTable() {
     },
   }) || selectedRowsTableHighlight;
 
-  requestAnimationFrame(() => {
-    const headerCells = table.querySelectorAll("thead th");
-    const sRows = summaryTable.querySelectorAll("tr");
-    const selRows = selectedTable.querySelectorAll("tr");
-    const allRows = [...sRows, ...selRows];
-    if (!headerCells.length || !allRows.length) return;
-    headerCells.forEach((cell, idx) => {
-      const w = Math.round(cell.getBoundingClientRect().width);
-      if (!w) return;
-      allRows.forEach((row) => {
-        const target = row.children[idx];
-        if (!target) return;
-        target.style.width = `${w}px`;
-        target.style.minWidth = `${w}px`;
-        target.style.maxWidth = `${w}px`;
-      });
-    });
-  });
+  observeRatioColumnWidths(table, summaryTable, selectedTable);
 
   updateRatioSummary();
   initDefaultSummarySelection(summaryTable);

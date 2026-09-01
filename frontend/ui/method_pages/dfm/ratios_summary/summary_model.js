@@ -484,19 +484,27 @@ function escapeRegExp(text) {
   return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// The order references appear in the formula is what the colours are keyed on,
+// so the labels come back in that order rather than in row order, and a label
+// named twice keeps the colour it was given the first time.
 function findReferencedLabels(formula, allLabels) {
   const labels = Array.isArray(allLabels) ? allLabels : [];
   if (!labels.length) return [];
 
-  const referencedNames = new Set(
-    tokenizeFormula(formula)
-      .filter((token) => token.type === "ref")
-      .map((token) => token.text.slice(1, -1).trim().toLowerCase())
-      .filter(Boolean)
+  const byName = new Map(
+    labels.map((label) => [String(label || "").trim().toLowerCase(), label])
   );
-  if (!referencedNames.size) return [];
-
-  return labels.filter((label) => referencedNames.has(String(label || "").trim().toLowerCase()));
+  const seen = new Set();
+  const ordered = [];
+  tokenizeFormula(formula)
+    .filter((token) => token.type === "ref")
+    .forEach((token) => {
+      const name = token.text.slice(1, -1).trim().toLowerCase();
+      if (!name || seen.has(name) || !byName.has(name)) return;
+      seen.add(name);
+      ordered.push(byName.get(name));
+    });
+  return ordered;
 }
 
 function getSummaryLabelToIdMap() {
@@ -542,6 +550,42 @@ function replaceFormulaReferenceLabel(raw, oldLabel, newLabel) {
   return { changed: true, value: source.replace(bare, `"${nextText}"`) };
 }
 
+// One colour per reference, handed out in the order the formula names them.
+export const SUMMARY_FORMULA_REF_COLOR_CLASSES = Object.freeze([
+  "summaryFormulaRefColor0",
+  "summaryFormulaRefColor1",
+  "summaryFormulaRefColor2",
+  "summaryFormulaRefColor3",
+  "summaryFormulaRefColor4",
+  "summaryFormulaRefColor5",
+]);
+
+/**
+ * Row label -> colour class, for the rows one formula references. The formula
+ * bar draws its reference pills from the same map, so a pill and the cell it
+ * names always wear one colour.
+ */
+function buildSummaryFormulaReferenceColorsByLabel(raw) {
+  return new Map(
+    getFormulaReferencedLabels(raw).map((label, index) => [
+      String(label).trim().toLowerCase(),
+      SUMMARY_FORMULA_REF_COLOR_CLASSES[index % SUMMARY_FORMULA_REF_COLOR_CLASSES.length],
+    ])
+  );
+}
+
+/** Row id -> colour class, for the rows one formula references. */
+function buildSummaryFormulaReferenceColors(raw) {
+  const byLabel = buildSummaryFormulaReferenceColorsByLabel(raw);
+  const colors = new Map();
+  if (!byLabel.size) return colors;
+  getSummaryLabelToIdMap().forEach((rowId, label) => {
+    const colorClass = byLabel.get(String(label).trim().toLowerCase());
+    if (colorClass && !colors.has(rowId)) colors.set(rowId, colorClass);
+  });
+  return colors;
+}
+
 function updateActiveSummaryFormulaReferenceUi(summaryTable) {
   if (!summaryTable) return;
   summaryTable.querySelectorAll("td.summaryCell.summaryFormulaActiveRefCell")
@@ -556,15 +600,13 @@ function updateActiveSummaryFormulaReferenceUi(summaryTable) {
   const editCell = state.cell;
   if (!Number.isFinite(editCol) || editCol < 0 || !editCell) return;
 
-  const labelToId = getSummaryLabelToIdMap();
-  getFormulaReferencedLabels(input.value).forEach((label) => {
-    const rowId = labelToId.get(label);
-    if (!rowId) return;
+  buildSummaryFormulaReferenceColors(input.value).forEach((colorClass, rowId) => {
     const refCell = summaryTable.querySelector(
       `td.summaryCell[data-r="${CSS.escape(rowId)}"][data-col="${editCol}"]`
     );
     if (!refCell || refCell === editCell) return;
     refCell.classList.add("summaryFormulaActiveRefCell");
+    refCell.classList.add(colorClass);
   });
 }
 
@@ -585,35 +627,52 @@ function getLiveUserEntryFormulaEdit(summaryTable) {
   return { rowId, col, input };
 }
 
+/**
+ * The one User Entry cell whose references are worth colouring: the formula
+ * being typed while the formula bar is open, otherwise the cell the spreadsheet
+ * cursor sits on. Each mode keeps its own marker on that cell — Edit mode the
+ * active cell, Select mode the highlight anchor — so the colours appear only
+ * while the formula that owns them is the one in view.
+ */
+function getFocusedUserEntryFormula(summaryTable) {
+  const liveEdit = getLiveUserEntryFormulaEdit(summaryTable);
+  if (liveEdit) {
+    return {
+      rowId: liveEdit.rowId,
+      col: liveEdit.col,
+      raw: String(liveEdit.input.value || "").trim(),
+    };
+  }
+  const cell = isRatioEditMode()
+    ? summaryTable.querySelector("td.summaryCell.summaryActiveCell")
+    : summaryTable.querySelector("td.summaryCell.dfmTableActive");
+  const rowId = String(cell?.dataset?.r || "");
+  const col = Number(cell?.dataset?.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) return null;
+  const cfg = summaryRowMap.get(rowId);
+  if (!isUserEntryConfig(cfg)) return null;
+  return { rowId, col, raw: String(getUserEntryInputForCol(cfg, col) || "").trim() };
+}
+
 function applyUserEntryReferenceHighlights(summaryTable) {
   if (!summaryTable) return;
   summaryTable.querySelectorAll("td.summaryCell.summaryFormulaReferencedCell")
     .forEach((el) => el.classList.remove("summaryFormulaReferencedCell"));
+  SUMMARY_FORMULA_REF_COLOR_CLASSES.forEach((colorClass) => {
+    summaryTable.querySelectorAll(`td.summaryCell.${colorClass}`)
+      .forEach((el) => el.classList.remove(colorClass));
+  });
 
-  const labelToId = getSummaryLabelToIdMap();
-  if (!labelToId.size) return;
-  const labels = Array.from(labelToId.keys());
-  const liveEdit = getLiveUserEntryFormulaEdit(summaryTable);
-
-  summaryRowConfigs.forEach((cfg) => {
-    if (!isUserEntryConfig(cfg)) return;
-    const sourceRowId = String(cfg?.id || "");
-    const colCount = getCurrentRatioColumnCount();
-    for (let col = 0; col < colCount; col++) {
-      const inputRaw = liveEdit && liveEdit.rowId === sourceRowId && liveEdit.col === col
-        ? String(liveEdit.input.value || "").trim()
-        : String(getUserEntryInputForCol(cfg, col) || "").trim();
-      if (!inputRaw) continue;
-      const referencedLabels = findReferencedLabels(inputRaw, labels);
-      referencedLabels.forEach((label) => {
-        const refRowId = labelToId.get(label);
-        if (!refRowId || refRowId === sourceRowId) return;
-        const refCell = summaryTable.querySelector(
-          `td.summaryCell[data-r="${CSS.escape(refRowId)}"][data-col="${col}"]`
-        );
-        if (refCell) refCell.classList.add("summaryFormulaReferencedCell");
-      });
-    }
+  const focus = getFocusedUserEntryFormula(summaryTable);
+  if (!focus || !focus.raw) return;
+  buildSummaryFormulaReferenceColors(focus.raw).forEach((colorClass, refRowId) => {
+    if (refRowId === focus.rowId) return;
+    const refCell = summaryTable.querySelector(
+      `td.summaryCell[data-r="${CSS.escape(refRowId)}"][data-col="${focus.col}"]`
+    );
+    if (!refCell) return;
+    refCell.classList.add("summaryFormulaReferencedCell");
+    refCell.classList.add(colorClass);
   });
 }
 
@@ -963,6 +1022,7 @@ registerSummaryFunctions({
   getSummaryLabelToIdMap,
   getSummaryCellRowLabel,
   getFormulaReferencedLabels,
+  buildSummaryFormulaReferenceColorsByLabel,
   replaceFormulaReferenceLabel,
   updateActiveSummaryFormulaReferenceUi,
   applyUserEntryReferenceHighlights,

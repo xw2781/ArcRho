@@ -49,6 +49,7 @@ const dfmSummaryExports = [
   "applyRatioSelectionPattern",
   "applySelectedSummaryFromSaved",
   "applySummarySelection",
+  "applyUserEntryReferenceHighlights",
   "breakDfmExternalLink",
   "breakDfmExternalLinks",
   "buildAverageSelectionPayload",

@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The move pointer over a referenced cell's border now appears while editing a User Entry formula in Select mode, not only in Edit mode.",
+  "details": [
+    "Select mode was overriding the pointer on every cell in the table, so the border of a referenced cell gave no sign that it could be dragged onto another row.",
+    "The drag itself always worked; only the pointer was missing."
+  ]
+}
