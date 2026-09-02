@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Source Data reload button now only re-reads what the page shows, instead of re-importing the source table and rebuilding every generated dataset.",
+  "details": [
+    "Reload refreshes the table summary, the field mapping, the reserving-class types and the period boundaries, and returns in seconds rather than minutes.",
+    "Re-importing the external source and rebuilding what depends on it stays with Import Data, which is where that work belongs."
+  ]
+}
