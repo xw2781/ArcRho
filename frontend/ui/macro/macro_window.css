@@ -341,40 +341,21 @@ body.macroListDragActive * {
   user-select: none;
 }
 
-.macroDragGhost {
+/* A copy of the dragged row, carried by the pointer. The width and height are
+   set from the row it was cloned from, so `border-box` keeps the card exactly
+   the size of the row even once it has a border of its own. */
+.macroDragCard {
   position: fixed;
+  left: 0;
+  top: 0;
   z-index: 12500;
-  max-width: 280px;
-  padding: 4px 9px;
-  border: 1px solid #cbd5e1;
+  box-sizing: border-box;
+  border: 1px solid #93c5fd;
   border-radius: 4px;
-  background: #ffffff;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
-  color: #243244;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  opacity: 0.94;
   overflow: hidden;
-  text-overflow: ellipsis;
   pointer-events: none;
-}
-
-.macroDragGhost[data-kind="install"] {
-  border-color: #93b5e8;
-  background: #e7f0ff;
-  color: #1d4ed8;
-}
-
-.macroDragGhost[data-kind="deck"] {
-  border-color: #93b5e8;
-  background: #e7f0ff;
-  color: #1d4ed8;
-}
-
-.macroDragGhost[data-kind="remove"] {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #b91c1c;
 }
 
 .macroListItemTop {

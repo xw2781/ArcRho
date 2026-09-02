@@ -2,7 +2,7 @@ import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
 import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
 import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260829a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
-import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260829a";
+import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260901b";
 
 const API_BASE = window.location.origin;
 const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260731b";
@@ -1543,11 +1543,6 @@ export async function initMacroWindow() {
     outsideTarget: (element) => {
       const flightDeck = element?.closest?.("#flightDeck");
       return flightDeck ? { kind: "deck", highlight: flightDeck } : { kind: "remove" };
-    },
-    label: (macro, target) => {
-      const name = macro.name || macro.id;
-      if (target?.kind === "deck") return `Add ${name} to the Flight Deck`;
-      return target?.kind === "remove" ? `Delete ${name}` : name;
     },
     onStart: (macro) => selectMacro(macro.id),
     onDrop: (macro, target) => {

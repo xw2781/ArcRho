@@ -1,5 +1,4 @@
 const DRAG_THRESHOLD_PX = 4;
-const GHOST_OFFSET_PX = 12;
 
 export function syncMacroListSelection(list, selectedId) {
   list?.querySelectorAll(".macroListItem").forEach((item) => {
@@ -46,12 +45,39 @@ function reorderTarget(list, source, element, clientY) {
   return { kind: "reorder", beforeId };
 }
 
+// The dragged macro travels as a copy of its own row, cloned at the row's exact
+// size so the pointer carries the thing being moved rather than a label about
+// it. The copy is pinned to the point inside the row that was pressed, so it
+// sits under the pointer exactly where the real row did.
+function liftCard(drag, event) {
+  const rect = drag.item.getBoundingClientRect();
+  drag.grabX = drag.startX - rect.left;
+  drag.grabY = drag.startY - rect.top;
+  const card = drag.item.cloneNode(true);
+  card.classList.add("macroDragCard", "active");
+  card.classList.remove("dragSource", "dropBefore", "dropAfter");
+  card.removeAttribute("id");
+  card.setAttribute("aria-hidden", "true");
+  card.tabIndex = -1;
+  card.style.width = `${rect.width}px`;
+  card.style.height = `${rect.height}px`;
+  document.body.appendChild(card);
+  drag.card = card;
+  moveCard(drag, event);
+}
+
+function moveCard(drag, event) {
+  if (!drag.card) return;
+  drag.card.style.left = `${event.clientX - drag.grabX}px`;
+  drag.card.style.top = `${event.clientY - drag.grabY}px`;
+}
+
 // Pointer-driven drag for a macro list. A press that moves less than the
-// threshold stays a click; beyond it the item becomes a drag with a floating
-// ghost. Targets: reorder inside the same list (when `reorder` is on), or
+// threshold stays a click; beyond it the row fades and a copy of it follows the
+// pointer. Targets: reorder inside the same list (when `reorder` is on), or
 // whatever `outsideTarget` returns for a pointer outside the owning window.
 // A target may carry `highlight`, an element tinted while it is the target.
-export function initMacroListDrag(list, windowElement, { getMacro, reorder = false, outsideTarget = () => null, label, onStart, onDrop }) {
+export function initMacroListDrag(list, windowElement, { getMacro, reorder = false, outsideTarget = () => null, onStart, onDrop }) {
   let drag = null;
   let suppressClick = false;
 
@@ -63,7 +89,7 @@ export function initMacroListDrag(list, windowElement, { getMacro, reorder = fal
   };
 
   const finish = () => {
-    drag.ghost?.remove();
+    drag.card?.remove();
     drag.item.classList.remove("dragSource");
     document.body.classList.remove("macroListDragActive");
     clearDropIndicators(list);
@@ -84,7 +110,7 @@ export function initMacroListDrag(list, windowElement, { getMacro, reorder = fal
     const item = event.target?.closest?.(".macroListItem");
     if (event.button !== 0 || !item || !list.contains(item)) return;
     suppressClick = false;
-    drag = { pointerId: event.pointerId, item, startX: event.clientX, startY: event.clientY, active: false, ghost: null, target: null, highlight: null };
+    drag = { pointerId: event.pointerId, item, startX: event.clientX, startY: event.clientY, active: false, card: null, grabX: 0, grabY: 0, target: null, highlight: null };
     try { item.setPointerCapture(event.pointerId); } catch {}
   });
 
@@ -94,14 +120,13 @@ export function initMacroListDrag(list, windowElement, { getMacro, reorder = fal
     if (!drag.active) {
       if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD_PX) return;
       drag.active = true;
-      drag.ghost = document.createElement("div");
-      drag.ghost.className = "macroDragGhost";
-      document.body.appendChild(drag.ghost);
+      liftCard(drag, event);
       drag.item.classList.add("dragSource");
       document.body.classList.add("macroListDragActive");
       window.addEventListener("keydown", onKeyDown, true);
       onStart?.(macro);
     }
+    moveCard(drag, event);
     clearDropIndicators(list);
     const element = document.elementFromPoint(event.clientX, event.clientY);
     let target = null;
@@ -112,10 +137,6 @@ export function initMacroListDrag(list, windowElement, { getMacro, reorder = fal
     }
     drag.target = target;
     setHighlight(target?.highlight || null);
-    drag.ghost.dataset.kind = target?.kind || "";
-    drag.ghost.textContent = label(macro, target);
-    drag.ghost.style.left = `${event.clientX + GHOST_OFFSET_PX}px`;
-    drag.ghost.style.top = `${event.clientY + GHOST_OFFSET_PX}px`;
   });
 
   const stop = (event) => {

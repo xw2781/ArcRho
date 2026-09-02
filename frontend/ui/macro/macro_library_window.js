@@ -1,6 +1,6 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
-import { initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260829a";
+import { initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260901b";
 
 const API_BASE = window.location.origin;
 const LIBRARY_WINDOW_FRAGMENT_URL = "/ui/macro/macro_library_window.html?v=20260731a";
@@ -262,11 +262,6 @@ export async function initMacroLibraryWindow() {
     outsideTarget: (element) => {
       const macroList = element?.closest?.("#macroWindow")?.querySelector("#macroList");
       return macroList ? { kind: "install", highlight: macroList } : null;
-    },
-    label: (macro, target) => {
-      const name = macro.name || macro.id;
-      if (!target) return name;
-      return macro.status === "up_to_date" ? `${name} is already loaded` : `${libraryStatusMeta(macro).action} ${name}`;
     },
     onStart: (macro) => selectLibraryMacro(macro.id),
     onDrop: (macro) => void installLibraryMacro(macro),

@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "Dragging a macro in the Macros or Macro Library window now carries the row itself under the pointer instead of a small floating name box.",
+  "details": [
+    "The travelling card is a copy of the row you took hold of, at the same width and height and in the same highlighted colour, and it stays under the point of the row you pressed.",
+    "The row left behind fades, the blue line still shows where a reordered macro will land, and the Flight Deck and the Macros list still tint when they are the drop target.",
+    "Dragging a macro clear of the Macros window still deletes it, and the confirmation prompt still names the macro before anything is removed."
+  ]
+}
