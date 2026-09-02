@@ -285,7 +285,9 @@ export function createProjectMapStore(deps) {
       throw new Error(`${label} failed: the project registry was modified by another user. Please refresh and try again.`);
     }
     if (res.status === 423) {
-      throw new Error(`${label} failed: the project registry is locked. Another user may have it open.`);
+      const error = new Error(`${label} failed: the project registry is locked. Another user may have it open.`);
+      error.code = "PROJECT_REGISTRY_LOCKED";
+      throw error;
     }
     if (!res.ok) {
       const errText = await res.text();

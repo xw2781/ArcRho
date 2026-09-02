@@ -982,11 +982,7 @@ def _retarget_dataset(
         calendar=bool(payload.get("calendar")),
         show_subtotal=payload.get("show_subtotal"),
         number_format=payload.get("number_format") or "",
-        decimal_places=(
-            payload.get("decimal_places")
-            if payload.get("decimal_places") is not None
-            else 1
-        ),
+        decimal_places=payload.get("decimal_places"),
         external_links=links,
         values=values,
     )

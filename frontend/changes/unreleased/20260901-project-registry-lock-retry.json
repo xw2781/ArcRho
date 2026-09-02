@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Duplicating a project no longer stops with a \"project registry is locked\" error when the shared project list is merely busy for a moment.",
+  "details": [
+    "Registering the copied project used to give up on the first refusal, which on the shared server happens whenever another window or poll is reading the project list at the same instant, and the duplicate then had to be finished by reopening Project Settings.",
+    "The project list write now retries the swap for about two seconds before reporting a lock, and the duplicate's finishing step retries a locked reply twice more with the status bar showing that it is waiting.",
+    "A registry that really is held open still reports the same error, and the recovery record and copied project are still preserved for the next reopen."
+  ]
+}

@@ -99,7 +99,7 @@ test("multi-step project operations keep their intended recovery policies", () =
 });
 
 test("duplicate recovery is wired into page load and the standard close contract", () => {
-  assert.match(projectOps, /project_settings_duplicate_job\.js\?v=20260807idx1/);
+  assert.match(projectOps, /project_settings_duplicate_job\.js\?v=20260901dup1/);
   assert.match(coordinator, /await loadProjectData\(DEFAULT_SOURCE\);[\s\S]*resumePendingDuplicateProject\(\)/);
   assert.match(coordinator, /window\.__arcrho_request_close = \(\) => projectOpsFeature\.requestClose\(\)/);
   assert.match(coordinator, /e\.origin !== window\.location\.origin \|\| e\.source !== window\.parent/);

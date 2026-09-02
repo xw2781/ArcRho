@@ -22,10 +22,24 @@ class DuplicateProjectFolderRequest(BaseModel):
     request_id: Optional[str] = None
 
 
+ProjectDuplicationStatusValue = Literal[
+    "queued", "processing", "success", "error", "cancelled"
+]
+
+
 class DuplicateProjectFolderJobResponse(BaseModel):
     ok: Literal[True]
     job_id: str
-    status: Literal["queued", "processing", "success", "error"]
+    status: ProjectDuplicationStatusValue
+
+
+class DuplicateProjectFolderCancelResponse(BaseModel):
+    """Outcome of a cancel request: whether the Engine will be asked to stop."""
+
+    ok: Literal[True]
+    job_id: str
+    status: ProjectDuplicationStatusValue
+    cancel_requested: bool
 
 
 class ProjectDuplicationProgress(BaseModel):
@@ -39,7 +53,7 @@ class ProjectDuplicationJobStatusResponse(BaseModel):
     ok: Literal[True]
     job_id: str
     contract_version: int
-    status: Literal["queued", "processing", "success", "error"]
+    status: ProjectDuplicationStatusValue
     updated_at: str
     request_id: str
     progress: ProjectDuplicationProgress

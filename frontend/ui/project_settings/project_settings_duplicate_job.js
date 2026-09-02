@@ -4,7 +4,8 @@ const POLL_INTERVAL_MS = 750;
 const MAX_STATUS_RETRIES = 8;
 const STALE_STATUS_MS = 15 * 60 * 1000;
 const SUCCESS_STATUSES = new Set(["success", "completed", "complete", "succeeded"]);
-const ERROR_STATUSES = new Set(["error", "failed", "failure", "cancelled", "canceled"]);
+const ERROR_STATUSES = new Set(["error", "failed", "failure"]);
+const CANCELLED_STATUSES = new Set(["cancelled", "canceled"]);
 
 function codedError(code, message) {
   const error = new Error(message);
@@ -226,6 +227,12 @@ export async function waitForDuplicateProjectJob({
     });
     const status = String(result?.status || "").trim().toLowerCase();
     if (SUCCESS_STATUSES.has(status)) return result;
+    if (CANCELLED_STATUSES.has(status)) {
+      throw codedError(
+        "DUPLICATE_JOB_CANCELLED",
+        String(result.message || "Project duplication was cancelled."),
+      );
+    }
     if (ERROR_STATUSES.has(status)) {
       throw codedError(
         String(progress.stage || "").trim().toLowerCase() === "recovery_required"

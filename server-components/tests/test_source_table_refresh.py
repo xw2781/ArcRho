@@ -176,7 +176,8 @@ class RegenerationRequestTests(unittest.TestCase):
                     "development_length": 6,
                     "cumulative": False,
                     "calendar": True,
-                }
+                },
+                "Demo Project",
             )
         values = dict(pairs)
         self.assertEqual(values["Function"], "ArcRhoTri")
@@ -199,7 +200,8 @@ class RegenerationRequestTests(unittest.TestCase):
                     "data_format": "Vector",
                     "period_length": 12,
                     "origin_length": 12,
-                }
+                },
+                "Demo Project",
             )
         values = dict(pairs)
         self.assertEqual(values["Function"], "ArcRhoVec")
@@ -208,6 +210,25 @@ class RegenerationRequestTests(unittest.TestCase):
         self.assertEqual(values["InstanceName"], "Premium")
         self.assertEqual(values["OriginLength"], "12")
         self.assertEqual(values["DevelopmentLength"], "12")
+
+    def test_the_project_refreshed_wins_over_the_name_in_the_sidecar(self) -> None:
+        # A duplicated project's sidecars still name the project they were
+        # copied from. Following that name would rebuild every dataset into the
+        # source project and leave this one with no values at all.
+        with self._with_helpers():
+            pairs, _ = source_table_refresh._regeneration_request(
+                {
+                    "project_name": "Prod 2026 Q2-May",
+                    "reserving_class": "HPPREF\\NJ",
+                    "dataset_name": "Paid",
+                    "dataset_type": "Paid",
+                    "data_format": "Triangle",
+                    "origin_length": 12,
+                    "development_length": 12,
+                },
+                "Prod 2026 Q3-Aug",
+            )
+        self.assertEqual(dict(pairs)["ProjectName"], "Prod 2026 Q3-Aug")
 
 
 class RegenerationSafetyTests(unittest.TestCase):

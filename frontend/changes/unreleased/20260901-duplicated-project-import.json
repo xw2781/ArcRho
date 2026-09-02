@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Importing source data into a duplicated project now rebuilds that project's datasets instead of the project it was copied from.",
+  "details": [
+    "A duplicated project kept the original project's name inside every dataset's saved settings, so the import wrote the rebuilt values back into the original project and left the new one with no data to open.",
+    "Opening a dataset in a duplicated project no longer rebuilds it from scratch every time, because the saved values are recognised as belonging to that project.",
+    "A method that republishes its output dataset keeps the decimal places the dataset already had instead of resetting them."
+  ]
+}

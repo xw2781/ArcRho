@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "A running project duplicate can now be cancelled from its progress window.",
+  "details": [
+    "The Duplicate Project progress window has a Cancel button while the copy is queued or running. Pressing it asks the server to stop at the next copy step, the window reads \"Cancelling...\" until the server confirms, and the partly copied folder is discarded so nothing is created.",
+    "The button disappears once the copy has been published and only the registration step remains; a Cancel at that point is refused with a status-bar note that the project will be registered.",
+    "A cancelled duplicate closes quietly with a status-bar message rather than an error dialog, and leaves no recovery record behind."
+  ]
+}

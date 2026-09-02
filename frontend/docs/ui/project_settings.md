@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260824a`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260901dup1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -30,6 +30,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/project_settings/${DEFAULT_SOURCE}/generated_dataset_cache/clear`
 - `/project_settings/${DEFAULT_SOURCE}/open_project_folder`
 - `/project_settings/${defaultSource}/${endpoint}`
+- `/project_settings/${defaultSource}/duplicate_project_folder/cancel/${encodeURIComponent(record.requestId)}`
 - `/project_settings/${sourceKey}`
 - `/reserving_class_types`
 - `/reserving_class_types/import_local_file`

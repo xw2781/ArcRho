@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -19,6 +20,7 @@ from arcrho_project_duplication_contract import (
     ProjectDuplicationContractError,
     build_project_duplication_request,
     build_project_duplication_submission_receipt,
+    PROJECT_DUPLICATION_TERMINAL_STATUS_VALUES,
     encode_project_directory_segment,
     path_is_link_or_reparse,
     project_duplication_projects_directory_identity,
@@ -32,6 +34,7 @@ from arcrho_project_duplication_contract import (
     validate_projects_directory,
     validate_request_id,
     write_json_atomic,
+    write_project_duplication_cancel_request,
     write_project_duplication_status,
 )
 from arcrho_api.dataset_index_contract import (
@@ -61,6 +64,15 @@ from app_server.services.audit_service import safe_append_project_audit_log
 
 _GENERATED_CACHE_MAX_WORKERS = 4
 
+# Publishing the registry swaps a temp file over ``index.json``. Windows refuses
+# that swap while any other handle on the file is open, even a reader without
+# delete sharing, and the shared registry is read by the project picker, the
+# registry tree, and status polls at exactly the moments it is written. Those
+# collisions clear in milliseconds, so the swap is retried briefly before the
+# caller reports the registry as locked.
+_PROJECT_INDEX_REPLACE_ATTEMPTS = 5
+_PROJECT_INDEX_REPLACE_RETRY_SECONDS = 0.2
+
 
 def _project_index_path() -> str:
     return os.path.join(config.PROJECT_SETTINGS_DIR, config.PROJECT_INDEX_FILE)
@@ -86,8 +98,24 @@ def _write_project_index(data: Dict[str, Any]) -> str:
     tmp_path = path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(persisted_json_text(_normalize_project_index(data)))
-    os.replace(tmp_path, path)
+    _replace_project_index_with_retry(tmp_path, path)
     return path
+
+
+def _replace_project_index_with_retry(tmp_path: str, path: str) -> None:
+    """Swap the written temp file over the registry, retrying transient sharing refusals."""
+    for attempt in range(1, _PROJECT_INDEX_REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except PermissionError:
+            if attempt >= _PROJECT_INDEX_REPLACE_ATTEMPTS:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
+            time.sleep(_PROJECT_INDEX_REPLACE_RETRY_SECONDS * attempt)
 
 
 def _folder_entry_from_path(path: str) -> Dict[str, str]:
@@ -718,6 +746,64 @@ def _remove_unpublished_duplication_files(*paths: Path | None) -> None:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def cancel_duplicate_project_folder(
+    source: str,
+    request_id: str,
+) -> Dict[str, Any]:
+    """Ask the Engine to stop a running duplicate.
+
+    The marker is only advisory: the Engine reads it between copy steps and,
+    when it finds it before the copy is published, discards the staging folder
+    and reports ``cancelled``. A job that already reached a terminal status is
+    reported as-is with ``cancel_requested`` false, so the caller knows the
+    copy can no longer be stopped.
+    """
+
+    if source not in config.PROJECT_SETTINGS_SOURCES:
+        raise HTTPException(404, f"Unknown source: {source}")
+    try:
+        normalized_request_id = validate_request_id(request_id)
+    except ProjectDuplicationContractError as error:
+        raise HTTPException(400, str(error)) from error
+
+    server_root = _project_duplication_server_root()
+    current_status = _read_project_duplication_status_value(
+        server_root,
+        normalized_request_id,
+    )
+    if current_status is None:
+        raise HTTPException(404, "Project duplication job was not found.")
+    if current_status in PROJECT_DUPLICATION_TERMINAL_STATUS_VALUES:
+        return {
+            "ok": True,
+            "job_id": normalized_request_id,
+            "status": current_status,
+            "cancel_requested": False,
+        }
+    try:
+        write_project_duplication_cancel_request(
+            server_root,
+            normalized_request_id,
+            user_name=getpass.getuser(),
+        )
+    except PermissionError as error:
+        raise HTTPException(
+            423,
+            "The project duplication cancel request is locked or inaccessible.",
+        ) from error
+    except OSError as error:
+        raise HTTPException(
+            500,
+            "The project duplication cancel request could not be published.",
+        ) from error
+    return {
+        "ok": True,
+        "job_id": normalized_request_id,
+        "status": current_status,
+        "cancel_requested": True,
+    }
 
 
 def get_duplicate_project_folder_status(

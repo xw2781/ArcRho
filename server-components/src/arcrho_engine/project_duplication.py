@@ -27,10 +27,13 @@ from arcrho_engine_job_lease import (
     stop_engine_job_lease_heartbeat,
 )
 from arcrho_project_duplication_contract import (
+    PROJECT_DUPLICATION_TERMINAL_STATUS_VALUES,
     PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES,
     ProjectDuplicationContractError,
+    clear_project_duplication_cancel_request,
     encode_project_directory_segment,
     path_is_link_or_reparse as _canonical_path_is_link_or_reparse,
+    project_duplication_cancel_requested,
     project_duplication_lock_directory,
     project_duplication_projects_path,
     project_duplication_request_path,
@@ -87,6 +90,21 @@ class ProjectDuplicationLeaseLost(ProjectDuplicationError):
 
 class ProjectDuplicationRetryableRecovery(ProjectDuplicationError):
     """Raised when durable recovery should be retried without terminal status."""
+
+
+class ProjectDuplicationCancelled(ProjectDuplicationError):
+    """Raised when the submitting user asked for the copy to stop.
+
+    Only raised between copy steps and never after the staging folder has
+    been renamed into place, so a cancelled job leaves nothing behind.
+    """
+
+
+def _raise_if_cancelled(server_root: str | os.PathLike[str], request_id: str) -> None:
+    if project_duplication_cancel_requested(server_root, request_id):
+        raise ProjectDuplicationCancelled(
+            "Project duplication was cancelled before the copy was published."
+        )
 
 
 @dataclass(frozen=True)
@@ -744,6 +762,10 @@ def duplicate_project(
 
         def report(progress: Progress) -> None:
             ensure_owned()
+            # Every report sits between two copy steps, and the last one comes
+            # before the staging folder is renamed into place, so this is the
+            # one safe place to honour a cancel.
+            _raise_if_cancelled(root, normalized["RequestId"])
             _refresh_target_lock(lock)
             progress_callback(progress)
 
@@ -1026,6 +1048,34 @@ def execute_project_duplication(
         if isinstance(exc, ProjectDuplicationLeaseLost):
             print("(project duplication request ownership was lost)")
             return False
+        if isinstance(exc, ProjectDuplicationCancelled):
+            log_duplication_event(
+                server_root,
+                f"request={normalized['RequestId']} cancelled at stage "
+                f"{current_progress['stage']} "
+                f"({current_progress['completed']}/{current_progress['total']})",
+            )
+            try:
+                if ownership_callback is not None:
+                    ownership_callback()
+                write_project_duplication_status(
+                    server_root,
+                    normalized,
+                    "cancelled",
+                    progress=_progress(
+                        "cancelled",
+                        current_progress["completed"],
+                        current_progress["total"],
+                        "Project duplication cancelled",
+                    ),
+                    message=_safe_status_error(exc),
+                )
+            except Exception as status_exc:
+                print(
+                    "(error: could not publish project duplication cancelled status: "
+                    f"{_redact_machine_paths(status_exc)})"
+                )
+            return False
         message = _safe_status_error(exc)
         # The shared status is redacted by contract; this is the only record of
         # which path and which errno actually failed.
@@ -1112,7 +1162,11 @@ def _validated_terminal_status(
         raise ProjectDuplicationRetryableRecovery(
             "Existing project-duplication status could not be validated."
         ) from exc
-    return status if status["status"] in {"success", "error"} else None
+    return (
+        status
+        if status["status"] in PROJECT_DUPLICATION_TERMINAL_STATUS_VALUES
+        else None
+    )
 
 
 def _remove_recovery_journal(server_root: Path, request_id: str) -> bool:
@@ -1145,6 +1199,9 @@ def _cleanup_durable_terminal(
         pass
     except OSError:
         return False
+    # The marker has done its work once a terminal status exists; a stale one
+    # must not linger to stop an unrelated future job that reuses the ID.
+    clear_project_duplication_cancel_request(server_root, request_id)
     if (
         terminal["status"] == "error"
         and terminal["progress"]["stage"] == "recovery_required"

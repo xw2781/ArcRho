@@ -665,3 +665,226 @@ test("transient status failures retry but eventually preserve the uncertain job"
   );
   assert.deepEqual(waits, [750, 750]);
 });
+
+function registryLockedError() {
+  const error = new Error("Project registry save failed: the project registry is locked. Another user may have it open.");
+  error.code = "PROJECT_REGISTRY_LOCKED";
+  return error;
+}
+
+function completedCopyFetch(jobId) {
+  return async (url, options = {}) => {
+    if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
+      return response({ ok: true, job_id: jobId, status: "queued" }, 202);
+    }
+    if (url.endsWith(`/status/${jobId}`)) {
+      return response({ ok: true, status: "success", progress: { completed: 2, total: 2, label: "Copied" } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+}
+
+test("a momentarily locked registry is retried and the duplicate finishes without an error", async () => {
+  const storage = new MemoryStorage();
+  const alerts = [];
+  globalThis.alert = (message) => alerts.push(message);
+  let saveAttempts = 0;
+  let context;
+  context = makeFeature({
+    fetchImpl: completedCopyFetch("job-lock-retry"),
+    storage,
+    requestId: "job-lock-retry",
+    saveFolderStructure: async () => {
+      saveAttempts += 1;
+      context.sequence.push("save-structure");
+      if (saveAttempts < 3) throw registryLockedError();
+    },
+  });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.equal(saveAttempts, 3);
+  assert.deepEqual(context.sequence.filter((value) => value.startsWith("wait-")), ["wait-750", "wait-750"]);
+  assert.deepEqual(alerts, []);
+  assert.equal(context.targetPathCount(), 1);
+  assert.equal(storage.values.size, 0, "finished duplicate leaves no pending record");
+});
+
+test("a registry that stays locked still fails after the bounded retries and keeps the pending record", async () => {
+  const storage = new MemoryStorage();
+  const alerts = [];
+  globalThis.alert = (message) => alerts.push(message);
+  let saveAttempts = 0;
+  const context = makeFeature({
+    fetchImpl: completedCopyFetch("job-lock-stuck"),
+    storage,
+    requestId: "job-lock-stuck",
+    saveFolderStructure: async () => {
+      saveAttempts += 1;
+      throw registryLockedError();
+    },
+  });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.equal(saveAttempts, 3);
+  assert.equal(context.sequence.filter((value) => value === "wait-750").length, 2);
+  assert.match(alerts[0], /project registry is locked/u);
+  assert.match(alerts[0], /server-side copy state were both preserved/u);
+  assert.equal(context.targetPathCount(), 0);
+  assert.equal(storage.values.size, 1, "pending record survives for recovery");
+});
+
+test("a non-lock registry failure is not retried", async () => {
+  const storage = new MemoryStorage();
+  globalThis.alert = () => {};
+  let saveAttempts = 0;
+  const context = makeFeature({
+    fetchImpl: completedCopyFetch("job-plain-failure"),
+    storage,
+    requestId: "job-plain-failure",
+    saveFolderStructure: async () => {
+      saveAttempts += 1;
+      throw new Error("Project registry save failed: HTTP 500");
+    },
+  });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.equal(saveAttempts, 1);
+  assert.equal(context.sequence.filter((value) => value === "wait-750").length, 0);
+});
+
+test("Cancel during the copy posts the cancel request and a cancelled status settles the job quietly", async () => {
+  const storage = new MemoryStorage();
+  const alerts = [];
+  const progressMessages = [];
+  globalThis.alert = (message) => alerts.push(message);
+  const statuses = [];
+  let cancelPosts = 0;
+  let context;
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
+      return response({ ok: true, job_id: "job-cancel", status: "queued" }, 202);
+    }
+    if (url.endsWith("/duplicate_project_folder/cancel/job-cancel") && options.method === "POST") {
+      cancelPosts += 1;
+      statuses.push("cancel-posted");
+      return response({ ok: true, job_id: "job-cancel", status: "processing", cancel_requested: true }, 202);
+    }
+    if (url.endsWith("/status/job-cancel")) {
+      statuses.push("poll");
+      if (statuses.filter((value) => value === "poll").length === 1) {
+        // The user presses Cancel on the shell progress window mid-copy.
+        assert.equal(context.feature.cancelDuplicateProject("project-duplicate-job-cancel"), true);
+        assert.equal(context.feature.cancelDuplicateProject("project-duplicate-job-cancel"), true, "a second press is harmless");
+        return response({ ok: true, status: "processing", progress: { stage: "reserving_classes", completed: 1, total: 3, label: "Copying" } });
+      }
+      return response({ ok: true, status: "cancelled", message: "Project duplication was cancelled before the copy was published.", progress: { stage: "cancelled", completed: 1, total: 3, label: "Project duplication cancelled" } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  context = makeFeature({
+    fetchImpl,
+    storage,
+    requestId: "job-cancel",
+    publishShellProgress: (message) => progressMessages.push(message),
+    saveFolderStructure: async () => { throw new Error("registry must not be written for a cancelled copy"); },
+  });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.equal(cancelPosts, 1);
+  assert.deepEqual(statuses, ["poll", "cancel-posted", "poll"]);
+  assert.deepEqual(alerts, [], "a cancel is not an error dialog");
+  assert.equal(context.targetPathCount(), 0);
+  assert.equal(storage.values.size, 0, "a cancelled job is settled, not retained for recovery");
+  assert.equal(progressMessages[0].action, "open");
+  assert.equal(progressMessages[0].cancellable, true);
+  const cancelling = progressMessages.find((message) => /Cancelling copy/u.test(String(message.label || "")));
+  assert.ok(cancelling, "the window shows the cancel in progress");
+  const last = progressMessages[progressMessages.length - 1];
+  assert.equal(last.action, "close");
+  assert.equal(last.autoCloseMs, 850);
+  assert.match(progressMessages[progressMessages.length - 2].label, /Cancelled copy/u);
+  assert.equal(progressMessages[progressMessages.length - 2].cancellable, false);
+  assert.equal(context.feature.cancelDuplicateProject(), false, "nothing is cancellable once the job is settled");
+});
+
+test("Cancel pressed before the submission is acknowledged goes out as soon as the job is known", async () => {
+  const storage = new MemoryStorage();
+  globalThis.alert = () => {};
+  const order = [];
+  let context;
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
+      order.push("submit");
+      assert.equal(context.feature.cancelDuplicateProject(), true);
+      return response({ ok: true, job_id: "job-early", status: "queued" }, 202);
+    }
+    if (url.endsWith("/cancel/job-early")) {
+      order.push("cancel");
+      return response({ ok: true, job_id: "job-early", status: "queued", cancel_requested: true }, 202);
+    }
+    if (url.endsWith("/status/job-early")) {
+      order.push("poll");
+      return response({ ok: true, status: "cancelled", progress: { stage: "cancelled", completed: 0, total: 0, label: "Cancelled" } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  context = makeFeature({ fetchImpl, storage, requestId: "job-early" });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.deepEqual(order, ["submit", "cancel", "poll"]);
+  assert.equal(storage.values.size, 0);
+});
+
+test("Cancel is refused once the copy is published and only the registry step remains", async () => {
+  const storage = new MemoryStorage();
+  globalThis.alert = () => {};
+  const statusMessages = [];
+  const progressMessages = [];
+  let context;
+  let cancelPosts = 0;
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/duplicate_project_folder") && options.method === "POST") {
+      return response({ ok: true, job_id: "job-late", status: "queued" }, 202);
+    }
+    if (url.endsWith("/cancel/job-late")) { cancelPosts += 1; return response({ ok: true }, 202); }
+    if (url.endsWith("/status/job-late")) {
+      return response({ ok: true, status: "success", progress: { completed: 2, total: 2, label: "Copied" } });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  context = makeFeature({
+    fetchImpl,
+    storage,
+    requestId: "job-late",
+    setStatus: (message) => statusMessages.push(message),
+    publishShellProgress: (message) => progressMessages.push(message),
+    saveFolderStructure: async () => {
+      assert.equal(context.feature.cancelDuplicateProject(), false);
+    },
+  });
+
+  await context.feature.duplicateProject(context.project);
+
+  assert.equal(cancelPosts, 0);
+  assert.ok(statusMessages.some((message) => /already finished; it will be registered/u.test(message)));
+  const finalizing = progressMessages.find((message) => /Finalizing/u.test(String(message.label || "")));
+  assert.equal(finalizing.cancellable, false, "the Cancel button is withdrawn while finalizing");
+  assert.equal(context.targetPathCount(), 1);
+});
+
+test("a cancelled status is reported with its own code by the poll helper", async () => {
+  await assert.rejects(
+    waitForDuplicateProjectJob({
+      fetchImpl: async () => response({ ok: true, status: "cancelled", message: "Stopped by user.", progress: { completed: 1, total: 3 } }),
+      statusUrl: "/status/job-x",
+      jobId: "job-x",
+      waitForPoll: async () => {},
+    }),
+    (error) => error?.code === "DUPLICATE_JOB_CANCELLED" && /Stopped by user/u.test(error.message),
+  );
+});

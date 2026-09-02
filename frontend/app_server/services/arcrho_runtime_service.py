@@ -739,8 +739,11 @@ def _triangle_sidecar_payload(
         return {}
     if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
         return {}
-    if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
-        return {}
+    # The project is settled by where the sidecar was found, not by the name it
+    # stores: this path was built from the requested project's folders, so a
+    # sidecar read from it belongs to that project. Duplicating or renaming a
+    # project copies the stored name verbatim, and comparing it would reject
+    # every cache in the new project and force a full rebuild of each one.
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
     if not local_only and source_kind != "input":
         return {}
@@ -1157,6 +1160,11 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         payload.pop("source_modified", None)
         payload["modified_by"] = user_name
         payload["data_format"] = data_format
+        # A sidecar copied in by a project duplication still names the project
+        # it came from. Restamping it here retires that name as each dataset is
+        # regenerated, so nothing downstream can read it and act on the wrong
+        # project.
+        payload["project_name"] = project_name
         payload["show_subtotal"] = normalize_show_subtotal(payload.get("show_subtotal"))
         if _clean_cache_text(payload.get("source_kind")).lower() == "engine":
             _set_processing_provenance(payload, project_name, data_path)
@@ -1295,8 +1303,9 @@ def arcrho_tri_cache_matches(
         return sidecar_mismatch()
     if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
         return sidecar_mismatch()
-    if not _cache_text_matches(payload.get("project_name"), _pair_value(pairs, "ProjectName")):
-        return sidecar_mismatch()
+    # The sidecar's own folder settles which project it belongs to; the stored
+    # project name is copied verbatim by a duplicate or a rename, so comparing
+    # it would treat every cache in a duplicated project as foreign.
     if not _processing_config_matches(
         payload,
         pairs,

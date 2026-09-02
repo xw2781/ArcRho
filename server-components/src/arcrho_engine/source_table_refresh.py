@@ -208,12 +208,22 @@ def _engine_dataset_instances(project_name: str, reserving_class: str) -> list[s
     return names
 
 
-def _regeneration_request(sidecar: Mapping[str, Any]) -> tuple[list, str]:
+def _regeneration_request(
+    sidecar: Mapping[str, Any],
+    project_name: str,
+) -> tuple[list, str]:
     """Build the canonical engine request for one persisted dataset instance.
 
     Every shape field comes from the dataset's own sidecar, so the regenerated
     CSV lands on the same cache filename it already occupies instead of
     creating a second variant beside it.
+
+    The project is the one this job is refreshing, never the name the sidecar
+    happens to carry. Duplicating or renaming a project copies that field
+    verbatim, so a duplicate's sidecars still name the project they were copied
+    from; trusting them would send the whole rebuild -- values and sidecar
+    writes alike -- into the source project's folders and leave the project
+    being refreshed with no cached values at all.
     """
 
     from app_server.helpers import set_data_path_like_vba
@@ -238,7 +248,7 @@ def _regeneration_request(sidecar: Mapping[str, Any]) -> tuple[list, str]:
             ("Cumulative", str(bool(sidecar.get("cumulative", True)))),
             ("Transposed", str(False)),
             ("Calendar", str(bool(sidecar.get("calendar", False)))),
-            ("ProjectName", str(sidecar.get("project_name") or "").strip()),
+            ("ProjectName", str(project_name or "").strip()),
             ("OriginLength", str(origin_length)),
             ("DevelopmentLength", str(development_length)),
         ]
@@ -268,7 +278,7 @@ def _regenerate_engine_dataset(
     )
     if not sidecar.get("exists"):
         raise SourceRefreshJobError(f"{dataset_name}: no dataset metadata to refresh.")
-    pairs, data_path = _regeneration_request(sidecar)
+    pairs, data_path = _regeneration_request(sidecar, project_name)
     if not data_path:
         raise SourceRefreshJobError(f"{dataset_name}: the cache path is unresolved.")
 

@@ -41,7 +41,12 @@ PROJECT_DUPLICATION_STATUS_VALUES = (
     "processing",
     "success",
     "error",
+    "cancelled",
 )
+PROJECT_DUPLICATION_TERMINAL_STATUS_VALUES = frozenset(
+    {"success", "error", "cancelled"}
+)
+PROJECT_DUPLICATION_CANCEL_VERSION = 1
 PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES = frozenset(
     {".arcrho-resq-import-staging", "tmp"}
 )
@@ -416,6 +421,89 @@ def project_duplication_submission_receipt_path(
         / "submissions"
         / f"{validate_request_id(request_id)}.json"
     )
+
+
+def project_duplication_cancel_path(
+    server_root: str | os.PathLike[str], request_id: Any
+) -> Path:
+    """Return the cancel-marker path a user writes to stop a running job.
+
+    The marker lives beside the other protocol folders, never inside the
+    top-level ``requests`` queue the Engine scans, so it can never be mistaken
+    for a request of its own.
+    """
+
+    return (
+        _root_path(server_root)
+        / "requests"
+        / "project_duplication"
+        / "cancel"
+        / f"{validate_request_id(request_id)}.json"
+    )
+
+
+def build_project_duplication_cancel_request(
+    request_id: Any,
+    *,
+    user_name: Any = "",
+    requested_at: Any = None,
+) -> dict[str, Any]:
+    """Build the location-independent cancel marker for one job."""
+
+    if requested_at is None:
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    else:
+        timestamp = _required_text(requested_at, "requested_at")
+    return {
+        "contract_version": PROJECT_DUPLICATION_CANCEL_VERSION,
+        "request_id": validate_request_id(request_id),
+        "requested_at": timestamp,
+        "user_name": str(user_name if user_name is not None else "").strip(),
+    }
+
+
+def write_project_duplication_cancel_request(
+    server_root: str | os.PathLike[str],
+    request_id: Any,
+    *,
+    user_name: Any = "",
+) -> Path:
+    """Atomically publish the cancel marker for one job."""
+
+    payload = build_project_duplication_cancel_request(request_id, user_name=user_name)
+    return write_json_atomic(
+        project_duplication_cancel_path(server_root, payload["request_id"]),
+        payload,
+    )
+
+
+def project_duplication_cancel_requested(
+    server_root: str | os.PathLike[str], request_id: Any
+) -> bool:
+    """Return True when a cancel marker exists for the job.
+
+    The Engine calls this between copy steps, so an unreadable marker counts
+    as no request: a transient share error must never stop a copy on its own.
+    """
+
+    try:
+        return project_duplication_cancel_path(server_root, request_id).is_file()
+    except OSError:
+        return False
+
+
+def clear_project_duplication_cancel_request(
+    server_root: str | os.PathLike[str], request_id: Any
+) -> bool:
+    """Remove a job's cancel marker; True when none remains."""
+
+    try:
+        project_duplication_cancel_path(server_root, request_id).unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _normalize_progress(progress: Mapping[str, Any]) -> dict[str, Any]:

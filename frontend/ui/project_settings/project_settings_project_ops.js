@@ -13,7 +13,7 @@ import {
   normalizeTreePath,
   pathEqualsCI,
   splitProjectTreePath,
-} from "/ui/project_settings/project_settings_project_map.js?v=20260807idx1";
+} from "/ui/project_settings/project_settings_project_map.js?v=20260901dup1";
 import {
   clearPendingDuplicateJob,
   createDuplicateRequestId,
@@ -22,7 +22,7 @@ import {
   readDuplicateResponseError,
   savePendingDuplicateJob,
   waitForDuplicateProjectJob,
-} from "/ui/project_settings/project_settings_duplicate_job.js?v=20260807idx1";
+} from "/ui/project_settings/project_settings_duplicate_job.js?v=20260901dup1";
 
 function getLocalStorageSafely() {
   try {
@@ -35,6 +35,10 @@ function getLocalStorageSafely() {
 const DEFINITIVE_DUPLICATE_SUBMISSION_STATUSES = new Set([
   400, 401, 403, 404, 405, 409, 410, 422,
 ]);
+
+/** Extra registry save attempts after a locked reply while finishing a duplicate. */
+const DUPLICATE_REGISTRY_LOCK_RETRIES = 2;
+const DUPLICATE_REGISTRY_LOCK_RETRY_MS = 750;
 
 /**
  * @param {object} deps
@@ -100,6 +104,9 @@ export function createProjectOpsFeature(deps) {
   });
 
   let duplicateProjectInFlight = false;
+  // The duplicate this page is driving right now, so a Cancel from the shell
+  // progress window can be matched to its job and posted to the server.
+  let activeDuplicate = null;
   let workspaceScope = "";
   const inMemoryPendingDuplicates = new Map();
   const settledDuplicateJobs = new Map();
@@ -158,8 +165,66 @@ export function createProjectOpsFeature(deps) {
       now: duplicateNow,
       staleStatusMs: duplicateStaleStatusMs,
       isCurrentWorkspace: () => record.workspaceScope === workspaceScope,
-      onProgress: (progress) => publishDuplicateProgress("update", progressId, progress),
+      onProgress: (progress) => publishDuplicateProgress("update", progressId, {
+        ...progress,
+        cancellable: true,
+        ...(activeDuplicate?.cancelRequested && activeDuplicate.record?.requestId === record.requestId
+          ? { label: `Cancelling copy to "${record.targetName}"...`, countText: "Cancelling..." }
+          : {}),
+      }),
     });
+  }
+
+  /** Publish the cancel marker for the job the Engine is running. */
+  async function postDuplicateCancel(record) {
+    if (!activeDuplicate || activeDuplicate.record?.requestId !== record.requestId) return;
+    if (activeDuplicate.cancelPosted) return;
+    activeDuplicate.cancelPosted = true;
+    let response;
+    try {
+      response = await fetchImpl(
+        `/project_settings/${defaultSource}/duplicate_project_folder/cancel/${encodeURIComponent(record.requestId)}`,
+        { method: "POST", headers: { Accept: "application/json" } },
+      );
+    } catch (error) {
+      setStatus(`Cancel request could not be sent (${error?.message || error}); the copy continues.`);
+      return;
+    }
+    if (!response.ok) {
+      const detail = await readDuplicateResponseError(response);
+      setStatus(`Cancel request was refused (${detail}); the copy continues.`);
+      return;
+    }
+    let outcome = null;
+    try { outcome = await response.json(); } catch { outcome = null; }
+    if (outcome && outcome.cancel_requested === false) {
+      setStatus(`The copy to "${record.targetName}" already finished; it will be registered.`);
+      return;
+    }
+    setStatus(`Cancelling copy to "${record.targetName}"...`);
+  }
+
+  /**
+   * Cancel the duplicate this page is driving. Returns true when a cancel was
+   * accepted for handling; false when nothing cancellable is running or the
+   * copy has already been published and only the registry step remains.
+   */
+  function cancelDuplicateProject(progressId = "") {
+    const active = activeDuplicate;
+    if (!active) return false;
+    if (progressId && progressId !== active.progressId) return false;
+    if (active.finalizing) {
+      setStatus(`The copy to "${active.record.targetName}" already finished; it will be registered.`);
+      return false;
+    }
+    if (active.cancelRequested) return true;
+    active.cancelRequested = true;
+    publishDuplicateProgress("update", active.progressId, {
+      label: `Cancelling copy to "${active.record.targetName}"...`, countText: "Cancelling...",
+    });
+    setStatus(`Cancelling copy to "${active.record.targetName}"...`);
+    if (active.record.submissionAcknowledged) void postDuplicateCancel(active.record);
+    return true;
   }
 
   function refreshTree() {
@@ -375,6 +440,7 @@ export function createProjectOpsFeature(deps) {
       await runDuplicateProject(project);
     } finally {
       duplicateProjectInFlight = false;
+      activeDuplicate = null;
     }
   }
 
@@ -429,6 +495,7 @@ export function createProjectOpsFeature(deps) {
         completed: 0,
         total: 0,
         countText: "Working...",
+        cancellable: true,
       });
       await completePendingDuplicate(pendingRecord, progressId);
     } catch (e) {
@@ -440,6 +507,7 @@ export function createProjectOpsFeature(deps) {
     assertCurrentWorkspace(record);
     publishDuplicateProgress("update", progressId, {
       label: `Submitting copy to "${record.targetName}"...`, completed: 0, total: 0, countText: "Working...",
+      cancellable: true,
     });
     let response;
     try {
@@ -496,7 +564,34 @@ export function createProjectOpsFeature(deps) {
       console.warn("Acknowledged duplicate state could not be persisted:", error);
       setStatus("Duplicate submitted, but durable local recovery storage is unavailable. Keep Project Settings open.");
     }
+    if (activeDuplicate && activeDuplicate.record?.requestId === acknowledgedRecord.requestId) {
+      activeDuplicate.record = acknowledgedRecord;
+      // A Cancel pressed while the submission was still in flight waits here
+      // for the server to know the job, then goes out at once.
+      if (activeDuplicate.cancelRequested) await postDuplicateCancel(acknowledgedRecord);
+    }
     return acknowledgedRecord;
+  }
+
+  /**
+   * Register the duplicated project, retrying a locked registry a few times.
+   * The registry is busiest right after a copy completes (pickers, tree
+   * reloads, and status polls all read it), so a single "locked" reply is
+   * usually a momentary collision rather than another user holding it.
+   */
+  async function saveDuplicateRegistryEntry(record, foldersNext, projectPathsNext) {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await store.saveFolderStructure(foldersNext, projectPathsNext, { label: "Project registry save" });
+        return;
+      } catch (error) {
+        const locked = error?.code === "PROJECT_REGISTRY_LOCKED";
+        if (!locked || attempt > DUPLICATE_REGISTRY_LOCK_RETRIES) throw error;
+        setStatus(`Project registry busy; retrying registration of "${record.targetName}" (${attempt} of ${DUPLICATE_REGISTRY_LOCK_RETRIES})...`);
+        await waitForDuplicatePoll(DUPLICATE_REGISTRY_LOCK_RETRY_MS);
+        assertCurrentWorkspace(record);
+      }
+    }
   }
 
   async function finalizeDuplicateMetadata(record, progressId, copyResult) {
@@ -510,7 +605,7 @@ export function createProjectOpsFeature(deps) {
     const newFullPath = joinProjectTreePath(record.sourceFolderPath || "Uncategorized", record.targetName);
     if (!projectPathsNext.some((path) => pathEqualsCI(path, newFullPath))) {
       projectPathsNext.push(newFullPath);
-      await store.saveFolderStructure(foldersNext, projectPathsNext, { label: "Project registry save" });
+      await saveDuplicateRegistryEntry(record, foldersNext, projectPathsNext);
       assertCurrentWorkspace(record);
       projectData.projectPaths = projectPathsNext;
     }
@@ -542,19 +637,43 @@ export function createProjectOpsFeature(deps) {
   }
 
   async function completePendingDuplicate(record, progressId) {
+    activeDuplicate = {
+      record, progressId, cancelRequested: false, cancelPosted: false, finalizing: false,
+    };
     const activeRecord = record.submissionAcknowledged
       ? record
       : await submitPendingDuplicate(record, progressId);
     const copyResult = activeRecord.metadataFinalized
       ? { progress: { completed: 0, total: 0 } }
       : await pollDuplicateProjectJob(activeRecord, progressId);
+    // The Engine has published the copy: from here only the registry entry
+    // remains, so the progress window drops its Cancel button.
+    if (activeDuplicate?.record?.requestId === activeRecord.requestId) activeDuplicate.finalizing = true;
     publishDuplicateProgress("update", progressId, {
       label: `Finalizing "${activeRecord.targetName}"...`, completed: 0, total: 0, countText: "Working...",
+      cancellable: false,
     });
     await finalizeDuplicateMetadata(activeRecord, progressId, copyResult);
   }
 
+  /** Settle a job the Engine stopped at the user's request; nothing was created. */
+  function handleCancelledDuplicate(record, progressId) {
+    settlePendingDuplicate(record);
+    const message = `Duplicate cancelled: the copy to "${record.targetName}" was stopped and nothing was created.`;
+    setStatus(message);
+    publishDuplicateProgress("update", progressId, {
+      label: `Cancelled copy to "${record.targetName}"`, completed: 0, total: 0, countText: "Cancelled",
+      cancellable: false,
+    });
+    publishDuplicateProgress("close", progressId, { autoCloseMs: 850 });
+  }
+
   async function handlePendingDuplicateFailure(error, record, progressId, prefix) {
+    if (record && error?.code === "DUPLICATE_JOB_CANCELLED") {
+      handleCancelledDuplicate(record, progressId);
+      try { await reloadProjectData(defaultSource); } catch {}
+      return;
+    }
     publishDuplicateProgress("close", progressId);
     if (record && error?.code === "DUPLICATE_STATUS_NOT_FOUND") {
       const current = loadPendingDuplicateFor(record.sourceKey, record.workspaceScope) || record;
@@ -597,6 +716,7 @@ export function createProjectOpsFeature(deps) {
       completed: 0,
       total: 0,
       countText: "Working...",
+      cancellable: !record.metadataFinalized,
     });
     setStatus(`Resuming duplicate request "${record.requestId}"...`);
     try {
@@ -605,6 +725,7 @@ export function createProjectOpsFeature(deps) {
       await handlePendingDuplicateFailure(error, record, progressId, "Duplicate recovery paused");
     } finally {
       duplicateProjectInFlight = false;
+      activeDuplicate = null;
     }
     return true;
   }
@@ -818,6 +939,7 @@ export function createProjectOpsFeature(deps) {
   }
 
   return {
+    cancelDuplicateProject,
     createProjectInFolder,
     createRootFolder,
     createSubfolder,

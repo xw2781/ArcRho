@@ -1,9 +1,13 @@
 export const DEFAULT_DATASET_NUMBER_FORMAT = "0,000";
 export const DATASET_NUMBER_FORMAT_PRESETS = ["0,000", "0.0%", "0,000.00", "0"];
+// The default pattern carries no decimal point, and the server's shared
+// number-format settings default to none either, so a dataset that says
+// nothing must not read back with a decimal place it never had.
+export const DEFAULT_DATASET_DECIMAL_PLACES = 0;
 
 const MAX_FORMAT_LENGTH = 64;
 
-export function clampDatasetDecimalPlaces(value, fallback = 1) {
+export function clampDatasetDecimalPlaces(value, fallback = DEFAULT_DATASET_DECIMAL_PLACES) {
   const n = Number.parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(6, n));

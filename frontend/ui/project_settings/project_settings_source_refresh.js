@@ -15,7 +15,7 @@ import {
   sourceRefreshRecoveryStorage,
   waitForSourceRefreshJob,
 } from "/ui/project_settings/project_settings_source_refresh_job.js?v=20260818srj1";
-import { createDuplicateWorkspaceScope } from "/ui/project_settings/project_settings_duplicate_job.js?v=20260807idx1";
+import { createDuplicateWorkspaceScope } from "/ui/project_settings/project_settings_duplicate_job.js?v=20260901dup1";
 
 /**
  * @param {object} deps

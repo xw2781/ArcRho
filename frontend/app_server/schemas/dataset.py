@@ -168,7 +168,7 @@ class DatasetSidecarSaveRequest(BaseModel):
     calendar: bool = False
     show_subtotal: Optional[bool] = None
     number_format: str = ""
-    decimal_places: int = Field(1, ge=0, le=6)
+    decimal_places: Optional[int] = Field(None, ge=0, le=6)
     origin_labels: Optional[List[str]] = None
     csv_file: str = ""
     method_type: str = ""

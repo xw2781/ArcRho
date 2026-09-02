@@ -8,6 +8,7 @@ from app_server.schemas.project_settings import (
     ProjectSettingsUpdateRequest,
     RenameProjectFolderRequest,
     DuplicateProjectFolderRequest,
+    DuplicateProjectFolderCancelResponse,
     DuplicateProjectFolderJobResponse,
     ProjectDuplicationJobStatusResponse,
     CreateProjectFolderRequest,
@@ -63,6 +64,21 @@ def get_duplicate_project_folder_status(
     request_id: str,
 ) -> ProjectDuplicationJobStatusResponse:
     return project_settings_service.get_duplicate_project_folder_status(
+        source,
+        request_id,
+    )
+
+
+@router.post(
+    "/project_settings/{source}/duplicate_project_folder/cancel/{request_id}",
+    response_model=DuplicateProjectFolderCancelResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def cancel_duplicate_project_folder(
+    source: str,
+    request_id: str,
+) -> DuplicateProjectFolderCancelResponse:
+    return project_settings_service.cancel_duplicate_project_folder(
         source,
         request_id,
     )

@@ -37,6 +37,7 @@ from app_server.helpers import (
 )
 from app_server.services import (
     dataset_instance_index_service,
+    dataset_number_format_service,
     dataset_sidecar_status_service,
     dependent_propagation_service,
     user_identity_service,
@@ -361,7 +362,10 @@ def _normalize_decimal_places(value: Any) -> int:
     try:
         n = int(value)
     except (TypeError, ValueError):
-        return 1
+        # The same default the shared number-format settings use, so a dataset
+        # with nothing recorded reads as whole numbers rather than picking up a
+        # decimal place nobody asked for.
+        return dataset_number_format_service.DEFAULT_DECIMAL_PLACES
     return max(0, min(6, n))
 
 
@@ -1114,12 +1118,26 @@ def _containing_project_name_for_dataset(path: str) -> str:
     return str(parts[0]).strip()
 
 
+def _dataset_owning_project_name(path: str, payload: Dict[str, Any]) -> str:
+    """The project a cached dataset belongs to.
+
+    The folder holding the CSV decides it, and the name stored in the sidecar
+    is only a fallback for a cache outside the projects tree. Duplicating or
+    renaming a project copies that stored name verbatim, so in a duplicate it
+    still names the project the data came from.
+    """
+
+    return (
+        _containing_project_name_for_dataset(path)
+        or str(payload.get("project_name") or "").strip()
+    )
+
+
 def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
     try:
         sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
         payload = _read_dataset_sidecar(sidecar_path)
-        sidecar_project_name = str(payload.get("project_name") or "").strip()
-        project_name = _containing_project_name_for_dataset(path) or sidecar_project_name
+        project_name = _dataset_owning_project_name(path, payload)
         origin_period_len = max(1, int(payload.get("origin_length") or 1))
         dev_period_len = max(1, int(payload.get("development_length") or 1))
         if project_name:
@@ -1618,7 +1636,10 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     return {
         "ok": True,
         "exists": True,
-        "project_name": str(payload.get("project_name") or p),
+        # The folder the sidecar was read from owns it. A duplicated or renamed
+        # project keeps the old name in every copied sidecar, and a caller that
+        # believed it would rebuild this dataset into the wrong project.
+        "project_name": p,
         "reserving_class": str(payload.get("reserving_class") or rc),
         "dataset_name": str(payload.get("dataset_name") or ds),
         "dataset_type": dataset_type,
@@ -1916,7 +1937,7 @@ def _save_dataset_sidecar_impl(
     calendar: bool = False,
     show_subtotal: bool | None = None,
     number_format: str = "",
-    decimal_places: int = 1,
+    decimal_places: int | None = None,
     origin_labels: List[str] | None = None,
     csv_file: str = "",
     method_type: str = "",
@@ -1963,7 +1984,13 @@ def _save_dataset_sidecar_impl(
     method_type_value = dataset_sidecar_status_service.normalize_method_type(method_type or existing.get("method_type"), source_kind_value)
     method_calculated = method_type_value in _METHOD_CALCULATED_TYPES
     number_format_value = _normalize_number_format(number_format or existing.get("number_format") or "0,000")
-    decimal_places_value = _normalize_decimal_places(decimal_places)
+    # A caller that says nothing about decimal places is not asking for them to
+    # change. Methods that republish their output dataset -- Result Selection
+    # and Berquist-Sherman among them -- send only the fields they own, and
+    # would otherwise reset the display the user chose on every save.
+    decimal_places_value = _normalize_decimal_places(
+        decimal_places if decimal_places is not None else existing.get("decimal_places")
+    )
     show_subtotal_value = normalize_show_subtotal(
         show_subtotal if show_subtotal is not None else existing.get("show_subtotal")
     )
@@ -2320,6 +2347,11 @@ def _patch_dataset_impl(
         sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
         sidecar_payload = _read_dataset_sidecar(sidecar_path)
         if sidecar_payload:
+            # Written back below, so a sidecar carried in by a duplication stops
+            # naming the project it was copied from once the grid is saved.
+            owning_project = _dataset_owning_project_name(path, sidecar_payload)
+            if owning_project:
+                sidecar_payload["project_name"] = owning_project
             audit_at = _now_utc_iso()
             user_name = _current_user_name()
             sidecar_payload["updated_at"] = audit_at
@@ -2399,7 +2431,7 @@ def patch_dataset(
         return _patch_dataset_impl(ds_id, items, file_mtime)
     sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
     sidecar = _read_dataset_sidecar(sidecar_path)
-    project_name = str(sidecar.get("project_name") or "").strip()
+    project_name = _dataset_owning_project_name(path, sidecar)
     reserving_class = str(sidecar.get("reserving_class") or "").strip()
     if not project_name or not reserving_class:
         # Dependent propagation runs on ArcRho Engine; block the grid save

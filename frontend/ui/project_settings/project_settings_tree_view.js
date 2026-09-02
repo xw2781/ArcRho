@@ -8,7 +8,7 @@
  */
 import {
   normalizeTreePath,
-} from "/ui/project_settings/project_settings_project_map.js?v=20260807idx1";
+} from "/ui/project_settings/project_settings_project_map.js?v=20260901dup1";
 
 const EXPANDED_FOLDERS_SESSION_KEY = "arcrho_project_settings_expanded_folders_v1";
 const SELECTED_PROJECT_SESSION_KEY = "arcrho_project_settings_selected_project_v1";
