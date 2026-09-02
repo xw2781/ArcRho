@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 49fe14c4-94ee-453f-a0ac-d42ea1b6f43e
-  modified: 2026-08-27T22:38:12.288Z
+  modified: 2026-09-02T00:32:06.047Z
 ---
 
 No Python interpreter on this machine has `pytest` installed — not `C:\Program Files\Python310`, not `Python314`, and none of the `server-components/venvs/*` environments. To run `python-api/tests`, install it into a throwaway directory **inside the repo** and put that on `PYTHONPATH`:
@@ -29,4 +29,4 @@ Better on the Client PC (2026-08-17): the user-scoped interpreter `py -3.10` (`C
 
 On `E:\XWSpace\Repos\ArcRho` under `xwei.PRCINS` (2026-08-27, corrected): the system `C:\Program Files\Python310\python.exe` (3.10.6) does have fastapi, pydantic, pandas, numpy and pywin32 — only pytest is missing — so frontend service tests run with `cd frontend/tests && "C:\Program Files\Python310\python.exe" -m unittest test_result_selection_service` (module names, from the tests folder so the workspace stub imports). `python` (3.14) plus the repo-local `.pytest-tools` on `PYTHONPATH` runs the python-api suites. Frontend test runs can leave `tmp*` folders at the repo root; delete them before committing.
 
-**Module order pollutes `python-api/tests` (2026-08-29).** Running `test_import_resq_reserving_classes_macro` in the same `unittest` invocation as the other `test_resq_*` modules fails 3 of its 13 tests (`default_rc_paths` returns the real 17-entry `RC_PATH` instead of `[]`, and the preselection rows come back unticked). An earlier module puts `python-api/migration` on `sys.path`, so the macro's `import resq_data_migration` fallback succeeds instead of raising `ImportError`. The module passes 13/13 when run alone, and the 3 failures reproduce identically at a clean HEAD worktree — so never blame a working-tree change for them. `server-components/tests/test_bridge_import_request_protocol.test_client_delegates_full_import_to_the_canonical_runner` also fails at HEAD (the client now passes `resq_credentials` the test does not expect).
+**Module order used to pollute `python-api/tests` (2026-08-29, resolved 2026-09-01).** `test_import_resq_reserving_classes_macro` once failed 3 of 13 tests when run after other `test_resq_*` modules, because an earlier module put `python-api/migration` on `sys.path` and the macro's `import resq_data_migration` fallback then found the real 17-entry `RC_PATH`. Since macro v1.6.0 (2026-09-01) the batch macro carries its own hard-coded `RC_PATHS` list and never imports the migration module, so that order dependence is gone (16/16 alone with `py -3.10 -m unittest`). `server-components/tests/test_bridge_import_request_protocol.test_client_delegates_full_import_to_the_canonical_runner` still fails at HEAD (the client now passes `resq_credentials` the test does not expect).
