@@ -129,6 +129,8 @@ from resq_migration.dfm import (  # noqa: E402
     export_dfm_output_dataset as _export_dfm_output_dataset,
 )
 from resq_migration.extractors import (  # noqa: E402
+    BS_CRA_AVERAGE_CASE_RESERVE_TYPES,
+    BS_CRA_INFLATION_TYPES,
     _apply_berquist_sherman_triangle_metadata,
     _apply_bornhuetter_ferguson_vector_metadata,
     _apply_cape_cod_vector_metadata,

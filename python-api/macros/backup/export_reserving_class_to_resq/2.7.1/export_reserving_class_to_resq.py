@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.8.0
-# Release Note: A B&S Case Reserve Adequacy method now carries its Avg. Selections tab into ResQ: the User Value row and the estimator selected per column of both the Average Inflation and the Current Average Case Reserves grids, with a User Value formula written as the number it evaluates to.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
+# Version: 2.7.1
+# Release Note: Leave ResQ's own "User Calculation" average rows alone. ResQ recalculates them from its own formula, so the export writes only the row ResQ calls User Entry and can no longer send a Benchmark row's numbers there by mistake.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -26,12 +26,10 @@ canonical migration and loads it as its ResQ writer:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import csv
 from pathlib import Path
 import re
 import traceback
-from typing import Any
 
 TITLE = "Export Reserving Class to ResQ"
 PROGRESS_ID = "export-reserving-class-to-resq"
@@ -65,8 +63,8 @@ _SAVE_ONLY_METHOD_LABELS = {
     RESQ_METHOD_TYPE_BF: "BF",
     RESQ_METHOD_TYPE_CAPE_COD: "CC",
     RESQ_METHOD_TYPE_BS_SR: "B&S Settlement Rate",
+    RESQ_METHOD_TYPE_BS_CRA: "B&S Case Reserve Adequacy",
 }
-BS_CRA_LABEL = "B&S Case Reserve Adequacy"
 
 
 def _sidecar_method_code(sidecar) -> int:
@@ -190,10 +188,9 @@ class ResQReservingClassExporter:
         self.resq_user_name = resq_user_name if resq_user_name else migration.USER_NAME
         self.resq_password = resq_password if resq_password else migration.PASSWORD
         self.progress_callback = progress_callback
-        # ResQ COM objects, set by connect(); late-bound, so no static type.
-        self.app: Any = None
-        self.project: Any = None
-        self.reserving_class: Any = None
+        self.app = None
+        self.project = None
+        self.reserving_class = None
         self._lookup_maps = {}
         self.counts = {
             "datasets_written": 0,
@@ -201,7 +198,6 @@ class ResQReservingClassExporter:
             "bfs_written": 0,
             "ccs_written": 0,
             "result_selections_written": 0,
-            "bs_cras_written": 0,
             "methods_saved": 0,
             "errors": 0,
         }
@@ -889,82 +885,6 @@ class ResQReservingClassExporter:
         self.counts["methods_saved"] += 1
         self._emit(f"Saved {label}: {name}", status="success")
 
-    # ----- Berquist Sherman Case Reserve Adequacy ---------------------------------
-
-    def export_bs_cras(self, bs_cra_entries):
-        for entry in bs_cra_entries:
-            self._completed += 1
-            payload = entry["payload"]
-            details = _dict_path(payload, ("details_tab",))
-            name = _clean_label(details.get("name")) or entry["name"]
-            try:
-                self._export_bs_cra(name, payload, entry)
-            except ExportSkipped as skip:
-                self._record_skip(BS_CRA_LABEL, name, skip.reason, str(skip))
-            except Exception as exc:
-                self._record_error(BS_CRA_LABEL, name, exc)
-
-    def _export_bs_cra(self, name, payload, entry):
-        """Carry the Avg. Selections tab across: both grids' User Value row and
-        the estimator selected per development column, then Notes, then Save.
-
-        The method JSON keeps the User Value row as the numbers the page
-        evaluated (``user_inflation``, ``user_average_case_reserves``); a cell
-        typed as a formula keeps its text in a separate ``*_inputs`` list, so
-        ResQ, which has no formula there, receives the plain value.
-        """
-
-        method = self._find_method(RESQ_METHOD_TYPE_BS_CRA, name)
-        if method is None:
-            raise self._missing_in_resq(f"{BS_CRA_LABEL} method")
-        method_tab = _dict_path(payload, ("method_tab",))
-        inflation = self._sync_bs_cra_grid(
-            method,
-            "AvgInflation",
-            method_tab.get("user_inflation"),
-            method_tab.get("inflation_selection"),
-            self.migration.BS_CRA_INFLATION_TYPES,
-        )
-        case_reserves = self._sync_bs_cra_grid(
-            method,
-            "AvgCaseReserves",
-            method_tab.get("user_average_case_reserves"),
-            method_tab.get("average_case_reserve_selection"),
-            self.migration.BS_CRA_AVERAGE_CASE_RESERVE_TYPES,
-        )
-        notes = self._sync_notes(method, entry)
-        method.Save()
-        self.counts["bs_cras_written"] += 1
-        self._emit(
-            f"Exported {BS_CRA_LABEL}: {name} "
-            f"(inflation {inflation}, average case reserves {case_reserves}, notes {notes})",
-            status="success",
-        )
-
-    def _sync_bs_cra_grid(self, method, grid, user_values, selections, codes):
-        """Write one Avg. Selections grid by development column: ``SetUser<grid>``
-        takes the User Value row and ``SetSelected<grid>`` the ResQ ordinal of
-        the estimator ArcRho names for that column (the import's label map,
-        inverted). The value goes first so a ``user`` selection finds it."""
-
-        set_user_value = getattr(method, f"SetUser{grid}")
-        set_selected = getattr(method, f"SetSelected{grid}")
-        codes_by_label = {label: code for code, label in codes.items()}
-        updates = 0
-        for development_index, raw_value in enumerate(user_values if isinstance(user_values, list) else [], start=1):
-            value = _safe_number(raw_value)
-            if value is None:
-                continue
-            set_user_value(development_index, value)
-            updates += 1
-        for development_index, label in enumerate(selections if isinstance(selections, list) else [], start=1):
-            code = codes_by_label.get(_clean_label(label))
-            if code is None:
-                continue
-            set_selected(development_index, code)
-            updates += 1
-        return updates
-
     # ----- Result Selection -------------------------------------------------------
 
     def export_result_selections(self, rs_entries):
@@ -1254,7 +1174,7 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
         label=f"Comparing ArcRho and ResQ: {rc_path}",
         total=0,
     )
-    preview_result: dict[str, Any] = {}
+    preview_result = None
     failure = None
     try:
         preview_result = run_bridge_phase(
@@ -1282,9 +1202,7 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
             "accepted": confirm_without_preview(ui, failure),
             "names": None,
         }
-    preview: list[Mapping[str, Any]] = [
-        row for row in preview_result.get("preview") or [] if isinstance(row, dict)
-    ]
+    preview = [row for row in preview_result.get("preview") or [] if isinstance(row, dict)]
     connection_name = str(preview_result.get("connection_name") or "")
     direction = dict(preview_result.get("class_direction") or {})
     review = review_transfer(

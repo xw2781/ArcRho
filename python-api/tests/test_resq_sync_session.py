@@ -354,15 +354,17 @@ class SyncSessionTransferPreviewTests(unittest.TestCase):
         self.assertIn("no matching dataset", exporting["ArcRho Only"]["transfer_block_reason"])
 
     def test_a_berquist_sherman_method_is_exportable_because_the_export_saves_it(self):
-        arcrho = [self._arcrho("BS Paid", kind="B&S Settlement Rate", can_export_to_resq=False,
-                               export_block_reason="ArcRho-to-ResQ write-back is not supported for B&S Settlement Rate.")]
-        resq = [self._resq("BS Paid", kind="B&S Settlement Rate", can_receive_from_arcrho=False,
-                           receive_block_reason="ArcRho cannot write B&S Settlement Rate methods to ResQ.")]
+        for kind in (sync_session.KIND_BS_SR, sync_session.KIND_BS_CRA):
+            with self.subTest(kind=kind):
+                arcrho = [self._arcrho("BS Paid", kind=kind, can_export_to_resq=False,
+                                       export_block_reason=f"ArcRho-to-ResQ write-back is not supported for {kind}.")]
+                resq = [self._resq("BS Paid", kind=kind, can_receive_from_arcrho=False,
+                                   receive_block_reason=f"ArcRho cannot write {kind} methods to ResQ.")]
 
-        row = self._preview("export", arcrho, resq)["preview"][0]
+                row = self._preview("export", arcrho, resq)["preview"][0]
 
-        self.assertTrue(row["transfer_supported"])
-        self.assertEqual(row["transfer_block_reason"], "")
+                self.assertTrue(row["transfer_supported"])
+                self.assertEqual(row["transfer_block_reason"], "")
 
     def test_an_ambiguous_name_is_still_named_and_left_untickable(self):
         result = self._preview(
@@ -1269,6 +1271,7 @@ def _push_exporter():
         "datasets_written": 0,
         "dfms_written": 0,
         "result_selections_written": 0,
+        "bs_cras_written": 0,
         "methods_saved": 0,
     }
     exporter.skipped = {}
@@ -1283,6 +1286,7 @@ def _push_exporter():
     exporter.export_datasets.side_effect = bump("datasets_written")
     exporter.export_dfms.side_effect = bump("dfms_written")
     exporter.export_result_selections.side_effect = bump("result_selections_written")
+    exporter.export_bs_cras.side_effect = bump("bs_cras_written")
     exporter.save_method.side_effect = bump("methods_saved")
     return exporter
 
@@ -1314,7 +1318,7 @@ class SyncSessionExportTests(unittest.TestCase):
 
     def test_a_save_only_method_is_saved_by_its_resq_code(self):
         exporter = _push_exporter()
-        for kind, code in ((sync_session.KIND_BF, 2), (sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8), (sync_session.KIND_BS_CRA, 9)):
+        for kind, code in ((sync_session.KIND_BF, 2), (sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8)):
             with self.subTest(kind=kind):
                 exporter.save_method.reset_mock()
                 row = {"kind": kind, "name": f"{kind} method", "arcrho": _export_item(f"{kind} method", kind=kind)}
@@ -1325,6 +1329,28 @@ class SyncSessionExportTests(unittest.TestCase):
                 exporter.save_method.assert_called_once_with(code, f"{kind} method")
         exporter.export_bfs.assert_not_called()
         exporter.export_ccs.assert_not_called()
+
+    def test_a_bs_cra_method_goes_through_the_writer_despite_the_sync_block_reason(self):
+        exporter = _push_exporter()
+        item = _export_item(
+            "BS CRA Adj",
+            kind=sync_session.KIND_BS_CRA,
+            payload={"method_tab": {"inflation_selection": ["user"]}},
+            method_name="Net Loss--Incurred - B&S Case Reserve Adequacy Adjustment",
+            notes="Reviewed.",
+            export_block_reason="ArcRho-to-ResQ write-back is not supported for Berquist Sherman or Bootstrap methods.",
+        )
+        row = {"kind": sync_session.KIND_BS_CRA, "name": "BS CRA Adj", "arcrho": item}
+
+        outcome, message = sync_session._push_row_to_resq(exporter, row)
+
+        self.assertEqual((outcome, message), ("exported", "Written to ResQ."))
+        exporter.export_bs_cras.assert_called_once_with([{
+            "name": "Net Loss--Incurred - B&S Case Reserve Adequacy Adjustment",
+            "payload": {"method_tab": {"inflation_selection": ["user"]}},
+            "notes": "Reviewed.",
+        }])
+        exporter.save_method.assert_not_called()
 
     def test_a_dataset_and_a_dfm_go_through_the_writers_with_their_notes(self):
         exporter = _push_exporter()

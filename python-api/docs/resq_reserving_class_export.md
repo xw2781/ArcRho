@@ -35,7 +35,16 @@ every item below is written, each after the items it reads:
 - **Result Selections** — the loaded source datasets, weights (`SetWeights`),
   selected-ultimate overrides (`ClearOverriddenUltimates` + `SetUltimates`),
   and Notes.
-- **Bornhuetter Ferguson, Cape Cod, and Berquist Sherman methods** — saved
+- **B&S Case Reserve Adequacy methods** — the `Avg. Selections` tab and
+  Notes. For each development column of both grids the exporter writes the
+  `User Value` row (`SetUserAvgInflation`, `SetUserAvgCaseReserves`) and then
+  the estimator selected for the column (`SetSelectedAvgInflation`,
+  `SetSelectedAvgCaseReserves`), using the ResQ ordinals the import's label
+  maps in `resq_migration.extractors` translate from. The method JSON holds
+  the `User Value` row as the numbers the page evaluated, with a formula's
+  text kept beside them, so a formula-backed cell reaches ResQ as its plain
+  value. The method is then saved.
+- **Bornhuetter Ferguson, Cape Cod, and B&S Settlement Rate methods** — saved
   only. The exporter finds the ResQ method by its ArcRho output name and calls
   `Save()`, so ResQ recalculates it from the datasets and DFMs written before
   it and re-stamps it. No field is carried across: ArcRho's own settings for

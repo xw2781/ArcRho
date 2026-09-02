@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.8.0
-# Release Note: A B&S Case Reserve Adequacy method now carries its Avg. Selections tab into ResQ: the User Value row and the estimator selected per column of both the Average Inflation and the Current Average Case Reserves grids, with a User Value formula written as the number it evaluates to.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
+# Version: 2.7.2
+# Release Note: Type annotations only, so the editor no longer flags the ResQ session objects and the preview result as possibly missing; nothing the macro does has changed.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM and Result Selection selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and Berquist Sherman method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -65,8 +65,8 @@ _SAVE_ONLY_METHOD_LABELS = {
     RESQ_METHOD_TYPE_BF: "BF",
     RESQ_METHOD_TYPE_CAPE_COD: "CC",
     RESQ_METHOD_TYPE_BS_SR: "B&S Settlement Rate",
+    RESQ_METHOD_TYPE_BS_CRA: "B&S Case Reserve Adequacy",
 }
-BS_CRA_LABEL = "B&S Case Reserve Adequacy"
 
 
 def _sidecar_method_code(sidecar) -> int:
@@ -201,7 +201,6 @@ class ResQReservingClassExporter:
             "bfs_written": 0,
             "ccs_written": 0,
             "result_selections_written": 0,
-            "bs_cras_written": 0,
             "methods_saved": 0,
             "errors": 0,
         }
@@ -888,82 +887,6 @@ class ResQReservingClassExporter:
             return
         self.counts["methods_saved"] += 1
         self._emit(f"Saved {label}: {name}", status="success")
-
-    # ----- Berquist Sherman Case Reserve Adequacy ---------------------------------
-
-    def export_bs_cras(self, bs_cra_entries):
-        for entry in bs_cra_entries:
-            self._completed += 1
-            payload = entry["payload"]
-            details = _dict_path(payload, ("details_tab",))
-            name = _clean_label(details.get("name")) or entry["name"]
-            try:
-                self._export_bs_cra(name, payload, entry)
-            except ExportSkipped as skip:
-                self._record_skip(BS_CRA_LABEL, name, skip.reason, str(skip))
-            except Exception as exc:
-                self._record_error(BS_CRA_LABEL, name, exc)
-
-    def _export_bs_cra(self, name, payload, entry):
-        """Carry the Avg. Selections tab across: both grids' User Value row and
-        the estimator selected per development column, then Notes, then Save.
-
-        The method JSON keeps the User Value row as the numbers the page
-        evaluated (``user_inflation``, ``user_average_case_reserves``); a cell
-        typed as a formula keeps its text in a separate ``*_inputs`` list, so
-        ResQ, which has no formula there, receives the plain value.
-        """
-
-        method = self._find_method(RESQ_METHOD_TYPE_BS_CRA, name)
-        if method is None:
-            raise self._missing_in_resq(f"{BS_CRA_LABEL} method")
-        method_tab = _dict_path(payload, ("method_tab",))
-        inflation = self._sync_bs_cra_grid(
-            method,
-            "AvgInflation",
-            method_tab.get("user_inflation"),
-            method_tab.get("inflation_selection"),
-            self.migration.BS_CRA_INFLATION_TYPES,
-        )
-        case_reserves = self._sync_bs_cra_grid(
-            method,
-            "AvgCaseReserves",
-            method_tab.get("user_average_case_reserves"),
-            method_tab.get("average_case_reserve_selection"),
-            self.migration.BS_CRA_AVERAGE_CASE_RESERVE_TYPES,
-        )
-        notes = self._sync_notes(method, entry)
-        method.Save()
-        self.counts["bs_cras_written"] += 1
-        self._emit(
-            f"Exported {BS_CRA_LABEL}: {name} "
-            f"(inflation {inflation}, average case reserves {case_reserves}, notes {notes})",
-            status="success",
-        )
-
-    def _sync_bs_cra_grid(self, method, grid, user_values, selections, codes):
-        """Write one Avg. Selections grid by development column: ``SetUser<grid>``
-        takes the User Value row and ``SetSelected<grid>`` the ResQ ordinal of
-        the estimator ArcRho names for that column (the import's label map,
-        inverted). The value goes first so a ``user`` selection finds it."""
-
-        set_user_value = getattr(method, f"SetUser{grid}")
-        set_selected = getattr(method, f"SetSelected{grid}")
-        codes_by_label = {label: code for code, label in codes.items()}
-        updates = 0
-        for development_index, raw_value in enumerate(user_values if isinstance(user_values, list) else [], start=1):
-            value = _safe_number(raw_value)
-            if value is None:
-                continue
-            set_user_value(development_index, value)
-            updates += 1
-        for development_index, label in enumerate(selections if isinstance(selections, list) else [], start=1):
-            code = codes_by_label.get(_clean_label(label))
-            if code is None:
-                continue
-            set_selected(development_index, code)
-            updates += 1
-        return updates
 
     # ----- Result Selection -------------------------------------------------------
 

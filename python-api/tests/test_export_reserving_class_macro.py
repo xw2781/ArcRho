@@ -366,10 +366,10 @@ class ExportMacroSaveOnlyTests(unittest.TestCase):
     def test_a_method_resq_does_not_hold_is_a_skip(self):
         exporter = self._exporter(_find_berquist_sherman_for_triangle=Mock(return_value=None))
 
-        exporter.save_method(self.module.RESQ_METHOD_TYPE_BS_CRA, "Missing")
+        exporter.save_method(self.module.RESQ_METHOD_TYPE_BS_SR, "Missing")
 
         self.assertEqual(exporter.skipped, {"missing_in_resq": 1})
-        self.assertEqual(exporter.skip_details[-1]["kind"], "B&S Case Reserve Adequacy")
+        self.assertEqual(exporter.skip_details[-1]["kind"], "B&S Settlement Rate")
         self.assertEqual(exporter.counts["methods_saved"], 0)
 
     def test_a_failed_save_is_recorded_as_an_error(self):
@@ -383,6 +383,113 @@ class ExportMacroSaveOnlyTests(unittest.TestCase):
         self.assertEqual(exporter.counts["errors"], 1)
         self.assertEqual(exporter.error_details[-1]["message"], "part of the template implementation")
         self.assertEqual(exporter.counts["methods_saved"], 0)
+
+
+class ExportMacroBsCraTests(unittest.TestCase):
+    """A B&S Case Reserve Adequacy method carries its Avg. Selections tab into ResQ."""
+
+    INFLATION_TYPES = {0: "case_column", 1: "case_all", 2: "paid_column", 3: "paid_all", 4: "user"}
+    AVERAGE_TYPES = {0: "latest", 1: "monotone", 2: "loess", 3: "user"}
+
+    def setUp(self):
+        self.module = _load_macro()
+
+    def _exporter(self, method):
+        exporter = self.module.ResQReservingClassExporter(
+            _migration(
+                BS_CRA_INFLATION_TYPES=self.INFLATION_TYPES,
+                BS_CRA_AVERAGE_CASE_RESERVE_TYPES=self.AVERAGE_TYPES,
+                _find_berquist_sherman_for_triangle=Mock(return_value=("cra", method) if method else None),
+            ),
+            arcrho_project_name="Project",
+            rc_path="Line/Class",
+            server_root=Path("."),
+        )
+        exporter.reserving_class = types.SimpleNamespace()
+        return exporter
+
+    def _entry(self, **method_tab):
+        return {
+            "name": "Gross Loss--Paid - B&S Case Reserve Adequacy Adjustment",
+            "payload": {
+                "details_tab": {"name": "Gross Loss--Paid - B&S Case Reserve Adequacy Adjustment"},
+                "method_tab": method_tab,
+            },
+            "notes": "Inflation from the Excel link.",
+        }
+
+    def test_both_grids_write_the_user_value_row_then_the_selected_estimator_per_column(self):
+        method = Mock()
+        method.Notes = ""
+        exporter = self._exporter(method)
+        entry = self._entry(
+            inflation_selection=["user", "paid_all", "case_column"],
+            # A formula cell is stored as the number it evaluated to; the text
+            # lives in user_inflation_inputs and never reaches ResQ.
+            user_inflation=[0.0525, 0.0, 0.0],
+            user_inflation_inputs=["=ROUND(0.05 + 0.0025, 4)", "", ""],
+            average_case_reserve_selection=["latest", "user", "loess"],
+            user_average_case_reserves=[0.0, 1250.5, 0.0],
+        )
+
+        exporter.export_bs_cras([entry])
+
+        self.assertEqual(
+            method.SetUserAvgInflation.call_args_list,
+            [((1, 0.0525),), ((2, 0.0),), ((3, 0.0),)],
+        )
+        self.assertEqual(
+            method.SetSelectedAvgInflation.call_args_list,
+            [((1, 4),), ((2, 3),), ((3, 0),)],
+        )
+        self.assertEqual(
+            method.SetUserAvgCaseReserves.call_args_list,
+            [((1, 0.0),), ((2, 1250.5),), ((3, 0.0),)],
+        )
+        self.assertEqual(
+            method.SetSelectedAvgCaseReserves.call_args_list,
+            [((1, 0),), ((2, 3),), ((3, 2),)],
+        )
+        # Values precede selections, so a "user" selection finds its number.
+        calls = [call[0] for call in method.mock_calls]
+        self.assertLess(calls.index("SetUserAvgInflation"), calls.index("SetSelectedAvgInflation"))
+        self.assertEqual(method.Notes, "Inflation from the Excel link.")
+        self.assertEqual(calls[-1], "Save")
+        self.assertEqual(exporter.counts["bs_cras_written"], 1)
+        self.assertEqual(exporter.counts["methods_saved"], 0)
+
+    def test_the_method_is_found_through_the_migration_by_its_arcrho_name(self):
+        method = Mock()
+        exporter = self._exporter(method)
+
+        exporter.export_bs_cras([self._entry(inflation_selection=["paid_all"], user_inflation=[0.0])])
+
+        exporter.migration._find_berquist_sherman_for_triangle.assert_called_once_with(
+            exporter.reserving_class,
+            "Gross Loss--Paid - B&S Case Reserve Adequacy Adjustment",
+            self.module.RESQ_METHOD_TYPE_BS_CRA,
+        )
+
+    def test_a_method_resq_does_not_hold_is_a_skip(self):
+        exporter = self._exporter(None)
+
+        exporter.export_bs_cras([self._entry(inflation_selection=["paid_all"])])
+
+        self.assertEqual(exporter.skipped, {"missing_in_resq": 1})
+        self.assertEqual(exporter.skip_details[-1]["kind"], "B&S Case Reserve Adequacy")
+        self.assertEqual(exporter.counts["bs_cras_written"], 0)
+
+    def test_a_failed_write_is_recorded_as_an_error_and_nothing_is_saved(self):
+        method = Mock()
+        method.SetSelectedAvgInflation.side_effect = RuntimeError("Invalid index")
+        exporter = self._exporter(method)
+
+        exporter.export_bs_cras([self._entry(inflation_selection=["paid_all"], user_inflation=[0.0])])
+
+        self.assertEqual(exporter.counts["errors"], 1)
+        self.assertEqual(exporter.error_details[-1]["message"], "Invalid index")
+        method.Save.assert_not_called()
+        self.assertEqual(exporter.counts["bs_cras_written"], 0)
 
 
 class ExportMacroResultsTableTests(unittest.TestCase):

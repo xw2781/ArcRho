@@ -76,9 +76,11 @@ so an item that cannot move is visible rather than missing.
 
 Two kinds are worth naming:
 
-- **Berquist Sherman methods, exporting.** ArcRho writes no field into them;
-  the export saves them so ResQ recalculates each from the datasets and DFMs
-  written before it. That is a real export, so they are tickable.
+- **Berquist Sherman methods, exporting.** The sync's own write-back does not
+  cover them, but the export saves each so ResQ recalculates it from the
+  datasets and DFMs written before it, and writes a Case Reserve Adequacy
+  method's `Avg. Selections` on the way. That is a real export, so they are
+  tickable.
 - **Calculated and engine-generated datasets.** Both systems recompute them
   from their inputs, so neither inventory lists them and neither direction
   offers them. An import still carries every one of them, ticked or not: the

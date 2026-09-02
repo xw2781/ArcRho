@@ -84,7 +84,12 @@ _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
 # Methods the export phase saves in ResQ without writing a field: ResQ
 # recalculates each from the datasets and DFMs exported before it and
 # re-stamps it. Keyed by the ResQ method-type code the exporter looks it up by.
-_SAVE_ONLY_METHOD_CODES = {KIND_BF: 2, KIND_CC: 3, KIND_BS_SR: 8, KIND_BS_CRA: 9}
+_SAVE_ONLY_METHOD_CODES = {KIND_BF: 2, KIND_CC: 3, KIND_BS_SR: 8}
+# Methods only the export phase pushes: the save-only kinds, and B&S Case
+# Reserve Adequacy, whose Avg. Selections the exporter writes. The sync's
+# field-level apply and read-back do not cover them, so they stay out of
+# ``_EXPORTABLE_METHOD_KINDS`` and the review offers them for export alone.
+_EXPORT_PHASE_METHOD_KINDS = set(_SAVE_ONLY_METHOD_CODES) | {KIND_BS_CRA}
 
 # Tie-break rank inside one write direction. The dependency walk decides the
 # order wherever one accepted row reads another; rows with no such link fall
@@ -910,6 +915,7 @@ _WRITTEN_COUNT_FIELDS = {
     KIND_BF: "bfs_written",
     KIND_CC: "ccs_written",
     KIND_RS: "result_selections_written",
+    KIND_BS_CRA: "bs_cras_written",
 }
 OUTCOME_WRITTEN = "written"
 OUTCOME_SKIPPED = "skipped"
@@ -1031,10 +1037,11 @@ def _export_rows(runtime: Mapping[str, Any], inventory: list[dict[str, Any]]) ->
 def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
     """Write one export row and say what became of it: exported, saved, skipped, or failed.
 
-    Input datasets, DFMs, and Result Selections go through the exporter's
-    writers, Notes included; every other supported method is only saved, so
-    ResQ recalculates it from the inputs written before it. There is no
-    preflight and no read-back: an export is a push, not a reconciliation.
+    Input datasets, DFMs, Result Selections, and B&S Case Reserve Adequacy
+    methods go through the exporter's writers, Notes included; every other
+    supported method is only saved, so ResQ recalculates it from the inputs
+    written before it. There is no preflight and no read-back: an export is a
+    push, not a reconciliation.
     """
 
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
@@ -1044,6 +1051,11 @@ def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
         exporter.save_method(_SAVE_ONLY_METHOD_CODES[kind], str(row.get("name") or ""))
         outcome, message = _export_result_delta(exporter, before, "methods_saved")
         return (EXPORT_OUTCOME_SAVED if outcome == OUTCOME_WRITTEN else outcome), message
+    if kind == KIND_BS_CRA:
+        # Offered for export ahead of the sync's own support, like the save-only kinds.
+        exporter.export_bs_cras([_writer_entry(item, row)])
+        outcome, message = _export_result_delta(exporter, before, _WRITTEN_COUNT_FIELDS[kind])
+        return (EXPORT_OUTCOME_EXPORTED if outcome == OUTCOME_WRITTEN else outcome), message
     reason = str(item.get("export_block_reason") or "")
     if reason:
         return OUTCOME_SKIPPED, reason
@@ -2323,10 +2335,11 @@ def _transfer_row(
         # item: an ambiguous name. Nothing can be written either way, and the
         # caller's own sentence explains it better than a missing-copy reason.
         supported, block_reason = False, detail
-    elif not supported and direction == sync_contract.DIRECTION_EXPORT and arcrho and kind in _SAVE_ONLY_METHOD_CODES:
-        # The export does not write a field into these methods, it saves them
-        # so ResQ recalculates each from the datasets written before it. That
-        # is a real export, so the row is offered rather than greyed out.
+    elif not supported and direction == sync_contract.DIRECTION_EXPORT and arcrho and kind in _EXPORT_PHASE_METHOD_KINDS:
+        # The export saves these methods so ResQ recalculates each from the
+        # datasets written before it, and writes the B&S Case Reserve Adequacy
+        # selections on the way. That is a real export, so the row is offered
+        # rather than greyed out.
         supported, block_reason = True, ""
     return {
         "id": key,
