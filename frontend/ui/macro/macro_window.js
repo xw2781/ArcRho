@@ -1,8 +1,14 @@
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
 import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=20260722a";
-import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260829a";
+import {
+  LIBRARY_STATUS_UPDATE_AVAILABLE,
+  copyLibraryMacroToLocal,
+  fetchLibraryMacros,
+} from "./macro_library_client.js?v=20260902a";
+import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260902a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
-import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260901b";
+import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260902a";
 
 const API_BASE = window.location.origin;
 const MACRO_WINDOW_FRAGMENT_URL = "/ui/macro/macro_window.html?v=20260731b";
@@ -45,6 +51,7 @@ let macroSplitContextMenu = null;
 let macroItemContextMenu = null;
 let macroWindowFrame = null;
 const capturedExternalMacroTargets = new Map();
+const macroLibraryUpdates = new Map();
 
 function refreshMacroElements() {
   macroWindow = document.getElementById("macroWindow");
@@ -247,6 +254,73 @@ function selectMacro(id) {
   renderMacroDescription();
 }
 
+// A macro whose shared-library copy carries a newer version wears a yellow
+// stamp on its row, and pressing the stamp loads that version over the local
+// copy without a trip through the Macro Library window.
+function createMacroUpdateStamp(macro, update) {
+  const stamp = document.createElement("span");
+  stamp.className = "macroUpdateStamp macroListItemAction";
+  stamp.setAttribute("role", "button");
+  stamp.setAttribute("tabindex", "0");
+  stamp.textContent = "Update";
+  const localLabel = update.local_version ? `version ${update.local_version}` : "an unversioned copy";
+  attachArcrhoTooltip(
+    stamp,
+    `The shared macro library has version ${update.version}; you have ${localLabel}. Click to update.`,
+  );
+  const startUpdate = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectMacro(macro.id);
+    void updateMacroFromLibrary(macro);
+  };
+  stamp.addEventListener("click", startUpdate);
+  stamp.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    startUpdate(event);
+  });
+  return stamp;
+}
+
+async function updateMacroFromLibrary(macro) {
+  setMacroStatus(`Updating ${macro.name || macro.id} from the shared macro library...`);
+  try {
+    const result = await copyLibraryMacroToLocal(macro.id);
+    if (result.cancelled) {
+      setMacroStatus("Update cancelled; your local copy is unchanged.", "", { statusBar: true });
+      return;
+    }
+    setMacroStatus(result.message || `Updated ${macro.name || macro.id}.`, "", { statusBar: true });
+  } catch (err) {
+    const message = String(err?.message || err || "Macro update failed.");
+    setMacroStatus(`Macro update failed: ${message}`, "error", { statusBar: true });
+  }
+}
+
+function macroUpdateSignature(entries) {
+  return [...entries].map(([id, macro]) => `${id}@${macro.version}`).sort().join("|");
+}
+
+// The library sits on the server workspace, so its versions are read after the
+// local list is already on screen and an unreachable library simply leaves the
+// rows unstamped. The list is rebuilt only when the stamps themselves changed,
+// so the usual answer of "nothing to update" never disturbs the rendered rows.
+async function refreshMacroLibraryUpdates() {
+  const found = new Map();
+  try {
+    const library = await fetchLibraryMacros();
+    library.macros.forEach((macro) => {
+      if (macro?.status === LIBRARY_STATUS_UPDATE_AVAILABLE) found.set(macro.id, macro);
+    });
+  } catch {
+    found.clear();
+  }
+  if (macroUpdateSignature(found) === macroUpdateSignature(macroLibraryUpdates)) return;
+  macroLibraryUpdates.clear();
+  found.forEach((macro, id) => macroLibraryUpdates.set(id, macro));
+  renderMacroList();
+}
+
 function renderMacroList() {
   if (!macroList) return;
   const items = macros;
@@ -283,6 +357,8 @@ function renderMacroList() {
       tags.appendChild(tag);
     });
     topRow.appendChild(tags);
+    const update = macroLibraryUpdates.get(macro.id);
+    if (update) topRow.appendChild(createMacroUpdateStamp(macro, update));
     item.appendChild(topRow);
     item.addEventListener("click", () => selectMacro(macro.id));
     item.addEventListener("contextmenu", (event) => {
@@ -321,8 +397,10 @@ async function loadMacros() {
     renderMacroList();
     renderMacroDescription();
     setMacroStatus(`${liveMacros.length} macro(s) available.`);
+    void refreshMacroLibraryUpdates();
   } catch (err) {
     macros = [];
+    macroLibraryUpdates.clear();
     renderMacroList();
     renderMacroDescription();
     const message = String(err?.message || err || "Failed to load macros.");

@@ -15,7 +15,7 @@ import { initUiAutomation } from "./ui_automation.js?v=20260901drag1";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";
-import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260831a";
+import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260902a";
 import { addMacroToFlightDeck, closeFlightDeck, initFlightDeck, isFlightDeckVisible, openFlightDeck, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260901b";
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());

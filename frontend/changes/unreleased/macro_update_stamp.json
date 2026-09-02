@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "The Macros panel marks any macro the shared library has a newer version of, and the mark loads that version in one click.",
+  "details": [
+    "The amber Update mark appears on the macro's row once the panel has read the shared library, and its tooltip names both versions.",
+    "Clicking or pressing the mark copies the library version over the local copy and refreshes the list, without opening the Macro Library window.",
+    "An unreachable library leaves the rows unmarked and never delays or blocks the macro list."
+  ]
+}

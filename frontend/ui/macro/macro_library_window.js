@@ -1,8 +1,8 @@
 import { shell } from "../shell/shell_context.js?v=20260510a";
+import { LIBRARY_STATUS_UPDATE_AVAILABLE, copyLibraryMacroToLocal, fetchLibraryMacros } from "./macro_library_client.js?v=20260902a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
-import { initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260901b";
+import { initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260902a";
 
-const API_BASE = window.location.origin;
 const LIBRARY_WINDOW_FRAGMENT_URL = "/ui/macro/macro_library_window.html?v=20260731a";
 const LIBRARY_WINDOW_POSITION_KEY = "arcrho_macro_library_window_position";
 const LIBRARY_STATUS_META = {
@@ -97,16 +97,15 @@ function selectLibraryMacro(id) {
 async function loadLibraryMacros() {
   setLibraryStatus("Loading macro library...");
   try {
-    const response = await fetch(`${API_BASE}/scripting/macro-library`);
-    const result = await response.json();
-    libraryMacros = Array.isArray(result?.macros) ? result.macros : [];
-    libraryUnavailableMessage = result?.available ? "" : String(result?.message || "Macro library is not available.");
+    const result = await fetchLibraryMacros();
+    libraryMacros = result.macros;
+    libraryUnavailableMessage = result.available ? "" : (result.message || "Macro library is not available.");
     renderLibraryList();
     renderLibraryDescription();
     if (libraryUnavailableMessage) {
       setLibraryStatus(libraryUnavailableMessage, "error");
     } else {
-      const updates = libraryMacros.filter((macro) => macro.status === "update_available").length;
+      const updates = libraryMacros.filter((macro) => macro.status === LIBRARY_STATUS_UPDATE_AVAILABLE).length;
       setLibraryStatus(updates > 0
         ? `${libraryMacros.length} shared macro(s); ${updates} update(s) available.`
         : `${libraryMacros.length} shared macro(s) available.`);
@@ -185,7 +184,7 @@ function renderLibraryDescription() {
     detailLines.push("Not in your local macros yet.");
   } else if (macro.status === "up_to_date") {
     detailLines.push("Your local copy is up to date.");
-  } else if (macro.status === "update_available") {
+  } else if (macro.status === LIBRARY_STATUS_UPDATE_AVAILABLE) {
     detailLines.push(`Your local copy is v${macro.local_version || "?"}; an update is available.`);
   } else if (macro.status === "local_differs") {
     detailLines.push(`Your local copy${macro.local_version ? ` (v${macro.local_version})` : ""} differs from the library version.`);
@@ -207,31 +206,13 @@ async function installLibraryMacro(macro = getSelectedLibraryMacro()) {
   if (libraryLoadBtn) libraryLoadBtn.disabled = true;
   setLibraryStatus(`Loading ${macro.name || macro.id} from the library...`);
   try {
-    const install = async (overwrite) => {
-      const response = await fetch(`${API_BASE}/scripting/macro-library/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ macro_id: macro.id, overwrite }),
-      });
-      return response.json();
-    };
-    let result = await install(false);
-    if (!result?.success && result?.needs_confirmation) {
-      const confirmed = window.confirm(
-        `${result.message || "A different local copy of this macro already exists."}\n\n`
-        + "Replace your local copy with the library version?",
-      );
-      if (!confirmed) {
-        setLibraryStatus("Library macro was not loaded; your local copy is unchanged.", "", { statusBar: true });
-        renderLibraryDescription();
-        return;
-      }
-      result = await install(true);
+    const result = await copyLibraryMacroToLocal(macro.id);
+    if (result.cancelled) {
+      setLibraryStatus("Library macro was not loaded; your local copy is unchanged.", "", { statusBar: true });
+      renderLibraryDescription();
+      return;
     }
-    if (!result?.success) throw new Error(result?.message || "Library macro load failed.");
     setLibraryStatus(result.message || `Loaded ${macro.name || macro.id}.`, "", { statusBar: true });
-    window.dispatchEvent(new CustomEvent("arcrho:local-macros-changed"));
-    await loadLibraryMacros();
   } catch (err) {
     const message = String(err?.message || err || "Library macro load failed.");
     setLibraryStatus(`Library macro load failed: ${message}`, "error", { statusBar: true });
@@ -265,6 +246,11 @@ export async function initMacroLibraryWindow() {
     },
     onStart: (macro) => selectLibraryMacro(macro.id),
     onDrop: (macro) => void installLibraryMacro(macro),
+  });
+  // Either window can load a macro, so both refresh from the same event.
+  window.addEventListener("arcrho:local-macros-changed", () => {
+    if (!libraryWindow?.classList.contains("open")) return;
+    void loadLibraryMacros();
   });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;

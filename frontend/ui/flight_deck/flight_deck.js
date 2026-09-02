@@ -3,7 +3,7 @@
 // window, which keeps one code path for context capture, review, and status reporting.
 
 import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
-import { runMacroById } from "../macro/macro_window.js?v=20260831a";
+import { runMacroById } from "../macro/macro_window.js?v=20260902a";
 import { createIconElement, defaultIconForScopes, normalizeIcon } from "./flight_deck_icons.js?v=20260901b";
 import { openFlightDeckButtonEditor } from "./flight_deck_editor.js?v=20260901b";
 import { hideDeckTooltip as hideTooltip, showDeckTooltip } from "./flight_deck_tooltip.js?v=20260901a";
