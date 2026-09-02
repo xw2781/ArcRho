@@ -54,7 +54,7 @@ import {
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
   applyUserEntryReferenceHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260831b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260902a";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -254,7 +254,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260831b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260902a";
 export {
   wireRatioChartModal,
   isRatioChartOpen,

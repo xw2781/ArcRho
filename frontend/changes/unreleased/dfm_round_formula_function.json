@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Ratios User Entry formulas can round an operand with ROUND(x, digits), and the growth and cutoff adjustment macro uses it so the adjusted factor reconciles with the method notes.",
+  "details": [
+    "ROUND rounds half up on the decimal digits, in the browser and on the server alike, so 2.38625 to four places is 2.3863.",
+    "Apply Growth and Cutoff Adjustments now writes = ROUND(\"Simple - 2\", 4) * [Accounting Cutoff][-1] * ..., leaving the adjustment vectors unrounded.",
+    "Generate Notes for Combined Adjustment shows a rounded term at that precision, so the note's multiplication reproduces the User Entry value."
+  ]
+}

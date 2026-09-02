@@ -31,16 +31,24 @@ export function roundRatio(value, decimals = 6) {
   return Math.round(value * f) / f;
 }
 
-// `toFixed` rounds the binary double behind the number, so a value whose decimal
-// form sits exactly on a half - 2.38625 shown to four places - rounds down,
-// while the engine, the persisted value and ResQ all round it up. Shifting the
-// decimal text and rounding there shows the reader the digit they expect.
+// `toFixed` and `Math.round` work on the binary double behind the number, so a
+// value whose decimal form sits exactly on a half - 2.38625 to four places -
+// rounds down, while the engine, the persisted value and ResQ all round it up.
+// Shifting the decimal text and rounding there gives the digit a reader expects.
+// This is also the ROUND function of a User Entry formula, so the browser and
+// `arcrho_api.dfm_contract.round_half_up` agree on every operand.
+export function roundHalfUp(value, decimals = 0) {
+  if (!Number.isFinite(value)) return null;
+  const shifted = Number(`${value}e${decimals}`);
+  if (!Number.isFinite(shifted)) return null;
+  const restored = Number(`${Math.sign(shifted) * Math.round(Math.abs(shifted))}e-${decimals}`);
+  return Number.isFinite(restored) ? restored : null;
+}
+
 export function formatRatio(value, decimals = 4) {
   if (!Number.isFinite(value)) return "";
-  const shifted = Number(`${value}e${decimals}`);
-  if (!Number.isFinite(shifted)) return value.toFixed(decimals);
-  const restored = Number(`${Math.sign(shifted) * Math.round(Math.abs(shifted))}e-${decimals}`);
-  return Number.isFinite(restored) ? restored.toFixed(decimals) : value.toFixed(decimals);
+  const restored = roundHalfUp(value, decimals);
+  return restored === null ? value.toFixed(decimals) : restored.toFixed(decimals);
 }
 
 export function computeVolumeAllForColumn(model, col, excludedSet) {

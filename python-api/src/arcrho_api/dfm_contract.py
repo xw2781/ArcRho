@@ -94,6 +94,18 @@ def canonical_number(value: Any) -> float | int | None:
     return _canonical(value, _QUANTUM)
 
 
+def round_half_up(value: float, digits: int = 0) -> float:
+    """Round half-away-from-zero to *digits* decimals, as a reader rounds by hand.
+
+    This is the ROUND function of a User Entry formula. It rounds the decimal
+    text of the number rather than its binary double, so 2.38625 to four places
+    is 2.3863 here, in the browser's evaluator and in the notes alike.
+    """
+
+    quantum = Decimal(1).scaleb(-int(digits))
+    return float(_canonical(float(value), quantum))
+
+
 def canonical_input_number(value: Any) -> float | int | None:
     """Return one input-triangle number rounded half-away-from-zero to ten decimals.
 
@@ -1366,6 +1378,17 @@ def _safe_arithmetic(expression: str) -> float | None:
             return binary[type(node.op)](evaluate(node.left), evaluate(node.right))
         if isinstance(node, ast.UnaryOp) and type(node.op) in unary:
             return unary[type(node.op)](evaluate(node.operand))
+        # ROUND(x) or ROUND(x, digits): the one function the formula language
+        # offers, so a formula can fix an operand at the precision the notes show.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id.upper() == "ROUND"
+            and not node.keywords
+            and 1 <= len(node.args) <= 2
+        ):
+            digits = evaluate(node.args[1]) if len(node.args) == 2 else 0.0
+            return round_half_up(evaluate(node.args[0]), int(digits))
         raise ValueError("unsupported expression")
 
     try:

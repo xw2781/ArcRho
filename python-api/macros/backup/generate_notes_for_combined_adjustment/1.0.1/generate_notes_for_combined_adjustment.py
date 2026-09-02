@@ -1,15 +1,13 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.1.0
-# Release Note: Read a ROUND(term, digits) wrapper on a formula term and show that term at
-#   the precision the formula fixed it to, so the note's arithmetic reproduces the cell.
+# Version: 1.0.1
+# Release Note: Drop dataset location tags from adjustment lines; clear prior adjustment bullets of any bullet style.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
-#   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
+#   = "Simple - 2" * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
 #   resolve each referenced cell, and generate method notes in the legacy
-#   "Apply Growth Adjustments" style. A term wrapped in ROUND is shown at that
-#   precision. Adjustment factors equal to 1 are left out of the notes. Complex
-#   formulas fall back to a resolved-formula note.
+#   "Apply Growth Adjustments" style. Adjustment factors equal to 1 are left out
+#   of the notes. Complex formulas fall back to a resolved-formula note.
 # Scope: DFM
 # </arcrho-macro>
 
@@ -23,8 +21,6 @@ try:
     from arcrho_api.exceptions import DfmDataError
 except Exception:  # pragma: no cover - script can still show useful errors
     DfmDataError = ValueError
-
-from arcrho_api.dfm_contract import round_half_up
 
 MACRO_TITLE = "Generate Notes for Combined Adjustment"
 NO_ADJUSTMENT_NOTE = "No combined adjustments were needed for this method."
@@ -212,24 +208,11 @@ def _strip_outer_parens(text: str) -> str:
     return out
 
 
-_ROUND_TERM_RE = re.compile(r"^round\s*\(\s*(.+?)\s*(?:,\s*(\d+)\s*)?\)$", re.I | re.S)
-
-
 def classify_term(term: str) -> dict[str, Any] | None:
-    """Classify a product term as an average label, dataset reference, or number.
-
-    A term wrapped in ROUND(term, digits) classifies as the term inside and
-    carries ``round_digits`` so the note shows it at that precision.
-    """
+    """Classify a product term as an average label, dataset reference, or number."""
     text = _strip_outer_parens(term)
     if not text:
         return None
-    rounded = _ROUND_TERM_RE.match(text)
-    if rounded:
-        inner = classify_term(rounded.group(1))
-        if inner is None:
-            return None
-        return {**inner, "round_digits": int(rounded.group(2) or 0)}
     if len(text) >= 2 and text[0] in ('"', "'") and text[-1] == text[0]:
         label = text[1:-1]
         if label and text[0] not in label:
@@ -438,7 +421,6 @@ def _parse_column_formula(entry: dict[str, Any]) -> dict[str, Any]:
     if terms is None:
         return {"ok": False, "references": references}
     base_label = None
-    base_round_digits = None
     factors: list[dict[str, Any]] = []
     for op, term in terms:
         classified = classify_term(term)
@@ -448,7 +430,6 @@ def _parse_column_formula(entry: dict[str, Any]) -> dict[str, Any]:
             if base_label is not None or op != "*":
                 return {"ok": False, "references": references}
             base_label = classified["label"]
-            base_round_digits = classified.get("round_digits")
             continue
         factors.append({"op": op, **classified})
     # Re-link reference factors to the whole-formula reference objects so the
@@ -458,13 +439,7 @@ def _parse_column_formula(entry: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "references": references}
     for factor, reference in zip(reference_factors, references):
         factor["reference"] = reference
-    return {
-        "ok": True,
-        "base_label": base_label,
-        "base_round_digits": base_round_digits,
-        "factors": factors,
-        "references": references,
-    }
+    return {"ok": True, "base_label": base_label, "factors": factors, "references": references}
 
 
 def _base_value(entry: dict[str, Any], base_label: str) -> float | None:
@@ -523,8 +498,6 @@ def _column_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> str
         product *= (1.0 / value) if factor["op"] == "/" else value
     if base_label is not None and base_value is None and final_value is not None and product:
         base_value = final_value / product
-    if base_value is not None and parsed.get("base_round_digits") is not None:
-        base_value = round_half_up(base_value, parsed["base_round_digits"])
     if final_value is None:
         if base_label is not None and base_value is None:
             return _fallback_note(dfm, entry, parsed)
@@ -644,8 +617,6 @@ def generate_combined_adjustment_notes(
                     factor["resolved_value"] = _number((resolved or {}).get("value"))
                 else:
                     factor["resolved_value"] = factor["value"]
-                if factor.get("round_digits") is not None and factor["resolved_value"] is not None:
-                    factor["resolved_value"] = round_half_up(factor["resolved_value"], factor["round_digits"])
             note = _column_note(dfm, entry, parsed)
         else:
             note = _fallback_note(dfm, entry, parsed)

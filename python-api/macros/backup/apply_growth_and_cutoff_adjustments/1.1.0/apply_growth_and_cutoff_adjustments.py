@@ -1,20 +1,18 @@
 # <arcrho-macro>
 # Title: Apply Growth and Cutoff Adjustments
-# Version: 1.2.0
-# Release Note: Round the average factor an adjustment starts from to four decimals inside
-#   the formula, as ROUND("Simple - 2", 4), so the User Entry value is the product of the
-#   figures the method notes show. The adjustment vectors are still read unrounded.
+# Version: 1.1.0
+# Release Note: Mark the average cell an adjustment was built from with a "Selected before
+#   adjustments." cell note, and clear that note from a column before re-marking it so a
+#   re-run does not leave the note behind on a row the selection has moved past.
 # Description: Write the combined growth and accounting cutoff adjustment into the active
 #   DFM's User Entry row as a live in-cell formula, for example
-#   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
+#   = "Simple - 2" * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
 #   The adjustment basis comes from the method's own input triangle: claim counts, paid,
 #   incurred, or a severity ratio of incurred over counts. Only the first three development
 #   periods are considered, each reading one row further back in the vectors, and a period
-#   whose factor is 1 is left alone. The average factor is rounded to the four decimals the
-#   notes show it at; the vectors are multiplied in as stored. The average cell the
-#   adjustment was built from is marked with a "Selected before adjustments." cell note
-#   before it is overwritten. Run "Generate Notes for Combined Adjustment" afterwards to
-#   write the matching method notes.
+#   whose factor is 1 is left alone. The average cell the adjustment was built from is marked
+#   with a "Selected before adjustments." cell note before it is overwritten. Run "Generate
+#   Notes for Combined Adjustment" afterwards to write the matching method notes.
 # Scope: DFM
 # </arcrho-macro>
 
@@ -29,13 +27,7 @@ try:
 except Exception:  # pragma: no cover - script can still show useful errors
     DfmDataError = ValueError
 
-from arcrho_api.dfm_contract import round_half_up
-
 MACRO_TITLE = "Apply Growth and Cutoff Adjustments"
-
-# The average factor enters the formula rounded to the four decimals the method
-# notes show it at, so the adjusted value reconciles with the notes' arithmetic.
-BASE_FACTOR_DECIMALS = 4
 
 # The reserving class carries one vector per adjustment basis. Each holds the
 # already-compounded factor for one origin period, so development period n reads
@@ -188,10 +180,7 @@ def adjustment_basis(dfm: Any) -> dict[str, Any]:
 # Reading the base average row back off a formula this macro wrote before
 # ---------------------------------------------------------------------------
 
-# The opening term is ROUND("label", n) since 1.2.0 and a bare "label" before it.
-_GENERATED_FORMULA_RE = re.compile(
-    r'^=\s*(?:ROUND\(\s*"([^"]+)"\s*,\s*\d+\s*\)|"([^"]+)")\s*(.*)$', re.S | re.I
-)
+_GENERATED_FORMULA_RE = re.compile(r'^=\s*"([^"]+)"\s*(.*)$', re.S)
 _ADJUSTMENT_TERM_RE = re.compile(r'^\s*([*/])\s*\[([^\]]+)\]\s*\[\s*-\d+\s*\]')
 
 
@@ -233,7 +222,7 @@ def base_label_from_generated_formula(formula: str) -> str | None:
     match = _GENERATED_FORMULA_RE.match(_clean_text(formula))
     if not match:
         return None
-    label, rest = match.group(1) or match.group(2), match.group(3)
+    label, rest = match.group(1), match.group(2)
     known = {ACCOUNTING_CUTOFF_DATASET.lower()} | {
         name.lower() for name in GROWTH_ADJUSTMENT_DATASETS.values()
     }
@@ -417,15 +406,14 @@ def plan_adjustments(
             continue
         if not parts:
             continue
-        opening = f'= ROUND("{candidate["base_label"]}", {BASE_FACTOR_DECIMALS})'
-        base_value = round_half_up(candidate["base_value"], BASE_FACTOR_DECIMALS)
+        opening = f'= "{candidate["base_label"]}"'
         plans.append({
             "col": candidate["col"],
             "base_label": candidate["base_label"],
             "formula": " ".join([opening] + parts),
             "display_formula": " ".join([opening] + display_parts),
-            "value": round(base_value * factor, 6),
-            "base_value": base_value,
+            "value": round(candidate["base_value"] * factor, 6),
+            "base_value": candidate["base_value"],
         })
     return {"plans": plans, "skipped": skipped, "errors": errors, "grid_mismatch": ""}
 

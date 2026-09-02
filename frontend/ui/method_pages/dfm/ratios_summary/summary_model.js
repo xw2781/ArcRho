@@ -9,7 +9,7 @@ import {
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
 
 const {
-  state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,
+  state, calcRatio, roundRatio, roundHalfUp, formatRatio, computeAverageForColumn,
   ratioStrikeSet, selectedSummaryByCol, summaryRowConfigs, summaryRowMap, BASE_SUMMARY_ROWS,
   getShowNaBorders, getRatioSummaryRaf, setRatioSummaryRaf,
   getLastSummaryCtxRowId, setLastSummaryCtxRowId,
@@ -693,10 +693,15 @@ function evaluateSimpleMathExpression(raw, referenceValues) {
       expr = expr.replace(new RegExp(lit, "g"), numeric);
     });
   }
-  if (!/^[0-9+\-*/().\s]+$/.test(expr)) return null;
+  // ROUND(x, digits) is the one function the formula language offers, so the
+  // syntax check admits that word and nothing else made of letters.
+  expr = expr.replace(/\bround\s*\(/giu, "ROUND(");
+  if (!/^(?:[0-9+\-*/().,\s]|ROUND\()+$/u.test(expr)) return null;
   if (expr.includes("**")) return null;
   try {
-    const out = Function(`"use strict"; return (${expr});`)();
+    const out = Function("ROUND", `"use strict"; return (${expr});`)(
+      (value, digits = 0) => roundHalfUp(Number(value), Number(digits)),
+    );
     return Number.isFinite(out) ? Number(out) : null;
   } catch {
     return null;

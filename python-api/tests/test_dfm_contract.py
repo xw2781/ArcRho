@@ -25,6 +25,7 @@ from arcrho_api.dfm_contract import (  # noqa: E402
     owned_projection,
     preview_dfm_method,
     recalculate_dfm_method,
+    round_half_up,
     source_snapshot_revision,
 )
 
@@ -535,6 +536,47 @@ class DfmContractTests(unittest.TestCase):
         values = refreshed["ratios_tab"]["average_formulas"]["values"]
         # User A col 0 = User B (1.65) * resolved cutoff 1.02.
         self.assertEqual(values[2][0], 1.683)
+
+    def test_round_rounds_half_up_on_the_decimal_text(self) -> None:
+        self.assertEqual(round_half_up(2.38625, 4), 2.3863)
+        self.assertEqual(round_half_up(-2.38625, 4), -2.3863)
+        self.assertEqual(round_half_up(1.5), 2.0)
+        self.assertEqual(round_half_up(1.35735, 4), 1.3574)
+
+    def test_round_in_a_formula_fixes_an_operand_before_it_multiplies(self) -> None:
+        payload = owned_payload()
+        formulas = payload["ratios_tab"]["average_formulas"]
+        # Simple - all is 1.5 in column 0; ROUND to whole numbers makes it 2.
+        formulas["inputs"][3][0] = '= ROUND("Simple - all", 0) * 1.1'
+        formulas["inputs"][3][1] = '= round("Simple - all") * 1.1'
+        formulas["inputs"][2][0] = '= "User B" * ROUND([Accounting Cutoff][-1], 2)'
+        method = recalculate_dfm_method(
+            payload,
+            input_snapshot=input_snapshot(),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="same",
+        )
+        values = method["ratios_tab"]["average_formulas"]["values"]
+        self.assertEqual(values[3][0], 2.2)
+        self.assertEqual(values[3][1], canonical_number(round_half_up(values[1][1]) * 1.1))
+
+        refreshed = recalculate_dfm_method(
+            method,
+            dataset_reference_values={"[Accounting Cutoff][-1]": 1.0249},
+            timestamp="later",
+        )
+        # User A col 0 = User B (2.2) * the cutoff rounded to 1.02.
+        self.assertEqual(refreshed["ratios_tab"]["average_formulas"]["values"][2][0], 2.244)
+
+        # Any other function name is not a formula the contract evaluates.
+        formulas["inputs"][3][0] = '= FLOOR("Simple - all") * 1.1'
+        kept = recalculate_dfm_method(
+            payload,
+            input_snapshot=input_snapshot(),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="same",
+        )
+        self.assertEqual(kept["ratios_tab"]["average_formulas"]["values"][3][0], 8)
 
     def test_upstream_refresh_preserves_owned_projection_and_recalculates_internal_formulas(self) -> None:
         initial = recalculate_dfm_method(

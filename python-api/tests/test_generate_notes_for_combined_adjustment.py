@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 _MACRO_PATH = (
     Path(__file__).resolve().parents[1]
@@ -158,6 +161,23 @@ class NoteGenerationTests(unittest.TestCase):
             "  - Selected LDF after adjustments: 3.0414 * 1.0117 * 1.0026 = 3.0851",
             note,
         )
+
+    def test_a_rounded_base_is_shown_and_multiplied_at_that_precision(self):
+        self.assertEqual(
+            MACRO.classify_term('ROUND("Simple - 2", 4)'),
+            {"kind": "label", "label": "Simple - 2", "round_digits": 4},
+        )
+        # The cell holds 1.3574 * 0.9949 = 1.350478, and the note's arithmetic
+        # reproduces it: 1.3505, not the 1.3504 that 1.35735 * 0.9949 gives.
+        dfm = single_column_dfm(
+            '= ROUND("Simple - 2", 4) * [Accounting Cutoff][-1]',
+            1.350478,
+            base_value=1.35735,
+        )
+        resolver = make_resolver({"Accounting Cutoff": (0.9949, "2026")})
+        note = generate(dfm, resolver)["note_blocks"][0]
+        self.assertIn('  - Selected average factor: "Simple - 2" (1.3574)', note)
+        self.assertIn("  - Selected LDF after adjustments: 1.3574 * 0.9949 = 1.3505", note)
 
     def test_unity_factor_is_omitted(self):
         dfm = single_column_dfm(
