@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "An origin whose later figure is zero now shows the muted \"1.0000\" in the Ratios triangle and is left out of every average, instead of counting as a ratio of zero.",
+  "details": [
+    "It behaves exactly like an origin with nothing in the earlier column already did: the cell cannot be struck out, it takes no place in a \"last 5\" or \"last 8\" window, and it adds nothing to any sum or divisor.",
+    "\"Ex hi/lo\" rows then drop their highest and lowest from the ratios that are really there. Checked against ResQ on one column across four different sets of struck-out ratios: all 24 average values now agree.",
+    "A method saved before this change reads its stored zero the same way, so the correction shows as soon as you open it.",
+    "A ratio that lands exactly halfway at the number of decimals you are showing now rounds up, matching ResQ and the saved value, where the grid used to round it down."
+  ]
+}

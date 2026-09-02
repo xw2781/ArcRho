@@ -1,9 +1,19 @@
+// A later value of zero is not a ratio of zero: the origin has nothing to
+// develop from, and carrying a 0 into the column would drag every average down
+// with it. It reads as "no ratio" instead, exactly as a zero earlier value
+// already does, so the cell shows the muted placeholder and no average uses it.
 export function calcRatio(a, b) {
   const na = Number(a);
   const nb = Number(b);
-  if (!Number.isFinite(na) || !Number.isFinite(nb) || na === 0) return null;
+  if (!Number.isFinite(na) || !Number.isFinite(nb) || na === 0 || nb === 0) return null;
   const v = nb / na;
   return Number.isFinite(v) ? v : null;
+}
+
+// A method saved before that rule holds a stored 0 where it now holds no ratio.
+export function persistedRatioOrNull(value) {
+  const numeric = ratioNumberOrNull(value);
+  return numeric === 0 ? null : numeric;
 }
 
 // A cell with no ratio holds null, and Number(null) is 0, so a bare
@@ -21,9 +31,16 @@ export function roundRatio(value, decimals = 6) {
   return Math.round(value * f) / f;
 }
 
+// `toFixed` rounds the binary double behind the number, so a value whose decimal
+// form sits exactly on a half - 2.38625 shown to four places - rounds down,
+// while the engine, the persisted value and ResQ all round it up. Shifting the
+// decimal text and rounding there shows the reader the digit they expect.
 export function formatRatio(value, decimals = 4) {
   if (!Number.isFinite(value)) return "";
-  return value.toFixed(decimals);
+  const shifted = Number(`${value}e${decimals}`);
+  if (!Number.isFinite(shifted)) return value.toFixed(decimals);
+  const restored = Number(`${Math.sign(shifted) * Math.round(Math.abs(shifted))}e-${decimals}`);
+  return Number.isFinite(restored) ? restored.toFixed(decimals) : value.toFixed(decimals);
 }
 
 export function computeVolumeAllForColumn(model, col, excludedSet) {
@@ -38,7 +55,14 @@ export function computeSimpleRecentForColumn(model, col, excludedSet, lookback =
   return computeAverageForColumn(model, col, excludedSet, { base: "simple", periods: lookback });
 }
 
-export function computeAverageForColumn(model, col, excludedSet, options = {}) {
+// `excludedSet` holds every ratio left out of the average: the ones the user
+// struck out plus any high/low pair an "Ex hi/lo" row drops. `windowExcludedSet`
+// holds only the user's strikes. A "last N" window is counted over ratios the
+// user has not struck, so a high/low pair dropped inside that window still
+// occupies its place: "Simple - 5 Ex hi/lo" averages three of the last five
+// usable ratios, never five drawn from a wider span. Callers that pass no
+// window set get the two treated as one, which is right when no pair is dropped.
+export function computeAverageForColumn(model, col, excludedSet, options = {}, windowExcludedSet = excludedSet) {
   const baseRaw = String(options.base || "volume").toLowerCase();
   const base = baseRaw === "volume" ? "volume" : "simple";
   const periodsRaw = options.periods ?? "all";
@@ -92,8 +116,10 @@ export function computeAverageForColumn(model, col, excludedSet, options = {}) {
       const ratio = includeRow(r);
       if (!Number.isFinite(ratio)) continue;
       out.totalValid += 1;
-      if (excludedSet && excludedSet.has(`${r},${col}`)) continue;
+      const key = `${r},${col}`;
+      if (windowExcludedSet && windowExcludedSet.has(key)) continue;
       picked += 1;
+      if (excludedSet && excludedSet.has(key)) continue;
       out.totalIncluded += 1;
       if (base === "volume") {
         const a = Number(vals?.[r]?.[col]);

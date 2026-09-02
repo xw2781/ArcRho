@@ -71,7 +71,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260831c";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260901a";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -820,7 +820,7 @@ function buildAverageFormulaValues() {
         continue;
       }
       const excluded = buildExcludedSetForColumn(model, c, cfg, ratioStrikeSet);
-      const summary = computeAverageForColumn(model, c, excluded, cfg);
+      const summary = computeAverageForColumn(model, c, excluded, cfg, ratioStrikeSet);
       if (summary.totalValid > 0 && summary.totalIncluded === 0) {
         values[rowIndex][c] = roundAverageFormulaValue(1);
         continue;

@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "An \"Ex hi/lo\" average over the last N periods now averages within those N ratios instead of reaching further back to replace the pair it dropped.",
+  "details": [
+    "\"Simple - 5 Ex hi/lo\" takes the last five usable ratios, drops the highest and lowest, and averages the remaining three, matching ResQ and the values ArcRho recalculates on the server.",
+    "The Ratios tab, the value saved with the method, the Selected line, and the ratio chart's highlighted points all follow the same rule."
+  ]
+}

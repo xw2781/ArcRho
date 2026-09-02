@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from copy import deepcopy
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -13,6 +14,7 @@ from arcrho_api.dfm_contract import (  # noqa: E402
     DfmContractError,
     apply_owned_patch,
     build_dfm_output_sidecar,
+    canonical_input_number,
     canonical_number,
     dataset_reference_tokens,
     dfm_dataset_reference_tokens,
@@ -157,11 +159,138 @@ class DfmExcludeHighLowTests(unittest.TestCase):
         self.assertAlmostEqual(self._average([1.0, 2.0, 3.0, 9.0], 2), 2.5)
 
 
+class ResqMutedRatioAverageTests(unittest.TestCase):
+    """Every average row of one ResQ column whose newest origin has no ratio.
+
+    Read off ResQ for column "(1) 8-20": eight ratios for 2017-2024, a muted
+    1.0000 at 2025 where the later value is zero, and an empty 2026. The four
+    cases are the same column with nothing struck out, with 2024 struck, with
+    2021 and 2022 struck, and with 2019-2023 struck. The muted origin takes no
+    place in a "last N" window, adds nothing to a sum, and counts toward no
+    divisor; treating it as a ratio of zero moved every row of the first case,
+    "Simple - 2" from 1.9333 to 0.9596.
+    """
+
+    _RATIOS = [1.9232, 1.8949, 1.8139, 1.7265, 1.9000, 2.8251, 1.9474, 1.9191, 0.0]
+
+    def _column(self, struck: set[int]) -> tuple[list, list, list]:
+        values = [[1.0, ratio] for ratio in self._RATIOS] + [[None, None]]
+        mask = [[True, True] for _ in self._RATIOS] + [[False, False]]
+        excluded = [[1 if row in struck else 0] for row in range(len(self._RATIOS))] + [[0]]
+        return values, mask, excluded
+
+    def _average(self, struck: set[int], periods: int, exclude: int) -> str:
+        from arcrho_api.dfm_contract import _calculate_average, canonical_number
+
+        values, mask, excluded = self._column(struck)
+        value = _calculate_average(
+            values, mask, excluded, 0, base="simple", periods=periods, extra_exclude=exclude
+        )
+        return f"{Decimal(str(canonical_number(value))).quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)}"
+
+    def _check(self, struck: set[int], expected: dict[tuple[int, int], str]) -> None:
+        for (periods, exclude), want in expected.items():
+            with self.subTest(periods=periods, exclude=exclude):
+                self.assertEqual(self._average(struck, periods, exclude), want)
+
+    def test_nothing_struck_out(self) -> None:
+        self._check(set(), {
+            (8, 0): "1.9938", (8, 1): "1.8998", (5, 0): "2.0636",
+            (5, 1): "1.9222", (3, 0): "2.2305", (2, 0): "1.9333",
+        })
+
+    def test_the_newest_ratio_struck_out(self) -> None:
+        self._check({7}, {
+            (8, 0): "2.0044", (8, 1): "1.8959", (5, 0): "2.0426",
+            (5, 1): "1.8871", (3, 0): "2.2242", (2, 0): "2.3863",
+        })
+
+    def test_two_middle_ratios_struck_out(self) -> None:
+        self._check({4, 5}, {
+            (8, 0): "1.8708", (8, 1): "1.8878", (5, 0): "1.8604",
+            (5, 1): "1.8760", (3, 0): "1.8643", (2, 0): "1.9333",
+        })
+
+    def test_five_struck_out_leaves_three_ratios(self) -> None:
+        # Three candidates allow one pair, so an Ex hi/lo row reports the one
+        # ratio left standing rather than falling back to 1.0.
+        self._check({2, 3, 4, 5, 6}, {
+            (8, 0): "1.9124", (8, 1): "1.9191", (5, 0): "1.9124",
+            (5, 1): "1.9191", (3, 0): "1.9124", (2, 0): "1.9070",
+        })
+
+
 class DfmContractTests(unittest.TestCase):
     def test_canonical_number_rounds_half_away_from_zero(self) -> None:
         self.assertEqual(canonical_number("1.0000005"), 1.000001)
         self.assertEqual(canonical_number("-1.0000005"), -1.000001)
         self.assertIsNone(canonical_number(float("nan")))
+
+    def test_canonical_input_number_keeps_ten_decimals(self) -> None:
+        self.assertEqual(canonical_input_number("0.00000123456789"), 0.0000012346)
+        self.assertEqual(canonical_input_number("-0.00000123456789"), -0.0000012346)
+        self.assertIsNone(canonical_input_number(float("nan")))
+
+    def test_a_wide_figure_survives_the_ten_decimal_quantum(self) -> None:
+        # Ten decimals on a figure this wide overflows the default decimal
+        # context; the observation must stay a number rather than become null.
+        self.assertEqual(canonical_input_number(1e21), 1e21)
+
+    def test_the_input_triangle_is_stored_to_ten_decimals(self) -> None:
+        values = [[0.00000123456789, 0.00000234567891, None], [None, None, None], [None, None, None]]
+        method = recalculate_dfm_method(
+            owned_payload(),
+            input_snapshot=input_snapshot(values=values),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="2026-01-02T00:00:00Z",
+        )
+        self.assertEqual(
+            method["data_tab"]["input_data_triangle_values"][0][:2],
+            [0.0000012346, 0.0000023457],
+        )
+
+    def test_a_zero_later_value_holds_no_ratio_at_all(self) -> None:
+        values = [[100.0, 0.0, None], [200.0, 260.0, None], [None, None, None]]
+        method = recalculate_dfm_method(
+            owned_payload(),
+            input_snapshot=input_snapshot(values=values),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="2026-01-02T00:00:00Z",
+        )
+        ratio_values = method["ratios_tab"]["ratio_triangle"]["ratio_values"]
+        self.assertEqual(ratio_values[0], [])
+        self.assertAlmostEqual(ratio_values[1][0], 1.3)
+
+    def test_a_zero_later_value_is_left_out_of_the_column_average(self) -> None:
+        from arcrho_api.dfm_contract import _calculate_average
+
+        values = [[100.0, 0.0], [200.0, 260.0]]
+        mask = [[True, True], [True, True]]
+        excluded = [[0], [0]]
+        for base in ("volume", "simple"):
+            with self.subTest(base=base):
+                self.assertAlmostEqual(
+                    _calculate_average(
+                        values, mask, excluded, 0, base=base, periods="all", extra_exclude=0
+                    ),
+                    1.3,
+                )
+
+    def test_a_ratio_divides_unrounded_input_values(self) -> None:
+        values = [[0.00000123456789, 0.00000234567891, None], [None, None, None], [None, None, None]]
+        method = recalculate_dfm_method(
+            owned_payload(),
+            input_snapshot=input_snapshot(values=values),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="2026-01-02T00:00:00Z",
+        )
+        # Six-decimal operands would collapse both figures onto 0.000001 and
+        # report a ratio of exactly 1.
+        self.assertAlmostEqual(
+            method["ratios_tab"]["ratio_triangle"]["ratio_values"][0][0],
+            round(0.0000023457 / 0.0000012346, 6),
+            places=6,
+        )
 
     def test_output_variants_share_canonical_period_aggregation(self) -> None:
         variants = dfm_output_variants({

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM now divides its ratios from the data exactly as it reads it, so a ratio shown to four decimals is no longer slightly off.",
+  "details": [
+    "The observed triangle a DFM saves in its method file keeps ten decimals instead of six. Six was enough for a large loss figure and far too coarse for a small one, where the rounding landed in the numbers being divided and showed up in the ratio.",
+    "Ratios, averages, the % Developed and the ultimate are all calculated from the full stored values.",
+    "Existing methods are unaffected until their data is next refreshed, and nothing is marked out of date by the change alone."
+  ]
+}

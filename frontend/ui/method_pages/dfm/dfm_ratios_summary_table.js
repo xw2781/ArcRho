@@ -143,7 +143,13 @@ export function updateRatioSummary() {
       config,
       summaryRuntime.ratioStrikeSet
     );
-    const summary = summaryRuntime.computeAverageForColumn(model, col, excluded, config);
+    const summary = summaryRuntime.computeAverageForColumn(
+      model,
+      col,
+      excluded,
+      config,
+      summaryRuntime.ratioStrikeSet
+    );
     if (summary.totalValid > 0 && summary.totalIncluded === 0) {
       cell.textContent = "1.0000";
       cell.classList.remove("na", "ratioPlaceholder", "strike");

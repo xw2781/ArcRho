@@ -6,7 +6,7 @@ drag reorder, column activation, strike toggling
 */
 import {
   state,
-  calcRatio, ratioNumberOrNull, roundRatio, formatRatio,
+  calcRatio, ratioNumberOrNull, persistedRatioOrNull, roundRatio, formatRatio,
   ratioStrikeSet, activeRatioCols, selectedSummaryByCol, summaryRowConfigs,
   getRatioColAllActive, setRatioColAllActive,
   getShowNaBorders, setShowNaBorders,
@@ -62,7 +62,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260820a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260901a";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -261,7 +261,7 @@ export {
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260820a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260901a";
 
 
 
@@ -1014,7 +1014,7 @@ export function renderRatioTable() {
         const hasA = !!(mask[r] && mask[r][c]);
         const hasB = !!(mask[r] && mask[r][c + 1]);
         if (hasA && hasB) {
-          const persistedRatio = persistedRatioTriangleValues?.[r]?.[c];
+          const persistedRatio = persistedRatioOrNull(persistedRatioTriangleValues?.[r]?.[c]);
           const ratio = Number.isFinite(persistedRatio)
             ? persistedRatio
             : calcRatio(vals?.[r]?.[c], vals?.[r]?.[c + 1]);

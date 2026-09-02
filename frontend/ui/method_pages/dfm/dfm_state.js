@@ -23,12 +23,20 @@ __ratioCalcUrl.search = __ratioParams;
 const {
   calcRatio,
   ratioNumberOrNull,
+  persistedRatioOrNull,
   roundRatio,
   formatRatio,
   computeAverageForColumn,
 } = await import(__ratioCalcUrl.toString());
 
-export { calcRatio, ratioNumberOrNull, roundRatio, formatRatio, computeAverageForColumn };
+export {
+  calcRatio,
+  ratioNumberOrNull,
+  persistedRatioOrNull,
+  roundRatio,
+  formatRatio,
+  computeAverageForColumn,
+};
 export { state };
 
 // =============================================================================
@@ -610,7 +618,7 @@ export function getSelectedRatioValues(model, devs) {
       continue;
     }
     const excluded = buildExcludedSetForColumn(model, c, cfg, ratioStrikeSet);
-    const summary = computeAverageForColumn(model, c, excluded, cfg);
+    const summary = computeAverageForColumn(model, c, excluded, cfg, ratioStrikeSet);
     if (summary.totalValid > 0 && summary.totalIncluded === 0) {
       values[c] = 1;
       continue;

@@ -18,6 +18,10 @@ const [
   summaryValidationSource,
   linksSource,
   ratioCalcSource,
+  summaryEntriesSource,
+  stateSource,
+  ratiosChartSource,
+  summaryTableSource,
 ] = await Promise.all([
   source("ui/method_pages/dfm/dfm_method_api.js"),
   source("ui/method_pages/dfm/dfm_persistence.js"),
@@ -31,6 +35,10 @@ const [
   source("ui/method_pages/dfm/ratios_summary/summary_excel_validation.js"),
   source("ui/method_pages/dfm/dfm_links_tab.js"),
   source("ui/method_pages/dfm/dfm_ratio_calc.js"),
+  source("ui/method_pages/dfm/ratios_summary/summary_entries.js"),
+  source("ui/method_pages/dfm/dfm_state.js"),
+  source("ui/method_pages/dfm/dfm_ratios_chart.js"),
+  source("ui/method_pages/dfm/dfm_ratios_summary_table.js"),
 ]);
 
 function functionSlice(text, startMarker, endMarker) {
@@ -333,4 +341,110 @@ test("opaque benchmark averages render from their frozen canonical values", asyn
   assert.equal(result.value, 1.234567);
   assert.equal(result.totalIncluded, 1);
   assert.match(persistenceSource, /isFrozenBenchmark/u);
+});
+
+test("an origin whose later value is zero holds no ratio and joins no average", async () => {
+  // One ResQ column, "(1) 8-20": eight ratios for 2017-2024, a muted 1.0000 at
+  // 2025 where the later value is zero, an empty 2026. Every figure below was
+  // read off ResQ for that column with nothing struck, with 2024 struck, with
+  // 2021 and 2022 struck, and with 2019-2023 struck. The muted origin takes no
+  // place in a "last N" window, adds nothing to a sum, and counts toward no
+  // divisor. Counting it as a ratio of zero read "Simple - 2" as 0.9596.
+  const ratioCalc = await import(
+    `data:text/javascript;base64,${Buffer.from(ratioCalcSource).toString("base64")}`
+  );
+  const ratios = [1.9232, 1.8949, 1.8139, 1.7265, 1.9000, 2.8251, 1.9474, 1.9191, 0, null];
+  const model = {
+    values: ratios.map((ratio) => [1, ratio]),
+    mask: ratios.map((ratio) => [true, ratio !== null]),
+    origin_labels: ratios.map((_, index) => String(2017 + index)),
+  };
+  assert.equal(ratioCalc.calcRatio(1, 0), null);
+  assert.equal(ratioCalc.persistedRatioOrNull(0), null);
+
+  const key = (row) => `${row},0`;
+  // Read the way the tab reads it: canonical six decimals, shown at four.
+  const at = (struck, periods, dropped = []) => ratioCalc.formatRatio(
+    ratioCalc.roundRatio(
+      ratioCalc.computeAverageForColumn(
+        model,
+        0,
+        new Set([...struck, ...dropped].map(key)),
+        { base: "simple", periods },
+        new Set(struck.map(key)),
+      ).value,
+      6,
+    ),
+    4,
+  );
+
+  // Nothing struck out.
+  assert.equal(at([], 8), "1.9938");
+  assert.equal(at([], 8, [3, 5]), "1.8998");
+  assert.equal(at([], 5), "2.0636");
+  assert.equal(at([], 5, [3, 5]), "1.9222");
+  assert.equal(at([], 3), "2.2305");
+  assert.equal(at([], 2), "1.9333");
+
+  // 2024 struck out.
+  assert.equal(at([7], 8), "2.0044");
+  assert.equal(at([7], 8, [3, 5]), "1.8959");
+  assert.equal(at([7], 5), "2.0426");
+  assert.equal(at([7], 5, [3, 5]), "1.8871");
+  assert.equal(at([7], 3), "2.2242");
+  assert.equal(at([7], 2), "2.3863");
+
+  // 2021 and 2022 struck out.
+  assert.equal(at([4, 5], 8), "1.8708");
+  assert.equal(at([4, 5], 8, [3, 6]), "1.8878");
+  assert.equal(at([4, 5], 5), "1.8604");
+  assert.equal(at([4, 5], 5, [3, 6]), "1.8760");
+  assert.equal(at([4, 5], 3), "1.8643");
+  assert.equal(at([4, 5], 2), "1.9333");
+
+  // 2019-2023 struck out, leaving three ratios; one Ex hi/lo pair still comes
+  // off them and the row reports the single ratio left rather than 1.0.
+  assert.equal(at([2, 3, 4, 5, 6], 8), "1.9124");
+  assert.equal(at([2, 3, 4, 5, 6], 8, [0, 1]), "1.9191");
+  assert.equal(at([2, 3, 4, 5, 6], 5), "1.9124");
+  assert.equal(at([2, 3, 4, 5, 6], 5, [0, 1]), "1.9191");
+  assert.equal(at([2, 3, 4, 5, 6], 3), "1.9124");
+  assert.equal(at([2, 3, 4, 5, 6], 2), "1.9070");
+});
+
+test("an Ex hi/lo row averages within its window instead of reaching past it", async () => {
+  // Ratios read off a live DFM: 2017-2025 with 2020 and 2021 struck out and
+  // 2026 still empty. "Simple - 5" draws 2019, 2022-2025; "Simple - 5 Ex hi/lo"
+  // drops 2022 (highest) and 2024 (lowest) from those five and averages the
+  // remaining three, 2.8575. The Ratios tab used to refill the two dropped
+  // places with 2018 and 2017 and show 2.8689, the "Simple - 8 Ex hi/lo" value.
+  const ratioCalc = await import(
+    `data:text/javascript;base64,${Buffer.from(ratioCalcSource).toString("base64")}`
+  );
+  const ratios = [2.8631, 2.9092, 2.9545, 3.4889, 3.3447, 3.0247, 2.8896, 2.6347, 2.7283, null];
+  const model = {
+    values: ratios.map((ratio) => [1, ratio]),
+    mask: ratios.map((ratio) => [true, ratio !== null]),
+    origin_labels: ratios.map((_, index) => String(2017 + index)),
+  };
+  const strikes = new Set(["3,0", "4,0"]);
+  const withHighLowDropped = new Set([...strikes, "5,0", "7,0"]);
+
+  const simpleFive = ratioCalc.computeAverageForColumn(model, 0, strikes, { base: "simple", periods: 5 });
+  assert.equal(simpleFive.value.toFixed(4), "2.8464");
+
+  const exHiLo = ratioCalc.computeAverageForColumn(
+    model, 0, withHighLowDropped, { base: "simple", periods: 5 }, strikes,
+  );
+  assert.equal(exHiLo.value.toFixed(4), "2.8575");
+  assert.equal(exHiLo.totalIncluded, 3);
+
+  // Every caller that builds an Ex hi/lo exclusion set hands the strikes on as the window.
+  for (const text of [persistenceSource, summaryEntriesSource, stateSource, ratiosChartSource]) {
+    assert.doesNotMatch(text, /computeAverageForColumn\([^)]*\bcfg(?:ForRange)?\)/u);
+  }
+  assert.match(
+    summaryTableSource,
+    /computeAverageForColumn\([^)]*summaryRuntime\.ratioStrikeSet\s*\)/u,
+  );
 });

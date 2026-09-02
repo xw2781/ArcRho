@@ -123,7 +123,10 @@ test("a null ratio stays null instead of rounding to zero", () => {
   assert.equal(roundAnalysisValue(undefined), null);
   assert.equal(roundAnalysisValue(""), null);
   assert.equal(roundAnalysisValue(0), 0);
-  assert.equal(roundAnalysisValue(calcRatio(5, 0)), 0);
+  // A zero later value is no ratio either: the origin has nothing to develop
+  // from, so the cell reads as the muted placeholder and no average uses it.
+  assert.equal(calcRatio(5, 0), null);
+  assert.equal(roundAnalysisValue(calcRatio(5, 0)), null);
   assert.equal(roundAnalysisValue(calcRatio(2.461532, 11.924039)), 4.844154);
 });
 
@@ -147,7 +150,9 @@ test("ratio-value rows and exclusion rows keep matching lengths", () => {
   }
   // An all-zero origin has no ratios at all, so it must not fabricate any.
   assert.deepEqual(ratioValues[0], []);
-  assert.deepEqual(ratioValues[1], [4.844154, 0]);
+  // The second origin develops once and then holds zero, so its one ratio is
+  // followed by nothing rather than by a ratio of zero.
+  assert.deepEqual(ratioValues[1], [4.844154]);
   assert.deepEqual(ratioValues[2], [2, 2, 2]);
   assert.deepEqual(pattern[2], [1, 0, 0]);
 });

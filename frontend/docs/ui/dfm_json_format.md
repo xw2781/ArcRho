@@ -88,7 +88,9 @@ Layout never reaches a revision: `owned`, `derived`, and `publication` hash a `s
 
 ## Calculation and Numeric Rules
 
-All persisted numeric values use six-decimal, half-away-from-zero normalization. The canonical Python contract owns ratio calculation, average calculation, internal User Entry formula evaluation, ultimate calculation, field projection, and revisions. The frontend calls the local preview endpoint for canonical interactive derivation.
+Persisted numeric values use half-away-from-zero normalization at six decimals, with one exception: the observed input triangle (`input_data_triangle_values`) is stored at ten decimals. Six decimals is enough for a derived figure a reader checks by eye, and too coarse for the operands every ratio and every average divides — a small observation rounded at the sixth decimal moves a ratio read at four. Ratio triangle values, average formula values, the ultimate vector, and the Ratio Basis stay at six decimals, and the input source revision is still fingerprinted at six so a stored revision does not shift under this rule. The canonical Python contract owns ratio calculation, average calculation, internal User Entry formula evaluation, ultimate calculation, field projection, and revisions. The frontend calls the local preview endpoint for canonical interactive derivation.
+
+A ratio exists only where both values are present and non-zero. A zero later value stores `null`, not `0`, so the cell renders as the muted placeholder, takes no place in a "last N" window, and enters no sum and no divisor. `Ex hi/lo` then trims its pair from the ratios that remain, which is how ResQ reads the same column.
 
 A formula containing any Excel reference freezes its complete stored result during automatic upstream refresh, including mixed Excel/internal formulas. A non-Excel User Entry formula is recalculated. Literal User Entry values, formula definitions, selections, and exclusions are preserved.
 

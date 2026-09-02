@@ -743,7 +743,7 @@ function computeSummaryRowValueForColumn(model, col, rowId, cache, visiting, lab
     }
   } else {
     const excluded = buildExcludedSetForColumn(model, col, cfg, ratioStrikeSet);
-    const summary = computeAverageForColumn(model, col, excluded, cfg);
+    const summary = computeAverageForColumn(model, col, excluded, cfg, ratioStrikeSet);
     if (summary.totalValid > 0 && summary.totalIncluded === 0) {
       value = 1;
     } else {

@@ -155,13 +155,20 @@ function resolveUserEntryToSourceConfig(cfg, col) {
   return null;
 }
 
-function buildUsedRowSetForColumn(model, col, cfg, excludedSet) {
+// `excludedSet` is every ratio left out of the average; `windowExcludedSet` is
+// only the user's strikes, which are what a "last N" window is counted over. A
+// high/low pair dropped by an "Ex hi/lo" row keeps its place in the window, so
+// the chart marks the same rows as used that the average actually draws on.
+function buildUsedRowSetForColumn(model, col, cfg, excludedSet, windowExcludedSet = excludedSet) {
   const used = new Set();
   if (!cfg) return used;
   if (isUserEntryConfig(cfg)) {
     // Resolve to the underlying summary method if formula references one
     const sourceCfg = resolveUserEntryToSourceConfig(cfg, col);
-    if (sourceCfg) return buildUsedRowSetForColumn(model, col, sourceCfg, excludedSet);
+    if (sourceCfg) {
+      const sourceExcluded = buildExcludedSetForColumn(model, col, sourceCfg, windowExcludedSet);
+      return buildUsedRowSetForColumn(model, col, sourceCfg, sourceExcluded, windowExcludedSet);
+    }
     return used;
   }
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return used;
@@ -190,8 +197,10 @@ function buildUsedRowSetForColumn(model, col, cfg, excludedSet) {
       if (picked >= lookback) break;
       const ratio = includeRow(r);
       if (!Number.isFinite(ratio)) continue;
-      if (excludedSet && excludedSet.has(`${r},${col}`)) continue;
+      const key = `${r},${col}`;
+      if (windowExcludedSet && windowExcludedSet.has(key)) continue;
       picked += 1;
+      if (excludedSet && excludedSet.has(key)) continue;
       used.add(r);
     }
   } else {
@@ -386,7 +395,7 @@ function buildRatioColumnSeries(col) {
   const status = [];
   const cfg = getSelectedSummaryConfigForCol(col);
   const excludedSet = buildExcludedSetForColumn(model, col, cfg, ratioStrikeSet);
-  const usedSet = buildUsedRowSetForColumn(model, col, cfg, excludedSet);
+  const usedSet = buildUsedRowSetForColumn(model, col, cfg, excludedSet, ratioStrikeSet);
 
   for (let r = 0; r < origins.length; r++) {
     labels.push(String(origins[r] ?? ""));
@@ -650,7 +659,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
         const model2 = state.model;
         if (model2 && Array.isArray(model2.values) && Array.isArray(model2.mask)) {
           const exc = buildExcludedSetForColumn(model2, chartColForRange, cfgForRange, ratioStrikeSet);
-          const sum = computeAverageForColumn(model2, chartColForRange, exc, cfgForRange);
+          const sum = computeAverageForColumn(model2, chartColForRange, exc, cfgForRange, ratioStrikeSet);
           const isVol = String(cfgForRange.base || "volume").toLowerCase() === "volume";
           const hasVal = sum.value !== null && (isVol ? sum.sumA : sum.totalIncluded > 0);
           selVal = hasVal ? sum.value : null;
@@ -1004,7 +1013,7 @@ function renderRatioColumnChart(canvas, labels, values, status) {
           selectedValue = getUserEntryValueForCol(cfg, chartCol);
         } else {
           const excluded = buildExcludedSetForColumn(model, chartCol, cfg, ratioStrikeSet);
-          const summary = computeAverageForColumn(model, chartCol, excluded, cfg);
+          const summary = computeAverageForColumn(model, chartCol, excluded, cfg, ratioStrikeSet);
           const isVolume = String(cfg.base || "volume").toLowerCase() === "volume";
           const hasValue = summary.value !== null && (isVolume ? summary.sumA : summary.totalIncluded > 0);
           selectedValue = hasValue ? summary.value : null;

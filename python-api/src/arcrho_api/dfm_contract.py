@@ -13,7 +13,7 @@ import math
 import re
 from copy import deepcopy
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
@@ -35,7 +35,9 @@ from .timestamps import persisted_timestamp as _timestamp
 
 DFM_JSON_FORMAT = "arcrho-dfm-v4"
 DFM_VALUE_DECIMAL_PLACES = 6
+DFM_INPUT_VALUE_DECIMAL_PLACES = 10
 _QUANTUM = Decimal("0.000001")
+_INPUT_QUANTUM = Decimal("0.0000000001")
 _EXCEL_REFERENCE_RE = re.compile(
     r"(?:\[[^\]]+\]|(?:^|[=+\-*/,(])\s*'(?:[^']|'')+'!\s*\$?[A-Za-z]{1,3}\$?\d+|"
     r"(?:^|[=+\-*/,(])\s*[^\s+\-*/(),]+!\s*\$?[A-Za-z]{1,3}\$?\d+)",
@@ -61,16 +63,19 @@ def _integer(value: Any, default: int, *, minimum: int = 0, maximum: int | None 
     return min(result, maximum) if maximum is not None else result
 
 
-def canonical_number(value: Any) -> float | int | None:
-    """Return one JSON number rounded half-away-from-zero to six decimals."""
-
+def _canonical(value: Any, quantum: Decimal) -> float | int | None:
     if value is None or isinstance(value, bool) or value == "":
         return None
     try:
         number = float(value)
         if not math.isfinite(number):
             return None
-        rounded = Decimal(str(abs(number))).quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+        with localcontext() as context:
+            # A wide origin figure carried to ten decimals needs more digits than
+            # the default 28-digit context allows, and an overflow there would
+            # quietly turn the observation into "no value" instead of a number.
+            context.prec = 60
+            rounded = Decimal(str(abs(number))).quantize(quantum, rounding=ROUND_HALF_UP)
     except (TypeError, ValueError, InvalidOperation):
         return None
     result = float(rounded)
@@ -81,6 +86,26 @@ def canonical_number(value: Any) -> float | int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return int(result)
     return result
+
+
+def canonical_number(value: Any) -> float | int | None:
+    """Return one JSON number rounded half-away-from-zero to six decimals."""
+
+    return _canonical(value, _QUANTUM)
+
+
+def canonical_input_number(value: Any) -> float | int | None:
+    """Return one input-triangle number rounded half-away-from-zero to ten decimals.
+
+    Six decimals is the right precision for a *derived* figure a reader checks
+    by eye. It is the wrong precision for the observed triangle every ratio and
+    every average divides, because the rounding lands in the operands and then
+    shows up in a ratio read at four decimals. The observed triangle is stored
+    and calculated at ten decimals instead, which is well inside what a JSON
+    double round-trips exactly and still keeps the file readable.
+    """
+
+    return _canonical(value, _INPUT_QUANTUM)
 
 
 _MONTH_BY_NAME = {
@@ -205,6 +230,16 @@ def _number_matrix(value: Any) -> list[list[float | int | None]]:
     if not isinstance(value, list):
         return []
     return [_numbers(row) if isinstance(row, list) else [] for row in value]
+
+
+def _input_numbers(value: Any) -> list[float | int | None]:
+    return [canonical_input_number(item) for item in value] if isinstance(value, list) else []
+
+
+def _input_number_matrix(value: Any) -> list[list[float | int | None]]:
+    if not isinstance(value, list):
+        return []
+    return [_input_numbers(row) if isinstance(row, list) else [] for row in value]
 
 
 def _bool_matrix(value: Any) -> list[list[bool]]:
@@ -391,7 +426,9 @@ def normalize_dfm_method(
     development_labels = _labels(data_source.get("development_labels"))
     row_count = len(origin_labels)
     dev_count = len(development_labels)
-    input_values = _fit_matrix(_number_matrix(data_source.get("input_data_triangle_values")), row_count, dev_count, None)
+    input_values = _fit_matrix(
+        _input_number_matrix(data_source.get("input_data_triangle_values")), row_count, dev_count, None
+    )
     raw_mask = _bool_matrix(data_source.get("input_data_triangle_mask"))
     if not raw_mask:
         raw_mask = [[value is not None for value in row] for row in input_values]
@@ -1081,7 +1118,7 @@ def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) 
         raise DfmContractError(
             "DFM input development-label geometry changed; preserve the last valid method and require review."
         )
-    values = _number_matrix(snapshot.get("values"))
+    values = _input_number_matrix(snapshot.get("values"))
     mask = _bool_matrix(snapshot.get("mask"))
     if not mask:
         mask = [[item is not None for item in row] for row in values]
@@ -1220,9 +1257,12 @@ def _calculate_ratio_triangle(values: list[list[Any]], mask: list[list[bool]], d
             if col + 1 >= len(row_mask) or not row_mask[col] or not row_mask[col + 1]:
                 row.append(None)
                 continue
-            left = canonical_number(row_values[col] if col < len(row_values) else None)
-            right = canonical_number(row_values[col + 1] if col + 1 < len(row_values) else None)
-            if left in (None, 0) or right is None:
+            left = canonical_input_number(row_values[col] if col < len(row_values) else None)
+            right = canonical_input_number(row_values[col + 1] if col + 1 < len(row_values) else None)
+            # A later value of zero is not a ratio of zero: the origin has
+            # nothing to develop from, so the cell holds no ratio at all rather
+            # than a 0 that would drag the column's averages down with it.
+            if left in (None, 0) or right in (None, 0):
                 row.append(None)
             else:
                 row.append(canonical_number(float(right) / float(left)))
@@ -1242,9 +1282,9 @@ def _selected_rows(
     for row in range(len(values)):
         if row >= len(mask) or col + 1 >= len(mask[row]) or not mask[row][col] or not mask[row][col + 1]:
             continue
-        left = canonical_number(values[row][col])
-        right = canonical_number(values[row][col + 1])
-        if left in (None, 0) or right is None:
+        left = canonical_input_number(values[row][col])
+        right = canonical_input_number(values[row][col + 1])
+        if left in (None, 0) or right in (None, 0):
             continue
         ratio = float(right) / float(left)
         if not math.isfinite(ratio):
@@ -1580,7 +1620,7 @@ def _latest_column(data: Mapping[str, Any], row: int) -> int | None:
         (
             col
             for col in range(min(len(row_values), len(row_mask), len(data["development_labels"])) - 1, -1, -1)
-            if row_mask[col] and canonical_number(row_values[col]) is not None
+            if row_mask[col] and canonical_input_number(row_values[col]) is not None
         ),
         None,
     )
@@ -1833,6 +1873,7 @@ build_dfm_method_v2 = normalize_dfm_method
 __all__ = [
     "DFM_JSON_FORMAT",
     "DFM_VALUE_DECIMAL_PLACES",
+    "DFM_INPUT_VALUE_DECIMAL_PLACES",
     "DfmContractError",
     "aggregate_vector_values",
     "apply_owned_patch",
