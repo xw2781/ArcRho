@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Import ResQ Reserving Class now checks every dataset the ArcRho Engine generates against ResQ's copy and warns when any cell differs at two decimal places.",
+  "details": [
+    "After the Engine has built a generated triangle or vector, the import reads ResQ's values for the same dataset and compares them cell by cell, treating a blank on one side and a number on the other as a difference.",
+    "The completion box turns into a warning that stays on screen, naming each differing dataset, how many cells differ, and the first differing cell with both values.",
+    "The Engine result is kept in ArcRho either way; the warning tells you where ResQ would show different numbers."
+  ]
+}

@@ -165,12 +165,13 @@ test("excelLinkDetailRows gives every usage its own row", () => {
 test("the table columns name the detail row and carry explicit widths", () => {
   assert.deepEqual(
     excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => col.key),
-    ["workbook", "folder", "methodType", "name", "lastModified", "created", "user"],
+    ["name", "methodType", "workbook", "folder", "lastModified", "created", "user"],
     "Status and Links are gone; the used-by column became one row per object",
   );
   const byKey = new Map(excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
   assert.equal(byKey.get("name").label, "Dataset Name");
   assert.equal(byKey.get("methodType").label, "Method Type");
+  assert.equal(byKey.get("folder").label, "Location");
   // The three workbook-metadata columns are named exactly as the dataset
   // table's, because they answer the same question about a different object.
   assert.equal(byKey.get("lastModified").label, "Last Modified");

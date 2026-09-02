@@ -35,6 +35,7 @@ EXCLUDED_DIRS = {
     "python_dist",
     "python_build",
     "__pycache__",
+    ".pytest_cache",
     "local_workspace_log",
 }
 

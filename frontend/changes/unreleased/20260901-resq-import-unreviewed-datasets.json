@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Import ResQ Reserving Class now brings across the calculated and Engine-generated datasets of the reserving class, which the review table never listed and the import silently left out.",
+  "details": [
+    "The review table deliberately hides datasets both systems rebuild from their inputs, but the import only brought across what was ticked, so those datasets never reached ArcRho.",
+    "They are now imported whatever was ticked, and when the class already exists in ArcRho the usual merge or overwrite rule decides between the fresh copy and the existing one.",
+    "Dataset types ArcRho does not configure are still skipped, as before."
+  ]
+}

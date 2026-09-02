@@ -40,10 +40,10 @@ import { formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a
 // wraps to a second line rather than being cut short (see the two-line clamp
 // in excel_links_window.css).
 export const EXCEL_LINK_COLUMNS = [
-  { key: "workbook", label: "Workbook", width: 190, minWidth: 90, maxAutoWidth: 300, filterable: true },
-  { key: "folder", label: "Folder", width: 280, minWidth: 90, maxAutoWidth: 420, filterable: true },
-  { key: "methodType", label: "Method Type", width: 132, minWidth: 70, maxAutoWidth: 180, filterable: true },
   { key: "name", label: "Dataset Name", width: 200, minWidth: 90, maxAutoWidth: 300, filterable: true },
+  { key: "methodType", label: "Method Type", width: 132, minWidth: 70, maxAutoWidth: 180, filterable: true },
+  { key: "workbook", label: "Workbook", width: 190, minWidth: 90, maxAutoWidth: 300, filterable: true },
+  { key: "folder", label: "Location", width: 280, minWidth: 90, maxAutoWidth: 420, filterable: true },
   { key: "lastModified", label: "Last Modified", width: 151, minWidth: 110, maxAutoWidth: 200, filterable: true },
   { key: "created", label: "Created", width: 142, minWidth: 110, maxAutoWidth: 200, filterable: true },
   { key: "user", label: "User", width: 129, minWidth: 90, maxAutoWidth: 220, filterable: true },
@@ -95,7 +95,9 @@ export function excelLinkDetailRows(workbooks) {
 /** The text one column shows for a row; also the value its filter matches. */
 export function excelLinkCellText(row, key) {
   if (key === "workbook") return text(row?.workbookName);
-  if (key === "folder") return text(row?.folder);
+  // `row.folder` keeps its trailing separator for building an Excel external
+  // reference; the column only displays the path, so it drops that separator.
+  if (key === "folder") return text(row?.folder).replace(/[\\/]+$/, "");
   if (key === "methodType") {
     // The server resolves Method Type through the same owner the dataset table
     // reads. The kind stands in only for a server that predates the field.
@@ -389,7 +391,7 @@ export function createExcelLinksTable(options = {}) {
         ? row.workbookPath
         : `${row.workbookPath}\n\nArcRho Server cannot open this workbook at this path.`);
     } else if (col.key === "folder") {
-      attachArcrhoTooltip(td, row.folder);
+      attachArcrhoTooltip(td, value);
     }
     return td;
   }

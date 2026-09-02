@@ -31,10 +31,10 @@
 
 ## Core Features
 - Dataset in-cell formula
-- Export to ResQ (Macro)
 
 ## Enhancements
-- Show diagnostic triangles
 - Flight Deck Shortcut
+- Show diagnostic triangles
+- Export to ResQ (w/ Preview Window)
 
 ## 

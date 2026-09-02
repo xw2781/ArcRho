@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Excel Link Manager now leads with the dataset or method that uses a workbook, and its folder column is named Location.",
+  "details": [
+    "The columns read Dataset Name, Method Type, Workbook, Location, then the workbook's own Last Modified, Created, and User, so the object the reader acts on comes first.",
+    "The Location cell and its tooltip no longer end in a stray path separator."
+  ]
+}

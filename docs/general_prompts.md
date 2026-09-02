@@ -1,4 +1,4 @@
-26/8/27
+2027/9/1
 
 # Set model to Opus 4.8 (1M context) for a session
 
@@ -33,6 +33,7 @@ Run the commit workflow and push.
 
 Macros
 "Import ResQ Reserving Class"
+"Import ResQ Reserving Classes"
 "Export Reserving Class to ResQ"
 "Sync Reserving Class with ResQ"
 
@@ -46,7 +47,7 @@ Path: HPPREF\HO+DF\NJ\Legacy\HOL
 
 # Server Components Rebuild and Deploy
 
-commit, rebuild and deploy server components
+Run the commit workflow, rebuild and deploy server components if needed.
 
 
 # Create 4 Adjustment Vectors

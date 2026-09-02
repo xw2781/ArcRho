@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "macro",
+  "audience": "user",
+  "summary": "Import ResQ Reserving Classes now always offers its built-in list of default reserving classes and creates the folder for any listed class the project does not hold yet.",
+  "details": [
+    "The review table lists the fixed default classes, all preselected, instead of scanning the project for every reserving-class folder; classes outside the list are never offered.",
+    "A listed class with no ArcRho folder yet shows as New in the table, is imported into a freshly created folder, and is named in the batch summary.",
+    "The macro no longer reads the shared support bundle to find its default selection, so the list is the same on every machine."
+  ]
+}
