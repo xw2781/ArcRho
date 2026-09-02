@@ -32,7 +32,13 @@ A resizable floating window should grow and shrink from one corner while its opp
 
 ### L16 - Pointer capture for drag and resize handles
 
-Wire a custom drag or resize handle with Pointer Events and `setPointerCapture` on the handle itself, not `mousedown`/`mousemove`/`mouseup` listeners attached to `document`. Without capture, a fast drag can outrun the browser's hit-testing and the gesture silently stops tracking partway through; capture keeps every subsequent `pointermove`/`pointerup` routed to the handle no matter what the cursor ends up over or how quickly it got there.
+Every custom drag, resize, splitter, or slider handle must use Pointer Events with `setPointerCapture` on the handle itself. This is a hard rule, not a preference: without capture a fast drag outruns the browser's hit-testing and the gesture silently stops tracking partway through, which reads to the user as the window "losing control" mid-drag.
+
+- **Capture on the handle.** Call `setPointerCapture(event.pointerId)` in `pointerdown` and attach `pointermove`, `pointerup`, `pointercancel`, and `lostpointercapture` to that same handle element.
+- **Never track on `document` or `window`.** Global `mousemove`/`mouseup` listeners are the bug, and moving them from `document` to `window` does not fix it. The gesture is still lost the moment the pointer crosses an iframe, a nested window, or the app edge.
+- **Match the pointer id.** Ignore move and release events whose `pointerId` differs from the one captured, so a second pointer or a stray device cannot steer or end the drag.
+- **End the gesture once.** Release the capture, remove the handle listeners, and clear the drag state in a single stop path shared by `pointerup`, `pointercancel`, `lostpointercapture`, and the component's own teardown, so a dialog closed mid-drag leaves nothing behind.
+- **Applies to every movable surface.** Floating window and dialog headers, progress and message windows, resize corners and edges, panel splitters, and formula-bar or chart handles all follow the same pattern.
 
 ## Atlas Components
 

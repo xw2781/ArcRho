@@ -224,19 +224,52 @@ function installAutomationStyles() {
     }
     .uiAutomationProgressDialog .uiAutomationDialogBody {
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
       flex: 1 1 auto;
       height: auto;
       max-height: none;
       min-height: 58px;
-      padding: 10px 14px 18px;
+      padding: 10px 14px 14px;
       overflow: hidden;
+      /* The generic body keeps template whitespace for message text; here it
+         would turn the newlines between rows into blank lines and push the
+         Cancel row out of the fixed-height window. */
+      white-space: normal;
+    }
+    .uiAutomationProgressActions {
+      display: flex;
+      flex: 0 0 auto;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+    .uiAutomationProgressActions[hidden] {
+      display: none;
+    }
+    .uiAutomationProgressCancel {
+      height: 28px;
+      min-width: 84px;
+      border-radius: 4px;
+    }
+    .uiAutomationProgressCancel:hover:not([disabled]) {
+      border-color: #93a4bd;
+      background: #f8fafc;
+    }
+    .uiAutomationProgressCancel[disabled] {
+      color: #64748b;
+      background: #f1f5f9;
+      cursor: default;
     }
     .uiAutomationProgressMeta {
       display: flex;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
       height: 16px;
+      /* The label and bar float in the middle of whatever height the Cancel
+         row leaves them, so the window reads the same with or without it. */
+      margin-top: auto;
       margin-bottom: 4px;
       color: #64748b;
       font-size: 11px;
@@ -257,8 +290,9 @@ function installAutomationStyles() {
     }
     .uiAutomationProgressTrack {
       position: relative;
+      flex: 0 0 auto;
       height: 12px;
-      margin-bottom: 2px;
+      margin-bottom: auto;
       overflow: hidden;
       border: 1px solid #bfdbfe;
       border-radius: 999px;
@@ -341,27 +375,51 @@ function enableDialogDrag(overlay, dialog) {
     dialog.style.left = `${next.left}px`;
     dialog.style.top = `${next.top}px`;
   };
+  // The move/up listeners live on the header and the header captures the
+  // pointer, so a fast drag cannot outrun hit-testing and lose the gesture
+  // (ArcRho UI rule L16).
   const onPointerMove = (event) => {
-    if (!drag) return;
+    if (!drag || event.pointerId !== drag.pointerId) return;
     event.preventDefault();
     applyPosition(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y);
   };
-  const stopDrag = () => {
+  const stopDrag = (event) => {
     if (!drag) return;
+    if (event && event.pointerId !== undefined && event.pointerId !== drag.pointerId) return;
+    const { pointerId } = drag;
     drag = null;
     overlay.classList.remove("dragging");
-    window.removeEventListener("pointermove", onPointerMove, true);
-    window.removeEventListener("pointerup", stopDrag, true);
-    window.removeEventListener("pointercancel", stopDrag, true);
+    header.removeEventListener("pointermove", onPointerMove);
+    header.removeEventListener("pointerup", stopDrag);
+    header.removeEventListener("pointercancel", stopDrag);
+    header.removeEventListener("lostpointercapture", stopDrag);
+    try {
+      if (header.hasPointerCapture?.(pointerId)) header.releasePointerCapture(pointerId);
+    } catch {
+      /* the pointer is already gone; nothing to release */
+    }
   };
   const onPointerDown = (event) => {
     if (event.button !== 0) return;
+    if (drag) stopDrag();
     const rect = dialog.getBoundingClientRect();
-    drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    drag = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: rect.left,
+      top: rect.top,
+    };
     overlay.classList.add("dragging");
-    window.addEventListener("pointermove", onPointerMove, true);
-    window.addEventListener("pointerup", stopDrag, true);
-    window.addEventListener("pointercancel", stopDrag, true);
+    header.addEventListener("pointermove", onPointerMove);
+    header.addEventListener("pointerup", stopDrag);
+    header.addEventListener("pointercancel", stopDrag);
+    header.addEventListener("lostpointercapture", stopDrag);
+    try {
+      header.setPointerCapture?.(event.pointerId);
+    } catch {
+      /* capture is unavailable; the header listeners still track the drag */
+    }
     event.preventDefault();
   };
   const onResize = () => {
@@ -657,6 +715,43 @@ function applyProgressWindowState(entry, args = {}) {
       fillEl.style.minWidth = percent > 0 ? "3px" : "0";
     }
   }
+  applyProgressCancelState(entry, args);
+}
+
+// A caller that can stop its job passes `cancellable` on open and on every
+// update while stopping is still possible, then `false` once the job has gone
+// past the point of no return; the button follows that flag. `onCancel` runs
+// once, after which the button reads "Cancelling..." until the caller closes
+// or re-enables it.
+function applyProgressCancelState(entry, args = {}) {
+  if (typeof args.onCancel === "function") entry.onCancel = args.onCancel;
+  if (args.cancellable === undefined) return;
+  const actionsEl = entry.overlay.querySelector(".uiAutomationProgressActions");
+  const buttonEl = entry.overlay.querySelector(".uiAutomationProgressCancel");
+  if (!actionsEl || !buttonEl) return;
+  const cancellable = !!args.cancellable;
+  if (cancellable && !entry.cancellable) {
+    entry.cancelRequested = false;
+    buttonEl.disabled = false;
+    buttonEl.textContent = "Cancel";
+  }
+  entry.cancellable = cancellable;
+  actionsEl.hidden = !cancellable;
+}
+
+function requestProgressCancel(entry) {
+  if (!entry || !entry.cancellable || entry.cancelRequested) return;
+  entry.cancelRequested = true;
+  const buttonEl = entry.overlay?.querySelector(".uiAutomationProgressCancel");
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = "Cancelling...";
+  }
+  try {
+    entry.onCancel?.();
+  } catch (error) {
+    console.warn("Progress cancel handler failed:", error);
+  }
 }
 
 export function openAutomationProgress(args = {}) {
@@ -692,6 +787,9 @@ export function openAutomationProgress(args = {}) {
         <div class="uiAutomationProgressTrack" aria-hidden="true">
           <div class="uiAutomationProgressFill"></div>
         </div>
+        <div class="uiAutomationProgressActions" hidden>
+          <button class="uiAutomationDialogBtn uiAutomationProgressCancel" type="button">Cancel</button>
+        </div>
       </div>
     </section>
   `;
@@ -704,7 +802,10 @@ export function openAutomationProgress(args = {}) {
   dialog.style.left = `${next.left}px`;
   dialog.style.top = `${next.top}px`;
   const cleanupDrag = enableDialogDrag(overlay, dialog);
-  const entry = { overlay, cleanupDrag, total: 0, completed: 0, label: "" };
+  const entry = {
+    overlay, cleanupDrag, total: 0, completed: 0, label: "",
+    cancellable: false, cancelRequested: false, onCancel: null,
+  };
   progressWindows.set(progressId, entry);
   const closeButton = overlay.querySelector(".uiAutomationDialogClose");
   closeButton?.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -712,6 +813,13 @@ export function openAutomationProgress(args = {}) {
     event.preventDefault();
     event.stopPropagation();
     closeAutomationProgress({ progressId, dismiss: true });
+  });
+  const cancelButton = overlay.querySelector(".uiAutomationProgressCancel");
+  cancelButton?.addEventListener("pointerdown", (event) => event.stopPropagation());
+  cancelButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    requestProgressCancel(entry);
   });
   applyProgressWindowState(entry, {
     title: "ArcRho Progress",

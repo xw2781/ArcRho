@@ -1,8 +1,8 @@
 import { shell } from "./shell_context.js?v=20260510a";
 import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
 import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260831a";
-import { isFlightDeckVisible, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260831e";
-import { initUpdateProgressBridge } from "./update_progress.js?v=20260828f";
+import { isFlightDeckVisible, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260901b";
+import { initUpdateProgressBridge } from "./update_progress.js?v=20260901drag1";
 import { initReleaseNotesDialog, openReleaseHistory } from "./release_notes_dialog.js?v=20260820a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "../shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 

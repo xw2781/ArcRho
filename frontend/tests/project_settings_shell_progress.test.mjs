@@ -62,6 +62,49 @@ test("only a registered Project Settings iframe can route shell progress", () =>
   assert.equal(calls[0][1].progressId, "ps-1:duplicate-1");
   assert.equal(calls[1][1].completed, 2);
   assert.equal(calls[2][1].autoCloseMs, 850);
+  assert.equal("cancellable" in calls[0][1], false, "a page that says nothing about cancel gets no button");
+  assert.equal("onCancel" in calls[0][1], false);
+});
+
+test("a cancellable progress window hands Cancel back to the owning Project Settings tab", () => {
+  calls.length = 0;
+  const posted = [];
+  projectSettingsFrame.postMessage = (message, origin) => posted.push([message, origin]);
+  try {
+    handleProjectSettingsProgressMessage(projectSettingsFrame, {
+      type: "arcrho:project-settings-progress",
+      action: "open",
+      progressId: "duplicate-2",
+      label: "Copying...",
+      cancellable: true,
+    });
+    handleProjectSettingsProgressMessage(projectSettingsFrame, {
+      type: "arcrho:project-settings-progress",
+      action: "update",
+      progressId: "duplicate-2",
+      label: "Finalizing...",
+      cancellable: false,
+    });
+    assert.equal(calls[0][1].cancellable, true);
+    assert.equal(typeof calls[0][1].onCancel, "function");
+    assert.equal(calls[1][1].cancellable, false);
+
+    calls[0][1].onCancel();
+    assert.deepEqual(posted, [[
+      { type: "arcrho:project-settings-progress-cancel", progressId: "duplicate-2" },
+      globalThis.location?.origin || "*",
+    ]]);
+  } finally {
+    delete projectSettingsFrame.postMessage;
+  }
+});
+
+test("the shell progress window carries a Cancel button that follows the cancellable flag", async () => {
+  const automationSource = await readFile(new URL("../ui/shell/ui_automation.js", import.meta.url), "utf8");
+  assert.match(automationSource, /class="uiAutomationDialogBtn uiAutomationProgressCancel"/u);
+  assert.match(automationSource, /function applyProgressCancelState\(/u);
+  assert.match(automationSource, /actionsEl\.hidden = !cancellable/u);
+  assert.match(automationSource, /buttonEl\.textContent = "Cancelling\.\.\."/u);
 });
 
 test("Project Settings progress rejects a mismatched message origin", () => {
@@ -96,4 +139,18 @@ test("automation progress helpers are exported and support reduced-motion indete
   assert.match(automationSource, /@keyframes uiAutomationProgressSweep/u);
   assert.match(automationSource, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(automationSource, /removeProperty\("width"\)/u);
+});
+
+test("the automation dialog drags under pointer capture so a fast drag cannot escape it", async () => {
+  const automationSource = await readFile(new URL("../ui/shell/ui_automation.js", import.meta.url), "utf8");
+  // A fast drag outruns hit-testing when the move listeners sit on window, so
+  // the header captures the pointer and listens on itself (ArcRho UI rule L16).
+  assert.match(automationSource, /header\.setPointerCapture\?\.\(event\.pointerId\)/u);
+  assert.match(automationSource, /header\.addEventListener\("pointermove", onPointerMove\)/u);
+  assert.match(automationSource, /header\.addEventListener\("pointerup", stopDrag\)/u);
+  assert.match(automationSource, /header\.addEventListener\("pointercancel", stopDrag\)/u);
+  assert.match(automationSource, /header\.addEventListener\("lostpointercapture", stopDrag\)/u);
+  assert.match(automationSource, /event\.pointerId !== drag\.pointerId/u);
+  assert.doesNotMatch(automationSource, /window\.addEventListener\("pointermove"/u);
+  assert.doesNotMatch(automationSource, /window\.addEventListener\("pointerup"/u);
 });

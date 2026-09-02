@@ -12,7 +12,7 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shell/ui_shell.js?v=20260829d`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shell/ui_shell.js?v=20260901drag1`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
@@ -38,6 +38,7 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:open-path-result`
 - `arcrho:project-instance-request-state`
 - `arcrho:project-instance-restore-state`
+- `arcrho:project-settings-progress-cancel`
 - `arcrho:server-connection-updated`
 - `arcrho:set-app-font`
 - `arcrho:set-zoom`

@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Dragging a pop-up message or progress window no longer lets go of it when the pointer is moved quickly.",
+  "details": [
+    "The window now holds on to the pointer for the whole drag, so it keeps following the cursor even when it is thrown across the screen or over another window.",
+    "Releasing the button, or closing the window part way through a drag, ends the drag cleanly."
+  ]
+}

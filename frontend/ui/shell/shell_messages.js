@@ -5,7 +5,7 @@ import {
   closeAutomationProgress,
   openAutomationProgress,
   updateAutomationProgress,
-} from "./ui_automation.js?v=20260829d";
+} from "./ui_automation.js?v=20260901drag1";
 
 let shellMessagesWired = false;
 
@@ -119,6 +119,18 @@ export function handleProjectSettingsProgressMessage(
     countText: msg.countText,
     autoCloseMs: msg.autoCloseMs,
   };
+  if (msg.cancellable !== undefined) {
+    // The window's Cancel button hands the request straight back to the tab
+    // that owns the job; the shell never cancels anything itself.
+    args.cancellable = !!msg.cancellable;
+    args.onCancel = () => {
+      const frame = sourceTab.iframe?.contentWindow;
+      frame?.postMessage?.(
+        { type: "arcrho:project-settings-progress-cancel", progressId: messageProgressId },
+        expectedOrigin || "*",
+      );
+    };
+  }
   const action = String(msg.action || "").trim().toLowerCase();
   if (action === "open") openAutomationProgress(args);
   else if (action === "update") updateAutomationProgress(args);
