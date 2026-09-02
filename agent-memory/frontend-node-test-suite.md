@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-08-29T22:18:12.135Z
+  modified: 2026-09-02T16:23:05.063Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
@@ -62,6 +62,15 @@ and passes on a repeat full run. Earlier "every runtime frontend document bootst
 shared theme..." sightings were likely the same flake. Confirm any color_theme failure by
 running that file alone before treating it as real. DFM Excel freshness, installer progress
 patcher, and bundled Codex runtime also fail intermittently.
+
+On 2026-09-02 (ROUND formula work, HEAD 3ada6f71) the working tree ran 1008 tests with 11
+failures and the clean-HEAD worktree 995 tests with 13 (the extra two, installer progress
+patcher and bundled Codex runtime, need `node-portable`/build files the worktree lacks). Two
+harness lessons from that run: a `data:` module cannot `import` a `file://` URL either, so hand a
+real helper to the patched module through `globalThis` (see `tests/dfm_round_formula.test.mjs`);
+and `git worktree remove` fails with "Permission denied"/"in use" while the PowerShell tool's
+persistent working directory is still inside the worktree — `Set-Location` back to the repo
+root first.
 
 **Why:** the suite is not green, so a failure list alone does not tell you whether a change
 broke something. **How to apply:** take a baseline with `git worktree add <tmp> HEAD` and run
