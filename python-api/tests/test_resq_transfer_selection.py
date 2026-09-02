@@ -165,6 +165,30 @@ class PartialImportMergeTests(unittest.TestCase):
             "live reported",
         )
 
+    def test_an_unreviewed_live_group_counts_as_requested(self):
+        """A calculated or engine-generated group is never in the request, yet the import carries it."""
+        from unittest.mock import patch
+
+        from resq_migration import merge
+        from resq_migration.core import DATASET_CACHE_DIR
+
+        self._dataset(self.live, "Paid Loss", values="live paid", modified="2026-08-28T10:00:00+00:00")
+        self._dataset(self.live, "Reported CDF", values="live cdf", modified="2026-08-28T10:00:00+00:00")
+        self._dataset(self.stage, "Paid Loss", values="resq paid", modified="2026-08-01T10:00:00+00:00")
+        self._dataset(self.stage, "Reported CDF", values="resq cdf", modified="2026-08-01T10:00:00+00:00")
+
+        with patch.object(
+            merge, "_is_unreviewed_dataset", side_effect=lambda name, _type: name == "Reported CDF"
+        ):
+            result = merge.merge_preserved_arcrho_artifacts(
+                self.live, self.stage, overwrite=True, requested_names=["Paid Loss"]
+            )
+
+        self.assertEqual(result["names"], [])
+        self.assertEqual(
+            (self.stage / DATASET_CACHE_DIR / "Reported CDF.csv").read_text(encoding="utf-8"), "resq cdf"
+        )
+
     def test_without_a_request_the_older_rule_stands(self):
         from resq_migration.core import DATASET_CACHE_DIR
         from resq_migration.merge import merge_preserved_arcrho_artifacts

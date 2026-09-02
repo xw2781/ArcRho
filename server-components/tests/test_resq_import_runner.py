@@ -199,6 +199,11 @@ class ResQImportRunnerTests(unittest.TestCase):
                     "name": "G 41 - BF Paid",
                     "message": r"Input is unavailable at E:\ArcRho Server\projects\Demo\data\missing.csv",
                 }],
+                "engine_parity_warnings": [{
+                    "kind": "triangle",
+                    "name": "Paid Loss",
+                    "message": r"Could not be compared with ResQ: E:\ArcRho Server\x.csv is unreadable",
+                }],
             }
 
         module = SimpleNamespace(
@@ -229,6 +234,9 @@ class ResQImportRunnerTests(unittest.TestCase):
         self.assertEqual(result["errors"], 1)
         self.assertEqual(result["error_details"][0]["name"], "G 41 - BF Paid")
         self.assertNotIn("E:\\", result["error_details"][0]["message"])
+        # Engine-versus-ResQ warnings travel beside the errors, redacted the same way.
+        self.assertEqual(result["engine_parity_warnings"][0]["name"], "Paid Loss")
+        self.assertNotIn("E:\\", result["engine_parity_warnings"][0]["message"])
         self.assertTrue(any(event.get("kind") == "resq_skip" for event in events))
 
     def test_merge_runs_before_graph_refresh_and_commit(self):

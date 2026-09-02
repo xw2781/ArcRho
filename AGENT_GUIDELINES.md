@@ -80,6 +80,7 @@ When ResQ migration encounters a single-instance Dataset Type with `Generated=tr
 - Submit the same ArcRho Engine request contract used by the frontend and publish only the completed Engine CSV.
 - Build the persisted engine sidecar through the same canonical contract as the frontend runtime. Do not copy ResQ origin/development labels, counts, formulas, users, or timestamps into an engine-owned sidecar.
 - Keep Dataset Type formulas and project header labels in their canonical project configuration/header sources. Cached dataset reads must hydrate them before the first grid render; do not synthesize generic `12, 24, ...` labels for an engine dataset.
+- Once the Engine CSV is written, compare it with the ResQ copy of the same dataset at two decimal places (`resq_migration.engine_parity`, the module the offline parity validation also uses) and carry any disagreement to the person importing as a warning that names the dataset and its first differing cell. The Engine result is kept either way; ResQ values are read only for this comparison, never before the Engine has produced the dataset.
 - Add an exact full-payload cross-producer test for the frontend and migration engine-sidecar writers, including path-alias independence, plus a cached-load test proving formula and development-label hydration matches a force rebuild.
 
 ## Server-Hosted Project Data I/O (MUST)

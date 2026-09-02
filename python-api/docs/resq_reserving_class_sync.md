@@ -168,7 +168,9 @@ them.
   a hand-edited copy. On the ArcRho side that is every `engine` sidecar; on the
   ResQ side it is every dataset whose Dataset Type is flagged `Generated` and
   whose name equals that type, the rule the import already uses to route a
-  dataset to the Engine.
+  dataset to the Engine. Leaving both kinds out of the review never leaves
+  them out of an import: the Import macro carries them whatever was ticked
+  (see the transfer review notes).
 - DFM, Bornhuetter Ferguson, Cape Cod, and Result Selection methods can sync in
   either direction through their method output rows. ArcRho-to-ResQ rows are
   labeled `supported fields only`: they use the existing, deliberately partial

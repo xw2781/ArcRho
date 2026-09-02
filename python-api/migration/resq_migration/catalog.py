@@ -44,6 +44,7 @@ from .core import (
     _dataset_sidecar_path_for_cached_csv,
     _has_legacy_length_only_suffix,
     _normalize_cached_dataset_name,
+    _normalize_import_name,
     normalize_method_status,
     _safe_read_json,
     _write_sidecar_json,
@@ -190,6 +191,32 @@ def _is_calculated_dataset_type(dataset_type_name: object, rows: list[dict] | No
     """
     row = _dataset_type_row(dataset_type_name, rows)
     return bool(row and row.get("calculated") and not row.get("generated") and _clean_name(row.get("formula")))
+
+def _is_engine_generated_instance(payload: dict) -> bool:
+    """True for a generated single-instance dataset that the data-engine should build.
+
+    The accepted rule is: the dataset type is flagged ``Generated=true`` and the
+    instance name equals its dataset type (matching the app's single-instance
+    generated behavior). Method outputs (DFM/RS/BF), manual, and non-generated
+    calculated datasets are excluded and continue to import from ResQ.
+    """
+    name = _normalize_import_name(payload.get("name"))
+    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
+    if not name or _clean_name(name) != _clean_name(dataset_type):
+        return False
+    return _is_generated_dataset_type(dataset_type)
+
+def _is_unreviewed_dataset(name: object, dataset_type: object) -> bool:
+    """True for a dataset the transfer review never offers: calculated or engine-generated.
+
+    Both systems rebuild these from their inputs, so the review lists them on
+    neither side and nobody can tick them. An import therefore carries them
+    whatever was ticked, and the commit treats them as requested; otherwise a
+    reserving class imported through the review would never receive them.
+    """
+    return _is_calculated_dataset_type(dataset_type) or _is_engine_generated_instance(
+        {"name": name, "dataset_type": dataset_type}
+    )
 
 def _unknown_dataset_type_skip_detail(kind: str, name: object, dataset_type_name: object) -> str:
     display_type = _clean_name(dataset_type_name) or "<blank>"

@@ -131,6 +131,62 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             )
         )
 
+    # -- two-decimal comparison -----------------------------------------------
+
+    def test_import_comparison_agrees_within_two_decimal_places(self) -> None:
+        from resq_migration.engine_parity import compare_import_values, describe_import_mismatch
+
+        agreed = compare_import_values([[1.004, None]], [[1.0, None]])
+        self.assertTrue(agreed["matches"])
+        self.assertEqual(describe_import_mismatch(agreed), "")
+
+        differs = compare_import_values([[1.0, 2.0]], [[1.006, 2.0]])
+        self.assertFalse(differs["matches"])
+        self.assertEqual(
+            describe_import_mismatch(differs),
+            "1 cell(s) differ from ResQ at 2 decimal places; first at origin 1, development 1: "
+            "ResQ 1.00, ArcRho Engine 1.01.",
+        )
+
+        shape = compare_import_values([[1.0, 2.0]], [[1.0]])
+        self.assertEqual(
+            describe_import_mismatch(shape),
+            "ResQ holds 1 x 2 cells but ArcRho Engine produced 1 x 1.",
+        )
+
+    # -- unreviewed datasets --------------------------------------------------
+
+    def test_unreviewed_rule_covers_calculated_and_engine_generated_datasets(self) -> None:
+        self.assertTrue(self.module._is_unreviewed_dataset("Paid Loss", "Paid Loss"))
+        self.assertTrue(self.module._is_unreviewed_dataset("Loaded Loss", "Loaded Loss"))
+        self.assertFalse(self.module._is_unreviewed_dataset("Paid Loss AY2020", "Paid Loss"))
+        self.assertFalse(self.module._is_unreviewed_dataset("Incurred Loss", "Incurred Loss"))
+
+    def test_ticked_names_keep_every_unreviewed_dataset(self) -> None:
+        """The review never offers calculated or generated datasets, so ticking cannot drop them."""
+        triangles = {
+            "Paid Loss": _fake_triangle("Paid Loss", "Paid Loss"),
+            "Loaded Loss": _fake_triangle("Loaded Loss", "Loaded Loss"),
+            "Incurred Loss": _fake_triangle("Incurred Loss", "Incurred Loss"),
+        }
+        vectors = {
+            "Generated Premium": _fake_triangle("Generated Premium", "Generated Premium"),
+            "Earned Premium": _fake_triangle("Earned Premium", "Earned Premium"),
+        }
+        reserving_class = types.SimpleNamespace(Vectors=lambda: _FakeCollection(vectors))
+        inventory = {
+            "triangle_names": list(triangles),
+            "triangle_items": {name.casefold(): item for name, item in triangles.items()},
+            "triangle_method_types": {},
+            "vector_names": list(vectors),
+        }
+
+        narrowed = self.module._select_export_inventory(inventory, ["Incurred Loss"], reserving_class)
+
+        self.assertEqual(narrowed["triangle_names"], ["Paid Loss", "Loaded Loss", "Incurred Loss"])
+        self.assertEqual(narrowed["vector_names"], ["Generated Premium"])
+        self.assertEqual((narrowed["triangles"], narrowed["vectors"], narrowed["total"]), (3, 1, 4))
+
     # -- sidecar writer -------------------------------------------------------
 
     def test_engine_triangle_sidecar_shape_and_provenance(self) -> None:
@@ -308,9 +364,17 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.module.require_running_engine_instances = (
             lambda root: preflight_roots.append(Path(root)) or (Path("worker.json"),)
         )
-        self.module.export_triangle = lambda *_args, **_kwargs: self.fail(
-            "engine-owned datasets must not extract ResQ cell values"
-        )
+        value_reads = []
+
+        def read_resq_values(triangle, **_kwargs):
+            # ResQ values are read only for the comparison: after every request
+            # was published and after this dataset's own Engine result arrived.
+            self.assertEqual(len(published), 2)
+            self.assertGreater(len(waited), len(value_reads))
+            value_reads.append(triangle.Name)
+            return {"values": [[1.0, 2.0]]}
+
+        self.module.export_triangle = read_resq_values
 
         written, errors = self.module.export_triangles_for_rc(
             rc,
@@ -325,6 +389,8 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual((written, errors), (2, 0))
         self.assertEqual(len(published), 2)
         self.assertEqual(len(waited), 2)
+        self.assertEqual(value_reads, ["Paid Loss", "Generated Premium"])
+        self.assertEqual([e["status"] for e in events if e.get("event") == "finish"], ["success", "success"])
         self.assertEqual(preflight_roots, [self.root])
         self.assertTrue((self.datasets_dir / "Paid Loss@12@12@cum@dev.csv").is_file())
         messages = [str(event.get("message") or "") for event in events]
@@ -352,7 +418,83 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         )
         self.assertTrue(all("total" not in event for event in events))
 
-    def test_generated_vector_skips_resq_value_extraction(self) -> None:
+    def test_engine_result_that_differs_from_resq_is_kept_with_a_warning(self) -> None:
+        rc = _FakeReservingClass({"Paid Loss": _fake_triangle("Paid Loss", "Paid Loss")})
+        events = []
+
+        def publish(job, *, check_workers=True):
+            job.output_path.parent.mkdir(parents=True, exist_ok=True)
+            job.output_path.write_text("100,200.004\n300,\n", encoding="utf-8")
+            return job.request_path
+
+        self.module.publish_engine_request = publish
+        self.module.wait_for_engine_request = lambda job, **_kwargs: job.output_path
+        self.module.require_running_engine_instances = lambda root: (Path("worker.json"),)
+        # 200.004 agrees at two decimals; 300 versus 300.01 does not; a blank
+        # against a number is a disagreement too.
+        self.module.export_triangle = lambda *_a, **_k: {"values": [[100, 200], [300.01, 5]]}
+        progress_state = {"completed": 0, "total": 1}
+
+        written, errors = self.module.export_triangles_for_rc(
+            rc,
+            r"Auto\PP",
+            self.rc_dir,
+            progress_state=progress_state,
+            triangle_names=["Paid Loss"],
+            engine_provenance=self.provenance,
+            progress_callback=events.append,
+            verbose=False,
+        )
+
+        self.assertEqual((written, errors), (1, 0))
+        self.assertTrue((self.datasets_dir / "Paid Loss@12@12@cum@dev.csv").is_file())
+        self.assertEqual(progress_state["engine_parity_mismatches"], 1)
+        warning = progress_state["engine_parity_warnings"][0]
+        self.assertEqual((warning["kind"], warning["name"]), ("triangle", "Paid Loss"))
+        self.assertEqual(
+            warning["message"],
+            "2 cell(s) differ from ResQ at 2 decimal places; first at origin 2, development 1: "
+            "ResQ 300.01, ArcRho Engine 300.00.",
+        )
+        finish = [e for e in events if e.get("event") == "finish"][0]
+        self.assertEqual(finish["status"], "warning")
+        self.assertIn(warning["message"], finish["message"])
+
+    def test_a_comparison_that_cannot_be_made_is_a_warning_not_an_error(self) -> None:
+        rc = _FakeReservingClass({"Paid Loss": _fake_triangle("Paid Loss", "Paid Loss")})
+
+        def publish(job, *, check_workers=True):
+            job.output_path.parent.mkdir(parents=True, exist_ok=True)
+            job.output_path.write_text("1\n", encoding="utf-8")
+            return job.request_path
+
+        self.module.publish_engine_request = publish
+        self.module.wait_for_engine_request = lambda job, **_kwargs: job.output_path
+        self.module.require_running_engine_instances = lambda root: (Path("worker.json"),)
+
+        def unreadable(*_a, **_k):
+            raise RuntimeError("COM read failed")
+
+        self.module.export_triangle = unreadable
+        progress_state = {"completed": 0, "total": 1}
+
+        written, errors = self.module.export_triangles_for_rc(
+            rc,
+            r"Auto\PP",
+            self.rc_dir,
+            progress_state=progress_state,
+            triangle_names=["Paid Loss"],
+            engine_provenance=self.provenance,
+            verbose=False,
+        )
+
+        self.assertEqual((written, errors), (1, 0))
+        self.assertEqual(
+            progress_state["engine_parity_warnings"][0]["message"],
+            "Could not be compared with ResQ: COM read failed",
+        )
+
+    def test_generated_vector_reads_resq_values_only_for_the_comparison(self) -> None:
         vector = types.SimpleNamespace(
             Name="Generated Premium",
             DatasetType=types.SimpleNamespace(
@@ -375,21 +517,29 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
 
         self.module.publish_engine_request = publish
         self.module.wait_for_engine_request = lambda job, **_kwargs: job.output_path
-        self.module.export_vector = lambda *_args, **_kwargs: self.fail(
-            "engine-owned vectors must not extract ResQ values"
-        )
+        value_reads = []
+
+        def read_resq_values(item, **_kwargs):
+            self.assertTrue((self.datasets_dir / "Generated Premium@6.csv").is_file())
+            value_reads.append(item.Name)
+            return {"values": [[10]]}
+
+        self.module.export_vector = read_resq_values
+        progress_state = {"completed": 0, "total": 1}
 
         written, errors = self.module.export_vectors_for_rc(
             reserving_class,
             r"Auto\PP",
             self.rc_dir,
+            progress_state=progress_state,
             vector_names=["Generated Premium"],
             engine_provenance=self.provenance,
             verbose=False,
         )
 
         self.assertEqual((written, errors), (1, 0))
-        self.assertTrue((self.datasets_dir / "Generated Premium@6.csv").is_file())
+        self.assertEqual(value_reads, ["Generated Premium"])
+        self.assertNotIn("engine_parity_warnings", progress_state)
 
     def test_dfm_export_does_not_request_engine_ratio_basis_generation(self) -> None:
         vector = types.SimpleNamespace(

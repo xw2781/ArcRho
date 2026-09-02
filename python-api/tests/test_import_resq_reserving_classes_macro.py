@@ -103,39 +103,74 @@ class _UI:
         raise AssertionError(f"Unexpected command: {command}")
 
 
-class ListReservingClassesTests(unittest.TestCase):
+class FixedReservingClassesTests(unittest.TestCase):
+    """The class list is built into the macro; the project only marks existence."""
+
     def setUp(self):
         self.module = load_macro_module()
 
-    def test_index_owns_the_name_and_the_folder_is_the_fallback(self):
+    def test_the_built_in_list_is_the_canonical_default_selection(self):
+        self.assertEqual(len(self.module.RC_PATHS), 17)
+        self.assertEqual(self.module.RC_PATHS[0], "PRNJ - PA\\PA\\NY\\Direct Group\\BI Total")
+        self.assertEqual(self.module.RC_PATHS[-1], "PRNJ - PA\\PA\\MA\\Direct Group\\MP+PIP")
+        self.assertEqual(len(set(path.casefold() for path in self.module.RC_PATHS)), 17)
+
+    def test_listed_classes_are_marked_existing_or_new_and_others_are_ignored(self):
         import tempfile
 
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as root:
             data = Path(root) / "projects" / "Demo" / "data"
-            indexed = data / "HPPREF_%5C_HO+DF"
+            indexed = data / "HPPREF_%5C_HO+DF_%5C_NJ_%5C_Legacy_%5C_HOL"
             indexed.mkdir(parents=True)
             (indexed / "index.json").write_text(
                 json.dumps({
-                    "reserving_class": "HPPREF\\HO+DF",
+                    # The index owns the spelling; casing differences still match.
+                    "reserving_class": "hppref\\HO+DF\\NJ\\Legacy\\HOL",
                     "files": [{"name": "Paid"}, {"name": "Premium"}],
                 }),
                 encoding="utf-8",
             )
+            # A listed class whose folder has no index is still "existing".
+            (data / "HPPREF_%5C_HO+DF_%5C_NJ_%5C_Legacy_%5C_HOPxCAT").mkdir()
+            # Folders outside the list never reach the table.
             (data / "Auto_%5C_NJ").mkdir()
             (data / ".arcrho-cache").mkdir()
 
-            classes = self.module.list_reserving_classes(root, "Demo")
+            classes = self.module.fixed_reserving_classes(root, "Demo")
 
+        self.assertEqual([item["path"] for item in classes], list(self.module.RC_PATHS))
+        by_path = {item["path"]: item for item in classes}
         self.assertEqual(
-            classes,
-            [
-                {"path": "Auto\\NJ", "dataset_count": None},
-                {"path": "HPPREF\\HO+DF", "dataset_count": 2},
-            ],
+            by_path["HPPREF\\HO+DF\\NJ\\Legacy\\HOL"],
+            {"path": "HPPREF\\HO+DF\\NJ\\Legacy\\HOL", "dataset_count": 2, "exists": True},
         )
+        self.assertEqual(
+            by_path["HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT"],
+            {"path": "HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT", "dataset_count": None, "exists": True},
+        )
+        new_paths = [item["path"] for item in classes if not item["exists"]]
+        self.assertEqual(len(new_paths), 15)
+        self.assertNotIn("Auto\\NJ", by_path)
 
-    def test_a_project_with_no_data_folder_lists_nothing(self):
-        self.assertEqual(self.module.list_reserving_classes("Q:\\absent", "Demo"), [])
+    def test_a_project_with_no_data_folder_offers_every_class_as_new(self):
+        classes = self.module.fixed_reserving_classes("Q:\\absent", "Demo")
+        self.assertEqual([item["path"] for item in classes], list(self.module.RC_PATHS))
+        self.assertFalse(any(item["exists"] for item in classes))
+
+    def test_the_review_table_marks_new_classes_and_preselects_everything(self):
+        payload = self.module.review_table_payload(
+            [
+                {"path": "Auto\\NJ", "dataset_count": 3, "exists": True},
+                {"path": "Auto\\PA", "dataset_count": None, "exists": False},
+            ],
+            "Demo",
+            1,
+        )
+        rows = payload["rows"]
+        self.assertTrue(all(row["selected"] for row in rows))
+        self.assertEqual(rows[0]["cells"]["datasets"], "3")
+        self.assertEqual(rows[1]["cells"]["datasets"], "New")
+        self.assertIn("1 not in this project yet", payload["summary"])
 
 
 class BatchImportMacroTests(unittest.TestCase):
@@ -146,6 +181,9 @@ class BatchImportMacroTests(unittest.TestCase):
 
         self.module = load_macro_module()
         self.single = self.module._load_single_import_macro()
+        # The flow tests drive the macro with a short fixed list; the real
+        # built-in list is covered by FixedReservingClassesTests.
+        self.module.RC_PATHS = ["Auto\\NJ", "Auto\\PA"]
         self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.tempdir.cleanup)
         self.server_root = Path(self.tempdir.name)
@@ -372,22 +410,13 @@ class BatchImportMacroTests(unittest.TestCase):
         self.assertEqual(result["reason"], "cancelled")
         publish.assert_not_called()
 
-    def test_the_canonical_default_list_preselects_the_review_rows(self):
-        """RC_PATH from the shared support release drives the preselection."""
+    def test_other_project_folders_are_never_offered(self):
+        """The table holds the fixed list only, whatever else the project has."""
 
-        release = self.server_root / "shared" / "python-api" / "releases" / "abc123"
-        migration_dir = release / "migration"
-        migration_dir.mkdir(parents=True)
-        (migration_dir / "resq_data_migration.py").write_text(
-            'RC_PATH = ["Auto\\\\PA"]\n',
-            encoding="utf-8",
-        )
-        (self.server_root / "shared" / "python-api" / "current.json").write_text(
-            json.dumps({"relative_root": "releases/abc123"}),
-            encoding="utf-8",
-        )
-        self.ui = _UI(selected_ids=["Auto\\PA"])
+        self._write_classes("Auto\\CT", "HPPREF\\HO+DF")
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
         statuses = {
+            "Auto\\NJ": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
             "Auto\\PA": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
         }
         with (
@@ -397,18 +426,58 @@ class BatchImportMacroTests(unittest.TestCase):
             result = self.module.run_macro()
 
         self.assertTrue(result["success"])
-        selected_by_id = {row["id"]: row["selected"] for row in self.ui.review_payload["rows"]}
-        self.assertEqual(selected_by_id, {"Auto\\NJ": False, "Auto\\PA": True})
+        rows = self.ui.review_payload["rows"]
+        self.assertEqual([row["id"] for row in rows], ["Auto\\NJ", "Auto\\PA"])
+        self.assertTrue(all(row["selected"] for row in rows))
+        self.assertEqual([row["cells"]["datasets"] for row in rows], ["0", "0"])
 
-    def test_a_missing_support_bundle_falls_back_to_selecting_everything(self):
-        self.assertEqual(self.module.default_rc_paths(self.server_root), [])
-        payload = self.module.review_table_payload(
-            [{"path": "Auto\\NJ", "dataset_count": 1}],
-            "Demo",
-            1,
-            [],
-        )
-        self.assertTrue(all(row["selected"] for row in payload["rows"]))
+    def test_a_listed_class_without_a_folder_is_offered_as_new_and_imported(self):
+        """A missing folder never blocks the import; the Bridge creates it."""
+
+        import shutil
+
+        shutil.rmtree(self.server_root / "projects" / "Demo" / "data" / "Auto_%5C_PA")
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        statuses = {
+            "Auto\\NJ": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+            "Auto\\PA": {"status": "success", "result": {"datasets_imported": 4, "errors": 0}},
+        }
+        with (
+            self._api_module(),
+            patch.object(self.single, "publish_import_request", side_effect=self._publish_with_status(statuses)),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        rows = {row["id"]: row for row in self.ui.review_payload["rows"]}
+        self.assertTrue(rows["Auto\\PA"]["selected"])
+        self.assertEqual(rows["Auto\\PA"]["cells"]["datasets"], "New")
+        self.assertEqual(rows["Auto\\NJ"]["cells"]["datasets"], "0")
+        self.assertIn("1 not in this project yet", self.ui.review_payload["summary"])
+        created = {item["path"]: item["created"] for item in result["results"]}
+        self.assertEqual(created, {"Auto\\NJ": False, "Auto\\PA": True})
+        self.assertIn("New reserving classes created: 1", result["message"])
+        self.assertIn("- Auto\\PA", result["message"])
+
+    def test_an_empty_project_offers_the_whole_list_and_still_imports(self):
+        import shutil
+
+        shutil.rmtree(self.server_root / "projects" / "Demo" / "data")
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        statuses = {
+            "Auto\\NJ": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+            "Auto\\PA": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+        }
+        with (
+            self._api_module(),
+            patch.object(self.single, "publish_import_request", side_effect=self._publish_with_status(statuses)),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        rows = self.ui.review_payload["rows"]
+        self.assertEqual([row["cells"]["datasets"] for row in rows], ["New", "New"])
+        self.assertIn("New reserving classes created: 2", result["message"])
 
     def test_cancelling_the_review_changes_nothing(self):
         self.ui = _UI(selected_ids=None)

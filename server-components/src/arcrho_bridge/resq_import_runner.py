@@ -799,6 +799,7 @@ def _sanitize_import_errors(result: dict[str, Any]) -> int:
     if engine_errors > errors:
         raise ResQMigrationBundleError("The canonical import reported more engine errors than total errors.")
     result["error_details"] = _sanitized_error_details(result.get("error_details"))
+    result["engine_parity_warnings"] = _sanitized_error_details(result.get("engine_parity_warnings"))
     return errors - engine_errors
 
 

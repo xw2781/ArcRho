@@ -15,7 +15,7 @@ from arcrho_api.dataset_index_contract import (
     _method_entry_from_payload as _canonical_method_entry_from_payload,
 )
 
-from .catalog import _dataset_type_keys
+from .catalog import _dataset_type_keys, _is_unreviewed_dataset
 from .core import (
     DATASET_CACHE_DIR,
     DATASET_SIDECAR_DIR,
@@ -241,7 +241,9 @@ def merge_preserved_arcrho_artifacts(
     ``requested_names`` names what the import was asked to bring across. A live
     group outside it was never offered to the stage, so its absence there says
     nothing about ResQ and it is always kept -- which is what lets a person
-    import a few datasets without losing the rest of the reserving class.
+    import a few datasets without losing the rest of the reserving class. A
+    calculated or engine-generated group is the exception: the review never
+    offers it, the import carries it regardless, so it counts as requested.
     """
 
     live_rc = Path(live_rc_dir).resolve(strict=False)
@@ -268,7 +270,11 @@ def merge_preserved_arcrho_artifacts(
     for key, live_group in live_groups.items():
         live_type_key = _normalize_import_name(live_group.get("dataset_type")).casefold()
         staged_group = staged_groups.get(key)
-        if requested_keys is not None and key not in requested_keys:
+        if (
+            requested_keys is not None
+            and key not in requested_keys
+            and not _is_unreviewed_dataset(live_group.get("name"), live_group.get("dataset_type"))
+        ):
             preserved.append(live_group)
             continue
         arcrho_only_type = (

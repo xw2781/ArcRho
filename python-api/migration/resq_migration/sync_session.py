@@ -734,18 +734,13 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             ) or name
             known_type = bool(migration._is_known_dataset_type(dataset_type))
             calculated = bool(_required_resq_attr(obj, "Calculated", f"{collection_kind} dataset"))
-            if kind == KIND_DATASET and migration._is_calculated_dataset_type(dataset_type):
-                # ArcRho's own dataset-types library says propagation recomputes
-                # it from its formula, so the row would only ever report
-                # propagation times. ResQ's Calculated flag does not decide
-                # this: a type ResQ derives but ArcRho lists as an input is an
-                # editable input in ArcRho and stays in the review.
-                continue
-            if kind == KIND_DATASET and migration._is_engine_generated_instance(
-                {"name": name, "dataset_type": dataset_type}
-            ):
-                # The same rule the import uses to route a dataset to the
-                # Engine: generated on both sides, so nothing to reconcile.
+            if kind == KIND_DATASET and migration._is_unreviewed_dataset(name, dataset_type):
+                # Calculated in ArcRho's own dataset-types library, or generated
+                # by the Engine: both sides rebuild it, so the row would only
+                # ever report rebuild times. ResQ's Calculated flag does not
+                # decide this: a type ResQ derives but ArcRho lists as an input
+                # is an editable input in ArcRho and stays in the review. The
+                # import still carries every such dataset, ticked or not.
                 continue
             import_supported = (
                 kind in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}

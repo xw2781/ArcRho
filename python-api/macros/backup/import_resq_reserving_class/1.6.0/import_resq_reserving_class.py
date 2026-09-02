@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.7.0
-# Release Note: Every dataset the ArcRho Engine generates during the import is now compared with ResQ's copy at two decimal places, and the completion box warns, naming each dataset and its first differing cell, when any cell disagrees. Calculated and Engine-generated datasets are also imported whatever the review table ticked, since the table never lists them.
+# Version: 1.6.0
+# Release Note: A ResQ "User Calculation" average row -- the Benchmark row -- now arrives as a live row instead of frozen numbers: it comes in under its ResQ name with its formula rewritten into ArcRho's own, so it keeps recalculating when ratios are excluded or the triangle changes. A row whose formula cannot be carried across faithfully still arrives as the fixed values ResQ computed.
 # Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies.
 # Scope: Reserving Class
 # </arcrho-macro>
@@ -65,9 +65,6 @@ ALLOWED_IMPORT_POLICIES = frozenset({"merge", "overwrite"})
 IMPORT_POLICY_MERGE = "merge"
 IMPORT_POLICY_OVERWRITE = "overwrite"
 SELECTION_NAMES_FIELD = "SelectedNames"
-# Engine-generated datasets whose values differ from ResQ's, as the Bridge
-# reports them in the result beside error_details.
-PARITY_WARNINGS_FIELD = "engine_parity_warnings"
 STATUS_VALUES = frozenset({"processing", "success", "error"})
 _INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
@@ -589,14 +586,6 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
             "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
             *skipped,
         ))
-    parity = _detail_lines(result, PARITY_WARNINGS_FIELD)
-    if parity:
-        lines.extend((
-            "",
-            "WARNING - ArcRho Engine results that differ from ResQ at two decimal places "
-            "(the Engine result was kept):",
-            *parity,
-        ))
     selection = import_selection_sentence(result.get("selection"))
     if selection:
         lines.extend(("", selection))
@@ -628,10 +617,10 @@ def _dataset_table_reload_cost(reload_info: Any) -> str:
     return f"Dataset table index was rebuilt{elapsed} ({reason})."
 
 
-def _detail_lines(result: object, field: str = "error_details") -> list[str]:
+def _detail_lines(result: object) -> list[str]:
     """One display line per bounded per-item detail in a Bridge result."""
 
-    details = result.get(field) if isinstance(result, dict) else None
+    details = result.get("error_details") if isinstance(result, dict) else None
     if not isinstance(details, list):
         return []
     lines = []
@@ -779,13 +768,10 @@ def run_macro(active_dfm=None, active_context=None):
 
     result = _status_result(status)
     errors = _summary_count(result, "errors") or 0
-    # An Engine result that disagrees with ResQ is kept, but the person must
-    # see it, so the completion box behaves as it does for a skipped item.
-    warnings = errors or bool(_detail_lines(result, PARITY_WARNINGS_FIELD))
     if progress is not None:
         try:
-            progress.update(label="Import complete", tone="warning" if warnings else "success")
-            if not warnings:
+            progress.update(label="Import complete", tone="warning" if errors else "success")
+            if not errors:
                 progress.close(auto_close_ms=3000)
         except Exception:
             pass
@@ -804,12 +790,7 @@ def run_macro(active_dfm=None, active_context=None):
         message += f"\n\n{reload_cost}"
     if reload_error:
         message += f"\n\nDataset table reload failed: {reload_error}"
-    _message(
-        ui,
-        message,
-        kind="warning" if warnings or reload_error else "info",
-        auto_close_ms=None if warnings else 3000,
-    )
+    _message(ui, message, kind="warning" if errors or reload_error else "info", auto_close_ms=None if errors else 3000)
     return {
         "success": errors == 0,
         "message": message,

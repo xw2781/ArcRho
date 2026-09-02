@@ -81,7 +81,10 @@ Two kinds are worth naming:
   written before it. That is a real export, so they are tickable.
 - **Calculated and engine-generated datasets.** Both systems recompute them
   from their inputs, so neither inventory lists them and neither direction
-  offers them.
+  offers them. An import still carries every one of them, ticked or not: the
+  review is the only way to narrow an import, and a dataset it never shows
+  cannot be left out by it (`catalog._is_unreviewed_dataset` is the one rule
+  the review, the import, and the commit share).
 
 Accepting with nothing ticked writes nothing and says so. Cancelling, or
 closing the window, publishes nothing at all.
@@ -123,13 +126,18 @@ as before.
 
 **Importing**, the ticked names narrow the ResQ inventory the staged import
 walks. Every method is imported through its output dataset, so narrowing the
-two dataset lists narrows the methods with them.
+two dataset lists narrows the methods with them. Calculated and
+engine-generated datasets stay in the inventory whatever was ticked; their
+Dataset Type is read from ResQ only for a name the review did not tick.
 
 The staged import then commits by overlaying the live reserving class onto the
 stage. A live item the run never asked for was never offered to the stage, so
 its absence there says nothing about ResQ: the merge always keeps it
 (`merge.merge_preserved_arcrho_artifacts`, `requested_names`). Without that
 rule a partial import would delete every dataset it was told to leave alone.
+A calculated or engine-generated live item counts as requested, since the
+stage always holds a fresh copy of it, and the ordinary merge or overwrite
+rule decides between the two.
 
 ## Contract versions
 

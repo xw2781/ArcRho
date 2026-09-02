@@ -619,6 +619,49 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertEqual(options["kind"], "warning")
         self.assertIsNone(options.get("auto_close_ms"))
 
+    def test_an_engine_result_that_differs_from_resq_is_shown_as_a_warning(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Merge"])
+        status = {
+            "contract_version": _CONTRACT_VERSION,
+            "status": "success",
+            "updated_at": "2026-08-21T10:00:00",
+            "request_id": _REQUEST_ID,
+            "result": {
+                "datasets_imported": 4,
+                "errors": 0,
+                "error_details": [],
+                "engine_parity_mismatches": 1,
+                "engine_parity_warnings": [{
+                    "kind": "triangle",
+                    "name": "Paid Loss",
+                    "message": (
+                        "3 cell(s) differ from ResQ at 2 decimal places; first at origin 4, "
+                        "development 2: ResQ 12,345.67, ArcRho Engine 12,345.70."
+                    ),
+                }],
+            },
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
+        ):
+            result = self.module.run_macro()
+
+        # The class committed and the Engine result was kept, but the box warns,
+        # names the dataset and its first differing cell, and stays on screen.
+        self.assertTrue(result["success"])
+        message, options = self.ui.messages[-1]
+        self.assertIn("Import from ResQ completed.", message)
+        self.assertIn("WARNING - ArcRho Engine results that differ from ResQ at two decimal places", message)
+        self.assertIn("- triangle Paid Loss: 3 cell(s) differ from ResQ", message)
+        self.assertNotIn("Skipped (could not be exported", message)
+        self.assertEqual(options["kind"], "warning")
+        self.assertIsNone(options.get("auto_close_ms"))
+
     def test_bridge_error_status_is_reported_without_reloading_dataset_table(self):
         self._write_worker()
         status = {

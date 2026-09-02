@@ -1,14 +1,16 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.6.0
-# Release Note: The review table now always offers the fixed list of default reserving classes built into the macro instead of scanning the project for others, and a listed class that has no ArcRho folder yet is imported into a new folder.
-# Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
+# Version: 1.5.0
+# Release Note: The batch summary now warns, per reserving class, about every Engine-generated dataset whose values differ from ResQ's at two decimal places, naming the dataset and its first differing cell.
+# Description: List every reserving class in the active project in a review table with the canonical default classes preselected and an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -18,31 +20,6 @@ REVIEW_POLL_SECONDS = 0.5
 INDEX_FILE_NAME = "index.json"
 MAX_REPORTED_FAILURES = 12
 OVERWRITE_OPTION_KEY = "overwrite"
-NEW_CLASS_LABEL = "New"
-
-# The reserving classes this macro imports, in import order. The list is fixed
-# on purpose: the macro never scans the project for other classes, and a
-# listed class the project does not hold yet is imported into a new folder
-# (the Bridge creates it when it commits the staged import).
-RC_PATHS = [
-    r"PRNJ - PA\PA\NY\Direct Group\BI Total",
-    r"PRNJ - PA\PA\NY\Direct Group\MP+PIP",
-    r"PRNJ - PA\PA\Penn+CT\Direct Group\BI Total",
-    r"PRNJ - PA\PA\Penn+CT\Direct Group\MP+PIP",
-    r"PRNJ - PA\PA\All States\Direct Group\PD+UMPD",
-    r"PRNJ - PA\PA\All States\Direct Group\COL",
-    r"PRNJ - PA\PA\All States\Direct Group\CMPxCAT",
-    r"PRNJ - PA\PA\NJ\Direct Group\MP+PIP",
-    r"PRNJ - PA\PA\NJ\Direct Group\BIR51+UMBIR51",
-    r"PRNJ - PA\PA\NJ\Direct Group\BIx51+UMBIx51",
-    r"HPPREF\HO+DF\NJ\Legacy\HOL",
-    r"HPPREF\HO+DF\NJ\Legacy\HOPxCAT",
-    r"Rider\MC\All States\Direct Group\BI+PIP",
-    r"Rider\MC\All States\Direct Group\PD+UMPD",
-    r"Rider\MC\All States\Direct Group\PhysDxCat",
-    r"PRNJ - PA\PA\MA\Direct Group\BI Total",
-    r"PRNJ - PA\PA\MA\Direct Group\MP+PIP",
-]
 
 
 def _load_single_import_macro():
@@ -101,26 +78,87 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _existing_class_counts(server_root, project_name: str) -> dict[str, int | None]:
-    """Casefolded class path -> indexed item count for every class folder held.
+def _load_canonical_migration(server_root):
+    """Load the canonical migration module that owns the default class list.
+
+    A machine whose Python path already reaches the repository can import it
+    directly; a Client PC loads it from the read-only shared support release
+    the macro publisher maintains beside the macro library.
+    """
+
+    try:
+        import resq_data_migration as module
+        return module
+    except ImportError:
+        pass
+    support_root = (Path(server_root) / "shared" / "python-api").resolve()
+    pointer = json.loads((support_root / "current.json").read_text(encoding="utf-8-sig"))
+    relative_root = str(pointer.get("relative_root") or "").strip()
+    release_root = (support_root / relative_root).resolve()
+    if support_root != release_root and support_root not in release_root.parents:
+        raise ValueError("current.json points outside the shared support folder")
+    migration_dir = release_root / "migration"
+    entry = migration_dir / "resq_data_migration.py"
+    inserted = str(migration_dir) not in sys.path
+    if inserted:
+        sys.path.insert(0, str(migration_dir))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "_arcrho_macro_resq_data_migration", entry
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load the shared migration module [{entry}].")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(str(migration_dir))
+            except ValueError:
+                pass
+
+
+def default_rc_paths(server_root) -> list[str]:
+    """The canonical default selection, owned by the migration module.
+
+    An unreachable or older support bundle only loses the preselection - the
+    review table then starts with every class checked, exactly as before.
+    """
+
+    try:
+        module = _load_canonical_migration(server_root)
+        paths = getattr(module, "RC_PATH", None)
+    except Exception:
+        return []
+    if not isinstance(paths, (list, tuple)):
+        return []
+    return [str(path).strip() for path in paths if str(path).strip()]
+
+
+def list_reserving_classes(server_root, project_name: str) -> list[dict[str, Any]]:
+    """Every reserving class in the project that owns persisted data.
 
     The folder name is an encoded form of the class path, so the canonical
     spelling comes from each class's own ``index.json`` when it has one and is
     only decoded from the folder name when it does not — the same rule the
-    Engine's source-refresh job applies when it enumerates a project. The
-    lookup only tells a listed class that already exists from one that is new;
-    classes outside the fixed list are never offered.
+    Engine's source-refresh job applies when it enumerates a project.
     """
 
     from arcrho_api.dataset_index_contract import decode_filename_segment
 
     data_dir = Path(server_root) / "projects" / str(project_name) / "data"
     try:
-        entries = [entry for entry in data_dir.iterdir() if entry.is_dir()]
+        entries = sorted(
+            (entry for entry in data_dir.iterdir() if entry.is_dir()),
+            key=lambda entry: (entry.name.casefold(), entry.name),
+        )
     except FileNotFoundError:
-        return {}
+        return []
 
-    counts: dict[str, int | None] = {}
+    classes: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for entry in entries:
         if entry.name.startswith("."):
             continue
@@ -135,29 +173,10 @@ def _existing_class_counts(server_root, project_name: str) -> dict[str, int | No
         if not name:
             name = decode_filename_segment(entry.name).strip()
         key = name.casefold()
-        if not name or key in counts:
+        if not name or key in seen:
             continue
-        counts[key] = dataset_count
-    return counts
-
-
-def fixed_reserving_classes(server_root, project_name: str) -> list[dict[str, Any]]:
-    """The fixed class list, each entry marked as held by the project or new.
-
-    ``dataset_count`` is the indexed item count of an existing class (``None``
-    when its index is missing or unreadable) and ``exists`` is False for a
-    listed class the project has no folder for yet.
-    """
-
-    existing = _existing_class_counts(server_root, project_name)
-    classes: list[dict[str, Any]] = []
-    for rc_path in RC_PATHS:
-        key = rc_path.casefold()
-        classes.append({
-            "path": rc_path,
-            "dataset_count": existing.get(key),
-            "exists": key in existing,
-        })
+        seen.add(key)
+        classes.append({"path": name, "dataset_count": dataset_count})
     return classes
 
 
@@ -165,25 +184,22 @@ def review_table_payload(
     classes: list[dict[str, Any]],
     project_name: str,
     worker_count: int,
+    default_paths: list[str] | None = None,
 ) -> dict[str, Any]:
+    defaults = {str(path).casefold() for path in (default_paths or []) if str(path).strip()}
     rows = []
     for item in classes:
         path = str(item.get("path") or "")
         count = item.get("dataset_count")
-        if not item.get("exists", True):
-            datasets = NEW_CLASS_LABEL
-        else:
-            datasets = "" if count is None else str(count)
         rows.append({
             "id": path,
-            "selected": True,
+            "selected": path.casefold() in defaults if defaults else True,
             "disabled": False,
             "cells": {
                 "path": path,
-                "datasets": datasets,
+                "datasets": "" if count is None else str(count),
             },
         })
-    new_count = sum(1 for item in classes if not item.get("exists", True))
     return {
         "title": TITLE,
         # Host the review inside the active Project Instance page as a nested
@@ -191,14 +207,11 @@ def review_table_payload(
         "host": "projectInstance",
         "summary": (
             f"Project: {project_name}\n"
-            f"{len(classes)} default reserving class(es) listed"
-            + (f", {new_count} not in this project yet" if new_count else "")
-            + "; every selected class is imported from ResQ one at a time by "
-            f"{worker_count} ArcRho Bridge worker(s). A class marked "
-            f"{NEW_CLASS_LABEL} has no ArcRho folder yet; the import creates "
-            "it. Unselect any class to leave it untouched. Overwrite makes "
-            "the fresh ResQ copy win even where the ArcRho copy is newer; "
-            "datasets that exist only in ArcRho are kept either way."
+            f"{len(classes)} reserving class(es) found; every selected class is "
+            f"imported from ResQ one at a time by {worker_count} ArcRho Bridge "
+            "worker(s). Unselect any class to leave it untouched. Overwrite "
+            "makes the fresh ResQ copy win even where the ArcRho copy is "
+            "newer; datasets that exist only in ArcRho are kept either way."
         ),
         "columns": [
             {"key": "path", "label": "Reserving Class", "width": 420},
@@ -236,6 +249,7 @@ def review_class_selection(
     classes: list[dict[str, Any]],
     project_name: str,
     worker_count: int,
+    default_paths: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Open the non-blocking review table and poll until the user decides.
 
@@ -245,7 +259,7 @@ def review_class_selection(
 
     opened = ui.send_command(
         "ui.reviewTableOpen",
-        args=review_table_payload(classes, project_name, worker_count),
+        args=review_table_payload(classes, project_name, worker_count, default_paths),
         timeout_sec=20,
     )
     opened_payload = _result_payload(opened)
@@ -294,7 +308,6 @@ def import_selected_classes(
     rc_paths: list[str],
     import_policy: str = "merge",
     progress=None,
-    new_paths: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Import each class through the Bridge queue, one request at a time.
 
@@ -303,12 +316,8 @@ def import_selected_classes(
     exception is a Bridge the sibling macro has judged silent for its whole
     limit: every later class would only wait out the same silence to fail the
     same way, so the rest of the batch is marked skipped instead of sent.
-
-    ``new_paths`` names the classes the project had no folder for when the
-    batch started; a committed import of one of them is reported as created.
     """
 
-    created_keys = {str(path).casefold() for path in (new_paths or set())}
     results: list[dict[str, Any]] = []
     total = len(rc_paths)
     for position, rc_path in enumerate(rc_paths, start=1):
@@ -370,7 +379,6 @@ def import_selected_classes(
             "success": True,
             "error": "",
             "request_id": request_id,
-            "created": rc_path.casefold() in created_keys,
             "datasets_imported": single._summary_count(result, "datasets_imported", "total_written"),
             "methods_imported": single._summary_count(result, "methods_imported"),
             "skipped_items": detail_lines(result) if callable(detail_lines) else [],
@@ -391,10 +399,6 @@ def _summary_message(project_name: str, results: list[dict[str, Any]]) -> str:
         f"Project: {project_name}",
         f"Reserving classes imported: {len(succeeded)} of {len(results)}",
     ]
-    created = [item for item in succeeded if item.get("created")]
-    if created:
-        lines.append(f"New reserving classes created: {len(created)}")
-        lines.extend(f"- {item.get('path')}" for item in created)
     if datasets:
         lines.append(f"Datasets imported: {datasets}")
     if methods:
@@ -476,15 +480,16 @@ def run_macro(active_dfm=None, active_context=None):
         _message(ui, message, kind="error")
         return {"success": False, "message": message}
 
-    # The class list is fixed; the project is only read to tell a listed class
-    # that already exists from one whose folder the import will create.
     try:
-        classes = fixed_reserving_classes(server_root, project_name)
+        classes = list_reserving_classes(server_root, project_name)
     except Exception as exc:
-        message = f"Could not check the project's reserving-class folders.\n\n{exc}"
+        message = f"Could not list the project's reserving classes.\n\n{exc}"
         _message(ui, message, kind="error")
         return {"success": False, "message": message}
-    new_paths = {item["path"] for item in classes if not item.get("exists")}
+    if not classes:
+        message = f"Project {project_name} has no reserving-class data folders to import."
+        _message(ui, message, kind="warning")
+        return {"success": False, "message": message}
 
     try:
         review = review_class_selection(
@@ -492,6 +497,7 @@ def run_macro(active_dfm=None, active_context=None):
             classes,
             project_name,
             len(bridge_workers),
+            default_rc_paths(server_root),
         )
     except Exception as exc:
         message = f"The reserving-class selection could not be completed.\n\n{exc}"
@@ -539,7 +545,6 @@ def run_macro(active_dfm=None, active_context=None):
         rc_paths=selected,
         import_policy=import_policy,
         progress=progress,
-        new_paths=new_paths,
     )
 
     failed = [item for item in results if not item.get("success")]

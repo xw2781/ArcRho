@@ -16,6 +16,7 @@ Run:
 from __future__ import annotations
 
 PROJECT_NAME = "NJ_Annual_Prod_202605_Fake"
+# PROJECT_NAME = "NJ_Annual_Prod_2026 Q3-Aug"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q2-May Test"
 # PROJECT_NAME = "NJ_Annual_Prod_2026 Q1-Feb"
@@ -74,12 +75,19 @@ from resq_migration.catalog import (  # noqa: E402
     _dataset_type_rows,
     _dataset_type_keys,
     _is_calculated_dataset_type,
+    _is_engine_generated_instance,
     _is_generated_dataset_type,
     _is_known_dataset_type,
+    _is_unreviewed_dataset,
     _unknown_dataset_type_skip_detail,
     configure_catalog,
     rebuild_dataset_instance_index,
     refresh_sidecar_graphs_for_rc,
+)
+from resq_migration.engine_parity import (  # noqa: E402
+    compare_import_values,
+    describe_import_mismatch,
+    read_engine_csv,
 )
 from resq_migration.core import (  # noqa: E402
     BS_CRA_FILE_PREFIX,
@@ -510,7 +518,11 @@ def _record_skipped(progress_state: dict) -> None:
 
 
 def _record_error_detail(progress_state: dict, *, kind: str, name: str, detail: str) -> None:
-    details = progress_state.setdefault("error_details", [])
+    _record_detail(progress_state, "error_details", kind=kind, name=name, detail=detail)
+
+
+def _record_detail(progress_state: dict, field: str, *, kind: str, name: str, detail: str) -> None:
+    details = progress_state.setdefault(field, [])
     if isinstance(details, list) and len(details) < 12:
         details.append({
             "kind": kind,
@@ -722,25 +734,39 @@ def resq_export_dataset_counts(
     }
 
 
-def _select_export_inventory(dataset_counts: dict, selected_names: list[str] | None) -> dict:
+def _select_export_inventory(dataset_counts: dict, selected_names: list[str] | None, reserving_class=None) -> dict:
     """Narrow a ResQ inventory to the dataset and method outputs a person ticked.
 
     Every method is imported through its output dataset, so narrowing the two
     dataset lists narrows the methods with them: the method name lists stay as
     they are and simply stop matching anything that was left unticked.
+
+    A dataset the review never offers -- calculated or engine-generated -- is
+    kept whether or not it was ticked, since nobody could have ticked it. Its
+    Dataset Type is read from ResQ only for a name that was not ticked.
     """
 
     if selected_names is None:
         return dataset_counts
     chosen = {_normalize_import_name(name).casefold() for name in selected_names}
     chosen.discard("")
+    triangle_items = dataset_counts.get("triangle_items") or {}
+    vector_collection = reserving_class.Vectors() if reserving_class is not None else None
+
+    def wanted(field: str, name: str) -> bool:
+        key = _normalize_import_name(name).casefold()
+        if key in chosen:
+            return True
+        item = triangle_items.get(name.casefold()) if field == "triangle_names" else None
+        if item is None and field == "vector_names" and vector_collection is not None:
+            item = vector_collection.Item(name)
+        dataset_type_obj = _safe_attr(item, "DatasetType", None)
+        dataset_type = _normalize_import_name(_safe_attr(dataset_type_obj, "Name", "")) or name
+        return _is_unreviewed_dataset(name, dataset_type)
+
     narrowed = dict(dataset_counts)
     for field in ("triangle_names", "vector_names"):
-        narrowed[field] = [
-            name
-            for name in dataset_counts.get(field) or []
-            if _normalize_import_name(name).casefold() in chosen
-        ]
+        narrowed[field] = [name for name in dataset_counts.get(field) or [] if wanted(field, name)]
     narrowed["triangles"] = len(narrowed["triangle_names"])
     narrowed["vectors"] = len(narrowed["vector_names"])
     narrowed["total"] = narrowed["triangles"] + narrowed["vectors"]
@@ -751,21 +777,6 @@ def _select_export_inventory(dataset_counts: dict, selected_names: list[str] | N
     narrowed["bssr_names"], narrowed["bscra_names"] = sr_names, cra_names
     narrowed["bssrs"], narrowed["bscras"] = len(sr_names), len(cra_names)
     return narrowed
-
-
-def _is_engine_generated_instance(payload: dict) -> bool:
-    """True for a generated single-instance dataset that the data-engine should build.
-
-    The accepted rule is: the dataset type is flagged ``Generated=true`` and the
-    instance name equals its dataset type (matching the app's single-instance
-    generated behavior). Method outputs (DFM/RS/BF), manual, and non-generated
-    calculated datasets are excluded and continue to import from ResQ.
-    """
-    name = _normalize_import_name(payload.get("name"))
-    dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
-    if not name or _clean_name(name) != _clean_name(dataset_type):
-        return False
-    return _is_generated_dataset_type(dataset_type)
 
 
 def _engine_generated_metadata_payload(
@@ -844,8 +855,13 @@ def _create_engine_generated_task(
     rc_dir: Path,
     *,
     is_vector: bool,
+    resq_item=None,
 ) -> dict:
-    """Create, but do not publish, one external worker request."""
+    """Create, but do not publish, one external worker request.
+
+    ``resq_item`` is the ResQ dataset the Engine result is compared with once
+    it has been written; its values are never read before then.
+    """
 
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
@@ -877,7 +893,30 @@ def _create_engine_generated_task(
         "kind": "vector" if is_vector else "triangle",
         "name": name,
         "csv_name": csv_name,
+        "resq_item": resq_item,
     }
+
+
+def _compare_engine_result_with_resq(task: dict, csv_path: Path) -> str:
+    """Return a warning when the written Engine dataset disagrees with ResQ, else ``""``.
+
+    ArcRho keeps the Engine result either way; the comparison only tells the
+    person importing that ResQ would show different numbers. A comparison that
+    cannot be made is reported the same way rather than failing the import.
+    """
+
+    item = task.get("resq_item")
+    if item is None:
+        return ""
+    try:
+        payload = export_vector(item) if task["is_vector"] else export_triangle(item)
+        comparison = compare_import_values(
+            payload.get("values") if isinstance(payload.get("values"), list) else [],
+            read_engine_csv(csv_path),
+        )
+    except Exception as exc:
+        return f"Could not be compared with ResQ: {exc}"
+    return describe_import_mismatch(comparison)
 
 
 def _complete_engine_generated_tasks(
@@ -992,7 +1031,21 @@ def _complete_engine_generated_tasks(
                     csv_name=str(task["csv_name"]),
                     csv_path=csv_path,
                 )
-                detail = f"    OK  engine (data-engine worker) {task['csv_name']}"
+                parity_warning = _compare_engine_result_with_resq(task, csv_path)
+                if parity_warning:
+                    detail = f"    WARN engine (data-engine worker) {task['csv_name']}: {parity_warning}"
+                    _record_detail(
+                        progress_state,
+                        "engine_parity_warnings",
+                        kind=str(task["kind"]),
+                        name=str(task["name"]),
+                        detail=parity_warning,
+                    )
+                    progress_state["engine_parity_mismatches"] = (
+                        int(progress_state.get("engine_parity_mismatches") or 0) + 1
+                    )
+                else:
+                    detail = f"    OK  engine (data-engine worker) {task['csv_name']}"
                 _log(verbose, detail)
                 written += 1
                 progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
@@ -1003,7 +1056,7 @@ def _complete_engine_generated_tasks(
                     name=task["name"],
                     completed=int(progress_state.get("completed") or 0),
                     total=int(progress_state.get("total") or len(tasks)),
-                    status="success",
+                    status="warning" if parity_warning else "success",
                     message=detail.strip(),
                 )
             except Exception as exc:
@@ -1210,6 +1263,7 @@ def export_triangles_for_rc(
                         rc_path,
                         rc_dir,
                         is_vector=False,
+                        resq_item=triangle,
                     )
                 )
                 continue
@@ -1487,6 +1541,7 @@ def export_vectors_for_rc(
                         rc_path,
                         rc_dir,
                         is_vector=True,
+                        resq_item=vector,
                     )
                 )
                 continue
@@ -1923,7 +1978,7 @@ def _import_reserving_class_as_acting_user(
                 run_dfms=run_dfms,
                 progress_callback=progress_callback,
             )
-            dataset_counts = _select_export_inventory(dataset_counts, selected_names)
+            dataset_counts = _select_export_inventory(dataset_counts, selected_names, reserving_class)
             method_only_progress = bool(run_dfms and not run_triangles and not run_vectors)
             progress_total = int(dataset_counts.get("dfms") or 0) if method_only_progress else int(dataset_counts.get("total") or 0)
             progress_state = {
@@ -2101,6 +2156,8 @@ def _import_reserving_class_as_acting_user(
                 "engine_available": engine_available,
                 "engine_skipped": int(progress_state.get("engine_skipped") or 0),
                 "engine_errors": int(progress_state.get("engine_errors") or 0),
+                "engine_parity_mismatches": int(progress_state.get("engine_parity_mismatches") or 0),
+                "engine_parity_warnings": progress_state.get("engine_parity_warnings", []),
                 "datasets_imported": datasets_written,
                 "total_written": total_written,
                 "skipped": skipped,
