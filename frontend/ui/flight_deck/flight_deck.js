@@ -4,8 +4,9 @@
 
 import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
 import { runMacroById } from "../macro/macro_window.js?v=20260831a";
-import { createIconElement, defaultIconForScopes, normalizeIcon } from "./flight_deck_icons.js?v=20260831e";
-import { openFlightDeckButtonEditor } from "./flight_deck_editor.js?v=20260831e";
+import { createIconElement, defaultIconForScopes, normalizeIcon } from "./flight_deck_icons.js?v=20260901b";
+import { openFlightDeckButtonEditor } from "./flight_deck_editor.js?v=20260901b";
+import { hideDeckTooltip as hideTooltip, showDeckTooltip } from "./flight_deck_tooltip.js?v=20260901a";
 
 const API_BASE = window.location.origin;
 const FRAGMENT_URL = "/ui/flight_deck/flight_deck.html?v=20260831a";
@@ -15,7 +16,6 @@ const HOST_WAIT_MS = 2000;
 const EDGE_MARGIN = 8;
 const DRAG_THRESHOLD_PX = 4;
 const GHOST_OFFSET_PX = 12;
-const TOOLTIP_DELAY_MS = 380;
 const RESULT_FLASH_MS = 1400;
 
 let deck = null;
@@ -27,7 +27,6 @@ let deckCloseBtn = null;
 let deckMenu = null;
 let deckWired = false;
 let fragmentPromise = null;
-let tooltipTimer = null;
 let macroIndex = new Map();
 let macrosLoaded = false;
 let configLoadPromise = null;
@@ -310,17 +309,7 @@ function tooltipTextFor(element) {
 }
 
 function showTooltip(element, event) {
-  const text = tooltipTextFor(element);
-  if (!text) return;
-  clearTimeout(tooltipTimer);
-  const x = event.clientX + 12;
-  const y = event.clientY + 20;
-  tooltipTimer = setTimeout(() => shell.showGlobalTooltip?.(text, x, y), TOOLTIP_DELAY_MS);
-}
-
-function hideTooltip() {
-  clearTimeout(tooltipTimer);
-  shell.hideGlobalTooltip?.();
+  showDeckTooltip(tooltipTextFor(element), event);
 }
 
 /* --------------------------------------------------------------- deck state */

@@ -7,7 +7,7 @@
     "View > Show Flight Deck, or Ctrl+B, shows and hides it.",
     "Drag a macro out of the Macros window and drop it on the deck to give it a button.",
     "Each button carries an icon plus a label of your choosing. Pick the icon from the built-in set, draw your own on the pad, or paste one in.",
-    "The pad has a pen, a straight line, a box and an oval, plus an eraser that lifts whole lines and shapes away, with Undo and Clear beside them. Hold Shift for a level line, a square or a circle.",
+    "The pad's tools sit in one compact toolbar above it: a pen, a straight line, a box and an oval, two erasers, one that lifts whole lines and shapes away and one that rubs out only what its ring covers, and Undo and Clear at the end. Press + or - to resize the eraser ring. Hover a tool for its Shift shortcut, which gives a level line, a square or a circle.",
     "Picking a built-in glyph lays it out on the pad, so you can add to it or rub parts of it out rather than only replacing it.",
     "Reopening a button puts its icon back on the pad, so you carry on from where you left off instead of starting again.",
     "The deck stays above the rest of the app, is dragged by the grip on its end, and can stand upright as well as lie flat.",

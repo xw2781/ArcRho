@@ -7,6 +7,7 @@ import {
   DRAW_CANVAS_SIZE,
   DRAW_MARK_TOOLS,
   builtinIconMarks,
+  cutMarksNear,
   defaultIconForScopes,
   eraseMarksNear,
   iconToMarks,
@@ -239,12 +240,78 @@ test("the pad carries the five tools, and undo steps back through everything the
   const css = read("../ui/flight_deck/flight_deck.css");
 
   assert.match(editor, /const DRAW_TOOLS = \[[\s\S]*?id: "pen"[\s\S]*?id: "line"[\s\S]*?id: "box"[\s\S]*?id: "oval"[\s\S]*?id: "erase"[\s\S]*?\];/);
-  assert.match(editor, /session\.marks = eraseMarksNear\(session\.marks, point\)/);
+  assert.match(editor, /session\.marks = tool === \"cut\"\s*\n\s*\? cutMarksNear\(session\.marks, point, eraserRadius\)\s*\n\s*: eraseMarksNear\(session\.marks, point, eraserRadius\)/);
   assert.match(editor, /constrainShape\(stroke\.tool, stroke\.mark\.points\[0\], point, event\.shiftKey\)/);
   // Every change is snapshotted, so undo steps back over an erase as readily as over a line.
   assert.match(editor, /if \(session\.marks\.length !== finished\.before\.length\) pushHistory\(finished\.before\)/);
   assert.match(editor, /session\.marks = session\.history\.pop\(\)/);
-  assert.match(css, /\.flightDeckDrawTool\[data-tool="erase"\] \{\s*\n\s*grid-column: 1 \/ -1;/);
+});
+
+test("the pad's tools sit in one compact toolbar, with their icons kept as files", () => {
+  const editor = read("../ui/flight_deck/flight_deck_editor.js");
+  const css = read("../ui/flight_deck/flight_deck.css");
+  const icons = read("../ui/flight_deck/draw-tool-icons/draw_tool_icons.css");
+
+  assert.match(editor, /toolbar\.setAttribute\("role", "toolbar"\)/);
+  assert.match(editor, /const \[undoBtn, clearBtn\] = DRAW_ACTIONS\.map/);
+  // No path data lives in the module: every glyph is a file the mask stylesheet points at.
+  assert.doesNotMatch(editor, /<path d=/);
+  ["pen", "line", "box", "oval", "erase", "cut", "undo", "clear"].forEach((tool) => {
+    assert.match(read(`../ui/flight_deck/draw-tool-icons/${tool}.svg`), /stroke="currentColor"/);
+    if (tool !== "pen") {
+      assert.match(icons, new RegExp(`\\[data-draw-tool="${tool}"\\] \\{[\\s\\S]*?mask-image: url\\("${tool}\\.svg`));
+    }
+  });
+  // The eraser's pressed state is red where the drawing tools' is blue.
+  assert.match(css, /\.flightDeckDrawTool\[data-tool="erase"\]\[aria-pressed="true"\],\s*\n\.flightDeckDrawTool\[data-tool="cut"\]\[aria-pressed="true"\] \{/);
+  // The running note under the pad is gone; only a rejected paste still says anything.
+  assert.doesNotMatch(editor, /flightDeckEditorNote/);
+  assert.doesNotMatch(css, /flightDeckEditorNote/);
+  assert.match(editor, /showPasteError\(result\.error\)/);
+});
+
+test("the area eraser cuts only what its ring covers and leaves the rest as lines", () => {
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 0.01, `${a} is not near ${b}`);
+  const across = { tool: "line", points: [point(2, 12), point(22, 12)] };
+  const clear = { tool: "line", points: [point(2, 4), point(22, 4)] };
+  const dot = { tool: "pen", points: [point(12, 11)] };
+
+  const cut = cutMarksNear([across, clear, dot], point(12, 12), 1.6);
+  // The line through the ring becomes two lines that stop at the ring's edge; the dot under it is
+  // gone; the line clear of it is the very same piece.
+  assert.deepEqual(cut.map((mark) => mark.tool), ["line", "line", "line"]);
+  near(cut[0].points[1].x, 10.4);
+  near(cut[1].points[0].x, 13.6);
+  assert.equal(cut[2], clear);
+
+  // A box cut at one corner opens into straight lines rather than a rounded pen stroke, and the
+  // rest of its edges are kept whole.
+  const box = { tool: "box", points: [point(4, 4), point(20, 20)] };
+  const opened = cutMarksNear([box], point(4, 4), 1.6);
+  assert.ok(opened.length >= 3 && opened.every((mark) => mark.tool === "line"));
+  assert.ok(opened.some((mark) => mark.points[0].x === 20 && mark.points[1].x === 20));
+
+  // An oval and a measured glyph curve are left as freehand runs; an unmeasured curve stays put.
+  const oval = { tool: "oval", points: [point(4, 6), point(20, 18)] };
+  assert.ok(cutMarksNear([oval], point(12, 6), 1.6).every((mark) => mark.tool === "pen"));
+  const curve = { tool: "path", d: "M2 2L22 22", outline: [point(2, 2), point(12, 12), point(22, 22)] };
+  assert.equal(cutMarksNear([curve], point(12, 12), 1.6).length, 2);
+  const unmeasured = { tool: "path", d: "M2 2L22 22" };
+  assert.deepEqual(cutMarksNear([unmeasured], point(12, 12), 1.6), [unmeasured]);
+});
+
+test("the eraser ring is resized with plus and minus, and both erasers use it", () => {
+  const editor = read("../ui/flight_deck/flight_deck_editor.js");
+  const css = read("../ui/flight_deck/flight_deck.css");
+
+  assert.match(editor, /id: "cut", label: "Erase Area"/);
+  assert.match(editor, /cutMarksNear\(session\.marks, point, eraserRadius\)/);
+  assert.match(editor, /eraseMarksNear\(session\.marks, point, eraserRadius\)/);
+  // Plus and minus reach the pad from the number pad or the main keys, never from a text box.
+  assert.match(editor, /event\.key === "\+" \|\| event\.key === "=" \|\| event\.key === "-"\) && isEraser\(activeTool\) && !isTextTarget\(event\.target\)/);
+  assert.match(editor, /padWrap\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(editor, /r="\$\{eraserRadius\}" class="flightDeckEraserRing"/);
+  assert.match(css, /\.flightDeckDrawTool\[data-tool="cut"\]\[aria-pressed="true"\] \{/);
 });
 
 test("picking a built-in glyph puts it on the pad to be worked on", () => {

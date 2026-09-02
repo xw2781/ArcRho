@@ -394,6 +394,89 @@ export function eraseMarksNear(marks, point, radius = DRAW_ERASER_RADIUS) {
   return (Array.isArray(marks) ? marks : []).filter((mark) => !markIsNear(mark, point, radius));
 }
 
+// A cut-off end shorter than this is a sliver the area eraser leaves behind, not a line worth
+// keeping.
+const DRAW_CUT_MIN_LENGTH = 0.5;
+
+function lerp(a, b, t) {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+function chainLength(points) {
+  return points.reduce((total, current, index) => (index ? total + Math.hypot(current.x - points[index - 1].x, current.y - points[index - 1].y) : 0), 0);
+}
+
+// The stretch of the segment a-b that lies inside the circle, as a pair of fractions along it,
+// or null when the segment stays clear.
+function segmentInsideCircle(a, b, center, radius) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const fx = a.x - center.x;
+  const fy = a.y - center.y;
+  const A = dx * dx + dy * dy;
+  const B = 2 * (fx * dx + fy * dy);
+  const C = fx * fx + fy * fy - radius * radius;
+  if (!A) return C <= 0 ? [0, 1] : null;
+  const discriminant = B * B - 4 * A * C;
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const t0 = Math.max(0, (-B - root) / (2 * A));
+  const t1 = Math.min(1, (-B + root) / (2 * A));
+  return t0 < t1 ? [t0, t1] : null;
+}
+
+// The runs of a chain of points that lie outside the circle, cut exactly at its edge.
+function chainOutsideCircle(outline, center, radius) {
+  if (outline.length === 1) {
+    return Math.hypot(outline[0].x - center.x, outline[0].y - center.y) <= radius ? [] : [outline.slice()];
+  }
+  const runs = [];
+  let run = [];
+  const flush = () => {
+    if (run.length > 1) runs.push(run);
+    run = [];
+  };
+  for (let i = 1; i < outline.length; i += 1) {
+    const a = outline[i - 1];
+    const b = outline[i];
+    if (!run.length) run.push(a);
+    const inside = segmentInsideCircle(a, b, center, radius);
+    if (!inside) {
+      run.push(b);
+      continue;
+    }
+    const [t0, t1] = inside;
+    if (t0 > 0) run.push(lerp(a, b, t0));
+    flush();
+    if (t1 < 1) run = [lerp(a, b, t1), b];
+  }
+  flush();
+  return runs.filter((points) => chainLength(points) >= DRAW_CUT_MIN_LENGTH);
+}
+
+// The area eraser works by the pixel instead: only what the ring covers goes, and the rest of the
+// piece stays. A cut line or box is left as straight lines, so its corners stay sharp; a pen
+// stroke, an oval, or a glyph curve is left as freehand runs. A glyph curve the pad could not
+// measure stays put, as it does under the other eraser.
+export function cutMarksNear(marks, point, radius = DRAW_ERASER_RADIUS) {
+  const out = [];
+  (Array.isArray(marks) ? marks : []).forEach((mark) => {
+    if (!markIsNear(mark, point, radius)) {
+      out.push(mark);
+      return;
+    }
+    const straight = mark.tool === "line" || mark.tool === "box";
+    chainOutsideCircle(markOutline(mark), point, radius).forEach((points) => {
+      if (!straight) {
+        out.push({ tool: "pen", points });
+        return;
+      }
+      for (let i = 1; i < points.length; i += 1) out.push({ tool: "line", points: [points[i - 1], points[i]] });
+    });
+  });
+  return out.slice(0, DRAW_MAX_MARKS);
+}
+
 /* --------------------------------------------- a built-in glyph on the pad */
 
 const GLYPH_SHAPE_PATTERN = /<(path|circle|ellipse|rect)\b([^>]*)>/g;

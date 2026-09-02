@@ -1,0 +1,59 @@
+/*
+ * Drawing-tool icon artwork for the Flight Deck button editor.
+ *
+ * This file is the single place that says which drawing belongs to which pad tool, and the only
+ * place that needs an edit when a tool is added or its icon is replaced. Every icon is applied as
+ * a CSS mask over `currentColor`, so one monochrome SVG serves the resting, hovered, pressed, and
+ * disabled button - and the eraser's red pressed state - without a recolored copy.
+ *
+ * The host decides the box: `flight_deck.css` owns the icon's size and color inside a tool
+ * button. A tool with no rule below falls back to the pen.
+ *
+ * Every mask URL is relative to this stylesheet on purpose, so the set renders both from the app
+ * server and from a design page opened straight off disk. Do not make them absolute.
+ */
+
+.flightDeckDrawToolIcon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+
+  -webkit-mask-image: url("pen.svg?v=20260901b");
+  mask-image: url("pen.svg?v=20260901b");
+}
+
+.flightDeckDrawToolIcon[data-draw-tool="line"] {
+  -webkit-mask-image: url("line.svg?v=20260901b");
+  mask-image: url("line.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="box"] {
+  -webkit-mask-image: url("box.svg?v=20260901b");
+  mask-image: url("box.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="oval"] {
+  -webkit-mask-image: url("oval.svg?v=20260901b");
+  mask-image: url("oval.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="erase"] {
+  -webkit-mask-image: url("erase.svg?v=20260901b");
+  mask-image: url("erase.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="cut"] {
+  -webkit-mask-image: url("cut.svg?v=20260901b");
+  mask-image: url("cut.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="undo"] {
+  -webkit-mask-image: url("undo.svg?v=20260901b");
+  mask-image: url("undo.svg?v=20260901b");
+}
+.flightDeckDrawToolIcon[data-draw-tool="clear"] {
+  -webkit-mask-image: url("clear.svg?v=20260901b");
+  mask-image: url("clear.svg?v=20260901b");
+}
