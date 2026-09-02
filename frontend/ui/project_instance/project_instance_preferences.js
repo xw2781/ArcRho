@@ -24,7 +24,7 @@ import {
   appDefaultWindowTabs,
   readDefaultWindowTabs,
   writeDefaultWindowTabs,
-} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824f";
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260902a";
 import { extractDatasetTypeItems, fetchProjectDatasetTypes } from "/ui/shared/dataset/dataset_types_source.js";
 import {
   effectiveNumberFormat,

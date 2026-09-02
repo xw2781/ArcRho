@@ -196,8 +196,33 @@ test("CRA selection grids support per-column, whole-row, and user-value edits", 
   assert.match(main, /dataset\.selectMethod = row\.method/u);
   assert.match(main, /dataset\.selectDev = String\(devIndex\)/u);
   assert.match(main, /if \(devIndex === null\) \{\s*\n\s*for \(let index = 0/u);
-  assert.match(main, /state\[config\.selectionKey\]\[devIndex\] = "user"/u);
-  assert.match(main, /focusSelectionUserInput\(scope, devIndex\)/u);
+  assert.match(main, /selection\[devIndex\] = "user"/u);
+  // The User Value row follows the Result Selection entry UX: the cell is a
+  // spreadsheet cell, not a permanent input. A click activates it, typing or
+  // Enter opens an in-cell editor, Escape abandons it, Delete clears it, and a
+  // cleared column falls back to the grid's default estimator.
+  assert.doesNotMatch(main, /input\.dataset\.selectScope/u);
+  assert.match(main, /const USER_CELL_EDIT_START_KEYS = \/\^\[0-9\.\\-\+='"\[\]\$\/u;/u);
+  assert.match(main, /event\.key === "Enter" \|\| event\.key === "F2"/u);
+  assert.match(main, /event\.key === "Delete" \|\| event\.key === "Backspace"/u);
+  assert.match(main, /if \(selection\[devIndex\] === "user"\) selection\[devIndex\] = config\.defaultMethod;/u);
+  assert.match(main, /cell\.classList\.add\("arSpreadsheetSelectionAnchor"\)/u);
+  assert.match(main, /document\.addEventListener\("paste", handleUserCellPaste\)/u);
+  // A typed figure reads red and bold, an Excel-linked one green, and a link
+  // the workbook refused red, as on the RS and DFM grids.
+  assert.match(css, /\.bsMethodTable td\.bsSelUserCell \{[^}]*color: #dc2626;[^}]*font-weight: 700;/u);
+  assert.match(css, /\.bsMethodTable td\.bsSelUserCell\.bsSelExcelLinked \{[^}]*color: #166534;/u);
+  assert.match(css, /\.bsMethodTable td\.bsSelUserCell\.bsSelExcelLinkError \{/u);
+  // Excel references and formulas commit through the same entry path, and the
+  // Links tab lists, refreshes, and breaks them.
+  assert.match(main, /expandUserValueRangeEntry\(raw, devIndex, matrixDevelopmentCount\(\)\)/u);
+  assert.match(main, /evaluateUserValueFormula\(entry\.input, values\)/u);
+  assert.match(main, /createBerquistShermanLinksTab\(\{/u);
+  assert.match(main, /onRefresh: refreshUserValueExcelLinks,/u);
+  assert.match(main, /onBreak: breakUserValueExcelLinks,/u);
+  assert.match(main, /void checkUserValueExcelLinkFreshness\(\);/u);
+  assert.match(html, /<section class="bsPage" id="bsLinksPage" data-page="links" role="tabpanel">/u);
+  assert.match(html, /id="bsLinksMount"/u);
   assert.match(css, /\.bsMethodTable td\.bsSelUserCell \{[^}]*background: var\(--bs-selected-band\);/u);
 });
 

@@ -60,6 +60,7 @@ export const BERQUIST_SHERMAN_TAB_DEFS = Object.freeze([
   { id: "details", label: "Details" },
   { id: "method", label: "Method" },
   { id: "notes", label: "Notes" },
+  { id: "links", label: "Links" },
   { id: "audit", label: "Audit Log" },
 ]);
 

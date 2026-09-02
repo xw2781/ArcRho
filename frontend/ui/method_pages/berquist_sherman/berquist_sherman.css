@@ -84,8 +84,16 @@ input {
   overflow: auto;
 }
 
-#bsAuditPage {
+#bsAuditPage,
+#bsLinksPage {
   padding: 3px;
+}
+
+#bsLinksMount {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Details follows the DFM/BF/CC/RS form: the stack supplies the page inset and
@@ -594,8 +602,39 @@ input {
   background: var(--ar-spreadsheet-weighted-selection-fill);
 }
 
+/* The User Value row is a spreadsheet band, as the Selected Ultimate column is
+   on Result Selection: a click activates a cell, typing starts an edit, and a
+   value entered by hand reads red and bold, so the eye can tell a figure the
+   user typed from one an estimator produced. A cell whose figure comes from a
+   formula wears the formula colour, an Excel-linked one the linked-cell green
+   the DFM Ratios grid uses, and a link the workbook refused reads red until
+   the reference is fixed. */
 .bsMethodTable td.bsSelUserCell {
   background: var(--bs-selected-band);
+  cursor: cell;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.bsMethodTable td.bsSelUserCell:focus {
+  outline: none;
+}
+
+.bsMethodTable td.bsSelUserCell.bsSelFormulaCell {
+  color: #1d4ed8;
+}
+
+.bsMethodTable td.bsSelUserCell.bsSelExcelLinked {
+  color: #166534;
+}
+
+.bsMethodTable td.bsSelUserCell.bsSelExcelLinkError {
+  color: var(--ar-spreadsheet-link-error-text, #b91c1c);
+}
+
+.bsMethodTable td.bsSelUserCell.isEditing {
+  padding: 0;
+  background: var(--bs-surface);
 }
 
 .bsMethodTable td.bsSelSelectedValue,
@@ -607,19 +646,22 @@ input {
   width: 100%;
   height: 100%;
   min-width: 0;
-  padding: 0;
+  padding: 0 var(--ar-spreadsheet-cell-padding-x, 6px);
   border: 0;
-  outline: none;
-  color: inherit;
-  text-align: right;
-  font: inherit;
-  background: transparent;
-}
-
-.bsSelUserInput:focus {
   outline: 1px solid var(--bs-blue);
   outline-offset: -1px;
+  color: var(--bs-text);
+  text-align: right;
+  font: inherit;
   background: var(--bs-surface);
+}
+
+.bsSelUserInput.isInvalid {
+  outline-color: var(--ar-color-danger, #be123c);
+}
+
+.bsSelUserInput[aria-busy="true"] {
+  cursor: progress;
 }
 
 /* The save bar sits on the shell canvas outside the page frame, as on DFM/BF,

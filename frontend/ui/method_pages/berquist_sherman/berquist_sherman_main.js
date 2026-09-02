@@ -46,7 +46,26 @@ import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_i
 import {
   BERQUIST_SHERMAN_TAB_DEFS,
   windowTabIds,
-} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260902a";
+import {
+  readExcelCellsBatch,
+  validateExcelLinksBatch,
+} from "/ui/shared/integrations/excel_api.js?v=20260819a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import { normalizeExcelReferenceAddressCase } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
+import {
+  buildUserValueLinkRecords,
+  collectUserValueExcelLinkGroups,
+  evaluateUserValueFormula,
+  excelReadItemsForInputs,
+  excelSourceKey,
+  expandUserValueRangeEntry,
+  isUserValueFormula,
+  normalizeUserValueInputs,
+  parseUserValueNumber,
+  userValueExcelReferences,
+} from "./berquist_sherman_user_values.js";
+import { createBerquistShermanLinksTab } from "./berquist_sherman_links_tab.js";
 
 const ANNUAL_PERIOD_LENGTH = 12;
 const TABS = BERQUIST_SHERMAN_TAB_DEFS;
@@ -209,12 +228,22 @@ const state = {
   userInflation: [],
   averageCaseReserveSelection: [],
   userAverageCaseReserves: [],
+  // The text behind each User Value: "" for a typed number, otherwise the
+  // formula or Excel reference whose evaluated number sits in the vector above.
+  userInflationInputs: [],
+  userAverageCaseReserveInputs: [],
+  // The User Value cell that owns keyboard input, as `{ scope, devIndex }`.
+  activeUserCell: null,
+  // Excel references the workbook refused on the last check or refresh, keyed
+  // by user cell, so the cell stays red across re-renders until it is fixed.
+  excelLinkErrors: new Map(),
 };
 
 let cleanSnapshot = "";
 let isDirty = false;
 let programmatic = false;
 let tabbedPage = null;
+let bsLinksTab = null;
 let sidecarLoadSequence = 0;
 let outputPreviewTimer = 0;
 let lastOutputPreviewMessage = null;
@@ -366,8 +395,10 @@ function configSnapshot() {
     : {
         inflationSelection: state.inflationSelection,
         userInflation: state.userInflation,
+        userInflationInputs: state.userInflationInputs,
         averageCaseReserveSelection: state.averageCaseReserveSelection,
         userAverageCaseReserves: state.userAverageCaseReserves,
+        userAverageCaseReserveInputs: state.userAverageCaseReserveInputs,
         loessSpan: state.loessSpan,
       };
   return JSON.stringify({
@@ -620,14 +651,24 @@ function ensureSelectionConfig() {
   if (state.inflationSelection.length !== developmentCount) {
     state.inflationSelection = Array(developmentCount).fill("paid_all");
   }
+  // A User Value cell starts blank; the calculation reads a blank as zero.
   if (state.userInflation.length !== developmentCount) {
-    state.userInflation = Array(developmentCount).fill(0);
+    state.userInflation = Array(developmentCount).fill(null);
+  }
+  if (state.userInflationInputs.length !== developmentCount) {
+    state.userInflationInputs = normalizeUserValueInputs(state.userInflationInputs, developmentCount);
   }
   if (state.averageCaseReserveSelection.length !== developmentCount) {
     state.averageCaseReserveSelection = Array(developmentCount).fill("latest");
   }
   if (state.userAverageCaseReserves.length !== developmentCount) {
-    state.userAverageCaseReserves = Array(developmentCount).fill(0);
+    state.userAverageCaseReserves = Array(developmentCount).fill(null);
+  }
+  if (state.userAverageCaseReserveInputs.length !== developmentCount) {
+    state.userAverageCaseReserveInputs = normalizeUserValueInputs(
+      state.userAverageCaseReserveInputs,
+      developmentCount,
+    );
   }
 }
 
@@ -1240,12 +1281,18 @@ const SELECTION_SCOPES = Object.freeze({
     rows: INFLATION_GRID_ROWS,
     selectionKey: "inflationSelection",
     userKey: "userInflation",
+    inputsKey: "userInflationInputs",
+    defaultMethod: "paid_all",
+    label: "Average Inflation",
     ariaSuffix: "inflation",
   }),
   average: Object.freeze({
     rows: AVERAGE_GRID_ROWS,
     selectionKey: "averageCaseReserveSelection",
     userKey: "userAverageCaseReserves",
+    inputsKey: "userAverageCaseReserveInputs",
+    defaultMethod: "latest",
+    label: "Current Average Case Reserves",
     ariaSuffix: "average case reserve",
   }),
 });
@@ -1257,6 +1304,18 @@ function selectionRowValue(row, devIndex, userValues) {
   return Array.isArray(source) ? source[devIndex] : null;
 }
 
+function userCellKey(scope, devIndex) {
+  return `${scope}:${devIndex}`;
+}
+
+function userCellHost(scope) {
+  return scope === "inflation" ? els.methodBody : els.secondaryBody;
+}
+
+function findUserCell(scope, devIndex) {
+  return userCellHost(scope)?.querySelector(`td.bsSelUserCell[data-select-dev="${devIndex}"]`) || null;
+}
+
 // ResQ-style CRA selection grid: one estimator per row, one development period
 // per column. Click a value to select that estimator for the development
 // period, click a row label to select it for every development period, and type
@@ -1264,10 +1323,13 @@ function selectionRowValue(row, devIndex, userValues) {
 function renderColumnSelectionGrid(scope, head, body, formatValue) {
   const config = SELECTION_SCOPES[scope];
   const developmentCount = matrixDevelopmentCount();
-  // The calculation normalizes both vectors, so the grid echoes what actually
-  // fed the result rather than the raw state it was built from.
+  // The calculation normalizes the selection, so the grid echoes what actually
+  // fed the result rather than the raw state it was built from. The User Value
+  // row shows the raw state instead: a blank cell must read blank, not as the
+  // zero the calculation stands in for it.
   const selection = state.result?.[config.selectionKey] || state[config.selectionKey];
-  const userValues = state.result?.[config.userKey] || state[config.userKey];
+  const userValues = state[config.userKey];
+  const userInputs = state[config.inputsKey];
   head.replaceChildren(buildMethodHeaderRow("", developmentCount));
 
   const fragment = document.createDocumentFragment();
@@ -1318,17 +1380,24 @@ function renderColumnSelectionGrid(scope, head, body, formatValue) {
       if (norm(selection[devIndex]) === row.method) {
         cell.classList.add("bsSelSelectedSource");
       }
+      cell.tabIndex = 0;
       if (row.user) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "bsSelUserInput";
-        input.value = formatValue(rawValue ?? 0);
-        input.dataset.selectScope = scope;
-        input.dataset.selectDev = String(devIndex);
-        input.setAttribute("aria-label", `${age} user ${config.ariaSuffix}`);
-        cell.appendChild(input);
+        const input = text(userInputs[devIndex]);
+        cell.textContent = numberOrNull(rawValue) === null ? "" : formatValue(rawValue);
+        cell.setAttribute("aria-label", `${age} user ${config.ariaSuffix}`);
+        if (input) {
+          cell.classList.add(userValueExcelReferences(input).length ? "bsSelExcelLinked" : "bsSelFormulaCell");
+          cell.title = input;
+          const failure = state.excelLinkErrors.get(userCellKey(scope, devIndex));
+          if (failure) {
+            cell.classList.add("bsSelExcelLinkError");
+            cell.title = `${input}\n${failure}`;
+          }
+        }
+        if (state.activeUserCell?.scope === scope && state.activeUserCell?.devIndex === devIndex) {
+          cell.classList.add("arSpreadsheetSelectionAnchor");
+        }
       } else {
-        cell.tabIndex = 0;
         cell.textContent = formatValue(rawValue);
       }
       rowElement.appendChild(cell);
@@ -1352,14 +1421,6 @@ function renderSelectionGrids() {
   }
 }
 
-function focusSelectionUserInput(scope, devIndex) {
-  const host = scope === "inflation" ? els.methodBody : els.secondaryBody;
-  const input = host?.querySelector(`input.bsSelUserInput[data-select-dev="${devIndex}"]`);
-  if (!input) return;
-  input.focus();
-  input.select();
-}
-
 function applySelectionChoice(scope, method, devIndex) {
   const config = SELECTION_SCOPES[scope];
   if (!config || !method) return;
@@ -1373,41 +1434,491 @@ function applySelectionChoice(scope, method, devIndex) {
   recalculateAfterSelectionEdit();
 }
 
-function applySelectionUserValue(scope, devIndex, value) {
+/*
+The User Value row follows the Result Selection entry UX rather than a row of
+permanent inputs: a click activates a cell, typing a digit, a sign, `=`, or a
+quote starts an edit seeded with that key, Enter or F2 or a double-click opens
+the current text, Enter commits, Escape abandons, Tab commits and moves on, the
+arrow keys move the active cell, and Delete or Backspace clears it. A committed
+figure is entered and selected for its column; clearing a cell whose column
+selected it falls back to the grid's default estimator. Excel references and
+formulas are committed through the same path, so a pasted link behaves like a
+typed number that happens to be read from a workbook.
+*/
+let userCellEditor = null;
+
+function setActiveUserCell(scope, devIndex, { focus = true } = {}) {
+  for (const body of [els.methodBody, els.secondaryBody]) {
+    body?.querySelectorAll("td.arSpreadsheetSelectionAnchor").forEach((cell) => {
+      cell.classList.remove("arSpreadsheetSelectionAnchor");
+    });
+  }
+  const cell = findUserCell(scope, devIndex);
+  if (!cell) {
+    state.activeUserCell = null;
+    return;
+  }
+  state.activeUserCell = { scope, devIndex };
+  cell.classList.add("arSpreadsheetSelectionAnchor");
+  if (focus) cell.focus();
+}
+
+function openUserCellEditor(scope, devIndex, seedText = null) {
+  const config = SELECTION_SCOPES[scope];
+  if (!config) return;
+  if (userCellEditor) {
+    if (userCellEditor.scope === scope && userCellEditor.devIndex === devIndex) return;
+    cancelUserCellEditor();
+  }
+  const cell = findUserCell(scope, devIndex);
+  if (!cell) return;
+  ensureSelectionConfig();
+  const stored = text(state[config.inputsKey][devIndex]);
+  const value = state[config.userKey][devIndex];
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "bsSelUserInput";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = seedText ?? (stored || (numberOrNull(value) === null ? "" : String(value)));
+  input.setAttribute("aria-label", `${getDevelopmentLabel(devIndex)} user ${config.ariaSuffix}`);
+  const editor = { scope, devIndex, cell, input, busy: false };
+  input.addEventListener("keydown", (event) => {
+    if (editor.busy) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitUserCellEditor(editor);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelUserCellEditor();
+      setActiveUserCell(scope, devIndex);
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+      void commitUserCellEditor(editor, { moveBy: event.shiftKey ? -1 : 1 });
+    }
+    event.stopPropagation();
+  });
+  input.addEventListener("input", () => input.classList.remove("isInvalid"));
+  // Leaving the editor commits; an entry the page refuses on the way out is
+  // dropped with its reason in the status bar rather than trapping focus.
+  input.addEventListener("blur", () => {
+    if (userCellEditor !== editor || editor.busy) return;
+    void commitUserCellEditor(editor, { fromBlur: true });
+  });
+  cell.classList.add("isEditing");
+  cell.replaceChildren(input);
+  userCellEditor = editor;
+  state.activeUserCell = { scope, devIndex };
+  input.focus();
+  if (seedText === null) input.select();
+}
+
+function cancelUserCellEditor() {
+  const editor = userCellEditor;
+  if (!editor) return;
+  userCellEditor = null;
+  renderMethodTable();
+}
+
+async function commitUserCellEditor(editor, { moveBy = 0, fromBlur = false } = {}) {
+  if (!editor || userCellEditor !== editor || editor.busy) return false;
+  const { scope, devIndex, input } = editor;
+  editor.busy = true;
+  input.readOnly = true;
+  input.setAttribute("aria-busy", "true");
+  try {
+    await applyUserValueEntry(scope, devIndex, input.value);
+  } catch (error) {
+    const message = text(error?.message || error);
+    if (fromBlur) {
+      if (userCellEditor === editor) cancelUserCellEditor();
+      restoreActiveUserCellFocus();
+      postStatus(message, "error");
+      return false;
+    }
+    editor.busy = false;
+    input.readOnly = false;
+    input.removeAttribute("aria-busy");
+    input.classList.add("isInvalid");
+    postStatus(message, "error");
+    input.focus();
+    return false;
+  }
+  // The grid re-rendered under the commit, so the editor is already gone.
+  if (userCellEditor === editor) userCellEditor = null;
+  if (fromBlur) {
+    // Focus already went where the user sent it - often another User Value
+    // cell, which the click activated before this commit finished - so only
+    // the anchor is restored, and focus only when the re-render dropped it.
+    restoreActiveUserCellFocus();
+    return true;
+  }
+  const nextIndex = Math.min(Math.max(devIndex + moveBy, 0), matrixDevelopmentCount() - 1);
+  setActiveUserCell(scope, nextIndex);
+  return true;
+}
+
+function restoreActiveUserCellFocus() {
+  const active = state.activeUserCell;
+  if (!active) return;
+  const focusLost = !document.activeElement || document.activeElement === document.body;
+  setActiveUserCell(active.scope, active.devIndex, { focus: focusLost });
+}
+
+function setUserValue(scope, devIndex, value, input) {
+  const config = SELECTION_SCOPES[scope];
+  state[config.userKey][devIndex] = value;
+  state[config.inputsKey][devIndex] = text(input);
+  state.excelLinkErrors.delete(userCellKey(scope, devIndex));
+  const selection = state[config.selectionKey];
+  if (value === null) {
+    if (selection[devIndex] === "user") selection[devIndex] = config.defaultMethod;
+  } else {
+    selection[devIndex] = "user";
+  }
+}
+
+// One workbook read for every distinct cell the given inputs reference; a cell
+// the workbook refused is absent from the map, so evaluation names it.
+async function readExcelValuesForInputs(inputs) {
+  const items = excelReadItemsForInputs(inputs);
+  const values = new Map();
+  const failures = new Map();
+  if (!items.length) return { values, failures };
+  const response = await readExcelCellsBatch(
+    items.map(({ book_path, sheet, cell }) => ({ book_path, sheet, cell })),
+  );
+  if (!response?.ok) throw new Error(text(response?.error) || "Excel could not be read.");
+  const results = Array.isArray(response.results) ? response.results : [];
+  items.forEach((item, index) => {
+    const result = results[index];
+    if (result?.ok && numberOrNull(result.value) !== null) values.set(item.key, Number(result.value));
+    else failures.set(item.key, text(result?.error) || "The linked cell has no numeric value.");
+  });
+  return { values, failures };
+}
+
+// The workbook's own reason for refusing a cell, named with the cell, so an
+// entry that fails on a missing sheet says so rather than "no numeric value".
+function refusedReferenceError(input, failures) {
+  const reference = userValueExcelReferences(input)
+    .find((candidate) => failures.has(excelSourceKey(candidate)));
+  if (!reference) return null;
+  const reason = failures.get(excelSourceKey(reference));
+  return Object.assign(
+    new Error(`${reference.filename} ${reference.sheet}!${reference.cell}: ${reason}`),
+    { reference, reason },
+  );
+}
+
+async function applyUserValueEntry(scope, devIndex, rawText) {
   const config = SELECTION_SCOPES[scope];
   if (!config || !Number.isInteger(devIndex) || devIndex < 0) return;
   ensureSelectionConfig();
-  state[config.userKey][devIndex] = value ?? 0;
-  state[config.selectionKey][devIndex] = "user";
+  const raw = normalizeExcelReferenceAddressCase(text(rawText));
+  const entries = expandUserValueRangeEntry(raw, devIndex, matrixDevelopmentCount())
+    || [{ column: devIndex, input: raw }];
+  const formulas = entries.filter((entry) => isUserValueFormula(entry.input));
+  const { values, failures } = formulas.length
+    ? await readExcelValuesForInputs(formulas.map((entry) => entry.input))
+    : { values: new Map(), failures: new Map() };
+  const updates = entries.map((entry) => {
+    if (isUserValueFormula(entry.input)) {
+      const refused = refusedReferenceError(entry.input, failures);
+      if (refused) throw refused;
+      return { column: entry.column, input: entry.input, value: evaluateUserValueFormula(entry.input, values) };
+    }
+    const parsed = parseUserValueNumber(entry.input);
+    if (!parsed.ok) throw new Error("Enter a number, a formula, or an Excel cell reference.");
+    return { column: entry.column, input: "", value: parsed.value };
+  });
+  for (const update of updates) setUserValue(scope, update.column, update.value, update.input);
   recalculateAfterSelectionEdit();
+  void bsLinksTab?.refresh();
+}
+
+function clearUserValue(scope, devIndex) {
+  ensureSelectionConfig();
+  setUserValue(scope, devIndex, null, "");
+  recalculateAfterSelectionEdit();
+  setActiveUserCell(scope, devIndex);
+  void bsLinksTab?.refresh();
+}
+
+const USER_CELL_EDIT_START_KEYS = /^[0-9.\-+='"[]$/u;
+
+function handleUserCellKeydown(event, scope, devIndex) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const config = SELECTION_SCOPES[scope];
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    const nextIndex = devIndex + (event.key === "ArrowLeft" ? -1 : 1);
+    if (nextIndex >= 0 && nextIndex < matrixDevelopmentCount()) setActiveUserCell(scope, nextIndex);
+  } else if (event.key === "Enter" || event.key === "F2") {
+    event.preventDefault();
+    openUserCellEditor(scope, devIndex);
+  } else if (event.key === " ") {
+    // Space selects the figure the cell already holds, as it does on the
+    // estimator rows.
+    event.preventDefault();
+    if (numberOrNull(state[config.userKey][devIndex]) !== null) applySelectionChoice(scope, "user", devIndex);
+    setActiveUserCell(scope, devIndex);
+  } else if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault();
+    clearUserValue(scope, devIndex);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    state.activeUserCell = null;
+    findUserCell(scope, devIndex)?.classList.remove("arSpreadsheetSelectionAnchor");
+  } else if (event.key.length === 1 && USER_CELL_EDIT_START_KEYS.test(event.key)) {
+    event.preventDefault();
+    openUserCellEditor(scope, devIndex, event.key);
+  }
 }
 
 function handleSelectionGridEvent(event) {
   if (variant !== "cra" || state.currentView !== "avgSelections") return;
   const target = event.target instanceof Element ? event.target : null;
-  const input = target?.closest("input.bsSelUserInput") || null;
-  if (input && event.type !== "click") {
-    if (event.type === "change") {
-      applySelectionUserValue(
-        text(input.dataset.selectScope),
-        Number.parseInt(input.dataset.selectDev || "", 10),
-        numberOrNull(text(input.value).replace(/,/gu, "")),
-      );
-    }
-    if (event.type === "keydown" && event.key === "Enter") input.blur();
-    return;
-  }
+  if (target?.closest("input.bsSelUserInput")) return;
   const pick = target?.closest("[data-select-method]") || null;
-  if (!pick || event.type === "change") return;
-  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-  // Clicking a User Value cell must keep the caret in its input, so only the
-  // keyboard path and the read-only estimator cells suppress the default.
-  if (!input) event.preventDefault();
+  if (!pick) return;
   const scope = text(pick.dataset.selectScope);
   const devRaw = Number.parseInt(pick.dataset.selectDev || "", 10);
   const devIndex = Number.isInteger(devRaw) ? devRaw : null;
+  const config = SELECTION_SCOPES[scope];
+  if (pick.classList.contains("bsSelUserCell") && devIndex !== null) {
+    if (event.type === "keydown") {
+      handleUserCellKeydown(event, scope, devIndex);
+    } else if (event.type === "dblclick") {
+      event.preventDefault();
+      openUserCellEditor(scope, devIndex);
+    } else if (event.type === "click") {
+      // A click activates the cell; a cell that already holds a figure is also
+      // selected for its column, as clicking any other estimator's value is.
+      if (userCellEditor) return;
+      if (numberOrNull(state[config.userKey][devIndex]) !== null
+        && norm(state[config.selectionKey][devIndex]) !== "user") {
+        applySelectionChoice(scope, "user", devIndex);
+      }
+      setActiveUserCell(scope, devIndex);
+    }
+    return;
+  }
+  if (event.type !== "click" && event.type !== "keydown") return;
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
   applySelectionChoice(scope, text(pick.dataset.selectMethod), devIndex);
-  if (input && devIndex !== null) focusSelectionUserInput(scope, devIndex);
+}
+
+// Ctrl+V on an active User Value cell fills the row from that column with the
+// first line of the clipboard, one tab-separated entry per column; each entry
+// is committed exactly as if it had been typed, so a pasted Excel reference or
+// range links the cells it lands on.
+function handleUserCellPaste(event) {
+  if (!state.activeUserCell || userCellEditor) return;
+  if (variant !== "cra" || state.currentView !== "avgSelections") return;
+  const active = document.activeElement;
+  if (!(active instanceof Element) || !active.classList.contains("bsSelUserCell")) return;
+  const clipboard = text(event.clipboardData?.getData("text"));
+  if (!clipboard) return;
+  event.preventDefault();
+  const { scope, devIndex } = state.activeUserCell;
+  const entries = clipboard.split(/\r?\n/u)[0].split("\t");
+  void (async () => {
+    try {
+      for (let offset = 0; offset < entries.length; offset += 1) {
+        const column = devIndex + offset;
+        if (column >= matrixDevelopmentCount()) break;
+        await applyUserValueEntry(scope, column, entries[offset]);
+      }
+      setActiveUserCell(scope, devIndex);
+      postStatus(`Pasted ${entries.length === 1 ? "a user value" : `${entries.length} user values`}.`);
+    } catch (error) {
+      setActiveUserCell(scope, devIndex);
+      postStatus(text(error?.message || error), "error");
+    }
+  })();
+}
+
+function handleUserCellCopy(event) {
+  if (!state.activeUserCell || userCellEditor) return;
+  const active = document.activeElement;
+  if (!(active instanceof Element) || !active.classList.contains("bsSelUserCell")) return;
+  event.preventDefault();
+  event.clipboardData?.setData("text/plain", text(active.textContent));
+}
+
+function userValueGrids() {
+  const columnLabels = Array.from({ length: matrixDevelopmentCount() }, (_, index) => getDevelopmentLabel(index));
+  return Object.entries(SELECTION_SCOPES).map(([scope, config]) => ({
+    scope,
+    label: config.label,
+    inputs: state[config.inputsKey],
+    columnLabels,
+  }));
+}
+
+function userValueLinkRecords() {
+  return variant === "cra" ? buildUserValueLinkRecords(userValueGrids()) : [];
+}
+
+// The User Value cells whose formulas read any of the given workbook cells;
+// every linked cell when no source is named.
+function userValueLinkTargets(sourceIds = null) {
+  const wanted = Array.isArray(sourceIds) && sourceIds.length ? new Set(sourceIds) : null;
+  const targets = new Map();
+  for (const group of collectUserValueExcelLinkGroups(userValueGrids()).values()) {
+    if (wanted && !wanted.has(group.id)) continue;
+    for (const consumer of group.consumers) {
+      const key = userCellKey(consumer.scope, consumer.column);
+      if (!targets.has(key)) targets.set(key, { scope: consumer.scope, devIndex: consumer.column });
+    }
+  }
+  return Array.from(targets.values());
+}
+
+function userValueFailure(target, reference, error) {
+  const config = SELECTION_SCOPES[target.scope];
+  return {
+    workbookPath: reference?.bookPath || "",
+    worksheet: reference?.sheet || "",
+    sourceCell: reference?.cell || "",
+    destination: `${config.label} / ${getDevelopmentLabel(target.devIndex)}`,
+    error: text(error),
+  };
+}
+
+// Re-reads every linked workbook cell and re-evaluates the formulas that use
+// it. A value that moved is entered like a typed one and makes the page dirty;
+// a reference the workbook refuses keeps its stored value, turns red, and is
+// reported in the shared Excel link message box.
+async function refreshUserValueExcelLinks(sourceIds = null) {
+  const targets = userValueLinkTargets(sourceIds);
+  if (!targets.length) return { ok: true, linkedCellCount: 0, changedCount: 0, failedCount: 0 };
+  const inputs = targets.map(({ scope, devIndex }) => state[SELECTION_SCOPES[scope].inputsKey][devIndex]);
+  const { values, failures } = await readExcelValuesForInputs(inputs);
+  const failed = [];
+  let changedCount = 0;
+  targets.forEach((target, index) => {
+    const config = SELECTION_SCOPES[target.scope];
+    const input = inputs[index];
+    const key = userCellKey(target.scope, target.devIndex);
+    try {
+      const refused = refusedReferenceError(input, failures);
+      if (refused) throw refused;
+      const value = evaluateUserValueFormula(input, values);
+      state.excelLinkErrors.delete(key);
+      if (state[config.userKey][target.devIndex] !== value) {
+        setUserValue(target.scope, target.devIndex, value, input);
+        changedCount += 1;
+      }
+    } catch (error) {
+      const reason = text(error?.reason || error?.message || error);
+      state.excelLinkErrors.set(key, reason);
+      failed.push(userValueFailure(target, error?.reference, reason));
+    }
+  });
+  if (changedCount) recalculateAfterSelectionEdit();
+  else renderMethodTable();
+  if (failed.length) {
+    await showExcelLinkFailureAlert({ failures: failed, valueNoun: "linked user value" });
+  } else {
+    bsLinksTab?.setFreshness(null);
+  }
+  return {
+    ok: true,
+    linkedCellCount: targets.length,
+    changedCount,
+    failedCount: failed.length,
+    message: `${changedCount} of ${targets.length} linked user value${targets.length === 1 ? "" : "s"} changed.`,
+  };
+}
+
+// Replaces each linked cell's formula with the number it currently shows.
+function breakUserValueExcelLinks(sourceIds = null) {
+  const targets = userValueLinkTargets(sourceIds);
+  for (const { scope, devIndex } of targets) {
+    const config = SELECTION_SCOPES[scope];
+    setUserValue(scope, devIndex, state[config.userKey][devIndex], "");
+  }
+  if (targets.length) recalculateAfterSelectionEdit();
+  return {
+    ok: true,
+    affectedCellCount: targets.length,
+    message: `${targets.length} linked user value${targets.length === 1 ? "" : "s"} hard-coded.`,
+  };
+}
+
+// Opening a method checks its saved Excel links once without changing any
+// value: a reference the workbook refuses is broken, a readable value that no
+// longer matches the stored one is stale, and an unreadable one is unverified.
+// The Links tab carries the tally; a broken link also opens the shared alert.
+async function checkUserValueExcelLinkFreshness() {
+  if (variant !== "cra" || !bsLinksTab) return;
+  const targets = userValueLinkTargets();
+  if (!targets.length) {
+    bsLinksTab.setFreshness(null);
+    return;
+  }
+  const inputs = targets.map(({ scope, devIndex }) => state[SELECTION_SCOPES[scope].inputsKey][devIndex]);
+  const items = excelReadItemsForInputs(inputs);
+  let response = null;
+  try {
+    response = await validateExcelLinksBatch(items.map(({ book_path, sheet, cell }) => ({ book_path, sheet, cell })));
+  } catch (error) {
+    postStatus(`Excel links could not be checked: ${text(error?.message || error)}`, "warn");
+    return;
+  }
+  if (!response?.ok) {
+    postStatus(`Excel links could not be checked: ${text(response?.error) || "Excel could not be read."}`, "warn");
+    return;
+  }
+  const results = Array.isArray(response.results) ? response.results : [];
+  const values = new Map();
+  const failures = new Map();
+  items.forEach((item, index) => {
+    const result = results[index];
+    if (!result?.ok) failures.set(item.key, text(result?.error) || "The linked cell could not be read.");
+    else if (numberOrNull(result.value) !== null) values.set(item.key, Number(result.value));
+  });
+  const invalidLinks = [];
+  let staleCount = 0;
+  let unverifiedCount = 0;
+  targets.forEach((target, index) => {
+    const config = SELECTION_SCOPES[target.scope];
+    const input = inputs[index];
+    const references = userValueExcelReferences(input);
+    const refused = references.find((reference) => failures.has(excelSourceKey(reference)));
+    if (refused) {
+      const error = failures.get(excelSourceKey(refused));
+      state.excelLinkErrors.set(userCellKey(target.scope, target.devIndex), error);
+      invalidLinks.push(userValueFailure(target, refused, error));
+      return;
+    }
+    if (references.some((reference) => !values.has(excelSourceKey(reference)))) {
+      unverifiedCount += 1;
+      return;
+    }
+    let value = null;
+    try {
+      value = evaluateUserValueFormula(input, values);
+    } catch {
+      unverifiedCount += 1;
+      return;
+    }
+    const stored = numberOrNull(state[config.userKey][target.devIndex]);
+    if (stored === null || Math.abs(stored - value) > 5e-7) staleCount += 1;
+  });
+  if (invalidLinks.length) renderMethodTable();
+  bsLinksTab.setFreshness({ staleCount, unverifiedCount, invalidCount: invalidLinks.length });
+  if (invalidLinks.length) {
+    await showExcelLinkFailureAlert({ failures: invalidLinks, valueNoun: "linked user value" });
+  } else if (staleCount || unverifiedCount) {
+    postStatus("Saved Excel values may be out of date. Refresh them from the Links tab.", "warn");
+  }
 }
 
 function renderMethodTable() {
@@ -1946,8 +2457,17 @@ function buildMethodPayload() {
   } else {
     methodTab.inflation_selection = state.inflationSelection.slice();
     methodTab.user_inflation = state.userInflation.slice();
+    // The formula text travels beside the numbers only when a cell holds one,
+    // so a method with typed figures alone stays byte-identical to the ResQ
+    // migration's, which never writes formulas.
+    if (state.userInflationInputs.some(Boolean)) {
+      methodTab.user_inflation_inputs = state.userInflationInputs.slice();
+    }
     methodTab.average_case_reserve_selection = state.averageCaseReserveSelection.slice();
     methodTab.user_average_case_reserves = state.userAverageCaseReserves.slice();
+    if (state.userAverageCaseReserveInputs.some(Boolean)) {
+      methodTab.user_average_case_reserve_inputs = state.userAverageCaseReserveInputs.slice();
+    }
     methodTab.loess_span = state.loessSpan;
   }
   methodTab.number_formats = buildNumberFormatsRecord();
@@ -1990,8 +2510,17 @@ function applyMethodPayload(payload) {
   state.loessSpan = normalizeLoessSpan(method.loess_span);
   state.inflationSelection = normalizeStringVector(method.inflation_selection);
   state.userInflation = normalizeNumberVector(method.user_inflation);
+  state.userInflationInputs = normalizeUserValueInputs(
+    method.user_inflation_inputs,
+    state.userInflation.length,
+  );
   state.averageCaseReserveSelection = normalizeStringVector(method.average_case_reserve_selection);
   state.userAverageCaseReserves = normalizeNumberVector(method.user_average_case_reserves);
+  state.userAverageCaseReserveInputs = normalizeUserValueInputs(
+    method.user_average_case_reserve_inputs,
+    state.userAverageCaseReserves.length,
+  );
+  state.excelLinkErrors.clear();
   applyNumberFormatsRecord(method.number_formats);
   syncSourceInputs();
   syncTitle();
@@ -2337,6 +2866,7 @@ function initTabbedPage() {
     initialTab: ALLOWED_TABS.has(initialTab) ? initialTab : "details",
     onTabChange: (tabId) => {
       if (tabId === "audit") void loadSidecar();
+      if (tabId === "links") void bsLinksTab?.refresh();
       try {
         window.parent?.postMessage({
           type: "arcrho:berquist-sherman-tab-changed",
@@ -2359,9 +2889,11 @@ function wireMethodGridControls() {
   els.methodBody?.addEventListener("contextmenu", handleProportionGridEvent);
   for (const body of [els.methodBody, els.secondaryBody]) {
     body?.addEventListener("click", handleSelectionGridEvent);
+    body?.addEventListener("dblclick", handleSelectionGridEvent);
     body?.addEventListener("keydown", handleSelectionGridEvent);
-    body?.addEventListener("change", handleSelectionGridEvent);
   }
+  document.addEventListener("paste", handleUserCellPaste);
+  document.addEventListener("copy", handleUserCellCopy);
   els.loessSpanInput?.addEventListener("change", () => applyLoessSpan(els.loessSpanInput.value));
   els.loessSpanInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") applyLoessSpan(els.loessSpanInput.value);
@@ -2536,6 +3068,14 @@ async function init() {
   renderViewButtons();
   wireInputs();
   wireMessages();
+  bsLinksTab = createBerquistShermanLinksTab({
+    container: document.getElementById("bsLinksMount"),
+    displayLabel: contract.displayLabel,
+    getRecords: userValueLinkRecords,
+    onRefresh: refreshUserValueExcelLinks,
+    onBreak: breakUserValueExcelLinks,
+    onStatus: postStatus,
+  });
 
   // The dataset index and the page open are independent workspace reads, and
   // both must land before the sources can load, so they travel together rather
@@ -2556,6 +3096,9 @@ async function init() {
     cleanSnapshot = "";
     markDirty();
   }
+  void bsLinksTab?.refresh();
+  // The saved Excel values stay active either way; the check only reports.
+  void checkUserValueExcelLinkFreshness();
 }
 
 // The window is held blank until the opening tab is rendered; see

@@ -135,12 +135,20 @@ test("DSV and DFM place reusable Links tabs immediately after Notes", async () =
   // Both tab lists now live in the shared window tab catalog, so the order is
   // asserted there and the DFM page module only has to read from it.
   assert.match(dfmConfig, /window_tab_catalog\.js/u);
-  for (const listName of ["DATASET_VIEWER_TAB_DEFS", "DFM_TAB_DEFS"]) {
+  for (const listName of ["DATASET_VIEWER_TAB_DEFS", "DFM_TAB_DEFS", "BERQUIST_SHERMAN_TAB_DEFS"]) {
     const block = tabCatalog.split(`export const ${listName}`)[1]?.split("]);")[0] || "";
     assert.match(block, /notes[\s\S]*links[\s\S]*(?:auditLog|audit)/u, `${listName} keeps Links after Notes`);
   }
   assert.match(datasetMain, /shared\/tabs\/links\/links_tab\.js/u);
   assert.match(dfmLinks, /shared\/tabs\/links\/links_tab\.js/u);
+  // Berquist Sherman mounts the same shared table for its User Value links.
+  const [bsHtml, bsLinks] = await Promise.all([
+    source("ui/method_pages/berquist_sherman/berquist_sherman.html"),
+    source("ui/method_pages/berquist_sherman/berquist_sherman_links_tab.js"),
+  ]);
+  assert.match(bsHtml, /notes[\s\S]*links[\s\S]*audit/u);
+  assert.match(bsHtml, /\/ui\/shared\/tabs\/links\/links_tab\.css/u);
+  assert.match(bsLinks, /shared\/tabs\/links\/links_tab\.js/u);
   assert.match(dfmSummary, /shared\/integrations\/excel_reference\.js/u);
   assert.match(dfmSummary, /\bgetDfmExternalLinkRecords\b/u);
   assert.match(dfmSummary, /\bbreakDfmExternalLink\b/u);

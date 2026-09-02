@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "The Case Reserve Adequacy User Value row is entered like a spreadsheet cell, accepts formulas and Excel links, and lists its links on a new Links tab.",
+  "details": [
+    "Click a User Value cell and type to enter a figure; Enter commits, Escape abandons, Tab moves along the row, and Delete clears the cell back to the grid's default estimator.",
+    "A cell accepts a number, an arithmetic formula with ROUND, or a pasted Excel cell reference; a pasted range fills the row to the right, one cell per column.",
+    "The Links tab lists every workbook cell the User Value rows read, refreshes or hard-codes them, and warns when saved values no longer match the workbook."
+  ]
+}

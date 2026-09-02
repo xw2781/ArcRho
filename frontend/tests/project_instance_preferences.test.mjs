@@ -165,7 +165,7 @@ test("Every tabbed page paints its requested tab before the tab system loads", a
     ["ui/method_pages/result_selection/result_selection.html", ["details", "method", "chart", "results", "validation", "notes", "audit"]],
     ["ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", ["details", "method", "chart", "notes", "audit"]],
     ["ui/method_pages/cape_cod/cape_cod.html", ["details", "method", "ultimates", "ratios", "notes", "audit"]],
-    ["ui/method_pages/berquist_sherman/berquist_sherman.html", ["details", "method", "notes", "audit"]],
+    ["ui/method_pages/berquist_sherman/berquist_sherman.html", ["details", "method", "notes", "links", "audit"]],
   ];
 
   for (const [page, tabIds] of PAGES) {

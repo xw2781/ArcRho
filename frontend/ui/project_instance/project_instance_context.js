@@ -1,4 +1,4 @@
-import { readDefaultWindowTabs } from "/ui/shared/tabs/window_tab_catalog.js?v=20260824f";
+import { readDefaultWindowTabs } from "/ui/shared/tabs/window_tab_catalog.js?v=20260902a";
 
 const qs = new URLSearchParams(window.location.search);
 
