@@ -30,11 +30,14 @@
 # Phase 3 - 9/2
 
 ## Core Features
-- Dataset in-cell formula
+- Dataset in-cell formula (COL D31, D42)
 
 ## Enhancements
+- Copy/Apply Ratio Patterns (cross-project)
 - Flight Deck Shortcut
 - Show diagnostic triangles
 - Export to ResQ (w/ Preview Window)
 
-## 
+## In Progress
+- Quarterly Result Selection Sync
+- BS Method Selection
