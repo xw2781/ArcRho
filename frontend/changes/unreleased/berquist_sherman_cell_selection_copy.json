@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "berquist sherman",
+  "audience": "user",
+  "summary": "Both Berquist Sherman method pages now let you select cells in any calculation grid and copy their values, the way the Dataset Viewer and Result Selection grids do.",
+  "details": [
+    "Click a cell, drag a rectangle, Shift-click to extend, Ctrl-click to add a range, or click a row label or column header to select the whole line, on every sub-tab of the Method tab.",
+    "Ctrl+C or right-click and Copy values puts the selected figures on the clipboard as a tab-delimited block ready to paste into Excel; Escape or Remove Highlights clears the selection.",
+    "Select Leading Diagonal on the Proportion Settled view now sits in the same right-click menu."
+  ]
+}

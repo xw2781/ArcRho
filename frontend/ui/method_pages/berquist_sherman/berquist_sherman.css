@@ -495,7 +495,7 @@ input {
    estimator, proportion, or inflation source, the Proportion Settled and User
    Value bands, the rows that group or separate them, or the masked area. */
 .bsMethodTable tbody tr:not(:is(.bsAdjYearRow, .bsPropSelectedRow, .bsPropSpacerRow, .bsSelGroupRow)):hover
-  td:not(:first-child):not(:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource, .bsSelUserCell, .bsMaskedCell)) {
+  td:not(:first-child):not(:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource, .bsSelUserCell, .bsMaskedCell, [aria-selected="true"])) {
   background: var(--bs-row-hover);
 }
 
@@ -640,6 +640,29 @@ input {
 .bsMethodTable td.bsSelSelectedValue,
 .bsMethodTable td.bsSelSelectedRowLabel {
   color: var(--bs-blue);
+}
+
+/* A highlighted range wears the shared selection tint over a fill that
+   carries meaning rather than in place of it, so the Selected and User Value
+   bands and a picked estimator, proportion, or inflation source still read as
+   such inside the range. The label column and the column headers take the
+   shared selected-label fill over their sticky fill. */
+.bsMethodTable td.bsSelUserCell[aria-selected="true"],
+.bsMethodTable tr.bsPropSelectedRow td[aria-selected="true"] {
+  background:
+    linear-gradient(var(--ar-spreadsheet-selection-fill), var(--ar-spreadsheet-selection-fill)),
+    var(--bs-selected-band);
+}
+
+.bsMethodTable td[aria-selected="true"]:is(.bsAdjSelectedSource, .bsPropSelectedSource, .bsSelSelectedSource) {
+  background:
+    linear-gradient(var(--ar-spreadsheet-selection-fill), var(--ar-spreadsheet-selection-fill)),
+    var(--ar-spreadsheet-weighted-selection-fill);
+}
+
+.bsMethodTable td:first-child.arSpreadsheetSelectedLabel,
+.bsMethodTable thead th.arSpreadsheetSelectedLabel {
+  background: var(--ar-spreadsheet-selected-label-fill);
 }
 
 .bsSelUserInput {

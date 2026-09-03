@@ -18,7 +18,6 @@ import {
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
@@ -66,6 +65,7 @@ import {
   userValueExcelReferences,
 } from "./berquist_sherman_user_values.js";
 import { createBerquistShermanLinksTab } from "./berquist_sherman_links_tab.js";
+import { createBerquistShermanCellSelection } from "./berquist_sherman_cell_selection.js";
 
 const ANNUAL_PERIOD_LENGTH = 12;
 const TABS = BERQUIST_SHERMAN_TAB_DEFS;
@@ -291,6 +291,12 @@ const els = {
   secondaryCaptionText: document.getElementById("bsSecondaryCaptionText"),
   secondaryHead: document.getElementById("bsSecondaryHead"),
   secondaryBody: document.getElementById("bsSecondaryBody"),
+  methodTable: document.getElementById("bsMethodTable"),
+  methodTableWrap: document.getElementById("bsMethodTableWrap"),
+  secondaryTable: document.getElementById("bsSecondaryTable"),
+  secondaryTableWrap: document.getElementById("bsSecondaryTableWrap"),
+  cellContextMenu: document.getElementById("bsCellContextMenu"),
+  selectLeadingDiagonalItem: document.getElementById("bsSelectLeadingDiagonalItem"),
   auditLogMount: document.getElementById("bsAuditLogMount"),
   saveBtn: document.getElementById("bsSaveBtn"),
   cancelBtn: document.getElementById("bsCancelBtn"),
@@ -309,6 +315,21 @@ const auditLogView = createAuditLogView({
   emptyDescription: "Method saves will appear here after the first save.",
   normalizeEntries: normalizeSidecarAuditEntries,
   formatEventDate: formatSidecarAuditEventDate,
+});
+
+// Every grid tags its value cells for the shared spreadsheet selection, so a
+// range can be picked and copied from any calculation view the way the
+// Dataset Viewer and Result Selection grids allow.
+const cellSelection = createBerquistShermanCellSelection({
+  tables: [
+    { key: "primary", table: els.methodTable, scrollHost: els.methodTableWrap },
+    { key: "secondary", table: els.secondaryTable, scrollHost: els.secondaryTableWrap },
+  ],
+  contextMenu: els.cellContextMenu,
+  onContextAction: (action) => {
+    if (action === "select_leading_diagonal") selectLeadingDiagonal();
+  },
+  onCopied: () => postStatus(`Copied selected ${contract.displayLabel} values.`),
 });
 
 function text(value) {
@@ -941,6 +962,7 @@ function renderViewButtons() {
     button.tabIndex = active ? 0 : -1;
     button.addEventListener("click", () => {
       state.currentView = view.key;
+      cellSelection.clearAll();
       renderViewButtons();
       renderMethodTable();
     });
@@ -958,10 +980,27 @@ function buildMethodHeaderRow(cornerLabel, developmentCount) {
   for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
     const header = document.createElement("th");
     header.scope = "col";
+    header.dataset.c = String(devIndex);
     header.textContent = getDevelopmentLabel(devIndex);
     headerRow.appendChild(header);
   }
   return headerRow;
+}
+
+// A value cell carries its grid position and its raw figure for the shared
+// selection and copy; a row label carries the position alone, so a click on it
+// selects the row.
+function tagValueCell(cell, rowIndex, colIndex, rawValue) {
+  cell.dataset.r = String(rowIndex);
+  cell.dataset.c = String(colIndex);
+  cell.dataset.copyValue = numberOrNull(rawValue) === null ? "" : String(rawValue);
+  cell.setAttribute("aria-selected", "false");
+  return cell;
+}
+
+function tagRowLabel(cell, rowIndex) {
+  cell.dataset.r = String(rowIndex);
+  return cell;
 }
 
 // Ingestion applies the Dataset Viewer mask and the annual staircase, so a
@@ -973,10 +1012,12 @@ function populatedRowLength(matrix, rowIndex) {
   return Array.isArray(row) ? row.length : 0;
 }
 
-function maskedCell() {
+function maskedCell(rowIndex, devIndex) {
   const cell = document.createElement("td");
   cell.className = "bsMaskedCell";
-  return cell;
+  // Part of the grid for selection, so a drag to the triangle's corner takes
+  // the whole triangle; it copies as an empty entry.
+  return tagValueCell(cell, rowIndex, devIndex, null);
 }
 
 function adjustmentGridRows() {
@@ -1006,6 +1047,9 @@ function renderAdjustedPaidGrid() {
 
   const body = document.createDocumentFragment();
   const gridRows = adjustmentGridRows();
+  // The estimator rows number consecutively across origins for the selection;
+  // an origin's caption row is not a row of values.
+  let gridRowIndex = 0;
   for (let rowIndex = 0; rowIndex < paid.length; rowIndex += 1) {
     const populatedCount = populatedRowLength(paid, rowIndex);
     const yearRow = document.createElement("tr");
@@ -1021,7 +1065,7 @@ function renderAdjustedPaidGrid() {
     for (const gridRow of gridRows) {
       const isSelectedRow = gridRow.method === "selected";
       const rowElement = document.createElement("tr");
-      const label = document.createElement("td");
+      const label = tagRowLabel(document.createElement("td"), gridRowIndex);
       label.className = `bsAdjRowLabel${isSelectedRow ? " bsAdjSelectedRowLabel" : ""}`;
       label.textContent = gridRow.label;
       if (!isSelectedRow) {
@@ -1034,11 +1078,12 @@ function renderAdjustedPaidGrid() {
       rowElement.appendChild(label);
       for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
         if (devIndex >= populatedCount) {
-          rowElement.appendChild(maskedCell());
+          rowElement.appendChild(maskedCell(gridRowIndex, devIndex));
           continue;
         }
         const cell = document.createElement("td");
         const rawValue = gridRow.matrix[rowIndex]?.[devIndex];
+        tagValueCell(cell, gridRowIndex, devIndex, rawValue);
         cell.textContent = formatCellValue(rawValue, format);
         cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
         if (isSelectedRow) {
@@ -1056,6 +1101,7 @@ function renderAdjustedPaidGrid() {
         rowElement.appendChild(cell);
       }
       body.appendChild(rowElement);
+      gridRowIndex += 1;
     }
   }
   els.methodBody.replaceChildren(body);
@@ -1133,17 +1179,18 @@ function renderProportionSettledGrid() {
   );
   for (let rowIndex = 0; rowIndex < proportionMatrix.length; rowIndex += 1) {
     const rowElement = document.createElement("tr");
-    const origin = document.createElement("td");
+    const origin = tagRowLabel(document.createElement("td"), rowIndex);
     origin.textContent = getOriginLabel(rowIndex);
     rowElement.appendChild(origin);
     const populatedCount = populatedRowLength(proportionMatrix, rowIndex);
     for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
       if (devIndex >= populatedCount) {
-        rowElement.appendChild(maskedCell());
+        rowElement.appendChild(maskedCell(rowIndex, devIndex));
         continue;
       }
       const cell = document.createElement("td");
       const rawValue = numberOrNull(proportionMatrix[rowIndex]?.[devIndex]);
+      tagValueCell(cell, rowIndex, devIndex, rawValue);
       if (rawValue === null) {
         rowElement.appendChild(cell);
         continue;
@@ -1167,16 +1214,18 @@ function renderProportionSettledGrid() {
   }
   body.appendChild(spacerRow);
 
+  // The Selected row is the row after the triangle for the selection, so a
+  // drag down from the triangle takes the selections with it.
   const selectedRow = document.createElement("tr");
   selectedRow.className = "bsPropSelectedRow";
-  const selectedLabel = document.createElement("td");
+  const selectedLabel = tagRowLabel(document.createElement("td"), proportionMatrix.length);
   selectedLabel.textContent = "Selected";
   selectedRow.appendChild(selectedLabel);
   const selectedValues = Array.isArray(state.result?.selectedProportionSettled)
     ? state.result.selectedProportionSettled
     : state.selectedProportionSettled;
   for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
-    const cell = document.createElement("td");
+    const cell = tagValueCell(document.createElement("td"), proportionMatrix.length, devIndex, selectedValues[devIndex]);
     const input = document.createElement("input");
     input.type = "text";
     input.className = "bsPropSelectedInput";
@@ -1207,50 +1256,8 @@ function selectLeadingDiagonal() {
   recalculateAfterSelectionEdit();
 }
 
-let proportionContextMenu = null;
-
-function hideProportionContextMenu() {
-  if (proportionContextMenu) proportionContextMenu.style.display = "none";
-}
-
-function ensureProportionContextMenu() {
-  if (proportionContextMenu) return proportionContextMenu;
-  proportionContextMenu = document.createElement("div");
-  proportionContextMenu.className = "ctx-menu";
-  proportionContextMenu.style.display = "none";
-  const inner = document.createElement("div");
-  inner.className = "ctx-menu-inner";
-  const item = document.createElement("button");
-  item.type = "button";
-  item.className = "ctx-item";
-  item.textContent = "Select Leading Diagonal";
-  item.addEventListener("click", () => {
-    hideProportionContextMenu();
-    selectLeadingDiagonal();
-  });
-  inner.appendChild(item);
-  proportionContextMenu.appendChild(inner);
-  document.body.appendChild(proportionContextMenu);
-  document.addEventListener("pointerdown", (event) => {
-    if (!(event.target instanceof Element) || !proportionContextMenu.contains(event.target)) {
-      hideProportionContextMenu();
-    }
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") hideProportionContextMenu();
-  });
-  return proportionContextMenu;
-}
-
 function handleProportionGridEvent(event) {
   if (variant !== "sr" || state.currentView !== "proportionSettled") return;
-  if (event.type === "contextmenu") {
-    event.preventDefault();
-    const menu = ensureProportionContextMenu();
-    menu.style.display = "block";
-    openContextMenu(menu, { clientX: event.clientX, clientY: event.clientY });
-    return;
-  }
   if (event.target instanceof HTMLInputElement && event.target.classList.contains("bsPropSelectedInput")) {
     const input = event.target;
     const commit = () => {
@@ -1333,6 +1340,9 @@ function renderColumnSelectionGrid(scope, head, body, formatValue) {
   head.replaceChildren(buildMethodHeaderRow("", developmentCount));
 
   const fragment = document.createDocumentFragment();
+  // The value rows number consecutively for the selection; a grouping row is
+  // not a row of values.
+  let gridRowIndex = 0;
   for (const row of config.rows) {
     const rowElement = document.createElement("tr");
     if (row.group) {
@@ -1347,7 +1357,7 @@ function renderColumnSelectionGrid(scope, head, body, formatValue) {
       continue;
     }
 
-    const label = document.createElement("td");
+    const label = tagRowLabel(document.createElement("td"), gridRowIndex);
     label.textContent = row.loess
       ? `${row.label} (${state.result?.loessSpan ?? state.loessSpan})`
       : row.label;
@@ -1366,6 +1376,7 @@ function renderColumnSelectionGrid(scope, head, body, formatValue) {
       const age = getDevelopmentLabel(devIndex);
       const cell = document.createElement("td");
       const rawValue = selectionRowValue(row, devIndex, userValues);
+      tagValueCell(cell, gridRowIndex, devIndex, rawValue);
       cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
       if (row.selected) {
         cell.className = "bsSelSelectedValue";
@@ -1394,15 +1405,13 @@ function renderColumnSelectionGrid(scope, head, body, formatValue) {
             cell.title = `${input}\n${failure}`;
           }
         }
-        if (state.activeUserCell?.scope === scope && state.activeUserCell?.devIndex === devIndex) {
-          cell.classList.add("arSpreadsheetSelectionAnchor");
-        }
       } else {
         cell.textContent = formatValue(rawValue);
       }
       rowElement.appendChild(cell);
     }
     fragment.appendChild(rowElement);
+    gridRowIndex += 1;
   }
   body.replaceChildren(fragment);
 }
@@ -1447,19 +1456,16 @@ typed number that happens to be read from a workbook.
 */
 let userCellEditor = null;
 
+// The active User Value cell is the anchor of the shared grid selection, so it
+// wears the shared dashed outline and Ctrl+C copies it with the range.
 function setActiveUserCell(scope, devIndex, { focus = true } = {}) {
-  for (const body of [els.methodBody, els.secondaryBody]) {
-    body?.querySelectorAll("td.arSpreadsheetSelectionAnchor").forEach((cell) => {
-      cell.classList.remove("arSpreadsheetSelectionAnchor");
-    });
-  }
   const cell = findUserCell(scope, devIndex);
   if (!cell) {
     state.activeUserCell = null;
     return;
   }
   state.activeUserCell = { scope, devIndex };
-  cell.classList.add("arSpreadsheetSelectionAnchor");
+  cellSelection.selectCell(cell);
   if (focus) cell.focus();
 }
 
@@ -1672,7 +1678,7 @@ function handleUserCellKeydown(event, scope, devIndex) {
   } else if (event.key === "Escape") {
     event.preventDefault();
     state.activeUserCell = null;
-    findUserCell(scope, devIndex)?.classList.remove("arSpreadsheetSelectionAnchor");
+    cellSelection.clearAll();
   } else if (event.key.length === 1 && USER_CELL_EDIT_START_KEYS.test(event.key)) {
     event.preventDefault();
     openUserCellEditor(scope, devIndex, event.key);
@@ -1741,14 +1747,6 @@ function handleUserCellPaste(event) {
       postStatus(text(error?.message || error), "error");
     }
   })();
-}
-
-function handleUserCellCopy(event) {
-  if (!state.activeUserCell || userCellEditor) return;
-  const active = document.activeElement;
-  if (!(active instanceof Element) || !active.classList.contains("bsSelUserCell")) return;
-  event.preventDefault();
-  event.clipboardData?.setData("text/plain", text(active.textContent));
 }
 
 function userValueGrids() {
@@ -1923,6 +1921,16 @@ async function checkUserValueExcelLinkFreshness() {
 
 function renderMethodTable() {
   if (!els.methodHead || !els.methodBody) return;
+  renderMethodGrids();
+  if (els.selectLeadingDiagonalItem) {
+    els.selectLeadingDiagonalItem.hidden = !(variant === "sr" && state.currentView === "proportionSettled");
+  }
+  // A re-render replaces every cell, so the selection is painted back onto the
+  // new ones from its row and column positions.
+  cellSelection.applyDom();
+}
+
+function renderMethodGrids() {
   syncMethodChrome();
   els.secondaryHead?.replaceChildren();
   els.secondaryBody?.replaceChildren();
@@ -1953,6 +1961,7 @@ function renderMethodTable() {
   if (showUltimateColumn) {
     const ultimateHeader = document.createElement("th");
     ultimateHeader.scope = "col";
+    ultimateHeader.dataset.c = String(developmentCount);
     ultimateHeader.textContent = "Ultimate";
     headerRow.appendChild(ultimateHeader);
   }
@@ -1963,17 +1972,18 @@ function renderMethodTable() {
   const ultimateValues = state.sourceValues.ultimate_claim_numbers || [];
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const rowElement = document.createElement("tr");
-    const origin = document.createElement("td");
+    const origin = tagRowLabel(document.createElement("td"), rowIndex);
     origin.textContent = getOriginLabel(rowIndex);
     rowElement.appendChild(origin);
     const populatedCount = populatedRowLength(matrix, rowIndex);
     for (let devIndex = 0; devIndex < developmentCount; devIndex += 1) {
       if (devIndex >= populatedCount) {
-        rowElement.appendChild(maskedCell());
+        rowElement.appendChild(maskedCell(rowIndex, devIndex));
         continue;
       }
       const cell = document.createElement("td");
       const rawValue = matrix[rowIndex]?.[devIndex];
+      tagValueCell(cell, rowIndex, devIndex, rawValue);
       cell.textContent = formatCellValue(rawValue, format);
       cell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
       rowElement.appendChild(cell);
@@ -1981,6 +1991,7 @@ function renderMethodTable() {
     if (showUltimateColumn) {
       const ultimateCell = document.createElement("td");
       const rawValue = ultimateValues[rowIndex];
+      tagValueCell(ultimateCell, rowIndex, developmentCount, rawValue);
       ultimateCell.textContent = formatCellValue(rawValue, roleNumberFormat("ultimate_claim_numbers"));
       ultimateCell.title = numberOrNull(rawValue) === null ? "" : String(rawValue);
       rowElement.appendChild(ultimateCell);
@@ -2886,14 +2897,12 @@ function wireMethodGridControls() {
   els.methodBody?.addEventListener("click", handleProportionGridEvent);
   els.methodBody?.addEventListener("keydown", handleProportionGridEvent);
   els.methodBody?.addEventListener("change", handleProportionGridEvent);
-  els.methodBody?.addEventListener("contextmenu", handleProportionGridEvent);
   for (const body of [els.methodBody, els.secondaryBody]) {
     body?.addEventListener("click", handleSelectionGridEvent);
     body?.addEventListener("dblclick", handleSelectionGridEvent);
     body?.addEventListener("keydown", handleSelectionGridEvent);
   }
   document.addEventListener("paste", handleUserCellPaste);
-  document.addEventListener("copy", handleUserCellCopy);
   els.loessSpanInput?.addEventListener("change", () => applyLoessSpan(els.loessSpanInput.value));
   els.loessSpanInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") applyLoessSpan(els.loessSpanInput.value);

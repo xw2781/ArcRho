@@ -61,9 +61,9 @@ test("the unavailable lower-right area is masked instead of printed as zero", ()
     /function formatCellValue\(value, format\) \{\s*\n\s*const number = numberOrNull\(value\);\s*\n\s*if \(number === null\) return "";/u,
   );
   // Every triangle grid stops at its own row length and masks the rest.
-  const masked = Array.from(main.matchAll(/rowElement\.appendChild\(maskedCell\(\)\)/gu));
+  const masked = Array.from(main.matchAll(/rowElement\.appendChild\(maskedCell\([^)]*\)\)/gu));
   assert.equal(masked.length, 3, "the three triangle grids must all mask");
-  assert.match(main, /if \(devIndex >= populatedCount\) \{\s*\n\s*rowElement\.appendChild\(maskedCell\(\)\)/u);
+  assert.match(main, /if \(devIndex >= populatedCount\) \{\s*\n\s*rowElement\.appendChild\(maskedCell\(/u);
   assert.match(main, /cell\.className = "bsMaskedCell"/u);
   assert.doesNotMatch(main, /bsAdjBlankCell/u);
   // A masked cell shows neither a fill nor a grid line.
@@ -174,7 +174,9 @@ test("both variants follow the ResQ sub-tab order with in-grid selection UX", ()
   ]);
   // Each variant opens on the first ResQ sub-tab.
   assert.match(main, /currentView: VIEW_DEFINITIONS\[variant\]\[0\]\.key/u);
-  assert.match(main, /Select Leading Diagonal/u);
+  // Select Leading Diagonal is an item of the shared cell context menu.
+  assert.match(html, /data-action="select_leading_diagonal"[^>]*>Select Leading Diagonal</u);
+  assert.match(main, /if \(action === "select_leading_diagonal"\) selectLeadingDiagonal\(\);/u);
   assert.match(main, /bsPropSelectedInput/u);
   assert.match(main, /state\.selectedProportionIsDefault\[devIndex\] = false/u);
   assert.match(main, /Paid Claims Adjusted to Constant Proportions Settled/u);
@@ -206,7 +208,10 @@ test("CRA selection grids support per-column, whole-row, and user-value edits", 
   assert.match(main, /event\.key === "Enter" \|\| event\.key === "F2"/u);
   assert.match(main, /event\.key === "Delete" \|\| event\.key === "Backspace"/u);
   assert.match(main, /if \(selection\[devIndex\] === "user"\) selection\[devIndex\] = config\.defaultMethod;/u);
-  assert.match(main, /cell\.classList\.add\("arSpreadsheetSelectionAnchor"\)/u);
+  // The active cell is the anchor of the shared grid selection, so it wears the
+  // shared dashed outline through the selection controller, not its own class.
+  assert.match(main, /function setActiveUserCell\([\s\S]*?cellSelection\.selectCell\(cell\);/u);
+  assert.doesNotMatch(main, /classList\.add\("arSpreadsheetSelectionAnchor"\)/u);
   assert.match(main, /document\.addEventListener\("paste", handleUserCellPaste\)/u);
   // A typed figure reads red and bold, an Excel-linked one green, and a link
   // the workbook refused red, as on the RS and DFM grids.
