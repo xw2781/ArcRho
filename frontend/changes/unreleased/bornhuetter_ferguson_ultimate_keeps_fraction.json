@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter_ferguson",
+  "audience": "user",
+  "summary": "A Bornhuetter Ferguson ultimate is no longer rounded to a whole number, so a DFM or Berquist-Sherman adjustment reading a BF vector now matches ResQ.",
+  "details": [
+    "The New Ultimate column keeps the same six decimals as every other BF vector; ResQ never rounds it.",
+    "A claim-count BF feeding a Berquist-Sherman settlement-rate adjustment had moved the adjusted paid triangle's earliest ages by up to 2% from ResQ.",
+    "A BF method saved before this fix keeps its whole-number ultimates until it is saved or refreshed again."
+  ]
+}

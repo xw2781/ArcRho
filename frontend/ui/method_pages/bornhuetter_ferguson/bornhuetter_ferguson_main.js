@@ -41,8 +41,8 @@ import {
   buildBornhuetterFergusonMethodPayload,
   isBornhuetterFergusonV3Method,
   rebaseBornhuetterFergusonWeightsByOriginLabel,
-  roundBornhuetterFergusonWholeNumber,
-} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js?v=20260726a";
+  roundBornhuetterFergusonNumber,
+} from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js?v=20260903a";
 import {
   loadBornhuetterFergusonMethod,
   saveBornhuetterFergusonMethod,
@@ -785,7 +785,9 @@ function calculateOutputs() {
       ultimate = selectedPrior === null
         ? latest
         : pct !== null
-          ? roundBornhuetterFergusonWholeNumber(latest + (1 - pct) * selectedPrior)
+          // Six decimals like every other BF vector: a whole-number ultimate
+          // drifts from ResQ in everything that reads the BF output.
+          ? roundBornhuetterFergusonNumber(latest + (1 - pct) * selectedPrior)
           : null;
     }
     state.selectedPriorValues.push(selectedPrior);

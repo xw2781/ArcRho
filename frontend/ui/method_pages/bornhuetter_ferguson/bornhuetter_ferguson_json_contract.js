@@ -14,14 +14,6 @@ export function roundBornhuetterFergusonNumber(value) {
   return number < 0 ? -rounded : rounded;
 }
 
-export function roundBornhuetterFergusonWholeNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  const rounded = Math.round(Math.abs(number));
-  return number < 0 ? -rounded : rounded;
-}
-
 export function roundBornhuetterFergusonVector(values) {
   return Array.isArray(values) ? values.map(roundBornhuetterFergusonNumber) : [];
 }

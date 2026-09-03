@@ -112,8 +112,10 @@ Output:
 If Selected Prior is blank:
   New Ultimate = Latest
 Otherwise:
-  New Ultimate = ROUND(Latest + (1 - Percentage Developed) * Selected Prior, 0)
+  New Ultimate = Latest + (1 - Percentage Developed) * Selected Prior
 ```
+
+New Ultimate keeps the same six decimals as every other BF vector. It is never rounded to a whole number: ResQ keeps the fraction, and a rounded ultimate drifts everything that reads the BF output.
 
 New Ultimate is blank when Latest is blank/non-numeric. When Selected Prior is available, New Ultimate is also blank if Percentage Developed is blank/non-numeric.
 
@@ -129,7 +131,7 @@ V2 Method table columns:
 | Prior Ultimate | One dynamic column per selected prior vector. |
 | Weight | One optional dynamic column per prior vector, shown when Show Weights is enabled. |
 | Selected Prior | Weighted average of the available prior vectors. |
-| New Ultimate | Latest when Selected Prior is blank; otherwise the rounded BF ultimate output. |
+| New Ultimate | Latest when Selected Prior is blank; otherwise the BF ultimate output at six decimals. |
 
 The Method toolbar contains Formatting controls only: Show Weights, Index/Effective % display mode, and decimal places. Prior and Weight cells reuse Result Selection selection, double-click toggle, keyboard entry, paste, Delete-to-zero, and highlight behavior.
 
@@ -188,7 +190,7 @@ The app server stages and publishes the method JSON, native/coarser output CSVs,
 4. Select latest triangle, DFM source, and multiple prior vectors.
 5. Show/hide Weight columns, switch Index/Effective % display, edit weights by double-click/typing/paste, and verify the decimal control.
 6. Verify Method table values, weighted Selected Prior, and New Ultimate calculation:
-   `New Ultimate = ROUND(Latest + (1 - Percentage Developed) * Selected Prior, 0)`.
+   `New Ultimate = Latest + (1 - Percentage Developed) * Selected Prior`, with the fraction kept.
 7. Confirm the Chart tab plots DFM Implied Ultimate, Selected Prior, and BF Ultimate against the Method table origin labels.
 8. Open a configured dependency in the same Project Instance, make unsaved edits, and confirm the BF Method table and Chart immediately use the live preview values; save or discard the dependency and confirm BF restores its aggregate persisted snapshot without per-source reads.
 9. Save, close, and reopen.
