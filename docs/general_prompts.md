@@ -50,7 +50,11 @@ Path: HPPREF\HO+DF\NJ\Legacy\HOL
 Run the commit workflow, rebuild and deploy server components if needed.
 
 
-# Create 4 Adjustment Vectors
+# Production Automations 
+
+## Create 4 Adjustment Vectors
 
 & "C:\Program Files\Python310\python.exe" tools/create_reserve_review_input_datasets.py --project "NJ_Annual_Prod_2026 Q2-May Test" --quarter "2026Q2" --dry-run
 
+## Reconcile DFM triangles
+py -3.10 python-api/migration/validation/dfm_ratio_side_by_side_review.py
