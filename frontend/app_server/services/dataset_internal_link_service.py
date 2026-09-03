@@ -38,6 +38,7 @@ from app_server.services.dfm_service import (
     _dataset_reference_axis_index,
     _dataset_reference_valid_boundary,
     _key,
+    with_valuation_row_counts,
 )
 
 
@@ -107,7 +108,11 @@ def _resolved_internal_reference(
     origin_labels = dataset.get("origin_labels") if isinstance(dataset.get("origin_labels"), list) else []
     data_format = _clean(dataset.get("data_format")) or "Triangle"
     is_vector = data_format.casefold() == "vector"
-    valid_boundary = _dataset_reference_valid_boundary(values, vector=is_vector)
+    valid_boundary = _dataset_reference_valid_boundary(
+        values,
+        vector=is_vector,
+        valuation_row_count=dataset.get("valuation_row_count"),
+    )
     rows = _axis_span(
         parsed["row"],
         origin_labels,
@@ -207,7 +212,7 @@ def resolve_dataset_internal_links(
         )
         for key, name in names_by_key.items()
     }
-    datasets = {key: future.result() for key, future in futures.items()}
+    datasets = with_valuation_row_counts(project, {key: future.result() for key, future in futures.items()})
     return {
         "ok": True,
         "results": [

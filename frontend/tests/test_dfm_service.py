@@ -276,6 +276,66 @@ class DfmServiceTests(unittest.TestCase):
                 vector,
             )
 
+    def test_dataset_reference_negative_vector_indices_stop_at_the_valuation_period(self) -> None:
+        # Every row holds a value, including the four after the Development End
+        # Date; [-1] must still be the valuation period, not the last row.
+        full_year = {
+            "dataset_name": "Monthly Premium",
+            "data_format": "Vector",
+            "origin_labels": [f"2026-{month:02d}" for month in range(1, 13)],
+            "dev_labels": ["Ultimate"],
+            "values": [[100 + month] for month in range(1, 13)],
+            "valuation_row_count": 8,
+        }
+        latest = dfm_service._resolved_dataset_reference(
+            {"dataset_name": "Monthly Premium", "row_idx": "-1"}, full_year,
+        )
+        self.assertEqual((latest["row_label"], latest["value"]), ("2026-08", 108))
+        self.assertEqual(
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Monthly Premium", "row_idx": "-3"}, full_year,
+            )["row_label"],
+            "2026-06",
+        )
+        with self.assertRaisesRegex(HTTPException, "outside the valid range"):
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Monthly Premium", "row_idx": "-9"}, full_year,
+            )
+        # Data that stops before the valuation period keeps the earlier boundary.
+        short = dict(full_year, values=[[100 + month] if month <= 5 else [None] for month in range(1, 13)])
+        self.assertEqual(
+            dfm_service._resolved_dataset_reference(
+                {"dataset_name": "Monthly Premium", "row_idx": "-1"}, short,
+            )["row_label"],
+            "2026-05",
+        )
+
+    def test_resolve_dataset_references_stamps_vectors_with_the_valuation_row_count(self) -> None:
+        from app_server.services import dataset_service
+
+        vector = {
+            "dataset_name": "Monthly Premium",
+            "data_format": "Vector",
+            "origin_length": 1,
+            "origin_labels": [str(month) for month in range(1, 13)],
+            "dev_labels": ["Ultimate"],
+            "values": [[100 + month] for month in range(1, 13)],
+        }
+        with (
+            mock.patch.object(dataset_service, "load_cached_dataset_values", return_value=vector),
+            mock.patch.object(dataset_service, "valuation_origin_row_count", return_value=8) as row_count,
+        ):
+            result = dfm_service.resolve_dfm_dataset_references(
+                "Project",
+                "Class",
+                [
+                    {"dataset_name": "Monthly Premium", "row_idx": "-1"},
+                    {"dataset_name": "Monthly Premium", "row_idx": "-2"},
+                ],
+            )
+        row_count.assert_called_once_with("Project", 1)
+        self.assertEqual([item["value"] for item in result["results"]], [108, 107])
+
     def test_dataset_reference_negative_triangle_indices_follow_latest_valid_diagonal(self) -> None:
         triangle = {
             "dataset_name": "Quarterly Paid",

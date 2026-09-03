@@ -823,6 +823,14 @@ def UDF_ADASTri(arg):
     df2 = eval_triangle_formula(triangles, source)  
 
     # Clean Format
+    if output_data_format == 'Vector' or is_vector_function(arg['Function']):
+        # A vector has no development axis, so every origin period keeps its
+        # value: the source table may carry full-year inputs (planned premium,
+        # exposure) for origin periods after the Development End Date.
+        df2 = df2.iloc[:, [0]].fillna(0)
+        _export_dataframe(df2, arg)
+        return
+
     n_rows = df2.shape[0]
 
     for i, acc in enumerate(df2.index):
@@ -848,9 +856,7 @@ def UDF_ADASTri(arg):
 
         df2.loc[acc, dev_label[max_dev_age:]] = np.nan
 
-    if output_data_format == 'Vector' or is_vector_function(arg['Function']):
-        df2 = df2.iloc[:, [0]].fillna(0)
-    elif calendar_mode:
+    if calendar_mode:
         df2 = _reshape_triangle_to_calendar(df2, org_index_grp, dev_label, project_settings)
 
     # Output

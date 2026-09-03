@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Engine-generated vectors now keep every origin period instead of blanking the rows after the Development End Date.",
+  "details": [
+    "A monthly vector in an August project keeps its full-year input values in the last four rows rather than showing zeros.",
+    "Triangles still stop at the latest valuation diagonal.",
+    "A negative row index in a DFM formula or an ArcRho dataset link, such as [Premium][-1], still lands on the valuation period even when later rows of the vector hold values."
+  ]
+}

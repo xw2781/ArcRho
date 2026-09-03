@@ -139,6 +139,20 @@ class InternalReferenceResolveTests(unittest.TestCase):
         # Row 6 exists but is blank; a blank source cell resolves to None.
         self.assertIsNone(by_reference[2]["cells"][0]["value"])
 
+    def test_negative_index_stops_at_the_valuation_period_when_later_rows_hold_values(self) -> None:
+        full = _vector_dataset()
+        full["origin_length"] = 12
+        full["values"] = [[14802.0], [15434.0], [14777.0], [12837.0], [15926.0], [16001.0]]
+        with patch.object(
+            dataset_service, "valuation_origin_row_count", return_value=5
+        ) as row_count:
+            result, _loaded = self._resolve(
+                ["=[C 82 - Prior Qtr Selected][-1]"], datasets=[full]
+            )
+        row_count.assert_called_once_with("Project", 12)
+        cell = result["results"][0]["cells"][0]
+        self.assertEqual((cell["row_label"], cell["value"]), ("2021", 15926.0))
+
     def test_triangle_requires_column_and_rejects_reversed_ranges(self) -> None:
         with self.assertRaises(HTTPException) as missing_column:
             self._resolve(["=[Paid Claims][1]"], datasets=[_triangle_dataset()])

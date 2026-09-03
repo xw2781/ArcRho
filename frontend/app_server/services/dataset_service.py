@@ -1100,6 +1100,22 @@ def _empty_dataset_geometry_from_general_settings(
     return origin_count, development_count, mask
 
 
+def valuation_origin_row_count(project_name: str, origin_period_length: int) -> int | None:
+    """Count the origin periods that start on or before the Development End Date.
+
+    A vector keeps every configured origin row, so its rows after the valuation
+    period may hold values (full-year inputs) or stay blank. This count is the
+    boundary a negative index counts back from; it is ``None`` when the project
+    has no usable General Settings.
+    """
+    period = max(1, int(origin_period_length or 1))
+    try:
+        _, _, mask = _empty_dataset_geometry_from_general_settings(project_name, period, period)
+    except HTTPException:
+        return None
+    return int(mask[:, 0].sum())
+
+
 def _containing_project_name_for_dataset(path: str) -> str:
     projects_root = str(config.PROJECT_SETTINGS_DIR or "").strip()
     if not projects_root:

@@ -259,6 +259,23 @@ class EmptyDatasetSettingsTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 422)
         self.assertIn("Origin Start Date", str(raised.exception.detail))
 
+    def test_valuation_origin_row_count_stops_at_the_development_end_date(self) -> None:
+        settings_json = (
+            '{"origin_start_date":"201701","origin_end_date":"202612",'
+            '"development_end_date":"202605"}'
+        )
+        with (
+            patch.object(dataset_service.config, "get_general_settings_path", return_value="general_settings.json"),
+            patch.object(dataset_service.os.path, "exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=settings_json)),
+        ):
+            # Monthly: Jan 2017 .. May 2026 is 113 of the 120 configured rows.
+            self.assertEqual(dataset_service.valuation_origin_row_count("Example Project", 1), 113)
+            self.assertEqual(dataset_service.valuation_origin_row_count("Example Project", 3), 38)
+            self.assertEqual(dataset_service.valuation_origin_row_count("Example Project", 12), 10)
+        with patch.object(dataset_service.config, "get_general_settings_path", side_effect=ValueError("missing")):
+            self.assertIsNone(dataset_service.valuation_origin_row_count("Example Project", 1))
+
     def test_patch_mask_preserves_project_settings_errors(self) -> None:
         settings_error = HTTPException(422, "Origin Start Date is invalid.")
         with (

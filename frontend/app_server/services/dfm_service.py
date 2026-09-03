@@ -448,13 +448,22 @@ def _dataset_reference_has_value(value: Any) -> bool:
         return True
 
 
-def _dataset_reference_valid_boundary(values: Iterable[Any], *, vector: bool) -> int:
+def _dataset_reference_valid_boundary(
+    values: Iterable[Any],
+    *,
+    vector: bool,
+    valuation_row_count: int | None = None,
+) -> int:
     """Return the last valid vector position or triangle calendar diagonal.
 
     Dataset caches retain their full configured geometry. Sub-annual projects
-    therefore have a trailing empty suffix (vectors) or empty calendar
-    diagonals (triangles) beyond the valuation period. The last non-empty cell
-    establishes that boundary; blanks inside it remain valid positions.
+    therefore have a trailing suffix (vectors) or empty calendar diagonals
+    (triangles) beyond the valuation period. The last non-empty cell
+    establishes that boundary; blanks inside it remain valid positions. A
+    vector's rows after the Development End Date may also hold values, so its
+    boundary never passes ``valuation_row_count`` when the project settings
+    provide one: ``[-1]`` is the valuation period whether or not later rows
+    are filled.
     """
     boundary = -1
     for row_index, raw_row in enumerate(values):
@@ -462,7 +471,32 @@ def _dataset_reference_valid_boundary(values: Iterable[Any], *, vector: bool) ->
         for col_index, value in enumerate(row):
             if _dataset_reference_has_value(value):
                 boundary = max(boundary, row_index if vector else row_index + col_index)
+    if vector and valuation_row_count is not None:
+        boundary = min(boundary, int(valuation_row_count) - 1)
     return boundary
+
+
+def with_valuation_row_counts(
+    project_name: str,
+    datasets: Mapping[str, Dict[str, Any]],
+) -> Mapping[str, Dict[str, Any]]:
+    """Stamp each loaded vector with the project's valuation row count.
+
+    Shared by the DFM reference resolver and the dataset internal-link
+    resolver so a negative vector index resolves the same way in both. One
+    General Settings read per distinct origin period length.
+    """
+    from app_server.services import dataset_service
+
+    counts_by_length: Dict[int, int | None] = {}
+    for dataset in datasets.values():
+        if _clean(dataset.get("data_format")).casefold() != "vector":
+            continue
+        length = max(1, int(dataset.get("origin_length") or 1))
+        if length not in counts_by_length:
+            counts_by_length[length] = dataset_service.valuation_origin_row_count(project_name, length)
+        dataset["valuation_row_count"] = counts_by_length[length]
+    return datasets
 
 
 def _resolved_dataset_reference(
@@ -475,7 +509,11 @@ def _resolved_dataset_reference(
     origin_labels = dataset.get("origin_labels") if isinstance(dataset.get("origin_labels"), list) else []
     data_format = _clean(dataset.get("data_format")) or "Triangle"
     is_vector = data_format.casefold() == "vector"
-    valid_boundary = _dataset_reference_valid_boundary(values, vector=is_vector)
+    valid_boundary = _dataset_reference_valid_boundary(
+        values,
+        vector=is_vector,
+        valuation_row_count=dataset.get("valuation_row_count"),
+    )
     row_index, row_label = _dataset_reference_axis_index(
         reference.get("row_idx"),
         origin_labels,
@@ -558,7 +596,7 @@ def resolve_dfm_dataset_references(
         )
         for key, name in names_by_key.items()
     }
-    datasets = {key: future.result() for key, future in futures.items()}
+    datasets = with_valuation_row_counts(project, {key: future.result() for key, future in futures.items()})
     return {
         "ok": True,
         "results": [
