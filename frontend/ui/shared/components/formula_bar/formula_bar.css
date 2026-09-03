@@ -59,15 +59,22 @@ lives here.
   margin-right: 4px;
 }
 
+/* The formula never drops onto a second line. A bar that can hold an error
+   message underneath is a wrapping row, so the formula is given a small
+   starting size and left to grow into the space the bar has: the browser then
+   shrinks it — clipping the tail with an ellipsis — rather than pushing it onto
+   a line of its own when the measured width falls short of the text. The
+   right-hand padding is the click target that opens the editor, so there is
+   always a stretch of bar past the formula to press. */
 .arFormulaBarInput {
-  flex: 1 1 auto;
+  flex: 1 1 40px;
   min-width: 40px;
   border: 0;
   background: transparent;
   outline: none;
   font: inherit;
   color: inherit;
-  padding: 0;
+  padding: 0 20px 0 0;
   height: 20px;
   line-height: 20px;
 }
@@ -79,15 +86,17 @@ lives here.
   color: #9ca3af;
 }
 
-/* The read-only rendering shown whenever the input is not being typed into. */
+/* The read-only rendering shown whenever the input is not being typed into. It
+   sizes like the input above, so the bar keeps its width when the two swap, and
+   its right-hand padding is what a click past the end of the formula lands on. */
 .arFormulaBarDisplay {
-  flex: 1 1 auto;
+  flex: 1 1 40px;
   min-width: 40px;
   height: 20px;
   font: inherit;
   line-height: 20px;
   color: inherit;
-  padding: 0;
+  padding: 0 20px 0 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;

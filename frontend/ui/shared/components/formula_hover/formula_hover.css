@@ -6,12 +6,19 @@ it sits, how the `fx` badge says it can be dragged, and the inline error it
 shows under the formula.
 ===============================================================================
 */
+/* The bar wraps only so an error can take a line of its own underneath: the
+   formula itself stays on the first line whatever it is measured at, which the
+   shared bar arranges by starting it small and letting it grow. */
+/* The formula's own trailing padding is the click target that opens the editor,
+   so the bar adds no gap of its own on that side and the target runs to the
+   border instead of stopping short of it. */
 .arFormulaHover {
   position: fixed;
   left: 0;
   top: 0;
   z-index: 10040;
   flex-wrap: wrap;
+  padding-right: 0;
 }
 
 /* The `fx` badge carries the bar off its cell when it covers something the user

@@ -10,6 +10,10 @@ const styles = await readFile(
   new URL("../ui/shared/components/formula_hover/formula_hover.css", import.meta.url),
   "utf8",
 );
+const sharedStyles = await readFile(
+  new URL("../ui/shared/components/formula_bar/formula_bar.css", import.meta.url),
+  "utf8",
+);
 const sharedModuleUrl = (name) => new URL(
   `../ui/shared/components/formula_bar/${name}`,
   import.meta.url,
@@ -301,6 +305,33 @@ test("the linked-cell editor wears the shared formula bar and adds only its own 
   // Nothing visual is redefined here: the shared bar owns border, shadow, and type.
   assert.doesNotMatch(styles, /box-shadow|border-radius|font:\s*12px/u);
   assert.match(styles, /position:\s*fixed/u);
+});
+
+test("the formula holds one line and keeps a stretch of bar to click past its end", () => {
+  // The bar wraps only for its error message. A starting size the bar can
+  // always fit is what stops the formula from taking the error's line when the
+  // measured width falls short of the text: it is shrunk and clipped instead.
+  assert.match(sharedStyles, /\.arFormulaBarInput\s*\{[^}]*flex:\s*1 1 40px/su);
+  assert.match(sharedStyles, /\.arFormulaBarDisplay\s*\{[^}]*flex:\s*1 1 40px/su);
+  // Padding past the formula is what a click landing to the right of it hits.
+  assert.match(sharedStyles, /\.arFormulaBarInput\s*\{[^}]*padding:\s*0 20px 0 0/su);
+  assert.match(sharedStyles, /\.arFormulaBarDisplay\s*\{[^}]*padding:\s*0 20px 0 0/su);
+});
+
+test("the bar is measured again once the stylesheets it is measured in arrive", () => {
+  const context = setup();
+  const root = openSizedBar(context);
+  context.controller.reposition();
+  assert.equal(root.style.width, "300px");
+
+  // The first bar of a session opens before its styles do, so the width it took
+  // was measured in the page's font rather than the bar's.
+  root._rect = { ...root._rect, right: 460, width: 460 };
+  const link = context.documentRef.allElements().find((element) => element.tagName === "LINK");
+  assert.ok(link, "the bar injects its stylesheets");
+  link.dispatch("load");
+
+  assert.equal(root.style.width, "460px");
 });
 
 test("array formula positioning uses the complete range and never overlaps it", () => {

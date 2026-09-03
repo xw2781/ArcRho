@@ -22,15 +22,21 @@ import { tokenizeFormula } from "/ui/shared/components/formula_bar/formula_text.
 
 const FORMULA_HOVER_STYLE_ID = "arcrho-formula-hover-style";
 const FORMULA_HOVER_STYLESHEETS = [
-  "/ui/shared/components/formula_bar/formula_bar.css?v=20260829b",
-  "/ui/shared/components/formula_hover/formula_hover.css?v=20260829b",
+  "/ui/shared/components/formula_bar/formula_bar.css?v=20260902a",
+  "/ui/shared/components/formula_hover/formula_hover.css?v=20260902b",
 ];
 const DEFAULT_HIDE_DELAY_MS = 140;
 const VIEWPORT_MARGIN_PX = 8;
 
 let formulaHoverIdSequence = 0;
 
-export function ensureFormulaHoverStyles(documentRef = document) {
+/**
+ * Add the bar's stylesheets to the page. `onLoad` is called each time one of
+ * them arrives: the first bar can open before its styles have, and it is sized
+ * in whatever font it is wearing at that moment, so the caller is given the
+ * chance to measure it again once it is dressed.
+ */
+export function ensureFormulaHoverStyles(documentRef = document, onLoad = null) {
   if (!documentRef?.head) return;
   const links = Array.from(documentRef.querySelectorAll?.('link[rel="stylesheet"]') || []);
   FORMULA_HOVER_STYLESHEETS.forEach((href, index) => {
@@ -42,6 +48,7 @@ export function ensureFormulaHoverStyles(documentRef = document) {
     link.id = id;
     link.rel = "stylesheet";
     link.href = href;
+    if (typeof onLoad === "function") link.addEventListener?.("load", () => onLoad());
     documentRef.head.appendChild(link);
   });
 }
@@ -184,10 +191,19 @@ export function createFormulaHoverEditor(options = {}) {
     reposition();
   }
 
+  // A width measured before the bar's stylesheets arrived was taken in the
+  // page's own font, which is not the one the formula ends up drawn in. Throwing
+  // that measurement away and sizing the bar again is what keeps the first
+  // formula of a session on one line.
+  function handleStylesLoaded() {
+    invalidateFormulaBarWidthCache();
+    reposition();
+  }
+
   function ensureEditor() {
     if (root?.isConnected) return root;
     if (!documentRef?.body) return null;
-    ensureFormulaHoverStyles(documentRef);
+    ensureFormulaHoverStyles(documentRef, handleStylesLoaded);
 
     formulaHoverIdSequence += 1;
     const errorId = `arFormulaHoverError-${formulaHoverIdSequence}`;
