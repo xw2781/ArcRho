@@ -15,6 +15,8 @@ export function registerDataTabPersistenceController(runtime) {
   const normalizeProjectText = defer("normalizeProjectText");
   const renderChart = defer("renderChart");
   const isDatasetReadOnly = defer("isDatasetReadOnly");
+  const getDatasetRunDataFormat = defer("getDatasetRunDataFormat");
+  const setLenSelectLock = defer("setLenSelectLock");
   let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
   let datasetExcelLinkCheckAbortController = null;
   const datasetExcelLinkCheckedKeys = new Set();
@@ -312,6 +314,20 @@ export function registerDataTabPersistenceController(runtime) {
     });
   }
 
+  // A vector has one column of values and no development dimension, so its
+  // Development Length is shown as a fixed 0 the user cannot open. The stored
+  // length is deliberately left alone: the vector request sends only
+  // PeriodLength, so nothing reads it, and rewriting it would make an untouched
+  // dataset look edited.
+  function updateVectorDevelopmentLengthControl() {
+    const isVector = normalizeDatasetModeText(getDatasetRunDataFormat()) === "vector";
+    setLenSelectLock("devLenSelect", {
+      locked: isVector,
+      displayValue: "0",
+      reason: "A vector has no development periods.",
+    });
+  }
+
   function restoreManualDatasetModeControls() {
     const settings = normalizeDatasetSettings(lastSavedDatasetSettings || getCurrentDatasetSettings());
     const cumulativeChk = document.getElementById("cumulativeChk");
@@ -366,6 +382,7 @@ export function registerDataTabPersistenceController(runtime) {
       }
     }
     updateManualDatasetModeControls();
+    updateVectorDevelopmentLengthControl();
     notifyDatasetDirtyState();
   }
 
@@ -399,6 +416,7 @@ export function registerDataTabPersistenceController(runtime) {
     setDatasetDecimalPlacesValue(normalized.decimal_places);
     setDatasetNumberFormatValue(normalized.number_format);
     refreshLenDropdowns();
+    updateVectorDevelopmentLengthControl();
   }
 
   function invalidateDatasetContextLoads() {
@@ -1215,6 +1233,7 @@ export function registerDataTabPersistenceController(runtime) {
     getCurrentLengthControlValues,
     validateManualDatasetLengthChange,
     updateManualDatasetModeControls,
+    updateVectorDevelopmentLengthControl,
     restoreManualDatasetModeControls,
     notifyDatasetDirtyState,
     updateDatasetSaveUi,

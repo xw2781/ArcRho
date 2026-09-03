@@ -186,7 +186,7 @@ test("DSV and DFM reach the current shared Data validation runtime", async () =>
   assert.match(dfmAdapter, /data_tab_controller\.js\?v=20260830b/u);
   assert.match(dataController, /data_tab_controls\.js\?v=20260820b/u);
   assert.match(dataController, /data_tab_inputs_controller\.js\?v=20260731b/u);
-  assert.match(dataController, /data_tab_request_controller\.js\?v=20260809a/u);
+  assert.match(dataController, /data_tab_request_controller\.js\?v=20260903a/u);
 });
 
 test("method pages and shared runtime do not depend on Dataset feature assets", async () => {

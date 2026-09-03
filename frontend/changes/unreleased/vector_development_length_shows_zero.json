@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Data tab now shows Development Length as a greyed-out 0 for a vector dataset instead of an editable length.",
+  "details": [
+    "A vector has one column of values and no development periods, so the control is dimmed and cannot be opened or changed.",
+    "Hovering it explains why.",
+    "Triangles keep the Development Length control exactly as before."
+  ]
+}

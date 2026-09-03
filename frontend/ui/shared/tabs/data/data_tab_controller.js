@@ -94,8 +94,8 @@ import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_hos
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260731b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260726a";
-import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260809a";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260830c";
+import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260903a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260903a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";

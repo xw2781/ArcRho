@@ -6,6 +6,7 @@ import {
   renderDatasetGridPlaceholder,
   setDatasetGridError,
 } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 export function registerDataTabRequestController(runtime) {
   const { state, config, isTemporaryDatasetView, qs, temporaryDatasetSessionId } = runtime;
@@ -203,6 +204,40 @@ export function registerDataTabRequestController(runtime) {
     opts[next]?.scrollIntoView?.({ block: "nearest" });
   }
 
+  // A length the open dataset has no use for is locked rather than removed, so
+  // the top bar keeps its shape. The lock lives on the wrap element instead of a
+  // module variable because every label repaint runs through the helpers below:
+  // a lock held anywhere else would be overwritten by the next options render.
+  function isLenSelectLocked(selectId) {
+    return !!getLenDropdownElements(selectId)?.wrap?.hasAttribute("data-locked-value");
+  }
+
+  function getLenSelectLockedLabel(selectId) {
+    return getLenDropdownElements(selectId)?.wrap?.getAttribute("data-locked-value") || "";
+  }
+
+  function setLenSelectLock(selectId, options = {}) {
+    const parts = getLenDropdownElements(selectId);
+    const wrap = parts?.wrap;
+    const button = parts?.button;
+    if (!wrap || !button) return;
+    const locked = !!options.locked;
+    if (locked) {
+      wrap.setAttribute("data-locked-value", String(options.displayValue ?? ""));
+      wrap.setAttribute("data-locked-reason", String(options.reason || ""));
+      showLenDropdown(selectId, false);
+    } else {
+      wrap.removeAttribute("data-locked-value");
+      wrap.removeAttribute("data-locked-reason");
+    }
+    wrap.classList.toggle("is-locked", locked);
+    button.setAttribute("aria-disabled", locked ? "true" : "false");
+    // Kept out of the tab order rather than disabled, so the reason tooltip is
+    // still reachable by hover.
+    button.tabIndex = locked ? -1 : 0;
+    syncLenDropdownButtonLabel(selectId);
+  }
+
   function syncLenDropdownButtonLabel(selectId) {
     const parts = getLenDropdownElements(selectId);
     const select = parts?.select;
@@ -210,6 +245,10 @@ export function registerDataTabRequestController(runtime) {
     if (!select || !button) return;
     const label = button.querySelector(".lenSelectValue");
     if (!label) return;
+    if (isLenSelectLocked(selectId)) {
+      label.textContent = getLenSelectLockedLabel(selectId);
+      return;
+    }
     const selected = select.options[select.selectedIndex];
     label.textContent = (selected?.textContent || select.value || "").trim();
   }
@@ -272,7 +311,7 @@ export function registerDataTabRequestController(runtime) {
       });
     }
 
-    const shouldOpen = !!open && !!dropdown.children.length;
+    const shouldOpen = !!open && !!dropdown.children.length && !isLenSelectLocked(selectId);
     wrap.classList.toggle("open", shouldOpen);
     dropdown.classList.toggle("open", shouldOpen);
     button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
@@ -348,9 +387,12 @@ export function registerDataTabRequestController(runtime) {
     if (button.dataset.wired === "1") return;
     button.dataset.wired = "1";
 
+    attachArcrhoTooltip(button, () => wrap.getAttribute("data-locked-reason") || "");
+
     button.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (isLenSelectLocked(selectId)) return;
       showProjectDropdown(false);
       showDatasetDropdown(false);
       const willOpen = !wrap.classList.contains("open");
@@ -359,6 +401,7 @@ export function registerDataTabRequestController(runtime) {
     });
 
     button.addEventListener("keydown", (e) => {
+      if (isLenSelectLocked(selectId)) return;
       const key = e.key;
       if (key === "ArrowDown" || key === "ArrowUp") {
         e.preventDefault();
@@ -389,6 +432,7 @@ export function registerDataTabRequestController(runtime) {
     });
 
     button.addEventListener("wheel", (e) => {
+      if (isLenSelectLocked(selectId)) return;
       e.preventDefault();
       e.stopPropagation();
       const dir = e.deltaY > 0 ? 1 : -1;
@@ -795,6 +839,8 @@ export function registerDataTabRequestController(runtime) {
     refreshLenDropdowns,
     showLenDropdown,
     closeAllLenDropdowns,
+    isLenSelectLocked,
+    setLenSelectLock,
     setLenSelectValue,
     chooseActiveLenDropdownOption,
     moveLenDropdownActiveOption,

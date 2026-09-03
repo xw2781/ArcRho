@@ -296,6 +296,19 @@ body {
   opacity: 1;
 }
 
+/* A length the open dataset has no use for, such as Development Length on a
+   vector, keeps its place in the strip but reads as unavailable: the same
+   dimming the page's disabled buttons use, and no caret, because there is no
+   list behind it to open. */
+#datasetTopBar .lenSelectWrap.is-locked .lenSelectDisplay {
+  cursor: default;
+  opacity: 0.55;
+}
+
+#datasetTopBar .lenSelectWrap.is-locked .lenSelectCaret {
+  opacity: 0;
+}
+
 /* The Number Format control itself is the shared `arNumberFormat*` field; only
    its top-bar footprint is set here. The caret inset has to be restated because
    the top bar's own `#datasetTopBar input[type="text"]` padding outranks the
