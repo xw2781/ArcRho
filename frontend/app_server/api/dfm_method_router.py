@@ -85,13 +85,3 @@ def save_dfm_method(req: DfmMethodSaveRequest) -> Dict[str, Any]:
         plan_fingerprint=req.plan_fingerprint,
         **_dfm_method_save_call(req),
     )
-
-
-@router.post("/dfm/method/refresh")
-def refresh_dfm_method(req: DfmMethodIdentityRequest) -> Dict[str, Any]:
-    return dfm_service.refresh_dfm_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
-        output_dataset=req.output_dataset,
-    )

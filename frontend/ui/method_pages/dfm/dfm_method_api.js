@@ -90,12 +90,3 @@ function dfmMethodSaveBody({
 export function saveDfmMethod(input = {}, options = {}) {
   return requestJson("/dfm/method/save", dfmMethodSaveBody(input), options);
 }
-
-export function refreshDfmMethod(identity, options = {}) {
-  return requestJson("/dfm/method/refresh", {
-    project_name: text(identity?.project_name),
-    reserving_class: text(identity?.reserving_class),
-    method_name: text(identity?.method_name),
-    ...(text(identity?.output_dataset) ? { output_dataset: text(identity.output_dataset) } : {}),
-  }, options);
-}

@@ -37,6 +37,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    precedent_cache_service,
     user_identity_service,
 )
 
@@ -270,27 +271,53 @@ def _load_source_snapshot(
         sidecar.get("period_length") if is_vector else sidecar.get("origin_length")
     )
     required_origin_length = _positive_int(expected_origin_length)
-    if source_origin_length and required_origin_length \
-            and source_origin_length != required_origin_length:
-        raise HTTPException(
-            422,
-            f"DFM precedent '{dataset_name}' has incompatible origin period length "
-            f"({source_origin_length}; expected {required_origin_length}).",
-        )
+    origin_mismatch = bool(
+        source_origin_length and required_origin_length
+        and source_origin_length != required_origin_length
+    )
     source_development_length = _positive_int(sidecar.get("development_length"))
     required_development_length = _positive_int(expected_development_length)
-    if not vector and source_development_length and required_development_length \
-            and source_development_length != required_development_length:
-        raise HTTPException(
-            422,
-            f"DFM input '{dataset_name}' has incompatible development period length "
-            f"({source_development_length}; expected {required_development_length}).",
-        )
-    csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
-    if not csv_file:
-        raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
-    data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
-    csv_path = os.path.join(data_dir, csv_file)
+    development_mismatch = bool(
+        not vector and source_development_length and required_development_length
+        and source_development_length != required_development_length
+    )
+    if (origin_mismatch or development_mismatch) \
+            and _clean(sidecar.get("source_kind")).lower() == "engine":
+        # The Engine builds its own datasets at any period from the source
+        # table, so a generated precedent cached at another period is rebuilt
+        # at the method's lengths instead of refused.
+        try:
+            csv_path = precedent_cache_service.materialize_engine_source(
+                project_name,
+                reserving_class,
+                dataset_name,
+                sidecar,
+                required_origin_length or source_origin_length,
+                development_length=None if vector else required_development_length,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                422,
+                f"DFM precedent '{dataset_name}' could not be generated at the method's period: {exc}",
+            ) from exc
+    else:
+        if origin_mismatch:
+            raise HTTPException(
+                422,
+                f"DFM precedent '{dataset_name}' has incompatible origin period length "
+                f"({source_origin_length}; expected {required_origin_length}).",
+            )
+        if development_mismatch:
+            raise HTTPException(
+                422,
+                f"DFM input '{dataset_name}' has incompatible development period length "
+                f"({source_development_length}; expected {required_development_length}).",
+            )
+        csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
+        if not csv_file:
+            raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
+        data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
+        csv_path = os.path.join(data_dir, csv_file)
     try:
         frame = pd.read_csv(csv_path, header=None).astype(object)
     except FileNotFoundError as exc:
@@ -1298,83 +1325,6 @@ def _refresh_one(
         "sidecar": sidecar,
         "changed_paths": changed_paths,
     }
-
-
-def refresh_dfm_method(
-    project_name: str,
-    reserving_class: str,
-    method_name: str,
-    *,
-    output_dataset: str | None = None,
-) -> Dict[str, Any]:
-    project = _clean(project_name)
-    reserving = _clean(reserving_class)
-    name = _clean(method_name)
-    if not project or not reserving or not name:
-        raise HTTPException(400, "project_name, reserving_class, and method_name are required.")
-    dependent_propagation_service.require_reserving_class_writable(project, reserving)
-    with _lock(project, reserving):
-        method = _read_json(_method_path(project, reserving, name))
-        if not method:
-            raise HTTPException(404, f"DFM method not found: {name}")
-        _stored_name, stored_output = _identity(method)
-        requested_output = _clean(output_dataset) or stored_output
-        if _key(requested_output) != _key(stored_output):
-            raise HTTPException(409, "DFM output identity does not match the method JSON.")
-        sidecar_path = _sidecar_path(project, reserving, stored_output)
-        with dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
-            sidecar = _read_json(sidecar_path)
-            if not sidecar:
-                raise HTTPException(409, "DFM output sidecar is missing.")
-            if _clean(method.get("json_format")) != DFM_JSON_FORMAT:
-                raise HTTPException(409, "Open the legacy DFM once to upgrade it before refreshing.")
-            was_review_needed = (
-                dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
-                == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
-            )
-            result = _refresh_one(
-                project,
-                reserving,
-                stored_output,
-                sidecar,
-                _precedent_names(method),
-                {},
-                method_payload=method,
-            )
-            if was_review_needed:
-                _mark_review_needed(project, reserving, stored_output)
-                result["sidecar"] = _read_json(sidecar_path) or result.get("sidecar") or sidecar
-                result["status_refreshed"] = False
-    response = _method_response(
-        project,
-        reserving,
-        result.get("method") or method,
-        result.get("sidecar") or sidecar,
-        changed_paths=result.get("changed_paths") or [],
-    )
-    response.update({
-        "updated": bool(result.get("updated")),
-        "output_changed": bool(result.get("output_changed")),
-        "status_refreshed": bool(result.get("status_refreshed")),
-    })
-    if result.get("output_changed") or result.get("status_refreshed"):
-        response["propagation"] = _enqueue_propagation_job(
-            project,
-            reserving,
-            stored_output,
-            _clean(_details(result.get("method") or method).get("output_type")) or stored_output,
-        )
-        response["propagation_ok"] = bool(response["propagation"].get("ok"))
-        response["calculated_updates"] = response["propagation"]
-    else:
-        response["propagation"] = {
-            "ok": True,
-            "skipped": True,
-            "reason": "publication_unchanged",
-        }
-        response["propagation_ok"] = True
-        response["calculated_updates"] = response["propagation"]
-    return response
 
 
 def refresh_dependents(

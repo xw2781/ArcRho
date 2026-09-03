@@ -755,6 +755,48 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(method_path.read_bytes(), before_method)
         self.assertEqual(output_path.read_bytes(), before_output)
 
+    def test_engine_generated_precedent_is_regenerated_at_the_method_period(self) -> None:
+        method = self.method_payload()
+        method["details_tab"]["origin_length"] = 3
+        method["details_tab"]["development_length"] = 3
+        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
+        source_path = self.sidecars / "Paid.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source["source_kind"] = "engine"
+        source["csv_file"] = "Paid@12@12@cum@dev.csv"
+        self.write_json(source_path, source)
+        requests: list[tuple[dict, str, dict]] = []
+
+        def run_arcrho_tri(pairs, path, **options):
+            requests.append((dict(pairs), path, options))
+            Path(path).write_text("10,15\n20,\n", encoding="utf-8")
+            return {"ok": True, "status": "cache_missing"}
+
+        with mock.patch(
+            "app_server.services.arcrho_runtime_service.run_arcrho_tri",
+            side_effect=run_arcrho_tri,
+        ):
+            snapshot, _ = dfm_service._source_snapshots(
+                "Project",
+                "Class",
+                method,
+                load_input=True,
+                load_basis=False,
+            )
+
+        self.assertEqual(snapshot["values"], [[10, 15], [20, None]])
+        pairs, path, options = requests[0]
+        self.assertEqual(
+            (pairs["Function"], pairs["InstanceName"], pairs["OriginLength"], pairs["DevelopmentLength"]),
+            ("ArcRhoTri", "Paid", "3", "3"),
+        )
+        self.assertEqual(Path(path).name, "Paid@3@3@cum@dev.csv")
+        self.assertFalse(options["write_sidecar"])
+        self.assertEqual(
+            json.loads(source_path.read_text(encoding="utf-8"))["csv_file"],
+            "Paid@12@12@cum@dev.csv",
+        )
+
     def test_output_csv_variants_are_projected_by_the_canonical_contract(self) -> None:
         method = self.write_method_pair()
         method["details_tab"]["origin_length"] = 3
@@ -900,32 +942,6 @@ class DfmServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(source_reads, [("Paid", False)])
         self.assertFalse((self.sidecars / "Premium.json").exists())
-
-    def test_explicit_refresh_keeps_review_alert_until_save(self) -> None:
-        self.write_method_pair(status=2)
-        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
-        self.write_source("Premium", "1000\n1100\n", data_format="Vector")
-        with mock.patch(
-            "app_server.services.calculated_dataset_service.recalculate_dependents",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            result = dfm_service.refresh_dfm_method(
-                "Project",
-                "Class",
-                "Development",
-                output_dataset="Development Output",
-            )
-
-        self.assertFalse(result["output_changed"])
-        self.assertFalse(result["status_refreshed"])
-        cascade.assert_not_called()
-        sidecar = json.loads(
-            (self.sidecars / "Development Output.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(
-            sidecar["status"],
-            dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
-        )
 
     def test_incompatible_input_refresh_preserves_last_valid_artifacts_and_marks_review(self) -> None:
         self.write_method_pair()

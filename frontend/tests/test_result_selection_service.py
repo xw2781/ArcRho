@@ -17,7 +17,12 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
 
 from arcrho_api.sidecar_core_contract import finalize_sidecar
 from app_server import config
-from app_server.services import calculated_dataset_service, dataset_service, result_selection_service
+from app_server.services import (
+    calculated_dataset_service,
+    dataset_service,
+    precedent_cache_service,
+    result_selection_service,
+)
 from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
@@ -786,7 +791,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(RuntimeError, "cannot be derived"):
-            result_selection_service._dependency_csv_path(
+            precedent_cache_service.precedent_csv_path(
                 "Project", "Class", "Selection", sidecar, 3, exact=True,
             )
 

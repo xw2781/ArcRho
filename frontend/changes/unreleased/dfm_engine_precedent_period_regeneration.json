@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM whose Engine-generated input or ratio basis is cached at a different period now regenerates it at the method's own period during save and downstream refresh instead of failing with an incompatible origin period length.",
+  "details": [
+    "A quarterly DFM fed by a dataset cached annually no longer blocks the downstream refresh after an upstream save.",
+    "The regenerated cache is written beside the existing one; the dataset's sidecar and primary cache are left as they were.",
+    "DFM and Result Selection now share one resolver for reading a precedent at the method's period."
+  ]
+}

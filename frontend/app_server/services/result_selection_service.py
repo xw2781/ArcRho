@@ -19,14 +19,11 @@ from fastapi import HTTPException
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import persisted_timestamp, utc_now_text
 from app_server import config
-from app_server.helpers import (
-    build_dataset_cache_file_name,
-    sanitize_dataset_file_name,
-    set_data_path_like_vba,
-)
+from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    precedent_cache_service,
     user_identity_service,
 )
 
@@ -747,98 +744,6 @@ def save_propagation_roots(
     return [(name, _clean(details.get("output_type")) or name)]
 
 
-def _source_period(sidecar: Dict[str, Any]) -> int:
-    value = sidecar.get("period_length") if _clean(sidecar.get("data_format")).lower() == "vector" else sidecar.get("origin_length")
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _materialize_engine_source(
-    project_name: str,
-    reserving_class: str,
-    dataset_name: str,
-    sidecar: Dict[str, Any],
-    origin_length: int,
-) -> str:
-    data_format = _clean(sidecar.get("data_format")) or "Triangle"
-    function = "ArcRhoVec" if data_format.lower() == "vector" else "ArcRhoTri"
-    dataset_type = _clean(sidecar.get("dataset_type")) or dataset_name
-    cumulative = bool(sidecar.get("cumulative", True))
-    transposed = bool(sidecar.get("transposed", False))
-    calendar = bool(sidecar.get("calendar", False))
-    pairs = [
-        ("Function", function),
-        ("Path", reserving_class),
-        ("DatasetName", dataset_type),
-        ("InstanceName", dataset_name),
-        ("Cumulative", str(cumulative)),
-        ("Transposed", str(transposed)),
-        ("Calendar", str(calendar)),
-        ("ProjectName", project_name),
-        ("OriginLength", str(origin_length)),
-        ("DevelopmentLength", str(origin_length)),
-    ]
-    path = set_data_path_like_vba(pairs)
-    from app_server.services import arcrho_runtime_service
-
-    result = arcrho_runtime_service.run_arcrho_tri(
-        pairs,
-        path,
-        timeout_sec=config.ENGINE_REQUEST_TIMEOUT_SEC,
-        local_only=False,
-        allow_derived=True,
-        write_sidecar=False,
-    )
-    if not result.get("ok") or not os.path.isfile(path):
-        raise RuntimeError(result.get("message") or f"Unable to materialize '{dataset_name}' at {origin_length} months.")
-    return path
-
-
-def _dependency_csv_path(
-    project_name: str,
-    reserving_class: str,
-    dataset_name: str,
-    sidecar: Dict[str, Any],
-    origin_length: int,
-    *,
-    exact: bool,
-) -> str:
-    data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
-    data_format = _clean(sidecar.get("data_format")) or "Triangle"
-    source_kind = _clean(sidecar.get("source_kind")).lower()
-    native_period = _source_period(sidecar)
-    sidecar_path = os.path.join(data_dir, os.path.basename(_clean(sidecar.get("csv_file")))) \
-        if _clean(sidecar.get("csv_file")) else ""
-    needs_exact = exact or bool(native_period and native_period != origin_length)
-    if needs_exact:
-        if source_kind == "engine":
-            return _materialize_engine_source(project_name, reserving_class, dataset_name, sidecar, origin_length)
-        if native_period and origin_length < native_period:
-            raise RuntimeError(
-                f"Exact {origin_length}-month cache cannot be derived from the current "
-                f"{native_period}-month output for '{dataset_name}'."
-            )
-        filename = build_dataset_cache_file_name(
-            dataset_name,
-            data_format,
-            origin_length,
-            origin_length,
-            True,
-            False,
-        ) + ".csv"
-        target = os.path.join(data_dir, filename)
-        if os.path.isfile(target):
-            return target
-        if native_period == origin_length and sidecar_path and os.path.isfile(sidecar_path):
-            return sidecar_path
-        raise RuntimeError(f"Exact {origin_length}-month cache is missing for '{dataset_name}'.")
-    if sidecar_path and os.path.isfile(sidecar_path):
-        return sidecar_path
-    raise RuntimeError(f"Cached dataset CSV is missing for '{dataset_name}'.")
-
-
 def _dependency_values(
     project_name: str,
     reserving_class: str,
@@ -848,7 +753,7 @@ def _dependency_values(
     *,
     exact: bool,
 ) -> List[float | int | None]:
-    path = _dependency_csv_path(
+    path = precedent_cache_service.precedent_csv_path(
         project_name,
         reserving_class,
         dataset_name,
@@ -944,7 +849,7 @@ def _refresh_review_save_payload(
             "category": _clean(sidecar.get("dataset_category") or sidecar.get("category"))
             or source.get("category"),
             "source_kind": _clean(sidecar.get("source_kind")) or source.get("source_kind"),
-            "origin_length": _source_period(sidecar) or source.get("origin_length") or origin_length,
+            "origin_length": precedent_cache_service.source_period(sidecar) or source.get("origin_length") or origin_length,
             "values": values,
         })
         source["weights"] = _fit_vector(source.get("weights"), row_count, fill=0.0)
@@ -1304,7 +1209,7 @@ def _refresh_one_method(
             "category": _clean(source_sidecar.get("dataset_category") or source_sidecar.get("category"))
             or source.get("category"),
             "source_kind": _clean(source_sidecar.get("source_kind")) or source.get("source_kind"),
-            "origin_length": _source_period(source_sidecar) or source.get("origin_length"),
+            "origin_length": precedent_cache_service.source_period(source_sidecar) or source.get("origin_length"),
         }
         for field, value in metadata.items():
             if value != source.get(field):

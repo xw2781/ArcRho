@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "internal",
+  "summary": "Removed the unused standalone DFM refresh route, which no screen or automation called and which still ran on the client over the mapped drive.",
+  "details": [
+    "A DFM is refreshed by the Engine propagation walk after an upstream save; that remains the only refresh path.",
+    "A future Refresh button should be built as an Engine-hosted operation rather than reviving this route."
+  ]
+}
