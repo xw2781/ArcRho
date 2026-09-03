@@ -154,3 +154,26 @@ test("the automation dialog drags under pointer capture so a fast drag cannot es
   assert.doesNotMatch(automationSource, /window\.addEventListener\("pointermove"/u);
   assert.doesNotMatch(automationSource, /window\.addEventListener\("pointerup"/u);
 });
+
+test("the shell progress window resizes from a corner grip that keeps it on screen", async () => {
+  const automationSource = await readFile(new URL("../ui/shell/ui_automation.js", import.meta.url), "utf8");
+  // A grip in the bottom-right corner, captured the same way the header drag
+  // is so a fast pull cannot escape it (ArcRho UI rule L16).
+  assert.match(automationSource, /handle\.className = "uiAutomationResizeHandle"/u);
+  assert.match(automationSource, /\.uiAutomationResizeHandle \{/u);
+  assert.match(automationSource, /cursor: nwse-resize/u);
+  assert.match(automationSource, /handle\.setPointerCapture\?\.\(event\.pointerId\)/u);
+  assert.match(automationSource, /handle\.addEventListener\("pointermove", onPointerMove\)/u);
+  assert.match(automationSource, /handle\.addEventListener\("lostpointercapture", stopResize\)/u);
+  assert.match(automationSource, /event\.pointerId !== resize\.pointerId/u);
+  // The window never shrinks below its own minimum nor grows past the app
+  // window, and it is re-clamped when the app window itself changes size.
+  assert.match(automationSource, /function clampDialogSize\(dialog, left, top, width, height\)/u);
+  assert.match(automationSource, /min-width: 280px/u);
+  assert.match(automationSource, /min-height: 150px/u);
+  assert.match(automationSource, /window\.addEventListener\("resize", onWindowResize\)/u);
+  // The size the user pulled to is reused by the next progress window.
+  assert.match(automationSource, /let progressWindowSize = null/u);
+  assert.match(automationSource, /if \(progressWindowSize\) resizer\.applySize\(/u);
+  assert.match(automationSource, /entry\.cleanupResize\?\.\(\)/u);
+});

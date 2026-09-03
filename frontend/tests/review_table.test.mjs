@@ -279,9 +279,9 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   // The modal host renders the same pi-table the nested window does, so it
   // loads the shared table sheet the grid is dressed by.
   assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
-  assert.match(index, /ui_shell\.js\?v=20260901drag1/u);
+  assert.match(index, /ui_shell\.js\?v=20260903resize1/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260901drag1/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260903resize1/u);
   }
   // Payload text reaches the DOM as text, never as markup, in both modules.
   assert.match(view, /textContent = toText\(text\)/u);

@@ -16,6 +16,9 @@ let automationStopped = false;
 let messageBoxPromise = null;
 const progressWindows = new Map();
 const dismissedProgressWindows = new Set();
+// The size the progress window was last pulled to by its corner grip, so a
+// later run opens at the size the user chose instead of the default again.
+let progressWindowSize = null;
 const reviewTableDialogs = new Map();
 // dialogId -> Project Instance tab hosting that review table as a nested
 // window. Status/close commands must reach the owning tab even after the user
@@ -207,12 +210,44 @@ function installAutomationStyles() {
       cursor: move !important;
       user-select: none !important;
     }
+    .uiAutomationOverlay.resizing,
+    .uiAutomationOverlay.resizing * {
+      cursor: nwse-resize !important;
+      user-select: none !important;
+    }
+    .uiAutomationResizeHandle {
+      /* Corner grip, the same affordance the review-table window carries, so
+         both floating windows are resized the same way. */
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 18px;
+      height: 18px;
+      cursor: nwse-resize;
+      touch-action: none;
+    }
+    .uiAutomationResizeHandle::after {
+      content: "";
+      position: absolute;
+      right: 5px;
+      bottom: 5px;
+      width: 6px;
+      height: 6px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      border-bottom-right-radius: 3px;
+      opacity: 0.3;
+    }
+    .uiAutomationResizeHandle:hover::after {
+      opacity: 0.55;
+    }
     .uiAutomationProgressDialog {
       /* Width comes from the floating-overlay rule above, which outranks any
-         width set here. */
+         width set here; once the corner grip is dragged an inline width and
+         height outrank both. */
       height: 232px;
-      /* Fixed-size window: the max clamps only keep it inside a very small
-         app window, they are not a resize affordance. */
+      min-width: 280px;
+      min-height: 150px;
       max-width: calc(100vw - 40px);
       max-height: calc(100vh - 40px);
       display: flex;
@@ -353,6 +388,112 @@ function clampDialogPosition(dialog, left, top) {
   return {
     left: Math.min(Math.max(margin, Number(left) || margin), maxLeft),
     top: Math.min(Math.max(margin, Number(top) || margin), maxTop),
+  };
+}
+
+// The corner grip only ever pulls the bottom-right edge, so the room left for
+// the window is measured from the top-left corner it is anchored at. The floor
+// comes from the dialog's own min-width/min-height, which keeps the rule about
+// how small a window may become in the stylesheet beside the rest of its size.
+function clampDialogSize(dialog, left, top, width, height) {
+  const margin = 12;
+  const computed = window.getComputedStyle(dialog);
+  const minWidth = Math.max(240, Number.parseFloat(computed.minWidth) || 0);
+  const minHeight = Math.max(120, Number.parseFloat(computed.minHeight) || 0);
+  const maxWidth = Math.max(minWidth, window.innerWidth - Math.max(margin, left) - margin);
+  const maxHeight = Math.max(minHeight, window.innerHeight - Math.max(margin, top) - margin);
+  return {
+    width: Math.min(Math.max(Number(width) || minWidth, minWidth), maxWidth),
+    height: Math.min(Math.max(Number(height) || minHeight, minHeight), maxHeight),
+  };
+}
+
+// Adds the bottom-right grip and the pointer handling behind it. Like the
+// header drag above, the grip captures the pointer so a fast pull cannot
+// outrun hit-testing and drop the gesture (ArcRho UI rule L16).
+function enableDialogResize(overlay, dialog, onSizeChange) {
+  const handle = document.createElement("div");
+  handle.className = "uiAutomationResizeHandle";
+  handle.setAttribute("aria-hidden", "true");
+  dialog.appendChild(handle);
+  let resize = null;
+
+  const applySize = (width, height) => {
+    const rect = dialog.getBoundingClientRect();
+    const size = clampDialogSize(dialog, rect.left, rect.top, width, height);
+    dialog.style.width = `${Math.round(size.width)}px`;
+    dialog.style.height = `${Math.round(size.height)}px`;
+    const placed = clampDialogPosition(dialog, rect.left, rect.top);
+    dialog.style.left = `${placed.left}px`;
+    dialog.style.top = `${placed.top}px`;
+    return size;
+  };
+  const onPointerMove = (event) => {
+    if (!resize || event.pointerId !== resize.pointerId) return;
+    event.preventDefault();
+    applySize(resize.width + event.clientX - resize.x, resize.height + event.clientY - resize.y);
+  };
+  const stopResize = (event) => {
+    if (!resize) return;
+    if (event && event.pointerId !== undefined && event.pointerId !== resize.pointerId) return;
+    const { pointerId } = resize;
+    resize = null;
+    overlay.classList.remove("resizing");
+    handle.removeEventListener("pointermove", onPointerMove);
+    handle.removeEventListener("pointerup", stopResize);
+    handle.removeEventListener("pointercancel", stopResize);
+    handle.removeEventListener("lostpointercapture", stopResize);
+    try {
+      if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
+    } catch {
+      /* the pointer is already gone; nothing to release */
+    }
+    const rect = dialog.getBoundingClientRect();
+    try {
+      onSizeChange?.({ width: Math.round(rect.width), height: Math.round(rect.height) });
+    } catch {
+      /* remembering the size is a convenience; never let it break the drag */
+    }
+  };
+  const onPointerDown = (event) => {
+    if (event.button !== 0) return;
+    if (resize) stopResize();
+    const rect = dialog.getBoundingClientRect();
+    resize = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      width: rect.width,
+      height: rect.height,
+    };
+    overlay.classList.add("resizing");
+    handle.addEventListener("pointermove", onPointerMove);
+    handle.addEventListener("pointerup", stopResize);
+    handle.addEventListener("pointercancel", stopResize);
+    handle.addEventListener("lostpointercapture", stopResize);
+    try {
+      handle.setPointerCapture?.(event.pointerId);
+    } catch {
+      /* capture is unavailable; the handle listeners still track the pull */
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onWindowResize = () => {
+    const rect = dialog.getBoundingClientRect();
+    applySize(rect.width, rect.height);
+  };
+
+  handle.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("resize", onWindowResize);
+  return {
+    applySize,
+    destroy() {
+      stopResize();
+      handle.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("resize", onWindowResize);
+      handle.remove();
+    },
   };
 }
 
@@ -795,6 +936,11 @@ export function openAutomationProgress(args = {}) {
   `;
   document.body.appendChild(overlay);
   const dialog = overlay.querySelector(".uiAutomationDialog");
+  const resizer = enableDialogResize(overlay, dialog, (size) => { progressWindowSize = size; });
+  // A run that reopens the window - the next macro, or the next step of this
+  // one - reuses whatever size the last one was pulled to, so the choice is
+  // made once rather than at every open.
+  if (progressWindowSize) resizer.applySize(progressWindowSize.width, progressWindowSize.height);
   const rect = dialog.getBoundingClientRect();
   const left = Math.round(window.innerWidth - rect.width - 28);
   const top = 72;
@@ -803,7 +949,7 @@ export function openAutomationProgress(args = {}) {
   dialog.style.top = `${next.top}px`;
   const cleanupDrag = enableDialogDrag(overlay, dialog);
   const entry = {
-    overlay, cleanupDrag, total: 0, completed: 0, label: "",
+    overlay, cleanupDrag, cleanupResize: resizer.destroy, total: 0, completed: 0, label: "",
     cancellable: false, cancelRequested: false, onCancel: null,
   };
   progressWindows.set(progressId, entry);
@@ -850,6 +996,7 @@ export function closeAutomationProgress(args = {}) {
   if (!entry) return { progressId, closed: false };
   const remove = () => {
     entry.cleanupDrag?.();
+    entry.cleanupResize?.();
     entry.overlay?.remove();
     progressWindows.delete(progressId);
   };
