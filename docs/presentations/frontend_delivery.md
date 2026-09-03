@@ -37,7 +37,3 @@
 - Flight Deck Shortcut
 - Show diagnostic triangles
 - Export to ResQ (w/ Preview Window)
-
-## In Progress
-- Quarterly Result Selection Sync
-- BS Method Selection
