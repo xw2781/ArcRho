@@ -706,6 +706,44 @@ def get_source_table_state(project_name: str) -> Dict[str, Any]:
     return state
 
 
+def get_source_file_status(project_name: str) -> Dict[str, Any]:
+    """Live identity of the external source file, read without importing it.
+
+    The import record only holds what the file's modified time was when the
+    copy was taken, so the Source Data details panel asks the file itself. The
+    stat runs here rather than on the ArcRho Server host because an import
+    source is not project data: the configured path may be a Client PC drive
+    the server cannot see, which is the same reason
+    `resolve_import_source_for_server` exists.
+
+    A SQL Server project has no file, and an unreachable one answers
+    `exists: false` so the panel keeps showing the recorded time.
+    """
+    name = _require_project_name(project_name)
+    record = read_source_import(name)
+    source_type = normalize_source_type(record.get("source_type"))
+    csv_path = "" if source_type == SOURCE_TYPE_MSSQL else _configured_csv_path(name)
+    status: Dict[str, Any] = {
+        "project_name": name,
+        "source_type": source_type,
+        "csv_path": csv_path,
+        "exists": False,
+        "csv_mtime_ns": None,
+        "csv_size": None,
+        "matches_import": False,
+    }
+    if not csv_path:
+        return status
+    try:
+        identity = csv_identity(csv_path)
+    except OSError:
+        return status
+    status.update(identity)
+    status["exists"] = True
+    status["matches_import"] = same_csv_identity(record.get("last_import"), identity)
+    return status
+
+
 def resolve_import_source_for_server(project_name: str) -> Dict[str, Any]:
     """Report whether the ArcRho Server host can perform this project's import.
 

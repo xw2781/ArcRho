@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The Source Table details panel now shows the source file's current modified time, read from the file each time the panel opens.",
+  "details": [
+    "The panel used to show the modified time recorded when the file was last copied into the project, which went stale as soon as anyone rewrote the file.",
+    "A file that has changed since the last import is called out beside its modified time, and an unreachable file keeps the recorded time and says so."
+  ]
+}

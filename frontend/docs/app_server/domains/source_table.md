@@ -22,6 +22,8 @@ The SQL Server profile lives with the project and is shared by every user of tha
 
 `POST /source_table/profile` also accepts an optional `csv_path` for `csv`-sourced projects and writes it into the project's `field_mapping.json::table_path`, making the profile save the single writer of the external CSV selection; an omitted `csv_path` leaves the stored path unchanged.
 
+`GET /source_table/file_status` reads the external source file's own identity - modified time, size, and whether it still matches the recorded import - without importing anything, so the Source Data details panel can show the file's live modified time rather than the one captured when the copy was taken. It runs on the caller's machine rather than the ArcRho Server host on purpose: an import source is not project data, and the configured path may be a Client PC drive the server cannot see, which is the same reason `resolve_import_source_for_server` exists. An unreachable file answers `exists: false` instead of failing.
+
 `POST /source_table/tables` lists the tables and views the caller can see in one database, so the Source Data picker never has to assemble a name itself. It validates only the server/database half of the profile, because choosing the table is exactly what it is for.
 
 Server/database pairs that connect successfully are recorded in a **server-shared** preference at `<workspace_root>/config/mssql_connections.json`, resolved by `config.get_mssql_connections_path()` - never a hardcoded server root. Every user of that ArcRho Server sees and can prune the same list through `GET /source_table/connections` and `POST /source_table/connections/forget`. The file holds `server`, `database`, and `last_used_at` only: no credentials, and no table name, since the table is a per-project choice. Recording is best-effort - a read-only config folder must not fail a good connect or a committed import.
@@ -34,6 +36,7 @@ Server/database pairs that connect successfully are recorded in a **server-share
 | `GET` | `/source_table` | `get_source_table` | `str` | - | `source_table_service.get_source_table_state` |
 | `GET` | `/source_table/connections` | `get_source_table_connections` | - | - | `source_table_service.load_mssql_connections` |
 | `POST` | `/source_table/connections/forget` | `forget_source_table_connection` | `MssqlConnectionForgetRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.forget_mssql_connection` |
+| `GET` | `/source_table/file_status` | `get_source_table_file_status` | `str` | - | `source_table_service.get_source_file_status` |
 | `POST` | `/source_table/import` | `import_source_table` | `SourceTableImportRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.import_from_mssql` |
 | `POST` | `/source_table/profile` | `save_source_table_profile` | `SourceProfileSaveRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.get_source_table_state`, `source_table_service.save_source_profile` |
 | `POST` | `/source_table/refresh` | `refresh_source_table` | `SourceTableRefreshRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.ensure_master_table` |

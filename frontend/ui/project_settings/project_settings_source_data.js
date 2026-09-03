@@ -25,6 +25,9 @@ import {
 
 const COLUMN_MIN_WIDTH = { name: 120, type: 74 };
 const DETAILS_CLOSE_DELAY_MS = 160;
+// The details panel opens on hover, so a live read of the source file is kept
+// off the pointer moving in and out of the icon.
+const FILE_STATUS_FRESH_MS = 3000;
 const AREA_VIEWBOX_HEIGHT = 20;
 
 export const SOURCE_TYPE_CSV = "csv";
@@ -265,6 +268,7 @@ export function createSourceDataFeature(deps = {}) {
     onForgetConnection = async () => ({ connections: [] }),
     onCsvPathPick = async () => "",
     onImportData = async () => ({ ok: false, error: "Not available." }),
+    onSourceFileStatus = async () => null,
   } = deps;
 
   const el = (id) => document.getElementById(id);
@@ -349,6 +353,15 @@ export function createSourceDataFeature(deps = {}) {
   let monthPickerPointerInside = false;
   let summaryLoading = false;
   let wired = false;
+  // Live identity of the external source file, read when the details panel
+  // opens. The import record only carries the modified time the file had when
+  // the copy was taken, so it goes stale the moment someone rewrites the file.
+  let fileStatus = null;
+  let fileStatusAt = 0;
+  let fileStatusPending = false;
+  // Last summary payload the card was rendered from, so the live read can
+  // redraw the rows on its own.
+  let statsData = null;
 
   /* ---------------- helpers ---------------- */
 
@@ -588,15 +601,47 @@ export function createSourceDataFeature(deps = {}) {
     return date.toLocaleString();
   }
 
-  /** Source CSV mtime in epoch seconds, or 0 for a SQL Server source. */
+  /**
+   * Source CSV mtime in epoch seconds, or 0 for a SQL Server source.
+   *
+   * The live read of the file wins whenever the panel has one; the time
+   * recorded at import stands in until it arrives, and stays when the file
+   * cannot be reached.
+   */
   function sourceCsvMtimeSeconds() {
-    const nanoseconds = Number(sourceState.lastImport?.csvMtimeNs);
+    const live = fileStatus?.exists ? fileStatus.csv_mtime_ns : null;
+    const nanoseconds = Number(live ?? sourceState.lastImport?.csvMtimeNs);
     if (!Number.isFinite(nanoseconds) || nanoseconds <= 0) return 0;
     return nanoseconds / 1e9;
   }
 
-  function renderStats(data) {
+  /** Note beside `Modified` when the file no longer matches the imported copy. */
+  function sourceCsvMtimeNote() {
+    if (!fileStatus) return "";
+    if (!fileStatus.exists) return "source file not reachable";
+    return fileStatus.matches_import ? "" : "changed since the last import";
+  }
+
+  /** Read the source file's own identity, at most once every few seconds. */
+  async function refreshFileStatus() {
+    if (sourceState.sourceType === SOURCE_TYPE_MSSQL || fileStatusPending) return;
+    if (fileStatus && Date.now() - fileStatusAt < FILE_STATUS_FRESH_MS) return;
+    fileStatusPending = true;
+    try {
+      const status = await onSourceFileStatus();
+      fileStatus = status && status.ok !== false ? status : null;
+      fileStatusAt = Date.now();
+      if (statsData) renderStats();
+    } catch {
+      // The recorded modified time stays on screen.
+    } finally {
+      fileStatusPending = false;
+    }
+  }
+
+  function renderStats(data = statsData) {
     if (!dom.stats) return;
+    statsData = data;
     const lastImport = sourceState.lastImport || {};
     const importedFrom = lastImport.sourceType === SOURCE_TYPE_MSSQL
       ? `SQL Server · ${lastImport.sourceLabel || ""}`
@@ -605,9 +650,10 @@ export function createSourceDataFeature(deps = {}) {
       { key: "Rows", value: Number(data?.row_count || 0).toLocaleString(), note: "" },
       { key: "Columns", value: String(data?.column_count ?? columns.length), note: "" },
       { key: "File Size", value: String(data?.file_size_str || ""), note: "CSV, comma delimited" },
-      // The source CSV's own modified time, not the master copy's - the copy is
-      // rewritten on import, so its mtime only ever repeats "Imported At".
-      { key: "Modified", value: formatTimestamp(sourceCsvMtimeSeconds()), note: "" },
+      // The source CSV's own modified time as the file has it now, not the
+      // master copy's - the copy is rewritten on import, so its mtime only
+      // ever repeats "Imported At".
+      { key: "Modified", value: formatTimestamp(sourceCsvMtimeSeconds()), note: sourceCsvMtimeNote() },
       // The imported copy is what every ArcRho consumer actually reads.
       { key: "Imported From", value: String(importedFrom || "").trim(), note: "" },
       {
@@ -633,6 +679,7 @@ export function createSourceDataFeature(deps = {}) {
     dom.statsCard.style.top = "0px";
     dom.infoBtn.setAttribute("aria-expanded", "true");
     placeFloating(dom.statsCard, dom.infoBtn.getBoundingClientRect(), 6);
+    refreshFileStatus();
   }
 
   function closeDetails() {
@@ -1925,6 +1972,10 @@ export function createSourceDataFeature(deps = {}) {
     /** Apply a `/source_table` payload; owns which import source the tab shows. */
     applySourceState(state) {
       sourceState = normalizeSourceState(state);
+      // A new selection, or a fresh import, retires what the panel last read
+      // from the file: both the path and what it is being compared with move.
+      fileStatus = null;
+      fileStatusAt = 0;
       // The hidden path input is the page's record of the CSV selection; the
       // `/source_table` payload is its single source of truth.
       if (dom.pathInput) {
@@ -1966,6 +2017,7 @@ export function createSourceDataFeature(deps = {}) {
       hidePreview();
       sourceState = normalizeSourceState(null);
       columns = [];
+      statsData = null;
       if (dom.pathInput) dom.pathInput.value = "";
       endPathEdit();
       if (dom.list) dom.list.innerHTML = "";
@@ -1991,6 +2043,7 @@ export function createSourceDataFeature(deps = {}) {
       setBodyVisible(false);
       showMessage(message, false);
       columns = [];
+      statsData = null;
       hidePreview();
       closeDetails();
       if (dom.list) dom.list.innerHTML = "";

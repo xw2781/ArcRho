@@ -15,7 +15,7 @@ import { createFieldMappingFeature } from "/ui/project_settings/project_settings
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260901dup1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260901dup1";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260901dup1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260903live1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -384,6 +384,7 @@ const sourceDataFeature = createSourceDataFeature({
   onForgetConnection: (...args) => forgetSourceConnection(...args),
   onCsvPathPick: (...args) => pickTablePathFromHost(...args),
   onImportData: (...args) => importSourceData(...args),
+  onSourceFileStatus: () => loadSourceFileStatus(),
   // Admin-editable defaults stay owned by the shared table preference JSON.
   getConfiguredColumnWidths: () => {
     const configured = getConfiguredTableColumnWidthMap("summaryColumnsTable");
@@ -824,6 +825,26 @@ async function loadSourceTableState(projectName) {
   } catch (err) {
     setStatus(`Could not read the import source: ${err.message}`);
     return sourceDataFeature.applySourceState(null);
+  }
+}
+
+/**
+ * Live identity of the external source file, for the table details panel.
+ *
+ * The import record only knows what the file's modified time was when the copy
+ * was taken, so the panel asks the file itself each time it opens. A failed
+ * read leaves the panel on the recorded time rather than raising an alert over
+ * a hover.
+ */
+async function loadSourceFileStatus() {
+  const name = String(selectedProject?.name || "").trim();
+  if (!name) return null;
+  try {
+    const res = await fetch(`/source_table/file_status?project_name=${encodeURIComponent(name)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 

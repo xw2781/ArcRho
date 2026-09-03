@@ -1063,6 +1063,37 @@ test("Source Data reports the project-owned imported table, not the external sou
   assert.match(projectSettingsJs, /"\/source_table\/refresh"/);
 });
 
+test("Opening the details panel reads the source file's own modified time", () => {
+  // Opening the panel is what asks the file; the recorded time only stands in
+  // until the read lands, and stays when the file cannot be reached.
+  assert.match(moduleSource, /placeFloating\(dom\.statsCard[^;]*;\s*refreshFileStatus\(\);/);
+  assert.match(moduleSource, /async function refreshFileStatus\(\)/);
+  assert.match(moduleSource, /const status = await onSourceFileStatus\(\);/);
+  assert.match(moduleSource, /const live = fileStatus\?\.exists \? fileStatus\.csv_mtime_ns : null;/);
+  assert.match(moduleSource, /Number\(live \?\? sourceState\.lastImport\?\.csvMtimeNs\)/);
+  // Hover opens the panel, so repeated opens must not re-read the file.
+  assert.match(moduleSource, /Date\.now\(\) - fileStatusAt < FILE_STATUS_FRESH_MS/);
+  // A SQL Server project has no source file to read.
+  assert.match(moduleSource, /sourceState\.sourceType === SOURCE_TYPE_MSSQL \|\| fileStatusPending/);
+  // A new selection or a finished import retires the comparison.
+  assert.match(moduleSource, /sourceState = normalizeSourceState\(state\);[\s\S]{0,240}?fileStatus = null;/);
+  assert.match(moduleSource, /note: sourceCsvMtimeNote\(\)/);
+  assert.match(moduleSource, /return fileStatus\.matches_import \? "" : "changed since the last import";/);
+
+  // The read stays in the coordinator and never blocks the panel.
+  assert.match(projectSettingsJs, /\/source_table\/file_status\?project_name=/);
+  assert.match(projectSettingsJs, /onSourceFileStatus: \(\) => loadSourceFileStatus\(\)/);
+  assert.match(sourceTableRouter, /@router\.get\("\/source_table\/file_status"\)/);
+  assert.match(sourceTableService, /def get_source_file_status\(project_name: str\)/);
+  assert.match(sourceTableService, /status\["matches_import"\] = same_csv_identity\(record\.get\("last_import"\), identity\)/);
+  // Reading the file must never import it, and must never fail the panel.
+  const statusFn = sourceTableService
+    .slice(sourceTableService.indexOf("def get_source_file_status"))
+    .split("\ndef ")[0];
+  assert.ok(!statusFn.includes("_copy_csv_to_master"), "the status read re-copies the master table");
+  assert.match(statusFn, /except OSError:\s+return status/);
+});
+
 test("Import Data rebuilds the master table from whichever method is selected", () => {
   assert.match(moduleSource, /async function importData\(\)/);
   // Both branches save the settings first, then run one import.

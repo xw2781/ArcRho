@@ -34,6 +34,17 @@ def get_source_table(project_name: str) -> Dict[str, Any]:
         raise HTTPException(500, f"Failed to read source table settings: {str(error)}")
 
 
+@router.get("/source_table/file_status")
+def get_source_table_file_status(project_name: str) -> Dict[str, Any]:
+    """Live modified time and size of the external source file."""
+    try:
+        return {"ok": True, **source_table_service.get_source_file_status(project_name)}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, f"Failed to read the source file status: {str(error)}")
+
+
 @router.post("/source_table/profile")
 def save_source_table_profile(req: SourceProfileSaveRequest) -> Dict[str, Any]:
     mssql = req.mssql.model_dump() if req.mssql is not None else None
