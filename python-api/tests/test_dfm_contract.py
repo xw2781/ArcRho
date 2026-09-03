@@ -227,17 +227,22 @@ class DfmContractTests(unittest.TestCase):
         self.assertEqual(canonical_number("-1.0000005"), -1.000001)
         self.assertIsNone(canonical_number(float("nan")))
 
-    def test_canonical_input_number_keeps_ten_decimals(self) -> None:
-        self.assertEqual(canonical_input_number("0.00000123456789"), 0.0000012346)
-        self.assertEqual(canonical_input_number("-0.00000123456789"), -0.0000012346)
+    def test_canonical_input_number_keeps_every_digit(self) -> None:
+        self.assertEqual(canonical_input_number("0.00000123456789"), 0.00000123456789)
+        self.assertEqual(canonical_input_number("-0.00000123456789"), -0.00000123456789)
         self.assertIsNone(canonical_input_number(float("nan")))
+        self.assertIsNone(canonical_input_number(float("inf")))
+        self.assertIsNone(canonical_input_number(""))
+        self.assertIsNone(canonical_input_number(True))
 
-    def test_a_wide_figure_survives_the_ten_decimal_quantum(self) -> None:
-        # Ten decimals on a figure this wide overflows the default decimal
-        # context; the observation must stay a number rather than become null.
+    def test_a_wide_figure_survives(self) -> None:
+        # An observation of any size must stay a number rather than become null.
         self.assertEqual(canonical_input_number(1e21), 1e21)
 
-    def test_the_input_triangle_is_stored_to_ten_decimals(self) -> None:
+    def test_the_input_triangle_keeps_the_precision_it_was_read_with(self) -> None:
+        # A near-zero "% of" observation divides into a ratio a reader checks at
+        # four decimals, so trimming its tail at any fixed decimal place moves
+        # that ratio. The stored value is the value the source holds.
         values = [[0.00000123456789, 0.00000234567891, None], [None, None, None], [None, None, None]]
         method = recalculate_dfm_method(
             owned_payload(),
@@ -247,7 +252,22 @@ class DfmContractTests(unittest.TestCase):
         )
         self.assertEqual(
             method["data_tab"]["input_data_triangle_values"][0][:2],
-            [0.0000012346, 0.0000023457],
+            [0.00000123456789, 0.00000234567891],
+        )
+
+    def test_a_near_zero_denominator_no_longer_moves_the_ratio(self) -> None:
+        # The production case behind this rule: dividing by a rounded copy of a
+        # small "% of" figure showed up in the fourth decimal of a large ratio.
+        small = 0.00014285714285714287
+        values = [[small, small * 1231.8996, None], [None, None, None], [None, None, None]]
+        method = recalculate_dfm_method(
+            owned_payload(),
+            input_snapshot=input_snapshot(values=values),
+            ratio_basis_snapshot=basis_snapshot(),
+            timestamp="2026-01-02T00:00:00Z",
+        )
+        self.assertAlmostEqual(
+            method["ratios_tab"]["ratio_triangle"]["ratio_values"][0][0], 1231.8996, places=4
         )
 
     def test_a_zero_later_value_holds_no_ratio_at_all(self) -> None:
@@ -286,10 +306,11 @@ class DfmContractTests(unittest.TestCase):
             timestamp="2026-01-02T00:00:00Z",
         )
         # Six-decimal operands would collapse both figures onto 0.000001 and
-        # report a ratio of exactly 1.
+        # report a ratio of exactly 1; ten-decimal operands would report
+        # 1.899968 rather than the 1.9 the two observations actually make.
         self.assertAlmostEqual(
             method["ratios_tab"]["ratio_triangle"]["ratio_values"][0][0],
-            round(0.0000023457 / 0.0000012346, 6),
+            round(0.00000234567891 / 0.00000123456789, 6),
             places=6,
         )
 

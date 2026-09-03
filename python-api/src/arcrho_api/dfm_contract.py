@@ -35,9 +35,7 @@ from .timestamps import persisted_timestamp as _timestamp
 
 DFM_JSON_FORMAT = "arcrho-dfm-v4"
 DFM_VALUE_DECIMAL_PLACES = 6
-DFM_INPUT_VALUE_DECIMAL_PLACES = 10
 _QUANTUM = Decimal("0.000001")
-_INPUT_QUANTUM = Decimal("0.0000000001")
 _EXCEL_REFERENCE_RE = re.compile(
     r"(?:\[[^\]]+\]|(?:^|[=+\-*/,(])\s*'(?:[^']|'')+'!\s*\$?[A-Za-z]{1,3}\$?\d+|"
     r"(?:^|[=+\-*/,(])\s*[^\s+\-*/(),]+!\s*\$?[A-Za-z]{1,3}\$?\d+)",
@@ -71,9 +69,9 @@ def _canonical(value: Any, quantum: Decimal) -> float | int | None:
         if not math.isfinite(number):
             return None
         with localcontext() as context:
-            # A wide origin figure carried to ten decimals needs more digits than
-            # the default 28-digit context allows, and an overflow there would
-            # quietly turn the observation into "no value" instead of a number.
+            # A wide origin figure carried to several decimals needs more digits
+            # than the default 28-digit context allows, and an overflow there
+            # would quietly turn the figure into "no value" instead of a number.
             context.prec = 60
             rounded = Decimal(str(abs(number))).quantize(quantum, rounding=ROUND_HALF_UP)
     except (TypeError, ValueError, InvalidOperation):
@@ -107,17 +105,35 @@ def round_half_up(value: float, digits: int = 0) -> float:
 
 
 def canonical_input_number(value: Any) -> float | int | None:
-    """Return one input-triangle number rounded half-away-from-zero to ten decimals.
+    """Return one input-triangle number at the precision it was observed with.
 
     Six decimals is the right precision for a *derived* figure a reader checks
-    by eye. It is the wrong precision for the observed triangle every ratio and
-    every average divides, because the rounding lands in the operands and then
-    shows up in a ratio read at four decimals. The observed triangle is stored
-    and calculated at ten decimals instead, which is well inside what a JSON
-    double round-trips exactly and still keeps the file readable.
+    by eye. Any fixed decimal place is the wrong precision for the observed
+    triangle every ratio and every average divides, because how much of a
+    number it keeps depends only on how large that number happens to be. Ten
+    decimals was generous for a loss figure and still too coarse for a near-zero
+    "% of" figure, where the trimmed tail moved a ratio in its fourth decimal.
+    The observation is therefore kept exactly as read, so a ratio is divided
+    from the number the source holds rather than from a copy of it.
+
+    Nothing is given up in the file. A JSON number round-trips a double
+    exactly, and the text written is the shortest that reads back as the same
+    value, so an ordinary figure still reads as an ordinary figure.
     """
 
-    return _canonical(value, _INPUT_QUANTUM)
+    if value is None or isinstance(value, bool) or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    if number == 0:
+        number = 0.0
+    if isinstance(value, int):
+        return int(number)
+    return number
 
 
 _MONTH_BY_NAME = {
@@ -1896,7 +1912,6 @@ build_dfm_method_v2 = normalize_dfm_method
 __all__ = [
     "DFM_JSON_FORMAT",
     "DFM_VALUE_DECIMAL_PLACES",
-    "DFM_INPUT_VALUE_DECIMAL_PLACES",
     "DfmContractError",
     "aggregate_vector_values",
     "apply_owned_patch",

@@ -63,6 +63,22 @@ Issues moved out of [knowun_issues.md](knowun_issues.md) once fixed, newest firs
 
 # DFM
 
+### 2026-09-03 - A DFM ratio could differ from ResQ in its fourth decimal on a near-zero "% of" input
+
+**Reported:** Comparing `NJ_Annual_Prod_2026 Q3-Aug` with the ad-hoc `python-api/migration/validation/dfm_ratio_side_by_side_review.py` review script (not kept in the tree) found one cell where ArcRho and ResQ disagreed by more than four decimal places: `PRNJ - PA\PA\Penn+CT\Direct Group\MP+PIP`, DFM `G 22 B - ALAE/Net Paid Loss DFM w/ Selected LDFs`, origin 2025 Q2, development `(1) 2-5` - ArcRho 1231.89947 against ResQ 1231.89967. Both systems agreed on the underlying loss data, and ResQ had already excluded the cell from its own averaging, so nothing downstream was wrong.
+
+**Cause:** `canonical_input_number` in [dfm_contract.py](../python-api/src/arcrho_api/dfm_contract.py) rounded every observed input-triangle cell to ten decimal places before storing it in the method file, and every ratio and average then divided that stored copy rather than the value the source holds. Everything upstream already carried full double precision - the ResQ extractor reads raw COM doubles in `export_triangle`, `_csv_matrix_bytes` writes them as plain text, and no dataset sidecar keeps a rounded copy - so the ten-decimal quantum was the only place a digit was lost. A rounding rule fixed at a decimal place keeps a different fraction of a number depending only on how large that number is: ten decimals is generous for a loss figure and far too coarse for a `% of` figure near zero, where the trimmed tail is a large share of the denominator and reappears multiplied by the ratio.
+
+**Fix (in [dfm_contract.py](../python-api/src/arcrho_api/dfm_contract.py)):**
+- `canonical_input_number` no longer quantizes. It keeps the observation exactly as read and only rejects what was never a number - blanks, booleans, infinities and NaN - while preserving the previous handling of negative zero and whole numbers. `_INPUT_QUANTUM` and the exported `DFM_INPUT_VALUE_DECIMAL_PLACES` are gone with it; nothing outside the module referenced either.
+- Everything that consumed the helper - the input matrix normalizer, the two ratio-calculation sites, and the latest-value scan - inherits the change unaltered, so no call site moved.
+- Readability of the persisted file is unaffected. The values are copied rather than computed, and a JSON number round-trips a double exactly, so the shortest text that reads back as the same value is what lands on disk; an ordinary figure still reads as an ordinary figure.
+- Nothing else changed precision. Ratio triangle values, average formula values, the ultimate vector and the Ratio Basis stay at six decimals, and `source_snapshot_revision` still fingerprints the input snapshot at six decimals - a deliberate choice made when this figure went from six decimals to ten in [release 1.4.0](../frontend/docs/releases/1.4.0.md) - so no stored revision shifts and no method is marked out of date by the change alone.
+
+**Scope on live data:** An existing method keeps the numbers already in its file until it takes a fresh snapshot from its source, through a re-import or a refresh. The one production cell this was found on was already excluded from ResQ's own averaging and changes no result, so nothing in the live project was refreshed.
+
+**Verification:** `python-api/tests/test_dfm_contract.py` updated - the three tests that pinned the ten-decimal rule now pin full precision, the existing unrounded-division test expects the ratio the two observations actually make (1.9 rather than 1.899968), and a new test reproduces the reported shape by dividing a large ratio out of a near-zero denominator. Suite passes.
+
 ### 2026-08-05 - Saving a DFM took a long time on a Client PC
 
 **Reported:** On a Client PC, editing a DFM in Project Instance and saving it took a long time to respond and finish. ([reported screenshot](image.png), showing the `Saving DFM method...` status line.)
