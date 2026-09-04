@@ -58,3 +58,7 @@ Run the commit workflow, rebuild and deploy server components if needed.
 
 ## Reconcile DFM triangles
 py -3.10 python-api/migration/validation/dfm_ratio_side_by_side_review.py
+
+## Reconcile Result Selections
+py -3.10 python-api/migration/validation/rs_dataset_side_by_side_review.py
+
