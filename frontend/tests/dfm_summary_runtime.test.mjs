@@ -75,6 +75,15 @@ test("rebuilt DFM summary rows remain live through the extracted runtime", async
         '"/ui/method_pages/dfm/dfm_storage.js"',
         JSON.stringify(dependencyStubUrl),
       )
+      // The Curves tab is not under test here: the default tab selects the
+      // Initial Selection everywhere, so the chain is the Ratios selection.
+      .replace(
+        /import \{[^}]*\} from "\/ui\/method_pages\/dfm\/dfm_curve_fit\.js\?v=[^"]*";/u,
+        `
+          const normalizeCurvesTab = (raw) => (raw || {});
+          const curvesTable = (initial, tail) => ({ selected_values: initial, selected_tail: tail });
+        `,
+      )
       .replace(
         /const __ratioParams[\s\S]*?export \{[\s\S]*?computeAverageForColumn,?\s*\};/u,
         `

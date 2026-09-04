@@ -27,7 +27,7 @@ import {
   notifyDfmEditState,
   consumePendingDfmPropagationJobId,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260824e";
+import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260903a";
 import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
 import {
   renderRatioTable,
@@ -40,7 +40,7 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260901a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260903a";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
@@ -48,6 +48,7 @@ import {
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260830a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260903a";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
 import {
   syncMethodNameFromInputs,
@@ -69,11 +70,11 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260830a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260903a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260820a";
 import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260830a";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260830a";
-import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260824e";
+import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
   clearRatioHistoryTempSession,
   getRatioHistoryState,
@@ -197,6 +198,7 @@ function handleDfmPropagationReport(report) {
 
 function refreshDfmTabContent(reason = "") {
   renderRatioTable();
+  renderDfmCurvesTab();
   renderResultsTable();
   if (!persistedDfmBootstrap) {
     syncMethodNameFromInputs();
@@ -529,11 +531,12 @@ function initDfmTabs() {
   const detailsPage = document.getElementById("dfmDetailsPage");
   const dataPage = document.getElementById("dfmDataPage");
   const ratiosPage = document.getElementById("dfmRatiosPage");
+  const curvesPage = document.getElementById("dfmCurvesPage");
   const resultsPage = document.getElementById("dfmResultsPage");
   const notesPage = document.getElementById("dfmNotesPage");
   const linksPage = document.getElementById("dfmLinksPage");
   const auditPage = document.getElementById("dfmAuditPage");
-  if (!detailsPage || !dataPage || !ratiosPage || !resultsPage || !notesPage || !linksPage || !auditPage) return;
+  if (!detailsPage || !dataPage || !ratiosPage || !curvesPage || !resultsPage || !notesPage || !linksPage || !auditPage) return;
 
   applyHostFixedDetailsFields({ root: detailsPage });
   syncDetailsLabelWidth({
@@ -542,6 +545,7 @@ function initDfmTabs() {
   });
   wireDfmScrollbarActivity(detailsPage);
   wireDfmScrollbarActivity(document.getElementById("ratioWrapHost"));
+  wireDfmScrollbarActivity(document.getElementById("dfmCurvesWrapHost"));
   wireDfmScrollbarActivity(document.getElementById("resultsWrap"));
   setShowNaBorders(loadNaBorders());
 
@@ -556,6 +560,7 @@ function initDfmTabs() {
   wireRatioChartModal();
   wireRatioContextMenu();
   wireResultsRatioBasisControls();
+  initDfmCurvesTab();
   initDfmAuditLog();
 
   const params = new URLSearchParams(window.location.search);
@@ -573,6 +578,7 @@ function initDfmTabs() {
     onTabChange: (tabId) => {
       setCurrentDfmTab(tabId);
       if (tabId === "ratios") renderRatioTable();
+      if (tabId === "curves") renderDfmCurvesTab();
       if (tabId === "results") renderResultsTable();
       if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
@@ -591,6 +597,7 @@ function initDfmTabs() {
   wireDfmTabPopoutWindows({
     onPopoutTab: (tabId) => {
       if (tabId === "ratios") renderRatioTable();
+      if (tabId === "curves") renderDfmCurvesTab();
       if (tabId === "results") renderResultsTable();
       if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();

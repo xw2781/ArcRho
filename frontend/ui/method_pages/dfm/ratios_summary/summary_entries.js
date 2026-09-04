@@ -664,15 +664,17 @@ function computeSummaryRowValueForColumn(model, col, rowId, cache, visiting, lab
   if (!key) return 1;
   if (cache.has(key)) return cache.get(key);
   if (visiting.has(key)) return 1;
-  if (col >= lastCol) {
-    cache.set(key, 1);
-    return 1;
-  }
 
   const cfg = summaryRowMap.get(key);
   if (!cfg) {
     cache.set(key, 1);
     return 1;
+  }
+  if (col >= lastCol) {
+    // The "- Ult" column is the row's entered tail factor; no formula runs there.
+    const tail = summaryRuntime.getSummaryRowTailFactor(cfg, col);
+    cache.set(key, tail);
+    return tail;
   }
 
   let value = 1;

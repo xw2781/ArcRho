@@ -71,7 +71,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260901a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260903a";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -85,6 +85,12 @@ import {
   setResultsUltimateRatioDecimalPlacesSelection,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260830a";
 import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import {
+  applyDfmCurvesTabPayload,
+  buildDfmCurvesTabPayload,
+  renderDfmCurvesTab,
+} from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260903a";
+import { getSummaryRowTailFactor } from "/ui/method_pages/dfm/dfm_state.js";
 import {
   buildDfmAverageFormulaObject,
   buildDfmSummaryRowsFromAverageFormulaObject,
@@ -117,7 +123,7 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260902a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260903a";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
@@ -811,7 +817,7 @@ function buildAverageFormulaValues() {
     const cfg = rows[rowIndex];
     for (let c = 0; c < ratioLabels.length; c++) {
       if (c >= devs.length - 1) {
-        values[rowIndex][c] = roundAverageFormulaValue(1);
+        values[rowIndex][c] = roundAverageFormulaValue(getSummaryRowTailFactor(cfg, c));
         continue;
       }
       if (isUserEntrySummaryRow(cfg)) {
@@ -919,6 +925,8 @@ function buildDfmGroupedMethodPayload(methodPayload) {
   ratiosTab["ratio_triangle"] = ratioTriangle;
   copyExistingField(data, "average_formulas", ratiosTab);
   copyExistingField(data, "cell_notes", ratiosTab);
+  const curvesTab = {};
+  copyExistingField(data, "curves_tab", curvesTab, "value");
   const grouped = {
     "json_format": DFM_METHOD_JSON_FORMAT,
     "details_tab": copyExistingFields(data, [
@@ -933,6 +941,7 @@ function buildDfmGroupedMethodPayload(methodPayload) {
     ]),
     "data_tab": dataTab,
     "ratios_tab": ratiosTab,
+    ...("value" in curvesTab ? { "curves_tab": curvesTab.value } : {}),
     "results_tab": copyExistingFields(data, [
       "ratio_basis_dataset",
       "ratio_basis_data_format",
@@ -1047,6 +1056,8 @@ function projectDfmOwnedPatch(payload) {
     if (Object.prototype.hasOwnProperty.call(results, key)) projectedResults[key] = cloneJsonValue(results[key]);
   }
   if (Object.keys(projectedResults).length) projected["results_tab"] = projectedResults;
+  const curves = getDfmJsonTab(patch, "curves_tab");
+  if (Object.keys(curves).length) projected["curves_tab"] = cloneJsonValue(curves);
   return projected;
 }
 
@@ -1161,8 +1172,10 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     if (Array.isArray(formulas) && Array.isArray(matrix)) {
       applyAverageSelectionFromSaved(formulas, matrix);
     }
+    applyDfmCurvesTabPayload(getDfmJsonTab(payload, "curves_tab"));
   } else {
     applyDfmCellNotesPayload(null);
+    applyDfmCurvesTabPayload(null);
     await setResultsRatioBasisSelection("", { silent: true, render: false });
   }
 
@@ -1175,6 +1188,7 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
 
   if (applied && options.render !== false) {
     renderRatioTable();
+    renderDfmCurvesTab();
     renderResultsTable();
   }
   if (applied && options.markClean !== false) {
@@ -1419,6 +1433,7 @@ export function buildDfmMethodPayload(options = {}) {
     "ratio_values": calculatedRatioTriangleValues,
     "average_formulas": buildDfmAverageFormulaObject(summaryRows, avgSelection.matrix, averageFormulaValues),
     "cell_notes": cellNotes,
+    "curves_tab": buildDfmCurvesTabPayload(),
     "ultimate_vector": buildResultsVector(),
     name: methodName,
     "output_type": outputVector,

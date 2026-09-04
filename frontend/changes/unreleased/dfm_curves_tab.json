@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM page gains a Curves tab that fits Exponential Decay, Inverse Power, Power and Weibull curves to the selected factors and lets you pick the factor and tail factor per development period, and the Ratios tab's \"- Ult\" column now keeps the tail factor you enter.",
+  "details": [
+    "Curves are fitted by log regression the way ResQ does, with Future Dev. Periods, Free Fit C, per-period Include flags, user value columns, and a Selected Estimate Number per period and for the tail; the selected values drive the ultimates.",
+    "A User Entry or benchmark row's value in the \"- Ult\" column is kept and used as the tail factor instead of being reset to 1.",
+    "The ResQ import reads each average row's tail factor and the ResQ Curves tab, and the ResQ export writes them back."
+  ]
+}

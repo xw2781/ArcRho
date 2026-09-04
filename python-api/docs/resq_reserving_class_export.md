@@ -26,8 +26,17 @@ every item below is written, each after the items it reads:
   dataset that is `Calculated` in ResQ is skipped, because ResQ recomputes it,
   even when ArcRho's library treats the type as an editable input.
 - **DFM methods** — ratio exclusions (`SetExcludedRatios`), User Entry factors
-  (`SetUserRatios`), the selected average per column (`SetSelectedRatios`),
-  and Notes, the writer the sync's apply phase uses too. Before anything is
+  (`SetUserRatios`, up to the last ratio column), each average row's `- Ult`
+  tail factor (`CustomAverages(i).TailFactor`), the selected average per
+  column including the tail column (`SetSelectedRatios`), the Curves tab
+  (`FutureDevelopmentPeriods`, `FreeFitC`, `SetIncludedRatios`, the User
+  Entry columns through `SetCurveColumnDescription` and `SetCurveValues`
+  with `DevIndex = 0` for a column's tail, `SetSelectedEstimates` per period,
+  `SelectedTailFactor` and `SelectedTailCurve`), and Notes, the writer the
+  sync's apply phase uses too. `FittingMethod` is never written: ArcRho fits
+  by log regression only, so a ResQ method fitted by least squares keeps that
+  setting; a prior-analysis, pattern or benchmark user column keeps ResQ's
+  own values. Before anything is
   written, the first column of every ResQ average formula is read; a DFM with
   a formula ResQ cannot evaluate is skipped with that formula named. The read
   covers the `RatioAverageCount` rows the DFM really has, never the phantom
@@ -302,6 +311,15 @@ ArcRho → ResQ mapping gaps of the DFM and Result Selection writers:
     ResQ's `CustomSortIndex` semantics are undocumented.
 11. Ultimate overrides push ArcRho `ultimate_overrides` as ResQ overridden
     ultimates; non-overridden ultimates are not pushed.
+12. On the Curves tab, ArcRho user columns map onto ResQ's by position
+    (column 6 onward); `CurveUserValueColCount` is raised when ArcRho holds
+    more, never lowered, and a column ResQ types as prior analysis, pattern
+    or benchmark is left as ResQ has it. `SetSelectedEstimates(DevIndex)`
+    changes the stored number without moving the tail's selected value, so
+    the tail is always written through `SelectedTailFactor` (probed
+    2026-09-03). A ResQ Curves tab fitted by least squares is read as
+    `fitting_method = least_squares` and shown in ArcRho with its
+    log-regression fits.
 
 The Bornhuetter Ferguson and Cape Cod field writers remain in the exporter
 for the sync macro's apply phase; their known gaps (one BF prior, no scaling

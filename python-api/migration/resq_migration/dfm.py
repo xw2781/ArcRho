@@ -316,7 +316,7 @@ def _read_resq_average_definition(dfm, row_index: int) -> dict:
     the type, never on the formula text.
     """
 
-    definition = {"average_type": None, "formula": ""}
+    definition = {"average_type": None, "formula": "", "tail_factor": 1.0}
     try:
         average = dfm.CustomAverages(row_index)
     except Exception:
@@ -331,7 +331,89 @@ def _read_resq_average_definition(dfm, row_index: int) -> dict:
         definition["formula"] = str(average.Formula or "").strip()
     except Exception:
         definition["formula"] = ""
+    # The row's "- Ult" value on the Ratios tab. ``AverageRatioValues`` at the
+    # tail column answers with unallocated memory for most rows, so the tail is
+    # read from the row's own TailFactor, which is where ResQ keeps it.
+    try:
+        tail = float(average.TailFactor)
+        definition["tail_factor"] = tail if tail > 0 else 1.0
+    except Exception:
+        definition["tail_factor"] = 1.0
     return definition
+
+
+# ResQ's DFMCurveType columns: cvValue (1) is the Initial Selection, cvExpDecay
+# .. cvWeibull (2-5) the fitted curves, and cvUser1 .. cvUser10 (6-15) the user
+# value columns. Ordinals confirmed against the type library on 2026-09-03.
+RESQ_CURVE_FIXED_COLUMNS = 5
+# DFMCurveColumnType ordinals for a user value column.
+RESQ_CURVE_COLUMN_TYPES = {3: "user_entry", 4: "prior_analysis", 5: "pattern", 6: "benchmark"}
+# DFMFittingMethod ordinals.
+RESQ_FITTING_METHODS = {0: "log_regression", 1: "least_squares"}
+
+
+def _read_resq_curves_tab(dfm, period_count: int, *, strict: bool) -> dict:
+    """Read the ResQ Curves tab settings and selections into ArcRho's ``curves_tab``.
+
+    Only the choices come across: the fitted curves are recomputed by ArcRho
+    (``arcrho_api.dfm_curves``), which reproduces ResQ's log-regression fits.
+    A ResQ method fitted by least squares keeps that setting in the payload so
+    the Curves tab can say the curves shown are ArcRho's log-regression fits.
+    """
+
+    def read(what, default, getter):
+        try:
+            return getter()
+        except Exception as exc:
+            _strict_dfm_failure(strict, f"Could not read the ResQ DFM Curves tab {what}.", exc)
+            return default
+
+    periods = range(1, period_count + 1)
+    user_count = read("user column count", 0, lambda: max(int(dfm.CurveUserValueColCount), 0))
+    user_columns = []
+    for offset in range(user_count):
+        column = RESQ_CURVE_FIXED_COLUMNS + 1 + offset
+        column_type = RESQ_CURVE_COLUMN_TYPES.get(
+            read(f"type of column {column}", 3, lambda column=column: int(dfm.CurveColumnType(column))),
+            "user_entry",
+        )
+        user_columns.append(
+            {
+                "label": read(
+                    f"description of column {column}",
+                    "",
+                    lambda column=column: str(dfm.CurveColumnDescription(column) or "").strip(),
+                )
+                or "User Entry",
+                "column_type": column_type,
+                "values": [
+                    read(
+                        f"value of column {column} at period {j}",
+                        1.0,
+                        lambda column=column, j=j: float(dfm.CurveValues(column, j)),
+                    )
+                    for j in periods
+                ],
+                "tail": read(f"tail of column {column}", 1.0, lambda column=column: float(dfm.CurveValues(column, 0))),
+            }
+        )
+    return {
+        "fitting_method": RESQ_FITTING_METHODS.get(
+            read("fitting method", 0, lambda: int(dfm.FittingMethod)), "log_regression"
+        ),
+        "future_development_periods": read("future development periods", 1, lambda: int(dfm.FutureDevelopmentPeriods)),
+        "free_fit_c": read("Free Fit C flag", False, lambda: bool(dfm.FreeFitC)),
+        "included": [
+            1 if read(f"inclusion at period {j}", True, lambda j=j: bool(dfm.IncludedRatios(j))) else 0
+            for j in periods
+        ],
+        "user_columns": user_columns,
+        "selected_estimates": [
+            read(f"selected estimate at period {j}", 1, lambda j=j: int(dfm.SelectedEstimates(j))) for j in periods
+        ],
+        "selected_tail_factor": read("selected tail factor column", 1, lambda: int(dfm.SelectedTailFactor)),
+        "selected_tail_curve": read("selected tail pattern column", 1, lambda: int(dfm.SelectedTailCurve)),
+    }
 
 
 def _translate_resq_average_formula(
@@ -707,8 +789,8 @@ def export_dfm(
     # formula, so each one is imported as a User Entry row under its ResQ name
     # with the formula rewritten into ArcRho's own reference syntax.
     calculated_formulas: dict[int, str] = {}
-    for row, raw_idx_0 in enumerate(resq_idx_map):
-        definition = _read_resq_average_definition(dfm, raw_idx_0 + 1)
+    definitions = [_read_resq_average_definition(dfm, raw_idx_0 + 1) for raw_idx_0 in resq_idx_map]
+    for row, definition in enumerate(definitions):
         if definition["average_type"] != RESQ_AVERAGE_TYPE_CALCULATED:
             continue
         translated = _translate_resq_average_formula(
@@ -744,12 +826,16 @@ def export_dfm(
                 "in the enumerated formula list."
             )
 
-    # values[formula_row][dev_col] = computed average LDF
+    # values[formula_row][dev_col] = computed average LDF; the last column is
+    # the row's "- Ult" tail factor.
     values: list[list] = []
     for k, raw_idx_0 in enumerate(resq_idx_map):
         resq_formula_idx = raw_idx_0 + 1  # back to 1-based
         row: list = []
         for j in dev_rng:
+            if j == dev_count:
+                row.append(round(float(definitions[k]["tail_factor"]), decimal_places))
+                continue
             try:
                 v = dfm.AverageRatioValues(j, resq_formula_idx)
                 row.append(round(float(v), decimal_places) if v is not None else None)
@@ -781,12 +867,15 @@ def export_dfm(
         avg_settings["periods"].append(s["periods"])
         avg_settings["exclude"].append(s["exclude"])
 
-    # A translated User Calculation row carries its formula in every column, the
-    # way ResQ applies one definition across the whole row.
+    # A translated User Calculation row carries its formula in every ratio
+    # column, the way ResQ applies one definition across the whole row; the
+    # tail column is the row's own entered tail factor, never the formula.
     avg_inputs = [[""] * dev_count for _ in range(n_formulas)]
     for row, formula in calculated_formulas.items():
         if formula:
-            avg_inputs[row] = [formula] * dev_count
+            avg_inputs[row] = [formula] * max(dev_count - 1, 0) + [""] * min(dev_count, 1)
+
+    curves_tab = _read_resq_curves_tab(dfm, max(dev_count - 1, 0), strict=strict)
 
     # Notes
     # Cell notes
@@ -836,6 +925,7 @@ def export_dfm(
             },
             "cell_notes": cell_notes,
         },
+        "curves_tab": curves_tab,
         "results_tab": {
             "ratio_basis_dataset": ratio_basis,
             "ratio_basis_origin_labels": [],

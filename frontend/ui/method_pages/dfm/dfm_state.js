@@ -13,6 +13,10 @@ import {
   getSummaryConfigKey,
   loadCustomSummaryRows,
 } from "/ui/method_pages/dfm/dfm_storage.js";
+import {
+  curvesTable,
+  normalizeCurvesTab,
+} from "/ui/method_pages/dfm/dfm_curve_fit.js?v=20260903a";
 
 // =============================================================================
 // Dynamic Calc Import
@@ -602,14 +606,14 @@ export function getSelectedRatioValues(model, devs) {
   const defaultRowId = rows[0]?.id || "";
 
   for (let c = 0; c < ratioLabels.length; c++) {
-    if (c >= devs.length - 1) {
-      values[c] = 1;
-      continue;
-    }
     const rowId = selectedSummaryByCol.get(c) || defaultRowId;
     const cfg = rowId ? summaryRowMap.get(rowId) : null;
     if (!cfg) {
       values[c] = 1;
+      continue;
+    }
+    if (c >= devs.length - 1) {
+      values[c] = getSummaryRowTailFactor(cfg, c);
       continue;
     }
     const averageType = String(cfg.averageType || "").trim().toLowerCase();
@@ -635,8 +639,75 @@ export function getSelectedRatioValues(model, devs) {
   return values;
 }
 
-export function getCumulativeFactors(model, devs) {
+// The "- Ult" column is a row's own tail factor, entered rather than averaged
+// (ResQ keeps it as the average row's TailFactor). A User Entry or frozen
+// benchmark row carries it in its stored values; a computed average row has
+// none and stays at 1.
+export function summaryRowOwnsTail(cfg) {
+  const averageType = String(cfg?.averageType || "").trim().toLowerCase();
+  const base = String(cfg?.base || "").trim().toLowerCase();
+  return averageType === "user_entry" || base === "benchmark";
+}
+
+export function getSummaryRowTailFactor(cfg, col) {
+  if (!summaryRowOwnsTail(cfg)) return 1;
+  const raw = Array.isArray(cfg.values) ? cfg.values[col] : 1;
+  const manual = Number(raw);
+  return Number.isFinite(manual) && manual > 0 ? manual : 1;
+}
+
+// =============================================================================
+// Curves tab state
+// =============================================================================
+// The person's Curves-tab choices, in the persisted `curves_tab` shape. Null
+// means "never touched", which normalizes to the default tab: the Initial
+// Selection everywhere, so the factors are exactly the Ratios tab's.
+let curvesTabState = null;
+let curvesTableCache = null;
+
+export function getCurvesTab() {
+  return curvesTabState;
+}
+
+export function setCurvesTab(tab) {
+  curvesTabState = tab && typeof tab === "object" ? JSON.parse(JSON.stringify(tab)) : null;
+  curvesTableCache = null;
+}
+
+export function invalidateCurvesTable() {
+  curvesTableCache = null;
+}
+
+export function getNormalizedCurvesTab(model, devs) {
   const ratioValues = getSelectedRatioValues(model, devs);
+  const initial = ratioValues.slice(0, Math.max(0, ratioValues.length - 1));
+  return normalizeCurvesTab(curvesTabState, initial.length, initial);
+}
+
+// The whole Curves | Data table for the current Ratios selection, cached until
+// the ratios or the tab change.
+export function getCurvesTable(model, devs) {
+  const ratioValues = getSelectedRatioValues(model, devs);
+  const initial = ratioValues.slice(0, Math.max(0, ratioValues.length - 1));
+  const initialTail = ratioValues.length ? ratioValues[ratioValues.length - 1] : 1;
+  const key = JSON.stringify([ratioValues, curvesTabState]);
+  if (curvesTableCache && curvesTableCache.key === key) return curvesTableCache.table;
+  const table = curvesTable(initial, initialTail, curvesTabState);
+  curvesTableCache = { key, table };
+  return table;
+}
+
+// The factors the ultimates chain: the Curves tab's selected value per period
+// and its selected tail, mirroring dfm_contract.selected_development_factors.
+export function getSelectedDevelopmentFactors(model, devs) {
+  const ratioValues = getSelectedRatioValues(model, devs);
+  if (!ratioValues.length) return ratioValues;
+  const table = getCurvesTable(model, devs);
+  return [...table.selected_values, table.selected_tail];
+}
+
+export function getCumulativeFactors(model, devs) {
+  const ratioValues = getSelectedDevelopmentFactors(model, devs);
   const cumulative = new Array(ratioValues.length).fill(null);
   let running = null;
   for (let i = ratioValues.length - 1; i >= 0; i--) {
@@ -681,6 +752,11 @@ export function isRatiosTabVisible() {
 export function isResultsTabVisible() {
   const resultsPage = document.getElementById("dfmResultsPage");
   return !!resultsPage && resultsPage.style.display !== "none";
+}
+
+export function isCurvesTabVisible() {
+  const curvesPage = document.getElementById("dfmCurvesPage");
+  return !!curvesPage && curvesPage.style.display !== "none";
 }
 
 export function notifyDfmEditState() {

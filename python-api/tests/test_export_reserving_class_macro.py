@@ -289,14 +289,14 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
         exporter = self._exporter()
         dfm = self._resq_dfm()
         dfm.OriginCount = 2
-        dfm.DevelopmentCount.side_effect = lambda _origin: 2
+        dfm.DevelopmentCount.side_effect = lambda _origin: 3
         payload = {"ratios_tab": {"average_formulas": {
             "label": ["Volume - all", "Benchmark", "User Entry"],
             "custom_average_formula_settings": {
                 "average_type": ["custom", "user_entry", "user_entry"],
             },
-            "inputs": [["", ""], ['="Volume - all"*2'] * 2, ["1.25", "1.1"]],
-            "values": [[1.0, 1.0], [7.7, 7.7], [1.25, 1.1]],
+            "inputs": [["", "", ""], ['="Volume - all"*2'] * 2 + [""], ["1.25", "1.1", ""]],
+            "values": [[1.0, 1.0, 1.0], [7.7, 7.7, 1.0], [1.25, 1.1, 1.0005]],
         }}}
 
         self.assertEqual(exporter._sync_dfm_user_entry_values(dfm, payload), 2)
@@ -304,6 +304,81 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
         dfm.SetUserRatios.assert_any_call(DevIndex=2, AvgIndex=10, arg2=1.1)
         for call in dfm.SetUserRatios.call_args_list:
             self.assertNotIn(7.7, call.kwargs.values())
+            # The last column is the "- Ult" tail, written as the row's TailFactor instead.
+            self.assertNotIn(1.0005, call.kwargs.values())
+
+    def test_the_tail_column_is_written_as_each_rows_tail_factor(self):
+        """The "- Ult" value of a row is ResQ's CustomAverages(i).TailFactor.
+
+        Confirmed live on 2026-09-03: setting a row's TailFactor and selecting
+        that row at the tail column makes it the Ratios tab's selected tail,
+        which the Curves tab's Initial Selection then carries.
+        """
+        exporter = self._exporter()
+        dfm = self._resq_dfm()
+        dfm.OriginCount = 2
+        dfm.DevelopmentCount.side_effect = lambda _origin: 3
+        averages = {}
+
+        def custom_average(index):
+            average = averages.setdefault(index, Mock())
+            if not isinstance(average.TailFactor, float):
+                average.TailFactor = 1.0
+            return average
+
+        dfm.CustomAverages.side_effect = custom_average
+        payload = {"ratios_tab": {"average_formulas": {
+            "label": ["Volume - all", "User Entry", "Aug 2024"],
+            "values": [[1.5, 1.2, 1.0], [1.25, 1.1, 1.0005], [1.4, 1.3, 1.0017]],
+        }}}
+
+        self.assertEqual(exporter._sync_dfm_tail_factors(dfm, payload), 2)
+        self.assertEqual(averages[10].TailFactor, 1.0005)
+        self.assertEqual(averages[13].TailFactor, 1.0017)
+        self.assertEqual(averages[1].TailFactor, 1.0)
+
+    def test_the_curves_tab_is_written_onto_the_resq_curves_tab(self):
+        exporter = self._exporter()
+        dfm = self._resq_dfm()
+        dfm.OriginCount = 2
+        dfm.DevelopmentCount.side_effect = lambda _origin: 3
+        dfm.FutureDevelopmentPeriods = 1
+        dfm.FreeFitC = False
+        dfm.CurveUserValueColCount = 2
+        dfm.CurveColumnType.side_effect = lambda column: {6: 3, 7: 4}[column]
+        dfm.CurveColumnDescription.side_effect = lambda column: {6: "User Entry", 7: "Aug 2024"}[column]
+        payload = {"curves_tab": {
+            "fitting_method": "log_regression",
+            "future_development_periods": 3,
+            "free_fit_c": True,
+            "included": [1, 0],
+            "user_columns": [
+                {"label": "My Tail", "column_type": "user_entry", "values": [1.3, 1.2], "tail": 1.05},
+                {"label": "Aug 2024", "column_type": "prior_analysis", "values": [1.9, 1.1], "tail": 1.0017},
+            ],
+            "selected_estimates": [1, 3],
+            "selected_tail_factor": 6,
+            "selected_tail_curve": 3,
+        }}
+
+        self.assertGreater(exporter._sync_dfm_curves(dfm, payload), 0)
+        self.assertEqual(dfm.FutureDevelopmentPeriods, 3)
+        self.assertTrue(dfm.FreeFitC)
+        dfm.SetIncludedRatios.assert_any_call(1, True)
+        dfm.SetIncludedRatios.assert_any_call(2, False)
+        dfm.SetCurveColumnDescription.assert_called_once_with(6, "My Tail")
+        dfm.SetCurveValues.assert_any_call(6, 1, 1.3)
+        dfm.SetCurveValues.assert_any_call(6, 2, 1.2)
+        dfm.SetCurveValues.assert_any_call(6, 0, 1.05)
+        # The prior-analysis column keeps ResQ's own values.
+        for call in dfm.SetCurveValues.call_args_list:
+            self.assertNotEqual(call.args[0], 7)
+        dfm.SetSelectedEstimates.assert_any_call(1, 1)
+        dfm.SetSelectedEstimates.assert_any_call(2, 3)
+        self.assertEqual(dfm.SelectedTailFactor, 6)
+        self.assertEqual(dfm.SelectedTailCurve, 3)
+        # ArcRho fits by log regression only, so ResQ's fitting method is left alone.
+        self.assertIsInstance(dfm.FittingMethod, Mock)
 
     def test_a_dfm_whose_count_resq_will_not_give_stops_at_the_first_user_entry(self):
         exporter = self._exporter()

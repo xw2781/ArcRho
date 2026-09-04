@@ -358,15 +358,73 @@ class ResqDfmV2Tests(unittest.TestCase):
 
         self.assertEqual(
             migration_dfm._read_resq_average_definition(_Dfm(), 1),
-            {"average_type": 0, "formula": "(Average(1))"},
+            {"average_type": 0, "formula": "(Average(1))", "tail_factor": 1.0},
         )
         self.assertEqual(
             migration_dfm._read_resq_average_definition(_Dfm(), 2),
-            {"average_type": 6, "formula": "(Average(1)+Average(2))/2"},
+            {"average_type": 6, "formula": "(Average(1)+Average(2))/2", "tail_factor": 1.0},
         )
         self.assertEqual(
             migration_dfm._read_resq_average_definition(_Dfm(), 3),
-            {"average_type": None, "formula": ""},
+            {"average_type": None, "formula": "", "tail_factor": 1.0},
+        )
+
+    def test_resq_average_definition_reads_the_rows_tail_factor(self) -> None:
+        """The "- Ult" value of a Ratios-tab row is its ResQ TailFactor.
+
+        Probed live on 2026-09-03: ``AverageRatioValues`` at the tail column
+        answers with unallocated memory for most rows, while every row's
+        ``CustomAverages(i).TailFactor`` holds the value the Ratios tab shows.
+        """
+        class _Average:
+            AverageType = 5
+            Formula = ""
+            TailFactor = 1.0005
+
+        class _Dfm:
+            def CustomAverages(self, index):
+                return _Average()
+
+        self.assertEqual(migration_dfm._read_resq_average_definition(_Dfm(), 10)["tail_factor"], 1.0005)
+
+    def test_resq_curves_tab_is_read_into_the_arcrho_shape(self) -> None:
+        class _Dfm:
+            FittingMethod = 1
+            FutureDevelopmentPeriods = 3
+            FreeFitC = True
+            CurveUserValueColCount = 2
+            SelectedTailFactor = 6
+            SelectedTailCurve = 3
+
+            def IncludedRatios(self, period):
+                return period != 2
+
+            def CurveColumnType(self, column):
+                return {6: 3, 7: 4}[column]
+
+            def CurveColumnDescription(self, column):
+                return {6: "User Entry", 7: "Aug 2024"}[column]
+
+            def CurveValues(self, column, period):
+                return {6: 1.05, 7: 1.0017}[column] if period == 0 else column + period / 10
+
+            def SelectedEstimates(self, period):
+                return [1, 2, 7][period - 1]
+
+        tab = migration_dfm._read_resq_curves_tab(_Dfm(), 3, strict=True)
+        self.assertEqual(tab["fitting_method"], "least_squares")
+        self.assertEqual(tab["future_development_periods"], 3)
+        self.assertTrue(tab["free_fit_c"])
+        self.assertEqual(tab["included"], [1, 0, 1])
+        self.assertEqual(tab["selected_estimates"], [1, 2, 7])
+        self.assertEqual(tab["selected_tail_factor"], 6)
+        self.assertEqual(tab["selected_tail_curve"], 3)
+        self.assertEqual(
+            tab["user_columns"],
+            [
+                {"label": "User Entry", "column_type": "user_entry", "values": [6.1, 6.2, 6.3], "tail": 1.05},
+                {"label": "Aug 2024", "column_type": "prior_analysis", "values": [7.1, 7.2, 7.3], "tail": 1.0017},
+            ],
         )
 
     def test_imported_user_calculation_row_recalculates_with_the_triangle(self) -> None:

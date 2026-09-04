@@ -31,6 +31,7 @@ body {
 #dfmDetailsPage,
 #dfmDataPage,
 #dfmRatiosPage,
+#dfmCurvesPage,
 #dfmResultsPage,
 #dfmNotesPage,
 #dfmLinksPage,
@@ -46,6 +47,7 @@ body {
   overflow: auto;
 }
 #dfmRatiosPage,
+#dfmCurvesPage,
 #dfmResultsPage,
 #dfmNotesPage,
 #dfmLinksPage,
@@ -176,6 +178,11 @@ body {
   padding: 12px 10px 10px;
 }
 #dfmRatiosPage {
+  display: none;
+  padding: 3px;
+  overflow: hidden;
+}
+#dfmCurvesPage {
   display: none;
   padding: 3px;
   overflow: hidden;
@@ -1507,7 +1514,8 @@ body {
   color: #64748b;
   font-size: 12px;
 }
-.dfmResultsControls {
+.dfmResultsControls,
+.dfmCurvesControls {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1519,6 +1527,154 @@ body {
   background: #f8fafc;
   box-sizing: border-box;
   flex-wrap: wrap;
+}
+/* Curves tab: the toolbar sits on the framed grid the way the Results tab's does. */
+.dfmCurvesControls label + .dfmSpinner,
+.dfmCurvesControls .dfmSpinner + label {
+  margin-left: 4px;
+}
+.dfmCurvesSelect {
+  --dfm-spin-w: 150px;
+}
+.dfmCurvesCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  cursor: pointer;
+}
+.dfmCurvesCheck input {
+  margin: 0;
+}
+.dfmCurvesNotice {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: #b45309;
+}
+.dfmCurvesNotice:empty {
+  display: none;
+}
+#dfmCurvesWrapHost {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
+  background: #fff;
+  outline: none;
+  overflow: auto;
+  padding-right: 1px;
+  padding-bottom: 1px;
+  box-sizing: border-box;
+}
+#dfmCurvesWrap {
+  min-width: max-content;
+}
+table.dfmCurvesTable {
+  --ar-spreadsheet-cell-width: 96px;
+}
+table.dfmCurvesTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: normal;
+  line-height: 1.2;
+  height: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  text-align: center;
+  vertical-align: middle;
+}
+table.dfmCurvesTable thead th.dfmCurvesColumnHeader {
+  cursor: pointer;
+}
+table.dfmCurvesTable thead th.dfmCurvesColumnHeader:hover {
+  background: #cbd5e1;
+}
+table.dfmCurvesTable tbody th.dfmCurvesRowHeader {
+  --ar-spreadsheet-cell-width: 120px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+table.dfmCurvesTable thead th.dfmCurvesCorner {
+  --ar-spreadsheet-cell-width: 120px;
+  left: 0;
+  z-index: 3;
+}
+table.dfmCurvesTable tbody th {
+  background: var(--ar-spreadsheet-label-fill);
+  color: var(--ar-spreadsheet-label-text);
+}
+table.dfmCurvesTable td {
+  text-align: right;
+}
+table.dfmCurvesTable td.dfmCurvesValue,
+table.dfmCurvesTable td.dfmCurvesPattern,
+table.dfmCurvesTable td.dfmCurvesInclude {
+  cursor: pointer;
+}
+table.dfmCurvesTable td.dfmCurvesPattern,
+table.dfmCurvesTable td.dfmCurvesInclude,
+table.dfmCurvesTable td.dfmCurvesStat {
+  text-align: right;
+}
+table.dfmCurvesTable td.dfmCurvesBlank,
+table.dfmCurvesTable tr.dfmCurvesBlankRow th {
+  border: none;
+  background: transparent;
+}
+table.dfmCurvesTable tr.dfmCurvesBlankRow th {
+  background: var(--ar-spreadsheet-label-fill);
+}
+table.dfmCurvesTable td.dfmCurvesUserValue {
+  background: #e0f7fa;
+}
+table.dfmCurvesTable td.dfmCurvesLinkedValue {
+  color: #475569;
+}
+table.dfmCurvesTable td.dfmCurvesValue.dfmCurvesSelected,
+table.dfmCurvesTable td.dfmCurvesPattern.dfmCurvesSelected {
+  background: #9dcc00;
+  color: #111827;
+}
+table.dfmCurvesTable td.dfmCurvesEstimateNumber {
+  background: #a8eeee;
+  color: #0284c7;
+}
+table.dfmCurvesTable td.dfmCurvesSelectedValue {
+  background: #fde047;
+  color: #be123c;
+  font-weight: bold;
+}
+table.dfmCurvesTable td.dfmCurvesExcluded {
+  color: #c58bd8;
+  text-decoration: line-through;
+}
+table.dfmCurvesTable td.dfmCurvesFitLimit {
+  color: #b45309;
+}
+table.dfmCurvesTable td.dfmCurvesFitFail {
+  color: #be123c;
+  font-weight: bold;
+}
+table.dfmCurvesTable td.dfmCurvesEditing {
+  padding: 0;
+}
+.dfmCurvesEditor {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  outline: 2px solid #2b6df6;
+  outline-offset: -2px;
+  padding: 0 var(--ar-spreadsheet-cell-padding-x);
+  font: inherit;
+  text-align: right;
+  background: #fff;
 }
 .dfmResultsControls label {
   font-size: 12px;

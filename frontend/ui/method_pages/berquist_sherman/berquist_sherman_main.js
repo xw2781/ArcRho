@@ -45,7 +45,7 @@ import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_i
 import {
   BERQUIST_SHERMAN_TAB_DEFS,
   windowTabIds,
-} from "/ui/shared/tabs/window_tab_catalog.js?v=20260902a";
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import {
   readExcelCellsBatch,
   validateExcelLinksBatch,

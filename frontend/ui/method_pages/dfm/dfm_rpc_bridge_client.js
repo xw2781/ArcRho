@@ -10,7 +10,7 @@ import {
 import {
   applyDfmOwnedPatchPayload,
   saveRatioSelectionPattern,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260830a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260903a";
 import {
   confirmDfmRpcBridgeAction,
   createDfmRpcBridgeDialog,

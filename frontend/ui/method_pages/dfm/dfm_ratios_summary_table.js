@@ -13,7 +13,7 @@ import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260831a";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260819a";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260819a";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260830b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260831a";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260903a";
 import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260831a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
@@ -122,7 +122,12 @@ export function updateRatioSummary() {
       return;
     }
     if (col >= devs.length - 1) {
-      if (isSummary) {
+      if (isSummary && summaryRuntime.summaryRowOwnsTail(config)) {
+        // A frozen benchmark row shows its own tail factor, as ResQ does.
+        const tail = summaryRuntime.getSummaryRowTailFactor(config, col);
+        cell.textContent = summaryRuntime.formatRatio(tail, summaryRuntime.getDfmDecimalPlaces());
+        cell.classList.remove("na", "ratioPlaceholder", "strike");
+      } else if (isSummary) {
         cell.textContent = "1.0000";
         cell.classList.remove("na");
         cell.classList.add("ratioPlaceholder");

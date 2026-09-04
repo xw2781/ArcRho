@@ -58,7 +58,7 @@ import { mountDataTabPageHost } from "/ui/shared/tabs/data/data_tab_page_host_po
 import {
   appDefaultWindowTab,
   windowTabIds,
-} from "/ui/shared/tabs/window_tab_catalog.js?v=20260824e";
+} from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import { openProjectNameTreePicker } from "/ui/shared/components/pickers/project_name_tree_picker.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { getDataTabAuditController } from "/ui/shared/tabs/data/data_tab_audit_port.js";

@@ -23,6 +23,7 @@ export const DFM_TAB_DEFS = Object.freeze([
   { id: "details", label: "Details" },
   { id: "data", label: "Data" },
   { id: "ratios", label: "Ratios" },
+  { id: "curves", label: "Curves" },
   { id: "results", label: "Results" },
   { id: "notes", label: "Notes" },
   { id: "links", label: "Links" },

@@ -161,7 +161,7 @@ test("Opening an existing method never pins its tab past the preference", async 
 
 test("Every tabbed page paints its requested tab before the tab system loads", async () => {
   const PAGES = [
-    ["ui/method_pages/dfm/dfm.html", ["details", "data", "ratios", "results", "notes", "links", "audit"]],
+    ["ui/method_pages/dfm/dfm.html", ["details", "data", "ratios", "curves", "results", "notes", "links", "audit"]],
     ["ui/method_pages/result_selection/result_selection.html", ["details", "method", "chart", "results", "validation", "notes", "audit"]],
     ["ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html", ["details", "method", "chart", "notes", "audit"]],
     ["ui/method_pages/cape_cod/cape_cod.html", ["details", "method", "ultimates", "ratios", "notes", "audit"]],

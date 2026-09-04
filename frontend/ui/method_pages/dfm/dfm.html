@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260902a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260831c"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260903a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260829a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
@@ -29,6 +29,7 @@
     <button class="dfmTab tabbedPageTab active" data-page="details" type="button">Details</button>
     <button class="dfmTab tabbedPageTab" data-page="data" type="button">Data</button>
     <button class="dfmTab tabbedPageTab" data-page="ratios" type="button">Ratios</button>
+    <button class="dfmTab tabbedPageTab" data-page="curves" type="button">Curves</button>
     <button class="dfmTab tabbedPageTab" data-page="results" type="button">Results</button>
     <button class="dfmTab tabbedPageTab" data-page="notes" type="button">Notes</button>
     <button class="dfmTab tabbedPageTab" data-page="links" type="button">Links</button>
@@ -170,6 +171,59 @@
         <div id="dfmRatiosNotice" class="dfmRatiosNotice" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
         <div id="ratioWrapHost" tabindex="-1" aria-label="Ratios tables">
           <div id="ratioWrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dfmCurvesPage" data-page="curves">
+    <div class="panel" id="curvesPanel">
+      <div class="panelInner">
+        <div class="dfmCurvesControls">
+          <label for="dfmCurvesFittingMethod">Fitting Method</label>
+          <div class="dfmSpinner dfmCurvesSelect" data-target="dfmCurvesFittingMethod">
+            <select id="dfmCurvesFittingMethod" class="dfmResultsSmallInput dfmCurvesSelectInput">
+              <option value="log_regression">Log Regression</option>
+            </select>
+            <div class="dfmSpinBtns">
+              <button class="dfmSpinBtn up" type="button" aria-label="Previous fitting method"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+              <button class="dfmSpinBtn down" type="button" aria-label="Next fitting method"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <label for="dfmCurvesWeighting">Weighting</label>
+          <div class="dfmSpinner dfmCurvesSelect" data-target="dfmCurvesWeighting">
+            <select id="dfmCurvesWeighting" class="dfmResultsSmallInput dfmCurvesSelectInput" disabled>
+              <option value="unweighted">Unweighted</option>
+            </select>
+            <div class="dfmSpinBtns">
+              <button class="dfmSpinBtn up" type="button" aria-label="Previous weighting" disabled><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+              <button class="dfmSpinBtn down" type="button" aria-label="Next weighting" disabled><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <label for="dfmCurvesFuturePeriodsInput">Future Dev. Periods</label>
+          <div class="dfmSpinner" data-target="dfmCurvesFuturePeriodsInput">
+            <input
+              id="dfmCurvesFuturePeriodsInput"
+              class="dfmResultsSmallInput"
+              type="number"
+              min="1"
+              max="200"
+              value="1"
+              autocomplete="off"
+            />
+            <div class="dfmSpinBtns">
+              <button class="dfmSpinBtn up" type="button" aria-label="Increase"><span class="dfmStepperCaret dfmStepperCaretUp" aria-hidden="true"></span></button>
+              <button class="dfmSpinBtn down" type="button" aria-label="Decrease"><span class="dfmStepperCaret" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <label class="dfmCurvesCheck" for="dfmCurvesFreeFitC">
+            <input id="dfmCurvesFreeFitC" type="checkbox" />
+            <span>Free Fit C</span>
+          </label>
+          <span id="dfmCurvesNotice" class="dfmCurvesNotice" aria-live="polite"></span>
+        </div>
+        <div id="dfmCurvesWrapHost" tabindex="0" aria-label="DFM curves table">
+          <div id="dfmCurvesWrap"></div>
         </div>
       </div>
     </div>
@@ -383,7 +437,7 @@
         } catch (err) {
           console.error("Dataset boot failed before DFM initialization:", err);
         }
-        await import("/ui/method_pages/dfm/dfm_main.js?v=20260830a");
+        await import("/ui/method_pages/dfm/dfm_main.js?v=20260903a");
       } finally {
         window.arcrhoRevealPage?.();
       }

@@ -304,6 +304,16 @@ def _downstream_keys(
     return reached & row_keys
 
 
+def _safe_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if number == number else None
+
+
 def _safe_int(value: object, default: int = 0) -> int:
     try:
         return int(value)
@@ -1418,6 +1428,37 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
                     )
 
         values = averages.get("values") if isinstance(averages.get("values"), list) else []
+        # The last column is each row's "- Ult" tail factor, kept on the ResQ row.
+        tail_index = columns - 1
+        for row_index, label in enumerate(labels):
+            source_row = values[row_index] if row_index < len(values) else None
+            if tail_index < 0 or not isinstance(source_row, list) or tail_index >= len(source_row):
+                continue
+            expected_tail = _safe_float(source_row[tail_index])
+            display_index = available.get(str(label))
+            if expected_tail is None or expected_tail <= 0 or display_index is None:
+                continue
+            if abs(float(target.CustomAverages(int(display_index)).TailFactor) - expected_tail) > 1e-9:
+                raise RuntimeError(f"ResQ DFM tail factor verification failed for average row {label}.")
+        curves = payload.get("curves_tab") if isinstance(payload.get("curves_tab"), Mapping) else {}
+        if curves:
+            column_limit = 5 + int(getattr(target, "CurveUserValueColCount", 0) or 0)
+            selected_estimates = curves.get("selected_estimates") if isinstance(curves.get("selected_estimates"), list) else []
+            for development_index, expected in enumerate(selected_estimates[: max(columns - 1, 0)], start=1):
+                number = _safe_float(expected)
+                if number is None or not 1 <= int(number) <= column_limit:
+                    continue
+                if int(target.SelectedEstimates(development_index)) != int(number):
+                    raise RuntimeError(
+                        f"ResQ DFM selected-estimate verification failed at period {development_index}."
+                    )
+            tail_number = _safe_float(curves.get("selected_tail_factor"))
+            if tail_number is not None and 1 <= int(tail_number) <= column_limit:
+                if int(target.SelectedTailFactor) != int(tail_number):
+                    raise RuntimeError("ResQ DFM selected tail factor verification failed.")
+            future = _safe_float(curves.get("future_development_periods"))
+            if future is not None and future >= 1 and int(target.FutureDevelopmentPeriods) != int(future):
+                raise RuntimeError("ResQ DFM future development periods verification failed.")
         user_row = exporter._user_entry_payload_row_index(averages)
         if user_row is not None and user_row < len(values) and isinstance(values[user_row], list):
             user_indexes = [
@@ -1427,7 +1468,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
             ]
             if user_indexes:
                 user_index = user_indexes[0]
-                for development_index, expected in enumerate(values[user_row][:columns], start=1):
+                for development_index, expected in enumerate(values[user_row][: max(columns - 1, 0)], start=1):
                     try:
                         expected_value = float(expected)
                     except (TypeError, ValueError):

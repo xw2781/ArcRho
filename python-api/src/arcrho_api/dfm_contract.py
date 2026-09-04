@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
+from .dfm_curves import curves_table, curves_tab_is_default, normalize_curves_tab, owned_curves_tab
 from .revision_contract import fingerprint
 from .sidecar_audit_contract import (
     AUDIT_ACTION_INSERT,
@@ -595,6 +596,10 @@ def normalize_dfm_method(
             "publication_revision": "",
         },
     }
+    stored_chain = _stored_selected_ratios(normalized)
+    normalized["curves_tab"] = normalize_curves_tab(
+        _tab(payload, "curves_tab"), max(0, len(stored_chain) - 1), stored_chain[:-1]
+    )
     _set_revisions(normalized)
     if require_complete:
         _validate_complete(normalized)
@@ -656,6 +661,15 @@ def _validate_complete(payload: Mapping[str, Any]) -> None:
             raise DfmContractError(f"DFM average formulas.{key} must align to formula labels.")
         if any(not isinstance(row, list) or len(row) != formula_cols for row in matrix):
             raise DfmContractError(f"DFM average formulas.{key} must align to ratio columns.")
+    curves = _tab(payload, "curves_tab")
+    period_count = max(0, formula_cols - 1)
+    for key in ("included", "selected_estimates"):
+        if len(curves.get(key) or []) != period_count:
+            raise DfmContractError(f"DFM curves tab.{key} must hold one entry per development period.")
+    if any(len(column.get("values") or []) != period_count for column in curves.get("user_columns") or []):
+        raise DfmContractError("DFM curves tab user columns must hold one value per development period.")
+    if len(curves.get("selected_values") or []) not in {0, period_count + 1}:
+        raise DfmContractError("DFM curves tab.selected_values must cover every development period and the tail.")
     ultimate = results.get("ultimate_vector")
     if not isinstance(ultimate, list) or len(ultimate) != len(origins):
         raise DfmContractError("DFM ultimate vector must contain one value per origin label.")
@@ -892,7 +906,7 @@ def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         for col, value in enumerate(values)
         if value == 1
     ]
-    return {
+    projection = {
         "details": {
             "name": details.get("name"),
             "output_type": details.get("output_type"),
@@ -923,6 +937,24 @@ def owned_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         "ratio_basis_dataset": results.get("ratio_basis_dataset", ""),
         "ultimate_ratio_decimal_places": results.get("ultimate_ratio_decimal_places", 2),
     }
+    if not _curves_tab_is_default(payload):
+        projection["curves"] = owned_curves_tab(_tab(payload, "curves_tab"))
+    return projection
+
+
+def _curves_tab_is_default(payload: Mapping[str, Any]) -> bool:
+    """Whether the Curves tab can be left out of the revision fingerprints.
+
+    Every method file written before the Curves tab existed reads as the
+    default tab, and its factors are the same with or without it, so the
+    vocabulary of the fingerprints only grows once a person changes something
+    on that tab. A stored revision therefore keeps matching its file.
+    """
+
+    formulas = _tab(_tab(payload, "ratios_tab"), "average_formulas")
+    if not isinstance(formulas.get("values"), list):
+        return True
+    return curves_tab_is_default(_tab(payload, "curves_tab"), _stored_selected_ratios(payload)[:-1])
 
 
 def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -933,7 +965,7 @@ def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     ratio = _tab(ratios, "ratio_triangle")
     formulas = _tab(ratios, "average_formulas")
     results = _tab(payload, "results_tab")
-    return {
+    projection = {
         "input": {
             "origin_labels": deepcopy(data.get("origin_labels")),
             "development_labels": deepcopy(data.get("development_labels")),
@@ -960,6 +992,9 @@ def derived_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         },
         "ultimate_vector": deepcopy(results.get("ultimate_vector")),
     }
+    if not _curves_tab_is_default(payload):
+        projection["curves_selected_values"] = deepcopy(_tab(payload, "curves_tab").get("selected_values") or [])
+    return projection
 
 
 def publication_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1454,7 +1489,16 @@ def _calculate_formula_values(
     old_values = _fit_matrix(_number_matrix(formulas.get("values")), len(labels), len(ratio["development_labels"]), None)
     inputs = _fit_matrix(_text_matrix(formulas.get("inputs")), len(labels), len(ratio["development_labels"]), "")
     col_count = len(ratio["development_labels"])
+    tail_col = len(data["development_labels"]) - 1
     computed: list[list[Any]] = [[None] * col_count for _ in labels]
+
+    def stored_tail(row: int) -> float:
+        # The "- Ult" column is the row's own tail factor, entered rather than
+        # averaged: ResQ keeps it as each average row's TailFactor. A computed
+        # average row has none and stays at 1.0.
+        value = canonical_number(old_values[row][tail_col]) if 0 <= tail_col < len(old_values[row]) else None
+        return float(value) if value is not None and value > 0 else 1.0
+
     for row, _label in enumerate(labels):
         average_type = settings["average_type"][row]
         if average_type == "user_entry":
@@ -1466,7 +1510,7 @@ def _calculate_formula_values(
             ]
             continue
         for col in range(col_count):
-            computed[row][col] = 1.0 if col >= len(data["development_labels"]) - 1 else canonical_number(
+            computed[row][col] = 1.0 if col >= tail_col else canonical_number(
                 _calculate_average(
                     values,
                     mask,
@@ -1487,9 +1531,9 @@ def _calculate_formula_values(
         key = (row, col)
         if key in resolving:
             return stored if stored is not None and stored > 0 else 1.0
-        if col >= len(data["development_labels"]) - 1:
-            computed[row][col] = 1.0
-            return 1.0
+        if col >= tail_col:
+            computed[row][col] = stored_tail(row)
+            return computed[row][col]
         resolving.add(key)
         try:
             formula = inputs[row][col]
@@ -1633,8 +1677,36 @@ def _stored_selected_ratios(method: Mapping[str, Any]) -> list[float]:
     return ratios
 
 
-def _cumulative_from_normalized(method: Mapping[str, Any]) -> list[float | None]:
+def _selected_development_chain(method: Mapping[str, Any]) -> list[float]:
+    """The factor per column the ultimates chain: the Curves tab's selected values.
+
+    ``curves_tab.selected_values`` is refreshed by :func:`recalculate_dfm_method`
+    from the Ratios tab's selected factors and the Curves tab's choices. A
+    payload that has not been recalculated since the tab existed carries none,
+    and then the Ratios tab's selection is the chain, exactly as before the
+    tab: the Curves tab starts by selecting the Initial Selection everywhere.
+    """
+
     ratios = _stored_selected_ratios(method)
+    curves = _tab(method, "curves_tab")
+    selected = curves.get("selected_values") if isinstance(curves.get("selected_values"), list) else []
+    if len(selected) == len(ratios) and all(canonical_number(value) is not None for value in selected):
+        return [float(canonical_number(value)) for value in selected]
+    return ratios
+
+
+def selected_development_factors(payload: Mapping[str, Any]) -> list[float]:
+    """Return the selected development factor per ratio column, the tail last.
+
+    This is the chain the ultimates and the percentage developed use: the
+    Curves tab's selected value per period and its selected tail factor.
+    """
+
+    return _selected_development_chain(normalize_dfm_method(payload, require_complete=False))
+
+
+def _cumulative_from_normalized(method: Mapping[str, Any]) -> list[float | None]:
+    ratios = _selected_development_chain(method)
     col_count = len(ratios)
     cumulative: list[float | None] = [None] * col_count
     running: float | None = None
@@ -1755,6 +1827,12 @@ def recalculate_dfm_method(
         _text_matrix(formulas.get("display_inputs")), formula_count, ratio_col_count, ""
     )
     formulas["values"] = _calculate_formula_values(method, dataset_reference_values)
+    stored_chain = _stored_selected_ratios(method)
+    method["curves_tab"] = normalize_curves_tab(method.get("curves_tab"), len(stored_chain) - 1, stored_chain[:-1])
+    curves = curves_table(stored_chain[:-1], stored_chain[-1] if stored_chain else 1.0, method["curves_tab"])
+    method["curves_tab"]["selected_values"] = [
+        canonical_number(value) for value in [*curves["selected_values"], curves["selected_tail"]]
+    ]
     method["results_tab"]["ultimate_vector"] = _calculate_ultimate(method)
     if update_refresh_timestamp:
         method["method_metadata"]["data_refreshed"] = refreshed_at
@@ -1799,6 +1877,14 @@ _OWNED_PATHS = (
     ("ratios_tab", "cell_notes"),
     ("results_tab", "ratio_basis_dataset"),
     ("results_tab", "ultimate_ratio_decimal_places"),
+    ("curves_tab", "fitting_method"),
+    ("curves_tab", "future_development_periods"),
+    ("curves_tab", "free_fit_c"),
+    ("curves_tab", "included"),
+    ("curves_tab", "user_columns"),
+    ("curves_tab", "selected_estimates"),
+    ("curves_tab", "selected_tail_factor"),
+    ("curves_tab", "selected_tail_curve"),
 )
 
 

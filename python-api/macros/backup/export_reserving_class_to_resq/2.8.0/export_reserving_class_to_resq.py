@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.9.0
-# Release Note: A DFM now carries its tail into ResQ: each average row's "- Ult" value is written as that row's tail factor, and the Curves tab settings (Future Dev. Periods, Free Fit C, the Include flags, User Entry columns, and the Selected Estimate Number per period and for the tail) are written to the ResQ Curves tab.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
+# Version: 2.8.0
+# Release Note: A B&S Case Reserve Adequacy method now carries its Avg. Selections tab into ResQ: the User Value row and the estimator selected per column of both the Average Inflation and the Current Average Case Reserves grids, with a User Value formula written as the number it evaluates to.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -48,12 +48,6 @@ RESQ_METHOD_TYPE_BS_CRA = 9
 # Only used when ResQ will not say how many average formulas a DFM has; the
 # import probes the same distance. See ``_average_formula_count``.
 MAX_AVERAGE_FORMULA_PROBE = 30
-
-# ResQ Curves tab columns: Initial Selection and the four curves are columns
-# 1-5, user value columns start at 6. A user column of DFMCurveColumnType
-# cctUserEntry (3) takes values; the linked kinds keep ResQ's own.
-RESQ_CURVE_FIXED_COLUMNS = 5
-RESQ_CURVE_COLUMN_TYPE_USER_ENTRY = 3
 
 # A v4 sidecar names its owning method in ``method_type``; the numeric twin is
 # gone from the file, so the ResQ code is derived here from that name.
@@ -477,15 +471,12 @@ class ResQReservingClassExporter:
         self._probe_dfm_averages(dfm)
         excluded = self._sync_dfm_excluded_ratios(dfm, payload)
         user_values = self._sync_dfm_user_entry_values(dfm, payload)
-        tails = self._sync_dfm_tail_factors(dfm, payload)
         selected = self._sync_dfm_selected_ratios(dfm, payload)
-        curves = self._sync_dfm_curves(dfm, payload)
         notes = self._sync_notes(dfm, entry)
         dfm.Save()
         self.counts["dfms_written"] += 1
         self._emit(
-            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, tails {tails}, "
-            f"selected {selected}, curves {curves}, notes {notes})",
+            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, selected {selected}, notes {notes})",
             status="success",
         )
 
@@ -681,9 +672,7 @@ class ResQReservingClassExporter:
                 break
         if avg_index is None:
             return 0
-        # The last column is the "- Ult" tail, which is the row's TailFactor
-        # rather than a user ratio; ``_sync_dfm_tail_factors`` writes it.
-        column_count = self._dfm_development_column_count(dfm) - 1
+        column_count = self._dfm_development_column_count(dfm)
         updates = 0
         for development_index, raw_value in enumerate(values[row_index], start=1):
             if development_index > column_count:
@@ -692,114 +681,6 @@ class ResQReservingClassExporter:
             if value is None or value <= 0:
                 continue
             dfm.SetUserRatios(DevIndex=development_index, AvgIndex=avg_index, arg2=value)
-            updates += 1
-        return updates
-
-    def _sync_dfm_tail_factors(self, dfm, payload):
-        """Write each average row's "- Ult" value as that ResQ row's TailFactor.
-
-        ResQ shows a row's tail factor in the Ratios tab's last column and
-        keeps it on the row (``CustomAverages(i).TailFactor``); the selected
-        tail then flows into the Curves tab's Initial Selection. ArcRho stores
-        the same value as the row's last ``average formulas.values`` entry.
-        """
-
-        average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))
-        labels = average_formulas.get("label")
-        values = average_formulas.get("values")
-        if not isinstance(labels, list) or not isinstance(values, list):
-            return 0
-        tail_index = self._dfm_development_column_count(dfm) - 1
-        if tail_index < 0:
-            return 0
-        display_indexes = self._average_formula_display_indexes(dfm)
-        updates = 0
-        for row_index, label in enumerate(labels):
-            row = values[row_index] if row_index < len(values) else None
-            if not isinstance(row, list) or tail_index >= len(row):
-                continue
-            value = _safe_number(row[tail_index])
-            if value is None or value <= 0:
-                continue
-            display_index = display_indexes.get(str(label))
-            if display_index is None:
-                continue
-            average = dfm.CustomAverages(display_index)
-            if abs(float(average.TailFactor) - value) <= 1e-9:
-                continue
-            average.TailFactor = value
-            updates += 1
-        return updates
-
-    def _sync_dfm_curves(self, dfm, payload):
-        """Write the ArcRho Curves tab choices onto the ResQ Curves tab.
-
-        The fit settings, the Include flags, the User Entry columns and the
-        Selected Estimate Number per period go across. A ResQ user column that
-        is a prior analysis, pattern or benchmark keeps its own values, and the
-        fitting method is never written: ArcRho fits by log regression only, so
-        a ResQ method fitted by least squares keeps that setting.
-        """
-
-        curves = _dict_path(payload, ("curves_tab",))
-        if not curves:
-            return 0
-        period_count = max(self._dfm_development_column_count(dfm) - 1, 0)
-        updates = 0
-        future = _safe_number(curves.get("future_development_periods"))
-        if future is not None and future >= 1 and int(dfm.FutureDevelopmentPeriods) != int(future):
-            dfm.FutureDevelopmentPeriods = int(future)
-            updates += 1
-        if "free_fit_c" in curves and bool(dfm.FreeFitC) != bool(curves["free_fit_c"]):
-            dfm.FreeFitC = bool(curves["free_fit_c"])
-            updates += 1
-        included = curves.get("included") if isinstance(curves.get("included"), list) else []
-        for development_index, flag in enumerate(included[:period_count], start=1):
-            dfm.SetIncludedRatios(development_index, flag in (1, True, "1"))
-            updates += 1
-        user_columns = curves.get("user_columns") if isinstance(curves.get("user_columns"), list) else []
-        if user_columns and int(dfm.CurveUserValueColCount) < len(user_columns):
-            dfm.CurveUserValueColCount = len(user_columns)
-            updates += 1
-        for offset, column in enumerate(user_columns):
-            if not isinstance(column, Mapping):
-                continue
-            if str(column.get("column_type") or "user_entry") != "user_entry":
-                continue
-            resq_column = RESQ_CURVE_FIXED_COLUMNS + 1 + offset
-            if int(dfm.CurveColumnType(resq_column)) != RESQ_CURVE_COLUMN_TYPE_USER_ENTRY:
-                continue
-            label = str(column.get("label") or "").strip()
-            if label and str(dfm.CurveColumnDescription(resq_column) or "").strip() != label:
-                dfm.SetCurveColumnDescription(resq_column, label)
-                updates += 1
-            column_values = column.get("values") if isinstance(column.get("values"), list) else []
-            for development_index, raw_value in enumerate(column_values[:period_count], start=1):
-                value = _safe_number(raw_value)
-                if value is None or value <= 0:
-                    continue
-                dfm.SetCurveValues(resq_column, development_index, value)
-                updates += 1
-            tail = _safe_number(column.get("tail"))
-            if tail is not None and tail > 0:
-                dfm.SetCurveValues(resq_column, 0, tail)
-                updates += 1
-        column_limit = RESQ_CURVE_FIXED_COLUMNS + int(dfm.CurveUserValueColCount)
-        selected = curves.get("selected_estimates") if isinstance(curves.get("selected_estimates"), list) else []
-        for development_index, raw_number in enumerate(selected[:period_count], start=1):
-            number = _safe_number(raw_number)
-            if number is None or not 1 <= int(number) <= column_limit:
-                continue
-            dfm.SetSelectedEstimates(development_index, int(number))
-            updates += 1
-        for key in ("selected_tail_factor", "selected_tail_curve"):
-            number = _safe_number(curves.get(key))
-            if number is None or not 1 <= int(number) <= column_limit:
-                continue
-            if key == "selected_tail_factor":
-                dfm.SelectedTailFactor = int(number)
-            else:
-                dfm.SelectedTailCurve = int(number)
             updates += 1
         return updates
 

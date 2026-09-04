@@ -18,8 +18,8 @@ Project Instance supplies both identities so the reads can run in parallel. A me
 - `details_tab.name` is the method identity and owns the `DFM@<name>.json` filename.
 - `details_tab.output_dataset` is the output CSV/sidecar identity. A new GUI method defaults it to its method name, but migrated methods may keep a different output name.
 - `details_tab.output_type` is the output Vector Dataset Type.
-- `details_tab.input_triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, stored values for any Excel- or dataset-linked formula, Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
-- Input/basis snapshots, ratio values, standard-average values, non-Excel formula results, and ultimates are derived state.
+- `details_tab.input_triangle`, period lengths, decimal places, ratio exclusions, average definitions/order/selections/inputs, literal User Entry values, each row's `- Ult` tail factor, stored values for any Excel- or dataset-linked formula, the Curves tab choices (`curves_tab` minus `selected_values`), Ratio Basis selection, ultimate-ratio decimals, and ratio-cell notes are DFM-owned state.
+- Input/basis snapshots, ratio values, standard-average values, non-Excel formula results, the Curves tab's `selected_values`, and ultimates are derived state.
 - Method Notes, Audit, status, and `precedents`/`dependents` live only in the output sidecar. The canonical sidecar precedent projection combines Input Triangle, Ratio Basis, and every case-insensitively unique dataset parsed from Ratios User Entry `inputs`; each source sidecar receives the reverse dependent edge. Ratio-cell notes live only in method JSON.
 
 The output sidecar registers both the Input Triangle and configured Ratio Basis as precedents. A method save cannot silently reuse an output sidecar owned by another method.
@@ -52,6 +52,20 @@ The persisted file does not store `input_data_triangle_mask`. A cell is inside t
 The ratio triangle keeps its own axis labels on purpose, even though the contract forces them to agree with `data_tab` (Decision 6 of the v4 plan): a method file is also read as raw text by a person or by ArcBot, and a ratio triangle without headings is not a complete table. The validation that they match `data_tab.origin_labels` and the labels derived from `data_tab.development_labels` still runs, so the two can never drift into carrying different information.
 
 Each `excluded` row must be exactly as long as the `ratio_values` row beside it; a payload that breaks that alignment is rejected wherever the method is validated as complete, which includes the macro and ArcBot handoffs. Both rows drop their trailing empty cells, so they stay aligned only while they agree on which cells are empty: a cell whose ratio cannot be calculated -- a zero or missing left value, most often a zero origin row -- is null in `ratio_values` and 2 in `excluded`, never a calculated ratio of 0.
+
+The last `average_formulas.values` column, `<age> - Ult`, is each row's tail factor: an entered value on a User Entry or benchmark row (ResQ's `CustomAverages(i).TailFactor`) and `1.0` on a computed average row. Formulas in `inputs` never apply there.
+
+`curves_tab` stores the Curves tab, owned by `arcrho_api/dfm_curves.py`:
+
+- `fitting_method`: `log_regression` (the only method ArcRho fits by) or `least_squares` when a ResQ import carried that setting
+- `future_development_periods`, `free_fit_c`
+- `included`: one `0`/`1` per development period, whether that period's Initial Selection takes part in the curve fits
+- `user_columns`: one object per user value column with `label`, `column_type` (`user_entry`, `prior_analysis`, `pattern`, or `benchmark`), `values` (one per development period), and `tail`
+- `selected_estimates`: one column number per development period (1 = Initial Selection, 2-5 = Exponential Decay, Inverse Power, Power, Weibull, 6 onward = user columns)
+- `selected_tail_factor` and `selected_tail_curve`: the column the tail factor and the tail pattern are taken from
+- the derived `selected_values`: the selected factor per development period followed by the selected tail, at six decimals, which is the chain `ultimate_vector` and the percentage developed use
+
+A method file written before the Curves tab existed normalizes to the default tab (the Initial Selection selected everywhere, ResQ's default inclusion thresholds of 1.00001 and 2), and a default tab is left out of the revision fingerprints, so such a file keeps its stored revisions and its factors.
 
 `results_tab` stores:
 
