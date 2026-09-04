@@ -369,7 +369,7 @@ class BatchImportMacroTests(unittest.TestCase):
                 "publish_import_request",
                 side_effect=self._publish_with_status(statuses),
             ),
-            patch.object(self.single.shutil, "copy2", side_effect=OSError("share offline")),
+            patch.object(self.single.resq_import_backup.shutil, "copy2", side_effect=OSError("share offline")),
         ):
             result = self.module.run_macro()
 

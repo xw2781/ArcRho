@@ -20,6 +20,7 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
 | the four `/result-selection/rpc-bridge/*` equivalents | `result_selection_rpc_bridge_*` | `result_selection_rpc_bridge_service.hosted_*` |
 | (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
+| (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
 
 The ResQ sync-queue publish is the request file the Sync and Export Reserving
 Class with ResQ macros hand to a ResQ-connected Bridge worker. The payload and
@@ -29,6 +30,23 @@ request's `UserName`. It is idempotent by request id — an id that already has
 a request or a status file is returned as `resumed` — and the macro's polling
 of that request's status is the hosted `bridge_worker_liveness` read, so
 inside the app neither half of the exchange crosses the share.
+
+The ResQ import backup is the copy both import macros take of the reserving
+class they are about to rewrite. It is the largest of these kinds by file
+count -- every method, every sidecar a person could have edited, every data
+file those sidecars name, and the class index -- so from a Client PC it was one
+SMB round trip per file, plus a class-folder lookup that can read one index per
+reserving class of the project. Hosted, the whole copy is local disk and the
+macro pays one request. The copy itself, the folder layout, the retention rule
+and what it leaves out are all `arcrho_api.resq_import_backup`'s; the service
+adds only the place it runs and stamps the acting user's login into the
+manifest. It is idempotent by backup id: the macro owns the id, and an id whose
+copy this host already finished -- which its `backup.json` records -- is
+reported as it stands rather than copied again under a second folder. A copy
+that died part way leaves no manifest and is never presented as a restore
+point. Because a backup that cannot be taken never stops an import, the macro
+turns a transport failure into a warning rather than an error, and words an
+unconfirmed outcome as unknown rather than as "no restore point".
 
 The RPC-bridge kinds are the one family whose work is not finished when the
 service returns from local disk: `sync` and `update-remote` publish a request

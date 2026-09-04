@@ -222,6 +222,22 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "request_id", "phase"),
         ("selected_rows", "selected_names", "direction"),
     ),
+    # Both ResQ import macros copy the reserving class they are about to
+    # rewrite into the server's pre-import backups. That copy is one file per
+    # method, sidecar and data file, so from a Client PC it is a round trip
+    # each; hosted, the whole copy is local disk and the macro pays one
+    # request.
+    #
+    # Idempotent because the client owns the backup id: an id whose copy this
+    # host already finished -- which its manifest records -- is reported as it
+    # stands rather than copied again under a second folder. A copy that died
+    # part way leaves no manifest and is never presented as a restore point.
+    "resq_import_backup": WorkspaceMutationKind(
+        "resq_import_backup_service",
+        "back_up_reserving_class_for_import",
+        ("project_name", "reserving_class", "backup_id"),
+        ("import_policy",),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

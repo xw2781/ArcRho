@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.9.0
-# Release Note: The copy taken of each class before it is imported now runs on ArcRho Server rather than file by file across the mapped drive, which is one request per class instead of one round trip per method, sidecar and data file. What the copies hold is unchanged, and the summary now separates a class whose copy failed from one whose copy the server did not confirm.
+# Version: 1.8.0
+# Release Note: Each class is now copied to a dated backup folder under the server's backups\pre-import before that class is imported, so an import can be undone later: its methods, its input, calculated and method-output datasets with their data files, and its index, with engine-generated datasets left out; the summary names the folder and lists any class whose copy failed.
 # Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>
@@ -12,10 +12,6 @@ import json
 import time
 from pathlib import Path
 from typing import Any
-
-# Where the copies live, for the one summary line that names the folder when a
-# copy the server never confirmed leaves it in doubt.
-from arcrho_api.resq_import_backup import IMPORT_BACKUP_RELATIVE_DIR
 
 TITLE = "Import ResQ Reserving Classes"
 REVIEW_POLL_SECONDS = 0.5
@@ -404,21 +400,10 @@ def _backup_lines(results: list[dict[str, Any]]) -> list[str]:
 
     backups = [item.get("backup") for item in results]
     taken = [entry for entry in backups if isinstance(entry, dict) and entry.get("files")]
-    broken = [
-        (str(item.get("path") or ""), item["backup"])
+    failed = [
+        (str(item.get("path") or ""), str((item.get("backup") or {}).get("error") or ""))
         for item in results
         if isinstance(item.get("backup"), dict) and item["backup"].get("error")
-    ]
-    # A copy ArcRho Server never confirmed is not the same as one that failed:
-    # it may well be sitting in the backups folder, so it is reported as
-    # unknown rather than as a class left without a restore point.
-    unconfirmed = [
-        (path, str(entry.get("error") or "")) for path, entry in broken if entry.get("unconfirmed")
-    ]
-    failed = [
-        (path, str(entry.get("error") or ""))
-        for path, entry in broken
-        if not entry.get("unconfirmed")
     ]
     lines: list[str] = []
     if taken:
@@ -439,15 +424,6 @@ def _backup_lines(results: list[dict[str, Any]]) -> list[str]:
             "before the import, so there is no restore point for:"
         )
         for path, error in failed[:MAX_REPORTED_FAILURES]:
-            lines.append(f"- {path}: {error}")
-    if unconfirmed:
-        lines.append("")
-        lines.append(
-            "WARNING - ArcRho Server did not confirm the copy taken before the "
-            f"import, so whether there is a restore point under "
-            f"[{IMPORT_BACKUP_RELATIVE_DIR}] is unknown for:"
-        )
-        for path, error in unconfirmed[:MAX_REPORTED_FAILURES]:
             lines.append(f"- {path}: {error}")
     return lines
 

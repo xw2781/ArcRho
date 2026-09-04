@@ -12,6 +12,25 @@ The Bridge takes its own copy during the commit
 commit that fails part way and is deleted as soon as the commit succeeds. The
 macro's copy is the one a later recovery reads.
 
+## Where the copy runs
+
+The copy is one file at a time, so where it runs decides what it costs. Inside
+the ArcRho app it runs on the ArcRho Server host through the
+`resq_import_backup` hosted workspace mutation, where the whole class is local
+disk and the macro pays one request; only a script outside the app, which has
+no Gateway client at all, copies the files across the mapped drive itself.
+`arcrho_api.resq_import_backup` owns both halves — the copy and the choice of
+where to take it — so the two macros, the app server's service, and anything
+else that needs a pre-import backup cannot drift apart on what one holds.
+
+The macro names each copy with a **backup id**: the folder stamp plus a tag of
+its own, as in `20260904-131500-a1b2c3d4`. The id is what makes the hosted copy
+safe to ask for twice, which the mutation contract requires of every hosted
+kind: an id whose copy the server already finished — which its `backup.json`
+records — is reported as it stands rather than copied again under a second
+folder. A copy that died part way leaves no manifest, so it is never presented
+as a restore point.
+
 ## Where the copies live
 
 ```text
@@ -37,9 +56,11 @@ folder's own name, and only then by the class path a folder reports in its
 `index.json` — the last step reads every index in the project, which is why it
 comes last.
 
-`backup.json` names the project, the reserving class, the source folder, the
-person, the import policy, every file copied, and how many engine-generated
-datasets were left out.
+`backup.json` names the backup id, the project, the reserving class, the source
+folder, the person, the import policy, every file copied, and how many
+engine-generated datasets were left out. It is written last, so a folder
+carrying one is a copy that finished. Hosted, the person it names is the one
+who asked for the import, not the profile ArcRho Server runs under.
 
 ## What is copied
 
@@ -66,10 +87,13 @@ rather than working it out again from `dataset_types.json`.
 
 ## Cost
 
-A whole class measured 155 files and 0.34 MB, copied in 0.42 seconds across the
-share. Nothing to copy — a class the project has no folder for yet, or a folder
-holding only engine-generated datasets — is reported as no backup rather than an
-empty one.
+A whole class measured 155 files and 0.34 MB. Copied across the share that took
+0.42 seconds on the day it was measured, and a share round trip is priced per
+operation rather than per byte, so the same copy costs whatever the share is
+charging that day multiplied by a file count that grows with the class. Taken
+on the server host it is one request and 155 local-disk copies. Nothing to copy
+— a class the project has no folder for yet, or a folder holding only
+engine-generated datasets — is reported as no backup rather than an empty one.
 
 ## Retention
 
@@ -84,6 +108,13 @@ the person worse off than they were before there were backups at all, so the
 run continues and the completion box says, as a warning that does not close on
 its own, that there is no restore point. The batch macro names each class whose
 copy failed.
+
+A hosted copy the server never confirmed is a different message. The transport
+rule for a mutation is that an unknown outcome is reported rather than repeated
+somewhere else, because a second copy taken from the Client PC would be
+reasoning about a workspace the server may already have written to. Both macros
+therefore say the copy is unknown and name the backups folder to look in, and
+neither falls back to the share once the request has been accepted.
 
 ## Restoring
 

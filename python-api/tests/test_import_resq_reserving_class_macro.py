@@ -897,7 +897,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
                 self.module.uuid, "uuid4", return_value=types.SimpleNamespace(hex=_REQUEST_ID)
             ),
             patch.object(self.module, "publish_import_request", side_effect=publish_and_respond),
-            patch.object(self.module.shutil, "copy2", side_effect=OSError("share offline")),
+            patch.object(self.module.resq_import_backup.shutil, "copy2", side_effect=OSError("share offline")),
         ):
             result = self.module.run_macro()
 
@@ -1137,7 +1137,7 @@ class ReservingClassBackupTests(unittest.TestCase):
     def test_a_backup_that_cannot_be_written_is_reported_not_raised(self):
         self._write_class(r"Auto\PP", ["DFM@A.json"])
 
-        with patch.object(self.module.shutil, "copy2", side_effect=OSError("share offline")):
+        with patch.object(self.module.resq_import_backup.shutil, "copy2", side_effect=OSError("share offline")):
             backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
 
         self.assertEqual(backup["files"], 0)
