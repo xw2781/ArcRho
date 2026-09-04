@@ -19,13 +19,17 @@ Note: The ResQ COM API method and property names may not be intuitive sometimes,
   outside the sandbox (unsandboxed/escalated exec) so Windows integrated auth can negotiate normally.
 
 # Methods to be added in ArcRho
-- B&S Case Reserve Adequacy Adjustment (berquistshermancra)
-- B&S Settlement Rate Adjustment (berquistshermansr)
-- Cape Cod(capecodmethod)
-- Bootstrap Consolidation (bootstrapconsolidation)
-- BootstrapMethod (bootstrapmethod)
 
-# Phase 1 - B&S MVP
+Status as of 2026-09-04 — four of the five have shipped; only Bootstrap
+Consolidation is still open, so this file stays an open plan.
+
+- B&S Case Reserve Adequacy Adjustment (berquistshermancra) — **done**
+- B&S Settlement Rate Adjustment (berquistshermansr) — **done**
+- Cape Cod(capecodmethod) — **done** (`frontend/docs/plans/cape_cod_method_plan.md`)
+- Bootstrap Consolidation (bootstrapconsolidation) — **not started**
+- BootstrapMethod (bootstrapmethod) — **done** (`frontend/docs/plans/bootstrap_method_plan.md`)
+
+# Phase 1 - B&S MVP (delivered)
 
 The first phase adds the two B&S methods for annual data. ArcRho should reproduce
 the calculations and final output triangles from the two existing methods under:

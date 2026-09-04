@@ -50,7 +50,7 @@ hosted read and `sync` / `keep-local` / `cleanup` / `update-remote` are hosted
 mutations, so the request file the ArcRho Bridge claims is written on the
 server host where that folder is local disk and the wait for its answer is a
 file-system event. `apply` deliberately stayed local; see
-[hosted_rpc_bridge_transport.md](hosted_rpc_bridge_transport.md).
+[hosted_rpc_bridge_transport.md](completed/hosted_rpc_bridge_transport.md).
 
 The bounded-server foundation, SSE, and small writes remain as planned below.
 

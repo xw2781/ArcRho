@@ -2,6 +2,9 @@
 
 Version: v1.0
 Last updated: 2026-08-06
+Status: Complete — both phases implemented and deployed 2026-08-06 (see
+**Phasing** below). Kept as the record of the settled decisions behind the
+Engine propagation job.
 
 ## Summary
 
