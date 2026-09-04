@@ -146,7 +146,7 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
                 with self.assertRaises(BornhuetterFergusonContractError):
                     normalize_bornhuetter_ferguson_method(candidate)
 
-    def test_negative_new_ultimate_rounds_half_away_from_zero(self) -> None:
+    def test_negative_new_ultimate_keeps_its_fraction(self) -> None:
         payload = owned_payload()
         payload["method_tab"]["origin_labels"] = ["2020"]
         payload["method_tab"]["prior_datasets"] = [
@@ -165,28 +165,36 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
 
         method = recalculate_bornhuetter_ferguson_method(payload, source_snapshots=source_data)
 
-        self.assertEqual(method["method_tab"]["new_ultimate"], [-2])
+        self.assertEqual(method["method_tab"]["new_ultimate"], [-1.5])
 
-    def test_whole_number_rounding_does_not_round_to_six_decimals_first(self) -> None:
+    def test_new_ultimate_is_not_rounded_to_a_whole_number(self) -> None:
+        """A BF ultimate keeps six decimals like every other BF vector.
+
+        ResQ never rounds it. A claim-count BF in NJ_Annual_Prod_2026 Q3-Aug
+        stored 63 and 58 for 63.014729 and 57.894588, and the Berquist-Sherman
+        settlement-rate adjustment dividing closed claims by those ultimates
+        moved its adjusted triangle's earliest ages by up to 2% from ResQ.
+        """
+
         payload = owned_payload()
-        payload["method_tab"]["origin_labels"] = ["2020"]
+        payload["method_tab"]["origin_labels"] = ["2025", "2026"]
         payload["method_tab"]["prior_datasets"] = [
-            {"name": "Plan A", "values": [], "weights": [1]}
+            {"name": "Plan A", "values": [], "weights": [1, 1]}
         ]
         source_data = {
-            "latest": {"name": "Paid Loss", "origin_labels": ["2020"], "values": [1]},
+            "latest": {"name": "Paid Loss", "origin_labels": ["2025", "2026"], "values": [55, 23]},
             "dfm": {
                 "name": "Paid DFM Ultimate",
-                "origin_labels": ["2020"],
-                "values": [2],
-                "percentage_developed": [0.5],
+                "origin_labels": ["2025", "2026"],
+                "values": [57, 45],
+                "percentage_developed": [0.966342, 0.505991],
             },
-            "priors": [{"name": "Plan A", "origin_labels": ["2020"], "values": [0.999999]}],
+            "priors": [{"name": "Plan A", "origin_labels": ["2025", "2026"], "values": [86, 81]}],
         }
 
         method = recalculate_bornhuetter_ferguson_method(payload, source_snapshots=source_data)
 
-        self.assertEqual(method["method_tab"]["new_ultimate"], [1])
+        self.assertEqual(method["method_tab"]["new_ultimate"], [57.894588, 63.014729])
 
     def test_percentage_developed_comes_from_the_pattern_not_the_ultimate(self) -> None:
         """A zero latest still develops: the pattern is a property of the DFM alone.

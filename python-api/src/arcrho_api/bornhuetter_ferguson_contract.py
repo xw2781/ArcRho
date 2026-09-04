@@ -8,10 +8,8 @@ Chart tabs without reading its precedent datasets.
 
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
 from .dataset_display_contract import normalize_show_subtotal
@@ -35,7 +33,6 @@ BF_JSON_FORMAT = "arcrho-bornhuetter-ferguson-v4"
 BF_METHOD_TYPE = "Bornhuetter Ferguson"
 BF_SOURCE_KIND = "bornhuetter_ferguson"
 BF_METHOD_TYPE_CODE = 2
-_INTEGER_QUANTUM = Decimal("1")
 
 
 class BornhuetterFergusonContractError(ValueError):
@@ -97,20 +94,6 @@ def _duplicates(values: Iterable[str]) -> list[str]:
             duplicates.append(value)
         seen.add(value)
     return duplicates
-
-
-def _whole_number(value: Any) -> float | int | None:
-    if value is None or isinstance(value, bool) or value == "":
-        return None
-    try:
-        number = float(value)
-        if not math.isfinite(number):
-            return None
-        rounded = Decimal(str(abs(number))).quantize(_INTEGER_QUANTUM, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError, OverflowError):
-        return None
-    result = int(rounded)
-    return -result if number < 0 else result
 
 
 def _snapshot_revision(name: str, origin_labels: list[str], values: list[Any]) -> str:
@@ -177,7 +160,12 @@ def _calculate_vectors(method_tab: Mapping[str, Any]) -> tuple[list[Any], list[A
         elif percentage_raw is None:
             ultimate = None
         else:
-            ultimate = _whole_number(
+            # The ultimate keeps its fraction at the same six decimals as every
+            # other BF vector. ResQ never rounds it, and a whole-number ultimate
+            # drifts every dependent that divides by it -- a claim-count BF feeding
+            # a Berquist-Sherman settlement-rate adjustment moved the adjusted
+            # triangle's earliest ages by up to 2%.
+            ultimate = _number(
                 float(latest_value) + (1.0 - float(percentage_raw)) * float(selected_raw)
             )
         selected.append(selected_value)

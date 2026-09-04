@@ -7,7 +7,6 @@ import {
   buildBornhuetterFergusonMethodPayload,
   rebaseBornhuetterFergusonWeightsByOriginLabel,
   roundBornhuetterFergusonNumber,
-  roundBornhuetterFergusonWholeNumber,
 } from "../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_json_contract.js";
 import {
   loadBornhuetterFergusonMethod,
@@ -83,8 +82,6 @@ test("BF v3 payload is self-contained and preserves effective-weight and revisio
 test("BF six-decimal rounding is symmetric half-away-from-zero", () => {
   assert.equal(roundBornhuetterFergusonNumber(1.2345675), 1.234568);
   assert.equal(roundBornhuetterFergusonNumber(-1.2345675), -1.234568);
-  assert.equal(roundBornhuetterFergusonWholeNumber(1.5), 2);
-  assert.equal(roundBornhuetterFergusonWholeNumber(-1.5), -2);
 });
 
 test("BF dirty refresh rebases local weights by origin label", () => {
@@ -105,10 +102,12 @@ test("BF dirty refresh rebases local weights by origin label", () => {
   assert.match(restore, /persistedOriginLabels:\s*nextOriginLabels/u);
 });
 
-test("BF output calculation uses canonical whole-number rounding", () => {
+test("BF output calculation keeps the ultimate's fraction at six decimals", () => {
+  // ResQ never rounds a BF ultimate to a whole number; everything reading the
+  // BF output vector drifted from ResQ while the page did.
   const calculate = functionSlice(mainSource, "function calculateOutputs()", "function renderBfChart");
-  assert.match(calculate, /roundBornhuetterFergusonWholeNumber/u);
-  assert.doesNotMatch(calculate, /Math\.round/u);
+  assert.match(calculate, /roundBornhuetterFergusonNumber\(latest \+ \(1 - pct\) \* selectedPrior\)/u);
+  assert.doesNotMatch(calculate, /WholeNumber|Math\.round/u);
 });
 
 test("BF aggregate API sends identity and revision-aware save requests", async () => {
