@@ -263,6 +263,126 @@ class BatchImportMacroTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], ["Auto\\NJ", "Auto\\PA"])
         self.assertTrue(all(row["selected"] for row in rows))
 
+    def _write_class_files(self, rc_path, *, methods=(), datasets=()):
+        """Method files and datasets for one class; ``datasets`` pairs name and kind."""
+
+        folder = rc_path.replace("\\", "_%5C_")
+        class_dir = self.server_root / "projects" / "Demo" / "data" / folder
+        (class_dir / "methods").mkdir(parents=True, exist_ok=True)
+        for name in methods:
+            (class_dir / "methods" / name).write_text("{}", encoding="utf-8")
+        (class_dir / "sidecars").mkdir(parents=True, exist_ok=True)
+        (class_dir / "datasets").mkdir(parents=True, exist_ok=True)
+        for name, source_kind in datasets:
+            (class_dir / "sidecars" / f"{name}.json").write_text(
+                json.dumps({"source_kind": source_kind, "csv_file": f"{name}@12.csv"}),
+                encoding="utf-8",
+            )
+            (class_dir / "datasets" / f"{name}@12.csv").write_text(
+                "origin\n2025\n", encoding="utf-8"
+            )
+        return class_dir
+
+    def test_every_class_backs_up_its_own_files_before_it_is_imported(self):
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        self._write_class_files(
+            "Auto\\NJ",
+            methods=["DFM@A.json", "BF@B.json"],
+            datasets=[("Accounting Cutoff", "input"), ("Net Loss--Paid", "engine")],
+        )
+        self._write_class_files(
+            "Auto\\PA", methods=["DFM@C.json"], datasets=[("Prior Qtr", "input")]
+        )
+        statuses = {
+            "Auto\\NJ": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+            "Auto\\PA": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+        }
+        backed_up_when_published = []
+
+        publish_and_respond = self._publish_with_status(statuses)
+
+        def publish(*, server_root, request_id, payload):
+            class_dir = (
+                self.server_root
+                / self.single.IMPORT_BACKUP_RELATIVE_DIR
+                / "Demo"
+                / payload["Path"].replace("\\", "_%5C_")
+            )
+            stamp_dir = next(class_dir.iterdir()) if class_dir.is_dir() else None
+            backed_up_when_published.append(
+                sorted(
+                    item.relative_to(stamp_dir).as_posix()
+                    for item in stamp_dir.rglob("*")
+                    if item.is_file() and item.name != "backup.json"
+                )
+                if stamp_dir is not None
+                else []
+            )
+            return publish_and_respond(
+                server_root=server_root, request_id=request_id, payload=payload
+            )
+
+        with (
+            self._api_module(),
+            patch.object(self.single, "publish_import_request", side_effect=publish),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            backed_up_when_published,
+            [
+                [
+                    "datasets/Accounting Cutoff@12.csv",
+                    "index.json",
+                    "methods/BF@B.json",
+                    "methods/DFM@A.json",
+                    "sidecars/Accounting Cutoff.json",
+                ],
+                [
+                    "datasets/Prior Qtr@12.csv",
+                    "index.json",
+                    "methods/DFM@C.json",
+                    "sidecars/Prior Qtr.json",
+                ],
+            ],
+        )
+        self.assertEqual([item["backup"]["methods"] for item in result["results"]], [2, 1])
+        self.assertEqual([item["backup"]["datasets"] for item in result["results"]], [1, 1])
+        self.assertIn(
+            "Backed up 3 method(s) and 2 dataset(s) from 2 reserving class(es)",
+            result["message"],
+        )
+        self.assertIn("1 engine-generated dataset(s) were left out", result["message"])
+
+    def test_a_class_whose_backup_failed_is_named_in_the_summary(self):
+        self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
+        self._write_class_files("Auto\\NJ", methods=["DFM@A.json"])
+        statuses = {
+            "Auto\\NJ": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+            "Auto\\PA": {"status": "success", "result": {"datasets_imported": 1, "errors": 0}},
+        }
+        with (
+            self._api_module(),
+            patch.object(
+                self.single,
+                "publish_import_request",
+                side_effect=self._publish_with_status(statuses),
+            ),
+            patch.object(self.single.shutil, "copy2", side_effect=OSError("share offline")),
+        ):
+            result = self.module.run_macro()
+
+        # The import still ran; only the restore point is missing. Both classes
+        # are named: each holds at least its index, so each had a copy to take.
+        self.assertTrue(result["success"])
+        self.assertIn("no restore point for:", result["message"])
+        self.assertIn("- Auto\\NJ: share offline", result["message"])
+        self.assertIn("- Auto\\PA: share offline", result["message"])
+        message, kwargs = self.ui.messages[-1]
+        self.assertEqual(kwargs["kind"], "warning")
+        self.assertIsNone(kwargs["auto_close_ms"])
+
     def test_a_failed_class_is_reported_and_the_batch_continues(self):
         self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])
         statuses = {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 import sys
 import tempfile
@@ -813,6 +814,337 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
             workers = self.module.require_live_bridge_workers(self.server_root)
 
         self.assertEqual(workers, ("worker.json",))
+
+    def _write_class_files(self, method_names: list[str], dataset_names: list[str]) -> Path:
+        rc_dir = (
+            self.server_root
+            / "projects"
+            / "Demo"
+            / "data"
+            / self.module.reserving_class_folder_name(r"Auto\PP")
+        )
+        (rc_dir / "methods").mkdir(parents=True, exist_ok=True)
+        for name in method_names:
+            (rc_dir / "methods" / name).write_text("{}", encoding="utf-8")
+        (rc_dir / "sidecars").mkdir(parents=True, exist_ok=True)
+        (rc_dir / "datasets").mkdir(parents=True, exist_ok=True)
+        for name in dataset_names:
+            (rc_dir / "sidecars" / f"{name}.json").write_text(
+                json.dumps({"source_kind": "input", "csv_file": f"{name}@12.csv"}),
+                encoding="utf-8",
+            )
+            (rc_dir / "datasets" / f"{name}@12.csv").write_text("origin\n2025\n", encoding="utf-8")
+        return rc_dir
+
+    def test_the_class_is_copied_before_the_request_is_published(self):
+        self._write_worker()
+        self._write_class_files(["DFM@A.json", "BF@B.json"], ["Accounting Cutoff"])
+        backed_up_when_published: list[list[str]] = []
+        publish_and_respond = self._publish_status(_success_status())
+
+        def publish(**kwargs):
+            class_dir = (
+                self.server_root
+                / self.module.IMPORT_BACKUP_RELATIVE_DIR
+                / "Demo"
+                / self.module.reserving_class_folder_name(r"Auto\PP")
+            )
+            backed_up_when_published.append(
+                sorted(
+                    str(item.relative_to(class_dir).as_posix())
+                    for item in next(class_dir.iterdir()).rglob("*")
+                    if item.is_file()
+                )
+                if class_dir.is_dir()
+                else []
+            )
+            return publish_and_respond(**kwargs)
+
+        with (
+            self._macro_modules(),
+            patch.object(
+                self.module.uuid, "uuid4", return_value=types.SimpleNamespace(hex=_REQUEST_ID)
+            ),
+            patch.object(self.module, "publish_import_request", side_effect=publish),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        # Every file was already in place when the Bridge request went out.
+        published = [name.split("/", 1)[1] for name in backed_up_when_published[0]]
+        self.assertEqual(
+            sorted(published),
+            [
+                "backup.json",
+                "datasets/Accounting Cutoff@12.csv",
+                "methods/BF@B.json",
+                "methods/DFM@A.json",
+                "sidecars/Accounting Cutoff.json",
+            ],
+        )
+        self.assertEqual(result["backup"]["methods"], 2)
+        self.assertEqual(result["backup"]["datasets"], 1)
+        self.assertIn("Backed up 2 method(s) and 1 dataset(s)", result["message"])
+
+    def test_a_failed_backup_warns_in_the_completion_box_and_still_imports(self):
+        self._write_worker()
+        self._write_class_files(["DFM@A.json"], [])
+        publish_and_respond = self._publish_status(_success_status())
+
+        with (
+            self._macro_modules(),
+            patch.object(
+                self.module.uuid, "uuid4", return_value=types.SimpleNamespace(hex=_REQUEST_ID)
+            ),
+            patch.object(self.module, "publish_import_request", side_effect=publish_and_respond),
+            patch.object(self.module.shutil, "copy2", side_effect=OSError("share offline")),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        self.assertIn("share offline", result["backup"]["error"])
+        message, kwargs = self.ui.messages[-1]
+        self.assertIn("no restore point", message)
+        self.assertEqual(kwargs["kind"], "warning")
+        self.assertIsNone(kwargs["auto_close_ms"])
+
+
+class ReservingClassBackupTests(unittest.TestCase):
+    """The copy taken of a reserving class before an import rewrites it."""
+
+    def setUp(self):
+        self.module = load_macro_module()
+        self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.addCleanup(self.tempdir.cleanup)
+        self.server_root = Path(self.tempdir.name)
+
+    def _write_class(
+        self,
+        rc_path: str,
+        method_names: list[str],
+        *,
+        datasets: list[tuple[str, str]] | None = None,
+        folder: str = "",
+    ) -> Path:
+        """One class folder; ``datasets`` pairs a dataset name with its kind."""
+
+        rc_dir = (
+            self.server_root
+            / "projects"
+            / "Demo"
+            / "data"
+            / (folder or self.module.reserving_class_folder_name(rc_path))
+        )
+        (rc_dir / "methods").mkdir(parents=True, exist_ok=True)
+        for index, name in enumerate(method_names):
+            (rc_dir / "methods" / name).write_text(
+                json.dumps({"name": name, "value": index}), encoding="utf-8"
+            )
+        (rc_dir / "sidecars").mkdir(parents=True, exist_ok=True)
+        (rc_dir / "datasets").mkdir(parents=True, exist_ok=True)
+        for name, source_kind in datasets or []:
+            data_file = f"{name}@12.csv"
+            (rc_dir / "sidecars" / f"{name}.json").write_text(
+                json.dumps(
+                    {
+                        "dataset_name": name,
+                        "source_kind": source_kind,
+                        "csv_file": data_file,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (rc_dir / "datasets" / data_file).write_text(
+                f"origin,{name}\n2025,1\n", encoding="utf-8"
+            )
+        rc_dir.joinpath("index.json").write_text(
+            json.dumps({"reserving_class": rc_path}), encoding="utf-8"
+        )
+        return rc_dir
+
+    def test_the_folder_name_matches_the_apps_reserving_class_folder_rule(self):
+        self.assertEqual(
+            self.module.reserving_class_folder_name(r"HPPREF\HO+DF\NJ\Legacy\HOL"),
+            "HPPREF_%5C_HO+DF_%5C_NJ_%5C_Legacy_%5C_HOL",
+        )
+        self.assertEqual(
+            self.module.reserving_class_folder_name("Auto/PP"),
+            "Auto_%2F_PP",
+        )
+        # A folder name Windows would refuse to keep as typed: each trailing
+        # dot or space becomes a caret, as the app server's own rule does.
+        self.assertEqual(self.module.reserving_class_folder_name("Auto ."), "Auto^^")
+        self.assertEqual(self.module.reserving_class_folder_name(""), "ReservingClass")
+
+    def test_the_class_is_copied_in_its_own_layout_with_a_manifest_beside_it(self):
+        rc_dir = self._write_class(
+            r"Auto\PP",
+            ["DFM@A.json", "BF@B.json"],
+            datasets=[
+                ("Accounting Cutoff", "input"),
+                ("Prior Qtr Indicated", "input"),
+                ("Selected Ultimate", "calculated"),
+                ("A - Paid DFM", "dfm"),
+                ("Net Loss--Paid", "engine"),
+            ],
+        )
+
+        backup = self.module.backup_reserving_class(
+            self.server_root, "Demo", r"Auto\PP", import_policy="overwrite"
+        )
+
+        self.assertEqual(backup["error"], "")
+        self.assertEqual(backup["methods"], 2)
+        self.assertEqual(backup["sidecars"], 4)
+        self.assertEqual(backup["datasets"], 4)
+        self.assertEqual(backup["engine_datasets_skipped"], 1)
+        # Two methods, four sidecars, four data files and the class index.
+        self.assertEqual(backup["files"], 11)
+
+        target = Path(backup["path"])
+        self.assertEqual(
+            sorted(item.name for item in target.iterdir()),
+            ["backup.json", "datasets", "index.json", "methods", "sidecars"],
+        )
+        self.assertEqual(
+            sorted(item.name for item in (target / "methods").iterdir()),
+            ["BF@B.json", "DFM@A.json"],
+        )
+        self.assertEqual(
+            sorted(item.stem for item in (target / "sidecars").iterdir()),
+            ["A - Paid DFM", "Accounting Cutoff", "Prior Qtr Indicated", "Selected Ultimate"],
+        )
+        self.assertEqual(
+            sorted(item.name for item in (target / "datasets").iterdir()),
+            [
+                "A - Paid DFM@12.csv",
+                "Accounting Cutoff@12.csv",
+                "Prior Qtr Indicated@12.csv",
+                "Selected Ultimate@12.csv",
+            ],
+        )
+        for relative in ("methods/DFM@A.json", "datasets/Accounting Cutoff@12.csv"):
+            self.assertEqual(
+                (target / relative).read_text(encoding="utf-8"),
+                (rc_dir / relative).read_text(encoding="utf-8"),
+            )
+
+        manifest = json.loads((target / "backup.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["project_name"], "Demo")
+        self.assertEqual(manifest["reserving_class"], r"Auto\PP")
+        self.assertEqual(manifest["import_policy"], "overwrite")
+        self.assertEqual(manifest["file_count"], 11)
+        self.assertEqual(manifest["engine_datasets_skipped"], 1)
+        self.assertIn("methods/DFM@A.json", manifest["files"])
+        self.assertIn("index.json", manifest["files"])
+        # The copy lives outside the projects tree, so a project copy never
+        # carries it and no reserving-class scan can reach it.
+        self.assertNotIn("projects", target.relative_to(self.server_root).parts)
+
+    def test_an_engine_generated_dataset_is_left_out_with_its_data_file(self):
+        self._write_class(
+            r"Auto\PP",
+            [],
+            datasets=[("Net Loss--Paid", "engine"), ("Accounting Cutoff", "input")],
+        )
+
+        backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
+
+        target = Path(backup["path"])
+        self.assertEqual(
+            [item.name for item in (target / "sidecars").iterdir()],
+            ["Accounting Cutoff.json"],
+        )
+        self.assertEqual(
+            [item.name for item in (target / "datasets").iterdir()],
+            ["Accounting Cutoff@12.csv"],
+        )
+        self.assertEqual(backup["engine_datasets_skipped"], 1)
+        self.assertIn("1 engine-generated dataset(s) were left out", self.module.backup_sentence(backup))
+
+    def test_a_data_file_no_sidecar_claims_is_kept(self):
+        rc_dir = self._write_class(
+            r"Auto\PP", [], datasets=[("Net Loss--Paid", "engine")]
+        )
+        (rc_dir / "datasets" / "Unclaimed@12.csv").write_text("origin\n2025\n", encoding="utf-8")
+
+        backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
+
+        self.assertEqual(
+            [item.name for item in (Path(backup["path"]) / "datasets").iterdir()],
+            ["Unclaimed@12.csv"],
+        )
+
+    def test_the_backup_never_overwrites_an_earlier_one_in_the_same_second(self):
+        self._write_class(r"Auto\PP", ["DFM@A.json"])
+        moment = datetime(2026, 9, 3, 14, 30, 0)
+
+        first = self.module.backup_reserving_class(
+            self.server_root, "Demo", r"Auto\PP", now=moment
+        )
+        second = self.module.backup_reserving_class(
+            self.server_root, "Demo", r"Auto\PP", now=moment
+        )
+
+        self.assertNotEqual(first["path"], second["path"])
+        self.assertEqual(first["methods"], 1)
+        self.assertEqual(second["methods"], 1)
+
+    def test_only_the_most_recent_backups_of_a_class_are_kept(self):
+        self._write_class(r"Auto\PP", ["DFM@A.json"])
+        keep = self.module.IMPORT_BACKUP_KEEP_PER_CLASS
+
+        for minute in range(keep + 5):
+            backup = self.module.backup_reserving_class(
+                self.server_root,
+                "Demo",
+                r"Auto\PP",
+                now=datetime(2026, 9, 3, 8, minute, 0),
+            )
+
+        class_dir = Path(backup["path"]).parent
+        stamps = sorted(item.name for item in class_dir.iterdir())
+        self.assertEqual(len(stamps), keep)
+        self.assertEqual(stamps[0], "20260903-080500")
+        self.assertEqual(stamps[-1], f"20260903-08{keep + 4:02d}00")
+
+    def test_a_class_the_project_does_not_hold_yet_backs_up_nothing(self):
+        backup = self.module.backup_reserving_class(self.server_root, "Demo", r"New\Class")
+
+        self.assertEqual(backup["files"], 0)
+        self.assertEqual(backup["reason"], "no_class_folder")
+        self.assertEqual(backup["error"], "")
+        self.assertEqual(self.module.backup_sentence(backup), "")
+
+    def test_a_class_folder_holding_nothing_to_keep_backs_up_nothing(self):
+        rc_dir = self._write_class(r"Auto\PP", [], datasets=[("Net Loss--Paid", "engine")])
+        (rc_dir / "index.json").unlink()
+
+        backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
+
+        self.assertEqual(backup["files"], 0)
+        self.assertEqual(backup["reason"], "nothing_to_back_up")
+        self.assertEqual(self.module.backup_sentence(backup), "")
+
+    def test_a_folder_named_under_an_older_rule_is_found_through_its_index(self):
+        self._write_class(r"Auto\PP", ["DFM@A.json"], folder="legacy-folder")
+
+        backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
+
+        self.assertEqual(backup["methods"], 1)
+        self.assertEqual(Path(backup["path"]).parent.name, "legacy-folder")
+
+    def test_a_backup_that_cannot_be_written_is_reported_not_raised(self):
+        self._write_class(r"Auto\PP", ["DFM@A.json"])
+
+        with patch.object(self.module.shutil, "copy2", side_effect=OSError("share offline")):
+            backup = self.module.backup_reserving_class(self.server_root, "Demo", r"Auto\PP")
+
+        self.assertEqual(backup["files"], 0)
+        self.assertIn("share offline", backup["error"])
+        sentence = self.module.backup_sentence(backup)
+        self.assertIn("WARNING", sentence)
+        self.assertIn("no restore point", sentence)
 
 
 if __name__ == "__main__":

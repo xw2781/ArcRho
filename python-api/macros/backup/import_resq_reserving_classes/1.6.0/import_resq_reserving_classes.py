@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.8.0
-# Release Note: Each class is now copied to a dated backup folder under the server's backups\pre-import before that class is imported, so an import can be undone later: its methods, its input, calculated and method-output datasets with their data files, and its index, with engine-generated datasets left out; the summary names the folder and lists any class whose copy failed.
-# Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
+# Version: 1.6.0
+# Release Note: The review table now always offers the fixed list of default reserving classes built into the macro instead of scanning the project for others, and a listed class that has no ArcRho folder yet is imported into a new folder.
+# Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>
 
@@ -323,12 +323,6 @@ def import_selected_classes(
                 )
             except Exception:
                 pass
-        backup = single.backup_reserving_class(
-            server_root,
-            project_name,
-            rc_path,
-            import_policy=import_policy,
-        )
         try:
             request_id, payload = single.create_import_request(
                 project_name=project_name,
@@ -349,7 +343,6 @@ def import_selected_classes(
                 "success": False,
                 "error": str(exc),
                 "request_id": request_id,
-                "backup": backup,
             })
             for remaining in rc_paths[position:]:
                 results.append({
@@ -365,7 +358,6 @@ def import_selected_classes(
                 "success": False,
                 "error": str(exc),
                 "request_id": request_id,
-                "backup": backup,
             })
             continue
         result = single._status_result(status)
@@ -378,7 +370,6 @@ def import_selected_classes(
             "success": True,
             "error": "",
             "request_id": request_id,
-            "backup": backup,
             "created": rc_path.casefold() in created_keys,
             "datasets_imported": single._summary_count(result, "datasets_imported", "total_written"),
             "methods_imported": single._summary_count(result, "methods_imported"),
@@ -388,44 +379,6 @@ def import_selected_classes(
             ),
         })
     return results
-
-
-def _backup_lines(results: list[dict[str, Any]]) -> list[str]:
-    """What was copied aside before the batch, and anything that was not.
-
-    The folder is named once, because every class of one batch backs up under
-    the same server folder, and only the classes whose copy failed are listed
-    by name.
-    """
-
-    backups = [item.get("backup") for item in results]
-    taken = [entry for entry in backups if isinstance(entry, dict) and entry.get("files")]
-    failed = [
-        (str(item.get("path") or ""), str((item.get("backup") or {}).get("error") or ""))
-        for item in results
-        if isinstance(item.get("backup"), dict) and item["backup"].get("error")
-    ]
-    lines: list[str] = []
-    if taken:
-        methods = sum(int(entry.get("methods") or 0) for entry in taken)
-        datasets = sum(int(entry.get("datasets") or 0) for entry in taken)
-        skipped = sum(int(entry.get("engine_datasets_skipped") or 0) for entry in taken)
-        root = str(Path(str(taken[0].get("path"))).parent.parent)
-        lines.append("")
-        lines.append(
-            f"Backed up {methods} method(s) and {datasets} dataset(s) from "
-            f"{len(taken)} reserving class(es) to [{root}] before importing; "
-            f"{skipped} engine-generated dataset(s) were left out."
-        )
-    if failed:
-        lines.append("")
-        lines.append(
-            "WARNING - the existing reserving class could not be copied aside "
-            "before the import, so there is no restore point for:"
-        )
-        for path, error in failed[:MAX_REPORTED_FAILURES]:
-            lines.append(f"- {path}: {error}")
-    return lines
 
 
 def _summary_message(project_name: str, results: list[dict[str, Any]]) -> str:
@@ -446,7 +399,6 @@ def _summary_message(project_name: str, results: list[dict[str, Any]]) -> str:
         lines.append(f"Datasets imported: {datasets}")
     if methods:
         lines.append(f"Methods imported: {methods}")
-    lines.extend(_backup_lines(results))
     if failed:
         lines.append("")
         lines.append("Failed:")
@@ -592,22 +544,15 @@ def run_macro(active_dfm=None, active_context=None):
 
     failed = [item for item in results if not item.get("success")]
     partial = [item for item in results if item.get("skipped_items")]
-    # A class whose method files could not be copied aside holds the box open
-    # too: that import ran without a restore point and the person must see it.
-    unbacked = [
-        item
-        for item in results
-        if isinstance(item.get("backup"), dict) and item["backup"].get("error")
-    ]
     if progress is not None:
         try:
             progress.update(
                 label="Batch import complete",
                 total=len(results),
                 completed=len(results),
-                tone="warning" if failed or partial or unbacked else "success",
+                tone="warning" if failed or partial else "success",
             )
-            if not failed and not partial and not unbacked:
+            if not failed and not partial:
                 progress.close(auto_close_ms=3000)
         except Exception:
             pass
@@ -624,8 +569,8 @@ def run_macro(active_dfm=None, active_context=None):
     _message(
         ui,
         message,
-        kind="warning" if failed or partial or unbacked or reload_error else "info",
-        auto_close_ms=None if failed or partial or unbacked else 3000,
+        kind="warning" if failed or partial or reload_error else "info",
+        auto_close_ms=None if failed or partial else 3000,
     )
     return {
         "success": not failed,

@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.10.0
-# Release Note: The reserving class is now copied to a dated backup folder under the server's backups\pre-import before the import runs, so an import can be undone later: every method, every input, calculated and method-output dataset with its data file, and the class index, in the class's own folder layout; engine-generated datasets are left out, the completion box names the folder, and the twenty most recent backups of a class are kept.
-# Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies, after copying the existing class to a dated backup folder.
+# Version: 1.9.0
+# Release Note: The existing method files of the reserving class are now copied to a dated backup folder under the server's backups\method-json before the import runs, so an import can be undone later; the completion box names the folder, and the twenty most recent backups of a class are kept.
+# Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies, after copying the existing method files to a dated backup folder.
 # Scope: Reserving Class
 # </arcrho-macro>
 
@@ -74,28 +74,22 @@ PARITY_WARNINGS_FIELD = "engine_parity_warnings"
 STATUS_VALUES = frozenset({"processing", "success", "error"})
 _INVALID_PROJECT_NAME_CHARS = frozenset('<>:"/\\|?*\x00')
 
-# Where the reserving class is copied before an import rewrites it. The Bridge
+# Where the method files are copied before an import rewrites them. The Bridge
 # keeps its own copy only until the commit succeeds, so this is the one lasting
-# record of what the class held before the import. It sits beside the projects
-# tree rather than inside it, so a project copy never carries the backups and
-# nothing that walks a project's data folder can mistake one for a reserving
-# class.
-IMPORT_BACKUP_RELATIVE_DIR = Path("backups") / "pre-import"
-IMPORT_BACKUP_MANIFEST_NAME = "backup.json"
-# How many past imports of one reserving class keep their copy.
-IMPORT_BACKUP_KEEP_PER_CLASS = 20
+# record of what a reserving class held before the import. It sits beside the
+# projects tree rather than inside it, so a project copy never carries the
+# backups and nothing that walks a project's data folder can mistake one for a
+# reserving class.
+METHOD_BACKUP_RELATIVE_DIR = Path("backups") / "method-json"
+METHOD_BACKUP_MANIFEST_NAME = "backup.json"
+# How many past imports of one reserving class keep their copy. A class holds a
+# megabyte or so of method files, so a few dozen imports stay cheap while the
+# folder still cannot grow without limit.
+METHOD_BACKUP_KEEP_PER_CLASS = 20
 METHOD_DIR_NAME = "methods"
-DATASET_DIR_NAME = "datasets"
-SIDECAR_DIR_NAME = "sidecars"
 PROJECTS_DIR_NAME = "projects"
 PROJECT_DATA_DIR_NAME = "data"
 INDEX_FILE_NAME = "index.json"
-# The one dataset kind the backup leaves out. ArcRho rebuilds these from the
-# source warehouse whenever the class is refreshed, so copying them would
-# multiply the size of every backup for nothing recoverable. Every other kind
-# is kept: a person's own inputs, the calculated datasets, and each method's
-# output, so a restored class reads as it did without waiting for a refresh.
-ENGINE_SOURCE_KIND = "engine"
 
 
 class BridgeUnavailableError(RuntimeError):
@@ -327,7 +321,7 @@ def find_reserving_class_dir(
     return None
 
 
-def prune_import_backups(class_backup_dir: Path, keep: int = IMPORT_BACKUP_KEEP_PER_CLASS) -> int:
+def prune_method_backups(class_backup_dir: Path, keep: int = METHOD_BACKUP_KEEP_PER_CLASS) -> int:
     """Delete all but the newest ``keep`` backups of one reserving class."""
 
     try:
@@ -345,58 +339,7 @@ def prune_import_backups(class_backup_dir: Path, keep: int = IMPORT_BACKUP_KEEP_
     return removed
 
 
-def _folder_files(folder: Path) -> list[Path]:
-    """Every file directly in one folder; subfolders are caches, not content."""
-
-    try:
-        return sorted(item for item in folder.iterdir() if item.is_file())
-    except OSError:
-        return []
-
-
-def dataset_backup_plan(rc_dir: Path) -> dict[str, Any]:
-    """Which dataset files to copy, and how many engine-generated ones to skip.
-
-    A dataset is a sidecar and the data file it names. The sidecar records the
-    kind ArcRho settled on for it, so the choice is read from the class itself
-    rather than worked out again. Everything but an engine-generated dataset is
-    copied, and a data file no sidecar claims is copied too: an unidentifiable
-    file is exactly the one worth keeping.
-    """
-
-    sidecars: list[Path] = []
-    datasets: list[Path] = []
-    claimed: set[str] = set()
-    skipped = 0
-    dataset_dir = rc_dir / DATASET_DIR_NAME
-    for sidecar in _folder_files(rc_dir / SIDECAR_DIR_NAME):
-        try:
-            with sidecar.open("r", encoding="utf-8-sig") as stream:
-                payload = json.load(stream)
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            payload = {}
-        if not isinstance(payload, dict):
-            payload = {}
-        data_file = str(payload.get("csv_file") or "").strip()
-        if data_file:
-            claimed.add(data_file.casefold())
-        if str(payload.get("source_kind") or "").strip().casefold() == ENGINE_SOURCE_KIND:
-            skipped += 1
-            continue
-        sidecars.append(sidecar)
-        if data_file and (dataset_dir / data_file).is_file():
-            datasets.append(dataset_dir / data_file)
-    datasets.extend(
-        item for item in _folder_files(dataset_dir) if item.name.casefold() not in claimed
-    )
-    return {
-        "sidecars": sidecars,
-        "datasets": sorted(set(datasets)),
-        "engine_datasets_skipped": skipped,
-    }
-
-
-def backup_reserving_class(
+def backup_method_files(
     server_root: object,
     project_name: object,
     rc_path: object,
@@ -404,55 +347,34 @@ def backup_reserving_class(
     import_policy: str = "",
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Copy a reserving class aside before an import rewrites it.
+    """Copy a reserving class's method files aside before an import rewrites them.
 
-    The copy holds every method, every dataset a person could have entered or
-    edited, and the class index, in the same folder layout the class itself
-    uses, so restoring it is a plain folder copy. Engine-generated datasets are
-    left out; ArcRho rebuilds those from the source warehouse.
-
-    Both import policies rewrite these files, so the copy is taken either way.
-    The Bridge keeps its own copy only until its commit succeeds, so this one is
+    Both policies replace method files, so the copy is taken either way. The
+    Bridge keeps its own copy only until its commit succeeds, so this one is
     what a later recovery reads. A backup that cannot be written is reported
     rather than raised: refusing the import would leave the person worse off
     than before there were backups at all, so the completion box says so
     instead.
     """
 
-    backup: dict[str, Any] = {
-        "files": 0,
-        "methods": 0,
-        "datasets": 0,
-        "sidecars": 0,
-        "engine_datasets_skipped": 0,
-        "path": "",
-        "error": "",
-        "reason": "",
-        "pruned": 0,
-    }
+    backup: dict[str, Any] = {"files": 0, "path": "", "error": "", "reason": "", "pruned": 0}
     try:
         rc_dir = find_reserving_class_dir(server_root, project_name, rc_path)
         if rc_dir is None:
             backup["reason"] = "no_class_folder"
             return backup
-        methods = _folder_files(rc_dir / METHOD_DIR_NAME)
-        plan = dataset_backup_plan(rc_dir)
-        backup["engine_datasets_skipped"] = plan["engine_datasets_skipped"]
-        copies: list[tuple[Path, str]] = (
-            [(item, f"{METHOD_DIR_NAME}/{item.name}") for item in methods]
-            + [(item, f"{SIDECAR_DIR_NAME}/{item.name}") for item in plan["sidecars"]]
-            + [(item, f"{DATASET_DIR_NAME}/{item.name}") for item in plan["datasets"]]
-        )
-        index_file = rc_dir / INDEX_FILE_NAME
-        if index_file.is_file():
-            copies.append((index_file, INDEX_FILE_NAME))
-        if not copies:
-            backup["reason"] = "nothing_to_back_up"
+        method_dir = rc_dir / METHOD_DIR_NAME
+        try:
+            sources = sorted(item for item in method_dir.iterdir() if item.is_file())
+        except OSError:
+            sources = []
+        if not sources:
+            backup["reason"] = "no_method_files"
             return backup
 
         class_backup_dir = (
             Path(server_root)
-            / IMPORT_BACKUP_RELATIVE_DIR
+            / METHOD_BACKUP_RELATIVE_DIR
             / _encode_filename_segment(str(project_name))
             / rc_dir.name
         )
@@ -463,25 +385,19 @@ def backup_reserving_class(
             attempt += 1
             target = class_backup_dir / f"{stamp}-{attempt}"
         target.mkdir(parents=True)
-        for source, relative in copies:
-            destination = target / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-        backup["files"] = len(copies)
-        backup["methods"] = len(methods)
-        backup["sidecars"] = len(plan["sidecars"])
-        backup["datasets"] = len(plan["datasets"])
-        backup["path"] = str(target)
+        for source in sources:
+            shutil.copy2(source, target / source.name)
         _write_backup_manifest(
             target,
             project_name=project_name,
             rc_path=rc_path,
             rc_dir=rc_dir,
             import_policy=import_policy,
-            backup=backup,
-            relative_names=[relative for _source, relative in copies],
+            file_names=[source.name for source in sources],
         )
-        backup["pruned"] = prune_import_backups(class_backup_dir)
+        backup["files"] = len(sources)
+        backup["path"] = str(target)
+        backup["pruned"] = prune_method_backups(class_backup_dir)
     except Exception as exc:
         backup["error"] = str(exc)
     return backup
@@ -494,38 +410,24 @@ def _write_backup_manifest(
     rc_path: object,
     rc_dir: Path,
     import_policy: str,
-    backup: dict[str, Any],
-    relative_names: list[str],
+    file_names: list[str],
 ) -> None:
     """Record what the copy holds, so a later restore needs no guesswork."""
 
     payload = {
-        "backup_of": "reserving class",
+        "backup_of": "reserving class method files",
         "taken_at": datetime.now().isoformat(timespec="seconds"),
         "taken_by": _user_name(),
         "taken_before": "ResQ import",
         "import_policy": str(import_policy or IMPORT_POLICY_MERGE),
         "project_name": str(project_name),
         "reserving_class": str(rc_path),
-        "source_dir": str(rc_dir),
-        "restore_by": (
-            "Copy the folders below back over the source folder, leaving this "
-            "note behind, then reload the dataset table in the Project Instance "
-            "page."
-        ),
-        "excluded": (
-            "Engine-generated datasets; ArcRho rebuilds those from the source "
-            "warehouse."
-        ),
-        "file_count": backup["files"],
-        "method_count": backup["methods"],
-        "sidecar_count": backup["sidecars"],
-        "dataset_count": backup["datasets"],
-        "engine_datasets_skipped": backup["engine_datasets_skipped"],
-        "files": relative_names,
+        "source_dir": str(rc_dir / METHOD_DIR_NAME),
+        "file_count": len(file_names),
+        "files": file_names,
     }
     try:
-        with (target / IMPORT_BACKUP_MANIFEST_NAME).open("w", encoding="utf-8") as stream:
+        with (target / METHOD_BACKUP_MANIFEST_NAME).open("w", encoding="utf-8") as stream:
             json.dump(payload, stream, indent=2)
             stream.write("\n")
     except OSError:
@@ -534,23 +436,22 @@ def _write_backup_manifest(
         pass
 
 
-def backup_sentence(backup: object) -> str:
+def method_backup_sentence(backup: object) -> str:
     """One completion-box line describing the copy taken before the import."""
 
     entry = backup if isinstance(backup, dict) else {}
     error = str(entry.get("error") or "")
     if error:
         return (
-            "WARNING - the existing reserving class could not be copied aside "
-            f"before the import, so there is no restore point: {error}"
+            "WARNING - the existing method files could not be copied aside before "
+            f"the import, so there is no restore point for them: {error}"
         )
-    if not int(entry.get("files") or 0):
+    files = int(entry.get("files") or 0)
+    if not files:
         return ""
     return (
-        f"Backed up {entry.get('methods')} method(s) and "
-        f"{entry.get('datasets')} dataset(s) to [{entry.get('path')}] before "
-        f"importing; {entry.get('engine_datasets_skipped')} engine-generated "
-        "dataset(s) were left out."
+        f"Backed up {files} existing method file(s) to [{entry.get('path')}] "
+        "before importing."
     )
 
 
@@ -1106,10 +1007,10 @@ def run_macro(active_dfm=None, active_context=None):
 
     if progress is not None:
         try:
-            progress.update(label="Backing up the existing reserving class")
+            progress.update(label="Backing up the existing method files")
         except Exception:
             pass
-    backup = backup_reserving_class(
+    backup = backup_method_files(
         server_root,
         project_name,
         rc_path,
@@ -1145,7 +1046,7 @@ def run_macro(active_dfm=None, active_context=None):
         if request_id:
             message += f"\nRequest: {request_id}"
         message += f"\n\n{exc}{_failure_details_message(exc)}"
-        backup_note = backup_sentence(backup)
+        backup_note = method_backup_sentence(backup)
         if backup_note:
             message += f"\n\n{backup_note}"
         _message(ui, message, kind="error")
@@ -1183,7 +1084,7 @@ def run_macro(active_dfm=None, active_context=None):
         reload_error = str(exc)
 
     message = _success_message(project_name, rc_path, status)
-    backup_note = backup_sentence(backup)
+    backup_note = method_backup_sentence(backup)
     if backup_note:
         message += f"\n\n{backup_note}"
     reload_cost = _dataset_table_reload_cost(reload_info)

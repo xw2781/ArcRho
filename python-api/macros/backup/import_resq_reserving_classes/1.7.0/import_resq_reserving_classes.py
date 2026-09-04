@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.8.0
-# Release Note: Each class is now copied to a dated backup folder under the server's backups\pre-import before that class is imported, so an import can be undone later: its methods, its input, calculated and method-output datasets with their data files, and its index, with engine-generated datasets left out; the summary names the folder and lists any class whose copy failed.
-# Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
+# Version: 1.7.0
+# Release Note: Each class now has its existing method files copied to a dated backup folder under the server's backups\method-json before that class is imported, so an import can be undone later; the summary names the folder and lists any class whose copy failed.
+# Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class's existing method files to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
 # </arcrho-macro>
 
@@ -323,7 +323,7 @@ def import_selected_classes(
                 )
             except Exception:
                 pass
-        backup = single.backup_reserving_class(
+        backup = single.backup_method_files(
             server_root,
             project_name,
             rc_path,
@@ -407,21 +407,18 @@ def _backup_lines(results: list[dict[str, Any]]) -> list[str]:
     ]
     lines: list[str] = []
     if taken:
-        methods = sum(int(entry.get("methods") or 0) for entry in taken)
-        datasets = sum(int(entry.get("datasets") or 0) for entry in taken)
-        skipped = sum(int(entry.get("engine_datasets_skipped") or 0) for entry in taken)
+        files = sum(int(entry.get("files") or 0) for entry in taken)
         root = str(Path(str(taken[0].get("path"))).parent.parent)
         lines.append("")
         lines.append(
-            f"Backed up {methods} method(s) and {datasets} dataset(s) from "
-            f"{len(taken)} reserving class(es) to [{root}] before importing; "
-            f"{skipped} engine-generated dataset(s) were left out."
+            f"Backed up {files} existing method file(s) from {len(taken)} reserving "
+            f"class(es) to [{root}] before importing."
         )
     if failed:
         lines.append("")
         lines.append(
-            "WARNING - the existing reserving class could not be copied aside "
-            "before the import, so there is no restore point for:"
+            "WARNING - the existing method files could not be copied aside before "
+            "the import, so there is no restore point for:"
         )
         for path, error in failed[:MAX_REPORTED_FAILURES]:
             lines.append(f"- {path}: {error}")

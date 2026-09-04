@@ -11,7 +11,9 @@ whoever opens it next, not only for the person who saved it.
 This page owns the description of that window and of the saved selection. The
 [export](resq_reserving_class_export.md) and
 [sync](resq_reserving_class_sync.md) pages describe what each macro does with
-the answer.
+the answer, and
+[import backups](resq_import_backups.md) describes the copy an import takes of
+the existing reserving class before it writes.
 
 ## Where the rows come from
 
