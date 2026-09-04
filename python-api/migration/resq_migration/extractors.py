@@ -46,6 +46,7 @@ from .catalog import (
     _canon_dataset_name,
     _is_calculated_dataset_type,
     _is_generated_dataset_type,
+    _triangle_source_kind,
 )
 from .engine import import_user_identity_service
 from .core import (
@@ -84,7 +85,6 @@ from .core import (
     _safe_attr,
     _safe_int_attr,
     _safe_read_json,
-    _triangle_source_kind,
     _try_call_member,
     _vector_cache_csv_file_name,
     _write_csv_matrix,
@@ -588,6 +588,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     method_source_kind = _clean_name(payload.get("source_kind"))
     is_berquist_sherman = method_source_kind in {BS_SR_SOURCE_KIND, BS_CRA_SOURCE_KIND}
     source_kind = method_source_kind if is_berquist_sherman else _triangle_source_kind(name, dataset_type)
+    is_app_calculated = (not is_berquist_sherman) and source_kind == "calculated"
     meta_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
     existing = _safe_read_json(meta_path)
     meta = {
@@ -597,7 +598,7 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "reserving_class": rc_path,
         "project_name": PROJECT_NAME,
         "source_kind": source_kind,
-        "calculated": is_berquist_sherman,
+        "calculated": is_berquist_sherman or is_app_calculated,
         "source": (
             "resq_berquist_sherman_sr_triangle"
             if method_source_kind == BS_SR_SOURCE_KIND

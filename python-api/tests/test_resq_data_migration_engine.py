@@ -131,6 +131,20 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             )
         )
 
+    # -- source kind ----------------------------------------------------------
+
+    def test_triangle_source_kind_follows_the_dataset_types_library(self) -> None:
+        """A ResQ triangle named after a plain type is an input, not an engine dataset."""
+        self.assertEqual(self.module._triangle_source_kind("Paid Loss", "Paid Loss"), "engine")
+        self.assertEqual(self.module._triangle_source_kind("Paid Loss AY2020", "Paid Loss"), "input")
+        self.assertEqual(self.module._triangle_source_kind("Loaded Loss", "Loaded Loss"), "calculated")
+        self.assertEqual(
+            self.module._triangle_source_kind(
+                "Net Loss--Incurred Adjusted*", "Net Loss--Incurred Adjusted*"
+            ),
+            "input",
+        )
+
     # -- two-decimal comparison -----------------------------------------------
 
     def test_import_comparison_agrees_within_two_decimal_places(self) -> None:

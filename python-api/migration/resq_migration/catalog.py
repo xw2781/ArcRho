@@ -206,6 +206,21 @@ def _is_engine_generated_instance(payload: dict) -> bool:
         return False
     return _is_generated_dataset_type(dataset_type)
 
+def _triangle_source_kind(name: object, dataset_type: object) -> str:
+    """Decide an imported plain dataset's source kind from ArcRho's dataset types.
+
+    Only a single-instance dataset of a ``Generated`` type is one the Engine
+    rebuilds from source data, and only a type ArcRho itself computes is
+    calculated. Everything else -- including a ResQ triangle whose name happens
+    to match its Dataset Type, such as an adjusted incurred triangle -- is an
+    editable input that both sides hold and the transfer review must show.
+    """
+    if _is_engine_generated_instance({"name": name, "dataset_type": dataset_type}):
+        return "engine"
+    if _is_calculated_dataset_type(dataset_type):
+        return "calculated"
+    return "input"
+
 def _is_unreviewed_dataset(name: object, dataset_type: object) -> bool:
     """True for a dataset the transfer review never offers: calculated or engine-generated.
 

@@ -269,10 +269,6 @@ def _encode_name_part(name: str) -> str:
     return text or "Dataset"
 
 
-def _triangle_source_kind(name: str, dataset_type: str) -> str:
-    return "engine" if _clean_name(dataset_type) == _clean_name(name) else "input"
-
-
 def _mode_suffix(cumulative: bool = DEFAULT_CUMULATIVE, calendar: bool = DEFAULT_CALENDAR) -> str:
     cum_suffix = "cum" if cumulative else "inc"
     cal_suffix = "cal" if calendar else "dev"

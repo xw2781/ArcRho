@@ -79,6 +79,7 @@ from resq_migration.catalog import (  # noqa: E402
     _is_generated_dataset_type,
     _is_known_dataset_type,
     _is_unreviewed_dataset,
+    _triangle_source_kind,
     _unknown_dataset_type_skip_detail,
     configure_catalog,
     rebuild_dataset_instance_index,
@@ -120,7 +121,6 @@ from resq_migration.core import (  # noqa: E402
     _safe_int_attr,
     _iso_or_text,
     _method_type_name,
-    _triangle_source_kind,
     _vector_cache_csv_file_name,
 )
 from resq_migration.dfm import (  # noqa: E402
