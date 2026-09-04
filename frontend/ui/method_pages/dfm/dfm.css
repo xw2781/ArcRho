@@ -11,6 +11,10 @@
   --dfm-scrollbar-button-active: #d9dee7;
   --dfm-scrollbar-thumb: rgba(182, 182, 182, 0.2);
   --dfm-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
+  /* The colour a factor the fits leave out is struck through in. The Ratios and
+     the Curves grid both read it from here, so an excluded factor looks the
+     same wherever it is shown. */
+  --dfm-excluded-ratio-color: #b000c2;
   --cell-h: var(--dfm-cell-h);
   --cell-w: var(--dfm-cell-w);
   --cell-min-w: var(--dfm-cell-min-w);
@@ -450,31 +454,25 @@ body {
   box-sizing: border-box;
   align-self: stretch;
 }
-#dfmDetailsPage::-webkit-scrollbar,
-#ratioWrapHost::-webkit-scrollbar,
-#resultsWrap::-webkit-scrollbar {
+/* Every scrolling area of this page wears the one tray, so a tab added later
+   cannot end up with the browser's default scrollbars beside the others.
+   `dfmScrollArea` on the element is the whole opt-in; dfm_tabs_orchestrator.js
+   wires the same elements for the scrolling and lane-hover states below. */
+.dfmScrollArea::-webkit-scrollbar {
   width: 20px;
   height: 20px;
 }
-#dfmDetailsPage::-webkit-scrollbar-track,
-#dfmDetailsPage::-webkit-scrollbar-corner,
-#ratioWrapHost::-webkit-scrollbar-track,
-#ratioWrapHost::-webkit-scrollbar-corner,
-#resultsWrap::-webkit-scrollbar-track,
-#resultsWrap::-webkit-scrollbar-corner {
+.dfmScrollArea::-webkit-scrollbar-track,
+.dfmScrollArea::-webkit-scrollbar-corner {
   background: var(--dfm-scrollbar-chrome);
 }
-#dfmDetailsPage::-webkit-scrollbar-thumb,
-#ratioWrapHost::-webkit-scrollbar-thumb,
-#resultsWrap::-webkit-scrollbar-thumb {
+.dfmScrollArea::-webkit-scrollbar-thumb {
   background-color: var(--dfm-scrollbar-thumb);
   border: 3px solid var(--dfm-scrollbar-chrome);
   border-radius: 5px;
   background-clip: content-box;
 }
-#dfmDetailsPage::-webkit-scrollbar-button,
-#ratioWrapHost::-webkit-scrollbar-button,
-#resultsWrap::-webkit-scrollbar-button {
+.dfmScrollArea::-webkit-scrollbar-button {
   width: 16px;
   height: 16px;
   display: block;
@@ -483,62 +481,36 @@ body {
   background-repeat: no-repeat;
   background-size: 12px 12px;
 }
-#dfmDetailsPage::-webkit-scrollbar-button:hover,
-#ratioWrapHost::-webkit-scrollbar-button:hover,
-#resultsWrap::-webkit-scrollbar-button:hover {
+.dfmScrollArea::-webkit-scrollbar-button:hover {
   background-color: var(--dfm-scrollbar-button-hover);
 }
-#dfmDetailsPage::-webkit-scrollbar-button:active,
-#ratioWrapHost::-webkit-scrollbar-button:active,
-#resultsWrap::-webkit-scrollbar-button:active {
+.dfmScrollArea::-webkit-scrollbar-button:active {
   background-color: var(--dfm-scrollbar-button-active);
 }
-#dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:increment,
-#dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:decrement,
-#dfmDetailsPage::-webkit-scrollbar-button:vertical:start:increment,
-#dfmDetailsPage::-webkit-scrollbar-button:vertical:end:decrement,
-#ratioWrapHost::-webkit-scrollbar-button:horizontal:start:increment,
-#ratioWrapHost::-webkit-scrollbar-button:horizontal:end:decrement,
-#ratioWrapHost::-webkit-scrollbar-button:vertical:start:increment,
-#ratioWrapHost::-webkit-scrollbar-button:vertical:end:decrement,
-#resultsWrap::-webkit-scrollbar-button:horizontal:start:increment,
-#resultsWrap::-webkit-scrollbar-button:horizontal:end:decrement,
-#resultsWrap::-webkit-scrollbar-button:vertical:start:increment,
-#resultsWrap::-webkit-scrollbar-button:vertical:end:decrement {
+.dfmScrollArea::-webkit-scrollbar-button:horizontal:start:increment,
+.dfmScrollArea::-webkit-scrollbar-button:horizontal:end:decrement,
+.dfmScrollArea::-webkit-scrollbar-button:vertical:start:increment,
+.dfmScrollArea::-webkit-scrollbar-button:vertical:end:decrement {
   width: 0;
   height: 0;
   display: none;
   background-image: none;
 }
-#dfmDetailsPage::-webkit-scrollbar-button:horizontal:start:decrement,
-#ratioWrapHost::-webkit-scrollbar-button:horizontal:start:decrement,
-#resultsWrap::-webkit-scrollbar-button:horizontal:start:decrement {
+.dfmScrollArea::-webkit-scrollbar-button:horizontal:start:decrement {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M7.8 2.2 3.8 6l4 3.8z'/%3E%3C/svg%3E");
 }
-#dfmDetailsPage::-webkit-scrollbar-button:horizontal:end:increment,
-#ratioWrapHost::-webkit-scrollbar-button:horizontal:end:increment,
-#resultsWrap::-webkit-scrollbar-button:horizontal:end:increment {
+.dfmScrollArea::-webkit-scrollbar-button:horizontal:end:increment {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M4.2 2.2 8.2 6l-4 3.8z'/%3E%3C/svg%3E");
 }
-#dfmDetailsPage::-webkit-scrollbar-button:vertical:start:decrement,
-#ratioWrapHost::-webkit-scrollbar-button:vertical:start:decrement,
-#resultsWrap::-webkit-scrollbar-button:vertical:start:decrement {
+.dfmScrollArea::-webkit-scrollbar-button:vertical:start:decrement {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
 }
-#dfmDetailsPage::-webkit-scrollbar-button:vertical:end:increment,
-#ratioWrapHost::-webkit-scrollbar-button:vertical:end:increment,
-#resultsWrap::-webkit-scrollbar-button:vertical:end:increment {
+.dfmScrollArea::-webkit-scrollbar-button:vertical:end:increment {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
 }
-#dfmDetailsPage.isScrolling::-webkit-scrollbar-thumb,
-#dfmDetailsPage.isScrollbarHover::-webkit-scrollbar-thumb,
-#dfmDetailsPage::-webkit-scrollbar-thumb:hover,
-#ratioWrapHost.isScrolling::-webkit-scrollbar-thumb,
-#ratioWrapHost.isScrollbarHover::-webkit-scrollbar-thumb,
-#ratioWrapHost::-webkit-scrollbar-thumb:hover,
-#resultsWrap.isScrolling::-webkit-scrollbar-thumb,
-#resultsWrap.isScrollbarHover::-webkit-scrollbar-thumb,
-#resultsWrap::-webkit-scrollbar-thumb:hover {
+.dfmScrollArea.isScrolling::-webkit-scrollbar-thumb,
+.dfmScrollArea.isScrollbarHover::-webkit-scrollbar-thumb,
+.dfmScrollArea::-webkit-scrollbar-thumb:hover {
   background-color: var(--dfm-scrollbar-thumb-active);
 }
 #ratioWrap {
@@ -632,9 +604,9 @@ body {
   border-top: 1px solid var(--ar-spreadsheet-grid-border);
 }
 #ratioWrap td.ratioCell.strike {
-  color: #b000c2;
+  color: var(--dfm-excluded-ratio-color);
   text-decoration: line-through;
-  text-decoration-color: #b000c2;
+  text-decoration-color: var(--dfm-excluded-ratio-color);
   text-decoration-thickness: 1px;
 }
 #ratioWrap th.ratioDataHeader {
@@ -1514,8 +1486,10 @@ body {
   color: #64748b;
   font-size: 12px;
 }
-.dfmResultsControls,
-.dfmCurvesControls {
+/* The toolbar that sits on a framed grid. Both the Curves and the Results tab
+   carry `dfmPageControls`, so every label and field below is written once and
+   a control added to either bar lands in the same box as its neighbours. */
+.dfmPageControls {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1528,7 +1502,6 @@ body {
   box-sizing: border-box;
   flex-wrap: wrap;
 }
-/* Curves tab: the toolbar sits on the framed grid the way the Results tab's does. */
 .dfmCurvesControls label + .dfmSpinner,
 .dfmCurvesControls .dfmSpinner + label {
   margin-left: 4px;
@@ -1561,15 +1534,24 @@ body {
   min-width: 0;
   width: 100%;
   border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
+  border-radius: 0;
   background: #fff;
+  box-shadow: none;
   outline: none;
   overflow: auto;
   padding-right: 1px;
   padding-bottom: 1px;
   box-sizing: border-box;
+  align-self: stretch;
+}
+#dfmCurvesWrapHost:focus-visible {
+  border-color: #93b4f5;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
 }
 #dfmCurvesWrap {
-  min-width: max-content;
+  width: max-content;
+  min-width: 100%;
+  position: relative;
 }
 table.dfmCurvesTable {
   --ar-spreadsheet-cell-width: 96px;
@@ -1585,6 +1567,8 @@ table.dfmCurvesTable thead th {
   padding-bottom: 4px;
   text-align: center;
   vertical-align: middle;
+  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  background-clip: padding-box;
 }
 table.dfmCurvesTable thead th.dfmCurvesColumnHeader {
   cursor: pointer;
@@ -1599,11 +1583,17 @@ table.dfmCurvesTable tbody th.dfmCurvesRowHeader {
   z-index: 1;
   text-align: center;
   white-space: nowrap;
+  background-clip: padding-box;
 }
 table.dfmCurvesTable thead th.dfmCurvesCorner {
   --ar-spreadsheet-cell-width: 120px;
   left: 0;
   z-index: 3;
+}
+/* The grid closes on its left edge the way the Ratios grid does, so the frame
+   stays continuous once the row labels are stuck against it. */
+table.dfmCurvesTable th:first-child {
+  border-left: 1px solid var(--ar-spreadsheet-grid-border);
 }
 table.dfmCurvesTable tbody th {
   background: var(--ar-spreadsheet-label-fill);
@@ -1614,21 +1604,23 @@ table.dfmCurvesTable td {
 }
 table.dfmCurvesTable td.dfmCurvesValue,
 table.dfmCurvesTable td.dfmCurvesPattern,
+table.dfmCurvesTable td.dfmCurvesFuture,
 table.dfmCurvesTable td.dfmCurvesInclude {
   cursor: pointer;
 }
-table.dfmCurvesTable td.dfmCurvesPattern,
-table.dfmCurvesTable td.dfmCurvesInclude,
 table.dfmCurvesTable td.dfmCurvesStat {
   text-align: right;
 }
-table.dfmCurvesTable td.dfmCurvesBlank,
-table.dfmCurvesTable tr.dfmCurvesBlankRow th {
-  border: none;
-  background: transparent;
+/* A flag and a mark sit in the middle of their cell; only figures read right. */
+table.dfmCurvesTable td.dfmCurvesPattern,
+table.dfmCurvesTable td.dfmCurvesInclude {
+  text-align: center;
 }
-table.dfmCurvesTable tr.dfmCurvesBlankRow th {
-  background: var(--ar-spreadsheet-label-fill);
+/* A spacer cell holds no value and takes no fill, but it keeps its grid edges:
+   the rules have to run unbroken across the blank rows and down the columns
+   that say nothing below the periods, or the grid comes apart. */
+table.dfmCurvesTable td.dfmCurvesBlank {
+  background: transparent;
 }
 table.dfmCurvesTable td.dfmCurvesUserValue {
   background: #e0f7fa;
@@ -1636,23 +1628,49 @@ table.dfmCurvesTable td.dfmCurvesUserValue {
 table.dfmCurvesTable td.dfmCurvesLinkedValue {
   color: #475569;
 }
+/* A chosen cell takes the pale green the Ratios tab fills a selected average
+   with, which is ResQ's own colour for the same thing. */
 table.dfmCurvesTable td.dfmCurvesValue.dfmCurvesSelected,
-table.dfmCurvesTable td.dfmCurvesPattern.dfmCurvesSelected {
-  background: #9dcc00;
+table.dfmCurvesTable td.dfmCurvesPattern.dfmCurvesSelected,
+table.dfmCurvesTable td.dfmCurvesFuture.dfmCurvesSelected {
+  background: var(--ar-spreadsheet-weighted-selection-fill);
   color: #111827;
 }
-table.dfmCurvesTable td.dfmCurvesEstimateNumber {
-  background: #a8eeee;
-  color: #0284c7;
+/* The tail pattern and the periods it runs off over are one block: a quiet rule
+   opens it, the X names the column the tail follows, and that column stays
+   green all the way down so the choice and its result are read together. */
+table.dfmCurvesTable tr.dfmCurvesPatternRow th,
+table.dfmCurvesTable tr.dfmCurvesPatternRow td:not(.dfmCurvesBlank) {
+  border-top: 1px solid #cbd5e1;
 }
+table.dfmCurvesTable td.dfmCurvesPattern:not(.dfmCurvesSelected):hover,
+table.dfmCurvesTable td.dfmCurvesFuture:not(.dfmCurvesSelected):hover {
+  background: #f0f7d4;
+}
+table.dfmCurvesTable td.dfmCurvesPattern:not(.dfmCurvesSelected):hover::after {
+  content: "X";
+  color: #4d6b00;
+  opacity: 0.55;
+}
+/* The Selected Estimate Number column deliberately has no rule of its own: in
+   ResQ it carries no fill, and the green cell it points at is what the eye
+   follows along the row. Only the Selected Value beside it is filled, in the
+   same pale yellow Result Selection fills its Selected Ultimate column with. */
 table.dfmCurvesTable td.dfmCurvesSelectedValue {
-  background: #fde047;
-  color: #be123c;
-  font-weight: bold;
+  background: #fdf5a9;
+  color: #1f2937;
+  font-weight: 400;
 }
-table.dfmCurvesTable td.dfmCurvesExcluded {
-  color: #c58bd8;
+/* A period the fits leave out is struck through in the Ratios tab's colour, on
+   its Include flag and on the Initial Selection factor the flag drops. Declared
+   after the selected fill and matching it class for class, so an excluded
+   factor still reads as excluded when it is also the chosen one. */
+table.dfmCurvesTable td.dfmCurvesValue.dfmCurvesExcluded,
+table.dfmCurvesTable td.dfmCurvesInclude.dfmCurvesExcluded {
+  color: var(--dfm-excluded-ratio-color);
   text-decoration: line-through;
+  text-decoration-color: var(--dfm-excluded-ratio-color);
+  text-decoration-thickness: 1px;
 }
 table.dfmCurvesTable td.dfmCurvesFitLimit {
   color: #b45309;
@@ -1676,7 +1694,7 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   text-align: right;
   background: #fff;
 }
-.dfmResultsControls label {
+.dfmPageControls label {
   font-size: 12px;
   color: #374151;
   min-width: 64px;
@@ -1722,22 +1740,29 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   transform: translateY(-50%);
   border-radius: var(--tabbed-page-control-radius, 4px);
 }
-.dfmResultsControls input:focus {
+.dfmPageControls input:focus,
+.dfmPageControls select:focus {
   outline: none;
   border-color: #60a5fa;
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
 }
-.dfmResultsControls input.dfmResultsSmallInput {
+.dfmPageControls input.dfmResultsSmallInput {
   min-width: 64px;
   max-width: 84px;
   text-align: center;
 }
-.dfmResultsControls .dfmSpinner {
+.dfmPageControls .dfmSpinner {
   width: var(--dfm-spin-w);
   min-width: 64px;
   max-width: 84px;
 }
-.dfmResultsControls .dfmSpinner input.dfmResultsSmallInput {
+/* A stepper holding a number stays short; the Curves lists need room for
+   "Log Regression", so they lift the cap to the width they set for themselves. */
+.dfmPageControls .dfmCurvesSelect {
+  max-width: var(--dfm-spin-w);
+}
+.dfmPageControls .dfmSpinner input.dfmResultsSmallInput,
+.dfmPageControls .dfmSpinner select.dfmResultsSmallInput {
   width: 100%;
   min-width: 0;
   max-width: none;
@@ -1749,6 +1774,21 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   color: #111827;
   box-sizing: border-box;
   text-align: left;
+}
+/* The stepper caret pair stands where a list's own arrow would, so the text
+   stops short of it. */
+.dfmPageControls .dfmSpinner select.dfmResultsSmallInput {
+  padding-right: 24px;
+}
+.dfmPageControls .dfmSpinner select:disabled,
+.dfmPageControls .dfmSpinner input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: default;
+}
+.dfmPageControls .dfmSpinBtn:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 .dfmResultsBasisStatus {
   font-size: 12px;

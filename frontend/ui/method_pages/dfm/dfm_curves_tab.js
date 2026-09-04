@@ -152,10 +152,12 @@ function rowHeader(text, classes = []) {
   return th;
 }
 
+// The spacer row's label cell is a row header like any other, so the frozen
+// label column stays whole when the grid is scrolled sideways.
 function blankRow(columnCount) {
   const tr = document.createElement("tr");
   tr.classList.add("dfmCurvesBlankRow");
-  tr.appendChild(rowHeader(""));
+  tr.appendChild(rowHeader("", ["dfmCurvesRowHeader"]));
   for (let i = 0; i < columnCount; i++) tr.appendChild(cell("", ["dfmCurvesBlank"]));
   return tr;
 }
@@ -223,7 +225,10 @@ export function renderDfmCurvesTab() {
   const tbody = document.createElement("tbody");
   const valueCell = (column, value, period, selected) => {
     const td = cell(formatFactor(value), ["dfmCurvesValue"], { column: column.number, period });
-    if (selected) td.classList.add("dfmCurvesSelected");
+    if (selected) {
+      td.classList.add("dfmCurvesSelected");
+      td.setAttribute("aria-selected", "true");
+    }
     if (column.column_type === "user_entry") td.classList.add("dfmCurvesUserValue");
     if (column.column_type === "prior_analysis" || column.column_type === "pattern" || column.column_type === "benchmark") {
       td.classList.add("dfmCurvesLinkedValue");
@@ -242,13 +247,17 @@ export function renderDfmCurvesTab() {
     const tr = document.createElement("tr");
     tr.dataset.period = String(index + 1);
     tr.appendChild(rowHeader(periodRowLabel(ratioLabels, index), ["dfmCurvesRowHeader"]));
+    // Leaving a period out strikes both its Include flag and the Initial
+    // Selection factor the flag drops, the way ResQ shows the pair.
+    const excluded = !tab.included[index];
     columns.forEach((column, columnIndex) => {
-      tr.appendChild(valueCell(column, column.values[index], index + 1, tab.selected_estimates[index] === column.number));
+      const td = valueCell(column, column.values[index], index + 1, tab.selected_estimates[index] === column.number);
+      if (columnIndex === 0 && excluded) td.classList.add("dfmCurvesExcluded");
+      tr.appendChild(td);
       if (columnIndex === 0) {
-        const included = !!tab.included[index];
-        const td = cell(included ? "Yes" : "No", ["dfmCurvesInclude", included ? "" : "dfmCurvesExcluded"], { period: index + 1 });
-        td.title = "Toggle whether this period takes part in the curve fits";
-        tr.appendChild(td);
+        const flag = cell(excluded ? "No" : "Yes", ["dfmCurvesInclude", excluded ? "dfmCurvesExcluded" : ""], { period: index + 1 });
+        flag.title = "Toggle whether this period takes part in the curve fits";
+        tr.appendChild(flag);
       }
     });
     derivedCells(
@@ -269,12 +278,12 @@ export function renderDfmCurvesTab() {
   tailRow.dataset.period = "tail";
   tailRow.appendChild(rowHeader(tailRowLabel(ratioLabels), ["dfmCurvesRowHeader"]));
   columns.forEach((column, columnIndex) => {
-    tailRow.appendChild(valueCell(column, column.tail, "tail", tab.selected_tail_factor === column.number));
+    tailRow.appendChild(valueCell(column, column.tail, "tail", table.selected_tail_column === column.number));
     if (columnIndex === 0) tailRow.appendChild(cell("", ["dfmCurvesBlank"]));
   });
   derivedCells(
     tailRow,
-    tab.selected_tail_factor,
+    table.selected_tail_column,
     table.selected_tail,
     table.cumulative[periodCount],
     table.cumulative_percentage[periodCount],
@@ -309,17 +318,30 @@ export function renderDfmCurvesTab() {
   tbody.appendChild(statRow("R-squared %", (column) => formatPercent(column.fit.r_squared)));
   tbody.appendChild(blankRow(totalColumns));
 
-  // The tail pattern: the X marks the column whose run-off the tail follows.
+  // The tail pattern: the X marks the column whose run-off the tail follows,
+  // and that same column stays green down the run-off rows beneath it, so the
+  // choice and the periods it produces read as one block. The number comes from
+  // the table rather than the tab, so the mark always names the column the
+  // figures were actually built from.
+  const patternColumnNumber = table.selected_tail_pattern_column;
+  const patternColumn = columns.find((column) => column.number === patternColumnNumber);
+  const patternTitle = patternColumn
+    ? `The tail runs off along ${patternColumn.label}. Click another column to run it off along that one.`
+    : "Click a column to run the tail off along it";
   const patternHeader = document.createElement("tr");
+  patternHeader.classList.add("dfmCurvesPatternRow");
   patternHeader.dataset.period = "pattern";
-  patternHeader.appendChild(rowHeader("Tail Pattern", ["dfmCurvesRowHeader"]));
+  const patternLabel = rowHeader("Tail Pattern", ["dfmCurvesRowHeader"]);
+  patternLabel.title = patternTitle;
+  patternHeader.appendChild(patternLabel);
   columns.forEach((column, columnIndex) => {
-    const selected = tab.selected_tail_curve === column.number;
+    const selected = patternColumnNumber === column.number;
     const td = cell(selected ? "X" : "", ["dfmCurvesPattern", selected ? "dfmCurvesSelected" : ""], {
       column: column.number,
       period: "pattern",
     });
-    td.title = "Run the tail off along this column's future periods";
+    td.title = patternTitle;
+    if (selected) td.setAttribute("aria-selected", "true");
     patternHeader.appendChild(td);
     if (columnIndex === 0) patternHeader.appendChild(cell("", ["dfmCurvesBlank"]));
   });
@@ -331,7 +353,19 @@ export function renderDfmCurvesTab() {
     tr.appendChild(rowHeader(futureRowLabel(devs, ratioLabels, row.period), ["dfmCurvesRowHeader"]));
     columns.forEach((column, columnIndex) => {
       const value = row.values instanceof Map ? row.values.get(column.number) : row.values?.[column.number];
-      tr.appendChild(cell(formatFactor(value), ["dfmCurvesFuture", column.column_type === "user_entry" ? "dfmCurvesUserValue" : ""]));
+      const selected = patternColumnNumber === column.number;
+      const td = cell(
+        formatFactor(value),
+        [
+          "dfmCurvesFuture",
+          column.column_type === "user_entry" ? "dfmCurvesUserValue" : "",
+          selected ? "dfmCurvesSelected" : "",
+        ],
+        { column: column.number, period: "pattern" },
+      );
+      td.title = patternTitle;
+      if (selected) td.setAttribute("aria-selected", "true");
+      tr.appendChild(td);
       if (columnIndex === 0) tr.appendChild(cell("", ["dfmCurvesBlank"]));
     });
     tr.appendChild(cell("", ["dfmCurvesBlank"]));
@@ -552,7 +586,9 @@ function wireCurvesGrid() {
       toggleInclude(Number(include.dataset.period));
       return;
     }
-    const value = event.target?.closest?.("td.dfmCurvesValue, td.dfmCurvesPattern");
+    // A run-off cell answers like the Tail Pattern cell above it, so the whole
+    // block is one target for choosing the column the tail follows.
+    const value = event.target?.closest?.("td.dfmCurvesValue, td.dfmCurvesPattern, td.dfmCurvesFuture");
     if (!value) return;
     const period = value.dataset.period === "tail" || value.dataset.period === "pattern"
       ? value.dataset.period

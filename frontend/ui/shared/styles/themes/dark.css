@@ -1467,18 +1467,19 @@
   background-color: var(--ar-color-surface);
 }
 
-:root[data-arcrho-theme="dark"] .dfmResultsControls {
+:root[data-arcrho-theme="dark"] .dfmPageControls {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-muted);
 }
 
-:root[data-arcrho-theme="dark"] .dfmResultsControls label {
+:root[data-arcrho-theme="dark"] .dfmPageControls label {
   color: var(--ar-color-text-muted);
 }
 
 :root[data-arcrho-theme="dark"] :is(
-  .dfmResultsControls input,
-  .dfmResultsControls .dfmSpinner input,
+  .dfmPageControls input,
+  .dfmPageControls .dfmSpinner input,
+  .dfmPageControls .dfmSpinner select,
   .dfmResultsPickerWrap > .pathTreeBtn
 ) {
   border-color: var(--ar-color-border-strong);
@@ -1486,7 +1487,18 @@
   color: var(--ar-color-text);
 }
 
-:root[data-arcrho-theme="dark"] .dfmResultsControls input:focus {
+:root[data-arcrho-theme="dark"] :is(
+  .dfmPageControls .dfmSpinner input:disabled,
+  .dfmPageControls .dfmSpinner select:disabled
+) {
+  background-color: var(--ar-color-surface-muted);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] :is(
+  .dfmPageControls input:focus,
+  .dfmPageControls select:focus
+) {
   border-color: var(--ar-color-border-focus);
   box-shadow: 0 0 0 2px var(--ar-color-focus-ring);
 }
@@ -1580,6 +1592,16 @@
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap td.ratioCell.strike {
+  color: #c58bd8;
+  text-decoration-color: #c58bd8;
+}
+
+/* The Curves grid strikes an excluded factor in the same lighter purple, since
+   the Ratios strike colour goes unreadable on the dark table surface. */
+:root[data-arcrho-theme="dark"] :is(
+  table.dfmCurvesTable td.dfmCurvesValue.dfmCurvesExcluded,
+  table.dfmCurvesTable td.dfmCurvesInclude.dfmCurvesExcluded
+) {
   color: #c58bd8;
   text-decoration-color: #c58bd8;
 }

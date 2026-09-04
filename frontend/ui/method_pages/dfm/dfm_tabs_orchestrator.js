@@ -48,7 +48,7 @@ import {
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260830a";
 import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
-import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260903a";
+import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260903c";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
 import {
   syncMethodNameFromInputs,

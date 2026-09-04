@@ -18,9 +18,9 @@
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260902a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260903a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260903c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260829a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260903a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 
@@ -35,7 +35,7 @@
     <button class="dfmTab tabbedPageTab" data-page="links" type="button">Links</button>
     <button class="dfmTab tabbedPageTab" data-page="audit" type="button">Audit Log</button>
   </div>
-  <div id="dfmDetailsPage" data-page="details" class="arDetailsRoot">
+  <div id="dfmDetailsPage" data-page="details" class="arDetailsRoot dfmScrollArea">
     <!-- Identity, then the input this method develops, then the shape and
          precision of its output. Name is the first row and Output Type the
          second, as on every Details tab. -->
@@ -169,7 +169,7 @@
       <div class="panelInner">
         <!-- <div class="small"><b>Ratios</b></div> -->
         <div id="dfmRatiosNotice" class="dfmRatiosNotice" role="alert" aria-live="assertive" aria-atomic="true" hidden></div>
-        <div id="ratioWrapHost" tabindex="-1" aria-label="Ratios tables">
+        <div id="ratioWrapHost" class="dfmScrollArea" tabindex="-1" aria-label="Ratios tables">
           <div id="ratioWrap"></div>
         </div>
       </div>
@@ -179,7 +179,7 @@
   <div id="dfmCurvesPage" data-page="curves">
     <div class="panel" id="curvesPanel">
       <div class="panelInner">
-        <div class="dfmCurvesControls">
+        <div class="dfmPageControls dfmCurvesControls">
           <label for="dfmCurvesFittingMethod">Fitting Method</label>
           <div class="dfmSpinner dfmCurvesSelect" data-target="dfmCurvesFittingMethod">
             <select id="dfmCurvesFittingMethod" class="dfmResultsSmallInput dfmCurvesSelectInput">
@@ -222,7 +222,7 @@
           </label>
           <span id="dfmCurvesNotice" class="dfmCurvesNotice" aria-live="polite"></span>
         </div>
-        <div id="dfmCurvesWrapHost" tabindex="0" aria-label="DFM curves table">
+        <div id="dfmCurvesWrapHost" class="dfmScrollArea" tabindex="0" aria-label="DFM curves table">
           <div id="dfmCurvesWrap"></div>
         </div>
       </div>
@@ -233,7 +233,7 @@
     <div class="panel" id="resultsPanel">
       <div class="panelInner">
         <!-- <div class="small"><b>Results</b></div> -->
-        <div class="dfmResultsControls">
+        <div class="dfmPageControls dfmResultsControls">
           <label for="dfmRatioBasisInput">Ratio Basis</label>
           <div class="dfmResultsPickerWrap">
             <input id="dfmRatioBasisInput" placeholder="None" autocomplete="off" />
@@ -257,7 +257,7 @@
           </div>
           <span id="dfmRatioBasisStatus" class="dfmResultsBasisStatus" aria-live="polite"></span>
         </div>
-        <div id="resultsWrap" tabindex="0" aria-label="DFM results table"></div>
+        <div id="resultsWrap" class="dfmScrollArea" tabindex="0" aria-label="DFM results table"></div>
       </div>
     </div>
   </div>

@@ -640,7 +640,7 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
   assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260817d/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260829a/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260903a/);
   assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
@@ -663,7 +663,7 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260829a/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260903a/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {
