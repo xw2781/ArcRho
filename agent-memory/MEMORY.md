@@ -28,6 +28,7 @@
 - [Launching ArcRho detached](arcrho-launch-electron-detached.md) — use Win32_Process.Create + start_electron.bat; poll app_ui_ready.json (written once); crash logs in %APPDATA%\arcrho-electron\logs
 - [Frontend node test suite](frontend-node-test-suite.md) — run with node-portable + glob; 4 tests already fail at HEAD, baseline via git worktree before blaming a change
 - [Python test runner](python-test-runner.md) — pytest lives only in the repo-local .pytest-tools (3.14); C:\Program Files\Python310 has fastapi/pandas for frontend unittest runs from frontend/tests; known failures at HEAD incl. the RS cross-producer contract test
+- [Macro tests poisoned by test_resq_dfm_v2](macro-tests-poisoned-by-resq-dfm-v2.md) — the ResQ import macro tests pass alone but 24 fail (slowly) when test_resq_dfm_v2.py runs first in the same pytest process; pre-existing at b3a39003, and nothing reaches the live share
 - [DFM save propagation profile](dfm-save-propagation-profile.md) — dependent propagation is ~80% of DFM save I/O; offline profiling harness technique and data-engine offload feasibility notes (2026-08-06)
 - [ResQ PercentageDevelopedType enum](resq-percentage-developed-enum.md) — 4 codes incl. pdCumDevFactorsAdjusted=3; typelib constants via gencache; GetCapeCodeMethod for full CC objects
 - [Project duplication diagnostics](project-duplication-diagnostics.md) — the UI error is redacted by contract; read status JSON history (varying vs fixed stop point) and runtime\logs\project_duplication.log
