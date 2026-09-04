@@ -48,7 +48,7 @@ Path: HPPREF\HO+DF\NJ\Legacy\HOL
 # Server Components Rebuild and Deploy
 
 Run the commit workflow, rebuild and deploy server components if needed.
-
+server-components\deploy.bat
 
 # Production Automations 
 
