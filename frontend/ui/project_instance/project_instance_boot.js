@@ -5,7 +5,7 @@ import {
   saveProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/services/project_user_preferences.js";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260816a";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260904a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260824g";

@@ -9,6 +9,7 @@ const WINDOW_FRAME_MARGIN_PX = 8;
 const PATH_TOOLTIP_ID = "arcrho-path-tree-tooltip";
 const PATH_TOOLTIP_DELAY_MS = 320;
 const PATH_TOOLTIP_STATE = new WeakMap();
+const FAVORITE_FOLDER_DRAG_TYPE = "application/x-arcrho-favorite-folder";
 let activePicker = null;
 let activeFavoriteContextMenu = null;
 
@@ -503,6 +504,22 @@ function ensureStyles(doc) {
     }
     .ptree-favorite-folder-header:hover {
       background: #f5f8ff;
+    }
+    .ptree-favorite-folder-header[draggable="true"] {
+      cursor: grab;
+    }
+    .ptree-favorite-folder.dragging {
+      opacity: 0.55;
+    }
+    .ptree-favorite-folder.drop-before,
+    .ptree-favorite-folder.drop-after {
+      border-radius: 0;
+    }
+    .ptree-favorite-folder.drop-before {
+      box-shadow: inset 0 2px 0 0 #4a86e8;
+    }
+    .ptree-favorite-folder.drop-after {
+      box-shadow: inset 0 -2px 0 0 #4a86e8;
     }
     .ptree-favorite-folder-caret {
       width: 0;
@@ -1641,7 +1658,9 @@ function closeFavoriteContextMenu(doc) {
 function startInlineFavoriteRename(doc, labelEl, initialValue, onCommit) {
   if (!doc || !labelEl || typeof onCommit !== "function") return;
   const originalText = String(initialValue || labelEl.textContent || "").trim();
-  const rowEl = typeof labelEl.closest === "function" ? labelEl.closest(".ptree-favorite-row") : null;
+  const rowEl = typeof labelEl.closest === "function"
+    ? (labelEl.closest(".ptree-favorite-row") || labelEl.closest(".ptree-favorite-folder-header"))
+    : null;
   const previousDraggable = rowEl ? rowEl.draggable : null;
   if (rowEl) rowEl.draggable = false;
   const input = doc.createElement("input");
@@ -2271,13 +2290,19 @@ export function openFloatingPathTreePicker(options = {}) {
     const list = doc.createElement("div");
     list.className = "ptree-favorite-list";
     const clearFavoriteDropStates = () => {
-      for (const el of Array.from(section.querySelectorAll(".drag-over"))) {
-        el.classList.remove("drag-over");
+      for (const el of Array.from(section.querySelectorAll(".drag-over, .drop-before, .drop-after"))) {
+        el.classList.remove("drag-over", "drop-before", "drop-after");
       }
+    };
+    let draggingFolderId = "";
+    const isFolderDrag = (evt) => {
+      if (draggingFolderId) return true;
+      return Array.from(evt?.dataTransfer?.types || []).includes(FAVORITE_FOLDER_DRAG_TYPE);
     };
     const setupDropTarget = (targetEl, folderId = null) => {
       if (!targetEl || typeof options?.onMoveFavoriteToFolder !== "function") return;
       const onDragOver = (evt) => {
+        if (isFolderDrag(evt)) return;
         const hasPath = Array.from(evt.dataTransfer?.types || []).includes("text/plain");
         if (!hasPath) return;
         evt.preventDefault();
@@ -2288,12 +2313,65 @@ export function openFloatingPathTreePicker(options = {}) {
       targetEl.addEventListener("dragover", onDragOver);
       targetEl.addEventListener("dragleave", clear);
       targetEl.addEventListener("drop", (evt) => {
+        if (isFolderDrag(evt)) return;
         evt.preventDefault();
         evt.stopPropagation();
         clearFavoriteDropStates();
         const path = evt.dataTransfer?.getData("text/plain") || "";
         if (!path) return;
         try { options.onMoveFavoriteToFolder(path, folderId, { event: evt }); } catch {}
+      });
+    };
+    const setupFolderReorder = (folderEl, folderHeader, folder) => {
+      if (!folderEl || !folderHeader || !folder?.id) return;
+      if (typeof options?.onReorderFavoriteFolder !== "function") return;
+      folderHeader.draggable = true;
+      const dropPosition = (evt) => {
+        const rect = typeof folderHeader.getBoundingClientRect === "function"
+          ? folderHeader.getBoundingClientRect()
+          : null;
+        if (!rect || !rect.height) return "after";
+        return Number(evt?.clientY) < rect.top + (rect.height / 2) ? "before" : "after";
+      };
+      folderHeader.addEventListener("dragstart", (evt) => {
+        evt.stopPropagation();
+        draggingFolderId = folder.id;
+        folderEl.classList.add("dragging");
+        if (evt.dataTransfer) {
+          evt.dataTransfer.effectAllowed = "move";
+          try { evt.dataTransfer.setData(FAVORITE_FOLDER_DRAG_TYPE, folder.id); } catch {}
+        }
+      });
+      folderHeader.addEventListener("dragend", () => {
+        draggingFolderId = "";
+        folderEl.classList.remove("dragging");
+        clearFavoriteDropStates();
+      });
+      folderEl.addEventListener("dragover", (evt) => {
+        if (!isFolderDrag(evt) || draggingFolderId === folder.id) return;
+        evt.preventDefault();
+        evt.stopPropagation();
+        if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+        const position = dropPosition(evt);
+        folderEl.classList.toggle("drop-before", position === "before");
+        folderEl.classList.toggle("drop-after", position !== "before");
+      });
+      folderEl.addEventListener("dragleave", (evt) => {
+        const next = evt?.relatedTarget;
+        if (next && typeof folderEl.contains === "function" && folderEl.contains(next)) return;
+        folderEl.classList.remove("drop-before", "drop-after");
+      });
+      folderEl.addEventListener("drop", (evt) => {
+        if (!isFolderDrag(evt)) return;
+        evt.preventDefault();
+        evt.stopPropagation();
+        const position = dropPosition(evt);
+        const sourceId = draggingFolderId
+          || (evt.dataTransfer?.getData ? evt.dataTransfer.getData(FAVORITE_FOLDER_DRAG_TYPE) : "");
+        draggingFolderId = "";
+        clearFavoriteDropStates();
+        if (!sourceId || sourceId === folder.id) return;
+        try { options.onReorderFavoriteFolder(sourceId, folder.id, { position, event: evt }); } catch {}
       });
     };
     const renderFavoriteRow = (item) => {
@@ -2462,6 +2540,7 @@ export function openFloatingPathTreePicker(options = {}) {
       folderList.className = "ptree-favorite-folder-list";
       setupDropTarget(folderEl, folder.id);
       setupDropTarget(folderList, folder.id);
+      setupFolderReorder(folderEl, folderHeader, folder);
       folderHeader.addEventListener("click", (evt) => {
         evt.preventDefault();
         evt.stopPropagation();

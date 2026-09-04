@@ -1,4 +1,4 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260715c";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260904a";
 import { buildWorkflowPathRootNode } from "/ui/shared/integrations/workflow_picker_options.js";
 
 const LOOKUP_MODEL_CACHE = new Map();
@@ -712,6 +712,22 @@ function buildReservingClassLookupModel(combosData, reservingTypesData) {
     favoriteFolders = favoriteFolders.filter((folder) => folder.id !== id);
     return getFavoriteFolders();
   };
+  const reorderFavoriteFolder = (folderId, targetFolderId, position = "before") => {
+    const id = toText(folderId);
+    const targetId = toText(targetFolderId);
+    if (!id || id === targetId) return getFavoriteFolders();
+    const fromIndex = favoriteFolders.findIndex((folder) => folder.id === id);
+    if (fromIndex < 0) return getFavoriteFolders();
+    const next = favoriteFolders.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    const targetIndex = targetId ? next.findIndex((folder) => folder.id === targetId) : -1;
+    const insertAt = targetIndex < 0
+      ? next.length
+      : (position === "after" ? targetIndex + 1 : targetIndex);
+    next.splice(insertAt, 0, moved);
+    favoriteFolders = next;
+    return getFavoriteFolders();
+  };
   const moveFavoriteToFolder = (rawPath, folderId = null) => {
     const key = toPathKey(rawPath);
     if (!key || !favoritePathKeys.has(key)) return getFavoriteFolders();
@@ -966,6 +982,7 @@ function buildReservingClassLookupModel(combosData, reservingTypesData) {
     createFavoriteFolder,
     renameFavoriteFolder,
     deleteFavoriteFolder,
+    reorderFavoriteFolder,
     moveFavoriteToFolder,
     isFavoritePath,
     isFavoriteAncestor,
@@ -3763,6 +3780,12 @@ export async function openReservingClassPicker(options = {}) {
         onDeleteFavoriteFolder: (folderId) => {
           if (typeof model.deleteFavoriteFolder !== "function") return;
           model.deleteFavoriteFolder(folderId);
+          persistModelFavorites();
+          refreshFavoritesInTreeWindow();
+        },
+        onReorderFavoriteFolder: (folderId, targetFolderId, ctx) => {
+          if (typeof model.reorderFavoriteFolder !== "function") return;
+          model.reorderFavoriteFolder(folderId, targetFolderId, toText(ctx?.position) || "before");
           persistModelFavorites();
           refreshFavoritesInTreeWindow();
         },
