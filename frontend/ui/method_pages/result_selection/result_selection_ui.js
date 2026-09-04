@@ -1189,7 +1189,8 @@
           };
           closeSourceContextMenu();
           if (action === "view-edit") {
-            viewOrEditSourceDataset(sourceIndex);
+            void viewOrEditSourceDataset(sourceIndex)
+              .catch((err) => postStatus(`Open source dataset failed: ${err?.message || err}`, "error"));
           } else if (action === "add") {
             void openAddSourcePicker(anchor).catch((err) => postStatus(`Source picker failed: ${err?.message || err}`, "error"));
           } else if (action === "delete") {

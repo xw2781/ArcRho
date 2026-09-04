@@ -1269,6 +1269,15 @@
           }
           if (column.type === "source") {
             th.addEventListener("contextmenu", (event) => openSourceContextMenu(event, column.sourceIndex));
+            th.addEventListener("dblclick", (event) => {
+              if (event.target?.closest?.(".rsColumnResizeHandle")) return;
+              event.preventDefault();
+              event.stopPropagation();
+              closeCellContextMenu();
+              closeSourceContextMenu();
+              void viewOrEditSourceDataset(column.sourceIndex)
+                .catch((err) => postStatus(`Open source dataset failed: ${err?.message || err}`, "error"));
+            });
           }
           hrow.appendChild(th);
         });
@@ -1675,10 +1684,15 @@
         return cachedRows.find((row) => norm(row.name) === norm(source.name)) || null;
       }
 
-      function viewOrEditSourceDataset(sourceIndex) {
+      async function viewOrEditSourceDataset(sourceIndex) {
         const source = state.sources[sourceIndex];
         if (!source?.name) return;
-        const record = sourceRecordForIndex(sourceIndex);
+        let record = sourceRecordForIndex(sourceIndex);
+        if (!record) {
+          await ensureDatasetCatalogLoaded().catch(() => null);
+          record = sourceRecordForIndex(sourceIndex);
+        }
+        const sourceMethodType = text(source.methodType || record?.methodType);
         const requestId = `rs_open_source_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         const onMessage = (event) => {
           const msg = event.data || {};
@@ -1695,7 +1709,10 @@
             args: {
               datasetName: source.name,
               datasetTypeName: text(source.datasetType || record?.datasetTypeName || record?.datasetType || source.name),
-              methodType: text(source.methodType || record?.methodType),
+              methodType: sourceMethodType,
+              // A source produced by a method opens on that method's own page;
+              // one without a method falls back to the plain dataset window.
+              openMethod: !!sourceMethodType,
               readOnly: !!record?.readOnly,
             },
           }, "*");
