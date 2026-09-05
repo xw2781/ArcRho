@@ -62,7 +62,11 @@ from arcrho_source_refresh_contract import (
 
 # Path redaction and the canonical-runtime bootstrap are owned by the sibling
 # durable-job modules; this job reuses them rather than growing second copies.
-from arcrho_engine.dependent_propagation import configure_canonical_runtime
+from arcrho_engine.dependent_propagation import (
+    configure_canonical_runtime,
+    dependent_refresh_failure_message,
+    dependent_refresh_failure_reasons,
+)
 from arcrho_engine.project_duplication import _redact_machine_paths
 from arcrho_engine.runtime_log import append_runtime_log
 
@@ -348,6 +352,13 @@ def _discard_dataset_backup(backup_path: str) -> None:
 
 
 def _method_update_count(result: Mapping[str, Any]) -> int:
+    """Count the methods a dependent walk actually re-saved.
+
+    Every method wave reports its re-saved methods under ``updated``
+    (status-only touches sit apart under ``status_refreshed``), so that is
+    the bucket the job's ``methods_updated`` figure reads.
+    """
+
     total = 0
     for bucket in (
         "dfm_updates",
@@ -359,7 +370,7 @@ def _method_update_count(result: Mapping[str, Any]) -> int:
     ):
         updates = result.get(bucket)
         if isinstance(updates, Mapping):
-            total += len(updates.get("refreshed") or [])
+            total += len(updates.get("updated") or [])
     return total
 
 
@@ -433,8 +444,17 @@ def _refresh_one_reserving_class(
         )
         result["methods_updated"] += _method_update_count(walk)
         if not walk.get("ok"):
+            # The walk names each dependent that declined; the first reason
+            # becomes the job message and every one of them goes to the log,
+            # which is where a "reported errors" line used to end the trail.
+            reasons = dependent_refresh_failure_reasons(walk)
             result["failures"].append(
-                f"{reserving_class}: the dependent refresh reported errors."
+                dependent_refresh_failure_message(reserving_class, reasons)
+            )
+            _log(
+                server_root,
+                f"{reserving_class} dependent refresh reported errors: "
+                + (" | ".join(reasons) if reasons else "no reason recorded"),
             )
     finally:
         stop_reserving_class_lease_heartbeat(heartbeat_stop, heartbeat_thread)

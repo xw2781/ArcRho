@@ -216,12 +216,27 @@ def build_engine_request_info(pairs: list, data_path: str) -> str:
     return "#".join([f"{k} = {v}" for k, v in pairs] + [f"DataPath = {data_path}"])
 
 
+def engine_request_payload(request_info: str) -> Dict[str, Any]:
+    """Return the request document the Engine reads for ``request_info``.
+
+    This is the exact content of a request file: the legacy ``key = value``
+    pairs with native types plus the requesting user, so an Engine that runs
+    the calculation in-process sees the same document it would have claimed
+    from the requests folder. The stamped user is the acting identity when the
+    publisher is the Gateway acting for a Client PC user.
+    """
+
+    from app_server.services import user_identity_service
+
+    payload = _request_info_to_json_payload(request_info)
+    payload["UserName"] = user_identity_service.get_windows_login_name() or getpass.getuser()
+    return payload
+
+
 def send_request_like_vba(request_info: str) -> str:
     # ``config.REQUEST_DIR`` is the requests root the Engine watches. When the
     # publisher is the Gateway acting for a Client PC user, that root is the
-    # server's own local folder and the stamped user is the acting identity.
-    from app_server.services import user_identity_service
-
+    # server's own local folder.
     os.makedirs(config.REQUEST_DIR, exist_ok=True)
     now = datetime.now()
     ms = int(now.microsecond / 1000)
@@ -230,8 +245,7 @@ def send_request_like_vba(request_info: str) -> str:
     temp_path = os.path.join(config.REQUEST_DIR, f"request-{current_time}.tmp")
     final_path = os.path.join(config.REQUEST_DIR, f"request-{current_time}.json")
 
-    payload = _request_info_to_json_payload(request_info)
-    payload["UserName"] = user_identity_service.get_windows_login_name() or getpass.getuser()
+    payload = engine_request_payload(request_info)
 
     with open(temp_path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)

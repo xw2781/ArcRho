@@ -56,6 +56,7 @@ from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
 from app_server import config
 from app_server.helpers import (
     build_engine_request_info,
+    engine_request_payload,
     is_network_path,
     send_request_like_vba,
     set_data_path_like_vba,
@@ -84,10 +85,64 @@ LATENCY_LOG_KIND = "engine_calculation"
 # write, and a result that stays invisible this long is reported as a timeout.
 ENGINE_OUTPUT_VISIBILITY_TIMEOUT_SECONDS = 10.0
 STATUS_GATEWAY_ERROR = "gateway_error"
+# The Engine hosting this runtime ran the calculation itself and it failed.
+STATUS_ENGINE_ERROR = "engine_error"
 # A hosted dataset run may chain several Engine exchanges (headers,
 # calculated inputs, the dataset) plus the sidecar write and dependent
 # enqueue; it gets the same budget a hosted workspace read does.
 WORKSPACE_OPERATION_TIMEOUT_SECONDS = 120.0
+
+# Transport label for an exchange the hosting Engine ran in its own process.
+TRANSPORT_IN_PROCESS = "in_process"
+
+InProcessCalculator = Callable[[Mapping[str, Any]], None]
+
+# Set by an ArcRho Engine that hosts this runtime for its durable jobs. A
+# job on the Engine (a source refresh materialising a precedent at another
+# period, a hosted save) used to publish a request file to the shared folder
+# and wait for an Engine -- possibly itself -- to claim it, paying the
+# watchdog round trip and the whole timeout whenever no instance picked the
+# file up. With a calculator registered the local exchange calls it directly.
+_in_process_calculator: InProcessCalculator | None = None
+
+
+def set_in_process_calculator(calculator: InProcessCalculator | None) -> None:
+    """Register (or clear) the hosting Engine's own calculation entry point.
+
+    The callable receives the request document a request file would have held
+    and must write the CSV at its ``DataPath`` or raise; the message of what
+    it raises is shown to the user.
+    """
+
+    global _in_process_calculator
+    _in_process_calculator = calculator
+
+
+def calculate_in_process(pairs: Sequence[Sequence[str]], data_path: str) -> Dict[str, Any] | None:
+    """Run the local exchange through the registered calculator, or return None."""
+
+    calculator = _in_process_calculator
+    if calculator is None:
+        return None
+    started_ns = time.perf_counter_ns()
+    payload = engine_request_payload(build_engine_request_info(list(pairs), data_path))
+    outcome: Dict[str, Any] = {
+        "ok": False,
+        "status": STATUS_ENGINE_ERROR,
+        "request_file": None,
+        "transport": TRANSPORT_IN_PROCESS,
+    }
+    try:
+        calculator(payload)
+    except Exception as exc:
+        outcome["message"] = f"The ArcRho Engine could not run this calculation: {exc}"
+    else:
+        if os.path.isfile(data_path):
+            outcome.update(ok=True, status=ENGINE_CALCULATION_STATUS_COMPLETED)
+        else:
+            outcome["message"] = "The ArcRho Engine finished this calculation without writing its output."
+    outcome["wait_ms"] = (time.perf_counter_ns() - started_ns) / 1_000_000.0
+    return outcome
 
 
 def publish_and_wait(pairs: Sequence[Sequence[str]], data_path: str, timeout_sec: float) -> Dict[str, Any]:
@@ -395,6 +450,11 @@ def run_engine_calculation(
                             ),
                         )
                     return _finish(result)
+        in_process = calculate_in_process(pairs, data_path)
+        if in_process is not None:
+            context["transport"] = TRANSPORT_IN_PROCESS
+            wait_ms = in_process.get("wait_ms")
+            return _finish(in_process)
         return _finish(_local_outcome(publish_and_wait(pairs, data_path, timeout_sec)))
     except HTTPException as error:
         http_status = int(error.status_code)

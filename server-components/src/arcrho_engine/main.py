@@ -74,7 +74,10 @@ from arcrho_engine.source_table_refresh import (
     process_durable_source_refresh_request,
 )
 from arcrho_engine.save_jobs import process_hosted_save_request
-from arcrho_engine.runtime_log import prune_runtime_logs
+from arcrho_engine.runtime_log import append_runtime_log, prune_runtime_logs
+
+# Runtime log for loose calculation requests this Engine could not take.
+ENGINE_REQUEST_LOG_FILENAME = "engine_requests.log"
 
 
 class _DurableJobDispatcher:
@@ -167,6 +170,10 @@ class RequestHandler(FileSystemEventHandler):
     ):
         super().__init__()
         self._processing_lock = Lock()
+        # Loose request files this instance could not read, logged once each:
+        # the 5 s rescan re-offers such a file until the orchestrator sweeps
+        # it, and every Engine sees it, so per-attempt logging would flood.
+        self._unreadable_requests: set[str] = set()
         self._duplication = _DurableJobDispatcher(
             thread_name="arcrho-project-duplication-worker",
             execute=self._execute_project_duplication,
@@ -369,11 +376,46 @@ class RequestHandler(FileSystemEventHandler):
         else:
             self.process_file(file_path, dispatch_duplication=True)
 
+    def _note_unreadable_request(self, file_path, exc: BaseException) -> None:
+        """Log a request file that exists but cannot be read, once per file.
+
+        A file that is gone was claimed by another Engine and is not news. One
+        that stays but will not parse is: no instance will ever claim it, its
+        publisher waits out the whole timeout, and until now nothing recorded
+        why.
+        """
+
+        key = os.path.normcase(os.path.abspath(os.fspath(file_path)))
+        try:
+            if not os.path.exists(file_path):
+                self._unreadable_requests.discard(key)
+                return
+        except OSError:
+            return
+        if key in self._unreadable_requests:
+            return
+        self._unreadable_requests.add(key)
+        # Forget files that have since been swept so the set cannot grow
+        # without bound on a long-running instance.
+        for stale in [
+            item for item in self._unreadable_requests if not os.path.exists(item)
+        ]:
+            self._unreadable_requests.discard(stale)
+        message = (
+            f"unreadable request left unclaimed: {os.path.basename(str(file_path))}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        print(f"(error: {message})")
+        append_runtime_log(get_project_root(), ENGINE_REQUEST_LOG_FILENAME, message)
+
     def process_file(self, file_path, *, dispatch_duplication: bool = False):
         try:
             arg = read_json(file_path)
-        except Exception:
-            # print(f'\n* request sent to another agent')
+        except FileNotFoundError:
+            # Another Engine claimed the request first.
+            return
+        except Exception as exc:
+            self._note_unreadable_request(file_path, exc)
             return
 
         # Durable jobs retain their queue file until a validated terminal
@@ -425,6 +467,35 @@ class RequestHandler(FileSystemEventHandler):
         with self._processing_lock:
             self._process_legacy_request(file_path, arg)
 
+    def calculate_in_process(self, arg) -> None:
+        """Run one calculation request for the canonical runtime on this Engine.
+
+        A durable job on this instance (a source refresh materialising a
+        precedent at another period, a hosted save) used to publish a request
+        file to the shared folder and wait for an Engine -- possibly this one
+        -- to claim it, paying the watchdog round trip and the whole timeout
+        whenever no instance picked the file up. The canonical runtime calls
+        this instead. It runs the same functions under the same serialisation
+        the legacy path uses and raises where that path would write an error
+        CSV; the caller turns the exception into the outcome it reports.
+        """
+
+        function_name = normalize_function_name(arg.get("Function"))
+        project_name = str(arg.get("ProjectName") or "").strip()
+        with self._processing_lock:
+            if not project_name or not project_exists(project_name):
+                raise FileNotFoundError(f"project not found: {project_name or 'unnamed'}")
+            get_project_table_path(project_name)
+            _refresh_project_config(project_name)
+            if function_name in ("ADASTri", "ADASVec"):
+                UDF_ADASTri(arg)
+            elif function_name == "ADASProjectSettings":
+                UDF_ADASProjectSettings(arg)
+            elif function_name == "ADASHeaders":
+                UDF_ADASHeaders(arg)
+            else:
+                raise ValueError(f"invalid function name: {arg.get('Function')!r}")
+
     def _process_legacy_request(self, file_path, arg):
 
         # Every engine sees the same filesystem event.  Reading is safe, but
@@ -463,19 +534,7 @@ class RequestHandler(FileSystemEventHandler):
 
         # Check project configuration updates (guarded).
         try:
-            with PROJECT_CONFIG_LOCK:
-                if project_name + " - Version" in PROJECT_CONFIG:
-                    project_config_signature = _get_vps_last_modified_time(project_name)
-                    if (
-                        PROJECT_CONFIG[project_name + " - Version"]
-                        != project_config_signature
-                    ):
-                        load_to_PROJECT_CONFIG(project_name)
-                        print(
-                            f">>> Virtual Project Settings Updated -> "
-                            f"[{project_name} JSON]\n"
-                        )
-                # If missing, _get_df() will load it later.
+            _refresh_project_config(project_name)
         except DataProcessingConfigurationError as e:
             print(str(e))
             message = f"(data processing configuration error: {e})"
@@ -616,6 +675,24 @@ def recover_existing_requests(
             return
 
 
+def _refresh_project_config(project_name: str) -> None:
+    """Reload the project's virtual settings when their signature has moved on.
+
+    A project whose settings were never loaded is left alone: the first
+    calculation loads them on demand.
+    """
+
+    with PROJECT_CONFIG_LOCK:
+        if project_name + " - Version" in PROJECT_CONFIG:
+            project_config_signature = _get_vps_last_modified_time(project_name)
+            if PROJECT_CONFIG[project_name + " - Version"] != project_config_signature:
+                load_to_PROJECT_CONFIG(project_name)
+                print(
+                    f">>> Virtual Project Settings Updated -> "
+                    f"[{project_name} JSON]\n"
+                )
+
+
 def _write_request_status(arg, status, message=""):
     """Atomically publish optional request status without affecting legacy callers."""
 
@@ -663,18 +740,34 @@ def _remove_instance_heartbeat():
         pass
 
 
-def _warm_canonical_runtime() -> None:
+def _register_in_process_calculator(handler: RequestHandler) -> None:
+    """Let the canonical runtime run local exchanges through this Engine itself."""
+
+    try:
+        from app_server.services import engine_calculation_service
+
+        engine_calculation_service.set_in_process_calculator(handler.calculate_in_process)
+        print("(in-process calculator registered)")
+    except Exception as exc:
+        print(f"(in-process calculator not registered: {exc})")
+
+
+def _warm_canonical_runtime(handler: RequestHandler | None = None) -> None:
     """Pre-import the bundled app_server stack in the background at boot.
 
     The first hosted save or propagation walk on a cold frozen instance
     otherwise pays tens of seconds of one-time import cost (pandas plus the
-    canonical services) while a user waits on the save popup.
+    canonical services) while a user waits on the save popup. Once the stack
+    is up, the Engine's own calculation entry point is registered with it so
+    a job here never has to post a request file to itself.
     """
 
     try:
         from arcrho_engine.dependent_propagation import configure_canonical_runtime
 
         configure_canonical_runtime(get_project_root())
+        if handler is not None:
+            _register_in_process_calculator(handler)
         from app_server.services import (  # noqa: F401
             bootstrap_service,
             bornhuetter_ferguson_service,
@@ -700,6 +793,7 @@ def start_monitoring(path):
 
     Thread(
         target=_warm_canonical_runtime,
+        args=(event_handler,),
         name="arcrho-canonical-runtime-warmup",
         daemon=True,
     ).start()

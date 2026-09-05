@@ -292,6 +292,35 @@ class ExecuteDatasetTypesChangeTests(unittest.TestCase):
             any("HPPREF\\NJ" in failure for failure in result["failures"])
         )
 
+    def test_a_failed_chain_names_why_its_propagation_declined(self) -> None:
+        result = self._execute(
+            refresh_result={
+                "ok": False,
+                "sidecars_updated": 1,
+                "datasets_total": 8,
+                "classes_total": 1,
+                "chains": [
+                    {
+                        "ok": False,
+                        "reserving_class": "HPPREF\\NJ",
+                        "updated": [],
+                        "propagation": {
+                            "ok": False,
+                            "message": "another dependent propagation is still running.",
+                        },
+                    },
+                ],
+                "errors": [],
+            }
+        )
+        self.assertEqual(
+            result["failures"],
+            [
+                "HPPREF\\NJ: dependent propagation: another dependent propagation "
+                "is still running."
+            ],
+        )
+
     def test_a_removed_type_still_read_downstream_stops_the_change(self) -> None:
         # The planner found "Growth Adjustment - Counts" leaving the table.
         planned = _planned(PLAN, removed_types=["Growth Adjustment - Counts"])

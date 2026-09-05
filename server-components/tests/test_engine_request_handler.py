@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from threading import Event, Thread
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 
@@ -647,6 +647,127 @@ class EngineRequestHandlerTests(unittest.TestCase):
         remove_heartbeat.assert_called_once_with()
         observer.join.assert_called_once_with()
         handler.shutdown.assert_called_once_with(wait=True, timeout=None)
+
+
+class UnreadableRequestTests(unittest.TestCase):
+    """A request file that exists but will not parse is logged once, not skipped in silence."""
+
+    def setUp(self):
+        TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TMP_ROOT))
+        self.request_path = Path(self.temp_dir.name) / "request-2026-09-05_11-41-50.269.json"
+        self.request_path.write_text('{"Function": "ArcRhoTri"}\n}\n', encoding="utf-8")
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_an_unreadable_request_is_logged_once_and_left_unclaimed(self):
+        handler = engine_main.RequestHandler()
+        with (
+            patch.object(
+                engine_main, "read_json", side_effect=PermissionError("Cannot open request")
+            ),
+            patch.object(engine_main, "safe_remove") as claim,
+            patch.object(engine_main, "append_runtime_log") as log,
+            patch.object(engine_main, "get_project_root", return_value=Path(self.temp_dir.name)),
+        ):
+            handler.process_file(str(self.request_path))
+            handler.process_file(str(self.request_path))
+
+        claim.assert_not_called()
+        log.assert_called_once()
+        root, filename, message = log.call_args.args
+        self.assertEqual(filename, engine_main.ENGINE_REQUEST_LOG_FILENAME)
+        self.assertIn(self.request_path.name, message)
+        self.assertIn("Cannot open request", message)
+        self.assertTrue(self.request_path.exists())
+
+    def test_a_request_another_engine_claimed_is_not_news(self):
+        handler = engine_main.RequestHandler()
+        with (
+            patch.object(engine_main, "read_json", side_effect=FileNotFoundError("gone")),
+            patch.object(engine_main, "append_runtime_log") as log,
+        ):
+            handler.process_file(str(self.request_path.with_name("request-gone.json")))
+        log.assert_not_called()
+
+
+class InProcessCalculationTests(unittest.TestCase):
+    """The canonical runtime on this Engine runs its exchanges without a request file."""
+
+    def test_the_function_runs_under_the_legacy_serialisation(self):
+        handler = engine_main.RequestHandler()
+        request = _request()
+        request.pop("RequestId")
+        request.pop("StatusPath")
+        seen = []
+
+        def udf(arg):
+            seen.append((dict(arg), handler._processing_lock.locked()))
+
+        with (
+            patch.object(engine_main, "project_exists", return_value=True),
+            patch.object(engine_main, "get_project_table_path", return_value="source.csv"),
+            patch.object(engine_main, "_refresh_project_config") as refresh_config,
+            patch.object(engine_main, "UDF_ADASTri", side_effect=udf),
+            patch.object(engine_main, "safe_remove") as claim,
+        ):
+            handler.calculate_in_process(request)
+
+        self.assertEqual(seen, [(request, True)])
+        refresh_config.assert_called_once_with("Demo")
+        # Nothing was published, so there is nothing to claim.
+        claim.assert_not_called()
+        self.assertFalse(handler._processing_lock.locked())
+
+    def test_the_vector_alias_reaches_the_triangle_function(self):
+        handler = engine_main.RequestHandler()
+        with (
+            patch.object(engine_main, "project_exists", return_value=True),
+            patch.object(engine_main, "get_project_table_path", return_value="source.csv"),
+            patch.object(engine_main, "_refresh_project_config"),
+            patch.object(engine_main, "UDF_ADASTri") as udf,
+        ):
+            handler.calculate_in_process(_request(Function="ArcRhoVec"))
+        udf.assert_called_once()
+
+    def test_a_missing_project_and_an_unknown_function_raise(self):
+        handler = engine_main.RequestHandler()
+        with patch.object(engine_main, "project_exists", return_value=False):
+            with self.assertRaises(FileNotFoundError):
+                handler.calculate_in_process(_request())
+        with (
+            patch.object(engine_main, "project_exists", return_value=True),
+            patch.object(engine_main, "get_project_table_path", return_value="source.csv"),
+            patch.object(engine_main, "_refresh_project_config"),
+        ):
+            with self.assertRaises(ValueError):
+                handler.calculate_in_process(_request(Function="ArcRhoBogus"))
+        self.assertFalse(handler._processing_lock.locked())
+
+    def test_warmup_registers_the_calculator_with_the_canonical_runtime(self):
+        handler = engine_main.RequestHandler()
+        calculation = SimpleNamespace(set_in_process_calculator=Mock())
+        services = ModuleType("app_server.services")
+        services.engine_calculation_service = calculation
+        app_server = ModuleType("app_server")
+        app_server.services = services
+        with (
+            patch.dict(
+                sys.modules,
+                {"app_server": app_server, "app_server.services": services},
+            ),
+            patch.object(engine_main, "get_project_root", return_value=Path(TEST_TMP_ROOT)),
+            patch(
+                "arcrho_engine.dependent_propagation.configure_canonical_runtime",
+                lambda root: None,
+            ),
+        ):
+            engine_main._warm_canonical_runtime(handler)
+
+        calculation.set_in_process_calculator.assert_called_once_with(
+            handler.calculate_in_process
+        )
 
 
 if __name__ == "__main__":

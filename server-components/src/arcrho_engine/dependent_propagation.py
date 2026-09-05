@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from arcrho_dependent_propagation_contract import (
     DEPENDENT_PROPAGATION_STATUS_HEARTBEAT_SECONDS,
@@ -172,6 +172,52 @@ def configure_canonical_runtime(server_root: str | os.PathLike[str]) -> None:
 
     app_server_config.refresh_runtime_paths()
     app_server_config.clear_runtime_path_caches()
+
+
+def dependent_refresh_failure_reasons(report: Mapping[str, Any]) -> list[str]:
+    """Flatten a failed dependent walk into redacted ``"<name>: <reason>"`` lines.
+
+    A walk that is not ``ok`` names every dependent that declined, and why,
+    but only inside its nested domain buckets. The durable jobs used to reduce
+    that to "the dependent refresh reported errors", which left the real
+    reason nowhere a person could read it. The canonical
+    ``cascade_failure_reasons`` unwinds those buckets; the lines are redacted
+    because they end up in a status file the client shows verbatim.
+    """
+
+    try:
+        from app_server.services import calculated_dataset_service
+
+        reasons = calculated_dataset_service.cascade_failure_reasons(report)
+    except Exception:
+        reasons = []
+    flattened: list[str] = []
+    for reason in reasons:
+        text = _redact_machine_paths(str(reason))
+        if text and text not in flattened:
+            flattened.append(text)
+    return flattened
+
+
+def dependent_refresh_failure_message(
+    reserving_class: str, reasons: Sequence[str]
+) -> str:
+    """One failure line for a class whose dependent walk reported errors.
+
+    The first reason is spelled out because the client shows the first
+    failure as the job message; the count of the rest says whether the log
+    holds more.
+    """
+
+    prefix = f"{reserving_class}: " if reserving_class else ""
+    if not reasons:
+        return (
+            f"{prefix}the dependent refresh reported errors."
+            if prefix
+            else "A dependent refresh reported errors."
+        )
+    suffix = f" (+{len(reasons) - 1} more)" if len(reasons) > 1 else ""
+    return f"{prefix}{reasons[0]}{suffix}"
 
 
 def _require_lease(lease: EngineJobLease) -> None:

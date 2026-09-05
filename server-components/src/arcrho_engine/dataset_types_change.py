@@ -66,7 +66,11 @@ from arcrho_engine_job_lease import engine_job_lease_is_owned
 
 # Path redaction and the canonical-runtime bootstrap are owned by the sibling
 # durable-job modules; this job reuses them rather than growing second copies.
-from arcrho_engine.dependent_propagation import configure_canonical_runtime
+from arcrho_engine.dependent_propagation import (
+    configure_canonical_runtime,
+    dependent_refresh_failure_message,
+    dependent_refresh_failure_reasons,
+)
 from arcrho_engine.project_duplication import _redact_machine_paths
 from arcrho_engine.runtime_log import append_runtime_log
 
@@ -326,10 +330,19 @@ def execute_dataset_types_change(
         if chain.get("ok"):
             continue
         reserving_class = str(chain.get("reserving_class") or "").strip()
+        reasons = dependent_refresh_failure_reasons(chain)
+        propagation = chain.get("propagation")
+        if isinstance(propagation, Mapping) and not propagation.get("ok", True):
+            text = str(propagation.get("message") or propagation.get("reason") or "").strip()
+            if text:
+                reasons.append(f"dependent propagation: {_redact_machine_paths(text)}")
         result["failures"].append(
-            f"{reserving_class}: the dependent refresh reported errors."
-            if reserving_class
-            else "A dependent refresh reported errors."
+            dependent_refresh_failure_message(reserving_class, reasons)
+        )
+        _log(
+            root,
+            f"{reserving_class or 'A class'} dependent refresh reported errors: "
+            + (" | ".join(reasons) if reasons else "no reason recorded"),
         )
 
     finished_units = _TABLE_UNIT + result["datasets_total"] + len(chains)

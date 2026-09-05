@@ -534,5 +534,102 @@ class EngineDispatchTests(unittest.TestCase):
         scheduled.assert_called_once()
 
 
+class ClassWalkReportingTests(unittest.TestCase):
+    """The class step says why a dependent walk failed and counts real updates."""
+
+    def _walk(self, walk):
+        result = source_table_refresh._empty_result()
+        logged: list[str] = []
+        calculated = SimpleNamespace(
+            recalculate_dependents=lambda *a, **k: walk,
+            cascade_failure_reasons=lambda report: [
+                f"{item['dataset_type_name']}: {item['reason']}"
+                for item in report.get("skipped", [])
+            ],
+        )
+        with _install_fake_app_server(
+            {"calculated_dataset_service": calculated}
+        ), patch.object(
+            source_table_refresh, "acquire_reserving_class_lease", lambda *a: object()
+        ), patch.object(
+            source_table_refresh,
+            "start_reserving_class_lease_heartbeat",
+            lambda lease: (None, None),
+        ), patch.object(
+            source_table_refresh, "stop_reserving_class_lease_heartbeat", lambda *a: None
+        ), patch.object(
+            source_table_refresh, "release_reserving_class_lease", lambda lease: None
+        ), patch.object(
+            source_table_refresh, "_engine_dataset_instances", lambda *a: ["Paid"]
+        ), patch.object(
+            source_table_refresh, "_regenerate_engine_dataset", lambda *a: True
+        ), patch.object(
+            source_table_refresh,
+            "_log",
+            lambda root, message, **kwargs: logged.append(message),
+        ):
+            source_table_refresh._refresh_one_reserving_class(
+                Path(tempfile.gettempdir()),
+                "Demo Project",
+                "HPPREF\\NJ",
+                result,
+                on_dataset=lambda name: None,
+            )
+        return result, logged
+
+    def test_a_failed_walk_names_the_first_reason_and_logs_them_all(self) -> None:
+        result, logged = self._walk(
+            {
+                "ok": False,
+                "skipped": [
+                    {
+                        "dataset_type_name": "C 12 - CWP DFM",
+                        "reason": "DFM precedent 'Claim Counts--CWP' could not be "
+                        "generated at the method's period: engine timed out",
+                    },
+                    {"dataset_type_name": "F 13 - Paid DFM", "reason": "engine timed out"},
+                ],
+                "dfm_updates": {"ok": False, "updated": [], "errors": []},
+            }
+        )
+        self.assertEqual(
+            result["failures"],
+            [
+                "HPPREF\\NJ: C 12 - CWP DFM: DFM precedent 'Claim Counts--CWP' could "
+                "not be generated at the method's period: engine timed out (+1 more)"
+            ],
+        )
+        self.assertTrue(
+            any(
+                "C 12 - CWP DFM" in line and "F 13 - Paid DFM" in line
+                for line in logged
+            ),
+            logged,
+        )
+
+    def test_a_failed_walk_with_no_named_reason_keeps_the_generic_line(self) -> None:
+        result, logged = self._walk({"ok": False})
+        self.assertEqual(
+            result["failures"], ["HPPREF\\NJ: the dependent refresh reported errors."]
+        )
+        self.assertTrue(any("no reason recorded" in line for line in logged), logged)
+
+    def test_methods_updated_counts_the_methods_each_wave_re_saved(self) -> None:
+        result, _logged = self._walk(
+            {
+                "ok": True,
+                "dfm_updates": {
+                    "ok": True,
+                    "updated": [{"method_name": "F 12"}, {"method_name": "G 21"}],
+                    "status_refreshed": [{"method_name": "F 13"}],
+                },
+                "bornhuetter_ferguson_updates": {"ok": True, "updated": [{"method_name": "F 41"}]},
+                "cape_cod_updates": {"ok": True, "updated": []},
+            }
+        )
+        self.assertEqual(result["methods_updated"], 3)
+        self.assertEqual(result["failures"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
