@@ -53,6 +53,13 @@ SOURCE_REFRESH_REQUIRED_FIELDS = (
     "RefreshDependents",
     "UserName",
 )
+# The scope of the dependent refresh. Both are carried only when the person
+# importing narrowed the job, so a request that refreshes everything is the
+# same payload it always was. ``DatasetTypes`` names the engine-built dataset
+# types to regenerate; ``ReservingClassTypes`` lists ``{"Name", "Level"}``
+# pairs, and a reserving class is refreshed when its path segment at every
+# listed level is one of the names listed for that level.
+SOURCE_REFRESH_OPTIONAL_FIELDS = ("DatasetTypes", "ReservingClassTypes")
 SOURCE_REFRESH_STATUS_VALUES = ("queued", "processing", "success", "error")
 
 # The canonical ``app_server.services`` modules the job runs, named here for the
@@ -118,6 +125,47 @@ def _required_flag(value: Any, field_name: str) -> bool:
     return value
 
 
+def _normalize_dataset_types(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise SourceRefreshContractError("DatasetTypes must be a list of names.")
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        name = _required_text(item, "DatasetTypes entry")
+        if name.casefold() not in seen:
+            seen.add(name.casefold())
+            names.append(name)
+    return names
+
+
+def _normalize_reserving_class_types(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise SourceRefreshContractError(
+            "ReservingClassTypes must be a list of {Name, Level} objects."
+        )
+    entries: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {"Name", "Level"}:
+            raise SourceRefreshContractError(
+                "Each ReservingClassTypes entry must hold exactly Name and Level."
+            )
+        name = _required_text(item.get("Name"), "ReservingClassTypes Name")
+        level = item.get("Level")
+        if isinstance(level, bool) or not isinstance(level, int) or level < 1:
+            raise SourceRefreshContractError(
+                "ReservingClassTypes Level must be a positive integer."
+            )
+        if (level, name.casefold()) not in seen:
+            seen.add((level, name.casefold()))
+            entries.append({"Name": name, "Level": level})
+    return entries
+
+
 def validate_request_id(value: Any) -> str:
     try:
         return _canonical_validate_request_id(value)
@@ -140,30 +188,40 @@ def build_source_refresh_request(
     import_source: bool = True,
     force: bool = True,
     refresh_dependents: bool = True,
+    dataset_types: Any = None,
+    reserving_class_types: Any = None,
 ) -> dict[str, Any]:
-    """Build the complete canonical request payload."""
+    """Build the complete canonical request payload.
 
-    return validate_source_refresh_request(
-        {
-            "Function": SOURCE_REFRESH_FUNCTION,
-            "ContractVersion": SOURCE_REFRESH_CONTRACT_VERSION,
-            "RequestId": request_id,
-            "ProjectName": project_name,
-            "Import": bool(import_source),
-            "Force": bool(force),
-            "RefreshDependents": bool(refresh_dependents),
-            "UserName": user_name,
-        }
-    )
+    A scope is written only when one was chosen, so a job that refreshes the
+    whole project produces the payload every consumer already accepts.
+    """
+
+    payload: dict[str, Any] = {
+        "Function": SOURCE_REFRESH_FUNCTION,
+        "ContractVersion": SOURCE_REFRESH_CONTRACT_VERSION,
+        "RequestId": request_id,
+        "ProjectName": project_name,
+        "Import": bool(import_source),
+        "Force": bool(force),
+        "RefreshDependents": bool(refresh_dependents),
+        "UserName": user_name,
+    }
+    if dataset_types:
+        payload["DatasetTypes"] = list(dataset_types)
+    if reserving_class_types:
+        payload["ReservingClassTypes"] = list(reserving_class_types)
+    return validate_source_refresh_request(payload)
 
 
 def validate_source_refresh_request(payload: Any) -> dict[str, Any]:
     """Return the normalized exact request, rejecting paths and extensions.
 
-    The required fields are also the complete allow-list, so machine-local
-    filesystem paths are impossible by construction: every consumer derives
-    absolute paths from its own configured ArcRho Server root, and the external
-    source itself is read from the project's own saved configuration.
+    The required fields plus the two optional scope fields are the complete
+    allow-list, so machine-local filesystem paths are impossible by
+    construction: every consumer derives absolute paths from its own configured
+    ArcRho Server root, and the external source itself is read from the
+    project's own saved configuration.
     """
 
     if not isinstance(payload, Mapping):
@@ -172,7 +230,7 @@ def validate_source_refresh_request(payload: Any) -> dict[str, Any]:
         )
 
     supplied = set(payload)
-    allowed = set(SOURCE_REFRESH_REQUIRED_FIELDS)
+    allowed = set(SOURCE_REFRESH_REQUIRED_FIELDS) | set(SOURCE_REFRESH_OPTIONAL_FIELDS)
     missing = [
         field for field in SOURCE_REFRESH_REQUIRED_FIELDS if field not in supplied
     ]
@@ -216,7 +274,7 @@ def validate_source_refresh_request(payload: Any) -> dict[str, Any]:
             "or both."
         )
 
-    return {
+    normalized: dict[str, Any] = {
         "Function": SOURCE_REFRESH_FUNCTION,
         "ContractVersion": SOURCE_REFRESH_CONTRACT_VERSION,
         "RequestId": validate_request_id(payload.get("RequestId")),
@@ -226,6 +284,40 @@ def validate_source_refresh_request(payload: Any) -> dict[str, Any]:
         "RefreshDependents": refresh_dependents,
         "UserName": _required_text(payload.get("UserName"), "UserName"),
     }
+    dataset_types = _normalize_dataset_types(payload.get("DatasetTypes"))
+    if dataset_types:
+        normalized["DatasetTypes"] = dataset_types
+    reserving_class_types = _normalize_reserving_class_types(
+        payload.get("ReservingClassTypes")
+    )
+    if reserving_class_types:
+        normalized["ReservingClassTypes"] = reserving_class_types
+    return normalized
+
+
+def reserving_class_matches_scope(
+    reserving_class: str, reserving_class_types: list[dict[str, Any]] | None
+) -> bool:
+    """Say whether one class path falls inside a request's reserving-class scope.
+
+    The path segments are the class's values at levels 1, 2, 3...; a level that
+    the scope does not mention accepts every value, and an empty scope accepts
+    every class.
+    """
+
+    if not reserving_class_types:
+        return True
+    names_by_level: dict[int, set[str]] = {}
+    for entry in reserving_class_types:
+        names_by_level.setdefault(int(entry["Level"]), set()).add(
+            str(entry["Name"]).casefold()
+        )
+    segments = [part.strip().casefold() for part in str(reserving_class).split("\\")]
+    for level, names in names_by_level.items():
+        segment = segments[level - 1] if level - 1 < len(segments) else ""
+        if segment not in names:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------

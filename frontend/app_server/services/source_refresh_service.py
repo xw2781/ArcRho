@@ -164,11 +164,18 @@ def submit_source_table_refresh_job(
     import_source: bool = True,
     force: bool = True,
     refresh_dependents: bool = True,
+    dataset_types: Any = None,
+    reserving_class_types: Any = None,
 ) -> Dict[str, Any]:
     """Publish one queued source-refresh request and return its job identity.
 
     Re-submitting an id that already has a published status returns that job
     untouched, so a retry after a lost response never starts a second refresh.
+
+    ``dataset_types`` and ``reserving_class_types`` narrow the dependent refresh
+    to the chosen engine-built dataset types and the reserving classes whose
+    path matches the chosen ``{Name, Level}`` types; either left empty means
+    everything.
     """
 
     server_root = _workspace_server_root()
@@ -185,6 +192,8 @@ def submit_source_table_refresh_job(
             import_source=bool(import_source),
             force=bool(force),
             refresh_dependents=bool(refresh_dependents),
+            dataset_types=dataset_types,
+            reserving_class_types=reserving_class_types,
         )
     except SourceRefreshContractError as error:
         raise HTTPException(400, str(error)) from error

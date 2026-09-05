@@ -15,7 +15,7 @@ import { createFieldMappingFeature } from "/ui/project_settings/project_settings
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260901dup1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260901dup1";
-import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260903live1";
+import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260905scope1";
 import {
   applyProjectSettingsTablePreferences,
   getConfiguredTableColumnWidthMap,
@@ -33,7 +33,7 @@ import { createProjectMapStore } from "/ui/project_settings/project_settings_pro
 import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260901dup1";
 import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260901dup1";
 import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260901dup1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260901dup1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260905scope1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -384,6 +384,7 @@ const sourceDataFeature = createSourceDataFeature({
   onForgetConnection: (...args) => forgetSourceConnection(...args),
   onCsvPathPick: (...args) => pickTablePathFromHost(...args),
   onImportData: (...args) => importSourceData(...args),
+  onLoadImportScope: () => loadImportScopeOptions(),
   onSourceFileStatus: () => loadSourceFileStatus(),
   // Admin-editable defaults stay owned by the shared table preference JSON.
   getConfiguredColumnWidths: () => {
@@ -925,6 +926,40 @@ async function forgetSourceConnection(server, database) {
   }
 }
 
+/**
+ * What the Import Scope step can offer for the selected project.
+ *
+ * The lists are read fresh from the app server rather than from the Dataset
+ * Types and Reserving Class Types panes: the pane state carries only the
+ * columns it displays, and the `Generated` flag that says whether a dataset
+ * type is engine-built from a source column is not one of them.
+ */
+async function loadImportScopeOptions() {
+  const name = String(selectedProject?.name || "").trim();
+  if (!name) return { ok: false, error: "Select a project first." };
+  const query = new URLSearchParams({ project_name: name }).toString();
+  try {
+    const [typesRes, classTypesRes] = await Promise.all([
+      fetch(`/dataset_types?${query}`),
+      fetch(`/reserving_class_types?${query}`),
+    ]);
+    if (!typesRes.ok) throw new Error(await readResponseErrorDetail(typesRes));
+    if (!classTypesRes.ok) throw new Error(await readResponseErrorDetail(classTypesRes));
+    const types = await typesRes.json();
+    const classTypes = await classTypesRes.json();
+    const generated = types?.data?.generated_by_name || {};
+    const datasetTypes = (types?.data?.rows || [])
+      .map((row) => ({ name: String(row?.[0] ?? "").trim(), category: String(row?.[2] ?? "").trim() }))
+      .filter((item) => item.name && generated[item.name] === true);
+    const reservingClassTypes = (classTypes?.data?.rows || [])
+      .map((row) => ({ name: String(row?.[0] ?? "").trim(), level: Number(row?.[1]) }))
+      .filter((item) => item.name && Number.isInteger(item.level) && item.level >= 1);
+    return { ok: true, datasetTypes, reservingClassTypes };
+  } catch (err) {
+    return { ok: false, error: err.message || "Could not read the project's types." };
+  }
+}
+
 /** Copy the external source into the project master table, in this process. */
 async function importSourceDataLocally(name, isSql) {
   showProjectOperationProgress(isSql ? "Importing table from SQL Server..." : "Importing CSV file...");
@@ -967,10 +1002,15 @@ async function reloadSourceDataViews(name, { forceRefresh }) {
  * the caller, or a CSV path only this machine can open - does the copy stay
  * here, and even then the dependent refresh still runs on the server.
  *
+ * `scope` is what the Import Scope step chose: the engine-built dataset types
+ * to regenerate and the reserving class types whose classes are refreshed.
+ * Either list left empty means all of them.
+ *
  * With no Engine available the whole operation falls back to the local import
- * plus the lazy cache clear this page has always done.
+ * plus the lazy cache clear this page has always done, which covers the whole
+ * project regardless of the chosen scope.
  */
-async function importSourceData(sourceType) {
+async function importSourceData(sourceType, scope = {}) {
   const name = String(selectedProject?.name || "").trim();
   if (!name) return { ok: false, error: "Select a project first." };
   if (sourceRefreshFeature.isRunning()) return { ok: false, error: "A source table refresh is already running." };
@@ -999,6 +1039,8 @@ async function importSourceData(sourceType) {
   const job = await sourceRefreshFeature.runJob(name, {
     importSource: importOnServer,
     refreshDependents: true,
+    datasetTypes: scope?.datasetTypes || [],
+    reservingClassTypes: scope?.reservingClassTypes || [],
   });
   if (job.unavailable) {
     // No Engine: keep the behaviour this page has always had.

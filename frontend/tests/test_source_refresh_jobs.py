@@ -32,6 +32,7 @@ from arcrho_source_refresh_contract import (
     build_source_refresh_status,
     find_source_refresh_hold,
     release_source_refresh_lease,
+    reserving_class_matches_scope,
     source_refresh_request_path,
     source_refresh_status_path,
     validate_source_refresh_request,
@@ -76,6 +77,66 @@ class SourceRefreshContractTests(unittest.TestCase):
         )
         with self.assertRaises(SourceRefreshContractError):
             validate_source_refresh_request({**request, "Force": "true"})
+
+    def test_a_scope_travels_only_when_it_narrows_the_job(self) -> None:
+        whole = build_source_refresh_request(
+            request_id=self.REQUEST_ID,
+            project_name="Demo Project",
+            user_name="Test User",
+            dataset_types=[],
+            reserving_class_types=[],
+        )
+        # An unnarrowed request is the payload every deployed Engine accepts.
+        self.assertNotIn("DatasetTypes", whole)
+        self.assertNotIn("ReservingClassTypes", whole)
+
+        narrowed = build_source_refresh_request(
+            request_id=self.REQUEST_ID,
+            project_name="Demo Project",
+            user_name="Test User",
+            dataset_types=["Gross Loss--Paid", " gross loss--paid ", "ALAE--Paid"],
+            reserving_class_types=[
+                {"Name": "HPPREF", "Level": 1},
+                {"Name": "hppref", "Level": 1},
+                {"Name": "HOL", "Level": 5},
+            ],
+        )
+        self.assertEqual(narrowed["DatasetTypes"], ["Gross Loss--Paid", "ALAE--Paid"])
+        self.assertEqual(
+            narrowed["ReservingClassTypes"],
+            [{"Name": "HPPREF", "Level": 1}, {"Name": "HOL", "Level": 5}],
+        )
+        self.assertEqual(validate_source_refresh_request(narrowed), narrowed)
+
+        for bad in (
+            {"DatasetTypes": "Gross Loss--Paid"},
+            {"DatasetTypes": [""]},
+            {"ReservingClassTypes": ["HOL"]},
+            {"ReservingClassTypes": [{"Name": "HOL"}]},
+            {"ReservingClassTypes": [{"Name": "HOL", "Level": 0}]},
+            {"ReservingClassTypes": [{"Name": "HOL", "Level": True}]},
+            {"ReservingClassTypes": [{"Name": "HOL", "Level": 5, "Path": "E:\\x"}]},
+        ):
+            with self.assertRaises(SourceRefreshContractError, msg=repr(bad)):
+                validate_source_refresh_request({**whole, **bad})
+
+    def test_a_class_is_in_scope_when_every_listed_level_names_its_segment(self) -> None:
+        scope = [
+            {"Name": "HPPREF", "Level": 1},
+            {"Name": "PRNJ - HO+DF", "Level": 1},
+            {"Name": "HOL", "Level": 5},
+        ]
+        self.assertTrue(reserving_class_matches_scope("HPPREF\\HO+DF\\NJ\\Legacy\\HOL", scope))
+        self.assertTrue(reserving_class_matches_scope("PRNJ - HO+DF\\HO+DF\\NJ\\Legacy\\hol", scope))
+        # Level 1 matches but level 5 does not, and the other way round.
+        self.assertFalse(reserving_class_matches_scope("HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT", scope))
+        self.assertFalse(reserving_class_matches_scope("PIC2\\PA\\NY\\Core Direct\\HOL", scope))
+        # A path shorter than a listed level has no segment there to match.
+        self.assertFalse(reserving_class_matches_scope("HPPREF\\HO+DF", scope))
+        # Levels the scope does not mention accept every value; no scope accepts every class.
+        self.assertTrue(reserving_class_matches_scope("HPPREF\\PA\\NY\\Any\\HOL", scope))
+        self.assertTrue(reserving_class_matches_scope("PIC2\\PA\\NY\\Core Direct\\COL", []))
+        self.assertTrue(reserving_class_matches_scope("PIC2\\PA\\NY\\Core Direct\\COL", None))
 
     def test_status_result_is_normalized_and_bounded(self) -> None:
         status = build_source_refresh_status(

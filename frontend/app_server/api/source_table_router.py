@@ -171,6 +171,15 @@ def submit_source_refresh_job(req: SourceRefreshJobSubmitRequest) -> Dict[str, A
         "force": bool(req.force),
         "refresh_dependents": bool(req.refresh_dependents),
     }
+    # A scope travels only when one was chosen: the mutation contract reads an
+    # empty list arg as a malformed request, and an absent one as "everything".
+    if req.dataset_types:
+        kwargs["dataset_types"] = [str(name) for name in req.dataset_types]
+    if req.reserving_class_types:
+        kwargs["reserving_class_types"] = [
+            {"Name": entry.Name, "Level": int(entry.Level)}
+            for entry in req.reserving_class_types
+        ]
     return workspace_mutation_client.run_workspace_mutation(
         "source_table_refresh_submit",
         kwargs,

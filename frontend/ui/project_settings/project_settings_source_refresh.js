@@ -11,10 +11,12 @@ import {
   createSourceRefreshRequestId,
   describeSourceRefreshResult,
   loadPendingSourceRefresh,
+  normalizeSourceRefreshScope,
   savePendingSourceRefresh,
   sourceRefreshRecoveryStorage,
+  sourceRefreshScopeRequestFields,
   waitForSourceRefreshJob,
-} from "/ui/project_settings/project_settings_source_refresh_job.js?v=20260818srj1";
+} from "/ui/project_settings/project_settings_source_refresh_job.js?v=20260905scope1";
 import { createDuplicateWorkspaceScope } from "/ui/project_settings/project_settings_duplicate_job.js?v=20260901dup1";
 
 /**
@@ -97,9 +99,16 @@ export function createSourceRefreshFeature({
    * Returns `{unavailable: true}` when no Engine is running, which is the one
    * outcome the caller handles by doing the work the old way instead.
    */
-  async function runJob(projectName, { importSource, refreshDependents, requestId = "" }) {
+  async function runJob(projectName, {
+    importSource,
+    refreshDependents,
+    requestId = "",
+    datasetTypes = [],
+    reservingClassTypes = [],
+  }) {
     const jobRequestId = requestId || requestIdFactory();
     const progressId = `source-refresh-${jobRequestId}`;
+    const scope = normalizeSourceRefreshScope({ datasetTypes, reservingClassTypes });
     inFlight = true;
     // Persisted before the POST: a response lost in flight still leaves a
     // record that resumes the same job instead of starting a second import.
@@ -107,6 +116,7 @@ export function createSourceRefreshFeature({
       requestId: jobRequestId,
       importSource: !!importSource,
       refreshDependents: !!refreshDependents,
+      ...scope,
     });
     publishProgress("open", progressId, {
       title: "Refresh Source Table",
@@ -125,6 +135,7 @@ export function createSourceRefreshFeature({
           import_source: !!importSource,
           force: true,
           refresh_dependents: !!refreshDependents,
+          ...sourceRefreshScopeRequestFields(scope),
         }),
       });
       if (!response.ok) {
@@ -177,6 +188,8 @@ export function createSourceRefreshFeature({
       importSource: record.importSource,
       refreshDependents: record.refreshDependents,
       requestId: record.requestId,
+      datasetTypes: record.datasetTypes,
+      reservingClassTypes: record.reservingClassTypes,
     });
   }
 

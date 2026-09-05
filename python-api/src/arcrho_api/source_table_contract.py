@@ -202,6 +202,45 @@ def normalize_last_import(payload: Any) -> Dict[str, Any]:
     return out
 
 
+def empty_refresh_scope() -> Dict[str, Any]:
+    """The scope of the last Engine refresh: what it regenerated, by whom, when.
+
+    Shared by every user of the project, so the next import opens on the same
+    choice. Empty lists mean everything, which is also what a project that has
+    never been narrowed records.
+    """
+    return {
+        "dataset_types": [],
+        "reserving_class_types": [],
+        "chosen_by": "",
+        "chosen_at": "",
+    }
+
+
+def normalize_refresh_scope(payload: Any) -> Dict[str, Any]:
+    data = payload if isinstance(payload, dict) else {}
+    out = empty_refresh_scope()
+    seen_types: set = set()
+    for item in data.get("dataset_types") or []:
+        name = _text(item)
+        if name and name.casefold() not in seen_types:
+            seen_types.add(name.casefold())
+            out["dataset_types"].append(name)
+    seen_classes: set = set()
+    for item in data.get("reserving_class_types") or []:
+        if not isinstance(item, dict):
+            continue
+        name = _text(item.get("Name"))
+        level = _int_or_none(item.get("Level"))
+        if not name or level is None or level < 1 or (level, name.casefold()) in seen_classes:
+            continue
+        seen_classes.add((level, name.casefold()))
+        out["reserving_class_types"].append({"Name": name, "Level": level})
+    out["chosen_by"] = _text(data.get("chosen_by"))
+    out["chosen_at"] = _text(data.get("chosen_at"))
+    return out
+
+
 def normalize_source_import(payload: Any, project_name: str = "") -> Dict[str, Any]:
     """Return the full canonical `source_import.json` payload.
 
@@ -215,6 +254,7 @@ def normalize_source_import(payload: Any, project_name: str = "") -> Dict[str, A
         "source_type": normalize_source_type(data.get("source_type")),
         "mssql": normalize_mssql_profile(data.get("mssql")),
         "last_import": normalize_last_import(data.get("last_import")),
+        "refresh_scope": normalize_refresh_scope(data.get("refresh_scope")),
     }
 
 

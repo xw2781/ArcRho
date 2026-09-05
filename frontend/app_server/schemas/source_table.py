@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -51,6 +51,11 @@ class SourceTableRefreshRequest(BaseModel):
     force: bool = False
 
 
+class SourceRefreshReservingClassType(BaseModel):
+    Name: str
+    Level: int
+
+
 class SourceRefreshJobSubmitRequest(BaseModel):
     project_name: str
     # The client owns the request id so a retry after a lost response resumes
@@ -61,3 +66,7 @@ class SourceRefreshJobSubmitRequest(BaseModel):
     import_source: bool = True
     force: bool = True
     refresh_dependents: bool = True
+    # The refresh scope. Empty means every engine-built dataset type and every
+    # reserving class; the source-refresh contract owns the matching rule.
+    dataset_types: List[str] = []
+    reserving_class_types: List[SourceRefreshReservingClassType] = []

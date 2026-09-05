@@ -69,6 +69,52 @@ export function pendingSourceRefreshStorageKey(projectName, workspaceScope) {
   return `${PENDING_JOB_KEY_PREFIX}:${encodeURIComponent(scope)}:${encodeURIComponent(project)}`;
 }
 
+/**
+ * The part of the project one refresh covers.
+ *
+ * `datasetTypes` names the engine-built dataset types to regenerate and
+ * `reservingClassTypes` the `{name, level}` reserving class types whose
+ * classes are refreshed; an empty list means all of them. The same shape is
+ * posted to the server and kept in the recovery record, so a replayed
+ * submission asks for exactly the scope the person chose.
+ */
+export function normalizeSourceRefreshScope(scope) {
+  const datasetTypes = [];
+  const seenTypes = new Set();
+  for (const item of Array.isArray(scope?.datasetTypes) ? scope.datasetTypes : []) {
+    const name = String(item || "").trim();
+    if (!name || seenTypes.has(name.toLowerCase())) continue;
+    seenTypes.add(name.toLowerCase());
+    datasetTypes.push(name);
+  }
+  const reservingClassTypes = [];
+  const seenClassTypes = new Set();
+  for (const item of Array.isArray(scope?.reservingClassTypes) ? scope.reservingClassTypes : []) {
+    const name = String(item?.name || "").trim();
+    const level = Number(item?.level);
+    if (!name || !Number.isInteger(level) || level < 1) continue;
+    const key = `${level}\\${name.toLowerCase()}`;
+    if (seenClassTypes.has(key)) continue;
+    seenClassTypes.add(key);
+    reservingClassTypes.push({ name, level });
+  }
+  return { datasetTypes, reservingClassTypes };
+}
+
+/** The request-body fields a scope adds; nothing when it covers everything. */
+export function sourceRefreshScopeRequestFields(scope) {
+  const normalized = normalizeSourceRefreshScope(scope);
+  const fields = {};
+  if (normalized.datasetTypes.length) fields.dataset_types = normalized.datasetTypes;
+  if (normalized.reservingClassTypes.length) {
+    fields.reserving_class_types = normalized.reservingClassTypes.map((item) => ({
+      Name: item.name,
+      Level: item.level,
+    }));
+  }
+  return fields;
+}
+
 function normalizePendingSourceRefresh(record, projectName, workspaceScope) {
   if (!record || Number(record.version) !== PENDING_JOB_VERSION) return null;
   const normalized = {
@@ -78,6 +124,7 @@ function normalizePendingSourceRefresh(record, projectName, workspaceScope) {
     requestId: String(record.requestId || "").trim(),
     importSource: !!record.importSource,
     refreshDependents: !!record.refreshDependents,
+    ...normalizeSourceRefreshScope(record),
     submittedAt: Number(record.submittedAt) || 0,
   };
   if (

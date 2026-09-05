@@ -128,11 +128,21 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
     # Engine's queue. It is idempotent because the client owns the request id:
     # an id that already has a published status is returned as-is rather than
     # queued a second time, so a lost response can never start a second import.
+    # ``reserving_class_types`` is a list of ``{Name, Level}`` objects rather
+    # than names, so it is not a list arg; the source-refresh contract
+    # validates its shape when the request is built.
     "source_table_refresh_submit": WorkspaceMutationKind(
         "source_refresh_service",
         "submit_source_table_refresh_job",
         ("project_name", "request_id"),
-        ("import_source", "force", "refresh_dependents"),
+        (
+            "import_source",
+            "force",
+            "refresh_dependents",
+            "dataset_types",
+            "reserving_class_types",
+        ),
+        list_args=("dataset_types",),
     ),
     # The DFM sync dialog publishes a request file the ArcRho Bridge claims,
     # then waits for the JSON the Bridge exports from ResQ. Both halves are

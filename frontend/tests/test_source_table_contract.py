@@ -71,13 +71,46 @@ class SourceImportNormalizationTests(unittest.TestCase):
         payload = source_table_contract.normalize_source_import({}, "Demo")
         self.assertEqual(
             sorted(payload.keys()),
-            ["json_format", "last_import", "mssql", "project_name", "source_type"],
+            ["json_format", "last_import", "mssql", "project_name", "refresh_scope", "source_type"],
         )
         self.assertEqual(list(payload)[0], "json_format")
         self.assertEqual(payload["json_format"], source_table_contract.SOURCE_IMPORT_JSON_FORMAT)
         self.assertTrue(payload["json_format"].endswith("-v4"))
         self.assertEqual(payload["source_type"], source_table_contract.SOURCE_TYPE_CSV)
         self.assertEqual(payload["mssql"]["authentication"], source_table_contract.MSSQL_AUTH_WINDOWS)
+        self.assertEqual(payload["refresh_scope"], source_table_contract.empty_refresh_scope())
+
+    def test_the_last_refresh_scope_is_shared_and_normalized(self) -> None:
+        payload = source_table_contract.normalize_source_import(
+            {
+                "refresh_scope": {
+                    "dataset_types": ["Gross Loss--Paid", " gross loss--paid ", "", "ALAE--Paid"],
+                    "reserving_class_types": [
+                        {"Name": "HPPREF", "Level": "1"},
+                        {"Name": "hppref", "Level": 1},
+                        {"Name": "HOL", "Level": 5},
+                        {"Name": "", "Level": 2},
+                        {"Name": "NJ", "Level": 0},
+                        "PA",
+                    ],
+                    "chosen_by": "jhou",
+                    "chosen_at": "2026-09-05T13:00:00Z",
+                }
+            },
+            "Demo",
+        )
+        self.assertEqual(
+            payload["refresh_scope"],
+            {
+                "dataset_types": ["Gross Loss--Paid", "ALAE--Paid"],
+                "reserving_class_types": [
+                    {"Name": "HPPREF", "Level": 1},
+                    {"Name": "HOL", "Level": 5},
+                ],
+                "chosen_by": "jhou",
+                "chosen_at": "2026-09-05T13:00:00Z",
+            },
+        )
 
     def test_unknown_values_fall_back_to_the_supported_defaults(self) -> None:
         payload = source_table_contract.normalize_source_import(

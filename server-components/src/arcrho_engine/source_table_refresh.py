@@ -51,6 +51,7 @@ from arcrho_source_refresh_contract import (
     acquire_source_refresh_lease,
     read_source_refresh_status,
     release_source_refresh_lease,
+    reserving_class_matches_scope,
     source_refresh_request_path,
     start_source_refresh_lease_heartbeat,
     stop_source_refresh_lease_heartbeat,
@@ -180,16 +181,22 @@ def _reserving_class_paths(project_name: str) -> list[str]:
     return classes
 
 
-def _engine_dataset_instances(project_name: str, reserving_class: str) -> list[str]:
+def _engine_dataset_instances(
+    project_name: str,
+    reserving_class: str,
+    dataset_types: list[str] | None = None,
+) -> list[str]:
     """Names of the engine-generated dataset instances in one class.
 
     A calculated dataset is deliberately excluded: the dependent walk owns
     those, and recomputing one here would duplicate the walk's work with a
-    different ordering.
+    different ordering. When the request names dataset types, only instances of
+    those types are returned.
     """
 
     from app_server.services import dataset_instance_index_service
 
+    wanted_types = {str(name).casefold() for name in dataset_types or []}
     index = dataset_instance_index_service.get_index(project_name, reserving_class)
     names: list[str] = []
     seen: set[str] = set()
@@ -197,6 +204,10 @@ def _engine_dataset_instances(project_name: str, reserving_class: str) -> list[s
         if not isinstance(row, Mapping):
             continue
         if str(row.get("source_kind") or "").strip().casefold() != "engine":
+            continue
+        if wanted_types and (
+            str(row.get("dataset_type") or "").strip().casefold() not in wanted_types
+        ):
             continue
         # Index rows name the instance "name" (dataset_index_contract
         # INDEX_ROW_FIELDS); "dataset_name" exists only on sidecar payloads.
@@ -359,12 +370,15 @@ def _refresh_one_reserving_class(
     result: dict[str, Any],
     *,
     on_dataset: Callable[[str], None],
+    dataset_types: list[str] | None = None,
 ) -> None:
     """Regenerate one class's engine datasets, then walk its dependents.
 
     The class is held under the dependent-propagation reserving-class lease for
     the whole step, so a client save into it is refused with the hold it already
-    handles rather than racing the rewrite.
+    handles rather than racing the rewrite. ``dataset_types`` limits the
+    regeneration to those types; the dependent walk that follows still starts
+    from whatever was regenerated.
     """
 
     from app_server.services import calculated_dataset_service
@@ -382,7 +396,9 @@ def _refresh_one_reserving_class(
     heartbeat_stop, heartbeat_thread = start_reserving_class_lease_heartbeat(lease)
     try:
         regenerated: list[str] = []
-        for dataset_name in _engine_dataset_instances(project_name, reserving_class):
+        for dataset_name in _engine_dataset_instances(
+            project_name, reserving_class, dataset_types
+        ):
             on_dataset(dataset_name)
             try:
                 _regenerate_engine_dataset(
@@ -456,7 +472,9 @@ def execute_source_refresh(
     _log(
         root,
         f"{normalized['RequestId']} start project={project_name!r} "
-        f"import={normalized['Import']} dependents={normalized['RefreshDependents']}",
+        f"import={normalized['Import']} dependents={normalized['RefreshDependents']} "
+        f"dataset_types={len(normalized.get('DatasetTypes') or []) or 'all'} "
+        f"class_types={len(normalized.get('ReservingClassTypes') or []) or 'all'}",
     )
 
     def notify(stage: str, completed: int, total: int, label: str) -> None:
@@ -465,12 +483,19 @@ def execute_source_refresh(
 
     # The job re-saves datasets, sidecars and method payloads: act as the user
     # who asked for the refresh so every stamp names them and not this service.
+    dataset_types = list(normalized.get("DatasetTypes") or [])
+    reserving_class_types = list(normalized.get("ReservingClassTypes") or [])
+
     with user_identity_service.acting_identity(normalized["UserName"]):
-        classes = (
-            _reserving_class_paths(project_name)
-            if normalized["RefreshDependents"]
-            else []
-        )
+        classes = [
+            reserving_class
+            for reserving_class in (
+                _reserving_class_paths(project_name)
+                if normalized["RefreshDependents"]
+                else []
+            )
+            if reserving_class_matches_scope(reserving_class, reserving_class_types)
+        ]
         result["classes_total"] = len(classes)
         # One unit for the import, one for the derived caches, then one per
         # reserving class, so the bar means the same thing on every project.
@@ -495,6 +520,12 @@ def execute_source_refresh(
         else:
             record = source_table_service.get_source_table_state(project_name)
             result["source_type"] = str(record.get("source_type") or "")
+        if normalized["RefreshDependents"]:
+            # Shared with every user of the project: the next Import Scope
+            # step opens on what this refresh covered.
+            source_table_service.record_refresh_scope(
+                project_name, dataset_types, reserving_class_types
+            )
         completed_units += 1
 
         notify(
@@ -545,6 +576,7 @@ def execute_source_refresh(
                     reserving_class,
                     result,
                     on_dataset=on_dataset,
+                    dataset_types=dataset_types,
                 )
                 result["classes_refreshed"] += 1
             except DependentPropagationLeaseUnavailable as exc:

@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Import Data now offers an Import Scope step to choose which datasets and reserving class types the import refreshes.",
+  "details": [
+    "The step opens on the scope used by the project's last import, whoever ran it, and says who chose it and when.",
+    "Untick datasets or reserving class types to leave them as they are; a whole-project import clears any earlier narrowing.",
+    "Reserving class types are grouped by level, and a class is refreshed when it matches a ticked type at every narrowed level.",
+    "Each list has its own filter box and group tick boxes with counts."
+  ]
+}

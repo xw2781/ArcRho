@@ -11,8 +11,10 @@ const {
   createSourceRefreshRequestId,
   describeSourceRefreshResult,
   loadPendingSourceRefresh,
+  normalizeSourceRefreshScope,
   pendingSourceRefreshStorageKey,
   savePendingSourceRefresh,
+  sourceRefreshScopeRequestFields,
   sourceRefreshStatusUrl,
   waitForSourceRefreshJob,
 } = await import(
@@ -198,6 +200,66 @@ test("an unusable storage key never produces a recovery record", () => {
   assert.equal(savePendingSourceRefresh(memoryStorage(), { version: 1 }), null);
 });
 
+test("a refresh scope is normalized, de-duplicated, and sent only when it narrows the job", () => {
+  const scope = normalizeSourceRefreshScope({
+    datasetTypes: [" Gross Loss--Paid ", "gross loss--paid", "", null, "ALAE--Paid"],
+    reservingClassTypes: [
+      { name: "HPPREF", level: 1 },
+      { name: "hppref", level: "1" },
+      { name: "HOL", level: 5 },
+      { name: "", level: 2 },
+      { name: "NJ", level: 0 },
+    ],
+  });
+  assert.deepEqual(scope, {
+    datasetTypes: ["Gross Loss--Paid", "ALAE--Paid"],
+    reservingClassTypes: [{ name: "HPPREF", level: 1 }, { name: "HOL", level: 5 }],
+  });
+  // The server reads an absent field as "everything", so nothing is sent for it.
+  assert.deepEqual(sourceRefreshScopeRequestFields({}), {});
+  assert.deepEqual(sourceRefreshScopeRequestFields({ datasetTypes: ["ALAE--Paid"] }), {
+    dataset_types: ["ALAE--Paid"],
+  });
+  assert.deepEqual(sourceRefreshScopeRequestFields(scope).reserving_class_types, [
+    { Name: "HPPREF", Level: 1 },
+    { Name: "HOL", Level: 5 },
+  ]);
+});
+
+test("a recovery record keeps the scope so a replayed submission asks for the same work", () => {
+  const storage = memoryStorage();
+  savePendingSourceRefresh(storage, {
+    version: 1,
+    projectName: "Demo Project",
+    workspaceScope: "ws_1",
+    requestId: "psrefresh_1",
+    importSource: true,
+    refreshDependents: true,
+    datasetTypes: ["ALAE--Paid"],
+    reservingClassTypes: [{ name: "HOL", level: 5 }],
+    submittedAt: 1,
+  });
+  const loaded = loadPendingSourceRefresh(storage, "Demo Project", "ws_1");
+  assert.deepEqual(loaded.datasetTypes, ["ALAE--Paid"]);
+  assert.deepEqual(loaded.reservingClassTypes, [{ name: "HOL", level: 5 }]);
+  // A record written before the scope existed still loads, as a whole-project job.
+  storage.setItem(
+    pendingSourceRefreshStorageKey("Demo Project", "ws_1"),
+    JSON.stringify({
+      version: 1,
+      projectName: "Demo Project",
+      workspaceScope: "ws_1",
+      requestId: "psrefresh_2",
+      importSource: true,
+      refreshDependents: true,
+      submittedAt: 1,
+    }),
+  );
+  const legacy = loadPendingSourceRefresh(storage, "Demo Project", "ws_1");
+  assert.deepEqual(legacy.datasetTypes, []);
+  assert.deepEqual(legacy.reservingClassTypes, []);
+});
+
 test("the result summary names what the job actually did", () => {
   assert.equal(
     describeSourceRefreshResult({
@@ -235,8 +297,10 @@ const {
   createSourceRefreshRequestId,
   describeSourceRefreshResult,
   loadPendingSourceRefresh,
+  normalizeSourceRefreshScope,
   savePendingSourceRefresh,
   sourceRefreshRecoveryStorage,
+  sourceRefreshScopeRequestFields,
   waitForSourceRefreshJob,
 } = globalThis.__sourceRefreshJobHelpers;
 `,
@@ -338,15 +402,42 @@ test("a job interrupted before its outcome is resumed under the same request id"
     requestId: "psrefresh_earlier",
     importSource: false,
     refreshDependents: true,
+    datasetTypes: ["ALAE--Paid"],
+    reservingClassTypes: [{ name: "HOL", level: 5 }],
     submittedAt: 1,
   });
   const outcome = await harness.feature.resumePending("Demo Project");
   assert.equal(outcome.ok, true);
   assert.equal(submitted.at(-1).request_id, "psrefresh_earlier");
   // The resumed submission keeps the original job's plan; re-importing a table
-  // the client already copied would do the work twice.
+  // the client already copied would do the work twice, and a wider scope would
+  // refresh classes the person chose to leave alone.
   assert.equal(submitted.at(-1).import_source, false);
+  assert.deepEqual(submitted.at(-1).dataset_types, ["ALAE--Paid"]);
+  assert.deepEqual(submitted.at(-1).reserving_class_types, [{ Name: "HOL", Level: 5 }]);
   assert.equal(loadPendingSourceRefresh(harness.storage, "Demo Project", WORKSPACE_SCOPE), null);
+});
+
+test("a whole-project refresh posts no scope fields and a narrowed one posts both", async () => {
+  const submitted = [];
+  const harness = featureHarness({
+    submit: async (body) => {
+      submitted.push(body);
+      return response({ ok: true, job_id: body.request_id, status: "queued" });
+    },
+  });
+  await harness.feature.runJob("Demo Project", { importSource: true, refreshDependents: true });
+  assert.equal("dataset_types" in submitted.at(-1), false);
+  assert.equal("reserving_class_types" in submitted.at(-1), false);
+
+  await harness.feature.runJob("Demo Project", {
+    importSource: true,
+    refreshDependents: true,
+    datasetTypes: ["Gross Loss--Paid"],
+    reservingClassTypes: [{ name: "HPPREF", level: 1 }],
+  });
+  assert.deepEqual(submitted.at(-1).dataset_types, ["Gross Loss--Paid"]);
+  assert.deepEqual(submitted.at(-1).reserving_class_types, [{ Name: "HPPREF", Level: 1 }]);
 });
 
 test("a job the server rejected settles its record, a stalled one keeps it", async () => {

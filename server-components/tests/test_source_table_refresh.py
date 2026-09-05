@@ -118,7 +118,7 @@ class EngineDatasetEnumerationTests(unittest.TestCase):
     zero datasets on every real project.
     """
 
-    def _enumerate(self, rows):
+    def _enumerate(self, rows, dataset_types=None):
         index_service = SimpleNamespace(
             get_index=lambda project, reserving_class: {"files": rows}
         )
@@ -126,8 +126,29 @@ class EngineDatasetEnumerationTests(unittest.TestCase):
             {"dataset_instance_index_service": index_service}
         ):
             return source_table_refresh._engine_dataset_instances(
-                "Demo Project", "HPPREF\\NJ"
+                "Demo Project", "HPPREF\\NJ", dataset_types
             )
+
+    def test_a_dataset_type_scope_keeps_only_instances_of_those_types(self) -> None:
+        rows = [
+            canonicalize_index_row(
+                {"name": "ALAE Paid", "dataset_type": "ALAE--Paid", "source_kind": "engine"}
+            ),
+            canonicalize_index_row(
+                {"name": "Paid", "dataset_type": "Gross Loss--Paid", "source_kind": "engine"}
+            ),
+            canonicalize_index_row(
+                {"name": "Paid 12", "dataset_type": "Gross Loss--Paid", "source_kind": "engine"}
+            ),
+            canonicalize_index_row(
+                {"name": "Cutoff", "dataset_type": "Gross Loss--Paid", "source_kind": "input"}
+            ),
+        ]
+        self.assertEqual(
+            self._enumerate(rows, ["gross loss--paid"]), ["Paid", "Paid 12"]
+        )
+        # No scope is the whole class, exactly as before.
+        self.assertEqual(self._enumerate(rows, []), ["ALAE Paid", "Paid", "Paid 12"])
 
     def test_engine_rows_are_found_in_a_contract_shaped_index(self) -> None:
         rows = [
@@ -305,6 +326,88 @@ class RegenerationSafetyTests(unittest.TestCase):
         # not put the stale copy back over the Engine's output.
         self.assertFalse(self.cache.exists())
         self.assertFalse(Path(f"{self.cache}.refresh-backup").exists())
+
+
+class ScopedRefreshTests(unittest.TestCase):
+    """A narrowed request refreshes only the classes and types it names."""
+
+    REQUEST_ID = "0123456789abcdef0123456789abcdef"
+
+    def _run(self, **scope):
+        request = build_source_refresh_request(
+            request_id=self.REQUEST_ID,
+            project_name="Demo Project",
+            user_name="Test User",
+            import_source=False,
+            **scope,
+        )
+        refreshed = []
+        self.recorded = []
+
+        def refresh_one(root, project, reserving_class, result, *, on_dataset, dataset_types=None):
+            refreshed.append((reserving_class, list(dataset_types or [])))
+
+        source_table = SimpleNamespace(
+            get_source_table_state=lambda project: {"source_type": "csv"},
+            record_refresh_scope=lambda project, types, class_types: self.recorded.append(
+                (project, list(types), list(class_types))
+            ),
+        )
+        summary = SimpleNamespace(
+            refresh_table_summary=lambda project, **kwargs: {"row_count": 7},
+        )
+        runtime = SimpleNamespace(clear_arcrho_headers_cache=lambda project: None)
+        classes = [
+            "HPPREF\\HO+DF\\NJ\\Legacy\\HOL",
+            "HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT",
+            "PIC2\\PA\\NY\\Core Direct\\COL",
+        ]
+        with _install_fake_app_server(
+            {
+                "arcrho_runtime_service": runtime,
+                "source_table_service": source_table,
+                "table_summary_service": summary,
+                "user_identity_service": _identity_stub([]),
+            }
+        ), patch.object(
+            source_table_refresh, "configure_canonical_runtime", lambda root: None
+        ), patch.object(
+            source_table_refresh, "_reserving_class_paths", lambda project: list(classes)
+        ), patch.object(
+            source_table_refresh, "_refresh_one_reserving_class", refresh_one
+        ), patch.object(source_table_refresh, "_log", lambda *a, **k: None):
+            result = source_table_refresh.execute_source_refresh(
+                Path(tempfile.gettempdir()), request
+            )
+        return result, refreshed
+
+    def test_no_scope_refreshes_every_class_and_every_engine_dataset(self) -> None:
+        result, refreshed = self._run()
+        self.assertEqual(result["classes_total"], 3)
+        self.assertEqual([types for _, types in refreshed], [[], [], []])
+        # "Everything" is recorded too, so a later narrowing never lingers.
+        self.assertEqual(self.recorded, [("Demo Project", [], [])])
+
+    def test_class_types_pick_the_classes_and_dataset_types_reach_each_one(self) -> None:
+        result, refreshed = self._run(
+            dataset_types=["Gross Loss--Paid"],
+            reserving_class_types=[
+                {"Name": "HPPREF", "Level": 1},
+                {"Name": "HOL", "Level": 5},
+            ],
+        )
+        self.assertEqual(result["classes_total"], 1)
+        self.assertEqual(
+            refreshed, [("HPPREF\\HO+DF\\NJ\\Legacy\\HOL", ["Gross Loss--Paid"])]
+        )
+        self.assertEqual(
+            self.recorded,
+            [(
+                "Demo Project",
+                ["Gross Loss--Paid"],
+                [{"Name": "HPPREF", "Level": 1}, {"Name": "HOL", "Level": 5}],
+            )],
+        )
 
 
 class DurableSourceRefreshTests(unittest.TestCase):

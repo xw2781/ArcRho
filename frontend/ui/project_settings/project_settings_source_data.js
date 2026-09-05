@@ -39,10 +39,23 @@ export function normalizeSourceState(state) {
   const data = state && typeof state === "object" ? state : {};
   const mssql = data.mssql && typeof data.mssql === "object" ? data.mssql : {};
   const lastImport = data.last_import && typeof data.last_import === "object" ? data.last_import : {};
+  const refreshScope = data.refresh_scope && typeof data.refresh_scope === "object" ? data.refresh_scope : {};
   const sourceType = String(data.source_type || "").trim().toLowerCase() === SOURCE_TYPE_MSSQL
     ? SOURCE_TYPE_MSSQL
     : SOURCE_TYPE_CSV;
   return {
+    // What the last Engine refresh covered, shared by everyone on the project;
+    // the Import Scope step opens on it. Empty lists mean everything.
+    refreshScope: {
+      datasetTypes: (Array.isArray(refreshScope.dataset_types) ? refreshScope.dataset_types : [])
+        .map((name) => String(name || "").trim())
+        .filter(Boolean),
+      reservingClassTypes: (Array.isArray(refreshScope.reserving_class_types) ? refreshScope.reserving_class_types : [])
+        .map((item) => ({ name: String(item?.Name || "").trim(), level: Number(item?.Level) }))
+        .filter((item) => item.name && Number.isInteger(item.level) && item.level >= 1),
+      chosenBy: String(refreshScope.chosen_by || ""),
+      chosenAt: String(refreshScope.chosen_at || ""),
+    },
     sourceType,
     csvPath: String(data.csv_path || ""),
     masterTablePath: String(data.master_table_path || ""),
@@ -268,6 +281,8 @@ export function createSourceDataFeature(deps = {}) {
     onForgetConnection = async () => ({ connections: [] }),
     onCsvPathPick = async () => "",
     onImportData = async () => ({ ok: false, error: "Not available." }),
+    // The dataset types and reserving class types the Import Scope step offers.
+    onLoadImportScope = async () => ({ ok: false, error: "Not available." }),
     onSourceFileStatus = async () => null,
   } = deps;
 
@@ -310,6 +325,19 @@ export function createSourceDataFeature(deps = {}) {
     mssqlTableList: el("sdMssqlTableList"),
     mssqlAuthGroup: el("sdMssqlAuthGroup"),
     importDataBtn: el("sdImportDataBtn"),
+    importNextBtn: el("sdImportNextBtn"),
+    importBackBtn: el("sdImportBackBtn"),
+    sourcePanelTitle: el("summaryImportWindowTitle"),
+    settingsStep: el("summaryImportWindow")?.querySelector(".sd-import-body:not(.sd-import-scope)"),
+    scopeStep: el("sdImportScope"),
+    scopeDatasetsList: el("sdScopeDatasetsList"),
+    scopeDatasetsFilter: el("sdScopeDatasetsFilter"),
+    scopeDatasetsCount: el("sdScopeDatasetsCount"),
+    scopeClassTypesList: el("sdScopeClassTypesList"),
+    scopeClassTypesFilter: el("sdScopeClassTypesFilter"),
+    scopeClassTypesCount: el("sdScopeClassTypesCount"),
+    scopeStatus: el("sdScopeStatus"),
+    scopeRestored: el("sdScopeRestored"),
     mssqlStatus: el("sdMssqlStatus"),
     message: el("summaryMessage"),
     band: el("summaryPeriodsBand"),
@@ -338,6 +366,12 @@ export function createSourceDataFeature(deps = {}) {
   let sourceBusy = false;
   // Method chosen inside the panel; only an import commits it to the project.
   let panelMethod = SOURCE_TYPE_CSV;
+  // Which page of the Import Settings window is showing: the settings, or the
+  // Import Scope step that follows them.
+  let panelStep = "settings";
+  // What the Import Scope step offers and what is ticked. Selections are keyed
+  // by lower-cased name (datasets) and by `level\name` (reserving class types).
+  let scopeState = null;
   let windowDragState = null;
   let windowResizeState = null;
   let connectionHistory = [];
@@ -1447,13 +1481,22 @@ export function createSourceDataFeature(deps = {}) {
 
   function setSourceBusy(busy) {
     sourceBusy = !!busy;
-    [dom.importDataBtn, dom.mssqlLoadTablesBtn, dom.csvBrowseBtn].forEach((button) => {
-      if (button) button.disabled = sourceBusy;
+    [
+      dom.importNextBtn,
+      dom.importBackBtn,
+      dom.mssqlLoadTablesBtn,
+      dom.csvBrowseBtn,
+      dom.scopeDatasetsFilter,
+      dom.scopeClassTypesFilter,
+    ].forEach((control) => {
+      if (control) control.disabled = sourceBusy;
     });
     methodSelect.setDisabled(sourceBusy);
     tableSelect.setDisabled(sourceBusy);
     serverCombo.setDisabled(sourceBusy);
     databaseCombo.setDisabled(sourceBusy);
+    // Import Data also depends on the scope holding at least one choice.
+    syncScopeControls();
   }
 
   /** Show only the selected method's fields; the window owns that choice. */
@@ -1500,6 +1543,10 @@ export function createSourceDataFeature(deps = {}) {
     tableSelect.setOptions([], { keepSelection: false });
     syncSourcePanelFields();
     syncPanelMethod();
+    // The scope is re-read from the project on each visit to the step, so a
+    // dataset type added since the last import is offered.
+    scopeState = null;
+    showPanelStep("settings");
     sourcePanelOpen = true;
     // Re-center on every open so a dragged window never opens off-screen.
     dom.sourcePanel.style.left = "50%";
@@ -1525,7 +1572,342 @@ export function createSourceDataFeature(deps = {}) {
     windowResizeState = null;
     dom.sourcePanel.classList.remove("show");
     dom.importSettingsBtn?.setAttribute("aria-expanded", "false");
+    showPanelStep("settings");
     if (restoreFocus) dom.importSettingsBtn?.focus();
+  }
+
+  /* ---------------- Import Scope step ---------------- */
+
+  const scopeKeyOf = (name) => String(name || "").trim().toLowerCase();
+  const classTypeKeyOf = (item) => `${item.level}\\${scopeKeyOf(item.name)}`;
+
+  function setScopeStatus(text, tone = "") {
+    if (!dom.scopeStatus) return;
+    const value = String(text || "").trim();
+    dom.scopeStatus.textContent = value;
+    dom.scopeStatus.classList.toggle("error", tone === "error");
+    dom.scopeStatus.hidden = !value;
+  }
+
+  /** Say whose narrowed scope the step opened on, so a restored choice is never silent. */
+  function syncScopeRestoredNote() {
+    if (!dom.scopeRestored) return;
+    const remembered = sourceState.refreshScope;
+    const show = !!scopeState?.restored;
+    dom.scopeRestored.hidden = !show;
+    if (!show) {
+      dom.scopeRestored.textContent = "";
+      return;
+    }
+    const who = remembered?.chosenBy ? ` by ${remembered.chosenBy}` : "";
+    const when = remembered?.chosenAt ? ` on ${formatIsoTimestamp(remembered.chosenAt)}` : "";
+    dom.scopeRestored.textContent = `Restored the scope chosen for the last import${who}${when}. Tick a group header to widen it.`;
+  }
+
+  /** Show one page of the window; the title and footer follow the page. */
+  function showPanelStep(step) {
+    panelStep = step === "scope" ? "scope" : "settings";
+    const onScope = panelStep === "scope";
+    if (dom.settingsStep) dom.settingsStep.hidden = onScope;
+    if (dom.scopeStep) dom.scopeStep.hidden = !onScope;
+    if (dom.importNextBtn) dom.importNextBtn.hidden = onScope;
+    if (dom.importBackBtn) dom.importBackBtn.hidden = !onScope;
+    if (dom.importDataBtn) dom.importDataBtn.hidden = !onScope;
+    if (dom.sourcePanelTitle) dom.sourcePanelTitle.textContent = onScope ? "Import Scope" : "Import Settings";
+    syncScopeControls();
+  }
+
+  /** The settings the import needs, or the first thing missing from them. */
+  function validateImportSettings() {
+    const method = selectedMethod();
+    const profile = readProfileFromPanel();
+    const csvPath = readCsvPathFromPanel();
+    let error = "";
+    if (method === SOURCE_TYPE_MSSQL) {
+      if (!profile.server || !profile.database) error = "Enter the server and database name first.";
+      else if (!profile.table) error = "Select a table or view to import.";
+    } else if (!csvPath) {
+      error = "Choose a CSV file to import.";
+    }
+    return { ok: !error, error, method, profile, csvPath };
+  }
+
+  /**
+   * The step opens on the scope of the project's last refresh, whoever ran it.
+   *
+   * A remembered list that is empty means everything and ticks everything. A
+   * narrowed list ticks only the names it holds that still exist; a dataset
+   * type or class type added since the last import therefore starts unticked
+   * on a narrowed project, which is what "the same scope as last time" means.
+   * Levels the remembered scope did not narrow stay fully ticked.
+   */
+  function buildScopeState(options, remembered = null) {
+    const state = buildFullScopeState(options);
+    const rememberedTypes = Array.isArray(remembered?.datasetTypes) ? remembered.datasetTypes : [];
+    const rememberedClassTypes = Array.isArray(remembered?.reservingClassTypes) ? remembered.reservingClassTypes : [];
+    if (rememberedTypes.length) {
+      const wanted = new Set(rememberedTypes.map(scopeKeyOf));
+      state.selectedDatasets = new Set([...state.selectedDatasets].filter((key) => wanted.has(key)));
+    }
+    if (rememberedClassTypes.length) {
+      const narrowedLevels = new Set(rememberedClassTypes.map((item) => Number(item.level)));
+      const wanted = new Set(rememberedClassTypes.map(classTypeKeyOf));
+      state.selectedClassTypes = new Set(
+        state.classTypes
+          .filter((item) => !narrowedLevels.has(item.level) || wanted.has(classTypeKeyOf(item)))
+          .map(classTypeKeyOf),
+      );
+    }
+    state.restored = !!(rememberedTypes.length || rememberedClassTypes.length);
+    return state;
+  }
+
+  /** Everything ticked: an import refreshes the whole project unless narrowed. */
+  function buildFullScopeState(options) {
+    const datasetTypes = [];
+    const seenTypes = new Set();
+    for (const item of Array.isArray(options?.datasetTypes) ? options.datasetTypes : []) {
+      const name = String(item?.name || "").trim();
+      if (!name || seenTypes.has(scopeKeyOf(name))) continue;
+      seenTypes.add(scopeKeyOf(name));
+      datasetTypes.push({ name, category: String(item?.category || "").trim() });
+    }
+    const classTypes = [];
+    const seenClassTypes = new Set();
+    for (const item of Array.isArray(options?.reservingClassTypes) ? options.reservingClassTypes : []) {
+      const entry = { name: String(item?.name || "").trim(), level: Number(item?.level) };
+      if (!entry.name || !Number.isInteger(entry.level) || entry.level < 1) continue;
+      if (seenClassTypes.has(classTypeKeyOf(entry))) continue;
+      seenClassTypes.add(classTypeKeyOf(entry));
+      classTypes.push(entry);
+    }
+    return {
+      datasetTypes,
+      classTypes,
+      selectedDatasets: new Set(datasetTypes.map((item) => scopeKeyOf(item.name))),
+      selectedClassTypes: new Set(classTypes.map(classTypeKeyOf)),
+    };
+  }
+
+  function renderScopeList(listEl, groups, selected, emptyText) {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    if (!groups.length) {
+      const empty = document.createElement("div");
+      empty.className = "sd-scope-empty";
+      empty.textContent = emptyText;
+      listEl.appendChild(empty);
+      return;
+    }
+    groups.forEach((group) => {
+      const section = document.createElement("div");
+      section.className = "sd-scope-group";
+      const head = document.createElement("label");
+      head.className = "sd-scope-group-head";
+      const all = document.createElement("input");
+      all.type = "checkbox";
+      all.dataset.group = group.key;
+      all.setAttribute("aria-label", `All of ${group.label}`);
+      const label = document.createElement("span");
+      label.className = "sd-scope-group-name";
+      label.textContent = group.label;
+      const count = document.createElement("span");
+      count.className = "sd-scope-group-count";
+      head.append(all, label, count);
+      section.appendChild(head);
+      group.items.forEach((item) => {
+        const row = document.createElement("label");
+        row.className = "sd-scope-row";
+        row.dataset.text = item.name.toLowerCase();
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.dataset.key = item.key;
+        box.checked = selected.has(item.key);
+        const name = document.createElement("span");
+        name.className = "sd-scope-row-name";
+        name.textContent = item.name;
+        name.title = item.name;
+        row.append(box, name);
+        section.appendChild(row);
+      });
+      listEl.appendChild(section);
+    });
+    syncScopeGroupHeads(listEl);
+  }
+
+  /** A group's own box mirrors its rows: all, none, or the mixed state between. */
+  function syncScopeGroupHeads(listEl) {
+    listEl?.querySelectorAll(".sd-scope-group").forEach((section) => {
+      const boxes = Array.from(section.querySelectorAll(".sd-scope-row input"));
+      const ticked = boxes.filter((box) => box.checked).length;
+      const head = section.querySelector(".sd-scope-group-head input");
+      if (head) {
+        head.checked = ticked > 0 && ticked === boxes.length;
+        head.indeterminate = ticked > 0 && ticked < boxes.length;
+      }
+      const count = section.querySelector(".sd-scope-group-count");
+      if (count) count.textContent = `${ticked} of ${boxes.length}`;
+    });
+  }
+
+  function applyScopeFilter(listEl, text) {
+    const needle = String(text || "").trim().toLowerCase();
+    listEl?.querySelectorAll(".sd-scope-group").forEach((section) => {
+      let shown = 0;
+      section.querySelectorAll(".sd-scope-row").forEach((row) => {
+        const visible = !needle || String(row.dataset.text || "").includes(needle);
+        row.hidden = !visible;
+        if (visible) shown += 1;
+      });
+      section.hidden = shown === 0;
+    });
+  }
+
+  /** Datasets are grouped by category like the Dataset Types table; class types by level. */
+  function renderScopeStep() {
+    if (!scopeState) return;
+    const datasetGroups = [];
+    const byCategory = new Map();
+    scopeState.datasetTypes.forEach((item) => {
+      const label = item.category || "Other";
+      if (!byCategory.has(label)) {
+        const group = { key: label.toLowerCase(), label, items: [] };
+        byCategory.set(label, group);
+        datasetGroups.push(group);
+      }
+      byCategory.get(label).items.push({ key: scopeKeyOf(item.name), name: item.name });
+    });
+    const levelGroups = [];
+    const byLevel = new Map();
+    [...scopeState.classTypes].sort((a, b) => a.level - b.level).forEach((item) => {
+      if (!byLevel.has(item.level)) {
+        const group = { key: `level-${item.level}`, label: `Level ${item.level}`, items: [] };
+        byLevel.set(item.level, group);
+        levelGroups.push(group);
+      }
+      byLevel.get(item.level).items.push({ key: classTypeKeyOf(item), name: item.name });
+    });
+    renderScopeList(
+      dom.scopeDatasetsList,
+      datasetGroups,
+      scopeState.selectedDatasets,
+      "This project has no dataset types built from the source table.",
+    );
+    renderScopeList(
+      dom.scopeClassTypesList,
+      levelGroups,
+      scopeState.selectedClassTypes,
+      "This project has no reserving class types.",
+    );
+    if (dom.scopeDatasetsFilter) dom.scopeDatasetsFilter.value = "";
+    if (dom.scopeClassTypesFilter) dom.scopeClassTypesFilter.value = "";
+    syncScopeControls();
+  }
+
+  function onScopeListChange(event, selected) {
+    const box = event.target;
+    if (!box || box.type !== "checkbox" || !scopeState) return;
+    const toggle = (key, on) => {
+      if (on) selected.add(key);
+      else selected.delete(key);
+    };
+    if (box.dataset.group !== undefined) {
+      // A group tick covers the rows it shows, so a filtered group only
+      // touches what the person can see.
+      box.closest(".sd-scope-group")
+        ?.querySelectorAll(".sd-scope-row:not([hidden]) input")
+        .forEach((row) => {
+          row.checked = box.checked;
+          toggle(row.dataset.key, box.checked);
+        });
+    } else {
+      toggle(box.dataset.key, box.checked);
+    }
+    syncScopeGroupHeads(event.currentTarget);
+    syncScopeControls();
+  }
+
+  /** Import Data needs something to refresh: a dataset, and a class type at every level. */
+  function scopeProblem() {
+    if (!scopeState) return "";
+    if (scopeState.datasetTypes.length && scopeState.selectedDatasets.size === 0) {
+      return "Choose at least one dataset.";
+    }
+    const tickedByLevel = new Map();
+    scopeState.classTypes.forEach((item) => {
+      const ticked = scopeState.selectedClassTypes.has(classTypeKeyOf(item)) ? 1 : 0;
+      tickedByLevel.set(item.level, (tickedByLevel.get(item.level) || 0) + ticked);
+    });
+    const empty = [...tickedByLevel.entries()].filter(([, ticked]) => ticked === 0).map(([level]) => level);
+    if (empty.length) return `Choose at least one reserving class type at Level ${Math.min(...empty)}.`;
+    return "";
+  }
+
+  function syncScopeControls() {
+    const problem = scopeProblem();
+    if (dom.importDataBtn) dom.importDataBtn.disabled = sourceBusy || !!problem;
+    if (scopeState) {
+      if (dom.scopeDatasetsCount) {
+        dom.scopeDatasetsCount.textContent = `${scopeState.selectedDatasets.size} of ${scopeState.datasetTypes.length}`;
+      }
+      if (dom.scopeClassTypesCount) {
+        dom.scopeClassTypesCount.textContent = `${scopeState.selectedClassTypes.size} of ${scopeState.classTypes.length}`;
+      }
+    }
+    if (panelStep === "scope") setScopeStatus(problem, problem ? "error" : "");
+  }
+
+  /**
+   * What the import is asked for. A list that is fully ticked is sent empty,
+   * which the server reads as "everything", and a level that is fully ticked
+   * is left out so it does not narrow anything either.
+   */
+  function readScopeSelection() {
+    if (!scopeState) return { datasetTypes: [], reservingClassTypes: [] };
+    const datasetTypes = scopeState.selectedDatasets.size === scopeState.datasetTypes.length
+      ? []
+      : scopeState.datasetTypes
+        .filter((item) => scopeState.selectedDatasets.has(scopeKeyOf(item.name)))
+        .map((item) => item.name);
+    const totalByLevel = new Map();
+    const tickedByLevel = new Map();
+    scopeState.classTypes.forEach((item) => {
+      totalByLevel.set(item.level, (totalByLevel.get(item.level) || 0) + 1);
+      if (scopeState.selectedClassTypes.has(classTypeKeyOf(item))) {
+        tickedByLevel.set(item.level, (tickedByLevel.get(item.level) || 0) + 1);
+      }
+    });
+    const reservingClassTypes = scopeState.classTypes
+      .filter((item) => (tickedByLevel.get(item.level) || 0) < totalByLevel.get(item.level))
+      .filter((item) => scopeState.selectedClassTypes.has(classTypeKeyOf(item)))
+      .map((item) => ({ name: item.name, level: item.level }));
+    return { datasetTypes, reservingClassTypes };
+  }
+
+  /** Check the settings, then offer what the refresh should cover. */
+  async function goToScopeStep() {
+    const settings = validateImportSettings();
+    if (!settings.ok) {
+      setSourceStatus(settings.error, "error");
+      return;
+    }
+    setSourceBusy(true);
+    setSourceStatus("Reading the dataset and reserving class types...");
+    try {
+      const options = await onLoadImportScope();
+      if (!options?.ok) {
+        setSourceStatus(options?.error || "Could not read the project's types.", "error");
+        return;
+      }
+      scopeState = buildScopeState(options, sourceState.refreshScope);
+      setSourceStatus("");
+      renderScopeStep();
+      syncScopeRestoredNote();
+      showPanelStep("scope");
+      setTimeout(() => dom.scopeDatasetsFilter?.focus({ preventScroll: true }), 0);
+    } finally {
+      setSourceBusy(false);
+    }
   }
 
   /* ---- window dragging and resizing, matching the page's other editors ---- */
@@ -1663,28 +2045,28 @@ export function createSourceDataFeature(deps = {}) {
   }
 
   /**
-   * Save the chosen method, then rebuild the project-owned master table from it.
-   * CSV re-copies the selected file; SQL Server streams the selected table.
+   * Save the chosen method, then rebuild the project-owned master table from it
+   * and refresh what the Import Scope step chose. CSV re-copies the selected
+   * file; SQL Server streams the selected table.
    */
   async function importData() {
-    const method = selectedMethod();
-    const profile = readProfileFromPanel();
-    const csvPath = readCsvPathFromPanel();
-
-    if (method === SOURCE_TYPE_MSSQL) {
-      if (!profile.server || !profile.database) {
-        setSourceStatus("Enter the server and database name first.", "error");
-        return;
-      }
-      if (!profile.table) {
-        setSourceStatus("Select a table or view to import.", "error");
-        return;
-      }
-    } else if (!csvPath) {
-      setSourceStatus("Choose a CSV file to import.", "error");
+    const settings = validateImportSettings();
+    const { method, profile, csvPath } = settings;
+    if (!settings.ok) {
+      showPanelStep("settings");
+      setSourceStatus(settings.error, "error");
       return;
     }
+    const problem = scopeProblem();
+    if (problem) {
+      setScopeStatus(problem, "error");
+      return;
+    }
+    const scope = readScopeSelection();
 
+    // Progress and the outcome are reported on the settings page, so the
+    // window returns there while the import runs.
+    showPanelStep("settings");
     setSourceBusy(true);
     setSourceStatus(method === SOURCE_TYPE_MSSQL
       ? "Importing the table from SQL Server..."
@@ -1702,7 +2084,7 @@ export function createSourceDataFeature(deps = {}) {
           ? "Importing and reading the source table..."
           : "Copying and reading the source table...",
       );
-      const result = await onImportData(method);
+      const result = await onImportData(method, scope);
       if (!result?.ok) {
         setSummaryLoading(false);
         showMessage("", false);
@@ -1775,7 +2157,24 @@ export function createSourceDataFeature(deps = {}) {
     dom.sourcePanelResizer?.addEventListener("mousedown", onWindowResizerMouseDown);
     dom.csvBrowseBtn?.addEventListener("click", () => browseForCsv());
     dom.mssqlLoadTablesBtn?.addEventListener("click", () => loadTableOptions());
+    dom.importNextBtn?.addEventListener("click", () => goToScopeStep());
+    dom.importBackBtn?.addEventListener("click", () => showPanelStep("settings"));
     dom.importDataBtn?.addEventListener("click", () => importData());
+    dom.scopeDatasetsList?.addEventListener("change", (event) => {
+      onScopeListChange(event, scopeState?.selectedDatasets);
+    });
+    dom.scopeClassTypesList?.addEventListener("change", (event) => {
+      onScopeListChange(event, scopeState?.selectedClassTypes);
+    });
+    [
+      [dom.scopeDatasetsFilter, dom.scopeDatasetsList],
+      [dom.scopeClassTypesFilter, dom.scopeClassTypesList],
+    ].forEach(([filter, list]) => {
+      filter?.addEventListener("input", () => applyScopeFilter(list, filter.value));
+      filter?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeSourcePanel({ restoreFocus: true });
+      });
+    });
 
     dom.mssqlAuthGroup?.addEventListener("click", (event) => {
       const button = event.target.closest(".sd-auth-opt");

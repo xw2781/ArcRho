@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260903live1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260905scope1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -21,6 +21,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/data_processing_rules?project_name=${encodeURIComponent(name)}`
 - `/dataset_types`
 - `/dataset_types/import_local_file`
+- `/dataset_types?${query}`
 - `/field_mapping`
 - `/field_mapping?project_name=${encodeURIComponent(name)}`
 - `/field_mapping?project_name=${encodeURIComponent(projectName)}`
@@ -34,6 +35,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/project_settings/${sourceKey}`
 - `/reserving_class_types`
 - `/reserving_class_types/import_local_file`
+- `/reserving_class_types?${query}`
 - `/reserving_class_types?project_name=${encodeURIComponent(projectName)}`
 - `/reserving_class_types?project_name=${encoded}`
 - `/reserving_class_values/refresh`
@@ -163,7 +165,10 @@ Detected `arcrho:*` message types in key JS files:
 - Dropdowns come from two helpers: `createSdSelect` for the button-triggered Import Method, and `createSdCombo` for the three editable fields (Server, Database, Table Or View). Both are app-styled listboxes, never native `<select>` popups, and share one row renderer and one anchoring helper. Because the window is resizable (`overflow: hidden`) and centered by a transform, each list renders into `document.body` at a fixed position and is re-anchored while the window is dragged, resized, or the viewport changes - the same escape hatch the Field Mapping dataset-type dropdown uses. Escape closes an open dropdown before it closes the window.
 - Dropdown lists never scroll sideways: long schema-qualified names ellipsize inside the row instead, because a horizontal bar covers the last row and hides the option being aimed at.
 - Dropdown carets follow the canonical `.dpr-select-caret` treatment: an absolutely positioned filled triangle in a reserved right-hand lane that turns blue on hover or focus and flips 180 degrees while the list is open.
-- `Import Data` in the window footer commits the settings and rebuilds the project-owned master table for either method: CSV re-copies the selected file through `POST /source_table/refresh` with `force`, SQL Server streams the selected table through `POST /source_table/import`. Both then refresh the summary, field mapping, and reserving class types, behind a progress overlay.
+- The window has two pages. `Next` in the footer checks the settings page (a CSV path, or a server, database, and table) and then shows the `Import Scope` page; `Back` returns without losing anything typed. Both pages share the `.sd-import-body` class for padding and scrolling, so only one is mounted at a time, and the title reads `Import Settings` or `Import Scope` to match.
+- The Import Scope page opens on the scope of the project's last Engine refresh, which is shared by every user of the project (`refresh_scope` in the import record served by `GET /source_table`, written by the Engine job; see the `source_table` domain doc). A remembered empty list ticks everything; a narrowed list ticks only the names it holds that still exist, so a dataset type or class type added since starts unticked on a narrowed project, and a level the record did not narrow stays fully ticked. When anything was narrowed a note under the intro names who chose it and when, so a restored choice is never silent. `Datasets` holds the project's engine-built dataset types (those whose `Generated` flag is true, read fresh through `GET /dataset_types` rather than from the Dataset Types pane, whose state does not carry that flag), grouped by category as the Dataset Types table is; `Reserving Class Types` holds every row of `GET /reserving_class_types`, grouped by level. Each group header carries its own tick box (mixed when the group is partly ticked) and an `n of m` count, each pane a `Type to filter` field that hides non-matching rows, and a group tick applied while a filter is active only touches the rows still showing. `Import Data` is disabled, with the reason in the page's status line, while no dataset is ticked or any level has no ticked type.
+- The chosen scope is posted with the refresh job as `dataset_types` (names) and `reserving_class_types` (`{Name, Level}` pairs). A fully ticked list is sent as nothing, and a fully ticked level is left out, so an unnarrowed import is the same request it always was. On the server a reserving class is refreshed when its path segment at every listed level is one of that level's listed names, and only engine datasets of a listed type are regenerated; the dependent walk still follows from whatever was regenerated. The Engine-unavailable fallback keeps its whole-project cache clear regardless of the scope.
+- `Import Data` in the window footer commits the settings and rebuilds the project-owned master table for either method: CSV re-copies the selected file through `POST /source_table/refresh` with `force`, SQL Server streams the selected table through `POST /source_table/import`. Both then refresh the summary, field mapping, and reserving class types, behind a progress overlay. The window returns to its settings page as the import starts, because that page carries the status line the outcome is reported on.
 - A CSV selection is committed through `POST /source_table/profile` (`csv_path`), which writes it into the project's `field_mapping.json` `table_path`; the SQL Server profile and the chosen method go to the project's import record. Field Mapping saves omit `table_path`, and the app server preserves the stored value.
 - Source Data header controls (details icon, Reload, Import settings) use the shared ArcRho tooltip surface, labelled from each control's own `aria-label`. Controls inside the floating panels and the Import Settings window are deliberately excluded, because the shared tooltip's `z-index: 5600` sits below them.
 - Row counts, column counts, file size, modified time, and cache freshness are no longer printed on the surface. The info icon opens a floating `Source Table` panel on hover and pins it on click; Escape or an outside click closes it.

@@ -313,7 +313,7 @@ test("Source Data shows flowing placeholders while the table is copied or read",
   // Import Data starts the same state before the potentially long copy call.
   const importBlock = moduleSource.split("async function importData()")[1].split("/* ---------------- tooltips")[0];
   assert.ok(
-    importBlock.indexOf("setSummaryLoading(") < importBlock.indexOf("await onImportData(method)"),
+    importBlock.indexOf("setSummaryLoading(") < importBlock.indexOf("await onImportData(method, scope)"),
     "the loading surface starts only after the source copy finishes",
   );
 
@@ -1098,7 +1098,7 @@ test("Import Data rebuilds the master table from whichever method is selected", 
   assert.match(moduleSource, /async function importData\(\)/);
   // Both branches save the settings first, then run one import.
   assert.match(moduleSource, /await onProfileSave\(method, profile, csvPath\)/);
-  assert.match(moduleSource, /await onImportData\(method\)/);
+  assert.match(moduleSource, /await onImportData\(method, scope\)/);
   // Each method validates only what it needs before touching the server.
   assert.match(moduleSource, /Select a table or view to import\./);
   assert.match(moduleSource, /Choose a CSV file to import\./);
@@ -1108,6 +1108,99 @@ test("Import Data rebuilds the master table from whichever method is selected", 
   assert.match(projectSettingsJs, /\{ project_name: name, force: true \}/);
   // A finished import refreshes everything derived from the table.
   assert.match(projectSettingsJs, /forceReservingClassTypesReload: true/);
+});
+
+test("Import Data is preceded by an Import Scope step that narrows the refresh", () => {
+  // The window has two pages sharing one body class; Next validates the
+  // settings and opens the scope page, Back returns, Import Data runs from it.
+  assert.match(projectSettingsHtml, /<div class="sd-import-body sd-import-scope" id="sdImportScope" data-step="scope" hidden>/);
+  for (const id of [
+    "sdImportNextBtn",
+    "sdImportBackBtn",
+    "sdImportDataBtn",
+    "sdScopeDatasetsList",
+    "sdScopeDatasetsFilter",
+    "sdScopeDatasetsCount",
+    "sdScopeClassTypesList",
+    "sdScopeClassTypesFilter",
+    "sdScopeClassTypesCount",
+    "sdScopeStatus",
+  ]) {
+    assert.ok(projectSettingsHtml.includes(`id="${id}"`), `missing #${id} in markup`);
+    assert.ok(moduleSource.includes(`el("${id}")`), `#${id} is not bound by the Source Data module`);
+  }
+  assert.match(moduleSource, /importNextBtn\?\.addEventListener\("click", \(\) => goToScopeStep\(\)\)/);
+  assert.match(moduleSource, /importBackBtn\?\.addEventListener\("click", \(\) => showPanelStep\("settings"\)\)/);
+  assert.match(moduleSource, /textContent = onScope \? "Import Scope" : "Import Settings"/);
+  // The body class sets display, so the hidden page needs its own rule.
+  assert.match(summaryCss, /\.sd-import-body\[hidden\] \{ display: none; \}/);
+  assert.match(summaryCss, /\.rct-row-editor-actions \.dialog-btn\[hidden\] \{ display: none; \}/);
+
+  // The options come from the app server, and only engine-built dataset types are offered.
+  assert.match(moduleSource, /const options = await onLoadImportScope\(\)/);
+  assert.match(projectSettingsJs, /onLoadImportScope: \(\) => loadImportScopeOptions\(\)/);
+  assert.match(projectSettingsJs, /generated\[item\.name\] === true/);
+  assert.match(projectSettingsJs, /fetch\(`\/reserving_class_types\?\$\{query\}`\)/);
+
+  // Nothing ticked is not a refresh, and every narrowed level must keep a type.
+  assert.match(moduleSource, /return "Choose at least one dataset\."/);
+  assert.match(moduleSource, /Choose at least one reserving class type at Level \$\{Math\.min\(\.\.\.empty\)\}\./);
+  assert.match(moduleSource, /dom\.importDataBtn\.disabled = sourceBusy \|\| !!problem/);
+  // A fully ticked list is "everything", and an unnarrowed level is left out.
+  assert.match(moduleSource, /scopeState\.selectedDatasets\.size === scopeState\.datasetTypes\.length\s*\? \[\]/);
+  assert.match(moduleSource, /\(tickedByLevel\.get\(item\.level\) \|\| 0\) < totalByLevel\.get\(item\.level\)/);
+  // A group tick only reaches the rows a filter still shows.
+  assert.match(moduleSource, /\.sd-scope-row:not\(\[hidden\]\) input/);
+  // Lists scroll vertically only (design rule C16).
+  assert.match(summaryCss, /\.sd-scope-list \{[\s\S]*?overflow-y: auto;\s*overflow-x: hidden;/);
+
+  // The scope reaches the job, and the job reaches the server.
+  assert.match(projectSettingsJs, /async function importSourceData\(sourceType, scope = \{\}\)/);
+  assert.match(projectSettingsJs, /datasetTypes: scope\?\.datasetTypes \|\| \[\]/);
+  assert.match(projectSettingsJs, /reservingClassTypes: scope\?\.reservingClassTypes \|\| \[\]/);
+  assert.match(sourceTableRouter, /if req\.dataset_types:/);
+  assert.match(sourceTableRouter, /if req\.reserving_class_types:/);
+});
+
+test("the Import Scope step opens on the project's last refresh scope, shared by every user", () => {
+  const { normalizeSourceState } = sourceDataModule;
+  // The record travels with the project's import state and is normalized here.
+  const state = normalizeSourceState({
+    source_type: "csv",
+    refresh_scope: {
+      dataset_types: ["Gross Loss--Paid", " ", null],
+      reserving_class_types: [{ Name: "HOL", Level: 5 }, { Name: "", Level: 1 }, { Name: "NJ", Level: "x" }],
+      chosen_by: "jhou",
+      chosen_at: "2026-09-05T13:36:00Z",
+    },
+  });
+  assert.deepEqual(state.refreshScope, {
+    datasetTypes: ["Gross Loss--Paid"],
+    reservingClassTypes: [{ name: "HOL", level: 5 }],
+    chosenBy: "jhou",
+    chosenAt: "2026-09-05T13:36:00Z",
+  });
+  assert.deepEqual(normalizeSourceState(null).refreshScope, {
+    datasetTypes: [],
+    reservingClassTypes: [],
+    chosenBy: "",
+    chosenAt: "",
+  });
+
+  // The step builds its ticks from that record and says so on the page.
+  assert.match(moduleSource, /scopeState = buildScopeState\(options, sourceState\.refreshScope\)/);
+  assert.match(moduleSource, /state\.restored = !!\(rememberedTypes\.length \|\| rememberedClassTypes\.length\)/);
+  // A level the record did not narrow stays fully ticked.
+  assert.match(moduleSource, /!narrowedLevels\.has\(item\.level\) \|\| wanted\.has\(classTypeKeyOf\(item\)\)/);
+  assert.match(moduleSource, /function syncScopeRestoredNote\(\)/);
+  assert.match(moduleSource, /Restored the scope chosen for the last import/);
+  assert.match(projectSettingsHtml, /id="sdScopeRestored" hidden/);
+
+  // The record is written by the Engine job that actually ran the scope, on
+  // the server, so no client-side write over the share was added.
+  assert.match(sourceTableService, /def record_refresh_scope\(/);
+  assert.match(sourceTableService, /"refresh_scope": record\.get\("refresh_scope"\)/);
+  assert.match(sourceTableContract, /"refresh_scope": normalize_refresh_scope\(data\.get\("refresh_scope"\)\)/);
 });
 
 test("SQL Server source identity replaces the file identity without a path", () => {

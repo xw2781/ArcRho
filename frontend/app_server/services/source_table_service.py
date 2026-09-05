@@ -170,6 +170,36 @@ def _write_source_import(project_name: str, payload: Dict[str, Any]) -> Dict[str
     return normalized
 
 
+def record_refresh_scope(
+    project_name: str,
+    dataset_types: Any = None,
+    reserving_class_types: Any = None,
+) -> Dict[str, Any]:
+    """Remember what the Engine refresh just covered, for the next import.
+
+    Written by the refresh job on the ArcRho Server host, so the record names
+    the scope that actually ran rather than one a client asked for. It is
+    project-owned and shared by every user of the project: the Import Scope
+    step opens on it whoever imports next.
+    """
+    name = _require_project_name(project_name)
+    with _project_lock(name):
+        current = read_source_import(name)
+        return _write_source_import(
+            name,
+            {
+                **current,
+                "project_name": name,
+                "refresh_scope": {
+                    "dataset_types": list(dataset_types or []),
+                    "reserving_class_types": list(reserving_class_types or []),
+                    "chosen_by": get_windows_login_name(),
+                    "chosen_at": _utc_now_text(),
+                },
+            },
+        )
+
+
 def save_source_profile(
     project_name: str,
     source_type: str,
@@ -691,6 +721,7 @@ def _master_status(
         "source_type": normalize_source_type(record.get("source_type")),
         "mssql": normalize_mssql_profile(record.get("mssql")),
         "last_import": record.get("last_import"),
+        "refresh_scope": record.get("refresh_scope"),
     }
 
 
