@@ -172,6 +172,16 @@ test("the shell progress window resizes from a corner grip that keeps it on scre
   assert.match(automationSource, /min-width: 280px/u);
   assert.match(automationSource, /min-height: 150px/u);
   assert.match(automationSource, /window\.addEventListener\("resize", onWindowResize\)/u);
+  // Resizing the app window redraws the progress window at the size it is
+  // meant to hold rather than at the size it is currently shown at, and that
+  // size is measured against the whole app window because the window is free
+  // to slide back towards the top-left corner. A narrower app window can
+  // therefore borrow room from it and give it all back, instead of trimming
+  // it a little more every time.
+  assert.match(automationSource, /function clampDialogSizeToAppWindow\(dialog, width, height\)/u);
+  assert.match(automationSource, /window\.innerWidth - margin \* 2/u);
+  assert.match(automationSource, /draw\(wanted\.width, wanted\.height, false\)/u);
+  assert.doesNotMatch(automationSource, /applySize\(rect\.width, rect\.height\)/u);
   // The size the user pulled to is reused by the next progress window.
   assert.match(automationSource, /let progressWindowSize = null/u);
   assert.match(automationSource, /if \(progressWindowSize\) resizer\.applySize\(/u);

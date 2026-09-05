@@ -281,7 +281,7 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
   assert.match(index, /ui_shell\.js\?v=20260903resize1/u);
   for (const consumer of [uiShell, shellMessages, updateProgress]) {
-    assert.match(consumer, /ui_automation\.js\?v=20260903resize1/u);
+    assert.match(consumer, /ui_automation\.js\?v=20260904resize2/u);
   }
   // Payload text reaches the DOM as text, never as markup, in both modules.
   assert.match(view, /textContent = toText\(text\)/u);

@@ -408,6 +408,24 @@ function clampDialogSize(dialog, left, top, width, height) {
   };
 }
 
+// Away from the grip the window is free to slide back towards the top-left
+// corner, so the room it has is the whole app window less a margin on each
+// side rather than whatever is left of the app window to the right of it.
+// Measuring it this way keeps a narrower app window from shaving the window
+// down when moving it would have been enough.
+function clampDialogSizeToAppWindow(dialog, width, height) {
+  const margin = 12;
+  const computed = window.getComputedStyle(dialog);
+  const minWidth = Math.max(240, Number.parseFloat(computed.minWidth) || 0);
+  const minHeight = Math.max(120, Number.parseFloat(computed.minHeight) || 0);
+  const maxWidth = Math.max(minWidth, window.innerWidth - margin * 2);
+  const maxHeight = Math.max(minHeight, window.innerHeight - margin * 2);
+  return {
+    width: Math.min(Math.max(Number(width) || minWidth, minWidth), maxWidth),
+    height: Math.min(Math.max(Number(height) || minHeight, minHeight), maxHeight),
+  };
+}
+
 // Adds the bottom-right grip and the pointer handling behind it. Like the
 // header drag above, the grip captures the pointer so a fast pull cannot
 // outrun hit-testing and drop the gesture (ArcRho UI rule L16).
@@ -417,10 +435,21 @@ function enableDialogResize(overlay, dialog, onSizeChange) {
   handle.setAttribute("aria-hidden", "true");
   dialog.appendChild(handle);
   let resize = null;
+  // The size the window is meant to hold, kept apart from the size it happens
+  // to be drawn at. Only the grip changes it. An app window too small to hold
+  // it trims what is drawn and leaves this figure alone, so the window comes
+  // back to its own size the moment the room returns instead of keeping every
+  // trim the app window ever forced on it.
+  const opened = dialog.getBoundingClientRect();
+  let wanted = opened.width && opened.height
+    ? { width: opened.width, height: opened.height }
+    : null;
 
-  const applySize = (width, height) => {
+  const draw = (width, height, anchored) => {
     const rect = dialog.getBoundingClientRect();
-    const size = clampDialogSize(dialog, rect.left, rect.top, width, height);
+    const size = anchored
+      ? clampDialogSize(dialog, rect.left, rect.top, width, height)
+      : clampDialogSizeToAppWindow(dialog, width, height);
     dialog.style.width = `${Math.round(size.width)}px`;
     dialog.style.height = `${Math.round(size.height)}px`;
     const placed = clampDialogPosition(dialog, rect.left, rect.top);
@@ -428,10 +457,25 @@ function enableDialogResize(overlay, dialog, onSizeChange) {
     dialog.style.top = `${placed.top}px`;
     return size;
   };
+  // Sets the size the window is meant to hold, which is how a reopened window
+  // is put back to the size the last one was left at.
+  const applySize = (width, height) => {
+    const next = { width: Number(width) || 0, height: Number(height) || 0 };
+    const size = draw(next.width, next.height, false);
+    wanted = next.width > 0 && next.height > 0 ? next : size;
+    return size;
+  };
+  // A pull holds the top-left corner still, so it is measured from there and
+  // stops at the edge of the app window. What it lands on becomes the size the
+  // window is meant to hold from then on.
   const onPointerMove = (event) => {
     if (!resize || event.pointerId !== resize.pointerId) return;
     event.preventDefault();
-    applySize(resize.width + event.clientX - resize.x, resize.height + event.clientY - resize.y);
+    wanted = draw(
+      resize.width + event.clientX - resize.x,
+      resize.height + event.clientY - resize.y,
+      true,
+    );
   };
   const stopResize = (event) => {
     if (!resize) return;
@@ -479,9 +523,16 @@ function enableDialogResize(overlay, dialog, onSizeChange) {
     event.preventDefault();
     event.stopPropagation();
   };
+  // Resizing the app window redraws this one at the size it is meant to hold,
+  // never at the size it is currently shown at, so a narrower app window can
+  // only ever borrow room from it and never take it for good.
   const onWindowResize = () => {
-    const rect = dialog.getBoundingClientRect();
-    applySize(rect.width, rect.height);
+    if (!wanted) {
+      const rect = dialog.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      wanted = { width: rect.width, height: rect.height };
+    }
+    draw(wanted.width, wanted.height, false);
   };
 
   handle.addEventListener("pointerdown", onPointerDown);

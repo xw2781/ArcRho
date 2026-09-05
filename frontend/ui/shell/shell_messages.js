@@ -5,7 +5,7 @@ import {
   closeAutomationProgress,
   openAutomationProgress,
   updateAutomationProgress,
-} from "./ui_automation.js?v=20260903resize1";
+} from "./ui_automation.js?v=20260904resize2";
 
 let shellMessagesWired = false;
 
