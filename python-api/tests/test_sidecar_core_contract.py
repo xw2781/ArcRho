@@ -16,7 +16,11 @@ from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_side
 from arcrho_api.sidecar_core_contract import (  # noqa: E402
     METHOD_OUTPUT_SIDECAR_FIELDS,
     SIDECAR_CORE_FIELDS,
+    SIDECAR_STORED_DEVELOPMENT_FIELD,
+    SIDECAR_STORED_ORIGIN_FIELD,
+    SIDECAR_STORED_PERIOD_FIELD,
     SidecarContractError,
+    stored_length_fields,
     validate_sidecar_core,
     with_audit_log_last,
 )
@@ -150,6 +154,49 @@ class CrossWriterSidecarCoreTests(unittest.TestCase):
         for field in METHOD_OUTPUT_SIDECAR_FIELDS:
             self.assertNotIn(field, engine)
 
+    def test_every_producer_records_the_shape_its_csv_is_stored_at(self) -> None:
+        # A method output is produced at its own period and an engine cache at
+        # the requested one, so each writer's stored shape equals its display
+        # shape for these inputs -- but every writer emits the pair.
+        for name, build in PRODUCERS.items():
+            with self.subTest(producer=name):
+                sidecar = build()
+                if sidecar["data_format"] == "Vector":
+                    self.assertEqual(
+                        sidecar[SIDECAR_STORED_PERIOD_FIELD], sidecar["period_length"]
+                    )
+                    self.assertNotIn(SIDECAR_STORED_ORIGIN_FIELD, sidecar)
+                else:
+                    self.assertEqual(
+                        (
+                            sidecar[SIDECAR_STORED_ORIGIN_FIELD],
+                            sidecar[SIDECAR_STORED_DEVELOPMENT_FIELD],
+                        ),
+                        (sidecar["origin_length"], sidecar["development_length"]),
+                    )
+                    self.assertNotIn(SIDECAR_STORED_PERIOD_FIELD, sidecar)
+
+    def test_an_engine_sidecar_keeps_a_finer_stored_shape_than_it_displays(self) -> None:
+        sidecar = build_engine_dataset_sidecar(
+            project_name="Demo",
+            reserving_class=r"Auto\PP",
+            dataset_name="Paid Loss",
+            dataset_type="Paid Loss",
+            data_format="Triangle",
+            csv_file="Paid Loss@12@12@cum@dev.csv",
+            user="tester",
+            created="2026-08-01T00:00:00Z",
+            updated_at="2026-08-04T00:00:00Z",
+            number_format="0,000",
+            decimal_places=1,
+            origin_length=12,
+            development_length=12,
+            stored_origin_length=1,
+            stored_development_length=3,
+        )
+        self.assertEqual(sidecar[SIDECAR_STORED_ORIGIN_FIELD], 1)
+        self.assertEqual(sidecar[SIDECAR_STORED_DEVELOPMENT_FIELD], 3)
+
     def test_every_producer_appends_under_the_one_audit_policy(self) -> None:
         # The prior log carries two consecutive automatic entries; each writer
         # keeps the history, collapses the run, and appends its own record.
@@ -184,6 +231,37 @@ class ValidatorTests(unittest.TestCase):
         with self.assertRaises(SidecarContractError) as caught:
             validate_sidecar_core(sidecar)
         self.assertIn("csv_file", str(caught.exception))
+
+    def test_a_sidecar_without_a_stored_shape_is_refused(self) -> None:
+        sidecar = dict(_engine_sidecar())
+        sidecar.pop(SIDECAR_STORED_DEVELOPMENT_FIELD)
+        with self.assertRaises(SidecarContractError) as caught:
+            validate_sidecar_core(with_audit_log_last(sidecar))
+        self.assertIn(SIDECAR_STORED_DEVELOPMENT_FIELD, str(caught.exception))
+
+    def test_a_display_shape_that_is_not_a_multiple_of_the_stored_one_is_refused(self) -> None:
+        # A view coarser than the data is a roll-up; one that does not divide
+        # evenly cannot be built at all, so it must never be persisted.
+        sidecar = with_audit_log_last(
+            {**_engine_sidecar(), SIDECAR_STORED_ORIGIN_FIELD: 5}
+        )
+        with self.assertRaises(SidecarContractError) as caught:
+            validate_sidecar_core(sidecar)
+        self.assertIn("whole multiple", str(caught.exception))
+
+    def test_a_stored_shape_must_be_a_positive_number_of_months(self) -> None:
+        sidecar = with_audit_log_last(
+            {**_engine_sidecar(), SIDECAR_STORED_ORIGIN_FIELD: 0}
+        )
+        with self.assertRaises(SidecarContractError):
+            validate_sidecar_core(sidecar)
+
+    def test_the_stored_fields_a_format_takes_are_written_once(self) -> None:
+        self.assertEqual(stored_length_fields("Vector", 3), {SIDECAR_STORED_PERIOD_FIELD: 3})
+        self.assertEqual(
+            stored_length_fields("Triangle", 1, 3),
+            {SIDECAR_STORED_ORIGIN_FIELD: 1, SIDECAR_STORED_DEVELOPMENT_FIELD: 3},
+        )
 
     def test_the_audit_log_must_be_last(self) -> None:
         sidecar = _engine_sidecar()

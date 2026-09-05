@@ -29,6 +29,7 @@ from .sidecar_core_contract import (
     DATASET_SIDECAR_JSON_FORMAT,
     dependency_entries,
     dependency_names,
+    stored_length_fields,
     validate_sidecar_core,
 )
 from .timestamps import persisted_timestamp as _timestamp
@@ -1124,6 +1125,7 @@ def build_dfm_output_sidecar(
         )
     else:
         audits = normalize_audit_log(prior.get("audit_log"))
+    output_period = _integer(details.get("origin_length"), 12, minimum=1)
     return validate_sidecar_core({
         "json_format": DATASET_SIDECAR_JSON_FORMAT,
         "dataset_name": output_dataset,
@@ -1136,7 +1138,10 @@ def build_dfm_output_sidecar(
         "method_name": method_name,
         "method_type": "DFM",
         "data_format": "Vector",
-        "period_length": _integer(details.get("origin_length"), 12, minimum=1),
+        "period_length": output_period,
+        # A method output is produced at its own origin period, so the
+        # vector it publishes is stored at that period too.
+        **stored_length_fields("Vector", output_period),
         "transposed": False,
         "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",

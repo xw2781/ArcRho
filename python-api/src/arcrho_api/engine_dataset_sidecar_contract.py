@@ -6,7 +6,12 @@ from typing import Any, Mapping, Sequence
 
 from .dataset_display_contract import DEFAULT_SHOW_SUBTOTAL, normalize_show_subtotal
 from .sidecar_audit_contract import AUDIT_ACTION_INSERT, append_audit_entry
-from .sidecar_core_contract import DATASET_SIDECAR_JSON_FORMAT, dependency_entries, validate_sidecar_core
+from .sidecar_core_contract import (
+    DATASET_SIDECAR_JSON_FORMAT,
+    dependency_entries,
+    stored_length_fields,
+    validate_sidecar_core,
+)
 
 
 ENGINE_SOURCE_KIND = "engine"
@@ -30,6 +35,9 @@ def build_engine_dataset_sidecar(
     origin_length: int | None = None,
     development_length: int | None = None,
     period_length: int | None = None,
+    stored_origin_length: int | None = None,
+    stored_development_length: int | None = None,
+    stored_period_length: int | None = None,
     cumulative: bool = True,
     calendar: bool = False,
     show_subtotal: bool = DEFAULT_SHOW_SUBTOTAL,
@@ -56,6 +64,11 @@ def build_engine_dataset_sidecar(
     ``audit_log`` is the history the sidecar already held when one is being
     rewritten; this write is appended to it under the one audit policy rather
     than replacing it.
+
+    The stored lengths are the granularity of the source data this dataset was
+    generated from, which is finer than the requested shape whenever a coarser
+    view was asked for. Until the project's field mapping records that
+    granularity, callers leave them out and the requested shape stands in.
     """
 
     vector = str(data_format or "").strip().casefold() == "vector"
@@ -81,11 +94,25 @@ def build_engine_dataset_sidecar(
     if str(source_modified or "").strip():
         payload["source_modified"] = str(source_modified).strip()
     if vector:
-        payload["period_length"] = int(period_length or origin_length or 0)
+        display_period = int(period_length or origin_length or 0)
+        payload["period_length"] = display_period
+        payload.update(
+            stored_length_fields(
+                payload["data_format"],
+                stored_period_length or stored_origin_length or display_period,
+            )
+        )
     else:
+        display_origin = int(origin_length or 0)
+        display_development = int(development_length or 0)
         payload.update({
-            "origin_length": int(origin_length or 0),
-            "development_length": int(development_length or 0),
+            "origin_length": display_origin,
+            "development_length": display_development,
+            **stored_length_fields(
+                payload["data_format"],
+                stored_origin_length or display_origin,
+                stored_development_length or display_development,
+            ),
             "cumulative": bool(cumulative),
             "calendar": bool(calendar),
         })

@@ -38,7 +38,7 @@ from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.dataset_link_contract import DatasetLinkError, canonical_dataset_formula
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_UPDATE
-from arcrho_api.sidecar_core_contract import dependency_entries
+from arcrho_api.sidecar_core_contract import dependency_entries, stored_length_fields
 from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
 from .catalog import (
@@ -609,6 +609,9 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "data_format": "Triangle",
         "origin_length": origin_length,
         "development_length": dev_length,
+        # An imported snapshot cannot be regenerated, so the shape ResQ
+        # displayed it at is the shape ArcRho stores it at.
+        **stored_length_fields("Triangle", origin_length, dev_length),
         "development_count": payload.get("development_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
@@ -1385,6 +1388,9 @@ def write_vector_export(
         "method_type": meta_method_type,
         "data_format": "Vector",
         "period_length": period_length,
+        # An imported snapshot cannot be regenerated, so the shape ResQ
+        # displayed it at is the shape ArcRho stores it at.
+        **stored_length_fields("Vector", period_length),
         "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),

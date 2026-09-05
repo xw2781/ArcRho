@@ -131,6 +131,12 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
         self.assertEqual(runtime_payload["modified_by"], "Tester Name")
         self.assertEqual(runtime_payload["audit_log"][-1]["user"], "Tester Name")
         self.assertIs(runtime_payload["show_subtotal"], True)
+        # Both writers record the shape the CSV is stored at beside the shape
+        # it is displayed at; a generated dataset is stored at the shape the
+        # request asked for until the field mapping records its source
+        # granularity.
+        self.assertEqual(runtime_payload["stored_origin_length"], 12)
+        self.assertEqual(runtime_payload["stored_development_length"], 12)
         self.assertNotIn("origin_labels", migration_payload)
         self.assertNotIn("development_labels", migration_payload)
         self.assertNotIn(str(self.runtime_rc), json.dumps(runtime_payload))

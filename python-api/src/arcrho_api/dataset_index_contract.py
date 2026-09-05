@@ -28,7 +28,7 @@ from .cape_cod_contract import CC_JSON_FORMAT
 from .io import persisted_json_text
 
 
-DATASET_INDEX_VERSION = 22
+DATASET_INDEX_VERSION = 23
 INDEX_FILE_NAME = "index.json"
 DATASET_DIR_NAME = "datasets"
 METHOD_DIR_NAME = "methods"
@@ -43,6 +43,8 @@ INDEX_ROW_FIELDS = (
     "data_format",
     "origin_length",
     "development_length",
+    "stored_origin_length",
+    "stored_development_length",
     "method_type",
     "method_name",
     "status",
@@ -581,12 +583,19 @@ def _method_entry_from_payload(
         entry["method_name"] = method_name
     if category:
         entry["dataset_category"] = category
+    # A method computes its output at its own period, so what it publishes is
+    # stored at the shape it is displayed at.
     if data_format == "Triangle":
-        for key in ("origin_length", "development_length"):
+        for key, stored_key in (
+            ("origin_length", "stored_origin_length"),
+            ("development_length", "stored_development_length"),
+        ):
             if _nonempty_scalar(details.get(key)):
                 entry[key] = details[key]
+                entry[stored_key] = details[key]
     elif _nonempty_scalar(details.get("period_length")):
         entry["origin_length"] = details["period_length"]
+        entry["stored_origin_length"] = details["period_length"]
     return entry
 
 
@@ -641,16 +650,28 @@ def _metadata_row(
         ):
             if value:
                 row[key] = value
+        # A vector keeps one length under the triangle's origin column, so a
+        # row reads the same whichever format it describes. The stored pair
+        # beside it is the granularity of the CSV, which a coarser display
+        # shape is only a roll-up of.
         if data_format.casefold() == "vector":
             origin_length = metadata.get("period_length")
             if not _nonempty_scalar(origin_length):
                 origin_length = metadata.get("origin_length")
+            stored_origin_length = metadata.get("stored_period_length")
+            stored_development_length = None
         else:
             origin_length = metadata.get("origin_length")
-        if _nonempty_scalar(origin_length):
-            row["origin_length"] = origin_length
-        if _nonempty_scalar(metadata.get("development_length")):
-            row["development_length"] = metadata["development_length"]
+            stored_origin_length = metadata.get("stored_origin_length")
+            stored_development_length = metadata.get("stored_development_length")
+        for field, value in (
+            ("origin_length", origin_length),
+            ("development_length", metadata.get("development_length")),
+            ("stored_origin_length", stored_origin_length),
+            ("stored_development_length", stored_development_length),
+        ):
+            if _nonempty_scalar(value):
+                row[field] = value
         row["method_type"] = _normalize_method_type(
             metadata.get("method_type"),
             source_kind,
@@ -722,6 +743,8 @@ def _merge_rows(
             "data_format",
             "origin_length",
             "development_length",
+            "stored_origin_length",
+            "stored_development_length",
             "method_type",
             "method_name",
             "status",

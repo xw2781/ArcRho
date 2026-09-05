@@ -170,6 +170,11 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 "data_format": "Triangle",
                 "origin_length": 12,
                 "development_length": 24,
+                # Entered monthly by origin and quarterly by development, then
+                # displayed annually: the stored pair differs from the display
+                # pair on both axes, and independently.
+                "stored_origin_length": 1,
+                "stored_development_length": 12,
                 "status": 0,
                 "user": "migration_user",
                 "created": "2026-01-01T01:02:03",
@@ -192,6 +197,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 "method_type": "None",
                 "data_format": "Vector",
                 "period_length": 12,
+                "stored_period_length": 3,
                 "status": 0,
                 "formula": '"Written Premium" * 1.05',
                 "calculated": True,
@@ -368,6 +374,33 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             ["Frontend DFM A", "Frontend DFM B"],
         )
         self.assertTrue(all("method_name" not in row for row in frontend_dfm_rows))
+        # The stored shape is projected beside the display shape, per axis, and
+        # a vector's single stored period lands under the origin column its
+        # display period already uses.
+        triangle_row = next(row for row in rows if row["name"] == "Paid Loss")
+        self.assertEqual(
+            (
+                triangle_row["origin_length"],
+                triangle_row["development_length"],
+                triangle_row["stored_origin_length"],
+                triangle_row["stored_development_length"],
+            ),
+            (12, 24, 1, 12),
+        )
+        vector_row = next(row for row in rows if row["name"] == "Projected Premium")
+        self.assertEqual(vector_row["origin_length"], 12)
+        self.assertEqual(vector_row["stored_origin_length"], 3)
+        self.assertNotIn("stored_development_length", vector_row)
+        # A method computes its output at its own period, so what it publishes
+        # is stored at the shape it is displayed at.
+        method_row = next(row for row in rows if row["name"] == "Adjusted Paid")
+        self.assertEqual(
+            (
+                method_row["stored_origin_length"],
+                method_row["stored_development_length"],
+            ),
+            (method_row["origin_length"], method_row["development_length"]),
+        )
         for row in rows:
             with self.subTest(dataset=row["name"]):
                 self.assertLessEqual(set(row), set(INDEX_ROW_FIELDS))

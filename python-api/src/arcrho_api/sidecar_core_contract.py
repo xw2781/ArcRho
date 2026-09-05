@@ -27,6 +27,22 @@ Axis labels and notes are not part of the required core on purpose: an engine
 sidecar derives its labels from the project header when the CSV is loaded and
 has no notes until someone writes them, so requiring either would make that
 builder invent values. When present they are checked for shape.
+
+Two period lengths, following ResQ's naming
+-------------------------------------------
+
+``origin_length`` / ``development_length`` -- ``period_length`` on a vector --
+are the **display** shape: the months per period the dataset is shown and
+saved at, the counterpart of ResQ's ``OriginLength`` family.
+``stored_origin_length`` / ``stored_development_length`` --
+``stored_period_length`` on a vector -- are the **stored** shape: the months
+per period of the CSV named by ``csv_file``, the counterpart of ResQ's
+``StoredOriginLength``. Every sidecar carries the stored pair for its format.
+
+The display shape must be a whole multiple of the stored shape on each axis,
+because any coarser view is a roll-up of the stored data computed when the
+dataset is read. Such a view is never written back: the CSV stays at the
+stored shape, and only that file is ever the dataset's data.
 """
 
 from __future__ import annotations
@@ -87,6 +103,21 @@ METHOD_OUTPUT_SIDECAR_FIELDS: tuple[str, ...] = (
 # without a method name is always wrong, and that is what is checked.
 METHOD_OUTPUT_PUBLICATION_FIELD = "publication_revision"
 
+# The display shape, by data format, and the stored shape beside it.
+SIDECAR_DISPLAY_PERIOD_FIELD = "period_length"
+SIDECAR_DISPLAY_ORIGIN_FIELD = "origin_length"
+SIDECAR_DISPLAY_DEVELOPMENT_FIELD = "development_length"
+SIDECAR_STORED_PERIOD_FIELD = "stored_period_length"
+SIDECAR_STORED_ORIGIN_FIELD = "stored_origin_length"
+SIDECAR_STORED_DEVELOPMENT_FIELD = "stored_development_length"
+
+# stored field -> the display field it must divide, per data format.
+_VECTOR_PERIOD_FIELDS = ((SIDECAR_STORED_PERIOD_FIELD, SIDECAR_DISPLAY_PERIOD_FIELD),)
+_TRIANGLE_PERIOD_FIELDS = (
+    (SIDECAR_STORED_ORIGIN_FIELD, SIDECAR_DISPLAY_ORIGIN_FIELD),
+    (SIDECAR_STORED_DEVELOPMENT_FIELD, SIDECAR_DISPLAY_DEVELOPMENT_FIELD),
+)
+
 # Fields v4 removed because they restated another field, nothing read them,
 # or they bound a shared file to one machine. A writer may not bring them back.
 RETIRED_SIDECAR_FIELDS: frozenset[str] = frozenset({
@@ -110,6 +141,36 @@ _SNAKE_CASE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 def _clean(value: Any) -> str:
     return str(value if value is not None else "").strip()
+
+
+def is_vector_format(data_format: Any) -> bool:
+    """Whether *data_format* names the vector shape rather than a triangle."""
+
+    return _clean(data_format).casefold() == "vector"
+
+
+def stored_length_fields(
+    data_format: Any,
+    origin_length: Any,
+    development_length: Any = None,
+) -> dict[str, int]:
+    """The stored-shape fields a sidecar of *data_format* carries.
+
+    A vector carries ``stored_period_length``; a triangle carries
+    ``stored_origin_length`` and ``stored_development_length``. Every producer
+    builds them here, so which pair a format takes is written once.
+
+    *origin_length* and *development_length* are the months per period of the
+    CSV the sidecar names -- not the shape it is displayed at, which is the
+    same only while the two have not been allowed to come apart.
+    """
+
+    if is_vector_format(data_format):
+        return {SIDECAR_STORED_PERIOD_FIELD: int(origin_length)}
+    return {
+        SIDECAR_STORED_ORIGIN_FIELD: int(origin_length),
+        SIDECAR_STORED_DEVELOPMENT_FIELD: int(development_length),
+    }
 
 
 def dependency_names(entries: Any) -> list[str]:
@@ -200,6 +261,40 @@ def finalize_sidecar(payload: Mapping[str, Any]) -> dict[str, Any]:
 with_audit_log_last = finalize_sidecar
 
 
+def _period_months(payload: Mapping[str, Any], field: str) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise SidecarContractError(
+            f"Sidecar {field} must be a positive whole number of months; found {value!r}."
+        )
+    return value
+
+
+def _validate_period_lengths(payload: Mapping[str, Any]) -> None:
+    """Assert the stored shape is present and the display shape a multiple of it."""
+
+    pairs = (
+        _VECTOR_PERIOD_FIELDS
+        if is_vector_format(payload.get("data_format"))
+        else _TRIANGLE_PERIOD_FIELDS
+    )
+    missing = [stored for stored, _display in pairs if stored not in payload]
+    if missing:
+        raise SidecarContractError(
+            "Sidecar is missing the stored period length: " + ", ".join(missing)
+        )
+    for stored, display in pairs:
+        stored_months = _period_months(payload, stored)
+        if display not in payload:
+            continue
+        display_months = _period_months(payload, display)
+        if display_months % stored_months:
+            raise SidecarContractError(
+                f"Sidecar {display} ({display_months}) must be a whole multiple of "
+                f"{stored} ({stored_months})."
+            )
+
+
 def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Assert the shared core of a complete sidecar payload and return it.
 
@@ -245,6 +340,7 @@ def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise SidecarContractError("Sidecar audit_log is not in the canonical policy form.")
     if not isinstance(payload["calculated"], bool):
         raise SidecarContractError("Sidecar calculated must be a boolean.")
+    _validate_period_lengths(payload)
     is_method_output = bool(_clean(payload.get("method_name")))
     if is_method_output and payload["calculated"] is not True:
         raise SidecarContractError("A method-output sidecar is always calculated.")
@@ -263,12 +359,20 @@ __all__ = [
     "SIDECAR_AUDIT_LOG_FIELD",
     "SIDECAR_CORE_FIELDS",
     "SIDECAR_DEPENDENTS_FIELD",
+    "SIDECAR_DISPLAY_DEVELOPMENT_FIELD",
+    "SIDECAR_DISPLAY_ORIGIN_FIELD",
+    "SIDECAR_DISPLAY_PERIOD_FIELD",
     "SIDECAR_JSON_FORMAT_FIELD",
     "SIDECAR_PRECEDENTS_FIELD",
+    "SIDECAR_STORED_DEVELOPMENT_FIELD",
+    "SIDECAR_STORED_ORIGIN_FIELD",
+    "SIDECAR_STORED_PERIOD_FIELD",
     "SidecarContractError",
     "dependency_entries",
     "dependency_names",
     "finalize_sidecar",
+    "is_vector_format",
+    "stored_length_fields",
     "validate_sidecar_core",
     "with_audit_log_last",
 ]

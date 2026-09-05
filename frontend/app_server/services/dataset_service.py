@@ -26,7 +26,7 @@ from arcrho_api.sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from arcrho_api.sidecar_core_contract import finalize_sidecar
+from arcrho_api.sidecar_core_contract import finalize_sidecar, stored_length_fields
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -1285,6 +1285,9 @@ def _create_empty_cached_dataset_impl(
         payload["development_length"] = dev_period_len
         payload["cumulative"] = bool(cumulative)
         payload["calendar"] = bool(calendar)
+    # The empty CSV is written at the requested shape, so that is the shape
+    # this dataset's values are stored at.
+    payload.update(stored_length_fields(fmt, origin_period_len, dev_period_len))
     _append_dataset_audit_entry(payload, "Insert", event_date=now, user_name=user_name)
     from app_server.services import calculated_dataset_service
 
@@ -2055,7 +2058,15 @@ def _save_dataset_sidecar_impl(
     }
     if is_vector:
         payload["period_length"] = int(origin_length)
-        for obsolete_key in ("origin_length", "development_length", "development_count", "cumulative", "calendar"):
+        for obsolete_key in (
+            "origin_length",
+            "development_length",
+            "development_count",
+            "cumulative",
+            "calendar",
+            "stored_origin_length",
+            "stored_development_length",
+        ):
             payload.pop(obsolete_key, None)
     else:
         payload["origin_length"] = int(origin_length)
@@ -2063,6 +2074,16 @@ def _save_dataset_sidecar_impl(
         payload["cumulative"] = bool(cumulative)
         payload["calendar"] = bool(calendar)
         payload.pop("period_length", None)
+        payload.pop("stored_period_length", None)
+    if values is not None or csv_file:
+        # This save names the CSV -- it writes one from ``values``, or the
+        # caller published one and passed its name -- and that file is at the
+        # requested lengths, so they are the shape the values are stored at.
+        # A settings-only save leaves the CSV alone, and the stored shape the
+        # sidecar already records travels with it.
+        payload.update(
+            stored_length_fields(data_format_value, origin_length, development_length)
+        )
     if origin_labels is not None:
         payload["origin_labels"] = _normalize_origin_labels(origin_labels)
     if normalized_external_links is not None:

@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Step 1 done, 1 of 10.
-Last updated: 2026-09-05 — the shared roll‑up helper landed, so a coarser view of a finer triangle is now built along the calendar diagonal.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 and 2 done, 2 of 10.
+Last updated: 2026-09-05 — every dataset record now carries the shape its data is really stored at, beside the shape it is displayed at.
 
 ## Progress
 
@@ -10,7 +10,7 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | # | Step | Done | Date | Est. | Took | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Coarser views of a hand‑entered triangle add up correctly | [x] | 2026-09-05 | 2 h | 15 min | Opening a monthly or quarterly triangle at a yearly view now adds the figures up along the calendar, so the numbers on screen are the ones a method would use. |
-| 2 | Every dataset records the shape its data is really stored at | [ ] | | 1 h 45 | | |
+| 2 | Every dataset records the shape its data is really stored at | [x] | 2026-09-05 | 1 h 45 | 30 min | Every dataset's record now says how fine its figures really are, separately from how coarsely it is shown, so a yearly view of a monthly triangle can no longer be mistaken for monthly data. |
 | 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 2 h | | |
 | 4 | Existing projects on the server get the new shape record | [ ] | | 1 h 15 | | |
 | 5 | Generated datasets know how fine their source data is | [ ] | | 45 min | | |
@@ -20,9 +20,9 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 1 of 10 steps done.
+Overall: 2 of 10 steps done.
 
-Time remaining: about 10 h across the nine steps still open, on the recalibrated estimates below.
+Time remaining: about 1 h 45 across the eight steps still open — 8 h 30 of estimates scaled by the fifth of them the two finished steps actually cost. Treat that as a floor rather than a forecast: Step 1 resumed work already written, Step 2 spent much of its half hour waiting on test runs it could not shorten, and Step 4 and Step 10 are mostly waiting on the share and on a component rebuild, which no amount of agent speed touches.
 
 ### How the time figures are kept
 

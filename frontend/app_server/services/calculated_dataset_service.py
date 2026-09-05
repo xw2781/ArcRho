@@ -15,6 +15,7 @@ import pandas as pd
 
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.dataset_link_contract import link_precedent_names
+from arcrho_api.sidecar_core_contract import stored_length_fields
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -1543,6 +1544,13 @@ def _recalculate_dataset_impl(
         "data_format": row.get("data_format") or "Triangle",
         "origin_length": settings.get("origin_length") or 12,
         "development_length": settings.get("development_length") or 12,
+        # The formula was evaluated at these lengths and the CSV written at
+        # them, so they are the shape this output is stored at.
+        **stored_length_fields(
+            row.get("data_format") or "Triangle",
+            settings.get("origin_length") or 12,
+            settings.get("development_length") or 12,
+        ),
         "cumulative": bool(settings.get("cumulative", True)),
         "calendar": bool(settings.get("calendar", False)),
         "show_subtotal": normalize_show_subtotal(existing_sidecar.get("show_subtotal")),

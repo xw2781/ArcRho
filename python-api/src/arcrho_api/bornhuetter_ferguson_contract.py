@@ -24,6 +24,7 @@ from .sidecar_audit_contract import (
 from .sidecar_core_contract import (
     DATASET_SIDECAR_JSON_FORMAT,
     dependency_entries,
+    stored_length_fields,
     validate_sidecar_core,
 )
 from .timestamps import persisted_timestamp as _timestamp
@@ -732,6 +733,9 @@ def build_bornhuetter_ferguson_output_sidecar(
         "method_type": BF_METHOD_TYPE,
         "data_format": "Vector",
         "period_length": details["origin_length"],
+        # A method output is produced at its own origin period, so the
+        # vector it publishes is stored at that period too.
+        **stored_length_fields("Vector", details["origin_length"]),
         "transposed": False,
         "show_subtotal": normalize_show_subtotal(prior.get("show_subtotal")),
         "number_format": _clean(prior.get("number_format")) or "#,##0",

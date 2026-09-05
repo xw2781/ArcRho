@@ -19,6 +19,7 @@ from arcrho_api.dataset_index_contract import (
 )
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.sidecar_core_contract import stored_length_fields
 from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
 from arcrho_api.triangle_rollup import rollup_reason, rollup_triangle
 from arcrho_engine_calculation_contract import OUTPUT_VARIANT_TEMPORARY_VIEW
@@ -1105,16 +1106,31 @@ def resolve_local_triangle_cache(
 
 
 def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *, is_vector: bool) -> None:
+    # The stored shape stands in as the requested shape until the project's
+    # field mapping records how fine the generated dataset's source data is.
+    origin = _pair_int_value(pairs, "OriginLength", 12)
+    development = _pair_int_value(pairs, "DevelopmentLength", 12)
     if is_vector:
-        payload["period_length"] = _pair_int_value(pairs, "OriginLength", 12)
-        for obsolete_key in ("origin_length", "development_length", "development_count", "cumulative", "calendar"):
+        payload["period_length"] = origin
+        for obsolete_key in (
+            "origin_length",
+            "development_length",
+            "development_count",
+            "cumulative",
+            "calendar",
+            "stored_origin_length",
+            "stored_development_length",
+        ):
             payload.pop(obsolete_key, None)
+        payload.update(stored_length_fields("Vector", origin))
         return
-    payload["origin_length"] = _pair_int_value(pairs, "OriginLength", 12)
-    payload["development_length"] = _pair_int_value(pairs, "DevelopmentLength", 12)
+    payload["origin_length"] = origin
+    payload["development_length"] = development
     payload["cumulative"] = _pair_bool_value(pairs, "Cumulative", True)
     payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
     payload.pop("period_length", None)
+    payload.pop("stored_period_length", None)
+    payload.update(stored_length_fields("Triangle", origin, development))
 
 
 def _set_processing_provenance(
