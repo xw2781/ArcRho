@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; implementation not started.
-Last updated: 2026-09-05 — restructured into one step per agent session with the progress checklist below, which now also tracks how long each step takes and how much of the plan is left.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Step 1 done, 1 of 10.
+Last updated: 2026-09-05 — the shared roll‑up helper landed, so a coarser view of a finer triangle is now built along the calendar diagonal.
 
 ## Progress
 
@@ -9,7 +9,7 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 
 | # | Step | Done | Date | Est. | Took | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Coarser views of a hand‑entered triangle add up correctly | [ ] | | 2 h | | |
+| 1 | Coarser views of a hand‑entered triangle add up correctly | [x] | 2026-09-05 | 2 h | 15 min | Opening a monthly or quarterly triangle at a yearly view now adds the figures up along the calendar, so the numbers on screen are the ones a method would use. |
 | 2 | Every dataset records the shape its data is really stored at | [ ] | | 3 h | | |
 | 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 4 h | | |
 | 4 | Existing projects on the server get the new shape record | [ ] | | 2 h | | |
@@ -20,9 +20,9 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 1 h | | |
 | 10 | The change is live on the server | [ ] | | 1 h | | |
 
-Overall: 0 of 10 steps done.
+Overall: 1 of 10 steps done.
 
-Time remaining: about 21 h, from the estimates above. No step has finished yet, so nothing has been measured against them.
+Time remaining: about 19 h, from the estimates of the nine steps still open. Step 1 took 15 minutes against a 2 h estimate, but it resumed work an earlier session had already written, so it says nothing about the rate and the remaining estimates are left unscaled until a step is measured from a standing start.
 
 ### How the time figures are kept
 
@@ -130,12 +130,12 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 
 **Goal.** One function that aggregates a finer dev‑aligned triangle to a coarser one along calendar diagonals, and the runtime's derived view uses it.
 
-**Read first.** Section "Why the obvious fix is unsafe" above; `_can_derive_cache` and `_derive_triangle_cache` in [arcrho_runtime_service.py:868-930](../../frontend/app_server/services/arcrho_runtime_service.py#L868-L930); the existing triangle helpers in `python-api/src/arcrho_api/`.
+**Read first.** Section "Why the obvious fix is unsafe" above; `_can_derive_cache` and `_derive_triangle_cache` in [arcrho_runtime_service.py:868-930](../../frontend/app_server/services/arcrho_runtime_service.py#L868-L930); the existing triangle helpers in `python-api/src/arcrho_api/`; `_empty_dataset_geometry_from_general_settings` in [dataset_service.py:1043-1100](../../frontend/app_server/services/dataset_service.py#L1043-L1100), which is where the origin anchor is applied.
 
 **Do.**
-- [ ] Add the helper in `python-api/src/arcrho_api/` next to the triangle helpers, so both the app server and the Engine bundle carry it. Cumulative and incremental input, blank cells beyond the diagonal honoured, origin and development factors independent, and a clear error when the target period is not a whole multiple of the source.
-- [ ] Confirm the origin alignment assumption: both geometries come from the project's General Settings origin start month, so blocks line up.
-- [ ] Make `_derive_triangle_cache` call the helper, so the Data tab shows what the DFM will compute.
+- [x] Add the helper in `python-api/src/arcrho_api/` next to the triangle helpers, so both the app server and the Engine bundle carry it. Cumulative and incremental input, blank cells beyond the diagonal honoured, origin and development factors independent, and a clear error when the target period is not a whole multiple of the source.
+- [x] Confirm the origin alignment assumption: both geometries come from the project's General Settings origin start month, so blocks line up.
+- [x] Make `_derive_triangle_cache` call the helper, so the Data tab shows what the DFM will compute.
 
 **Tests.** A unit test pinned to a hand‑built expectation: the 24‑month synthetic above, an incremental case, and a non‑square case such as 1‑month origins with 3‑month development. The existing runtime tests still pass.
 

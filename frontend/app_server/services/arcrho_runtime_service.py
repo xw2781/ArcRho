@@ -20,6 +20,7 @@ from arcrho_api.dataset_index_contract import (
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
+from arcrho_api.triangle_rollup import rollup_reason, rollup_triangle
 from arcrho_engine_calculation_contract import OUTPUT_VARIANT_TEMPORARY_VIEW
 
 from app_server import config
@@ -872,17 +873,13 @@ def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) 
     target_dev = _pair_int_value(pairs, "DevelopmentLength", 12)
     source_origin = int(candidate.get("origin_length") or 0)
     source_dev = int(candidate.get("development_length") or 0)
-    if source_origin <= 0 or source_dev <= 0 or target_origin <= 0 or target_dev <= 0:
-        return False, "invalid period length"
-    if bool(candidate.get("calendar")) != _pair_bool_value(pairs, "Calendar", False):
+    calendar = bool(candidate.get("calendar"))
+    if calendar != _pair_bool_value(pairs, "Calendar", False):
         return False, "calendar mode differs"
     if bool(candidate.get("cumulative")) != _pair_bool_value(pairs, "Cumulative", True):
         return False, "cumulative mode differs"
-    if target_origin < source_origin or target_dev < source_dev:
-        return False, "local caches can only derive from finer to coarser periods"
-    if target_origin % source_origin != 0 or target_dev % source_dev != 0:
-        return False, "requested periods are not whole multiples of the cached periods"
-    return True, ""
+    reason = rollup_reason(source_origin, source_dev, target_origin, target_dev, calendar=calendar)
+    return (not reason), reason
 
 
 def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> Dict[str, Any]:
@@ -894,25 +891,17 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     origin_factor = target_origin // source_origin
     dev_factor = target_dev // source_dev
     df = pd.read_csv(source_path, header=None, dtype="float64", keep_default_na=True)
-    source_rows, source_cols = df.shape
-    target_rows = source_rows // origin_factor
-    target_cols = source_cols // dev_factor
-    if target_rows <= 0 or target_cols <= 0:
-        raise ValueError("cached triangle is smaller than the requested output size")
-    values: list[list[Any]] = []
-    cumulative = _pair_bool_value(pairs, "Cumulative", True)
-    for row_index in range(target_rows):
-        row_values: list[Any] = []
-        row_block = df.iloc[row_index * origin_factor:(row_index + 1) * origin_factor, :]
-        for col_index in range(target_cols):
-            if cumulative:
-                source_col = (col_index + 1) * dev_factor - 1
-                block = row_block.iloc[:, source_col]
-            else:
-                block = row_block.iloc[:, col_index * dev_factor:(col_index + 1) * dev_factor].to_numpy().ravel()
-                block = pd.Series(block)
-            row_values.append(float(block.sum(skipna=True)) if block.notna().any() else None)
-        values.append(row_values)
+    values = rollup_triangle(
+        df.to_numpy().tolist(),
+        source_origin_length=source_origin,
+        source_development_length=source_dev,
+        target_origin_length=target_origin,
+        target_development_length=target_dev,
+        cumulative=_pair_bool_value(pairs, "Cumulative", True),
+        calendar=_pair_bool_value(pairs, "Calendar", False),
+    )
+    target_rows = len(values)
+    target_cols = len(values[0])
 
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     tmp_path = f"{target_path}.{uuid.uuid4()}.tmp"

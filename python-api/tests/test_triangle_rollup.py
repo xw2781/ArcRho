@@ -1,0 +1,125 @@
+import sys
+import unittest
+from pathlib import Path
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from arcrho_api.triangle_rollup import rollup_factors, rollup_reason, rollup_triangle
+
+
+def _monthly_cumulative(rows: int, columns: int, valuation: int, origin_length: int = 1) -> list:
+    """A dev-aligned cumulative triangle whose every cell is 100 x its age in months.
+
+    Row ``i`` starts ``i * origin_length`` months after the anchor and column
+    ``j`` is valued ``j + 1`` months after that, so the cell exists only while
+    ``i * origin_length + j + 1`` is within ``valuation`` months of the anchor.
+    """
+    triangle = []
+    for row in range(rows):
+        triangle.append([
+            100.0 * (column + 1) if row * origin_length + column + 1 <= valuation else None
+            for column in range(columns)
+        ])
+    return triangle
+
+
+class TriangleRollupTests(unittest.TestCase):
+    def test_annual_view_of_a_monthly_triangle_follows_the_calendar_diagonal(self) -> None:
+        rolled = rollup_triangle(
+            _monthly_cumulative(24, 24, 24),
+            source_origin_length=1,
+            source_development_length=1,
+            target_origin_length=12,
+            target_development_length=12,
+        )
+        self.assertEqual(rolled, [[7800.0, 22200.0], [7800.0, None]])
+
+    def test_incremental_roll_up_matches_the_cumulative_one(self) -> None:
+        source = _monthly_cumulative(24, 24, 24)
+        incremental = [
+            [None if value is None else 100.0 for value in row]
+            for row in source
+        ]
+        rolled = rollup_triangle(
+            incremental,
+            source_origin_length=1,
+            source_development_length=1,
+            target_origin_length=12,
+            target_development_length=12,
+            cumulative=False,
+        )
+        self.assertEqual(rolled, [[7800.0, 14400.0], [7800.0, None]])
+
+    def test_origin_and_development_factors_are_independent(self) -> None:
+        rolled = rollup_triangle(
+            _monthly_cumulative(8, 24, 24, origin_length=3),
+            source_origin_length=3,
+            source_development_length=1,
+            target_origin_length=12,
+            target_development_length=12,
+        )
+        self.assertEqual(rolled, [[3000.0, 7800.0], [3000.0, None]])
+
+    def test_development_alone_can_coarsen_under_unchanged_origins(self) -> None:
+        source = [
+            [100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0],
+            [100.0, 200.0, 300.0, 400.0, None, None, None, None],
+        ]
+        rolled = rollup_triangle(
+            source,
+            source_origin_length=1,
+            source_development_length=3,
+            target_origin_length=1,
+            target_development_length=12,
+        )
+        self.assertEqual(rolled, [[400.0, 800.0], [400.0, None]])
+
+    def test_monthly_origins_reported_quarterly_cannot_share_a_valuation_date(self) -> None:
+        reason = rollup_reason(1, 3, 12, 12)
+        self.assertIn("share no valuation date", reason)
+        with self.assertRaises(ValueError):
+            rollup_factors(1, 3, 12, 12)
+
+    def test_a_target_period_that_is_not_a_whole_multiple_is_refused(self) -> None:
+        self.assertEqual(
+            rollup_reason(3, 3, 12, 8),
+            "requested periods are not whole multiples of the cached periods",
+        )
+        self.assertEqual(
+            rollup_reason(12, 12, 1, 1),
+            "local caches can only derive from finer to coarser periods",
+        )
+        self.assertEqual(rollup_reason(0, 1, 12, 12), "invalid period length")
+
+    def test_a_calendar_triangle_aggregates_by_block(self) -> None:
+        source = [
+            [100.0 * (column + 1) if column >= row else None for column in range(24)]
+            for row in range(24)
+        ]
+        rolled = rollup_triangle(
+            source,
+            source_origin_length=1,
+            source_development_length=1,
+            target_origin_length=12,
+            target_development_length=12,
+            calendar=True,
+        )
+        self.assertEqual(rolled, [[14400.0, 28800.0], [None, 28800.0]])
+
+    def test_a_calendar_triangle_may_coarsen_origins_under_finer_development(self) -> None:
+        self.assertEqual(rollup_reason(1, 3, 12, 3, calendar=True), "")
+
+    def test_a_source_smaller_than_one_coarse_period_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            rollup_triangle(
+                [[1.0, 2.0]],
+                source_origin_length=1,
+                source_development_length=1,
+                target_origin_length=12,
+                target_development_length=12,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

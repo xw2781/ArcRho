@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A coarser view of a finer triangle now adds up along the calendar diagonal instead of mixing valuation dates.",
+  "details": [
+    "Opening a monthly or quarterly triangle at a coarser period built each annual cell from figures valued at up to twelve different dates, so every cell of the view was wrong.",
+    "A coarse cell whose parts are not all present is now blank rather than a partial sum, and a roll-up that cannot line up on one valuation date is refused with a plain reason."
+  ]
+}
