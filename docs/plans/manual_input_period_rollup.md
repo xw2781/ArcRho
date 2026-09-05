@@ -1,32 +1,43 @@
 # Manual Input Triangles at a Coarser Method Period
 
 Status: Design settled 2026-09-05, broken into ten session‑sized steps; implementation not started.
-Last updated: 2026-09-05 — restructured into one step per agent session with the progress checklist below.
+Last updated: 2026-09-05 — restructured into one step per agent session with the progress checklist below, which now also tracks how long each step takes and how much of the plan is left.
 
 ## Progress
 
-Plain‑language tracking. The agent that finishes a step ticks its box, fills in the date, and leaves one short line on what a user would notice. Nothing technical goes here.
+Plain‑language tracking. The agent that finishes a step ticks its box, fills in the date and how long it took, and leaves one short line on what a user would notice. Nothing technical goes here.
 
-| # | Step | Done | Date | What changed for the user |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | Coarser views of a hand‑entered triangle add up correctly | [ ] | | |
-| 2 | Every dataset records the shape its data is really stored at | [ ] | | |
-| 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | |
-| 4 | Existing projects on the server get the new shape record | [ ] | | |
-| 5 | Generated datasets know how fine their source data is | [ ] | | |
-| 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | |
-| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | |
-| 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | |
-| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | |
-| 10 | The change is live on the server | [ ] | | |
+| # | Step | Done | Date | Est. | Took | What changed for the user |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Coarser views of a hand‑entered triangle add up correctly | [ ] | | 2 h | | |
+| 2 | Every dataset records the shape its data is really stored at | [ ] | | 3 h | | |
+| 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 4 h | | |
+| 4 | Existing projects on the server get the new shape record | [ ] | | 2 h | | |
+| 5 | Generated datasets know how fine their source data is | [ ] | | 1 h 30 | | |
+| 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 1 h 30 | | |
+| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 3 h 30 | | |
+| 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 1 h 30 | | |
+| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 1 h | | |
+| 10 | The change is live on the server | [ ] | | 1 h | | |
 
 Overall: 0 of 10 steps done.
+
+Time remaining: about 21 h, from the estimates above. No step has finished yet, so nothing has been measured against them.
+
+### How the time figures are kept
+
+The **Est.** column is the original guess and never changes, so it stays honest about how good the guessing was. **Took** is the wall‑clock time the step actually ran, filled in once by the agent that lands it.
+
+The **Time remaining** line is recomputed in every step commit: add up the estimates of the steps still unticked, then scale that total by how the finished steps have really gone — the sum of their **Took** figures divided by the sum of their **Est.** figures. Say which way the scaling went when it is not close to one, as in "about 6 h, running at roughly half the estimate so far". Round to the nearest half hour; nobody needs minutes here.
+
+While a step is running its agent also keeps a live note at `temp/plan_eta.json`, outside the repository's tracked files, holding the step number, when it started, what it is doing in one plain phrase, and how many more minutes it expects to need. It is rewritten whenever a checkbox in the step is finished or a test run ends, and at least every ten minutes of work, so a reader can see progress without waiting for the commit. The file is scratch: it is never committed, and the last one left behind after the plan finishes can simply be deleted.
 
 ## How agents work this plan
 
 - Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
-- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date and the one‑line user note, update the "Overall" count, and update the `Status:` line at the top and this plan's row in [docs/plans/README.md](README.md).
+- Note the wall‑clock time when you start, and keep `temp/plan_eta.json` current as "How the time figures are kept" describes.
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the time the step took and the one‑line user note, update the "Overall" count and the "Time remaining" line, and update the `Status:` line at the top and this plan's row in [docs/plans/README.md](README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
 - Do not start a step while the previous one is uncommitted.
 - The whole plan runs unattended as a workflow of one subagent per step; the `arcrho-plan-breakdown` skill describes how. Step 10 (deploy) runs only when the user's request included it.
