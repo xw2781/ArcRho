@@ -10,25 +10,29 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | # | Step | Done | Date | Est. | Took | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Coarser views of a hand‑entered triangle add up correctly | [x] | 2026-09-05 | 2 h | 15 min | Opening a monthly or quarterly triangle at a yearly view now adds the figures up along the calendar, so the numbers on screen are the ones a method would use. |
-| 2 | Every dataset records the shape its data is really stored at | [ ] | | 3 h | | |
-| 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 4 h | | |
-| 4 | Existing projects on the server get the new shape record | [ ] | | 2 h | | |
-| 5 | Generated datasets know how fine their source data is | [ ] | | 1 h 30 | | |
-| 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 1 h 30 | | |
-| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 3 h 30 | | |
-| 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 1 h 30 | | |
-| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 1 h | | |
-| 10 | The change is live on the server | [ ] | | 1 h | | |
+| 2 | Every dataset records the shape its data is really stored at | [ ] | | 1 h 45 | | |
+| 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 2 h | | |
+| 4 | Existing projects on the server get the new shape record | [ ] | | 1 h 15 | | |
+| 5 | Generated datasets know how fine their source data is | [ ] | | 45 min | | |
+| 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 45 min | | |
+| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 1 h 45 | | |
+| 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 45 min | | |
+| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
+| 10 | The change is live on the server | [ ] | | 45 min | | |
 
 Overall: 1 of 10 steps done.
 
-Time remaining: about 19 h, from the estimates of the nine steps still open. Step 1 took 15 minutes against a 2 h estimate, but it resumed work an earlier session had already written, so it says nothing about the rate and the remaining estimates are left unscaled until a step is measured from a standing start.
+Time remaining: about 10 h across the nine steps still open, on the recalibrated estimates below.
 
 ### How the time figures are kept
 
-The **Est.** column is the original guess and never changes, so it stays honest about how good the guessing was. **Took** is the wall‑clock time the step actually ran, filled in once by the agent that lands it.
+The **Est.** column is what the step is expected to cost and **Took** is the wall‑clock time it really ran, filled in once by the agent that lands it. Keeping both is the point: a column of estimates nobody ever checks is worthless.
 
-The **Time remaining** line is recomputed in every step commit: add up the estimates of the steps still unticked, then scale that total by how the finished steps have really gone — the sum of their **Took** figures divided by the sum of their **Est.** figures. Say which way the scaling went when it is not close to one, as in "about 6 h, running at roughly half the estimate so far". Round to the nearest half hour; nobody needs minutes here.
+**Estimates were recalibrated once, on 2026-09-05, after the first step and a half.** The original figures came from the "Rough size" section at the foot of this plan, which was written in human working days and totalled 21 h. Two measurements said that was roughly twice too slow for an agent: Step 1 landed in 15 minutes against 2 h, and Step 2 reached the half‑way point in 52 minutes against 3 h. The code steps were therefore roughly halved. Steps 4 and 10 were cut by less, because most of what they cost is waiting — the share is slow per operation, and a component rebuild takes the time it takes however fast the agent thinks.
+
+Do not recalibrate again. From here the **Est.** column is fixed, so the gap between it and **Took** stays an honest record of how good the second guess was.
+
+The **Time remaining** line is recomputed in every step commit: add up the estimates of the steps still unticked, then scale that total by how the finished steps have really gone — the sum of their **Took** figures divided by the sum of their **Est.** figures, counting every finished step including Step 1. Say which way the scaling went when it is not close to one, as in "about 6 h, running at roughly two thirds of the estimate so far". Round to the nearest quarter hour.
 
 While a step is running its agent also keeps a live note at `temp/plan_eta.json`, outside the repository's tracked files, holding the step number, when it started, what it is doing in one plain phrase, and how many more minutes it expects to need. It is rewritten whenever a checkbox in the step is finished or a test run ends, and at least every ten minutes of work, so a reader can see progress without waiting for the commit. The file is scratch: it is never committed, and the last one left behind after the plan finishes can simply be deleted.
 
@@ -298,4 +302,4 @@ The measurement above came from a throwaway script that imports `_derive_triangl
 
 ## Rough size
 
-About two and a half days of agent time across the ten sessions. Steps 1, 2, 3 and 7 are the larger ones; 4, 5, 6, 8 and 9 are each well under half a day; 10 is a deploy.
+Superseded on 2026-09-05 by the per‑step estimates in the Progress table, which are measured against what the steps actually cost. This section originally read "about two and a half days of agent time across the ten sessions", which was a human‑scale figure and roughly twice the real cost; the shape it described still holds — Steps 2, 3 and 7 are the larger ones, 5, 6, 8 and 9 the smaller, 4 is mostly waiting on the share, and 10 is a deploy.
