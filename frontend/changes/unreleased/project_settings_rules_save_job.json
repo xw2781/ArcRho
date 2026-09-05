@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Saving Data Processing Rules now runs on ArcRho Server and shows its progress in a window, like Import Data.",
+  "details": [
+    "The check of every generated dataset that follows a save runs next to the data instead of over the network drive, so a save that took minutes from a workstation now takes seconds.",
+    "A progress window opens when you press Apply and save, follows each step, and closes when the rules are saved.",
+    "Without a running ArcRho Engine the save still works the old way."
+  ]
+}

@@ -17,6 +17,9 @@ for path in (SOURCE_ROOT, CANONICAL_SOURCE_ROOT):
 
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
 from arcrho_engine_save_contract import SAVE_JOB_KINDS
+from arcrho_data_processing_rules_job_contract import (
+    DATA_PROCESSING_RULES_JOB_SERVICE_MODULES,
+)
 from arcrho_dataset_types_change_contract import DATASET_TYPES_CHANGE_SERVICE_MODULES
 from arcrho_source_refresh_contract import SOURCE_REFRESH_SERVICE_MODULES
 from build_runtime import ensure_python_310_venv, stage_deploy, swap_deploy
@@ -104,6 +107,7 @@ def _hosted_service_modules():
     })
     modules.update(SOURCE_REFRESH_SERVICE_MODULES)
     modules.update(DATASET_TYPES_CHANGE_SERVICE_MODULES)
+    modules.update(DATA_PROCESSING_RULES_JOB_SERVICE_MODULES)
     return sorted(modules)
 
 
@@ -122,6 +126,7 @@ def validate_canonical_runtime_environment():
         "import arcrho_engine_save_contract; "
         "import arcrho_source_refresh_contract; "
         "import arcrho_dataset_types_change_contract; "
+        "import arcrho_data_processing_rules_job_contract; "
         "import arcrho_engine_job_lease"
     )
     print("\n>>> Validating canonical dependent-propagation dependencies")
@@ -135,6 +140,7 @@ def build_exe():
         "arcrho_engine_save_contract.py",
         "arcrho_source_refresh_contract.py",
         "arcrho_dataset_types_change_contract.py",
+        "arcrho_data_processing_rules_job_contract.py",
         "arcrho_engine_job_lease.py",
     ):
         contract_module = CANONICAL_SOURCE_ROOT / module_name
@@ -164,6 +170,7 @@ def build_exe():
         "--hidden-import", "arcrho_engine_save_contract",
         "--hidden-import", "arcrho_source_refresh_contract",
         "--hidden-import", "arcrho_dataset_types_change_contract",
+        "--hidden-import", "arcrho_data_processing_rules_job_contract",
         "--hidden-import", "arcrho_engine_job_lease",
         *[
             argument

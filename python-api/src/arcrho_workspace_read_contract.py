@@ -157,6 +157,13 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name",),
         ("job_id",),
     ),
+    # The rules-save job is polled the same way, for the same reason.
+    "data_processing_rules_job_status": WorkspaceReadKind(
+        "data_processing_rules_job_service",
+        "get_data_processing_rules_job_status",
+        ("project_name",),
+        ("job_id",),
+    ),
     # The DFM and Result Selection sync dialogs compare the local method JSON
     # against the copy the Bridge exported from ResQ. Both files live in the
     # workspace, so from a Client PC rendering the review window costs several

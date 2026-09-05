@@ -3,6 +3,10 @@ import {
   clearTableSkeletonRows,
   renderTableSkeletonRows,
 } from "./project_settings_skeleton.js?v=20260821pstree1";
+import {
+  createDataProcessingRulesRequestId,
+  waitForDataProcessingRulesJob,
+} from "./project_settings_data_processing_rules_job.js?v=20260905rules1";
 
 const RULES_FORMAT = "arcrho-data-processing-rules-v1";
 
@@ -971,6 +975,9 @@ export function createDataProcessingRulesFeature(deps = {}) {
     jsonClose = null,
     fetchImpl = fetch,
     setStatus = () => {},
+    // Posts one shell progress message; the Engine-hosted save is followed in
+    // the shell's progress window, like the Source Data import.
+    publishShellProgress = null,
     loadAuditLog = async () => {},
     showConfirm = async (message) => window.confirm(message),
     initTableColumnResizing = () => {},
@@ -2354,25 +2361,103 @@ export function createDataProcessingRulesFeature(deps = {}) {
     return payload;
   }
 
+  function publishProgress(action, progressId, details = {}) {
+    publishShellProgress?.({
+      type: "arcrho:project-settings-progress",
+      action,
+      progressId,
+      ...details,
+    });
+  }
+
+  function revisionConflictError() {
+    const error = new Error("Rules changed in another session. The latest version has been reloaded.");
+    error.statusCode = 409;
+    return error;
+  }
+
+  /** The save in this process: the fallback when no ArcRho Engine is running. */
+  async function saveRulesDirectly(name, rules, expectedRevision) {
+    const response = await fetchImpl("/data_processing_rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_name: name,
+        expected_revision: expectedRevision,
+        data: { rules },
+      }),
+    });
+    if (response.status === 409) throw revisionConflictError();
+    return readJsonResponse(response);
+  }
+
+  /**
+   * Save on ArcRho Engine, following the job in the shell's progress window.
+   *
+   * The Engine runs the same save next to the data, so the walk over every
+   * generated dataset that follows the write is local disk instead of one
+   * network round trip per file. The terminal status carries the save
+   * response, so nothing is re-read afterwards. A 503 means no Engine is
+   * running, which is the one outcome handled by saving directly instead.
+   */
+  async function saveRulesOnEngine(name, rules, expectedRevision) {
+    const requestId = createDataProcessingRulesRequestId();
+    const progressId = `rules-save-${requestId}`;
+    publishProgress("open", progressId, {
+      title: "Save Data Processing Rules",
+      label: `Submitting the save for "${name}"...`,
+      completed: 0,
+      total: 0,
+      countText: "Working...",
+    });
+    try {
+      const response = await fetchImpl("/data_processing_rules/save_job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_name: name,
+          request_id: requestId,
+          expected_revision: expectedRevision,
+          data: { rules },
+        }),
+      });
+      if (response.status === 503) {
+        publishProgress("close", progressId);
+        return saveRulesDirectly(name, rules, expectedRevision);
+      }
+      const submitted = await readJsonResponse(response);
+      const terminal = await waitForDataProcessingRulesJob({
+        fetchImpl,
+        projectName: name,
+        jobId: submitted?.job_id,
+        onProgress: (progress) => publishProgress("update", progressId, {
+          label: progress.label,
+          completed: progress.completed,
+          total: progress.total,
+          countText: progress.total > 0 ? "" : "Working...",
+        }),
+      });
+      publishProgress("update", progressId, {
+        label: "Data processing rules saved.",
+        completed: 1,
+        total: 1,
+        countText: "",
+      });
+      publishProgress("close", progressId, { autoCloseMs: 850 });
+      return terminal?.result || {};
+    } catch (error) {
+      publishProgress("close", progressId);
+      if (error?.statusCode === 409) throw revisionConflictError();
+      throw error;
+    }
+  }
+
   async function saveRules(projectName, rules, { statusMessage = "Saving data processing rules..." } = {}) {
     const name = cleanText(projectName);
     const state = stateForProject(name);
     setRulesStatus(statusMessage);
     try {
-      const response = await fetchImpl("/data_processing_rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_name: name,
-          expected_revision: state.document.revision,
-          data: { rules },
-        }),
-      });
-      if (response.status === 409) {
-        await loadRules(name, { force: true });
-        throw new Error("Rules changed in another session. The latest version has been reloaded.");
-      }
-      const payload = await readJsonResponse(response);
+      const payload = await saveRulesOnEngine(name, rules, state.document.revision);
       state.document = normalizeDocument(payload?.data || {});
       state.options = mergeOptions(normalizeDataProcessingRulesOptions(payload?.options || {}), state.options);
       state.semanticHash = cleanText(payload?.semantic_hash);
@@ -2390,6 +2475,9 @@ export function createDataProcessingRulesFeature(deps = {}) {
       await loadAuditLog(name, true);
       return true;
     } catch (error) {
+      // Another session saved first: the editor's copy is stale, so the
+      // latest document replaces it before the user tries again.
+      if (error?.statusCode === 409) await loadRules(name, { force: true });
       setRulesStatus(`Save error: ${error.message}`, true);
       setStatus(`Data processing rules save error: ${error.message}`);
       return false;

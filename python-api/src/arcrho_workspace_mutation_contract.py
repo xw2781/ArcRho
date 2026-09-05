@@ -144,6 +144,18 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ),
         list_args=("dataset_types",),
     ),
+    # Submitting a data-processing-rules save publishes two small files into
+    # the Engine's queue, idempotent by the client-owned request id exactly as
+    # the source refresh above. ``expected_revision`` may be 0 and ``rules``
+    # may be an empty list (the user removed every rule), and the required
+    # check reads both as absent, so they are listed as optional here and the
+    # rules-job contract enforces their shape when the request is built.
+    "data_processing_rules_save_submit": WorkspaceMutationKind(
+        "data_processing_rules_job_service",
+        "submit_data_processing_rules_job",
+        ("project_name", "request_id"),
+        ("expected_revision", "rules"),
+    ),
     # The DFM sync dialog publishes a request file the ArcRho Bridge claims,
     # then waits for the JSON the Bridge exports from ResQ. Both halves are
     # server-local for the Bridge and both cross SMB for a Client PC, where the

@@ -23,6 +23,7 @@ from app_server.services import (
     data_processing_rules_service,
     data_processing_values_service,
     reserving_class_service,
+    user_identity_service,
 )
 
 
@@ -283,6 +284,34 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
                 expected_revision=0,
                 data=self._candidate(),
             )
+
+    def test_save_reports_its_stages_and_stamps_the_acting_user(self) -> None:
+        # The Engine runs this save as a job for the submitting user and
+        # publishes the stages it reports; a direct save passes no callback.
+        sidecars = Path(config.get_project_data_dir(self.project_name)) / "HO" / "sidecars"
+        sidecars.mkdir(parents=True)
+        (sidecars / "one.json").write_text(
+            json.dumps({"source_kind": "engine", "processing": {"config_hash": "stale"}}),
+            encoding="utf-8",
+        )
+        (sidecars / "two.json").write_text(json.dumps({"source_kind": "input"}), encoding="utf-8")
+        seen: list = []
+
+        with user_identity_service.acting_identity("Jobs User"):
+            saved = data_processing_rules_service.save_data_processing_rules(
+                self.project_name,
+                expected_revision=0,
+                data=self._candidate(),
+                progress=lambda *args: seen.append(args),
+            )
+
+        self.assertEqual(saved["data"]["updated_by"], "Jobs User")
+        self.assertEqual(saved["impact"]["generated_caches_rejected"], 1)
+        self.assertEqual(
+            [stage for stage, *_rest in seen],
+            ["validating", "clearing", "writing", "checking", "checking", "checking"],
+        )
+        self.assertEqual(seen[-1], ("checking", 2, 2, "Checked 2 generated dataset(s)"))
 
     def test_rule_reorder_persists_without_invalidating_processing_caches(self) -> None:
         candidate = self._candidate()

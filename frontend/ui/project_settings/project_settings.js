@@ -14,7 +14,7 @@ import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=
 import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260901dup1";
 import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260901dup1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260901dup1";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260905rules1";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260905scope1";
 import {
   applyProjectSettingsTablePreferences,
@@ -594,6 +594,7 @@ dataProcessingRulesFeature = createDataProcessingRulesFeature({
   jsonClose: dataProcessingRulesJsonClose,
   fetchImpl: fetch.bind(window),
   setStatus,
+  publishShellProgress: (message) => window.parent.postMessage(message, window.location.origin),
   loadAuditLog,
   showConfirm,
   initTableColumnResizing,

@@ -8,7 +8,7 @@ import re
 import threading
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 from pydantic import ValidationError
@@ -21,6 +21,17 @@ from app_server.schemas.data_processing_rules import DataProcessingRulesData
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.services import data_processing_values_service
 from app_server.services import source_table_service
+from app_server.services import user_identity_service
+
+
+# A save reports its stages as ``(stage, completed, total, label)``. The Engine
+# job publishes them to the status a Client PC polls; a direct save passes no
+# callback and runs exactly as before.
+SaveProgress = Callable[[str, int, int, str], None]
+
+
+def _no_progress(stage: str, completed: int, total: int, label: str) -> None:
+    return None
 
 
 _RULE_LOCKS_GUARD = threading.Lock()
@@ -66,7 +77,9 @@ def _utc_now() -> str:
 
 
 def _current_user() -> str:
-    value = str(os.environ.get("USERNAME") or os.environ.get("USER") or "").strip()
+    # The login of the user this save acts for: the process user on a Client
+    # PC, and the submitting user when the Engine runs the save as a job.
+    value = user_identity_service.get_windows_login_name()
     if value:
         return value
     try:
@@ -1300,43 +1313,60 @@ def is_imported_snapshot_payload(payload: Dict[str, Any]) -> bool:
     return source.startswith("resq_") or provenance_kind in {"import", "imported", "resq"}
 
 
-def _count_stale_generated_sidecars(project_name: str, expected_hash: str) -> int:
+def _count_stale_generated_sidecars(
+    project_name: str,
+    expected_hash: str,
+    progress: SaveProgress = _no_progress,
+) -> int:
     try:
         project_data_dir = config.get_project_data_dir(project_name)
     except ValueError:
         return 0
     if not os.path.isdir(project_data_dir):
         return 0
-    count = 0
+    # Every sidecar is opened, so the list is collected first: the count of
+    # files gives the progress bar its total before the first read.
+    sidecar_paths: List[str] = []
     for root, _dirs, files in os.walk(project_data_dir):
         if os.path.basename(root).casefold() != config.DATASET_SIDECAR_DIR.casefold():
             continue
-        for filename in files:
-            if not filename.lower().endswith(".json"):
-                continue
-            payload = _safe_read_json(os.path.join(root, filename))
-            if str(payload.get("source_kind") or "").strip().lower() != "engine":
-                continue
-            if is_imported_snapshot_payload(payload):
-                continue
-            # One sidecar is one cached CSV, so the flat ``processing`` copy is
-            # the whole provenance; the per-CSV map it used to duplicate is gone.
-            processing = payload.get("processing")
-            stored_hash = (
-                str(processing.get("config_hash") or "").strip()
-                if isinstance(processing, dict)
-                else ""
-            )
-            if not stored_hash or stored_hash != expected_hash:
-                count += 1
+        sidecar_paths.extend(
+            os.path.join(root, filename)
+            for filename in files
+            if filename.lower().endswith(".json")
+        )
+    total = len(sidecar_paths)
+    count = 0
+    for index, sidecar_path in enumerate(sidecar_paths):
+        progress("checking", index, total, f"Checking generated datasets ({index + 1} of {total})")
+        payload = _safe_read_json(sidecar_path)
+        if str(payload.get("source_kind") or "").strip().lower() != "engine":
+            continue
+        if is_imported_snapshot_payload(payload):
+            continue
+        # One sidecar is one cached CSV, so the flat ``processing`` copy is
+        # the whole provenance; the per-CSV map it used to duplicate is gone.
+        processing = payload.get("processing")
+        stored_hash = (
+            str(processing.get("config_hash") or "").strip()
+            if isinstance(processing, dict)
+            else ""
+        )
+        if not stored_hash or stored_hash != expected_hash:
+            count += 1
+    progress("checking", total, total, f"Checked {total} generated dataset(s)")
     return count
 
 
-def _invalidate_temporary_view_caches(project_name: str) -> int:
+def _invalidate_temporary_view_caches(
+    project_name: str,
+    progress: SaveProgress = _no_progress,
+) -> int:
     project_data_dir = config.get_project_data_dir(project_name)
     if not os.path.isdir(project_data_dir):
         return 0
     cleared = 0
+    progress("clearing", 0, 0, "Clearing temporary dataset caches")
     for root, dirs, files in os.walk(project_data_dir):
         if os.path.basename(root).casefold() != config.TEMPORARY_VIEW_DATASET_CACHE_DIR.casefold():
             continue
@@ -1364,6 +1394,7 @@ def save_data_processing_rules(
     *,
     expected_revision: int,
     data: Dict[str, Any],
+    progress: SaveProgress = _no_progress,
 ) -> Dict[str, Any]:
     path = config.get_data_processing_rules_path(project_name)
     lock = _lock_for_path(path)
@@ -1372,6 +1403,7 @@ def save_data_processing_rules(
             "Data processing rules are being saved by another request. Please retry."
         )
     try:
+        progress("validating", 0, 0, "Validating the rules")
         current = _read_rules_document(path)
         if int(expected_revision) != int(current.get("revision", 0)):
             raise RulesRevisionConflictError(
@@ -1439,12 +1471,15 @@ def save_data_processing_rules(
         candidate["revision"] = int(current.get("revision", 0)) + 1
         candidate["updated_at"] = _utc_now()
         candidate["updated_by"] = _current_user()
-        temporary_caches_cleared = _invalidate_temporary_view_caches(project_name)
+        temporary_caches_cleared = _invalidate_temporary_view_caches(project_name, progress)
+        progress("writing", 0, 0, "Saving the rules")
         _atomic_write_document(path, candidate)
 
         expected_hash = get_processing_config_hash(project_name)
         affected_types = _affected_dataset_types(context, affected_measures)
-        stale_cache_count = _count_stale_generated_sidecars(project_name, expected_hash)
+        stale_cache_count = _count_stale_generated_sidecars(
+            project_name, expected_hash, progress
+        )
         impact = {
             "affected_source_measures": affected_measures,
             "affected_dataset_types": affected_types,

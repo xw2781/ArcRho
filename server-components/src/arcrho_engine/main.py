@@ -21,6 +21,7 @@ for _path in (_SOURCE_ROOT, _REPO_CANONICAL_ROOT, _BUNDLE_ROOT):
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from arcrho_data_processing_rules_job_contract import DATA_PROCESSING_RULES_JOB_FUNCTION
 from arcrho_dataset_types_change_contract import DATASET_TYPES_CHANGE_FUNCTION
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
 from arcrho_engine_save_contract import SAVE_JOB_FUNCTION
@@ -56,6 +57,9 @@ from arcrho_engine.general_utils import (
     safe_remove,
     write_json,
     write_lists_to_csv,
+)
+from arcrho_engine.data_processing_rules_jobs import (
+    process_durable_data_processing_rules_request,
 )
 from arcrho_engine.dataset_types_change import (
     process_durable_dataset_types_change_request,
@@ -159,6 +163,7 @@ class RequestHandler(FileSystemEventHandler):
         hosted_save_queue_capacity: int = 4,
         source_refresh_queue_capacity: int = 1,
         dataset_types_change_queue_capacity: int = 1,
+        data_processing_rules_queue_capacity: int = 1,
     ):
         super().__init__()
         self._processing_lock = Lock()
@@ -195,6 +200,13 @@ class RequestHandler(FileSystemEventHandler):
             thread_name="arcrho-dataset-types-change-worker",
             execute=self._execute_dataset_types_change,
             queue_capacity=dataset_types_change_queue_capacity,
+        )
+        # A rules save is short but interactive: its own worker keeps it from
+        # queueing behind a long dataset-type change or source refresh.
+        self._data_processing_rules = _DurableJobDispatcher(
+            thread_name="arcrho-data-processing-rules-worker",
+            execute=self._execute_data_processing_rules,
+            queue_capacity=data_processing_rules_queue_capacity,
         )
 
     @property
@@ -292,6 +304,21 @@ class RequestHandler(FileSystemEventHandler):
         except Exception as exc:
             print(f"(dataset types change request error: {exc})")
 
+    def _schedule_data_processing_rules(self, file_path, arg) -> bool:
+        return self._data_processing_rules.schedule(
+            self._duplication_key(file_path, arg), file_path, arg
+        )
+
+    def _execute_data_processing_rules(self, file_path, arg) -> None:
+        try:
+            process_durable_data_processing_rules_request(
+                get_project_root(),
+                file_path,
+                arg,
+            )
+        except Exception as exc:
+            print(f"(data processing rules job request error: {exc})")
+
     def shutdown(self, *, wait: bool = True, timeout: float | None = None) -> bool:
         """Stop accepting durable jobs and optionally wait for active work."""
 
@@ -304,12 +331,16 @@ class RequestHandler(FileSystemEventHandler):
         dataset_types_change_stopped = self._dataset_types_change.shutdown(
             wait=wait, timeout=timeout
         )
+        data_processing_rules_stopped = self._data_processing_rules.shutdown(
+            wait=wait, timeout=timeout
+        )
         return (
             duplication_stopped
             and propagation_stopped
             and hosted_save_stopped
             and source_refresh_stopped
             and dataset_types_change_stopped
+            and data_processing_rules_stopped
         )
 
     def _process_event_path(self, event, file_path):
@@ -375,6 +406,12 @@ class RequestHandler(FileSystemEventHandler):
                 self._schedule_dataset_types_change(file_path, arg)
             else:
                 self._execute_dataset_types_change(file_path, arg)
+            return
+        if function_name_raw == DATA_PROCESSING_RULES_JOB_FUNCTION:
+            if dispatch_duplication:
+                self._schedule_data_processing_rules(file_path, arg)
+            else:
+                self._execute_data_processing_rules(file_path, arg)
             return
         if function_name_raw == SAVE_JOB_FUNCTION:
             # Hosted saves claim by delete inside the executor; scheduling
@@ -549,6 +586,9 @@ def process_existing_requests(
     )
     queued_paths.extend(
         _queued_request_files(request_dir / "dataset_types_change" / "requests")
+    )
+    queued_paths.extend(
+        _queued_request_files(request_dir / "data_processing_rules" / "requests")
     )
     for queued_path in queued_paths:
         if queued_path.suffix.casefold() == ".json":

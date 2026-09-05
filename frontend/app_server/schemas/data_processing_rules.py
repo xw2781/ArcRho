@@ -95,3 +95,9 @@ class DataProcessingRulesSaveRequest(_StrictModel):
     project_name: str
     expected_revision: StrictInt
     data: DataProcessingRulesData
+
+
+class DataProcessingRulesSaveJobRequest(DataProcessingRulesSaveRequest):
+    # The client owns the id so a retry after a lost response resumes the
+    # same Engine job instead of saving twice.
+    request_id: str = ""

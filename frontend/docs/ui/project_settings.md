@@ -10,13 +10,14 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260905scope1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260905rules1`, `/ui/shared/services/color_theme.js?v=20260811a`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
 - `/audit_log`
 - `/audit_log?project_name=${encodeURIComponent(projectName)}&limit=2000`
 - `/data_processing_rules`
+- `/data_processing_rules/save_job`
 - `/data_processing_rules/validate`
 - `/data_processing_rules?project_name=${encodeURIComponent(name)}`
 - `/dataset_types`
@@ -135,6 +136,7 @@ Detected `arcrho:*` message types in key JS files:
 - Data processing rules saves use the loaded revision as `expected_revision`; stale editors reload the latest file after a `409` conflict. Server validation supplies source measures, raw fields, reserving-class fields/types, and dataset-aware source vocabularies. Then-clause suggestions narrow to complete mapped reserving-class combinations that occur for the selected dataset type and the other active conditions. Amber/red tokens and a nonblocking warning explain partial or currently absent source combinations; users may still type future values. `Validate all` refreshes those options after the source CSV or Field Mapping changes.
 - Editing a data processing rule preserves the mapped reserving-class level for its action field, including when the same field name also appears in the generic source-field options, so name-only edits remain valid.
 - Applying a data processing rule still validates the complete rules document before save. The editor groups failures into the current rule, other saved rules, and project-configuration errors so a failure elsewhere is not presented as though it belongs to the open rule; the full blocking result is also retained in the page status.
+- `Apply and save` (and every other rules save: reorder, enable/disable, duplicate, delete) runs on ArcRho Engine. `project_settings_data_processing_rules_job.js` owns the request id and the poll loop; the rules feature posts `POST /data_processing_rules/save_job`, follows the job in the shell's progress window through the same `arcrho:project-settings-progress` messages Import Data uses (title `Save Data Processing Rules`; a determinate bar once the Engine is checking generated datasets), and takes the saved document from the terminal status instead of re-reading it. A `503` from the job route means no Engine is running, and the feature then saves directly through `POST /data_processing_rules` as before. A stale revision reported by either path reloads the latest rules before the error is shown.
 - The Data processing rules editor is a compact non-modal window inside the Project Settings page. Drag its title bar to reposition it (drags starting on the switch or buttons are ignored); movement and window resizes stay clamped to the page viewport, the body scrolls independently of fixed header/summary/action chrome, and the rule settings and condition rows reflow for narrow windows without overlapping. The `When` and `Then` chips stand alone without redundant `scope` or `action` captions.
 - Data-processing rule field selectors and summaries preserve the exact Field Mapping field names, including capitalization and underscores such as `CO_CD`, `STATE_CD`, and `IBNRCAT`. Dataset selectors, rule-table labels, warnings, and editor summaries preserve the exact case and punctuation of the corresponding Project Settings Dataset Types table name while the saved rule continues using its source-measure key. Editor selects use trigger-aligned ArcRho listboxes with compact rows, selected checkmarks, restrained hover/focus states, viewport-aware placement, and Arrow/Home/End/Enter/Escape keyboard control instead of browser-native opened menus. Token suggestion menus use the same viewport-level placement so the editor's scrolling body, summary, and action bar do not clip them.
 - Reserving Class Types table right-click menu includes `Copy` before `Edit`; `Copy` copies the exact displayed text from the clicked cell to the clipboard.
