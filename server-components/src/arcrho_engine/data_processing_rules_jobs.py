@@ -14,6 +14,16 @@ status file's write rate is bounded by the contract rather than by the number
 of sidecars in the project. The terminal success status embeds the service's
 full response, and a refusal keeps the HTTP status the direct route would
 have answered with (409 stale revision, 400 invalid rules, 423 locked).
+
+A save that changed what the rules mean is followed by a refresh: every
+engine-generated dataset instance whose type reads an affected source measure
+is regenerated in place, class by class, and each class's dependents are
+walked, exactly as the source-table refresh does after Import Data. Without
+this the changed rule reached a dataset only when someone next opened it,
+and the methods built on it kept the old values with nothing to say so. The
+refresh is reported under ``refresh`` in the response; a dataset or class it
+could not refresh is named there and in the status message, and the save
+itself stays committed.
 """
 
 from __future__ import annotations
@@ -34,7 +44,9 @@ from arcrho_data_processing_rules_job_contract import (
     write_data_processing_rules_job_status,
 )
 from arcrho_dependent_propagation_contract import (
+    DependentPropagationLeaseUnavailable,
     acquire_project_scope_lease,
+    narrow_project_scope_lease,
     release_project_scope_lease,
     start_project_scope_lease_heartbeat,
     stop_project_scope_lease_heartbeat,
@@ -82,48 +94,254 @@ def _safe_status_message(exc: BaseException) -> str:
     return message or "The data processing rules save failed."
 
 
+def _empty_refresh() -> dict[str, Any]:
+    return {
+        "classes_total": 0,
+        "classes_refreshed": 0,
+        "datasets_regenerated": 0,
+        "datasets_failed": 0,
+        "methods_updated": 0,
+        "failures": [],
+    }
+
+
+def _affected_dataset_types(response: Mapping[str, Any]) -> list[str]:
+    """The dataset types the save reported as reading an affected measure.
+
+    Only a save that changed the rules' meaning names any: an order-only save
+    and a no-op save both leave the processing hash alone, so every generated
+    cache is still current and there is nothing to rebuild.
+    """
+
+    if not response.get("changed"):
+        return []
+    impact = response.get("impact")
+    if not isinstance(impact, Mapping):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for value in impact.get("affected_dataset_types") or []:
+        name = str(value or "").strip()
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
+            names.append(name)
+    return names
+
+
+def _refresh_affected_datasets(
+    server_root: Path,
+    project_name: str,
+    dataset_types: list[str],
+    *,
+    notify: Callable[[str, int, int, str], None],
+    narrow_lease: Callable[[list[str]], None] | None = None,
+) -> dict[str, Any]:
+    """Regenerate the engine datasets of the affected types and walk dependents.
+
+    The class list is settled before anything is rebuilt so the progress bar
+    knows its total and so the caller holding the project-scope lease can
+    narrow it to exactly those classes; a class with no instance of an
+    affected type is never held. Each class then runs the same
+    regenerate-then-walk step Import Data uses, under the class's own lease.
+    A class that cannot be refreshed is named in ``failures`` and the job
+    moves on: the rules file is already saved, and the datasets left behind
+    still rebuild on their own the next time they are opened.
+    """
+
+    result = _empty_refresh()
+    if not dataset_types:
+        return result
+
+    from arcrho_engine import source_table_refresh
+
+    notify("scanning", 0, 0, "Finding the datasets the rules affect")
+    try:
+        classes = [
+            reserving_class
+            for reserving_class in source_table_refresh._reserving_class_paths(project_name)
+            if source_table_refresh._engine_dataset_instances(
+                project_name, reserving_class, dataset_types
+            )
+        ]
+    except Exception as exc:
+        result["failures"].append(
+            "The datasets the rules affect could not be listed: "
+            + _redact_machine_paths(exc)
+        )
+        _log(server_root, "affected dataset scan failed", exc=exc)
+        return result
+    result["classes_total"] = len(classes)
+    if not classes:
+        return result
+
+    if narrow_lease is not None:
+        try:
+            narrow_lease(classes)
+        except DataProcessingRulesJobLeaseLost:
+            raise
+        except Exception as exc:
+            # Without the narrowed hold the refresh could race a client save;
+            # leave the datasets to rebuild on open rather than risk that.
+            result["failures"].append(
+                "The affected reserving classes could not be reserved for the refresh: "
+                + _redact_machine_paths(exc)
+            )
+            _log(server_root, "project-scope lease narrowing failed", exc=exc)
+            return result
+
+    total = len(classes)
+    for index, reserving_class in enumerate(classes, start=1):
+        def on_dataset(dataset_name: str, _class=reserving_class, _done=index - 1) -> None:
+            notify("classes", _done, total, f"Refreshing {_class}: {dataset_name}")
+
+        notify(
+            "classes",
+            index - 1,
+            total,
+            f"Refreshing {reserving_class} ({index} of {total})",
+        )
+        class_started = time.monotonic()
+        try:
+            source_table_refresh._refresh_one_reserving_class(
+                server_root,
+                project_name,
+                reserving_class,
+                result,
+                on_dataset=on_dataset,
+                dataset_types=dataset_types,
+            )
+            result["classes_refreshed"] += 1
+        except DependentPropagationLeaseUnavailable as exc:
+            result["failures"].append(_redact_machine_paths(exc))
+            _log(server_root, f"{reserving_class} skipped: {exc}")
+        except Exception as exc:
+            result["failures"].append(
+                f"{reserving_class}: {_redact_machine_paths(exc)}"
+            )
+            _log(server_root, f"{reserving_class} refresh failed", exc=exc)
+        finally:
+            _log(
+                server_root,
+                f"{reserving_class} took {time.monotonic() - class_started:.2f}s",
+            )
+    notify(
+        "classes",
+        total,
+        total,
+        f"Refreshed {result['classes_refreshed']} of {total} reserving class(es)",
+    )
+    return result
+
+
+def summarize_refresh_failures(refresh: Mapping[str, Any] | None) -> str:
+    """One sentence for a saved rule set whose dataset refresh fell short.
+
+    Empty when nothing failed. The rules are committed either way, so the
+    sentence says so before it names what did not refresh; the first failure
+    is spelled out because the client shows this message verbatim.
+    """
+
+    if not isinstance(refresh, Mapping):
+        return ""
+    failures = [str(item or "").strip() for item in refresh.get("failures") or []]
+    failures = [item for item in failures if item]
+    if not failures:
+        return ""
+    counts = []
+    datasets_failed = int(refresh.get("datasets_failed") or 0)
+    if datasets_failed:
+        counts.append(f"{datasets_failed} dataset(s) could not be refreshed")
+    unfinished = int(refresh.get("classes_total") or 0) - int(
+        refresh.get("classes_refreshed") or 0
+    )
+    if unfinished > 0:
+        counts.append(f"{unfinished} reserving class(es) were not refreshed")
+    head = "; ".join(counts) if counts else "the dataset refresh reported problems"
+    return f"The rules were saved, but {head}. First problem: {failures[0]}"
+
+
 def execute_data_processing_rules_save(
     server_root: str | os.PathLike[str],
     request: Mapping[str, Any],
     *,
     progress_callback: Callable[[Progress], None] | None = None,
+    narrow_lease: Callable[[list[str]], None] | None = None,
 ) -> dict[str, Any]:
     """Run one validated rules save and return the save route's response.
 
     A refusal the service raises is re-raised as
     :class:`DataProcessingRulesJobRefused` with the status code the direct
-    route maps it to, so the terminal status can carry that code.
+    route maps it to, so the terminal status can carry that code. A save that
+    changed the rules' meaning is followed by the refresh of every dataset
+    they affect; its summary rides along under ``refresh``. ``narrow_lease``
+    is called with those datasets' reserving classes before the refresh, so
+    the caller holding the project-scope lease can let every other class go.
     """
 
     normalized = validate_data_processing_rules_job_request(request)
     root = Path(os.fspath(server_root)).expanduser().resolve(strict=False)
     configure_canonical_runtime(root)
 
-    from app_server.services import (
-        data_processing_rules_service,
-        data_processing_values_service,
-        user_identity_service,
-    )
+    from app_server.services import user_identity_service
 
     def notify(stage: str, completed: int, total: int, label: str) -> None:
         if progress_callback is not None:
             progress_callback(_progress(stage, completed, total, label))
 
+    project_name = normalized["ProjectName"]
     _log(
         root,
-        f"{normalized['RequestId']} start project={normalized['ProjectName']!r} "
+        f"{normalized['RequestId']} start project={project_name!r} "
         f"revision={normalized['ExpectedRevision']} rules={len(normalized['Rules'])}",
     )
+    # The job writes the rules file, the audit entry, and then every dataset
+    # and method it refreshes: act as the user who asked for the save so each
+    # stamp names them and not this service.
+    with user_identity_service.acting_identity(normalized["UserName"]):
+        response = _run_canonical_save(normalized, notify)
+        dataset_types = _affected_dataset_types(response)
+        _log(
+            root,
+            f"{normalized['RequestId']} saved changed={bool(response.get('changed'))} "
+            f"affected_types={len(dataset_types)}",
+        )
+        response["refresh"] = _refresh_affected_datasets(
+            root,
+            project_name,
+            dataset_types,
+            notify=notify,
+            narrow_lease=narrow_lease,
+        )
+    refresh = response["refresh"]
+    _log(
+        root,
+        f"{normalized['RequestId']} refreshed "
+        f"classes={refresh['classes_refreshed']}/{refresh['classes_total']} "
+        f"datasets={refresh['datasets_regenerated']} "
+        f"methods={refresh['methods_updated']} "
+        f"failed={refresh['datasets_failed']}",
+    )
+    return response
+
+
+def _run_canonical_save(
+    normalized: Mapping[str, Any],
+    notify: Callable[[str, int, int, str], None],
+) -> dict[str, Any]:
+    """The canonical save, with each refusal mapped to its direct-route code."""
+
+    from app_server.services import (
+        data_processing_rules_service,
+        data_processing_values_service,
+    )
+
     try:
-        # The job writes the rules file and the audit entry: act as the user
-        # who asked for the save so both name them and not this service.
-        with user_identity_service.acting_identity(normalized["UserName"]):
-            return data_processing_rules_service.save_data_processing_rules(
-                normalized["ProjectName"],
-                expected_revision=normalized["ExpectedRevision"],
-                data={"rules": normalized["Rules"]},
-                progress=notify,
-            )
+        return data_processing_rules_service.save_data_processing_rules(
+            normalized["ProjectName"],
+            expected_revision=normalized["ExpectedRevision"],
+            data={"rules": normalized["Rules"]},
+            progress=notify,
+        )
     except data_processing_rules_service.RulesRevisionConflictError as exc:
         raise DataProcessingRulesJobRefused(409, str(exc)) from exc
     except (
@@ -259,14 +477,23 @@ def process_durable_data_processing_rules_request(
 
         def record_progress(progress: Progress) -> None:
             # The sidecar check reports once per file. A new stage is published
-            # at once so the window follows the save; ticks within a stage are
-            # left to the heartbeat, which bounds the status file's write rate
-            # by the contract cadence instead of by the size of the project.
+            # at once so the window follows the save; ticks within that stage
+            # are left to the heartbeat, which bounds the status file's write
+            # rate by the contract cadence instead of by the size of the
+            # project. Every other stage reports once per class or dataset,
+            # a rate the file can carry, so those ticks are published as they
+            # happen and the window names the class being refreshed.
             nonlocal current_progress
             stage_changed = progress["stage"] != current_progress["stage"]
             current_progress = progress
-            if stage_changed:
+            if stage_changed or progress["stage"] != "checking":
                 publish("processing", progress)
+
+        def narrow_lease(reserving_classes: list[str]) -> None:
+            # The rules file is written; from here only the classes being
+            # refreshed need the hold, so every other class opens to saves.
+            _require_lease(lease)
+            narrow_project_scope_lease(lease, normalized["ProjectName"], reserving_classes)
 
         # Remote pollers treat a status whose updated_at stops moving as an
         # abandoned job, so republish the current progress on the contract
@@ -297,15 +524,21 @@ def process_durable_data_processing_rules_request(
             status_heartbeat_thread.start()
             try:
                 terminal_result = execute_data_processing_rules_save(
-                    root, normalized, progress_callback=record_progress
+                    root,
+                    normalized,
+                    progress_callback=record_progress,
+                    narrow_lease=narrow_lease,
                 )
             finally:
                 heartbeat_stop_event.set()
                 status_heartbeat_thread.join(
                     timeout=DATA_PROCESSING_RULES_JOB_STATUS_HEARTBEAT_SECONDS * 2
                 )
+            # The rules are committed even when a dataset did not refresh, so
+            # the job succeeds and the message says what was left behind; an
+            # error here would read as a save that never happened.
             terminal_state = "success"
-            terminal_message = ""
+            terminal_message = summarize_refresh_failures(terminal_result.get("refresh"))
             terminal_progress = _progress(
                 "complete",
                 current_progress["total"],

@@ -5,8 +5,9 @@ import {
 } from "./project_settings_skeleton.js?v=20260821pstree1";
 import {
   createDataProcessingRulesRequestId,
+  describeDataProcessingRulesSaveResult,
   waitForDataProcessingRulesJob,
-} from "./project_settings_data_processing_rules_job.js?v=20260905rules1";
+} from "./project_settings_data_processing_rules_job.js?v=20260905rules2";
 
 const RULES_FORMAT = "arcrho-data-processing-rules-v1";
 
@@ -2463,14 +2464,11 @@ export function createDataProcessingRulesFeature(deps = {}) {
       state.semanticHash = cleanText(payload?.semantic_hash);
       state.loaded = true;
       renderRules(name);
-      const invalidated = Number(
-        payload?.impact?.generated_caches_rejected
-        || payload?.impact?.invalidated_count
-        || payload?.impact?.cleared_count
-        || 0,
-      );
-      const suffix = invalidated > 0 ? ` ${invalidated} generated cache file(s) invalidated.` : "";
-      setRulesStatus(`Saved revision ${state.document.revision}.${suffix}`);
+      // The Engine save reports the datasets and methods it refreshed after
+      // the write; a direct save only says what will refresh when opened.
+      const outcome = describeDataProcessingRulesSaveResult(payload);
+      const suffix = outcome.text ? ` ${outcome.text}` : "";
+      setRulesStatus(`Saved revision ${state.document.revision}.${suffix}`, outcome.failed);
       setStatus(`Saved data processing rules: ${name}.`);
       await loadAuditLog(name, true);
       return true;

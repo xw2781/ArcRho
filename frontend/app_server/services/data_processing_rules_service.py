@@ -269,10 +269,20 @@ def _read_rules_document(path: str) -> Dict[str, Any]:
 
 
 def _canonical_rules_for_hash(document: Dict[str, Any]) -> Dict[str, Any]:
+    """The rules as the data engine sees them: what changes the numbers, only.
+
+    The name is a label for the Project Settings page; the engine reads it
+    for nothing but a presence check. Hashing it made every rename look like
+    a change of meaning, which stamped every generated cache stale and (since
+    the Engine job refreshes what a save affects) rebuilt them all for a
+    label, so it stays out.
+    """
+
     rules = json.loads(json.dumps(list(document.get("rules") or []), ensure_ascii=False))
     for rule in rules:
         if not isinstance(rule, dict):
             continue
+        rule.pop("name", None)
         for section_name in ("request_conditions", "row_conditions"):
             section = rule.get(section_name)
             conditions = section.get("all") if isinstance(section, dict) else None
@@ -1421,7 +1431,11 @@ def save_data_processing_rules(
 
         semantic_unchanged = semantic_rules_hash(candidate) == semantic_rules_hash(current)
         order_changed = _rule_id_order(candidate) != _rule_id_order(current)
-        if semantic_unchanged and not order_changed:
+        # Both sides are normalized rules, so plain equality is "the file would
+        # be byte-for-byte the same rules"; a rename is not in the semantic
+        # hash but still has to be written.
+        content_unchanged = candidate.get("rules") == current.get("rules")
+        if semantic_unchanged and not order_changed and content_unchanged:
             return _response_for_document(
                 project_name,
                 path,
@@ -1439,6 +1453,10 @@ def save_data_processing_rules(
             )
 
         if semantic_unchanged:
+            # A reorder or a rename: the file and revision move, but no
+            # processing hash does, so no cache is touched and no dataset
+            # needs refreshing. The save is over as soon as the file is written.
+            change_description, _measures = _describe_rule_changes(current, candidate)
             candidate["revision"] = int(current.get("revision", 0)) + 1
             candidate["updated_at"] = _utc_now()
             candidate["updated_by"] = _current_user()
@@ -1450,11 +1468,16 @@ def save_data_processing_rules(
                 "temporary_view_caches_cleared": 0,
                 "invalidated_count": 0,
             }
+            if change_description == "updated":
+                action = f"Reordered Data Processing Rules (revision {candidate['revision']})"
+            else:
+                action = (
+                    f"Saved Data Processing Rules (revision {candidate['revision']}; "
+                    f"{change_description}; no processing change)"
+                )
             safe_append_project_audit_log(
                 project_name=project_name,
-                action=(
-                    f"Reordered Data Processing Rules (revision {candidate['revision']})"
-                ),
+                action=action,
                 user_name=candidate["updated_by"],
             )
             return _response_for_document(

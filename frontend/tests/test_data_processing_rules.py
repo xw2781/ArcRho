@@ -285,6 +285,40 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
                 data=self._candidate(),
             )
 
+    def test_renaming_a_rule_changes_no_processing_hash_and_touches_no_cache(self) -> None:
+        # The name is a label on the Project Settings page: the engine reads
+        # it for nothing, so a rename must not stamp every generated cache
+        # stale, nor make the Engine job rebuild them.
+        first = data_processing_rules_service.save_data_processing_rules(
+            self.project_name, expected_revision=0, data=self._candidate()
+        )
+        hash_before = data_processing_rules_service.get_processing_config_hash(self.project_name)
+        seen: list = []
+        with patch.object(
+            data_processing_rules_service, "safe_append_project_audit_log"
+        ) as audit:
+            renamed = data_processing_rules_service.save_data_processing_rules(
+                self.project_name,
+                expected_revision=1,
+                data={"rules": [{**self._candidate()["rules"][0], "name": "Keep BI only"}]},
+                progress=lambda *args: seen.append(args[0]),
+            )
+        self.assertTrue(renamed["changed"])
+        self.assertEqual(renamed["data"]["revision"], 2)
+        self.assertEqual(renamed["data"]["rules"][0]["name"], "Keep BI only")
+        self.assertEqual(renamed["semantic_hash"], first["semantic_hash"])
+        self.assertEqual(
+            data_processing_rules_service.get_processing_config_hash(self.project_name),
+            hash_before,
+        )
+        self.assertEqual(renamed["impact"]["affected_dataset_types"], [])
+        self.assertEqual(renamed["impact"]["invalidated_count"], 0)
+        # No cache walk: the save reports only its validation stage.
+        self.assertEqual(seen, ["validating"])
+        self.assertIn(
+            "edited 1; no processing change", audit.call_args.kwargs["action"]
+        )
+
     def test_save_reports_its_stages_and_stamps_the_acting_user(self) -> None:
         # The Engine runs this save as a job for the submitting user and
         # publishes the stages it reports; a direct save passes no callback.

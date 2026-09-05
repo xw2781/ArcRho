@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Saving Data Processing Rules now refreshes the datasets the rules affect, and the methods built on them, without reopening each one.",
+  "details": [
+    "After the rules are written, ArcRho Server rebuilds every generated dataset that reads an affected measure, reserving class by reserving class, and updates the methods that depend on them, the same way Import Data does.",
+    "The progress window names each reserving class as it is refreshed, and the status line reports how many datasets and methods were refreshed.",
+    "A dataset that could not be refreshed is named in the status line; the rules are still saved, and that dataset refreshes the next time it is opened.",
+    "Renaming or reordering rules saves at once: it changes no calculation, so no dataset is marked out of date or refreshed."
+  ]
+}

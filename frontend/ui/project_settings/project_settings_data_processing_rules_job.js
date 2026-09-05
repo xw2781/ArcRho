@@ -50,6 +50,47 @@ export function dataProcessingRulesJobStatusUrl(projectName, jobId) {
   return `/data_processing_rules/save_job/status?${params.toString()}`;
 }
 
+/**
+ * Summarize a finished save's response for the rules status line.
+ *
+ * An Engine save carries a `refresh` block: the datasets and methods it
+ * rebuilt after the write, and anything it could not. A direct save (no
+ * Engine) only counted the generated caches the change made stale; those
+ * rebuild when they are next opened, and the text says so.
+ */
+export function describeDataProcessingRulesSaveResult(payload) {
+  const refresh = payload?.refresh;
+  if (refresh && typeof refresh === "object") {
+    const classesTotal = Number(refresh.classes_total) || 0;
+    const classes = Number(refresh.classes_refreshed) || 0;
+    const datasets = Number(refresh.datasets_regenerated) || 0;
+    const methods = Number(refresh.methods_updated) || 0;
+    const failures = (Array.isArray(refresh.failures) ? refresh.failures : [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    const parts = [];
+    if (classesTotal > 0 || datasets > 0 || methods > 0) {
+      parts.push(`Refreshed ${datasets} dataset(s) and ${methods} method(s) in ${classes} reserving class(es).`);
+    }
+    if (failures.length) {
+      parts.push(`${failures.length} problem(s) during the refresh; first: ${failures[0]}`);
+    }
+    return { text: parts.join(" "), failed: failures.length > 0 };
+  }
+  const invalidated = Number(
+    payload?.impact?.generated_caches_rejected
+    || payload?.impact?.invalidated_count
+    || payload?.impact?.cleared_count
+    || 0,
+  );
+  return {
+    text: invalidated > 0
+      ? `${invalidated} generated cache file(s) will refresh when next opened.`
+      : "",
+    failed: false,
+  };
+}
+
 async function readResponseError(response) {
   const raw = await response.text();
   try {

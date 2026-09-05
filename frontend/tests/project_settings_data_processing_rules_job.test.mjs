@@ -17,6 +17,7 @@ const coordinatorSource = await readFile(
 const {
   createDataProcessingRulesRequestId,
   dataProcessingRulesJobStatusUrl,
+  describeDataProcessingRulesSaveResult,
   waitForDataProcessingRulesJob,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`
@@ -138,6 +139,48 @@ test("a status that stops moving is treated as a stalled worker", async () => {
   );
 });
 
+test("an Engine save reports the datasets and methods it refreshed", () => {
+  assert.deepEqual(
+    describeDataProcessingRulesSaveResult({
+      refresh: { classes_total: 2, classes_refreshed: 2, datasets_regenerated: 3, methods_updated: 4, failures: [] },
+    }),
+    { text: "Refreshed 3 dataset(s) and 4 method(s) in 2 reserving class(es).", failed: false },
+  );
+  assert.deepEqual(
+    describeDataProcessingRulesSaveResult({
+      refresh: {
+        classes_total: 2,
+        classes_refreshed: 1,
+        datasets_regenerated: 1,
+        datasets_failed: 1,
+        methods_updated: 0,
+        failures: ["A\\Two: Paid: the ArcRho Engine did not return values."],
+      },
+    }),
+    {
+      text: "Refreshed 1 dataset(s) and 0 method(s) in 1 reserving class(es). "
+        + "1 problem(s) during the refresh; first: A\\Two: Paid: the ArcRho Engine did not return values.",
+      failed: true,
+    },
+  );
+  // Nothing read an affected measure: the save has nothing to add.
+  assert.deepEqual(
+    describeDataProcessingRulesSaveResult({ refresh: { classes_total: 0, failures: [] } }),
+    { text: "", failed: false },
+  );
+  // A direct save (no Engine) only counted the caches it made stale.
+  assert.deepEqual(
+    describeDataProcessingRulesSaveResult({ impact: { generated_caches_rejected: 5 } }),
+    { text: "5 generated cache file(s) will refresh when next opened.", failed: false },
+  );
+  assert.deepEqual(describeDataProcessingRulesSaveResult({}), { text: "", failed: false });
+  // The rules status line carries the summary and turns red on a failure.
+  assert.match(
+    rulesFeatureSource,
+    /const outcome = describeDataProcessingRulesSaveResult\(payload\);[\s\S]*setRulesStatus\(`Saved revision \$\{state\.document\.revision\}\.\$\{suffix\}`, outcome\.failed\)/,
+  );
+});
+
 test("the rules editor saves through the Engine job and falls back without one", () => {
   assert.match(
     rulesFeatureSource,
@@ -167,9 +210,9 @@ test("the rules module and its job module carry one fresh version stamp", () => 
   const [, stamp] = coordinatorSource.match(
     /project_settings_data_processing_rules\.js\?v=([A-Za-z0-9]+)"/u,
   );
-  assert.equal(stamp, "20260905rules1");
+  assert.equal(stamp, "20260905rules2");
   assert.match(
     rulesFeatureSource,
-    /from "\.\/project_settings_data_processing_rules_job\.js\?v=20260905rules1"/u,
+    /from "\.\/project_settings_data_processing_rules_job\.js\?v=20260905rules2"/u,
   );
 });
