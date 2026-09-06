@@ -22,6 +22,7 @@ export function wireDatasetGridInteractions(deps) {
     state,
     renderTable,
     isReadOnly = () => false,
+    readOnlyMessage = () => "Generated datasets are read-only.",
     setStatus = () => {},
     notifyDatasetUpdated = () => {},
     refreshDatasetSettingsDirty = () => {},
@@ -446,7 +447,7 @@ export function wireDatasetGridInteractions(deps) {
 
   async function commitHoveredExternalFormula({ formula, context }) {
     if (isReadOnly()) {
-      const error = "Generated datasets are read-only.";
+      const error = readOnlyMessage();
       setStatus(error);
       return { ok: false, error };
     }
@@ -481,7 +482,7 @@ export function wireDatasetGridInteractions(deps) {
 
   function canEditDisplayCell(displayR, displayC, options = {}) {
     if (isReadOnly()) {
-      if (!options?.silent) setStatus("Generated datasets are read-only.");
+      if (!options?.silent) setStatus(readOnlyMessage());
       return null;
     }
     const model = getDisplayDatasetModel();
@@ -559,7 +560,7 @@ export function wireDatasetGridInteractions(deps) {
 
   function fillSelectedCells(value, describe) {
     if (isReadOnly()) {
-      setStatus("Generated datasets are read-only.");
+      setStatus(readOnlyMessage());
       return 0;
     }
     const ranges = selectedRanges();
@@ -649,7 +650,7 @@ export function wireDatasetGridInteractions(deps) {
 
   function applyPastedGridText(text, start) {
     if (isReadOnly()) {
-      setStatus("Generated datasets are read-only.");
+      setStatus(readOnlyMessage());
       return 0;
     }
     const model = getDisplayDatasetModel();
@@ -1110,7 +1111,7 @@ export function wireDatasetGridInteractions(deps) {
     document.addEventListener("paste", (e) => {
       if (isTypingTarget(e.target)) return;
       if (isReadOnly()) {
-        setStatus("Generated datasets are read-only.");
+        setStatus(readOnlyMessage());
         return;
       }
       const text = String(e.clipboardData?.getData("text/plain") || "");

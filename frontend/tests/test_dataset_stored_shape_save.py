@@ -124,6 +124,10 @@ class ManualDatasetStoredShapeSaveTests(unittest.TestCase):
         self.assertEqual(payload["stored_development_length"], 1)
         self.assertEqual(payload["csv_file"], MONTHLY_CSV)
         self.assertEqual(result["origin_length"], 12)
+        # The window that just saved is told the stored shape as well as the
+        # display one, so its readout and its read-only rule need no reload.
+        self.assertEqual(result["stored_origin_length"], 1)
+        self.assertEqual(result["stored_development_length"], 1)
         self.assertTrue(os.path.exists(monthly_path))
         self.assertFalse(os.path.exists(os.path.join(self.data_dir, ANNUAL_CSV)))
 
@@ -154,7 +158,7 @@ class ManualDatasetStoredShapeSaveTests(unittest.TestCase):
     def test_empty_dataset_is_relabelled_and_its_old_csv_deleted(self) -> None:
         monthly_path = self._write_stored_csv(MONTHLY_CSV, [[0.0, 0.0], [0.0, np.nan]])
 
-        _, payload = self._save(
+        result, payload = self._save(
             origin_length=12,
             development_length=12,
             values=[[0.0, 0.0], [0.0, None]],
@@ -163,6 +167,9 @@ class ManualDatasetStoredShapeSaveTests(unittest.TestCase):
         self.assertEqual(payload["stored_origin_length"], 12)
         self.assertEqual(payload["stored_development_length"], 12)
         self.assertEqual(payload["csv_file"], ANNUAL_CSV)
+        # A relabel moves the stored shape, so the answer carries the new one.
+        self.assertEqual(result["stored_origin_length"], 12)
+        self.assertEqual(result["stored_development_length"], 12)
         self.assertTrue(os.path.exists(os.path.join(self.data_dir, ANNUAL_CSV)))
         self.assertFalse(os.path.exists(monthly_path))
 

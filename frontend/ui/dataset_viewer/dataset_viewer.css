@@ -116,7 +116,7 @@ body {
   --topbar-left-col: max-content;
   --topbar-gap-1-2: 36px;
   --topbar-gap-3-4: 36px;
-  --topbar-input-offset: 0px;
+  --topbar-input-offset: 17px;
   --topbar-control-height: 28px;
   min-width: 550px;
   padding: 8px 10px;
@@ -128,7 +128,7 @@ body {
 
 .topbar-grid {
   display: grid;
-  grid-template-columns: var(--topbar-left-col) max-content 72px max-content max-content;
+  grid-template-columns: var(--topbar-left-col) max-content max-content max-content max-content;
   grid-template-rows: auto auto;
   column-gap: 0px;
   row-gap: 10px;
@@ -178,6 +178,26 @@ body {
 .topbar-input {
   display: flex;
   justify-content: flex-end;
+}
+
+/* The two length controls share a column with the stored-period caption that
+   sits beside each of them. They are laid out from the left so both controls
+   keep one x position however long the caption on the other row runs, and the
+   column's own lead-in comes from --topbar-input-offset. */
+.topbar-input-stack .topbar-input {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Information, never a control: the shape the dataset's own file is held at,
+   which nothing in the strip can edit. */
+#datasetTopBar .lenStoredNote {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+  user-select: none;
 }
 
 .chk, .rad {

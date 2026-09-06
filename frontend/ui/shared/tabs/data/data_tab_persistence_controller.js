@@ -17,6 +17,8 @@ export function registerDataTabPersistenceController(runtime) {
   const isDatasetReadOnly = defer("isDatasetReadOnly");
   const getDatasetRunDataFormat = defer("getDatasetRunDataFormat");
   const setLenSelectLock = defer("setLenSelectLock");
+  const setLenSelectChoices = defer("setLenSelectChoices");
+  const lenChoicesForStoredLength = defer("lenChoicesForStoredLength");
   let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
   let datasetExcelLinkCheckAbortController = null;
   const datasetExcelLinkCheckedKeys = new Set();
@@ -262,7 +264,40 @@ export function registerDataTabPersistenceController(runtime) {
     return true;
   }
 
+  // The period the open dataset's own file is held at, as the sidecar records
+  // it. Zero means it is not known yet, which is the state before a sidecar has
+  // loaded and for a draft that has never been saved.
+  // Both the sidecar load and the sidecar save answer with the stored pair, so
+  // one reader keeps the window's copy of it in step with either.
+  function applyStoredLengthsFromResponse(payload) {
+    const source = payload && typeof payload === "object" ? payload : {};
+    runtime.currentDatasetStoredOriginLength = Number(source.stored_origin_length) || 0;
+    runtime.currentDatasetStoredDevelopmentLength = Number(source.stored_development_length) || 0;
+  }
+
+  function getStoredLengthPair() {
+    const origin = Number(runtime.currentDatasetStoredOriginLength);
+    const development = Number(runtime.currentDatasetStoredDevelopmentLength);
+    return {
+      origin_length: Number.isFinite(origin) && origin > 0 ? Math.trunc(origin) : 0,
+      development_length: Number.isFinite(development) && development > 0 ? Math.trunc(development) : 0,
+    };
+  }
+
+  // A hand-entered dataset that still holds nothing has no stored period worth
+  // keeping: the next save fixes it at whatever the length controls read, so
+  // the whole ladder stays open and the readout says so.
+  function storedLengthIsPending() {
+    return currentDatasetIsManualTriangleOrVector() && datasetValuesAreAllZero();
+  }
+
+  function currentDatasetIsVector() {
+    return normalizeDatasetModeText(getDatasetRunDataFormat()) === "vector";
+  }
+
   function getManualDatasetLengthBaseline() {
+    const stored = getStoredLengthPair();
+    if (stored.origin_length > 0 && stored.development_length > 0) return stored;
     const settings = lastSavedDatasetSettings;
     if (!settings) {
       return {
@@ -285,6 +320,55 @@ export function registerDataTabPersistenceController(runtime) {
     };
   }
 
+  // A coarser display is a roll-up of the file, not the file, so the cells on
+  // screen are not the ones a value would be written into.
+  function datasetDisplayIsCoarserThanStored() {
+    if (storedLengthIsPending()) return false;
+    const stored = getStoredLengthPair();
+    const current = getCurrentLengthControlValues();
+    if (stored.origin_length > 0 && current.origin_length > stored.origin_length) return true;
+    if (currentDatasetIsVector()) return false;
+    return stored.development_length > 0 && current.development_length > stored.development_length;
+  }
+
+  function datasetCoarserViewMessage() {
+    const stored = getStoredLengthPair();
+    if (currentDatasetIsVector()) {
+      return `Values can be entered only at the stored period (Period ${stored.origin_length}). Set the length back to edit.`;
+    }
+    return `Values can be entered only at the stored period (Origin ${stored.origin_length}, Development ${stored.development_length}). Set the lengths back to edit.`;
+  }
+
+  function applyStoredLengthChoices() {
+    const stored = storedLengthIsPending() ? { origin_length: 0, development_length: 0 } : getStoredLengthPair();
+    setLenSelectChoices("originLenSelect", lenChoicesForStoredLength(stored.origin_length));
+    setLenSelectChoices("devLenSelect", lenChoicesForStoredLength(stored.development_length));
+  }
+
+  function setStoredLengthNote(elementId, length, pending) {
+    const note = document.getElementById(elementId);
+    if (!note) return;
+    const value = Number(length);
+    if (!Number.isFinite(value) || value <= 0) {
+      note.textContent = "";
+      note.hidden = true;
+      return;
+    }
+    note.textContent = pending ? `will be stored at ${value} on first save` : `stored ${value}`;
+    note.hidden = false;
+  }
+
+  function updateStoredLengthReadout() {
+    const pending = storedLengthIsPending();
+    const source = pending ? getCurrentLengthControlValues() : getStoredLengthPair();
+    setStoredLengthNote("originLenStoredNote", source.origin_length, pending);
+    setStoredLengthNote(
+      "devLenStoredNote",
+      currentDatasetIsVector() ? 0 : source.development_length,
+      pending,
+    );
+  }
+
   function validateManualDatasetLengthChange() {
     if (!currentDatasetIsManualTriangleOrVector()) return true;
     if (datasetValuesAreAllZero()) return true;
@@ -296,7 +380,7 @@ export function registerDataTabPersistenceController(runtime) {
     setLenSelectValue("originLenSelect", String(baseline.origin_length));
     setLenSelectValue("devLenSelect", String(baseline.development_length));
     refreshLenDropdowns();
-    setStatus("Manual input datasets with non-zero values cannot use a lower period length. Set all values to 0 before changing to a lower level.");
+    setStatus(`Manual input datasets with non-zero values cannot be shown below the period their values are stored at (Origin ${baseline.origin_length}, Development ${baseline.development_length}). Set all values to 0 before changing to a lower level.`);
     return false;
   }
 
@@ -320,9 +404,8 @@ export function registerDataTabPersistenceController(runtime) {
   // PeriodLength, so nothing reads it, and rewriting it would make an untouched
   // dataset look edited.
   function updateVectorDevelopmentLengthControl() {
-    const isVector = normalizeDatasetModeText(getDatasetRunDataFormat()) === "vector";
     setLenSelectLock("devLenSelect", {
-      locked: isVector,
+      locked: currentDatasetIsVector(),
       displayValue: "0",
       reason: "A vector has no development periods.",
     });
@@ -383,6 +466,8 @@ export function registerDataTabPersistenceController(runtime) {
     }
     updateManualDatasetModeControls();
     updateVectorDevelopmentLengthControl();
+    applyStoredLengthChoices();
+    updateStoredLengthReadout();
     notifyDatasetDirtyState();
   }
 
@@ -403,6 +488,9 @@ export function registerDataTabPersistenceController(runtime) {
 
   function applyDatasetSettingsToControls(settings = {}) {
     const normalized = normalizeDatasetSettings(settings);
+    // The offered lengths follow the stored period, so they have to be in place
+    // before the saved display shape is written into the control.
+    applyStoredLengthChoices();
     setLenSelectValue("originLenSelect", String(normalized.origin_length));
     setLenSelectValue("devLenSelect", String(normalized.development_length));
     const cumulativeChk = document.getElementById("cumulativeChk");
@@ -417,6 +505,7 @@ export function registerDataTabPersistenceController(runtime) {
     setDatasetNumberFormatValue(normalized.number_format);
     refreshLenDropdowns();
     updateVectorDevelopmentLengthControl();
+    updateStoredLengthReadout();
   }
 
   function invalidateDatasetContextLoads() {
@@ -617,6 +706,7 @@ export function registerDataTabPersistenceController(runtime) {
     if (!key) {
       if (isDfmDataTabHost()) setDatasetRenderNumberFormatSettings(null);
       runtime.isSidecarReadOnlyDataset = false;
+      applyStoredLengthsFromResponse(null);
       runtime.currentDatasetSidecarSourceKind = "";
       runtime.currentDatasetSidecarDataFormat = "";
       runtime.currentDatasetPrecedents = [];
@@ -652,6 +742,7 @@ export function registerDataTabPersistenceController(runtime) {
     if (!resp.ok) {
       if (isDfmDataTabHost()) setDatasetRenderNumberFormatSettings(null);
       setStatus(`Dataset settings load failed: ${resp?.data?.detail || "Unknown error."}`);
+      applyStoredLengthsFromResponse(null);
       runtime.currentDatasetSidecarSourceKind = isProjectInstanceDraft ? "input" : "";
       runtime.currentDatasetSidecarDataFormat = isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "";
       runtime.currentDatasetPrecedents = [];
@@ -675,6 +766,7 @@ export function registerDataTabPersistenceController(runtime) {
       notes: data.exists ? String(data.notes ?? "") : "",
     });
     if (!isCurrent() || notesSynced === false) return false;
+    applyStoredLengthsFromResponse(data.exists ? data : null);
     runtime.currentDatasetSidecarSourceKind = data.exists ? String(data.source_kind || "") : (isProjectInstanceDraft ? "input" : "");
     runtime.currentDatasetSidecarDataFormat = data.exists ? String(data.data_format || "") : (isProjectInstanceDraft ? getProjectInstanceDraftDataFormat() : "");
     runtime.currentDatasetPrecedents = data.exists ? normalizeDatasetDependencyEntries(data.precedents) : [];
@@ -785,6 +877,7 @@ export function registerDataTabPersistenceController(runtime) {
     notesContextKey = buildNotesContextKey(notesContextPayload);
     applyNotesInputValue(String(resp.data?.notes ?? ""));
     lastSavedDatasetSettings = normalizeDatasetSettings(settings);
+    applyStoredLengthsFromResponse(resp.data);
     runtime.currentDatasetSidecarSourceKind = String(resp.data?.source_kind || (isProjectInstanceDraft ? "input" : runtime.currentDatasetSidecarSourceKind) || "");
     runtime.currentDatasetSidecarDataFormat = String(resp.data?.data_format || settings.data_format || runtime.currentDatasetSidecarDataFormat || "");
     runtime.currentDatasetPrecedents = normalizeDatasetDependencyEntries(resp.data?.precedents);
@@ -1231,6 +1324,12 @@ export function registerDataTabPersistenceController(runtime) {
     datasetValuesAreAllZero,
     getManualDatasetLengthBaseline,
     getCurrentLengthControlValues,
+    getStoredLengthPair,
+    storedLengthIsPending,
+    applyStoredLengthChoices,
+    updateStoredLengthReadout,
+    datasetDisplayIsCoarserThanStored,
+    datasetCoarserViewMessage,
     validateManualDatasetLengthChange,
     updateManualDatasetModeControls,
     updateVectorDevelopmentLengthControl,

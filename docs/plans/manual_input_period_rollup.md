@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 6 done, 6 of 10.
-Last updated: 2026-09-05 — saving a hand‑entered dataset can no longer move the shape its values are stored at, or leave its file behind.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 7 done, 7 of 10.
+Last updated: 2026-09-05 — the dataset window now shows the shape a triangle's figures are really stored at, offers only the coarser views that add up, and is read‑only at one.
 
 ## Progress
 
@@ -15,14 +15,14 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 4 | Existing projects on the server get the new shape record | [x] | 2026-09-05 | 1 h 15 | 2 h | Every dataset already on the server now records how fine its figures really are, so nothing has to guess at it, and every project's dataset list was rebuilt to match. |
 | 5 | Generated datasets know how fine their source data is | [x] | 2026-09-05 | 45 min | 20 min | A project now records how fine its source data is, so a dataset the app builds from that data says it can be rebuilt monthly even when you last looked at it a year at a time. |
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [x] | 2026-09-05 | 45 min | 15 min | Looking at a hand‑entered triangle a year at a time and saving no longer turns it into yearly data: the figures stay in the file you typed them into, and the app refuses to write values back at a coarser view. |
-| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 1 h 45 | | |
+| 7 | The Dataset Viewer shows the stored shape and only offers valid views | [x] | 2026-09-05 | 1 h 45 | 15 min | The dataset window now says how fine each triangle's figures really are, offers only the coarser views that add up honestly, reopens at the view you last saved, and will not let you type over a rolled‑up figure. |
 | 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 45 min | | |
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 6 of 10 steps done.
+Overall: 7 of 10 steps done.
 
-Time remaining: about 1 h 45 across the four steps still open — 3 h 45 of estimates scaled by the just‑under‑half the six finished steps have really cost. Step 6 came in at 15 minutes against 45, pulling the scaling down again after Step 4's 2 h against 1 h 15; that overrun was the share handing back 10,997 files one round trip at a time, not the work itself. Steps 7 to 9 are code steps like Steps 1 to 3, 5 and 6, and should keep beating their estimates, though Step 7 is the one that touches the UI; Step 10 is a deploy, which takes the time it takes.
+Time remaining: about 45 min across the three steps still open — 2 h of estimates scaled by the just under two fifths the seven finished steps have really cost. Step 7 was the one UI step and landed in 15 minutes against 1 h 45, pulling the scaling down again; the only overrun in the plan is still Step 4's 2 h against 1 h 15, which was the share handing back 10,997 files one round trip at a time. Steps 8 and 9 are code steps like the rest and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
 
 ### How the time figures are kept
 

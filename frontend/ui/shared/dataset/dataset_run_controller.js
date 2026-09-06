@@ -49,6 +49,7 @@ export function createDatasetRunController(deps) {
     suppressLoadingPopup = false,
     loadingPopupDelayMs = DEFAULT_LOADING_POPUP_DELAY_MS,
     isDatasetReadOnly = () => false,
+    datasetReadOnlyMessage = () => "Generated datasets are read-only.",
   } = deps;
   const resolvedLoadingPopupDelayMs = Number.isFinite(Number(loadingPopupDelayMs))
     ? Math.max(0, Number(loadingPopupDelayMs))
@@ -551,7 +552,7 @@ export function createDatasetRunController(deps) {
   async function savePatch() {
     if (isDatasetReadOnly()) {
       logLine("Generated dataset is read-only; patch save skipped.");
-      setStatus("Generated datasets are read-only.");
+      setStatus(datasetReadOnlyMessage());
       return;
     }
     if (state.dirty.size === 0) {

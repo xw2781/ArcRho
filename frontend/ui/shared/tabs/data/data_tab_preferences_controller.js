@@ -3,7 +3,7 @@
 export function registerDataTabPreferencesController(runtime) {
   const { BROWSING_HISTORY_MAX_ENTRIES, DEFAULT_PATH_DISPLAY, DEFAULT_PROJECT_DISPLAY, DEFAULT_TOKEN, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView, LOCAL_PROJECT_PREFS_ENDPOINT, LS_DS_KEY, LS_FORM_KEY, scopedKey, WF_GLOBAL_CTRL_PREFIX, workflowId } = runtime;
   const defer = (name) => (...args) => runtime[name](...args);
-  const { normalizeReservingClassPath, isDfmDataTabHost, normalizeProjectText, loadProjectUserPreferences, scheduleProjectUserPreferencesSave, updateDatasetSaveUi, normalizeBrowsingHistoryEntry, pushBrowsingHistoryEntry, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, findExactProjectMatch, setLastViewedDatasetInputs, refreshDatasetSettingsDirty, getLastViewedDatasetInputs, readDatasetInputsFromQueryParams, refreshLenDropdowns, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, ensureHeadersForProject, ensureDevHeadersForProject, refreshDatasetTypesForProject, refreshReservingClassPathsForProject, renderProjectOptions, scheduleAutoRun } = new Proxy({}, { get: (_target, name) => defer(name) });
+  const { normalizeReservingClassPath, isDfmDataTabHost, normalizeProjectText, loadProjectUserPreferences, scheduleProjectUserPreferencesSave, updateDatasetSaveUi, normalizeBrowsingHistoryEntry, pushBrowsingHistoryEntry, getDatasetDecimalPlacesValue, getDatasetSyncedNumberFormatValue, findExactProjectMatch, setLastViewedDatasetInputs, refreshDatasetSettingsDirty, getLastViewedDatasetInputs, readDatasetInputsFromQueryParams, refreshLenDropdowns, datasetDisplayIsCoarserThanStored, datasetCoarserViewMessage, setDatasetDecimalPlacesValue, setDatasetNumberFormatValue, ensureHeadersForProject, ensureDevHeadersForProject, refreshDatasetTypesForProject, refreshReservingClassPathsForProject, renderProjectOptions, scheduleAutoRun } = new Proxy({}, { get: (_target, name) => defer(name) });
   const datasetProjectPrefs = new Map();
   let localDatasetViewerPrefsLoadPromise = null;
   let localDatasetViewerProjectSaved = "";
@@ -364,11 +364,26 @@ export function registerDataTabPreferencesController(runtime) {
     }
   }
 
+  const GENERATED_DATASET_READ_ONLY_MESSAGE = "Generated datasets are read-only.";
+
   function isDatasetReadOnly() {
     return isTemporaryDatasetView
       || isReadOnlyDatasetViewer
       || runtime.isSidecarReadOnlyDataset
-      || runtime.datasetSaveInFlight;
+      || runtime.datasetSaveInFlight
+      // A coarser view is a roll-up of the file, so its cells are not the ones
+      // a typed value, a paste or a link would be written into.
+      || datasetDisplayIsCoarserThanStored();
+  }
+
+  // Every refusal the grid, the Links tab and the patch save report comes from
+  // here, so the reason a reader sees always matches the rule that stopped them.
+  function getDatasetReadOnlyMessage() {
+    const coarseOnly = !isTemporaryDatasetView
+      && !isReadOnlyDatasetViewer
+      && !runtime.isSidecarReadOnlyDataset
+      && datasetDisplayIsCoarserThanStored();
+    return coarseOnly ? datasetCoarserViewMessage() : GENERATED_DATASET_READ_ONLY_MESSAGE;
   }
 
   async function restoreTriInputsFromStorage() {
@@ -690,6 +705,7 @@ export function registerDataTabPreferencesController(runtime) {
     loadLastDsId,
     saveTriInputsToStorage,
     isDatasetReadOnly,
+    getDatasetReadOnlyMessage,
     restoreTriInputsFromStorage,
     applyTriInputsFromQueryParams,
     hasScopedTriInputs,

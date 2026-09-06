@@ -2287,6 +2287,7 @@ def _save_dataset_sidecar_impl(
     # rather than opening every neighbour's sidecar in turn.
     saved_calculation_map = _dataset_type_calculation_map(p)
     saved_index_map = _dataset_index_entry_map(p, rc)
+    saved_stored_lengths = stored_lengths(payload)
     return {
         "ok": True,
         "project_name": p,
@@ -2298,6 +2299,14 @@ def _save_dataset_sidecar_impl(
         "period_length": payload.get("period_length") if is_vector else None,
         "origin_length": payload.get("period_length") if is_vector else payload["origin_length"],
         "development_length": payload.get("period_length") if is_vector else payload["development_length"],
+        # The stored pair travels back with the save for the same reason the
+        # load carries it: the caller has just been told the display shape and
+        # needs the shape underneath it to know whether that display is a
+        # roll-up. A save of a still-empty dataset moves it, so a caller cannot
+        # assume the pair it sent in.
+        "stored_period_length": saved_stored_lengths[0] if is_vector else None,
+        "stored_origin_length": saved_stored_lengths[0],
+        "stored_development_length": saved_stored_lengths[1],
         "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
         "cumulative": payload.get("cumulative"),
         "transposed": payload["transposed"],

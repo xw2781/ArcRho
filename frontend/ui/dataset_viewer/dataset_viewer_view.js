@@ -144,6 +144,7 @@ export function mountDatasetViewer(container) {
                 <div id="originLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Origin Length options"></div>
                 <select id="originLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
               </div>
+              <span id="originLenStoredNote" class="lenStoredNote" hidden></span>
             </div>
             <div class="topbar-input">
               <div id="devLenWrap" class="lenSelectWrap">
@@ -161,6 +162,7 @@ export function mountDatasetViewer(container) {
                 <div id="devLenDropdown" class="datasetDropdown lenDropdown" role="listbox" aria-label="Development Length options"></div>
                 <select id="devLenSelect" class="lenSelectNative" tabindex="-1" aria-hidden="true"></select>
               </div>
+              <span id="devLenStoredNote" class="lenStoredNote" hidden></span>
             </div>
           </div>
 

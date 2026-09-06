@@ -474,25 +474,48 @@ export function registerDataTabRequestController(runtime) {
 
   const LEN_CHOICES = [12, 6, 3, 1];
 
+  // A length control may only offer a whole multiple of the period the data is
+  // stored at: anything finer would ask for cells the file does not hold. The
+  // ladder itself stays LEN_CHOICES, so one list decides every length the top
+  // bar can ever show, and the stored period only narrows it.
+  function lenChoicesForStoredLength(storedLength) {
+    const stored = Number(storedLength);
+    if (!Number.isFinite(stored) || stored <= 0) return LEN_CHOICES.slice();
+    const offered = LEN_CHOICES.filter((choice) => choice % stored === 0);
+    return offered.length ? offered : [stored];
+  }
+
+  function setLenSelectChoices(selectId, values) {
+    const select = document.getElementById(selectId);
+    if (!select) return false;
+    const wanted = (Array.isArray(values) ? values : []).map((value) => String(value));
+    if (!wanted.length) return false;
+    const current = Array.from(select.options).map((option) => option.value);
+    if (current.length === wanted.length && current.every((value, i) => value === wanted[i])) return false;
+    const previous = select.value;
+    select.innerHTML = "";
+    for (const value of wanted) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.appendChild(option);
+    }
+    // The finest length still offered is the stored period itself, which is
+    // where the values live, so a display length the list no longer carries
+    // lands there rather than on an arbitrary neighbour.
+    select.value = wanted.includes(previous) ? previous : wanted[wanted.length - 1];
+    syncLenDropdownButtonLabel(selectId);
+    renderLenDropdownOptions(selectId);
+    return true;
+  }
+
   function fillLenDropdowns() {
     const o = document.getElementById("originLenSelect");
     const d = document.getElementById("devLenSelect");
     if (!o || !d) return;
 
-    o.innerHTML = "";
-    d.innerHTML = "";
-
-    for (const n of LEN_CHOICES) {
-      const opt1 = document.createElement("option");
-      opt1.value = String(n);
-      opt1.textContent = String(n);
-      o.appendChild(opt1);
-
-      const opt2 = document.createElement("option");
-      opt2.value = String(n);
-      opt2.textContent = String(n);
-      d.appendChild(opt2);
-    }
+    setLenSelectChoices("originLenSelect", LEN_CHOICES);
+    setLenSelectChoices("devLenSelect", LEN_CHOICES);
 
     // defaults
     o.value = "12";
@@ -842,6 +865,8 @@ export function registerDataTabRequestController(runtime) {
     isLenSelectLocked,
     setLenSelectLock,
     setLenSelectValue,
+    lenChoicesForStoredLength,
+    setLenSelectChoices,
     chooseActiveLenDropdownOption,
     moveLenDropdownActiveOption,
     cycleLenSelect,
