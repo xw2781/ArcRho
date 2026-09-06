@@ -1,7 +1,8 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.1.2
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.1.0
+# Release Note: Read a ROUND(term, digits) wrapper on a formula term and show that term at
+#   the precision the formula fixed it to, so the note's arithmetic reproduces the cell.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -10,7 +11,6 @@
 #   precision. Adjustment factors equal to 1 are left out of the notes. Complex
 #   formulas fall back to a resolved-formula note.
 # Scope: DFM
-# Icon: document
 # </arcrho-macro>
 
 from __future__ import annotations
@@ -24,18 +24,6 @@ try:
 except Exception:  # pragma: no cover - script can still show useful errors
     DfmDataError = ValueError
 
-from arcrho_api.combined_adjustment import (
-    APPLY_LINE_PREFIX,
-    BASE_FACTOR_LINE_PREFIX,
-    NOTE_BULLET_CHARS,
-    NOTE_HEADER_PREFIX,
-    SELECTED_LDF_LINE_PREFIX,
-    adjustment_description,
-    apply_line,
-    base_factor_line,
-    note_header,
-    selected_ldf_line,
-)
 from arcrho_api.dfm_contract import round_half_up
 
 MACRO_TITLE = "Generate Notes for Combined Adjustment"
@@ -311,6 +299,15 @@ def _is_unity(factor: float) -> bool:
     return abs(float(factor) - 1.0) < UNITY_TOLERANCE
 
 
+def _adjustment_description(dataset_name: str) -> str:
+    text = _clean_text(dataset_name)
+    text = re.sub(r"^[A-Za-z]{1,3}\s*\d+\s*[-–]\s*", "", text)
+    description = text.lower()
+    if description and "adjustment" not in description and "cutoff" not in description:
+        description += " adjustment"
+    return description or "other adjustment"
+
+
 def _reference_location(resolved: dict[str, Any], reference: dict[str, Any]) -> str:
     name = _clean_text(resolved.get("dataset_name")) or _clean_text(reference.get("dataset_name"))
     row_label = _clean_text(resolved.get("row_label"))
@@ -489,14 +486,14 @@ def _factor_lines(factors: list[dict[str, Any]]) -> tuple[list[str], list[str], 
             continue
         multiplier = _format_note_multiplier(effective)
         if factor["kind"] == "reference":
-            description = adjustment_description(factor["reference"]["dataset_name"])
+            description = _adjustment_description(factor["reference"]["dataset_name"])
         else:
             description = "other adjustment"
         if factor["op"] == "/":
             percent = f"1/({_factor_percent_text(value)})"
         else:
             percent = _factor_percent_text(value)
-        lines.append(apply_line(description, percent, multiplier))
+        lines.append(f"  - Apply {description} of {percent} = {multiplier};")
         multipliers.append(multiplier)
     return lines, multipliers, bool(lines)
 
@@ -533,13 +530,16 @@ def _column_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> str
             return _fallback_note(dfm, entry, parsed)
         final_value = (base_value if base_value is not None else 1.0) * product
 
-    note_lines = [note_header(dfm.dev_period(entry["col"] + 1))]
+    note_lines = [f"For development period {dfm.dev_period(entry['col'] + 1)}:"]
     note_lines.extend(lines)
     product_parts = list(multipliers)
     if base_label is not None:
-        note_lines.append(base_factor_line(_display_average_label(base_label), base_value))
+        display_label = _display_average_label(base_label)
+        note_lines.append(f'  - Selected average factor: "{display_label}" ({base_value:.4f})')
         product_parts.insert(0, f"{base_value:.4f}")
-    note_lines.append(selected_ldf_line(" * ".join(product_parts), final_value))
+    note_lines.append(
+        f"  - Selected LDF after adjustments: {' * '.join(product_parts)} = {final_value:.4f}"
+    )
     return "\n".join(note_lines)
 
 
@@ -557,7 +557,7 @@ def _fallback_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> s
     if not references:
         # Without dataset references there is no combined adjustment to explain.
         return None
-    note_lines = [note_header(dfm.dev_period(entry["col"] + 1))]
+    note_lines = [f"For development period {dfm.dev_period(entry['col'] + 1)}:"]
     note_lines.append(f"  - User Entry formula: {entry['formula']};")
     if resolved_parts:
         note_lines.append(f"  - Resolved references: {'; '.join(resolved_parts)};")
@@ -568,25 +568,26 @@ def _fallback_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> s
 
 # Lines that stand on their own (no bullet marker required).
 GENERATED_HEADER_PREFIXES = (
-    NOTE_HEADER_PREFIX,
+    "For development period ",
     NO_ADJUSTMENT_NOTE,
     "No growth/accounting cutoff adjustments were needed",
 )
 # Lines that must carry a bullet marker to count as generated adjustment notes.
 GENERATED_BULLET_PREFIXES = (
-    APPLY_LINE_PREFIX,
-    BASE_FACTOR_LINE_PREFIX,
-    SELECTED_LDF_LINE_PREFIX,
+    "Apply ",
+    "Selected average factor: ",
+    "Selected LDF after adjustments: ",
     "User Entry formula: ",
     "Resolved references: ",
 )
+_NOTE_BULLET_CHARS = "-–—*•◦·○▪●"
 
 
 def _is_generated_note_line(line: str) -> bool:
     text = line.strip()
     if any(text.startswith(prefix) for prefix in GENERATED_HEADER_PREFIXES):
         return True
-    if text[:1] not in NOTE_BULLET_CHARS:
+    if text[:1] not in _NOTE_BULLET_CHARS:
         return False
     text = text[1:].lstrip()
     return any(text.startswith(prefix) for prefix in GENERATED_BULLET_PREFIXES)

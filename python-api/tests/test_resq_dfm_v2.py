@@ -606,5 +606,85 @@ class ResqDfmV2Tests(unittest.TestCase):
         self.assertEqual(sidecar_path.read_bytes(), b"new sidecar")
 
 
+class RecreateAdjustmentFormulaTests(unittest.TestCase):
+    """A User Entry value ResQ holds as a number gets its formula back from the notes."""
+
+    DEV_LABELS = ["(1) 5-17", "(2) 17-29", "(3) 29-41", "41 - Ult"]
+    LABELS = ["Volume - all", "Simple - 2", "User Entry"]
+    NOTES = (
+        "Excluded 2020, 2021 LDFs since they are distorted by COVID.\n\n"
+        "For development period (1) 5-17:\n"
+        "  - Apply accounting cutoff of 1+1.17% = 1.0117;\n"
+        "  - Apply growth adjustment--counts of 1+4.26% = 1.0426;\n"
+        '  - Selected average factor: "Simple - 2" (2.8539)\n'
+        "  - Selected LDF after adjustments: 2.8539 * 1.0117 * 1.0426 = 3.0102\n\n"
+        "For development period (2) 17-29:\n"
+        "  - Apply growth adjustment--counts of 1+2% = 1.02;\n"
+        '  - Selected average factor: "Simple - 2" (1.5000)\n'
+        "  - Selected LDF after adjustments: 1.5000 * 1.02 = 1.5300"
+    )
+    FIRST_FORMULA = '= ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1]'
+    SECOND_FORMULA = '= ROUND("Simple - 2", 4) * [Growth Adjustment--Counts][-2]'
+
+    def _recreate(self, *, notes=NOTES, selected=None, values=None, decimal_places=4):
+        selected = selected or [[0, 0, 0, 0], [0, 0, 1, 0], [1, 1, 0, 0]]
+        values = values or [[2.9, 1.6, 1.2, 1.0], [2.8539, 1.5, 1.1, 1.0], [3.0102, 1.53, 1.0, 1.0]]
+        inputs = [[""] * 4 for _ in self.LABELS]
+        count = migration_dfm._recreate_adjustment_formulas(
+            notes, self.DEV_LABELS, self.LABELS, selected, values, inputs, decimal_places
+        )
+        return count, inputs
+
+    def test_a_selected_user_entry_value_gets_its_formula_back(self) -> None:
+        count, inputs = self._recreate()
+        self.assertEqual(count, 2)
+        self.assertEqual(inputs[2], [self.FIRST_FORMULA, self.SECOND_FORMULA, "", ""])
+        self.assertEqual(inputs[0], ["", "", "", ""])
+        self.assertEqual(inputs[1], ["", "", "", ""])
+
+    def test_a_column_selecting_another_row_is_left_alone(self) -> None:
+        count, inputs = self._recreate(selected=[[0, 0, 0, 0], [1, 0, 1, 0], [0, 1, 0, 0]])
+        self.assertEqual(count, 1)
+        self.assertEqual(inputs[2], ["", self.SECOND_FORMULA, "", ""])
+
+    def test_a_value_changed_by_hand_after_the_notes_stays_a_number(self) -> None:
+        values = [[2.9, 1.6, 1.2, 1.0], [2.8539, 1.5, 1.1, 1.0], [3.05, 1.53, 1.0, 1.0]]
+        count, inputs = self._recreate(values=values)
+        self.assertEqual(count, 1)
+        self.assertEqual(inputs[2], ["", self.SECOND_FORMULA, "", ""])
+
+    def test_the_value_is_compared_at_the_precision_resq_shows(self) -> None:
+        values = [[2.9, 1.6, 1.2, 1.0], [2.854, 1.5, 1.1, 1.0], [3.01, 1.53, 1.0, 1.0]]
+        count, inputs = self._recreate(values=values, decimal_places=3)
+        self.assertEqual(count, 2)
+        self.assertEqual(inputs[2][0], self.FIRST_FORMULA)
+
+    def test_a_note_the_import_cannot_rebuild_faithfully_is_skipped(self) -> None:
+        typed_factor = self.NOTES.replace(
+            "  - Apply accounting cutoff of 1+1.17% = 1.0117;",
+            "  - Apply other adjustment of 1+1.17% = 1.0117;",
+        )
+        count, inputs = self._recreate(notes=typed_factor)
+        self.assertEqual(count, 1)
+        self.assertEqual(inputs[2][0], "")
+
+        missing_row = self.NOTES.replace('"Simple - 2"', '"Simple - 5"')
+        self.assertEqual(self._recreate(notes=missing_row)[0], 0)
+
+        unknown_period = self.NOTES.replace("(2) 17-29", "(9) 99-111")
+        count, inputs = self._recreate(notes=unknown_period)
+        self.assertEqual(count, 1)
+        self.assertEqual(inputs[2][1], "")
+
+    def test_a_method_without_a_user_entry_row_is_untouched(self) -> None:
+        inputs = [[""] * 4 for _ in range(2)]
+        count = migration_dfm._recreate_adjustment_formulas(
+            self.NOTES, self.DEV_LABELS, ["Volume - all", "Simple - 2"], [[1, 1, 1, 0], [0, 0, 0, 0]],
+            [[2.9, 1.6, 1.2, 1.0], [2.8539, 1.5, 1.1, 1.0]], inputs, 4,
+        )
+        self.assertEqual(count, 0)
+        self.assertEqual(inputs, [[""] * 4, [""] * 4])
+
+
 if __name__ == "__main__":
     unittest.main()

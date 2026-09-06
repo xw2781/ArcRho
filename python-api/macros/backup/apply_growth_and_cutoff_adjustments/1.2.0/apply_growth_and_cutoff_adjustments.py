@@ -1,7 +1,9 @@
 # <arcrho-macro>
 # Title: Apply Growth and Cutoff Adjustments
-# Version: 1.2.2
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.2.0
+# Release Note: Round the average factor an adjustment starts from to four decimals inside
+#   the formula, as ROUND("Simple - 2", 4), so the User Entry value is the product of the
+#   figures the method notes show. The adjustment vectors are still read unrounded.
 # Description: Write the combined growth and accounting cutoff adjustment into the active
 #   DFM's User Entry row as a live in-cell formula, for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
@@ -14,7 +16,6 @@
 #   before it is overwritten. Run "Generate Notes for Combined Adjustment" afterwards to
 #   write the matching method notes.
 # Scope: DFM
-# Icon: calculator
 # </arcrho-macro>
 
 from __future__ import annotations
@@ -28,16 +29,23 @@ try:
 except Exception:  # pragma: no cover - script can still show useful errors
     DfmDataError = ValueError
 
-from arcrho_api.combined_adjustment import (
-    ACCOUNTING_CUTOFF_DATASET,
-    BASE_FACTOR_DECIMALS,
-    GROWTH_ADJUSTMENT_DATASETS,
-    adjustment_formula,
-    parse_adjustment_notes,
-)
 from arcrho_api.dfm_contract import round_half_up
 
 MACRO_TITLE = "Apply Growth and Cutoff Adjustments"
+
+# The average factor enters the formula rounded to the four decimals the method
+# notes show it at, so the adjusted value reconciles with the notes' arithmetic.
+BASE_FACTOR_DECIMALS = 4
+
+# The reserving class carries one vector per adjustment basis. Each holds the
+# already-compounded factor for one origin period, so development period n reads
+# row -n and no arithmetic is needed here.
+ACCOUNTING_CUTOFF_DATASET = "Accounting Cutoff"
+GROWTH_ADJUSTMENT_DATASETS = {
+    "counts": "Growth Adjustment--Counts",
+    "incurred": "Growth Adjustment--Incurred",
+    "paid": "Growth Adjustment--Paid",
+}
 
 # An adjustment reaches at most three development periods; beyond that the
 # vectors are 1 in every reserve review, annual and quarterly alike.
@@ -187,6 +195,10 @@ _GENERATED_FORMULA_RE = re.compile(
 _ADJUSTMENT_TERM_RE = re.compile(r'^\s*([*/])\s*\[([^\]]+)\]\s*\[\s*-\d+\s*\]')
 
 
+_NOTE_HEADER_RE = re.compile(r"^For development period\s+(.+?)\s*:\s*$")
+_NOTE_BASE_RE = re.compile(r'Selected average factor:\s*"([^"]+)"')
+
+
 def base_labels_from_notes(notes: str) -> dict[str, str]:
     """Return {development period: average label} from the method notes.
 
@@ -195,11 +207,20 @@ def base_labels_from_notes(notes: str) -> dict[str, str]:
     2" (2.8539)' -- which is the only record of that choice once the adjusted
     number sits in the User Entry row.
     """
-    return {
-        period: block["base_label"]
-        for period, block in parse_adjustment_notes(notes).items()
-        if block["base_label"]
-    }
+    found: dict[str, str] = {}
+    header = ""
+    for line in str(notes or "").splitlines():
+        text = _clean_text(line)
+        match = _NOTE_HEADER_RE.match(text)
+        if match:
+            header = _clean_text(match.group(1))
+            continue
+        if not header:
+            continue
+        base = _NOTE_BASE_RE.search(text)
+        if base:
+            found.setdefault(header, _clean_text(base.group(1)))
+    return found
 
 
 def base_label_from_generated_formula(formula: str) -> str | None:
@@ -371,11 +392,11 @@ def plan_adjustments(
 
     plans: list[dict[str, Any]] = []
     for candidate in candidates:
-        terms: list[tuple[str, str]] = []
+        parts: list[str] = []
         display_parts: list[str] = []
         factor = 1.0
         unresolved = False
-        for offset, (op, dataset_name, _row_idx) in enumerate(candidate["terms"]):
+        for offset, (op, dataset_name, row_idx) in enumerate(candidate["terms"]):
             payload = resolved[candidate["first_reference"] + offset] if resolved else None
             value = _number((payload or {}).get("value"))
             if value is None:
@@ -384,7 +405,7 @@ def plan_adjustments(
             effective = (1.0 / value) if op == "/" and value else value
             if _is_unity(effective):
                 continue
-            terms.append((op, dataset_name))
+            parts.append(f"{op} [{dataset_name}][{row_idx}]")
             # The formula bar spells the row out by its own label rather than
             # its position, the way a hand-typed reference reads back.
             display_parts.append(f"{op} [{dataset_name}][{_clean_text(payload.get('row_label'))}]")
@@ -394,14 +415,14 @@ def plan_adjustments(
                 f"{dfm.dev_period(candidate['col'] + 1)}: an adjustment vector could not be read."
             )
             continue
-        if not terms:
+        if not parts:
             continue
-        opening = adjustment_formula(candidate["base_label"], [], candidate["col"])
+        opening = f'= ROUND("{candidate["base_label"]}", {BASE_FACTOR_DECIMALS})'
         base_value = round_half_up(candidate["base_value"], BASE_FACTOR_DECIMALS)
         plans.append({
             "col": candidate["col"],
             "base_label": candidate["base_label"],
-            "formula": adjustment_formula(candidate["base_label"], terms, candidate["col"]),
+            "formula": " ".join([opening] + parts),
             "display_formula": " ".join([opening] + display_parts),
             "value": round(base_value * factor, 6),
             "base_value": base_value,

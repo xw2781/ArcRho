@@ -1,7 +1,9 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.1.2
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.1.1
+# Release Note: The note lines and the way an adjustment dataset is described now come from
+#   the shared arcrho_api.combined_adjustment module, which the ResQ import reads to rebuild
+#   the User Entry formula from these notes. What the macro writes is unchanged.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -10,7 +12,6 @@
 #   precision. Adjustment factors equal to 1 are left out of the notes. Complex
 #   formulas fall back to a resolved-formula note.
 # Scope: DFM
-# Icon: document
 # </arcrho-macro>
 
 from __future__ import annotations

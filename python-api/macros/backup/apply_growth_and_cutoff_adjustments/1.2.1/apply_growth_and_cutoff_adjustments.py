@@ -1,7 +1,9 @@
 # <arcrho-macro>
 # Title: Apply Growth and Cutoff Adjustments
-# Version: 1.2.2
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.2.1
+# Release Note: The adjustment dataset names, the formula shape and the reading of the
+#   method notes now come from the shared arcrho_api.combined_adjustment module, which the
+#   ResQ import uses to rebuild this formula from the notes. What the macro writes is unchanged.
 # Description: Write the combined growth and accounting cutoff adjustment into the active
 #   DFM's User Entry row as a live in-cell formula, for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
@@ -14,7 +16,6 @@
 #   before it is overwritten. Run "Generate Notes for Combined Adjustment" afterwards to
 #   write the matching method notes.
 # Scope: DFM
-# Icon: calculator
 # </arcrho-macro>
 
 from __future__ import annotations

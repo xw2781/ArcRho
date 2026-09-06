@@ -6,6 +6,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from arcrho_api.combined_adjustment import (
+    BASE_FACTOR_DECIMALS,
+    adjustment_formula,
+    parse_adjustment_notes,
+)
 from arcrho_api.dfm_contract import (
     DFM_JSON_FORMAT,
     apply_owned_patch,
@@ -496,6 +501,47 @@ def _infer_avg_settings(label: str) -> dict:
         return {"average_type": "custom", "base": base, "periods": periods, "exclude": ex}
     return {"average_type": "custom", "base": "simple", "periods": "all", "exclude": 0}
 
+def _recreate_adjustment_formulas(
+    notes: str,
+    ratio_dev_labels: list[str],
+    formula_labels: list[str],
+    selected: list[list[int]],
+    values: list[list],
+    avg_inputs: list[list[str]],
+    decimal_places: int,
+) -> int:
+    """Give a User Entry value back the combined-adjustment formula it came from.
+
+    ResQ keeps only the number, but the notes the "Generate Notes for Combined
+    Adjustment" macro wrote beside it name the average row and the adjustment
+    vectors it was built from. A column whose selected User Entry value still
+    matches the selected LDF its note block states gets that formula back; the
+    value stays ResQ's until the next recalculation. A value that no longer
+    matches was changed by hand after the notes were written and stays a number.
+    """
+
+    user_row = next((row for row, label in enumerate(formula_labels) if label == "User Entry"), None)
+    if user_row is None:
+        return 0
+    labels = {_clean_name(label).casefold() for label in formula_labels}
+    columns = {_clean_name(label).casefold(): col for col, label in enumerate(ratio_dev_labels)}
+    precision = min(int(decimal_places), BASE_FACTOR_DECIMALS)
+    recreated = 0
+    for period, block in parse_adjustment_notes(notes).items():
+        col = columns.get(_clean_name(period).casefold())
+        base_label = block["base_label"]
+        if col is None or not base_label or not block["terms"] or block["value"] is None:
+            continue
+        if _clean_name(base_label).casefold() not in labels or not selected[user_row][col]:
+            continue
+        value = values[user_row][col] if col < len(values[user_row]) else None
+        if value is None or abs(round(float(value), precision) - round(block["value"], precision)) > 1e-9:
+            continue
+        avg_inputs[user_row][col] = adjustment_formula(base_label, block["terms"], col)
+        recreated += 1
+    return recreated
+
+
 def _ratio_label_endpoints(label: str) -> tuple[int | None, int | None]:
     text = re.sub(r"^\(?\s*\d+\s*\)?\s*", "", label).strip()
     m = re.match(r"^(\d+)\s*[-–]\s*(\d+)$", text)
@@ -874,8 +920,17 @@ def export_dfm(
     for row, formula in calculated_formulas.items():
         if formula:
             avg_inputs[row] = [formula] * max(dev_count - 1, 0) + [""] * min(dev_count, 1)
+    _recreate_adjustment_formulas(
+        str(_safe_attr(dfm, "Notes", "") or ""),
+        ratio_dev_labels,
+        formula_labels,
+        selected,
+        values,
+        avg_inputs,
+        decimal_places,
+    )
 
-    curves_tab = _read_resq_curves_tab(dfm, max(dev_count - 1, 0), strict=strict)
+    curves_tab =_read_resq_curves_tab(dfm, max(dev_count - 1, 0), strict=strict)
 
     # Notes
     # Cell notes
