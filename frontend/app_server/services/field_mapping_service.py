@@ -8,6 +8,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
+from arcrho_api.field_mapping_contract import (
+    DATE_ROLE_SIGNIFICANCES,
+    period_months_from_date_value,
+    source_period_months,
+    source_period_months_field,
+)
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
@@ -17,14 +23,8 @@ from app_server.services.dataset_types_service import get_dataset_type_names
 from app_server.services import reserving_class_service
 
 
-def load_date_role_fields(project_name: str) -> Dict[str, str]:
-    """Mapped field name for each date significance, keyed by column name.
-
-    The canonical answer to "which columns hold a reserving period" for this
-    project. Consumers must read it here rather than re-deriving the rule from
-    `field_mapping.json`, and a missing or unreadable mapping simply means no
-    column carries a date role.
-    """
+def _load_mapping_payload(project_name: str) -> Dict[str, Any]:
+    """The project's stored mapping, or an empty one when there is none."""
     try:
         filepath = config.get_field_mapping_path(project_name)
     except ValueError:
@@ -36,8 +36,20 @@ def load_date_role_fields(project_name: str) -> Dict[str, str]:
             raw = json.load(f)
     except (OSError, ValueError):
         return {}
+    return raw if isinstance(raw, dict) else {}
 
-    rows = raw.get("rows", []) if isinstance(raw, dict) else []
+
+def load_date_role_fields(project_name: str) -> Dict[str, str]:
+    """Mapped field name for each date significance, keyed by column name.
+
+    The canonical answer to "which columns hold a reserving period" for this
+    project. Consumers must read it here rather than re-deriving the rule from
+    `field_mapping.json`, and a missing or unreadable mapping simply means no
+    column carries a date role.
+    """
+    raw = _load_mapping_payload(project_name)
+
+    rows = raw.get("rows", [])
     if not isinstance(rows, list):
         return {}
 
@@ -56,6 +68,85 @@ def load_date_role_fields(project_name: str) -> Dict[str, str]:
             roles[field_name] = significance
             claimed.add(significance)
     return roles
+
+
+def detect_source_period_months(
+    project_name: str,
+    date_roles: Optional[Dict[str, str]] = None,
+) -> Dict[str, int]:
+    """Months per period of each date-role column of the imported table.
+
+    Read straight from the data, because the column itself is the only place
+    that says whether the project's periods are years or months. A role whose
+    column is absent or holds nothing readable is left out of the answer.
+    """
+    roles = load_date_role_fields(project_name) if date_roles is None else date_roles
+    wanted = {
+        significance: column
+        for column, significance in roles.items()
+        if significance in DATE_ROLE_SIGNIFICANCES
+    }
+    if not wanted:
+        return {}
+    try:
+        table_path = config.get_project_master_table_path(project_name)
+    except ValueError:
+        return {}
+    if not os.path.isfile(table_path):
+        return {}
+
+    import pandas as pd
+
+    months: Dict[str, int] = {}
+    for significance, column in wanted.items():
+        try:
+            values = pd.read_csv(table_path, usecols=[column])[column].dropna()
+        except (OSError, ValueError, KeyError):
+            continue
+        if values.empty:
+            continue
+        detected = period_months_from_date_value(values.iloc[0])
+        if detected:
+            months[significance] = detected
+    return months
+
+
+def _persist_source_period_months(project_name: str, months: Dict[str, int]) -> None:
+    payload = _load_mapping_payload(project_name)
+    if not payload:
+        return
+    payload.update(source_period_months_field(months))
+    filepath = config.get_field_mapping_path(project_name)
+    tmp_path = filepath + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(persisted_json_text(payload))
+    os.replace(tmp_path, filepath)
+
+
+def load_source_period_months(project_name: str) -> Dict[str, int]:
+    """Months per period of this project's source dates, by date significance.
+
+    The canonical answer to "how fine is this project's source data", which is
+    the shape an Engine-generated dataset can be rebuilt at whatever period it
+    was last generated at. A mapping saved before the granularity was recorded
+    is measured once here and the answer written back, so the first read after
+    an upgrade costs a table read and no later one does.
+    """
+    name = str(project_name or "").strip()
+    if not name:
+        return {}
+    recorded = source_period_months(_load_mapping_payload(name))
+    if recorded:
+        return recorded
+    detected = detect_source_period_months(name)
+    if detected:
+        try:
+            _persist_source_period_months(name, detected)
+        except OSError:
+            # Another user holding the mapping open only costs the next read
+            # the same measurement; it must not fail the dataset being written.
+            pass
+    return detected
 
 
 def save_field_mapping(
@@ -129,10 +220,20 @@ def save_field_mapping(
             "level": level,
         })
 
+    # First mapped row wins per significance, as `load_date_role_fields` reads
+    # the file back.
+    date_roles: Dict[str, str] = {}
+    for row in normalized_rows:
+        significance = row["significance"]
+        if significance in DATE_ROLE_SIGNIFICANCES and significance not in date_roles.values():
+            date_roles[row["field_name"]] = significance
     payload = {
         "project_name": project_name,
         "table_path": (table_path or "").strip(),
         "updated_at": utc_now_text(),
+        **source_period_months_field(
+            detect_source_period_months(project_name, date_roles)
+        ),
         "rows": normalized_rows,
     }
 

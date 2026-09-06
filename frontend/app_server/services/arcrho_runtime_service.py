@@ -19,6 +19,10 @@ from arcrho_api.dataset_index_contract import (
 )
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
+from arcrho_api.field_mapping_contract import (
+    DATE_ROLE_DEVELOPMENT,
+    DATE_ROLE_ORIGIN,
+)
 from arcrho_api.sidecar_core_contract import stored_length_fields
 from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
 from arcrho_api.triangle_rollup import rollup_reason, rollup_triangle
@@ -1105,11 +1109,33 @@ def resolve_local_triangle_cache(
     }
 
 
-def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *, is_vector: bool) -> None:
-    # The stored shape stands in as the requested shape until the project's
-    # field mapping records how fine the generated dataset's source data is.
+def _engine_stored_lengths(project_name: str, origin: int, development: int) -> tuple:
+    """The months per period an Engine regeneration of this dataset can reach.
+
+    A generated dataset is rebuilt from the project's source table, so the
+    finest shape it can be produced at is that table's own date granularity,
+    however coarse the period this request asked to see it at. A project whose
+    mapping records no granularity keeps the requested shape.
+    """
+    from app_server.services import field_mapping_service
+
+    months = field_mapping_service.load_source_period_months(project_name)
+    return (
+        months.get(DATE_ROLE_ORIGIN, origin),
+        months.get(DATE_ROLE_DEVELOPMENT, development),
+    )
+
+
+def _apply_dataset_sidecar_shape_fields(
+    payload: Dict[str, Any],
+    pairs: list,
+    *,
+    is_vector: bool,
+    stored: tuple,
+) -> None:
     origin = _pair_int_value(pairs, "OriginLength", 12)
     development = _pair_int_value(pairs, "DevelopmentLength", 12)
+    stored_origin, stored_development = stored
     if is_vector:
         payload["period_length"] = origin
         for obsolete_key in (
@@ -1122,7 +1148,7 @@ def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *,
             "stored_development_length",
         ):
             payload.pop(obsolete_key, None)
-        payload.update(stored_length_fields("Vector", origin))
+        payload.update(stored_length_fields("Vector", stored_origin))
         return
     payload["origin_length"] = origin
     payload["development_length"] = development
@@ -1130,7 +1156,7 @@ def _apply_dataset_sidecar_shape_fields(payload: Dict[str, Any], pairs: list, *,
     payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
     payload.pop("period_length", None)
     payload.pop("stored_period_length", None)
-    payload.update(stored_length_fields("Triangle", origin, development))
+    payload.update(stored_length_fields("Triangle", stored_origin, stored_development))
 
 
 def _set_processing_provenance(
@@ -1153,6 +1179,8 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     data_format = "Vector" if is_vector else "Triangle"
     user_name = user_identity_service.get_current_display_name() or getpass.getuser()
     updated_at = utc_now_text()
+    requested_origin = _pair_int_value(pairs, "OriginLength", 12)
+    requested_development = _pair_int_value(pairs, "DevelopmentLength", 12)
     if os.path.exists(sidecar_path):
         payload = dataset_sidecar_status_service.read_sidecar(sidecar_path)
         if not payload:
@@ -1171,9 +1199,22 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         # project.
         payload["project_name"] = project_name
         payload["show_subtotal"] = normalize_show_subtotal(payload.get("show_subtotal"))
-        if _clean_cache_text(payload.get("source_kind")).lower() == "engine":
+        generated = _clean_cache_text(payload.get("source_kind")).lower() == "engine"
+        if generated:
             _set_processing_provenance(payload, project_name, data_path)
-        _apply_dataset_sidecar_shape_fields(payload, pairs, is_vector=is_vector)
+        _apply_dataset_sidecar_shape_fields(
+            payload,
+            pairs,
+            is_vector=is_vector,
+            # Only a dataset the Engine rebuilds from the source table can
+            # claim the source's granularity; anything else holds exactly the
+            # shape this cache was written at.
+            stored=(
+                _engine_stored_lengths(project_name, requested_origin, requested_development)
+                if generated
+                else (requested_origin, requested_development)
+            ),
+        )
         payload["csv_file"] = os.path.basename(data_path)
         from app_server.services.dataset_service import _append_dataset_audit_entry
 
@@ -1191,6 +1232,9 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     except OSError:
         pass
     display_settings = dataset_number_format_service.dataset_type_number_format_settings(dataset_type)
+    stored_origin, stored_development = _engine_stored_lengths(
+        project_name, requested_origin, requested_development
+    )
     payload = build_engine_dataset_sidecar(
         project_name=project_name,
         reserving_class=reserving_class,
@@ -1203,9 +1247,12 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         updated_at=updated_at,
         number_format=display_settings["number_format"],
         decimal_places=display_settings["decimal_places"],
-        origin_length=_pair_int_value(pairs, "OriginLength", 12),
-        development_length=_pair_int_value(pairs, "DevelopmentLength", 12),
-        period_length=_pair_int_value(pairs, "OriginLength", 12) if is_vector else None,
+        origin_length=requested_origin,
+        development_length=requested_development,
+        period_length=requested_origin if is_vector else None,
+        stored_origin_length=stored_origin,
+        stored_development_length=stored_development,
+        stored_period_length=stored_origin if is_vector else None,
         cumulative=_pair_bool_value(pairs, "Cumulative", True),
         calendar=_pair_bool_value(pairs, "Calendar", False),
         processing=get_processing_provenance(project_name),

@@ -74,10 +74,11 @@ from arcrho_engine.source_table_refresh import (
     process_durable_source_refresh_request,
 )
 from arcrho_engine.save_jobs import process_hosted_save_request
-from arcrho_engine.runtime_log import append_runtime_log, prune_runtime_logs
-
-# Runtime log for loose calculation requests this Engine could not take.
-ENGINE_REQUEST_LOG_FILENAME = "engine_requests.log"
+from arcrho_engine.runtime_log import (
+    ENGINE_REQUEST_LOG_FILENAME,
+    append_runtime_log,
+    prune_runtime_logs,
+)
 
 
 class _DurableJobDispatcher:

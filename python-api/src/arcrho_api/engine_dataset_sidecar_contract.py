@@ -67,8 +67,9 @@ def build_engine_dataset_sidecar(
 
     The stored lengths are the granularity of the source data this dataset was
     generated from, which is finer than the requested shape whenever a coarser
-    view was asked for. Until the project's field mapping records that
-    granularity, callers leave them out and the requested shape stands in.
+    view was asked for. Callers read it from the project's field mapping
+    (``arcrho_api.field_mapping_contract``); a project that records none leaves
+    them out and the requested shape stands in.
     """
 
     vector = str(data_format or "").strip().casefold() == "vector"

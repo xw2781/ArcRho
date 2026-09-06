@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
+from arcrho_api.field_mapping_contract import DATE_ROLE_SIGNIFICANCES
 from arcrho_api.sidecar_audit_contract import PROJECT_AUDIT_LOG_MAX_ENTRIES
 from arcrho_hosted_save_http_contract import (
     CLIENT_CONFIG_FILE_NAME as GATEWAY_CONFIG_FILE,
@@ -344,10 +345,11 @@ refresh_runtime_paths()
 # ---------------------------------------------------------------------------
 
 FIELD_MAPPING_FILE = "field_mapping.json"
-# The significances whose mapped field carries a YYYYMM reserving period. Owned
-# here so the summary, the rule editor, and the mapping validator all agree on
-# one vocabulary instead of repeating the literal pair.
-FIELD_MAPPING_DATE_SIGNIFICANCES = ("Origin Date", "Development Date")
+# The significances whose mapped field carries a reserving period, named once
+# in `arcrho_api.field_mapping_contract` because the granularity recorded
+# against them is read by the Engine too. Re-exported here so the summary, the
+# rule editor, and the mapping validator keep their existing spelling.
+FIELD_MAPPING_DATE_SIGNIFICANCES = DATE_ROLE_SIGNIFICANCES
 FIELD_MAPPING_SIGNIFICANCES = {
     "Reserving Class",
     *FIELD_MAPPING_DATE_SIGNIFICANCES,

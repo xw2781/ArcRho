@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 4 done, 4 of 10.
-Last updated: 2026-09-05 — every dataset already on the server now records how fine its figures really are.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 5 done, 5 of 10.
+Last updated: 2026-09-05 — a project now records how fine its source data is, and generated datasets record that as their stored shape.
 
 ## Progress
 
@@ -13,16 +13,16 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 2 | Every dataset records the shape its data is really stored at | [x] | 2026-09-05 | 1 h 45 | 30 min | Every dataset's record now says how fine its figures really are, separately from how coarsely it is shown, so a yearly view of a monthly triangle can no longer be mistaken for monthly data. |
 | 3 | The parts of the app that read a dataset's shape use the right one | [x] | 2026-09-05 | 2 h | 25 min | Anything that opens a dataset's figures now asks how fine they really are, so a yearly view of a monthly triangle is no longer mistaken for yearly data. |
 | 4 | Existing projects on the server get the new shape record | [x] | 2026-09-05 | 1 h 15 | 2 h | Every dataset already on the server now records how fine its figures really are, so nothing has to guess at it, and every project's dataset list was rebuilt to match. |
-| 5 | Generated datasets know how fine their source data is | [ ] | | 45 min | | |
+| 5 | Generated datasets know how fine their source data is | [x] | 2026-09-05 | 45 min | 20 min | A project now records how fine its source data is, so a dataset the app builds from that data says it can be rebuilt monthly even when you last looked at it a year at a time. |
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 45 min | | |
 | 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 1 h 45 | | |
 | 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 45 min | | |
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 4 of 10 steps done.
+Overall: 5 of 10 steps done.
 
-Time remaining: about 2 h 15 across the six steps still open — 5 h 15 of estimates scaled by the just‑under‑half the four finished steps have really cost. The scaling moved a long way up after Step 4, which took 2 h against 1 h 15: the code was written and tested in half an hour and the other ninety minutes were the share, which handed back 10,997 files one round trip at a time however fast the agent worked. Steps 5 to 9 are code steps like Steps 1 to 3 and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
+Time remaining: about 2 h across the five steps still open — 4 h 30 of estimates scaled by the just‑under‑half the five finished steps have really cost. Step 5 came in at 20 minutes against 45, which nudges the scaling back down after Step 4's 2 h against 1 h 15; that overrun was the share handing back 10,997 files one round trip at a time, not the work itself. Steps 6 to 9 are code steps like Steps 1 to 3 and 5, and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
 
 ### How the time figures are kept
 
@@ -195,15 +195,15 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 
 **Goal.** A project records how fine its source data is, and the Engine and the app server both read that record.
 
-**Read first.** `field_mapping_service.load_date_role_fields` and [field_mapping.md](../../frontend/docs/app_server/domains/field_mapping.md); `table_summary` (it already bins date columns by year); the Engine detection at [data_processing.py:154-160](../../server-components/src/arcrho_engine/data_processing.py#L154-L160); the engine sidecar write in `arcrho_runtime_service.py`.
+**Read first.** `field_mapping_service.load_date_role_fields` and [field_mapping.md](../../frontend/docs/app_server/domains/field_mapping.md); `table_summary` (it already bins date columns by year); the Engine detection at [data_processing.py:154-160](../../server-components/src/arcrho_engine/data_processing.py#L154-L160); the engine sidecar write in `arcrho_runtime_service.py`; also `arcrho_engine/bundled_sources.py` and `dependent_propagation.configure_canonical_runtime`, which settle whether the Engine's calculation path can import `arcrho_api` at all — it cannot, because the canonical bundle only reaches `sys.path` inside a durable job — and `arcrho_engine/runtime_log.py`, which owns the request log.
 
 **Do.**
-- [ ] When the field mapping is saved, record months‑per‑period for each date‑role column (`Origin Date`, `Development Date`) in `field_mapping.json`, by the same four‑ or six‑digit test the Engine runs. Expose it next to `load_date_role_fields`.
-- [ ] Backfill an existing project by running the detection once when the value is missing on load.
-- [ ] Engine: prefer the recorded value and log a disagreement with its own detection to `engine_requests.log`.
-- [ ] Engine sidecar write: `stored_*` now comes from the field mapping; remove the Step 2 note.
+- [x] When the field mapping is saved, record months‑per‑period for each date‑role column (`Origin Date`, `Development Date`) in `field_mapping.json`, by the same four‑ or six‑digit test the Engine runs. Expose it next to `load_date_role_fields`. Landed as a `source_period_months` object keyed by significance, with the rule, the date‑role names and the field name owned by the new `arcrho_api.field_mapping_contract`; `load_source_period_months` is the read side.
+- [x] Backfill an existing project by running the detection once when the value is missing on load.
+- [x] Engine: prefer the recorded value and log a disagreement with its own detection to `engine_requests.log`. The Engine's calculation path runs before the canonical bundle is importable, so it mirrors the rule the way it already mirrors the source‑table paths, pinned by a parity test.
+- [x] Engine sidecar write: `stored_*` now comes from the field mapping; remove the Step 2 note. A sidecar of another source kind that this write restamps keeps the requested shape, because only a dataset the Engine rebuilds from the source table can claim the source's granularity.
 
-**Tests.** A field‑mapping test for the recorded granularity and its backfill; an Engine test for the preference and the disagreement log line.
+**Tests.** A field‑mapping test for the recorded granularity and its backfill; an Engine test for the preference and the disagreement log line. Landed as `frontend/tests/test_field_mapping_source_granularity.py` (which also covers the generated sidecar's stored shape) and `server-components/tests/test_engine_source_granularity.py` (which also pins the Engine's mirror against the canonical rule).
 
 **Done when.** A regenerable Engine sidecar in a monthly‑source project carries stored 1/1 whatever period it was last generated at.
 

@@ -43,6 +43,10 @@ from arcrho_engine.general_utils import (
     split_formula,
     write_lists_to_csv,
 )
+from arcrho_engine.runtime_log import (
+    ENGINE_REQUEST_LOG_FILENAME,
+    append_runtime_log,
+)
 from arcrho_engine.data_processing_rules import (
     DataProcessingConfigurationError,
     DataProcessingRulesError,
@@ -85,6 +89,75 @@ def remove_old_instances():
             modified_date = datetime.fromtimestamp(f.stat().st_mtime).date()
             if is_instance_file and modified_date < date.today():
                 f.unlink()
+
+
+# Mirror of arcrho_api.field_mapping_contract. The Engine's calculation path
+# runs before the canonical bundle is on sys.path, so the granularity rule and
+# the two names it is recorded under are duplicated here and
+# server-components/tests/test_engine_source_granularity.py fails if the mirror
+# ever drifts from the canonical owner.
+SOURCE_PERIOD_MONTHS_FIELD = "source_period_months"
+DATE_ROLE_ORIGIN = "Origin Date"
+ANNUAL_PERIOD_MONTHS = 12
+MONTHLY_PERIOD_MONTHS = 1
+
+
+def _period_months_from_date_value(value):
+    """Months per period the date-role value *value* is written at.
+
+    A four-digit value is a year; every other readable value is a YYYYMM
+    month. An unreadable value returns 0, meaning "this column says nothing".
+    """
+    try:
+        period = int(value)
+    except (TypeError, ValueError):
+        return 0
+    if len(str(abs(period))) == 4:
+        return ANNUAL_PERIOD_MONTHS
+    return MONTHLY_PERIOD_MONTHS
+
+
+def _recorded_origin_period_months(project_name):
+    """Months per origin period the project's field mapping records, or 0."""
+    try:
+        payload = _read_json(_project_json_paths(project_name)["source_table"])
+        recorded = payload.get(SOURCE_PERIOD_MONTHS_FIELD)
+        return int(recorded[DATE_ROLE_ORIGIN])
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return 0
+
+
+def _granularity_name(months):
+    return 'annual' if months == ANNUAL_PERIOD_MONTHS else 'monthly'
+
+
+def _resolve_date_granularity(project_name, df, date_cols):
+    """How fine this project's origin dates are, preferring its own record.
+
+    The field mapping records the answer when the project's mapping was last
+    saved, and that record is authoritative: it is what a generated dataset's
+    stored shape is written from. Reading the column here is still worth doing
+    as a cross-check, because a source table swapped for one at a different
+    granularity would otherwise go unnoticed.
+    """
+    detected = 0
+    if df is not None and date_cols is not None:
+        try:
+            detected = _period_months_from_date_value(df[date_cols[0]].dropna().iloc[0])
+        except (IndexError, KeyError, AttributeError):
+            detected = 0
+    recorded = _recorded_origin_period_months(project_name)
+    if not recorded:
+        return _granularity_name(detected or MONTHLY_PERIOD_MONTHS)
+    if detected and detected != recorded:
+        append_runtime_log(
+            get_project_root(),
+            ENGINE_REQUEST_LOG_FILENAME,
+            f"Project [{project_name}] records {recorded}-month origin periods but its "
+            f"source table reads as {detected}-month; using the recorded value. "
+            "Save the project's field mapping to record the table's own granularity.",
+        )
+    return _granularity_name(recorded)
 
 
 def _load_project_settings(project_name, df=None, date_cols=None):
@@ -150,15 +223,7 @@ def _load_project_settings(project_name, df=None, date_cols=None):
     except Exception as e:
         raise ProjectSettingsError(f"Project settings not defined for [{project_name}]: {e}") from e
 
-    # Detect date granularity from actual data column
-    if df is not None and date_cols is not None:
-        try:
-            sample_val = int(df[date_cols[0]].dropna().iloc[0])
-            settings['date_granularity'] = 'annual' if len(str(sample_val)) == 4 else 'monthly'
-        except Exception:
-            settings['date_granularity'] = 'monthly'
-    else:
-        settings['date_granularity'] = 'monthly'
+    settings['date_granularity'] = _resolve_date_granularity(project_name, df, date_cols)
 
     # Cache the settings along with file mtime for staleness detection
     if settings_path.exists():

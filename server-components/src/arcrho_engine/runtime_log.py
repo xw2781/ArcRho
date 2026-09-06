@@ -19,6 +19,9 @@ from pathlib import Path
 from arcrho_log_retention_contract import prune_aged_log_files
 
 RUNTIME_LOG_RELATIVE_DIR = ("runtime", "logs")
+# Where a calculation request records what the Engine could not take, and what
+# it read that disagreed with the project's own record.
+ENGINE_REQUEST_LOG_FILENAME = "engine_requests.log"
 # One megabyte keeps a busy day readable in an editor while still covering far
 # more than the handful of jobs anyone diagnoses at once. One rotation is kept.
 RUNTIME_LOG_MAX_BYTES = 1024 * 1024
