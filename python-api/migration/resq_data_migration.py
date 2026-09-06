@@ -148,6 +148,7 @@ from resq_migration.extractors import (  # noqa: E402
     export_result_selection,
     export_triangle,
     export_vector,
+    resq_stored_lengths,
     write_bornhuetter_ferguson_export,
     write_berquist_sherman_export,
     write_cape_cod_export,
@@ -830,6 +831,16 @@ def _engine_generated_metadata_payload(
         raise RuntimeError(
             f"Generated ResQ dataset {name!r} has non-positive display dimensions."
         )
+    # ResQ's stored lengths say how fine the dataset's data really is. A
+    # generated dataset is stored at the source data's granularity (monthly in
+    # a monthly project) however coarsely ResQ displays it, and that is the
+    # shape the Engine can rebuild it at, so the sidecar records it as such.
+    stored_origin, stored_development = resq_stored_lengths(
+        item,
+        is_vector=is_vector,
+        origin_length=origin_length,
+        development_length=development_length,
+    )
 
     category_obj = read(dataset_type_obj, "Category", None)
 
@@ -842,12 +853,15 @@ def _engine_generated_metadata_payload(
         "data_format": read_int(dataset_type_obj, "DataFormat", 1 if is_vector else 0),
         "origin_length": origin_length,
         "development_length": development_length,
+        "stored_origin_length": stored_origin,
+        "stored_development_length": stored_development,
         "user": _normalize_import_name(read(item, "User", "")),
         "created": _iso_or_text(read(item, "Created", "")),
         "modified": _iso_or_text(read(item, "Modified", "")),
     }
     if is_vector:
         payload["period_length"] = period_length
+        payload["stored_period_length"] = stored_origin
     return payload
 
 
@@ -1273,6 +1287,12 @@ def export_triangles_for_rc(
                 triangle,
                 method_type_code=method_type,
                 strict=strict_extraction,
+                # A hand-entered triangle is copied at the shape ResQ stores it
+                # at, the only way its finer figures leave ResQ; a calculated
+                # one is rebuilt by ArcRho from its components, and a Berquist
+                # Sherman output belongs to its method, so both keep the shape
+                # ResQ displayed.
+                at_stored_shape=bs_entry is None and not _is_calculated_dataset_type(dataset_type),
             )
             if not _is_known_dataset_type(payload.get("dataset_type"), known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("triangle", payload.get("name") or triangle_name, payload.get("dataset_type"))
@@ -1314,7 +1334,7 @@ def export_triangles_for_rc(
                 source_kind = _triangle_source_kind(payload["name"], payload.get("dataset_type", ""))
             detail = (
                 f"    OK  {source_kind} "
-                f"{_dataset_cache_csv_file_name(payload['name'], payload['origin_length'], payload['development_length'])}"
+                f"{_dataset_cache_csv_file_name(payload['name'], payload.get('stored_origin_length') or payload['origin_length'], payload.get('stored_development_length') or payload['development_length'])}"
             )
             _log(verbose, detail)
             written += 1
@@ -1547,7 +1567,19 @@ def export_vectors_for_rc(
                     )
                 )
                 continue
-            payload = export_vector(vector, strict=strict_extraction)
+            payload = export_vector(
+                vector,
+                strict=strict_extraction,
+                # A hand-entered vector is copied at the period ResQ stores it
+                # at; a method output or a calculated vector keeps the period
+                # ResQ displayed, since its method or formula owns its shape.
+                at_stored_shape=(
+                    not result_selection_payload
+                    and not bf_payload
+                    and not cc_payload
+                    and not _is_calculated_dataset_type(dataset_type)
+                ),
+            )
             if not _is_known_dataset_type(payload.get("dataset_type"), known_dataset_type_keys):
                 detail = _unknown_dataset_type_skip_detail("vector", payload.get("name") or vector_name, payload.get("dataset_type"))
                 _log(verbose, detail)
@@ -1580,7 +1612,7 @@ def export_vectors_for_rc(
             )
             detail = (
                 f"    OK  {_method_type_name(method_type)} vector "
-                f"{_vector_cache_csv_file_name(payload['name'], payload['origin_length'])}"
+                f"{_vector_cache_csv_file_name(payload['name'], payload.get('stored_period_length') or payload['origin_length'])}"
             )
             _log(verbose, detail)
             if result_selection_payload:

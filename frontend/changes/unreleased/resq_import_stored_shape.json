@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "resq import",
+  "audience": "user",
+  "summary": "A dataset imported from ResQ now records how fine its figures really are, the way ResQ itself stores them, so a generated dataset in a monthly project shows 'stored 1' instead of 'stored 12'.",
+  "details": [
+    "The import reads ResQ's own stored lengths for every dataset. A generated dataset is stamped with them, which is the shape the Engine can rebuild it at.",
+    "A hand-entered triangle or vector that ResQ shows yearly but stores monthly is now copied month by month, so the finer figures reach ArcRho and the yearly view is built from them.",
+    "Datasets imported before this change keep 'stored 12' until the class is imported again or the Engine rebuilds them."
+  ]
+}

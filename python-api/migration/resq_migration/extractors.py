@@ -198,6 +198,90 @@ def _extract_int_attr(source, member_name: str, default: int = 0, *, context: st
         )
 
 
+def resq_stored_lengths(
+    item,
+    *,
+    is_vector: bool,
+    origin_length: int,
+    development_length: int | None = None,
+) -> tuple[int, int]:
+    """The months per period ResQ holds *item*'s data at, per axis.
+
+    ResQ keeps a displayed length (``OriginLength`` / ``DevelopmentLength``,
+    ``PeriodLength`` on a vector) and a stored one (``StoredOriginLength`` /
+    ``StoredDevelopmentLength``, ``StoredPeriodLength``), and the displayed
+    length is always a whole multiple of the stored one. The stored length is
+    the only record of how fine a dataset's data is: a generated dataset is
+    stored at the source data's granularity whatever period it is shown at,
+    and a hand-entered one at the shape it was typed at. A stored length ResQ
+    does not answer, or one the displayed length is not a multiple of, reads
+    as the displayed length, which is the shape the values can be read at
+    either way.
+    """
+    display_origin = int(origin_length or 0)
+    display_development = int(
+        display_origin if development_length is None else (development_length or 0)
+    )
+
+    def stored(member: str, display: int) -> int:
+        value = _safe_int_attr(item, member, 0)
+        if value <= 0 or display <= 0 or display % value != 0:
+            return display
+        return value
+
+    if is_vector:
+        period = stored("StoredPeriodLength", display_origin)
+        return period, period
+    return (
+        stored("StoredOriginLength", display_origin),
+        stored("StoredDevelopmentLength", display_development),
+    )
+
+
+def _restore_displayed_lengths(item, previous: list[tuple[str, object]]) -> None:
+    for member, value in reversed(previous):
+        try:
+            setattr(item, member, value)
+        except Exception:
+            pass
+
+
+@contextmanager
+def _displayed_at(item, lengths: dict[str, int]):
+    """Show *item* at the displayed lengths in *lengths* for the block.
+
+    ResQ hands out a dataset's values at its displayed length, so reading the
+    data at the shape it is stored at means showing it at that shape first.
+    The same switch the export macro makes before it writes values. Yields
+    ``True`` when every member was set and ``False`` when ResQ refused one, in
+    which case the values are read at the shape the dataset already shows. The
+    displayed lengths are put back on the way out either way, and nothing is
+    saved, so the ResQ project is left exactly as it was found.
+    """
+    previous: list[tuple[str, object]] = []
+    switched = True
+    try:
+        for member, value in lengths.items():
+            current = _safe_int_attr(item, member, 0)
+            if current <= 0:
+                switched = False
+                break
+            if current == int(value):
+                continue
+            try:
+                setattr(item, member, int(value))
+            except Exception:
+                switched = False
+                break
+            previous.append((member, current))
+        if not switched:
+            _restore_displayed_lengths(item, previous)
+            previous = []
+        yield switched
+    finally:
+        _restore_displayed_lengths(item, previous)
+
+
 @contextmanager
 def defer_sidecar_graph_enrichment():
     """Defer per-write graph work until the caller performs a bulk graph refresh."""
@@ -448,45 +532,8 @@ def _vector_value(vector, origin_index: int):
         f"for origin index {origin_index}."
     )
 
-@_strict_extractor
-def export_triangle(
-    triangle,
-    *,
-    method_type_code: int | None = None,
-    strict: bool = False,
-) -> dict:
-    """Extract a ResQ Triangle COM object into ArcRho CSV values and metadata."""
-    del strict
-    name = _normalize_import_name(_extract_attr(triangle, "Name", "", context="triangle"))
-    dataset_type_obj = _extract_attr(triangle, "DatasetType", None, context=f"triangle {name!r}")
-    dataset_type = _normalize_import_name(
-        _extract_attr(dataset_type_obj, "Name", "", context=f"triangle {name!r} DatasetType")
-    )
-    category_obj = _extract_attr(
-        dataset_type_obj,
-        "Category",
-        None,
-        context=f"triangle {name!r} DatasetType",
-    )
-    category = _normalize_import_name(
-        _extract_attr(category_obj, "Name", "", context=f"triangle {name!r} Category")
-    )
-    data_format = _extract_int_attr(
-        dataset_type_obj,
-        "DataFormat",
-        0,
-        context=f"triangle {name!r} DatasetType",
-    )
-    if method_type_code is None:
-        method_type_code = _extract_int_attr(
-            triangle,
-            "MethodType",
-            METHOD_TYPE_NONE_CODE,
-            context=f"triangle {name!r}",
-        )
-    method_type = _method_type_name(method_type_code)
-    origin_length = _extract_int_attr(triangle, "OriginLength", 12, context=f"triangle {name!r}")
-    dev_length = _extract_int_attr(triangle, "DevelopmentLength", 12, context=f"triangle {name!r}")
+def _read_triangle_body(triangle, name: str) -> dict:
+    """Read a triangle's rows, values, and labels at the shape it is showing."""
     origin_count = _extract_int_attr(triangle, "OriginCount", 0, context=f"triangle {name!r}")
     if origin_count <= 0:
         try:
@@ -539,12 +586,89 @@ def export_triangle(
     if attempted_cells > 0 and len(value_errors) == attempted_cells:
         raise ValueError(f"Failed to read any values for triangle {name!r}: {value_errors[0]}")
 
+    return {
+        "origin_count": origin_count,
+        "development_count": max_dev_count,
+        "origin_labels": [_triangle_origin_label(triangle, i) for i in range(1, origin_count + 1)],
+        "development_labels": [
+            _triangle_development_label(triangle, j) for j in range(1, max_dev_count + 1)
+        ],
+        "values": values,
+    }
+
+
+@_strict_extractor
+def export_triangle(
+    triangle,
+    *,
+    method_type_code: int | None = None,
+    strict: bool = False,
+    at_stored_shape: bool = False,
+) -> dict:
+    """Extract a ResQ Triangle COM object into ArcRho CSV values and metadata.
+
+    ``origin_length`` / ``development_length`` in the payload are the shape ResQ
+    displays the triangle at; ``stored_origin_length`` /
+    ``stored_development_length`` are the shape its ``values`` were read at.
+    By default that is the displayed shape. With ``at_stored_shape`` the
+    triangle is shown at ResQ's stored lengths while it is read, so a monthly
+    triangle displayed yearly is copied month by month, the only way its
+    finer figures ever leave ResQ. Should ResQ refuse the switch, the values
+    are read at the displayed shape and the payload says so.
+    """
+    del strict
+    name = _normalize_import_name(_extract_attr(triangle, "Name", "", context="triangle"))
+    dataset_type_obj = _extract_attr(triangle, "DatasetType", None, context=f"triangle {name!r}")
+    dataset_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"triangle {name!r} DatasetType")
+    )
+    category_obj = _extract_attr(
+        dataset_type_obj,
+        "Category",
+        None,
+        context=f"triangle {name!r} DatasetType",
+    )
+    category = _normalize_import_name(
+        _extract_attr(category_obj, "Name", "", context=f"triangle {name!r} Category")
+    )
+    data_format = _extract_int_attr(
+        dataset_type_obj,
+        "DataFormat",
+        0,
+        context=f"triangle {name!r} DatasetType",
+    )
+    if method_type_code is None:
+        method_type_code = _extract_int_attr(
+            triangle,
+            "MethodType",
+            METHOD_TYPE_NONE_CODE,
+            context=f"triangle {name!r}",
+        )
+    method_type = _method_type_name(method_type_code)
+    origin_length = _extract_int_attr(triangle, "OriginLength", 12, context=f"triangle {name!r}")
+    dev_length = _extract_int_attr(triangle, "DevelopmentLength", 12, context=f"triangle {name!r}")
+    stored_origin, stored_dev = resq_stored_lengths(
+        triangle,
+        is_vector=False,
+        origin_length=origin_length,
+        development_length=dev_length,
+    )
+    read_origin, read_dev = origin_length, dev_length
+    switch: dict[str, int] = {}
+    if at_stored_shape:
+        if stored_origin != origin_length:
+            switch["OriginLength"] = stored_origin
+        if stored_dev != dev_length:
+            switch["DevelopmentLength"] = stored_dev
+    with _displayed_at(triangle, switch) as switched:
+        if switch and switched:
+            read_origin, read_dev = stored_origin, stored_dev
+        body = _read_triangle_body(triangle, name)
+
     user = _normalize_import_name(_extract_attr(triangle, "User", "", context=f"triangle {name!r}"))
     created = _iso_or_text(_extract_attr(triangle, "Created", "", context=f"triangle {name!r}"))
     modified = _iso_or_text(_extract_attr(triangle, "Modified", "", context=f"triangle {name!r}"))
     notes = str(_extract_attr(triangle, "Notes", "", context=f"triangle {name!r}") or "")
-    origin_labels = [_triangle_origin_label(triangle, i) for i in range(1, origin_count + 1)]
-    dev_labels = [_triangle_development_label(triangle, j) for j in range(1, max_dev_count + 1)]
 
     return {
         "name": name,
@@ -555,11 +679,9 @@ def export_triangle(
         "method_type_code": method_type_code,
         "origin_length": origin_length,
         "development_length": dev_length,
-        "origin_count": origin_count,
-        "development_count": max_dev_count,
-        "origin_labels": origin_labels,
-        "development_labels": dev_labels,
-        "values": values,
+        "stored_origin_length": read_origin,
+        "stored_development_length": read_dev,
+        **body,
         "user": user,
         "created": created,
         "modified": modified,
@@ -574,10 +696,14 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     origin_length = int(payload["origin_length"])
     dev_length = int(payload["development_length"])
+    # The CSV is written at the shape the values were read at, which is
+    # ResQ's stored shape for a hand-entered dataset; the display shape is the
+    # one ResQ showed it at, and the app rolls the file up to it on read.
+    stored_origin, stored_dev = _triangle_payload_stored_lengths(payload)
     csv_name = _dataset_cache_csv_file_name(
         name,
-        origin_length,
-        dev_length,
+        stored_origin,
+        stored_dev,
         cumulative=DEFAULT_CUMULATIVE,
         calendar=DEFAULT_CALENDAR,
     )
@@ -609,9 +735,9 @@ def write_triangle_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
         "data_format": "Triangle",
         "origin_length": origin_length,
         "development_length": dev_length,
-        # An imported snapshot cannot be regenerated, so the shape ResQ
-        # displayed it at is the shape ArcRho stores it at.
-        **stored_length_fields("Triangle", origin_length, dev_length),
+        # Display and stored shapes both follow ResQ's own: the display pair
+        # is what ResQ showed, the stored pair is the shape the CSV holds.
+        **stored_length_fields("Triangle", stored_origin, stored_dev),
         "development_count": payload.get("development_count", 0),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
@@ -1121,9 +1247,49 @@ def _find_berquist_sherman_for_triangle(
     return None
 
 
+def _read_vector_body(vector, name: str) -> dict:
+    """Read a vector's rows, values, and labels at the period it is showing."""
+    origin_count = _vector_origin_count(vector)
+    if origin_count <= 0:
+        raise ValueError(f"Vector {name!r} does not expose a positive OriginCount/Count.")
+
+    values: list[list] = []
+    attempted_cells = 0
+    value_errors: list[Exception] = []
+    for i in range(1, origin_count + 1):
+        attempted_cells += 1
+        try:
+            values.append([_vector_value(vector, i)])
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read vector {name!r} value at origin index {i}.",
+                    exc,
+                )
+            value_errors.append(exc)
+            values.append([None])
+    if attempted_cells > 0 and len(value_errors) == attempted_cells:
+        raise ValueError(f"Failed to read any values for vector {name!r}: {value_errors[0]}")
+
+    return {
+        "origin_count": origin_count,
+        "origin_labels": [_vector_origin_label(vector, i) for i in range(1, origin_count + 1)],
+        "values": values,
+    }
+
+
 @_strict_extractor
-def export_vector(vector, *, strict: bool = False) -> dict:
-    """Extract a ResQ Vector COM object into ArcRho CSV values and metadata."""
+def export_vector(vector, *, strict: bool = False, at_stored_shape: bool = False) -> dict:
+    """Extract a ResQ Vector COM object into ArcRho CSV values and metadata.
+
+    ``origin_length`` in the payload is the period ResQ displays the vector
+    at; ``stored_period_length`` is the period its ``values`` were read at.
+    By default that is the displayed period. With ``at_stored_shape`` the
+    vector is shown at ResQ's stored period while it is read, so a monthly
+    vector displayed yearly is copied month by month. Should ResQ refuse the
+    switch, the values are read at the displayed period and the payload says
+    so.
+    """
     del strict
     name = _normalize_import_name(_extract_attr(vector, "Name", "", context="vector"))
     dataset_type_obj = _extract_attr(vector, "DatasetType", None, context=f"vector {name!r}")
@@ -1157,34 +1323,21 @@ def export_vector(vector, *, strict: bool = False) -> dict:
         period_length = _extract_int_attr(vector, "OriginLength", 12, context=f"vector {name!r}")
     origin_length = period_length
     dev_length = period_length
-    origin_count = _vector_origin_count(vector)
-    if origin_count <= 0:
-        raise ValueError(f"Vector {name!r} does not expose a positive OriginCount/Count.")
-
-    values: list[list] = []
-    attempted_cells = 0
-    value_errors: list[Exception] = []
-    for i in range(1, origin_count + 1):
-        attempted_cells += 1
-        try:
-            values.append([_vector_value(vector, i)])
-        except Exception as exc:
-            if _STRICT_RESQ_EXTRACTION.get():
-                _strict_failure(
-                    f"Could not read vector {name!r} value at origin index {i}.",
-                    exc,
-                )
-            value_errors.append(exc)
-            values.append([None])
-    if attempted_cells > 0 and len(value_errors) == attempted_cells:
-        raise ValueError(f"Failed to read any values for vector {name!r}: {value_errors[0]}")
+    stored_period, _ = resq_stored_lengths(vector, is_vector=True, origin_length=period_length)
+    read_period = period_length
+    switch: dict[str, int] = {}
+    if at_stored_shape and stored_period != period_length:
+        switch["PeriodLength"] = stored_period
+    with _displayed_at(vector, switch) as switched:
+        if switch and switched:
+            read_period = stored_period
+        body = _read_vector_body(vector, name)
 
     user = _normalize_import_name(_extract_attr(vector, "User", "", context=f"vector {name!r}"))
     created = _iso_or_text(_extract_attr(vector, "Created", "", context=f"vector {name!r}"))
     modified = _iso_or_text(_extract_attr(vector, "Modified", "", context=f"vector {name!r}"))
     notes = str(_extract_attr(vector, "Notes", "", context=f"vector {name!r}") or "")
     formula = _clean_name(_extract_attr(vector, "Formula", "", context=f"vector {name!r}"))
-    origin_labels = [_vector_origin_label(vector, i) for i in range(1, origin_count + 1)]
 
     return {
         "name": name,
@@ -1195,11 +1348,12 @@ def export_vector(vector, *, strict: bool = False) -> dict:
         "method_type_code": method_type_code,
         "origin_length": origin_length,
         "development_length": dev_length,
-        "origin_count": origin_count,
+        "stored_period_length": read_period,
+        "origin_count": body["origin_count"],
         "development_count": 1,
-        "origin_labels": origin_labels,
+        "origin_labels": body["origin_labels"],
         "development_labels": ["Value"],
-        "values": values,
+        "values": body["values"],
         "formula": formula,
         "user": user,
         "created": created,
@@ -1212,6 +1366,21 @@ def export_vector(vector, *, strict: bool = False) -> dict:
 
 def _vector_payload_period_length(payload: dict) -> int:
     return int(payload.get("period_length") or payload.get("origin_length") or 0)
+
+
+def _vector_payload_stored_period_length(payload: dict) -> int:
+    """The period the payload's ``values`` were read at: its CSV's own shape."""
+    return int(payload.get("stored_period_length") or _vector_payload_period_length(payload))
+
+
+def _triangle_payload_stored_lengths(payload: dict) -> tuple[int, int]:
+    """The shape the payload's ``values`` were read at: its CSV's own shape."""
+    origin_length = int(payload.get("origin_length") or 0)
+    dev_length = int(payload.get("development_length") or 0)
+    return (
+        int(payload.get("stored_origin_length") or origin_length),
+        int(payload.get("stored_development_length") or dev_length),
+    )
 
 
 def _vector_payload_row_count(payload: dict) -> int:
@@ -1317,7 +1486,11 @@ def write_vector_export(
     name = _normalize_import_name(payload["name"])
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     period_length = _vector_payload_period_length(payload)
-    csv_name = _vector_cache_csv_file_name(name, period_length)
+    # The CSV is written at the period the values were read at, which is
+    # ResQ's stored period for a hand-entered vector; the display period is
+    # the one ResQ showed it at, served from the coarser copies written below.
+    stored_period = _vector_payload_stored_period_length(payload)
+    csv_name = _vector_cache_csv_file_name(name, stored_period)
     csv_path = rc_dir / DATASET_CACHE_DIR / csv_name
     _write_csv_matrix(csv_path, payload["values"])
     _write_aggregated_vector_cache_exports(payload, rc_dir)
@@ -1388,9 +1561,9 @@ def write_vector_export(
         "method_type": meta_method_type,
         "data_format": "Vector",
         "period_length": period_length,
-        # An imported snapshot cannot be regenerated, so the shape ResQ
-        # displayed it at is the shape ArcRho stores it at.
-        **stored_length_fields("Vector", period_length),
+        # Display and stored periods both follow ResQ's own: the display
+        # period is what ResQ showed, the stored period is what the CSV holds.
+        **stored_length_fields("Vector", stored_period),
         "show_subtotal": normalize_show_subtotal(existing.get("show_subtotal")),
         "origin_labels": payload.get("origin_labels", []),
         "development_labels": payload.get("development_labels", []),
@@ -1532,6 +1705,14 @@ def write_engine_generated_export(
         origin_length=int(payload.get("origin_length") or 0),
         development_length=int(payload.get("development_length") or 0),
         period_length=_vector_payload_period_length(payload) if is_vector else None,
+        # ResQ's own stored lengths: a generated dataset is stored at the
+        # source data's granularity however coarsely ResQ displayed it, and
+        # the Engine rebuilds it at any period from that same source table.
+        stored_origin_length=int(payload.get("stored_origin_length") or 0) or None,
+        stored_development_length=int(payload.get("stored_development_length") or 0) or None,
+        stored_period_length=(
+            int(payload.get("stored_period_length") or 0) or None if is_vector else None
+        ),
         cumulative=DEFAULT_CUMULATIVE,
         calendar=DEFAULT_CALENDAR,
         show_subtotal=normalize_show_subtotal(existing.get("show_subtotal")),
@@ -2733,8 +2914,10 @@ def _aggregate_vector_values_by_length(values: list, origin_labels: list, base_l
     return out
 
 def _write_aggregated_vector_cache_exports(payload: dict, rc_dir: Path) -> list[Path]:
+    # The values are at the payload's stored period, so that is the base every
+    # coarser copy is summed from.
     try:
-        base_len = _vector_payload_period_length(payload)
+        base_len = _vector_payload_stored_period_length(payload)
     except (TypeError, ValueError):
         return []
     if base_len <= 0:
