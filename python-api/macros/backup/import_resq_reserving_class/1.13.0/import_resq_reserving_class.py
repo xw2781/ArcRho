@@ -1,10 +1,9 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.13.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.13.0
+# Release Note: The Merge-or-Overwrite question is gone: the import always overwrites the ArcRho copies of what you tick. Instead, once the review table is accepted, any ticked dataset or method output whose ArcRho copy is newer than the ResQ version is listed in a floating box with a clickable name that opens it in the Project Instance page, and the import waits for a second Overwrite before it starts. Datasets that exist only in ArcRho are still kept.
 # Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, overwriting the existing ArcRho copies after copying the existing class to a dated backup folder. Ticked items whose ArcRho copy is newer than ResQ's are listed for review, with links that open them, before the overwrite is confirmed. A DFM User Entry value explained by the notes "Generate Notes for Combined Adjustment" wrote comes back as its growth and accounting cutoff formula rather than a plain number.
 # Scope: Reserving Class
-# Icon: download
 # </arcrho-macro>
 
 from __future__ import annotations

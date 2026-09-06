@@ -1,10 +1,9 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.13.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
-# Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, overwriting the existing ArcRho copies after copying the existing class to a dated backup folder. Ticked items whose ArcRho copy is newer than ResQ's are listed for review, with links that open them, before the overwrite is confirmed. A DFM User Entry value explained by the notes "Generate Notes for Combined Adjustment" wrote comes back as its growth and accounting cutoff formula rather than a plain number.
+# Version: 1.12.0
+# Release Note: A DFM User Entry value that came from the combined growth and accounting cutoff adjustment gets its in-cell formula back on import. When the ResQ method notes carry the block "Generate Notes for Combined Adjustment" wrote for a development period, and the User Entry value still matches the selected LDF that block states, the import rebuilds = ROUND("<average row>", 4) * [Accounting Cutoff][-n] * [Growth Adjustment--...][-n] for that column instead of leaving the plain number, so an overwrite import no longer loses the formula.
+# Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, merging with or overwriting the existing ArcRho copies, after copying the existing class to a dated backup folder. A DFM User Entry value explained by the notes "Generate Notes for Combined Adjustment" wrote comes back as its growth and accounting cutoff formula rather than a plain number.
 # Scope: Reserving Class
-# Icon: download
 # </arcrho-macro>
 
 from __future__ import annotations
@@ -48,10 +47,6 @@ from arcrho_api.resq_import_backup import (  # noqa: F401
     prune_import_backups,
     reserving_class_folder_name,
 )
-
-# The review table's own reading of which ticked rows carry an ArcRho edit the
-# overwrite would destroy, and how each is opened for a look in ArcRho.
-from arcrho_api.resq_transfer_review import DIRECTION_IMPORT, edits_at_risk, open_item_args
 
 
 TITLE = "Import ResQ Reserving Class"
@@ -106,17 +101,7 @@ class BridgeRequestError(RuntimeError):
         self.status = status or {}
 
 
-def _message(
-    ui,
-    text,
-    *,
-    title=TITLE,
-    kind="info",
-    auto_close_ms=None,
-    buttons=None,
-    links=None,
-    presentation=None,
-):
+def _message(ui, text, *, title=TITLE, kind="info", auto_close_ms=None, buttons=None):
     kwargs = {
         "title": title,
         "kind": kind,
@@ -125,10 +110,6 @@ def _message(
     }
     if buttons is not None:
         kwargs["buttons"] = list(buttons)
-    if links:
-        kwargs["links"] = list(links)
-    if presentation is not None:
-        kwargs["presentation"] = presentation
     return ui.message_box(str(text or ""), **kwargs)
 
 
@@ -317,35 +298,36 @@ def _message_button(response) -> str:
     return ""
 
 
-def confirm_overwrite_of_newer(ui, rows, *, title: str = TITLE, scope_note: str = "") -> bool:
-    """List the ticked items whose ArcRho copy is newer than ResQ's, and ask.
+def choose_import_policy(ui, *, title: str = TITLE, scope_note: str = "") -> str | None:
+    """Ask how existing ArcRho copies are treated; ``None`` means cancelled.
 
-    Each name is a link that opens the item in the Project Instance page while
-    the box stays open, so the ArcRho changes can be looked at before they are
-    overwritten. Only an explicit Overwrite lets the import start.
+    Overwrite is destructive, so it takes a second, explicit confirmation.
+    Anything other than a clear Overwrite or Cancel answer falls back to the
+    non-destructive merge, so an automated caller keeps today's behavior.
     """
 
     scope_lines = f"{scope_note}\n\n" if scope_note else ""
-    count = len(rows)
-    noun = "copy is" if count == 1 else "copies are"
-    confirm = _message(
+    choice = _message(
         ui,
         scope_lines
-        + f"{count} ArcRho {noun} newer than the ResQ version. The import "
-        + "replaces them with the ResQ copies, discarding the ArcRho changes. "
-        + "This cannot be undone.\n\n"
-        + "Click an item to review it in ArcRho before deciding.\n\n"
-        + "Overwrite the newer ArcRho copies?",
+        + "How should existing ArcRho data be treated?\n\n"
+        + "Merge: keep datasets that exist only in ArcRho and any ArcRho copy "
+        + "newer than the ResQ version.\n"
+        + "Overwrite: the fresh ResQ copy replaces the ArcRho copy for "
+        + "everything ResQ provides, even where the ArcRho copy is newer. "
+        + "Datasets that exist only in ArcRho are kept either way.",
         title=title,
-        kind="warning",
-        buttons=["Overwrite", "Cancel"],
-        links=[
-            {"label": str(row.get("name") or ""), "kind": str(row.get("kind") or ""), "args": open_item_args(row)}
-            for row in rows
-        ],
-        presentation="floating",
+        kind="question",
+        buttons=["Merge", "Overwrite", "Cancel"],
     )
-    return _message_button(confirm).strip().casefold() == IMPORT_POLICY_OVERWRITE
+    button = _message_button(choice).strip().casefold()
+    if button == "cancel":
+        return None
+    if button != IMPORT_POLICY_OVERWRITE:
+        return IMPORT_POLICY_MERGE
+    if confirm_overwrite(ui, title=title, scope_note=scope_note):
+        return IMPORT_POLICY_OVERWRITE
+    return None
 
 
 def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
@@ -377,8 +359,7 @@ def confirm_without_preview(ui, error) -> bool:
         ui,
         "The comparison with ResQ failed, so the datasets and methods cannot be "
         f"listed for review before the import.\n\n{error}\n\n"
-        "Importing without the review brings across everything ResQ offers and "
-        "overwrites the ArcRho copies, newer ones included.",
+        "Importing without the review brings across everything ResQ offers.",
         kind="warning",
         buttons=["Import Anyway", "Cancel"],
     )
@@ -730,11 +711,28 @@ def run_macro(active_dfm=None, active_context=None):
         _message(ui, message, kind="error")
         return {"success": False, "message": message}
 
-    # The fresh ResQ copy always wins; what the person controls is which items
-    # are ticked, and a second look at the ones whose ArcRho copy is newer.
-    import_policy = IMPORT_POLICY_OVERWRITE
     try:
-        review = review_import_plan(ui, server_root, project_name, rc_path, overwrite=True)
+        import_policy = choose_import_policy(
+            ui,
+            scope_note=f"Project: {project_name}\nPath: {rc_path}",
+        )
+    except Exception as exc:
+        message = f"The import could not be prepared.\n\n{exc}"
+        _message(ui, message, kind="error")
+        return {"success": False, "message": message}
+    if import_policy is None:
+        message = "Import cancelled; nothing was changed."
+        _message(ui, message, auto_close_ms=3000)
+        return {"success": False, "message": message, "reason": "cancelled"}
+
+    try:
+        review = review_import_plan(
+            ui,
+            server_root,
+            project_name,
+            rc_path,
+            overwrite=import_policy == IMPORT_POLICY_OVERWRITE,
+        )
     except Exception as exc:
         message = f"The import could not be reviewed.\n\n{exc}"
         _message(ui, message, kind="error")
@@ -753,16 +751,6 @@ def run_macro(active_dfm=None, active_context=None):
             "reason": "empty_selection",
             "review": review,
         }
-
-    newer_in_arcrho = edits_at_risk(review.get("preview") or [], DIRECTION_IMPORT, selected_names)
-    if newer_in_arcrho and not confirm_overwrite_of_newer(
-        ui,
-        newer_in_arcrho,
-        scope_note=f"Project: {project_name}\nPath: {rc_path}",
-    ):
-        message = "Import cancelled; nothing was changed."
-        _message(ui, message, auto_close_ms=3000)
-        return {"success": False, "message": message, "reason": "cancelled", "review": review}
 
     try:
         progress = ui.progress_bar(

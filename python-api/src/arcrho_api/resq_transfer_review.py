@@ -63,6 +63,52 @@ def _edited_side(row: Mapping[str, Any], side: str) -> bool:
     return str(row.get("newer_side") or "") == side
 
 
+def edits_at_risk(
+    preview: list[Mapping[str, Any]],
+    direction: str,
+    names: list[str] | None = None,
+) -> list[Mapping[str, Any]]:
+    """The tickable rows whose copy on the target side the run would overwrite.
+
+    ``names`` narrows the answer to the ticked names; ``None`` means every row
+    the table offers. This is what the Import macro lists for a second look
+    before it overwrites, and what the table header counts.
+    """
+
+    side = "resq" if direction == DIRECTION_EXPORT else "arcrho"
+    wanted = None if names is None else {str(name).strip() for name in names}
+    return [
+        row
+        for row in preview
+        if row.get("transfer_supported")
+        and (wanted is None or str(row.get("name") or "").strip() in wanted)
+        and _edited_side(row, side)
+    ]
+
+
+# The kinds the Project Instance page opens as a method window rather than as
+# the method's output dataset.
+_METHOD_WINDOW_KINDS = {"DFM", "Result Selection"}
+
+
+def open_item_args(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The ``projectInstance.openDataset`` arguments that open one row in ArcRho."""
+
+    name = str(row.get("name") or "")
+    kind = str(row.get("kind") or KIND_DATASET)
+    if kind in _METHOD_WINDOW_KINDS:
+        return {
+            "datasetName": name,
+            "openMethod": True,
+            "methodType": kind,
+            "methodName": str(row.get("method_name") or name),
+        }
+    args = {"datasetName": name, "datasetTypeName": str(row.get("dataset_type") or name)}
+    if kind != KIND_DATASET:
+        args["methodType"] = kind
+    return args
+
+
 def _export_plan_cell(row: Mapping[str, Any]) -> tuple[str, str]:
     if not row.get("transfer_supported"):
         return "Not exported", "muted"
@@ -136,8 +182,7 @@ def _summary(
 ) -> str:
     actionable = [row for row in preview if row.get("transfer_supported")]
     selected = [row for row in actionable if row.get("selected")]
-    at_risk_side = "resq" if direction == DIRECTION_EXPORT else "arcrho"
-    at_risk = sum(1 for row in selected if _edited_side(row, at_risk_side))
+    at_risk = len(edits_at_risk(selected, direction))
     target, article = ("ResQ", "a") if direction == DIRECTION_EXPORT else ("ArcRho", "an")
     saved_by = str(selection.get("updated_by") or "").strip()
     saved_at = str(selection.get("updated_at") or "").strip()

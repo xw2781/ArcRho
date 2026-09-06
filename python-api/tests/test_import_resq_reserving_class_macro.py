@@ -105,8 +105,9 @@ class _UI:
         self.messages = []
         self.progress_calls = []
         self.reload_calls = []
-        # Buttons returned by successive message boxes; empty answers mean the
-        # non-destructive merge default, which keeps the older tests unchanged.
+        # Buttons returned by successive message boxes; with no script a
+        # prompt answers with no button at all, which every question reads
+        # as Cancel.
         self.button_script = list(button_script or [])
         self.project_instance = types.SimpleNamespace(
             context=lambda **_kwargs: {
@@ -407,9 +408,11 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
                 "Path",
                 "UserName",
                 "ExportMode",
+                "ImportPolicy",
             },
         )
         self.assertEqual(payload["Function"], "ImportResQReservingClass")
+        self.assertEqual(payload["ImportPolicy"], "overwrite")
         self.assertEqual(payload["ContractVersion"], _CONTRACT_VERSION)
         self.assertEqual(payload["RequestId"], _REQUEST_ID)
         self.assertEqual(payload["ProjectName"], "Demo")
@@ -422,22 +425,18 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertIn("Datasets imported: 2", result["message"])
         self.assertIn("Methods imported: 1", result["message"])
 
-    def test_confirmed_overwrite_travels_in_the_request_payload(self):
+    def test_the_import_always_overwrites_without_asking_which_policy(self):
         self._write_worker()
-        self.ui = _UI(button_script=["Overwrite", "Overwrite"])
-        status = {
-            "contract_version": _CONTRACT_VERSION,
-            "status": "success",
-            "updated_at": "2026-07-26T10:00:00",
-            "request_id": _REQUEST_ID,
-            "result": {"datasets_imported": 1, "errors": 0},
-        }
         request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
 
         with (
             self._macro_modules(),
             patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
-            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
+            patch.object(
+                self.module,
+                "publish_import_request",
+                side_effect=self._publish_status(_success_status()),
+            ),
         ):
             result = self.module.run_macro()
 
@@ -445,16 +444,120 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
         payload = json.loads(request_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["ImportPolicy"], "overwrite")
-        # The choice ran as two prompts: policy pick, then explicit confirm.
+        # No policy question and, with nothing newer in ArcRho, no second look.
         prompts = [kwargs for _msg, kwargs in self.ui.messages if kwargs.get("buttons")]
-        self.assertEqual(len(prompts), 2)
-        self.assertEqual(prompts[0]["buttons"], ["Merge", "Overwrite", "Cancel"])
-        self.assertEqual(prompts[1]["buttons"], ["Overwrite", "Cancel"])
-        self.assertEqual(prompts[1]["kind"], "warning")
+        self.assertEqual(prompts, [])
 
-    def test_a_declined_overwrite_confirmation_publishes_nothing(self):
+    def _preview_with_a_newer_arcrho_copy(self):
+        return [
+            {
+                "id": "paid loss",
+                "name": "Paid Loss",
+                "kind": "Dataset",
+                "dataset_type": "Paid Loss",
+                "presence": "both",
+                "newer_side": "arcrho",
+                "transfer_supported": True,
+            },
+            {
+                "id": "d 18 - bs paid dfm",
+                "name": "D 18 - BS Paid DFM",
+                "kind": "DFM",
+                "method_name": "D 18 - BS Paid DFM",
+                "presence": "both",
+                "newer_side": "arcrho",
+                "export_review": {"changed": "resq"},
+                "transfer_supported": True,
+            },
+            {
+                "id": "incurred loss",
+                "name": "Incurred Loss",
+                "kind": "Dataset",
+                "dataset_type": "Incurred Loss",
+                "presence": "both",
+                "newer_side": "resq",
+                "transfer_supported": True,
+            },
+        ]
+
+    def test_ticked_items_newer_in_arcrho_are_listed_with_links_before_the_overwrite(self):
         self._write_worker()
-        self.ui = _UI(button_script=["Overwrite", "Cancel"])
+        self.ui = _UI(button_script=["Overwrite"])
+        self.review = {
+            "status": "reviewed",
+            "accepted": True,
+            "names": ["Paid Loss", "D 18 - BS Paid DFM", "Incurred Loss"],
+            "preview": self._preview_with_a_newer_arcrho_copy(),
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(
+                self.module,
+                "publish_import_request",
+                side_effect=self._publish_status(_success_status()),
+            ),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        prompts = [(msg, kwargs) for msg, kwargs in self.ui.messages if kwargs.get("buttons")]
+        self.assertEqual(len(prompts), 1)
+        message, options = prompts[0]
+        self.assertIn("1 ArcRho copy is newer than the ResQ version", message)
+        self.assertEqual(options["buttons"], ["Overwrite", "Cancel"])
+        self.assertEqual(options["kind"], "warning")
+        self.assertEqual(options["presentation"], "floating")
+        # The DFM's ArcRho edit was already recorded as a ResQ change by the
+        # baseline, so only the dataset with a real ArcRho edit is listed.
+        self.assertEqual(
+            options["links"],
+            [{
+                "label": "Paid Loss",
+                "kind": "Dataset",
+                "args": {"datasetName": "Paid Loss", "datasetTypeName": "Paid Loss"},
+            }],
+        )
+        request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["ImportPolicy"], "overwrite")
+
+    def test_an_item_left_unticked_is_not_held_against_the_overwrite(self):
+        self._write_worker()
+        self.review = {
+            "status": "reviewed",
+            "accepted": True,
+            "names": ["Incurred Loss"],
+            "preview": self._preview_with_a_newer_arcrho_copy(),
+        }
+        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
+
+        with (
+            self._macro_modules(),
+            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
+            patch.object(
+                self.module,
+                "publish_import_request",
+                side_effect=self._publish_status(_success_status()),
+            ),
+        ):
+            result = self.module.run_macro()
+
+        self.assertTrue(result["success"])
+        prompts = [kwargs for _msg, kwargs in self.ui.messages if kwargs.get("buttons")]
+        self.assertEqual(prompts, [])
+
+    def test_a_declined_second_look_publishes_nothing(self):
+        self._write_worker()
+        self.ui = _UI(button_script=["Cancel"])
+        self.review = {
+            "status": "reviewed",
+            "accepted": True,
+            "names": ["Paid Loss"],
+            "preview": self._preview_with_a_newer_arcrho_copy(),
+        }
 
         with self._macro_modules():
             result = self.module.run_macro()
@@ -462,30 +565,6 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["reason"], "cancelled")
         self.assertFalse((self.server_root / self.module.REQUEST_ROOT / "requests").exists())
-
-    def test_a_merge_answer_keeps_the_payload_free_of_the_policy_field(self):
-        self._write_worker()
-        self.ui = _UI(button_script=["Merge"])
-        status = {
-            "contract_version": _CONTRACT_VERSION,
-            "status": "success",
-            "updated_at": "2026-07-26T10:00:00",
-            "request_id": _REQUEST_ID,
-            "result": {"datasets_imported": 1, "errors": 0},
-        }
-        request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
-
-        with (
-            self._macro_modules(),
-            patch.object(self.module.uuid, "uuid4", return_value=request_uuid),
-            patch.object(self.module, "publish_import_request", side_effect=self._publish_status(status)),
-        ):
-            result = self.module.run_macro()
-
-        self.assertTrue(result["success"])
-        request_path, _ = self.module._request_paths(self.server_root, _REQUEST_ID)
-        payload = json.loads(request_path.read_text(encoding="utf-8"))
-        self.assertNotIn("ImportPolicy", payload)
 
     def test_the_ticked_names_travel_in_the_request_payload(self):
         self._write_worker()
@@ -530,9 +609,8 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertEqual(result["reason"], "cancelled")
         self.assertFalse((self.server_root / self.module.REQUEST_ROOT / "requests").exists())
 
-    def test_the_review_is_told_whether_the_run_overwrites(self):
+    def test_the_review_is_told_that_the_run_overwrites(self):
         self._write_worker()
-        self.ui = _UI(button_script=["Overwrite", "Overwrite"])
         request_uuid = types.SimpleNamespace(hex=_REQUEST_ID)
 
         with (

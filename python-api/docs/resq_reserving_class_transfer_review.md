@@ -54,14 +54,18 @@ cannot drift into describing one comparison two different ways.
   `Both` changed since the saved pair.
 - `Not exported` — nothing would be written, so the row cannot be ticked.
 
-**This Run**, importing. The merge-or-overwrite question is asked before the
-review, so this column already reflects the answer:
+**This Run**, importing. The Import macro always overwrites what is ticked, so
+the column reads:
 
 - `Added to ArcRho` — ResQ holds it and ArcRho does not.
 - `Overwrites ArcRho copy`
-- `Overwrites newer ArcRho copy` — under **Overwrite**, when `ArcRho` or
-  `Both` changed since the saved pair.
-- `Keeps the newer ArcRho copy` — the same situation under **Merge**.
+- `Overwrites newer ArcRho copy` — when `ArcRho` or `Both` changed since the
+  saved pair. Once the table is accepted, the ticked rows in this state are
+  listed again (`edits_at_risk`) in a floating message box whose names open
+  the item in the Project Instance page (`open_item_args`), and the import
+  waits for a second Overwrite before it starts.
+- `Keeps the newer ArcRho copy` — the same situation under a merge, which
+  only the batch Import ResQ Reserving Classes macro still offers.
 - `Not imported` — ArcRho cannot receive it (an unconfigured Dataset Type, a
   method object ResQ is missing), so the row cannot be ticked.
 

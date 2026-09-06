@@ -217,6 +217,61 @@ class TransferReviewSummaryTests(unittest.TestCase):
         self.assertIn("carry an ArcRho change this run would overwrite", summary)
 
 
+class EditsAtRiskTests(unittest.TestCase):
+    def test_an_import_lists_the_ticked_rows_whose_arcrho_copy_would_be_lost(self):
+        rows = [
+            _row("Paid Loss", newer_side="arcrho"),
+            _row("Reported Loss", export_review=_verdict("both")),
+            # The baseline says only ResQ changed, so the newer ArcRho stamp
+            # is the last export's own mark, not an edit.
+            _row("Claim Counts", newer_side="arcrho", export_review=_verdict("resq")),
+            _row("Boot", newer_side="arcrho", transfer_supported=False),
+            _row("Premium", newer_side="arcrho"),
+        ]
+
+        at_risk = review.edits_at_risk(rows, "import", ["Paid Loss", "Reported Loss", "Claim Counts", "Boot"])
+
+        self.assertEqual([row["name"] for row in at_risk], ["Paid Loss", "Reported Loss"])
+        self.assertEqual(
+            [row["name"] for row in review.edits_at_risk(rows, "import")],
+            ["Paid Loss", "Reported Loss", "Premium"],
+        )
+
+    def test_an_export_looks_at_the_resq_side(self):
+        rows = [_row("Paid Loss", newer_side="resq"), _row("Reported Loss", newer_side="arcrho")]
+
+        self.assertEqual([row["name"] for row in review.edits_at_risk(rows, "export")], ["Paid Loss"])
+
+
+class OpenItemArgsTests(unittest.TestCase):
+    def test_a_dataset_opens_by_name_and_type(self):
+        self.assertEqual(
+            review.open_item_args(_row("Paid Loss", dataset_type="Paid Loss Triangle")),
+            {"datasetName": "Paid Loss", "datasetTypeName": "Paid Loss Triangle"},
+        )
+
+    def test_a_dfm_or_result_selection_opens_its_method_window(self):
+        self.assertEqual(
+            review.open_item_args(_row("Paid Ultimate", kind="DFM", method_name="D 18 - Paid DFM")),
+            {
+                "datasetName": "Paid Ultimate",
+                "openMethod": True,
+                "methodType": "DFM",
+                "methodName": "D 18 - Paid DFM",
+            },
+        )
+        self.assertEqual(
+            review.open_item_args(_row("Selected", kind="Result Selection"))["methodType"],
+            "Result Selection",
+        )
+
+    def test_another_method_opens_its_output_dataset(self):
+        self.assertEqual(
+            review.open_item_args(_row("BF Ultimate", kind="Bornhuetter Ferguson", dataset_type="Ultimate")),
+            {"datasetName": "BF Ultimate", "datasetTypeName": "Ultimate", "methodType": "Bornhuetter Ferguson"},
+        )
+
+
 class AcceptedNamesTests(unittest.TestCase):
     def test_the_ticked_ids_come_back_as_the_names_the_request_is_written_with(self):
         rows = [_row("Paid Loss"), _row("Reported Loss"), _row("Claim Counts")]
