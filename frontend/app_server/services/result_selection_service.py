@@ -1299,6 +1299,7 @@ def refresh_dependents(
     rebuild_index: bool = True,
     allow_status_current: bool = True,
     blocked_precedent_names: Iterable[Any] = (),
+    unchanged_precedent_names: Iterable[Any] = (),
     finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
     project = _clean(project_name)
@@ -1317,11 +1318,16 @@ def refresh_dependents(
     errors = []
     downstream_fresh_names: List[str] = []
     downstream_blocked_names: List[str] = []
-    # Outputs queued for their dependents although their values did not move:
-    # a status-only refresh, or a recompute that came out the same. A DFM or
-    # calculated dependent reached only through these is still current as it
-    # stands, so it is skipped without being marked a failed precedent.
-    unchanged_source_keys: set[str] = set()
+    # Outputs whose values did not move: a status-only refresh, a recompute
+    # that came out the same, or a DFM the wave before this one already
+    # visited to the same publication (``unchanged_precedent_names``). Such
+    # an output, or a DFM or calculated dependent reached only through them,
+    # is still current as it stands, so it is skipped without being marked a
+    # failed precedent.
+    unchanged_source_keys: set[str] = {
+        _key(item) for item in unchanged_precedent_names
+        if _key(item)
+    }
     index_error = ""
     dependency_value_cache: Dict[Tuple[str, int, bool], List[Any]] = {}
     sidecar_snapshot: Dict[str, Dict[str, Any]] = {}
@@ -1403,16 +1409,21 @@ def refresh_dependents(
                 )
                 if method_type != dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
                     dependent_key = _key(dependent_name)
-                    if dependent_key not in fresh_precedent_keys and all(
-                        _key(source_name) in unchanged_source_keys
-                        for source_name in dependent_sources[dependent_name]
+                    if dependent_key not in fresh_precedent_keys and (
+                        dependent_key in unchanged_source_keys
+                        or all(
+                            _key(source_name) in unchanged_source_keys
+                            for source_name in dependent_sources[dependent_name]
+                        )
                     ):
-                        # Every source that led here kept its values, so this
-                        # DFM or calculated output needs no recompute and is
-                        # not blocked: blocking it would refuse every Result
-                        # Selection further down that also loads it with
-                        # "Precedent refresh failed" over a refresh nothing
-                        # needed.
+                        # This output kept its values -- the DFM wave already
+                        # recomputed it from the same roots to the same
+                        # publication -- or every source that led here did, so
+                        # this DFM or calculated output needs no recompute and
+                        # is not blocked: blocking it would refuse every
+                        # Result Selection further down that also loads it
+                        # with "Precedent refresh failed" over a refresh
+                        # nothing needed.
                         skipped.append({
                             "dataset_name": dependent_name,
                             "reason": "non_result_selection_dependent_inputs_unchanged",

@@ -130,6 +130,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=["Calculated A", "Calculated B"],
+            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 
@@ -185,6 +186,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=["Broken", "Broken Child"],
+            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 
@@ -436,6 +438,63 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(recalculate.call_count, 1)
         materialize.assert_called_once()
+
+    def test_dfm_outputs_that_held_are_handed_to_result_selection_as_unchanged(self) -> None:
+        rows = [{"name": "Source", "calculated": False, "generated": False, "formula": ""}]
+        dfm_wave = {
+            "ok": True,
+            "updated": [
+                {"dataset_name": "C 12 - CWP DFM", "dataset_type": "C 12 - CWP DFM", "output_changed": False},
+                {"dataset_name": "C 32 - Reported DFM", "dataset_type": "C 32 - Reported DFM", "output_changed": True},
+            ],
+            "status_refreshed": [{"dataset_name": "C 42 - Reported ex CWOP DFM"}],
+            "skipped": [{"dataset_name": "F 13 - Paid DFM", "reason": "not_updated"}],
+            "errors": [],
+        }
+        with (
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=rows),
+            patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
+            patch.object(calculated_dataset_service, "_refresh_link_driven_dependents", return_value=[]),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch("app_server.services.dfm_service.refresh_dependents", return_value=dfm_wave),
+            patch("app_server.services.result_selection_service.refresh_dependents", return_value={
+                "ok": True,
+                "updated": [],
+                "errors": [],
+            }) as refresh_rs,
+            patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
+        ):
+            result = calculated_dataset_service.recalculate_dependents(
+                "Example Project",
+                "Example RC",
+                "Source",
+                "Source",
+                include_berquist_sherman=False,
+                include_bornhuetter_ferguson=False,
+                include_cape_cod=False,
+                include_bootstrap=False,
+            )
+
+        self.assertTrue(result["ok"], result)
+        refresh_rs.assert_called_once_with(
+            "Example Project",
+            "Example RC",
+            ["Source", "Source", "C 32 - Reported DFM", "C 32 - Reported DFM"],
+            rebuild_index=False,
+            allow_status_current=True,
+            blocked_precedent_names=[],
+            unchanged_precedent_names=[
+                "C 12 - CWP DFM",
+                "C 12 - CWP DFM",
+                "C 42 - Reported ex CWOP DFM",
+                "F 13 - Paid DFM",
+            ],
+            finalize_method_review_status=False,
+        )
 
 
 if __name__ == "__main__":

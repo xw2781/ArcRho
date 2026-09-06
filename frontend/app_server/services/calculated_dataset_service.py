@@ -1725,6 +1725,36 @@ def _refresh_link_driven_dependents(
     return fresh
 
 
+def _dfm_unchanged_names(dfm_updates: Mapping[str, Any] | None) -> List[str]:
+    """Name every DFM output the DFM wave visited whose published values held.
+
+    A DFM recomputed to the same publication -- its ratio basis moved, say,
+    which only redraws the Ratios tab -- one only status-refreshed, or one
+    skipped because none of its real inputs changed is current as it stands.
+    The Result Selection wave has to hear that: it walks from the same roots,
+    reaches such a DFM as their dependent, and would otherwise block it as a
+    precedent still waiting for an explicit refresh, refusing every Result
+    Selection that loads it.
+    """
+    names: List[str] = []
+    if not isinstance(dfm_updates, Mapping):
+        return names
+    for item in dfm_updates.get("updated", []):
+        if isinstance(item, Mapping) and not item.get("output_changed"):
+            names.extend(
+                _clean_text(value)
+                for value in (item.get("dataset_name"), item.get("dataset_type"))
+                if _clean_text(value)
+            )
+    for field in ("status_refreshed", "skipped"):
+        names.extend(
+            _clean_text(item.get("dataset_name"))
+            for item in dfm_updates.get(field, [])
+            if isinstance(item, Mapping) and _clean_text(item.get("dataset_name"))
+        )
+    return names
+
+
 def _recalculate_dependents_impl(
     project_name: str,
     reserving_class: str,
@@ -2009,6 +2039,7 @@ def _recalculate_dependents_impl(
                     *failed_dataset_names,
                     *link_updates["failed"],
                 ],
+                unchanged_precedent_names=_dfm_unchanged_names(dfm_updates),
                 finalize_method_review_status=False,
             )
         except Exception as err:

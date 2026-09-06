@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "A Result Selection no longer fails with \"Precedent refresh failed\" over a development method whose ultimate did not move during the same refresh.",
+  "details": [
+    "Saving a data processing rule regenerates datasets such as Total Earned Exposure, which claim-count development methods use only as their ratio basis. Those methods were recomputed to the same ultimate, yet every Current Qtr Indicated and Current Qtr Selected that loads them was refused and left flagged for review.",
+    "The refresh now tells the Result Selection step which development methods it already checked and found unchanged, so they count as current instead of as failed precedents."
+  ]
+}

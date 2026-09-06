@@ -1198,6 +1198,83 @@ class ResultSelectionServiceTests(unittest.TestCase):
         recalculate_dependents.assert_not_called()
         self.assertEqual(downstream_method_path.read_bytes(), downstream_method_before)
 
+    def test_dfm_visited_to_the_same_publication_is_not_a_failed_precedent(self) -> None:
+        # Mirrors the live HOL walk after a data-processing-rules save: the
+        # regenerated "Total Earned Exposure" (Paid) is the ratio basis of
+        # "C 12 - CWP DFM" (CWP DFM), so the DFM wave recomputed it to the
+        # same ultimate; "C 91" (Selection) loads both. Reached again here as
+        # the root's dependent, the DFM must be taken as current, not blocked.
+        self.write_selection()
+        self.write_source("Paid", [10, 20])
+        self.write_source("CWP DFM", [5, 6])
+        dfm_sidecar_path = self.sidecars / "CWP DFM.json"
+        dfm_sidecar = json.loads(dfm_sidecar_path.read_text(encoding="utf-8"))
+        dfm_sidecar.update({
+            "source_kind": "dfm",
+            "method_type": "DFM",
+            "method_name": "CWP DFM",
+            "status": 0,
+            "precedents": ["Paid"],
+            "dependents": ["Selection"],
+        })
+        self.write_json(dfm_sidecar_path, dfm_sidecar)
+        paid_sidecar = json.loads((self.sidecars / "Paid.json").read_text(encoding="utf-8"))
+        paid_sidecar["dependents"] = ["CWP DFM", "Selection"]
+        self.write_json(self.sidecars / "Paid.json", paid_sidecar)
+        method = self.method_payload()
+        first = method["method_tab"]["loaded_datasets"][0]
+        method["method_tab"]["loaded_datasets"] = [first, {
+            **first,
+            "name": "CWP DFM",
+            "dataset_type": "CWP DFM",
+            "method_type": "DFM",
+            "source_kind": "dfm",
+            "values": [5, 6],
+        }]
+        # The stored selection predates the root's new values, so a refresh
+        # that is allowed to run has something to publish.
+        method["method_tab"]["loaded_datasets"][0]["values"] = [8, 16]
+        method["method_tab"]["calculated_ultimate"] = [6.5, 11]
+        method["method_tab"]["selected_ultimate"] = [7, 99]
+        self.write_json(self.methods / "RS@Selection.json", method)
+        selection_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        selection_sidecar["precedents"] = ["Paid", "CWP DFM"]
+        self.write_json(self.sidecars / "Selection.json", selection_sidecar)
+        (self.datasets / "Selection@12.csv").write_text("7\n99\n", encoding="utf-8")
+
+        with (
+            mock.patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value={"updated": []},
+            ),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            refused = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
+            result = result_selection_service.refresh_dependents(
+                "Project",
+                "Class",
+                ["Paid"],
+                unchanged_precedent_names=["CWP DFM"],
+            )
+
+        # Without the DFM wave's word the walk still blocks the DFM it cannot
+        # refresh itself, and the Result Selection loading it is refused.
+        self.assertFalse(refused["ok"])
+        self.assertEqual(
+            refused["errors"],
+            [{"dataset_name": "Selection", "reason": "Precedent refresh failed: CWP DFM"}],
+        )
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["updated"], [{"dataset_name": "Selection"}], result)
+        self.assertEqual(
+            result["skipped"],
+            [{"dataset_name": "CWP DFM", "reason": "non_result_selection_dependent_inputs_unchanged"}],
+        )
+        saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["method_tab"]["calculated_ultimate"], [7.5, 13.0])
+        self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "7.5\n99\n")
+
     def test_result_selection_refresh_propagates_transitively_once(self) -> None:
         first = self.method_payload()
         first["details_tab"]["name"] = "Selection One"
@@ -1313,6 +1390,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             rebuild_index=False,
             allow_status_current=True,
             blocked_precedent_names=[],
+            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 
