@@ -3,17 +3,20 @@
 A method can run at a finer or coarser period than the cache its precedent's
 sidecar names. An Engine-generated dataset is rebuilt at the requested lengths
 through the same ``/arcrho/tri`` runtime the browser uses, leaving the sidecar
-and its primary cache untouched; a method output already publishes its coarser
-vector variants, so those are looked up on disk. DFM and Result Selection share
-this one resolver rather than each deciding on its own.
+and its primary cache untouched; a hand-entered dataset is rolled up in memory
+from its own CSV, so no coarser copy of it is ever written or trusted; a method
+output already publishes its coarser vector variants, so those are looked up on
+disk. DFM and Result Selection share this one resolver rather than each
+deciding on its own.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, Mapping
+from typing import Any, List, Mapping, Sequence
 
-from arcrho_api.sidecar_core_contract import stored_lengths
+from arcrho_api import triangle_rollup
+from arcrho_api.sidecar_core_contract import is_vector_format, stored_lengths
 
 from app_server import config
 from app_server.helpers import build_dataset_cache_file_name, set_data_path_like_vba
@@ -21,6 +24,14 @@ from app_server.helpers import build_dataset_cache_file_name, set_data_path_like
 
 def _clean(value: Any) -> str:
     return str(value if value is not None else "").strip()
+
+
+def _positive_int(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
 
 
 def source_period(sidecar: Mapping[str, Any]) -> int:
@@ -32,6 +43,79 @@ def source_period(sidecar: Mapping[str, Any]) -> int:
     """
 
     return stored_lengths(sidecar)[0]
+
+
+def sidecar_csv_path(project_name: str, reserving_class: str, sidecar: Mapping[str, Any]) -> str:
+    """The CSV a sidecar names as its own, or an empty string when it names none."""
+
+    csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
+    if not csv_file:
+        return ""
+    return os.path.join(config.get_project_dataset_cache_dir(project_name, reserving_class), csv_file)
+
+
+def _rollup_arguments(
+    sidecar: Mapping[str, Any],
+    origin_length: Any,
+    development_length: Any = None,
+) -> dict:
+    stored_origin, stored_development = stored_lengths(sidecar)
+    if is_vector_format(sidecar.get("data_format")):
+        # A vector holds one column, so only its rows are aggregated: a plain
+        # block sum, which is the calendar form of the roll-up.
+        return {
+            "source_origin_length": stored_origin,
+            "source_development_length": stored_development,
+            "target_origin_length": _positive_int(origin_length),
+            "target_development_length": stored_development,
+            "cumulative": True,
+            "calendar": True,
+        }
+    return {
+        "source_origin_length": stored_origin,
+        "source_development_length": stored_development,
+        "target_origin_length": _positive_int(origin_length),
+        "target_development_length": _positive_int(development_length) or stored_development,
+        "cumulative": bool(sidecar.get("cumulative", True)),
+        "calendar": bool(sidecar.get("calendar", False)),
+    }
+
+
+def rollup_reason(
+    sidecar: Mapping[str, Any],
+    origin_length: Any,
+    development_length: Any = None,
+) -> str:
+    """Why the sidecar's own CSV cannot be rolled up to those lengths, or ``""``.
+
+    Only a hand-entered dataset is rolled up. Its CSV is the finest copy of
+    figures that add, and it is the only kind of dataset that cannot simply be
+    produced again at the period a method wants it at.
+    """
+
+    if _clean(sidecar.get("source_kind")).lower() != "input":
+        return "only a hand-entered dataset is rolled up in memory"
+    arguments = _rollup_arguments(sidecar, origin_length, development_length)
+    return triangle_rollup.rollup_reason(
+        arguments["source_origin_length"],
+        arguments["source_development_length"],
+        arguments["target_origin_length"],
+        arguments["target_development_length"],
+        calendar=arguments["calendar"],
+    )
+
+
+def rollup_rows(
+    sidecar: Mapping[str, Any],
+    rows: Sequence[Sequence[Any]],
+    origin_length: Any,
+    development_length: Any = None,
+) -> List[List[float | None]]:
+    """Aggregate a hand-entered dataset's own rows to the coarser lengths."""
+
+    return triangle_rollup.rollup_triangle(
+        rows, **_rollup_arguments(sidecar, origin_length, development_length)
+    )
 
 
 def materialize_engine_source(

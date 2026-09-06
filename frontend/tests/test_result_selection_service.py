@@ -563,6 +563,37 @@ class ResultSelectionServiceTests(unittest.TestCase):
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["loaded_datasets"][0]["values"], [300.0, 400.0])
 
+    def test_monthly_manual_source_is_rolled_up_and_a_stale_yearly_copy_ignored(self) -> None:
+        self.write_selection()
+        (self.datasets / "Paid@1.csv").write_text(
+            "".join(f"{value}\n" for value in range(1, 25)), encoding="utf-8"
+        )
+        # Left behind by an earlier release; the stored monthly file is the
+        # only copy a hand-entered dataset is ever read from.
+        (self.datasets / "Paid@12.csv").write_text("1\n2\n", encoding="utf-8")
+        self.write_json(self.sidecars / "Paid.json", {
+            "dataset_name": "Paid",
+            "dataset_type": "Paid",
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "source_kind": "input",
+            "method_type": "None",
+            "data_format": "Vector",
+            "period_length": 12,
+            "stored_period_length": 1,
+            "csv_file": "Paid@1.csv",
+            "dependents": ["Selection"],
+        })
+        with (
+            mock.patch("app_server.services.calculated_dataset_service.recalculate_dependents", return_value={"updated": []}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["method_tab"]["loaded_datasets"][0]["values"], [78.0, 222.0])
+
     def test_review_needed_method_reloads_every_precedent_but_waits_for_save_acknowledgement(self) -> None:
         self.write_selection()
         method_path = self.methods / "RS@Selection.json"

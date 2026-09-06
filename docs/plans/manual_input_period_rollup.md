@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 7 done, 7 of 10.
-Last updated: 2026-09-05 — the dataset window now shows the shape a triangle's figures are really stored at, offers only the coarser views that add up, and is read‑only at one.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 8 done, 8 of 10.
+Last updated: 2026-09-05 — a yearly method now reads a monthly or quarterly hand‑entered triangle by adding it up along the calendar as it loads, and never from a coarser copy left on disk.
 
 ## Progress
 
@@ -16,13 +16,13 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 5 | Generated datasets know how fine their source data is | [x] | 2026-09-05 | 45 min | 20 min | A project now records how fine its source data is, so a dataset the app builds from that data says it can be rebuilt monthly even when you last looked at it a year at a time. |
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [x] | 2026-09-05 | 45 min | 15 min | Looking at a hand‑entered triangle a year at a time and saving no longer turns it into yearly data: the figures stay in the file you typed them into, and the app refuses to write values back at a coarser view. |
 | 7 | The Dataset Viewer shows the stored shape and only offers valid views | [x] | 2026-09-05 | 1 h 45 | 15 min | The dataset window now says how fine each triangle's figures really are, offers only the coarser views that add up honestly, reopens at the view you last saved, and will not let you type over a rolled‑up figure. |
-| 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 45 min | | |
+| 8 | A method can use a finer hand‑entered triangle as its input | [x] | 2026-09-05 | 45 min | 15 min | A yearly method can now take a monthly or quarterly hand‑entered triangle as its input: the figures are added up along the calendar every time the method reads them, and an old rolled‑up copy left on disk is never used. |
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 7 of 10 steps done.
+Overall: 8 of 10 steps done.
 
-Time remaining: about 45 min across the three steps still open — 2 h of estimates scaled by the just under two fifths the seven finished steps have really cost. Step 7 was the one UI step and landed in 15 minutes against 1 h 45, pulling the scaling down again; the only overrun in the plan is still Step 4's 2 h against 1 h 15, which was the share handing back 10,997 files one round trip at a time. Steps 8 and 9 are code steps like the rest and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
+Time remaining: about 30 min across the two steps still open — 1 h 15 of estimates scaled by the just under two fifths the eight finished steps have really cost. Step 8 landed in 15 minutes against 45, so the scaling has not moved; the only overrun in the plan is still Step 4's 2 h against 1 h 15, which was the share handing back 10,997 files one round trip at a time. Step 9 is a code step like the rest and should keep beating its estimate; Step 10 is a deploy, which takes the time it takes.
 
 ### How the time figures are kept
 
@@ -245,12 +245,12 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 
 **Goal.** A method whose period is a whole multiple of a hand‑entered input's stored period rolls the input up in memory on every load.
 
-**Read first.** Step 1's helper; `_load_source_snapshot` and the compatibility check in `dfm_service.py`; `precedent_cache_service.precedent_csv_path`; `test_dfm_service.py`.
+**Read first.** Step 1's helper; `_load_source_snapshot` and the compatibility check in `dfm_service.py`; `precedent_cache_service.precedent_csv_path`; `result_selection_service._dependency_values`; `test_dfm_service.py` and `test_result_selection_service.py`.
 
 **Do.**
-- [ ] In `_load_source_snapshot`, when a non‑Engine input's stored period is finer than the method's and a whole multiple of it, read the sidecar's own CSV and roll it up through the helper. No variant file is written.
-- [ ] Keep the `422` refusal for every other mismatch and keep the Engine branch as it is.
-- [ ] Do the same for Result Selection in `precedent_cache_service`, or route it through a shared loader with the DFM.
+- [x] In `_load_source_snapshot`, when a non‑Engine input's stored period is finer than the method's and a whole multiple of it, read the sidecar's own CSV and roll it up through the helper. No variant file is written.
+- [x] Keep the `422` refusal for every other mismatch and keep the Engine branch as it is.
+- [x] Do the same for Result Selection in `precedent_cache_service`, or route it through a shared loader with the DFM.
 
 **Tests.** `test_dfm_service.py`: a monthly manual input feeding an annual DFM through save, refresh_dependents and save_propagation_roots; a stale on‑disk `@12@12` variant that must be ignored. The Result Selection equivalent.
 

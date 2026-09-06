@@ -174,6 +174,42 @@ class DfmServiceTests(unittest.TestCase):
             ],
         })
 
+    def write_monthly_source(self, name: str, *, dependents: list[str] | None = None) -> None:
+        """Write a 24-month cumulative triangle: every cell is 100 x its age in months.
+
+        Rolled up along the calendar this is the synthetic the plan measured,
+        so the two annual years read 7,800 / 22,200 and 7,800 / blank.
+        """
+
+        csv_file = f"{name}@1@1@cum@dev.csv"
+        rows = [
+            [100 * (column + 1) for column in range(24 - row)]
+            for row in range(24)
+        ]
+        (self.datasets / csv_file).write_text(
+            "".join(",".join(str(value) for value in row) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+        self.write_json(self.sidecars / f"{name}.json", {
+            "dataset_name": name,
+            "dataset_type": name,
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "source_kind": "input",
+            "method_type": "None",
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_origin_length": 1,
+            "stored_development_length": 1,
+            "csv_file": csv_file,
+            "number_format": "#,##0",
+            "decimal_places": 0,
+            "status": 0,
+            "precedents": [],
+            "dependents": [{"dataset_name": item} for item in (dependents or [])],
+        })
+
     def test_dataset_references_resolve_labels_indices_and_reuse_dataset_reads(self) -> None:
         datasets = {
             "paid": {
@@ -769,7 +805,10 @@ class DfmServiceTests(unittest.TestCase):
         source["stored_development_length"] = 3
         self.write_json(source_path, source)
 
-        with self.assertRaisesRegex(HTTPException, r"incompatible origin period length \(3; expected 12\)"):
+        # Read as the displayed twelve months this two-row CSV would be taken
+        # as it stands; read as the stored three it is a quarterly triangle
+        # with too few rows to make even one whole year.
+        with self.assertRaisesRegex(HTTPException, r"could not be rolled up to the method's period"):
             dfm_service._source_snapshots(
                 "Project",
                 "Class",
@@ -793,6 +832,67 @@ class DfmServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(snapshot["values"], [[100, 150], [200, None]])
+
+    def test_monthly_manual_input_is_rolled_up_for_an_annual_method(self) -> None:
+        method = self.method_payload()
+        self.write_monthly_source("Paid")
+
+        snapshot, _ = dfm_service._source_snapshots(
+            "Project",
+            "Class",
+            method,
+            load_input=True,
+            load_basis=False,
+        )
+
+        self.assertEqual(snapshot["values"], [[7800, 22200], [7800, None]])
+        self.assertEqual(snapshot["mask"], [[True, True], [True, False]])
+        self.assertEqual(snapshot["development_labels"], ["12", "24"])
+        # The roll-up happens in memory, so no coarser copy is left behind for
+        # a later load to trust.
+        self.assertEqual(sorted(item.name for item in self.datasets.glob("Paid*")), ["Paid@1@1@cum@dev.csv"])
+
+    def test_manual_input_roll_up_ignores_a_stale_coarser_copy_on_disk(self) -> None:
+        self.write_method_pair()
+        self.write_monthly_source("Paid", dependents=["Development Output"])
+        self.write_source("Premium", "1000\n1100\n", data_format="Vector")
+        (self.datasets / "Paid@12@12@cum@dev.csv").write_text("1,2\n3,\n", encoding="utf-8")
+
+        result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            normalize_dfm_method(saved)["data_tab"]["input_data_triangle_values"],
+            [[7800, 22200], [7800, None]],
+        )
+
+    def test_monthly_manual_input_is_rolled_up_when_a_save_picks_it_up(self) -> None:
+        previous = self.method_payload()
+        previous["details_tab"]["input_triangle"] = "Old Paid"
+        previous = recalculate_dfm_method(previous, timestamp="2026-01-01T00:00:00Z")
+        self.write_method_pair(previous)
+        method = self.method_payload()
+        self.write_monthly_source("Paid")
+        self.write_source("Premium", "1000\n1100\n", data_format="Vector")
+
+        with mock.patch.object(
+            dfm_service.dependent_propagation_service,
+            "require_reserving_class_writable",
+        ):
+            result = dfm_service.save_dfm_method(
+                "Project",
+                "Class",
+                method,
+                expected_owned_revision=method_revisions(previous)["owned_revision"],
+            )
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            normalize_dfm_method(saved)["data_tab"]["input_data_triangle_values"],
+            [[7800, 22200], [7800, None]],
+        )
 
     def test_engine_generated_precedent_is_regenerated_at_the_method_period(self) -> None:
         method = self.method_payload()

@@ -283,6 +283,9 @@ def _load_source_snapshot(
         not vector and source_development_length and required_development_length
         and source_development_length != required_development_length
     )
+    rollup_target_origin = required_origin_length or source_origin_length
+    rollup_target_development = None if vector else required_development_length
+    needs_rollup = False
     if (origin_mismatch or development_mismatch) \
             and _clean(sidecar.get("source_kind")).lower() == "engine":
         # The Engine builds its own datasets at any period from the source
@@ -294,14 +297,25 @@ def _load_source_snapshot(
                 reserving_class,
                 dataset_name,
                 sidecar,
-                required_origin_length or source_origin_length,
-                development_length=None if vector else required_development_length,
+                rollup_target_origin,
+                development_length=rollup_target_development,
             )
         except RuntimeError as exc:
             raise HTTPException(
                 422,
                 f"DFM precedent '{dataset_name}' could not be generated at the method's period: {exc}",
             ) from exc
+    elif (origin_mismatch or development_mismatch) and not precedent_cache_service.rollup_reason(
+        sidecar, rollup_target_origin, rollup_target_development
+    ):
+        # A hand-entered precedent stored at a finer period is aggregated to the
+        # method's own lengths in memory, from the CSV the sidecar names. No
+        # coarser copy is written, so an Excel refresh of the stored figures is
+        # picked up on the next load.
+        needs_rollup = True
+        csv_path = precedent_cache_service.sidecar_csv_path(project_name, reserving_class, sidecar)
+        if not csv_path:
+            raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
     else:
         if origin_mismatch:
             raise HTTPException(
@@ -315,11 +329,9 @@ def _load_source_snapshot(
                 f"DFM input '{dataset_name}' has incompatible development period length "
                 f"({source_development_length}; expected {required_development_length}).",
             )
-        csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
-        if not csv_file:
+        csv_path = precedent_cache_service.sidecar_csv_path(project_name, reserving_class, sidecar)
+        if not csv_path:
             raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
-        data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
-        csv_path = os.path.join(data_dir, csv_file)
     try:
         frame = pd.read_csv(csv_path, header=None).astype(object)
     except FileNotFoundError as exc:
@@ -330,6 +342,16 @@ def _load_source_snapshot(
         raise HTTPException(422, f"DFM precedent CSV is invalid: {dataset_name}: {exc}") from exc
     frame = frame.where(pd.notnull(frame), None)
     raw_values = frame.values.tolist()
+    if needs_rollup:
+        try:
+            raw_values = precedent_cache_service.rollup_rows(
+                sidecar, raw_values, rollup_target_origin, rollup_target_development
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                422,
+                f"DFM precedent '{dataset_name}' could not be rolled up to the method's period: {exc}",
+            ) from exc
     method_origin_labels = _axis_labels(canonical_origin_labels)
     origin_labels = method_origin_labels or _axis_labels(sidecar.get("origin_labels"))
     if len(origin_labels) != len(raw_values):

@@ -754,25 +754,44 @@ def _dependency_values(
     *,
     exact: bool,
 ) -> List[float | int | None]:
-    path = precedent_cache_service.precedent_csv_path(
-        project_name,
-        reserving_class,
-        dataset_name,
-        sidecar,
-        origin_length,
-        exact=exact,
-    )
+    stored_period = precedent_cache_service.source_period(sidecar)
+    # A hand-entered precedent stored at a finer period is aggregated to this
+    # method's own length in memory, from the CSV the sidecar names, so a
+    # coarser copy left on disk by an earlier release is never read.
+    rollup = bool(stored_period and stored_period != origin_length) \
+        and not precedent_cache_service.rollup_reason(sidecar, origin_length)
+    if rollup:
+        path = precedent_cache_service.sidecar_csv_path(project_name, reserving_class, sidecar)
+        if not path:
+            raise RuntimeError(f"Cached dataset CSV is missing for '{dataset_name}'.")
+    else:
+        path = precedent_cache_service.precedent_csv_path(
+            project_name,
+            reserving_class,
+            dataset_name,
+            sidecar,
+            origin_length,
+            exact=exact,
+        )
     try:
         frame = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
     except Exception as exc:
         raise RuntimeError(f"Unable to read '{dataset_name}': {exc}") from exc
+    rows = frame.to_numpy().tolist()
+    if rollup:
+        try:
+            rows = precedent_cache_service.rollup_rows(sidecar, rows, origin_length)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Unable to roll '{dataset_name}' up to {origin_length} months: {exc}"
+            ) from exc
     if _clean(sidecar.get("data_format")).lower() == "triangle":
         values: List[Any] = []
-        for row in frame.to_numpy().tolist():
+        for row in rows:
             value = next((item for item in reversed(row) if item is not None and not pd.isna(item)), None)
             values.append(value)
     else:
-        values = [row[0] if row else None for row in frame.to_numpy().tolist()]
+        values = [row[0] if row else None for row in rows]
     return _round_vector(values)
 
 
