@@ -1,10 +1,9 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.5.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.5.0
+# Release Note: A ResQ "User Calculation" average row now syncs across as a live row that keeps recalculating, under its ResQ name, instead of as frozen numbers.
 # Description: Compare every dataset and supported method output in the selected reserving class, push the whole class from whichever side changed last, and mark rows whose own timestamps disagree with that direction for review.
 # Scope: Reserving Class
-# Icon: sync
 # </arcrho-macro>
 
 """Review and push one reserving class's ArcRho/ResQ differences one way.

@@ -1,10 +1,9 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.9.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.9.0
+# Release Note: The copy taken of each class before it is imported now runs on ArcRho Server rather than file by file across the mapped drive, which is one request per class instead of one round trip per method, sidecar and data file. What the copies hold is unchanged, and the summary now separates a class whose copy failed from one whose copy the server did not confirm.
 # Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
-# Icon: layers
 # </arcrho-macro>
 
 from __future__ import annotations

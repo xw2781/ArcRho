@@ -49,6 +49,15 @@ class MacroLibraryServiceTests(unittest.TestCase):
         self.assertEqual(meta["version"], "1.2.5")
         self.assertEqual(meta["release_note"], "Fixed a bug.")
 
+    def test_parse_macro_metadata_reads_the_declared_flight_deck_icon(self) -> None:
+        source = _macro_source("1.0.0").replace("# Scope: DFM\n", "# Scope: DFM\n# Icon: Calculator\n")
+        self.assertEqual(_parse_macro_metadata(source, "sample.py")["icon"], "calculator")
+        # A macro naming nothing, or something that is not a short name, leaves the choice
+        # to the Flight Deck rather than reaching it as a glyph name it cannot use.
+        self.assertEqual(_parse_macro_metadata(_macro_source("1.0.0"), "sample.py")["icon"], "")
+        odd = _macro_source("1.0.0").replace("# Scope: DFM\n", "# Scope: DFM\n# Icon: <svg onload=x>\n")
+        self.assertEqual(_parse_macro_metadata(odd, "sample.py")["icon"], "")
+
     def test_list_reports_unreachable_library(self) -> None:
         config.MACRO_LIBRARY_DIR = str(self.library_dir / "missing")
         result = macro_library_service.list_library_macros()

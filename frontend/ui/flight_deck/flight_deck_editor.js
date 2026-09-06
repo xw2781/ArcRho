@@ -16,7 +16,7 @@ import {
   normalizeIcon,
   packMarks,
   sanitizeCustomIcon,
-} from "./flight_deck_icons.js?v=20260901b";
+} from "./flight_deck_icons.js?v=20260906a";
 import { hideDeckTooltip, showDeckTooltip } from "./flight_deck_tooltip.js?v=20260901a";
 
 const SVG_NS = "http://www.w3.org/2000/svg";

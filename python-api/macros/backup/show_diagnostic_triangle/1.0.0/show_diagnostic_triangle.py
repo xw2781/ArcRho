@@ -1,11 +1,10 @@
 # <arcrho-macro>
 # Title: Show Diagnostic Triangle
-# Version: 1.0.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.0.0
+# Release Note: Initial release for opening the diagnostic triangle linked to the active DFM.
 # Description: Open the diagnostic dataset linked to the active Project Instance DFM using
 #   E:\ResQ\Automations\Reserve Review\diagnostic_mapping.xlsx.
 # Scope: DFM
-# Icon: chart
 # </arcrho-macro>
 
 from __future__ import annotations

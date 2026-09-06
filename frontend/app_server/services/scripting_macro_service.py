@@ -58,6 +58,17 @@ _MACRO_SCOPE_LABELS = {
 }
 
 
+# A macro may name the Flight Deck glyph a button made from it should start with. The catalog of
+# names lives with the deck, so this only keeps the shape of a name and lets the deck decide
+# whether it knows one.
+_MACRO_ICON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+
+
+def _normalize_macro_icon(value: Any) -> str:
+    name = re.sub(r"\s+", "", str(value or "").strip().lower())
+    return name if _MACRO_ICON_PATTERN.match(name) else ""
+
+
 def _normalize_macro_scopes(value: Any) -> List[str]:
     parts = re.split(r"[,;/|]+", str(value or ""))
     scopes: List[str] = []
@@ -85,6 +96,7 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
     description_parts: List[str] = []
     generated = ""
     scope_text = ""
+    icon_text = ""
     version = ""
     release_note = ""
     active_key = ""
@@ -120,6 +132,10 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
                 scope_text = value
                 active_key = "scope"
                 continue
+            if key == "icon":
+                icon_text = value
+                active_key = "icon"
+                continue
             if key == "version":
                 version = value
                 active_key = "version"
@@ -140,6 +156,7 @@ def _parse_macro_metadata(text: str, filename: str) -> Dict[str, Any]:
         "generated": generated,
         "scope": scopes[0],
         "scopes": scopes,
+        "icon": _normalize_macro_icon(icon_text),
         "version": version,
         "release_note": release_note,
     }
@@ -217,6 +234,7 @@ def list_macros() -> List[Dict[str, Any]]:
                 "description": meta["description"],
                 "scope": meta["scope"],
                 "scopes": meta["scopes"],
+                "icon": meta["icon"],
                 "version": meta["version"],
                 "path": path,
                 "modified": str(int(stat.st_mtime)),

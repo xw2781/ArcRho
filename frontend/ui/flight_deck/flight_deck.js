@@ -4,7 +4,7 @@
 
 import { getHostApi, shell } from "../shell/shell_context.js?v=20260510a";
 import { runMacroById } from "../macro/macro_window.js?v=20260902a";
-import { createIconElement, defaultIconForScopes, normalizeIcon } from "./flight_deck_icons.js?v=20260901b";
+import { createIconElement, iconForMacro, normalizeIcon } from "./flight_deck_icons.js?v=20260906a";
 import { openFlightDeckButtonEditor } from "./flight_deck_editor.js?v=20260901b";
 import { hideDeckTooltip as hideTooltip, showDeckTooltip } from "./flight_deck_tooltip.js?v=20260901a";
 
@@ -269,11 +269,6 @@ function buttonLabel(button) {
   return button.label || macro?.name || button.macroId;
 }
 
-function macroScopeList(macro) {
-  const raw = macro?.scopes ?? macro?.scope ?? [];
-  return (Array.isArray(raw) ? raw : [raw]).map((value) => String(value || "").trim()).filter(Boolean);
-}
-
 /* ------------------------------------------------------------------ render */
 
 function renderDeck() {
@@ -398,7 +393,7 @@ function addDeckButtonByHand() {
     macroId: macros[0].id,
     macros,
     label: "",
-    icon: defaultIconForScopes(macroScopeList(macroIndex.get(macros[0].id))),
+    icon: iconForMacro(macroIndex.get(macros[0].id)),
     onApply: ({ macroId, label, icon }) => {
       const name = macroIndex.get(macroId)?.name || "";
       config.buttons.push({
@@ -423,7 +418,7 @@ export async function addMacroToFlightDeck(macro) {
     id: newButtonId(),
     macroId: macro.id,
     label: "",
-    icon: defaultIconForScopes(macroScopeList(macro)),
+    icon: iconForMacro(macro),
   });
   void openFlightDeck();
   saveConfig();

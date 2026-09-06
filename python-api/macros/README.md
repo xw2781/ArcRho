@@ -12,6 +12,24 @@ its `<arcrho-macro>` metadata block:
 # Release Note: Briefly explain what changed from the previous version.
 ```
 
+Every active macro must also name the Flight Deck icon it should arrive with:
+
+```text
+# Icon: calculator
+```
+
+- The value is one short name from the Flight Deck's built-in glyph catalog in
+  `frontend/ui/flight_deck/flight_deck_icons.js` (for example `calculator`,
+  `document`, `chart`, `download`, `upload`, `sync`, `layers`, `gear`, `table`).
+- The name decides only the icon a *new* Flight Deck button starts with, so every
+  user who loads the macro from the shared library gets the same button. A user
+  who then changes their own button keeps their choice: the icon is stored with
+  the button, and the macro never overwrites it.
+- A missing name, or one the catalog does not hold, falls back to the glyph for
+  the macro's `Scope`.
+- `frontend/tests/flight_deck.test.mjs` fails if an active macro here names no
+  icon or names one the catalog does not hold.
+
 - Use semantic versions in `major.minor.patch` form.
 - `Release Note` must be a short, non-empty, single-line string describing the
   current version's change from the immediately preceding version. For a new

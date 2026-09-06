@@ -71,6 +71,17 @@ export function defaultIconForScopes(scopes = []) {
   return { kind: "builtin", name: "bolt" };
 }
 
+// The glyph a new button starts with. A macro can name one in its own metadata block, so a shared
+// macro arrives looking the same on every PC that loads it; a name the catalog does not hold, or
+// no name at all, falls back to the scope glyph. Whatever a button ends up with is stored with the
+// button, so changing it afterwards is never undone by the macro.
+export function iconForMacro(macro) {
+  const declared = String(macro?.icon || "").trim().toLowerCase();
+  if (BUILTIN_ICONS[declared]) return { kind: "builtin", name: declared };
+  const scopes = macro?.scopes ?? macro?.scope ?? [];
+  return defaultIconForScopes(Array.isArray(scopes) ? scopes : [scopes]);
+}
+
 export function normalizeIcon(icon) {
   if (icon?.kind === "custom" && typeof icon.markup === "string" && icon.markup.trim()) {
     const safe = {

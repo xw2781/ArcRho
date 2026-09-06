@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -10,6 +10,7 @@ import {
   cutMarksNear,
   defaultIconForScopes,
   eraseMarksNear,
+  iconForMacro,
   iconToMarks,
   marksToIconMarkup,
   normalizeIcon,
@@ -99,6 +100,34 @@ test("built-in icons cover the macro scopes and fall back to a known glyph", () 
   assert.deepEqual(defaultIconForScopes([]), { kind: "builtin", name: "bolt" });
   assert.deepEqual(normalizeIcon({ kind: "builtin", name: "not-a-glyph" }), { kind: "builtin", name: "bolt" });
   assert.deepEqual(normalizeIcon(null), { kind: "builtin", name: "bolt" });
+});
+
+test("a macro's own icon name decides the glyph a new button starts with", () => {
+  assert.deepEqual(iconForMacro({ icon: "Calculator", scopes: ["DFM"] }), { kind: "builtin", name: "calculator" });
+  // An unknown name, or none, leaves the scope glyph in charge rather than showing nothing.
+  assert.deepEqual(iconForMacro({ icon: "not-a-glyph", scopes: ["DFM"] }), { kind: "builtin", name: "chart" });
+  assert.deepEqual(iconForMacro({ scopes: ["Reserving Class"] }), { kind: "builtin", name: "layers" });
+  assert.deepEqual(iconForMacro({ icon: "sync", scope: "Reserving Class" }), { kind: "builtin", name: "sync" });
+  assert.deepEqual(iconForMacro(null), { kind: "builtin", name: "bolt" });
+
+  // Both routes to a new button read the macro's icon, and the deck stores whatever the button
+  // ended up with, so a user's own choice is never overwritten by the macro.
+  const deck = read("../ui/flight_deck/flight_deck.js");
+  assert.equal(deck.match(/icon: iconForMacro\(/g)?.length, 2);
+  assert.match(deck, /icon: normalizeIcon\(entry\?\.icon\)/);
+});
+
+test("every published macro names an icon the deck knows", () => {
+  const macroDir = new URL("../../python-api/macros/", import.meta.url);
+  const files = readdirSync(macroDir).filter((name) => name.endsWith(".py") && name !== "publish_macro_library.py");
+  assert.ok(files.length >= 7);
+  for (const name of files) {
+    const block = readFileSync(new URL(name, macroDir), "utf8").match(/# <arcrho-macro>[\s\S]*?# <\/arcrho-macro>/)?.[0];
+    assert.ok(block, `${name} has no metadata block`);
+    const icon = block.match(/^# Icon:\s*(\S+)\s*$/m)?.[1];
+    assert.ok(icon, `${name} names no icon`);
+    assert.ok(BUILTIN_ICON_NAMES.includes(icon), `${name} names an unknown icon: ${icon}`);
+  }
 });
 
 test("a pasted drawing is accepted as path data and rejected when it is not a drawing", () => {

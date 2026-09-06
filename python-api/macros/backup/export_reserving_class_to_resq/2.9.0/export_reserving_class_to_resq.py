@@ -1,10 +1,9 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.9.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 2.9.0
+# Release Note: A DFM now carries its tail into ResQ: each average row's "- Ult" value is written as that row's tail factor, and the Curves tab settings (Future Dev. Periods, Free Fit C, the Include flags, User Entry columns, and the Selected Estimate Number per period and for the tail) are written to the ResQ Curves tab.
 # Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
 # Scope: Reserving Class
-# Icon: upload
 # </arcrho-macro>
 
 """Push one ArcRho reserving class into ResQ.
