@@ -84,6 +84,8 @@ class FakeElement {
 
   addEventListener(type, handler) { this.handlers.set(type, handler); }
 
+  focus() {}
+
   dispatchEvent(event) { this.handlers.get(event?.type)?.(event); return true; }
 
   querySelector(selector) {
@@ -271,7 +273,7 @@ test("the Data tab locks Development Length to 0 for a vector dataset", () => {
 // own file is stored at, the window opens at the display shape the sidecar
 // saved, and a coarser view is read-only because its cells are a roll-up.
 
-test("a length control offers only whole multiples of the stored period", async () => {
+test("a length control mutes the lengths the stored period rules out", async () => {
   const { runtime, elements, restore } = await createLengthControlRuntime();
   try {
     assert.deepEqual(runtime.lenChoicesForStoredLength(1), [12, 6, 3, 1]);
@@ -283,32 +285,72 @@ test("a length control offers only whole multiples of the stored period", async 
     assert.deepEqual(runtime.lenChoicesForStoredLength(0), [12, 6, 3, 1]);
 
     const select = elements.originLenSelect;
+    const values = () => select.options.map((option) => option.value);
+    const muted = () => select.options.filter((option) => runtime.lenOptionIsUnavailable(option)).map((option) => option.value);
+
     runtime.setLenSelectValue("originLenSelect", "6");
-    runtime.setLenSelectChoices("originLenSelect", runtime.lenChoicesForStoredLength(3));
-    assert.deepEqual(select.options.map((option) => option.value), ["12", "6", "3"]);
-    // A length the narrowed list still carries is kept.
+    runtime.setLenSelectStoredLength("originLenSelect", 3);
+    // The ladder itself never shrinks: only what can be chosen changes.
+    assert.deepEqual(values(), ["12", "6", "3", "1"]);
+    assert.deepEqual(muted(), ["1"]);
+    // A length still offered is kept.
     assert.equal(select.value, "6");
     assert.equal(elements.originLenDisplay.valueLabel.textContent, "6");
 
-    // One it no longer carries lands on the stored period itself, which is
+    // One that has just been muted lands on the stored period itself, which is
     // where the values live.
-    runtime.setLenSelectChoices("originLenSelect", runtime.lenChoicesForStoredLength(12));
-    assert.deepEqual(select.options.map((option) => option.value), ["12"]);
+    runtime.setLenSelectStoredLength("originLenSelect", 12);
+    assert.deepEqual(values(), ["12", "6", "3", "1"]);
+    assert.deepEqual(muted(), ["6", "3", "1"]);
     assert.equal(select.value, "12");
     assert.equal(elements.originLenDisplay.valueLabel.textContent, "12");
 
-    // Widening again restores the finer lengths without disturbing the value.
-    runtime.setLenSelectChoices("originLenSelect", runtime.lenChoicesForStoredLength(1));
-    assert.deepEqual(select.options.map((option) => option.value), ["12", "6", "3", "1"]);
+    // A muted length cannot be set, by the list or by anything reading the
+    // saved display shape back into the control.
+    assert.equal(runtime.setLenSelectValue("originLenSelect", "6"), false);
     assert.equal(select.value, "12");
 
-    // The dropdown list the user actually sees is repainted from the select,
-    // so it can never offer a length the select no longer holds.
-    runtime.setLenSelectChoices("originLenSelect", runtime.lenChoicesForStoredLength(6));
+    // Opening it again clears the muting without disturbing the value.
+    runtime.setLenSelectStoredLength("originLenSelect", 1);
+    assert.deepEqual(muted(), []);
+    assert.equal(select.value, "12");
+
+    // The list the user actually sees carries every length, with the ones the
+    // stored period rules out marked rather than dropped, and each of those
+    // says why on hover.
+    runtime.setLenSelectStoredLength("originLenSelect", 6);
+    const rows = elements.originLenDropdown.children;
+    assert.deepEqual(rows.map((row) => row.textContent), ["12", "6", "3", "1"]);
     assert.deepEqual(
-      elements.originLenDropdown.children.map((option) => option.textContent),
-      ["12", "6"],
+      rows.map((row) => row.classList.contains("is-unavailable")),
+      [false, false, true, true],
     );
+    assert.deepEqual(rows.map((row) => row.getAttribute("aria-disabled")), [null, null, "true", "true"]);
+    assert.match(runtime.lenUnavailableReason(6), /stored at 6/u);
+    assert.equal(runtime.lenUnavailableReason(0), "");
+
+    // A muted row neither takes the highlight nor accepts a click.
+    rows[2].fire("mouseenter");
+    assert.equal(rows[2].classList.contains("active"), false);
+    rows[2].fire("mousedown");
+    assert.equal(select.value, "12");
+    rows[1].fire("mousedown");
+    assert.equal(select.value, "6");
+
+    // The keyboard and the wheel step over the muted rows rather than resting
+    // on one, so neither can reach a length the dataset cannot be shown at.
+    const activeIndex = () => elements.originLenDropdown.children.findIndex((row) => row.classList.contains("active"));
+    for (let step = 0; step < 4; step += 1) {
+      elements.originLenDisplay.fire("keydown", { key: "ArrowDown" });
+      assert.ok(activeIndex() === 0 || activeIndex() === 1, `the highlight landed on a muted row: ${activeIndex()}`);
+    }
+    for (let step = 0; step < 4; step += 1) {
+      elements.originLenDisplay.fire("keydown", { key: "ArrowUp" });
+      assert.ok(activeIndex() === 0 || activeIndex() === 1, `the highlight landed on a muted row: ${activeIndex()}`);
+    }
+    runtime.setLenSelectValue("originLenSelect", "6");
+    elements.originLenDisplay.fire("wheel", { deltaY: 1 });
+    assert.equal(select.value, "6");
   } finally {
     restore();
   }
@@ -337,16 +379,25 @@ test("the offered lengths follow the open dataset's stored period", () => {
   );
 });
 
-test("the stored period is shown beside each length control, never as a control", () => {
-  assert.match(datasetViewerViewSource, /<span id="originLenStoredNote" class="lenStoredNote" hidden><\/span>/u);
-  assert.match(datasetViewerViewSource, /<span id="devLenStoredNote" class="lenStoredNote" hidden><\/span>/u);
-  assert.match(datasetViewerCss, /#datasetTopBar \.lenStoredNote \{/u);
-  // Static wording once the dataset holds values, and a promise of the shape
-  // the first save will fix while it is still empty.
-  assert.match(persistenceControllerSource, /`stored \$\{value\}`/u);
-  assert.match(persistenceControllerSource, /`will be stored at \$\{value\} on first save`/u);
-  // A vector has no development dimension, so it shows no development caption.
-  assert.match(persistenceControllerSource, /currentDatasetIsVector\(\) \? 0 : source\.development_length/u);
+test("the stored period reads off the list, not a caption beside the control", () => {
+  // Nothing in the strip repeats the stored period any more: the list carries
+  // it, so the captions that used to sit beside the controls are gone.
+  assert.doesNotMatch(datasetViewerViewSource, /lenStoredNote/u);
+  assert.doesNotMatch(datasetViewerCss, /lenStoredNote/u);
+  assert.match(datasetViewerCss, /#datasetTopBar \.lenDropdown \.lenOption\.is-unavailable/u);
+  // Every length stays in the list; the stored period only decides which of
+  // them are muted.
+  assert.match(persistenceControllerSource, /setLenSelectStoredLength\("originLenSelect", stored\.origin_length\);/u);
+  assert.match(persistenceControllerSource, /setLenSelectStoredLength\("devLenSelect", stored\.development_length\);/u);
+  assert.match(requestControllerSource, /for \(const value of LEN_CHOICES\) \{/u);
+  assert.match(requestControllerSource, /option\.dataset\.unavailable = "1";/u);
+  // Hovering a control still names the shape the file is held at, and says so
+  // early while an empty dataset can still be fixed at any length.
+  assert.match(persistenceControllerSource, /`This dataset is stored at \$\{value\}\.`/u);
+  assert.match(persistenceControllerSource, /`This dataset is still empty: its first save stores it at \$\{value\}\.`/u);
+  assert.match(requestControllerSource, /wrap\.getAttribute\("data-locked-reason"\) \|\| wrap\.getAttribute\("data-hint"\)/u);
+  // A vector has no development dimension, so it shows no development hint.
+  assert.match(persistenceControllerSource, /currentDatasetIsVector\(\) \? "" : storedLengthHintText\(source\.development_length, pending\)/u);
 });
 
 test("a coarser view of a dataset is read-only and says why", () => {

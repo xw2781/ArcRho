@@ -17,8 +17,8 @@ export function registerDataTabPersistenceController(runtime) {
   const isDatasetReadOnly = defer("isDatasetReadOnly");
   const getDatasetRunDataFormat = defer("getDatasetRunDataFormat");
   const setLenSelectLock = defer("setLenSelectLock");
-  const setLenSelectChoices = defer("setLenSelectChoices");
-  const lenChoicesForStoredLength = defer("lenChoicesForStoredLength");
+  const setLenSelectStoredLength = defer("setLenSelectStoredLength");
+  const setLenSelectHint = defer("setLenSelectHint");
   let notesContextKey = "", notesContextPayload = null, notesDirty = false, lastSavedNotesText = "", datasetNotesController = null, datasetSettingsDirty = false, sidecarContextKey = "", sidecarContextPayload = null, lastSavedDatasetSettings = null, sidecarSyncNonce = 0, datasetExternalLinksLoaded = false, datasetCloseConfirm = null, hostInputsPublished = false;
   let datasetExcelLinkCheckAbortController = null;
   const datasetExcelLinkCheckedKeys = new Set();
@@ -341,31 +341,28 @@ export function registerDataTabPersistenceController(runtime) {
 
   function applyStoredLengthChoices() {
     const stored = storedLengthIsPending() ? { origin_length: 0, development_length: 0 } : getStoredLengthPair();
-    setLenSelectChoices("originLenSelect", lenChoicesForStoredLength(stored.origin_length));
-    setLenSelectChoices("devLenSelect", lenChoicesForStoredLength(stored.development_length));
+    setLenSelectStoredLength("originLenSelect", stored.origin_length);
+    setLenSelectStoredLength("devLenSelect", stored.development_length);
   }
 
-  function setStoredLengthNote(elementId, length, pending) {
-    const note = document.getElementById(elementId);
-    if (!note) return;
+  function storedLengthHintText(length, pending) {
     const value = Number(length);
-    if (!Number.isFinite(value) || value <= 0) {
-      note.textContent = "";
-      note.hidden = true;
-      return;
-    }
-    note.textContent = pending ? `will be stored at ${value} on first save` : `stored ${value}`;
-    note.hidden = false;
+    if (!Number.isFinite(value) || value <= 0) return "";
+    return pending
+      ? `This dataset is still empty: its first save stores it at ${value}.`
+      : `This dataset is stored at ${value}.`;
   }
 
-  function updateStoredLengthReadout() {
+  // The stored period reads off the list itself, where the lengths it rules out
+  // are muted; the trigger only repeats it for anyone hovering the control, and
+  // says so early while an empty dataset can still be fixed at any length.
+  function updateStoredLengthHints() {
     const pending = storedLengthIsPending();
     const source = pending ? getCurrentLengthControlValues() : getStoredLengthPair();
-    setStoredLengthNote("originLenStoredNote", source.origin_length, pending);
-    setStoredLengthNote(
-      "devLenStoredNote",
-      currentDatasetIsVector() ? 0 : source.development_length,
-      pending,
+    setLenSelectHint("originLenSelect", storedLengthHintText(source.origin_length, pending));
+    setLenSelectHint(
+      "devLenSelect",
+      currentDatasetIsVector() ? "" : storedLengthHintText(source.development_length, pending),
     );
   }
 
@@ -467,7 +464,7 @@ export function registerDataTabPersistenceController(runtime) {
     updateManualDatasetModeControls();
     updateVectorDevelopmentLengthControl();
     applyStoredLengthChoices();
-    updateStoredLengthReadout();
+    updateStoredLengthHints();
     notifyDatasetDirtyState();
   }
 
@@ -505,7 +502,7 @@ export function registerDataTabPersistenceController(runtime) {
     setDatasetNumberFormatValue(normalized.number_format);
     refreshLenDropdowns();
     updateVectorDevelopmentLengthControl();
-    updateStoredLengthReadout();
+    updateStoredLengthHints();
   }
 
   function invalidateDatasetContextLoads() {
@@ -1327,7 +1324,7 @@ export function registerDataTabPersistenceController(runtime) {
     getStoredLengthPair,
     storedLengthIsPending,
     applyStoredLengthChoices,
-    updateStoredLengthReadout,
+    updateStoredLengthHints,
     datasetDisplayIsCoarserThanStored,
     datasetCoarserViewMessage,
     validateManualDatasetLengthChange,

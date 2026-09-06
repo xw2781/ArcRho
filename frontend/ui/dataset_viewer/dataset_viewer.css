@@ -180,24 +180,12 @@ body {
   justify-content: flex-end;
 }
 
-/* The two length controls share a column with the stored-period caption that
-   sits beside each of them. They are laid out from the left so both controls
-   keep one x position however long the caption on the other row runs, and the
-   column's own lead-in comes from --topbar-input-offset. */
+/* The two length controls are laid out from the left so both keep one x
+   position, and the column's own lead-in comes from --topbar-input-offset. */
 .topbar-input-stack .topbar-input {
   justify-content: flex-start;
   align-items: center;
   gap: 8px;
-}
-
-/* Information, never a control: the shape the dataset's own file is held at,
-   which nothing in the strip can edit. */
-#datasetTopBar .lenStoredNote {
-  font-size: 11px;
-  line-height: 1;
-  color: var(--muted);
-  white-space: nowrap;
-  user-select: none;
 }
 
 .chk, .rad {
@@ -363,6 +351,18 @@ body {
 
 #datasetTopBar .lenDropdown .lenOption {
   text-align: center;
+}
+
+/* A length the dataset's stored period rules out keeps its place in the list
+   and reads as unavailable, the same dimming the disabled controls use, so the
+   list itself shows which display shapes this dataset can take. */
+#datasetTopBar .lenDropdown .lenOption.is-unavailable,
+#datasetTopBar .lenDropdown .lenOption.is-unavailable:hover {
+  cursor: default;
+  opacity: 0.55;
+  /* Takes the list's own surface in either theme, so the row cannot light up
+     under the pointer as a choosable one does. */
+  background: inherit;
 }
 
 /* =========================

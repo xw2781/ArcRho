@@ -187,7 +187,7 @@ export function registerDataTabRequestController(runtime) {
     return Number.isInteger(idx) ? idx : -1;
   }
 
-  function setLenDropdownActiveIndex(selectId, idx) {
+  function setLenDropdownActiveIndex(selectId, idx, dir = 1) {
     const parts = getLenDropdownElements(selectId);
     const dropdown = parts?.dropdown;
     if (!dropdown) return;
@@ -199,6 +199,19 @@ export function registerDataTabRequestController(runtime) {
     let next = Number.isFinite(idx) ? idx : 0;
     if (next < 0) next = opts.length - 1;
     if (next >= opts.length) next = 0;
+    // A muted length is shown but cannot be chosen, so the highlight steps over
+    // it in the direction the user was already moving.
+    const step = dir >= 0 ? 1 : -1;
+    for (let seen = 0; seen < opts.length && opts[next]?.dataset?.unavailable === "1"; seen += 1) {
+      next += step;
+      if (next < 0) next = opts.length - 1;
+      if (next >= opts.length) next = 0;
+    }
+    if (opts[next]?.dataset?.unavailable === "1") {
+      lenDropdownActiveIndexBySelect.set(selectId, -1);
+      opts.forEach((el) => el.classList.toggle("active", false));
+      return;
+    }
     lenDropdownActiveIndexBySelect.set(selectId, next);
     opts.forEach((el, i) => el.classList.toggle("active", i === next));
     opts[next]?.scrollIntoView?.({ block: "nearest" });
@@ -238,6 +251,17 @@ export function registerDataTabRequestController(runtime) {
     syncLenDropdownButtonLabel(selectId);
   }
 
+  // The period the dataset's own file is held at is a fact about the control,
+  // not a control of its own, so it rides on the trigger's tooltip and on the
+  // muted rows of the list rather than as a caption beside the strip.
+  function setLenSelectHint(selectId, hint) {
+    const wrap = getLenDropdownElements(selectId)?.wrap;
+    if (!wrap) return;
+    const text = String(hint || "");
+    if (text) wrap.setAttribute("data-hint", text);
+    else wrap.removeAttribute("data-hint");
+  }
+
   function syncLenDropdownButtonLabel(selectId) {
     const parts = getLenDropdownElements(selectId);
     const select = parts?.select;
@@ -251,6 +275,13 @@ export function registerDataTabRequestController(runtime) {
     }
     const selected = select.options[select.selectedIndex];
     label.textContent = (selected?.textContent || select.value || "").trim();
+  }
+
+  // A length the stored period rules out stays in the list and reads as
+  // unavailable, so the menu shows the whole ladder and says which rungs this
+  // dataset can be displayed at.
+  function lenOptionIsUnavailable(option) {
+    return option?.dataset?.unavailable === "1" || option?.disabled === true;
   }
 
   function renderLenDropdownOptions(selectId) {
@@ -270,16 +301,24 @@ export function registerDataTabRequestController(runtime) {
 
     options.forEach((opt, i) => {
       const item = document.createElement("div");
-      item.className = "datasetOption lenOption";
+      const unavailable = lenOptionIsUnavailable(opt);
+      item.className = unavailable ? "datasetOption lenOption is-unavailable" : "datasetOption lenOption";
       item.textContent = String(opt.textContent || opt.value || "");
       item.dataset.value = String(opt.value || "");
       item.dataset.index = String(i);
+      if (unavailable) {
+        item.dataset.unavailable = "1";
+        item.setAttribute("aria-disabled", "true");
+        attachArcrhoTooltip(item, () => String(opt.title || ""));
+      }
       item.addEventListener("mouseenter", () => {
+        if (unavailable) return;
         setLenDropdownActiveIndex(selectId, i);
       });
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (unavailable) return;
         setLenSelectValue(selectId, opt.value, { emitChange: true });
         showLenDropdown(selectId, false);
         parts.button?.focus();
@@ -328,7 +367,8 @@ export function registerDataTabRequestController(runtime) {
     const select = document.getElementById(selectId);
     if (!select) return false;
     const nextValue = String(value ?? "");
-    if (![...select.options].some((opt) => opt.value === nextValue)) return false;
+    const option = [...select.options].find((opt) => opt.value === nextValue);
+    if (!option || lenOptionIsUnavailable(option)) return false;
     const changed = select.value !== nextValue;
     select.value = nextValue;
     syncLenDropdownButtonLabel(selectId);
@@ -348,7 +388,7 @@ export function registerDataTabRequestController(runtime) {
       nextIdx = Math.max(0, select.selectedIndex);
     }
     const opt = select.options[nextIdx];
-    if (!opt) return false;
+    if (!opt || lenOptionIsUnavailable(opt)) return false;
     const changed = select.value !== opt.value;
     select.value = opt.value;
     syncLenDropdownButtonLabel(selectId);
@@ -364,13 +404,17 @@ export function registerDataTabRequestController(runtime) {
     if (!dropdown || !dropdown.children.length) return;
     const idx = getLenDropdownActiveIndex(selectId);
     const baseIdx = idx >= 0 ? idx : 0;
-    setLenDropdownActiveIndex(selectId, baseIdx + dir);
+    setLenDropdownActiveIndex(selectId, baseIdx + dir, dir);
   }
 
   function cycleLenSelect(selectId, dir) {
     const select = document.getElementById(selectId);
     if (!select) return;
-    const idx = select.selectedIndex + dir;
+    let idx = select.selectedIndex + dir;
+    // The wheel walks past the muted lengths instead of stopping on one.
+    while (idx >= 0 && idx < select.options.length && lenOptionIsUnavailable(select.options[idx])) {
+      idx += dir;
+    }
     if (idx < 0 || idx >= select.options.length) return;
     select.selectedIndex = idx;
     syncLenDropdownButtonLabel(selectId);
@@ -387,7 +431,10 @@ export function registerDataTabRequestController(runtime) {
     if (button.dataset.wired === "1") return;
     button.dataset.wired = "1";
 
-    attachArcrhoTooltip(button, () => wrap.getAttribute("data-locked-reason") || "");
+    attachArcrhoTooltip(
+      button,
+      () => wrap.getAttribute("data-locked-reason") || wrap.getAttribute("data-hint") || "",
+    );
 
     button.addEventListener("click", (e) => {
       e.preventDefault();
@@ -485,25 +532,42 @@ export function registerDataTabRequestController(runtime) {
     return offered.length ? offered : [stored];
   }
 
-  function setLenSelectChoices(selectId, values) {
+  function lenUnavailableReason(storedLength) {
+    const stored = Number(storedLength);
+    if (!Number.isFinite(stored) || stored <= 0) return "";
+    return `This dataset is stored at ${stored}, so it can only be shown at a whole multiple of ${stored}.`;
+  }
+
+  // The ladder itself never changes: a length the stored period rules out keeps
+  // its place in the list and is shown muted, so the menu carries the shape the
+  // file is held at and nothing has to be said beside the control.
+  function setLenSelectStoredLength(selectId, storedLength) {
     const select = document.getElementById(selectId);
     if (!select) return false;
-    const wanted = (Array.isArray(values) ? values : []).map((value) => String(value));
-    if (!wanted.length) return false;
-    const current = Array.from(select.options).map((option) => option.value);
-    if (current.length === wanted.length && current.every((value, i) => value === wanted[i])) return false;
+    const offered = lenChoicesForStoredLength(storedLength);
+    const available = new Set(offered.map((value) => String(value)));
+    const reason = lenUnavailableReason(storedLength);
+    const shape = (value, unavailable) => `${value}:${unavailable ? "0" : "1"}`;
+    const current = Array.from(select.options).map((option) => shape(option.value, lenOptionIsUnavailable(option)));
+    const wanted = LEN_CHOICES.map((value) => shape(value, !available.has(String(value))));
+    if (current.length === wanted.length && current.every((entry, i) => entry === wanted[i])) return false;
     const previous = select.value;
     select.innerHTML = "";
-    for (const value of wanted) {
+    for (const value of LEN_CHOICES) {
       const option = document.createElement("option");
-      option.value = value;
-      option.textContent = value;
+      option.value = String(value);
+      option.textContent = String(value);
+      if (!available.has(String(value))) {
+        option.disabled = true;
+        option.dataset.unavailable = "1";
+        option.title = reason;
+      }
       select.appendChild(option);
     }
     // The finest length still offered is the stored period itself, which is
-    // where the values live, so a display length the list no longer carries
-    // lands there rather than on an arbitrary neighbour.
-    select.value = wanted.includes(previous) ? previous : wanted[wanted.length - 1];
+    // where the values live, so a display length that has just been muted lands
+    // there rather than on an arbitrary neighbour.
+    select.value = available.has(previous) ? previous : String(offered[offered.length - 1]);
     syncLenDropdownButtonLabel(selectId);
     renderLenDropdownOptions(selectId);
     return true;
@@ -514,8 +578,8 @@ export function registerDataTabRequestController(runtime) {
     const d = document.getElementById("devLenSelect");
     if (!o || !d) return;
 
-    setLenSelectChoices("originLenSelect", LEN_CHOICES);
-    setLenSelectChoices("devLenSelect", LEN_CHOICES);
+    setLenSelectStoredLength("originLenSelect", 0);
+    setLenSelectStoredLength("devLenSelect", 0);
 
     // defaults
     o.value = "12";
@@ -866,7 +930,10 @@ export function registerDataTabRequestController(runtime) {
     setLenSelectLock,
     setLenSelectValue,
     lenChoicesForStoredLength,
-    setLenSelectChoices,
+    lenOptionIsUnavailable,
+    lenUnavailableReason,
+    setLenSelectStoredLength,
+    setLenSelectHint,
     chooseActiveLenDropdownOption,
     moveLenDropdownActiveOption,
     cycleLenSelect,

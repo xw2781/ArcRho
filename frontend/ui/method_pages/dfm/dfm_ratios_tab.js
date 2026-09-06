@@ -1365,11 +1365,20 @@ export function wireDfmSpinnerControls() {
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", index === selectEl.selectedIndex ? "true" : "false");
       if (index === selectEl.selectedIndex) item.classList.add("active");
+      // An option the select itself refuses, such as a period length the open
+      // dataset is not stored at, stays in the list but reads as unavailable.
+      if (option.disabled) {
+        item.classList.add("is-unavailable");
+        item.disabled = true;
+        item.setAttribute("aria-disabled", "true");
+        if (option.title) item.title = option.title;
+      }
       item.textContent = option.textContent || option.value || "";
       item.addEventListener("mousedown", (e) => e.preventDefault());
       item.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (option.disabled) return;
         if (selectEl.selectedIndex !== index) {
           selectEl.selectedIndex = index;
           selectEl.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1408,7 +1417,10 @@ export function wireDfmSpinnerControls() {
       ascending = second > first;
     }
     const step = ascending ? delta : -delta;
-    const next = Math.max(0, Math.min(maxIdx, current + step));
+    let next = Math.max(0, Math.min(maxIdx, current + step));
+    // Step past an option the select refuses rather than stopping on it.
+    while (next > 0 && next < maxIdx && selectEl.options[next]?.disabled) next += step;
+    if (selectEl.options[next]?.disabled) return;
     if (next === current) return;
     selectEl.selectedIndex = next;
     selectEl.dispatchEvent(new Event("change", { bubbles: true }));
