@@ -21,6 +21,7 @@ from arcrho_api.sidecar_core_contract import (  # noqa: E402
     SIDECAR_STORED_PERIOD_FIELD,
     SidecarContractError,
     stored_length_fields,
+    stored_lengths,
     validate_sidecar_core,
     with_audit_log_last,
 )
@@ -262,6 +263,26 @@ class ValidatorTests(unittest.TestCase):
             stored_length_fields("Triangle", 1, 3),
             {SIDECAR_STORED_ORIGIN_FIELD: 1, SIDECAR_STORED_DEVELOPMENT_FIELD: 3},
         )
+
+    def test_a_reader_is_told_the_stored_shape_whatever_the_format(self) -> None:
+        # The read side of the same rule: a reader that opens the CSV never has
+        # to know which field its format keeps, and never sees the display one.
+        self.assertEqual(
+            stored_lengths({
+                "data_format": "Triangle",
+                "origin_length": 12,
+                "development_length": 12,
+                "stored_origin_length": 1,
+                "stored_development_length": 3,
+            }),
+            (1, 3),
+        )
+        self.assertEqual(
+            stored_lengths({"data_format": "Vector", "period_length": 12, "stored_period_length": 3}),
+            (3, 3),
+        )
+        self.assertEqual(stored_lengths({"data_format": "Triangle", "origin_length": 12}), (0, 0))
+        self.assertEqual(stored_lengths({"data_format": "Vector", "stored_period_length": "x"}), (0, 0))
 
     def test_the_audit_log_must_be_last(self) -> None:
         sidecar = _engine_sidecar()

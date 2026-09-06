@@ -26,7 +26,7 @@ from arcrho_api.sidecar_audit_contract import (
     append_audit_entry,
     normalize_audit_log,
 )
-from arcrho_api.sidecar_core_contract import finalize_sidecar, stored_length_fields
+from arcrho_api.sidecar_core_contract import finalize_sidecar, stored_length_fields, stored_lengths
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -1154,8 +1154,11 @@ def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
         sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
         payload = _read_dataset_sidecar(sidecar_path)
         project_name = _dataset_owning_project_name(path, payload)
-        origin_period_len = max(1, int(payload.get("origin_length") or 1))
-        dev_period_len = max(1, int(payload.get("development_length") or 1))
+        # Stored, not displayed: the mask covers the CSV at ``path``, whose
+        # blank cells are laid out at the shape that file holds.
+        stored_origin, stored_development = stored_lengths(payload)
+        origin_period_len = max(1, stored_origin)
+        dev_period_len = max(1, stored_development)
         if project_name:
             _, _, mask = _empty_dataset_geometry_from_general_settings(
                 project_name,
@@ -1623,6 +1626,7 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
     period_length = payload.get("period_length")
     origin_length = period_length if is_vector else payload.get("origin_length")
     development_length = period_length if is_vector else payload.get("development_length")
+    stored_origin_length, stored_development_length = stored_lengths(payload)
     calculation_map = _dataset_type_calculation_map(p)
     # Both chip rows resolve their neighbours from the same index read, so a
     # graph is one lookup wide however many precedents and dependents it holds.
@@ -1665,8 +1669,13 @@ def load_dataset_sidecar(project_name: str, reserving_class: str, dataset_name: 
         "instance_name": str(payload.get("dataset_name") or ds),
         "data_format": data_format,
         "period_length": period_length if is_vector else None,
+        # Both shapes: the display pair is what the window reopens at, the
+        # stored pair is how fine the data underneath it really is.
         "origin_length": origin_length,
         "development_length": development_length,
+        "stored_period_length": stored_origin_length if is_vector else None,
+        "stored_origin_length": stored_origin_length,
+        "stored_development_length": stored_development_length,
         "origin_labels": _normalize_origin_labels(payload.get("origin_labels")),
         "cumulative": payload.get("cumulative"),
         "transposed": payload.get("transposed"),
@@ -1840,10 +1849,11 @@ def load_cached_dataset_values(
     values = df.values.tolist()
     parsed_name = _parse_length_scoped_cache_name(os.path.basename(csv_path))
     data_format = str(sidecar.get("data_format") or "")
-    sidecar_period_length = sidecar.get("period_length")
     is_vector = data_format.strip().lower() == "vector"
-    sidecar_origin_length = sidecar_period_length if is_vector else sidecar.get("origin_length")
-    sidecar_development_length = sidecar_period_length if is_vector else sidecar.get("development_length")
+    # Stored, not displayed: these describe the CSV just read. The file name
+    # states its own shape; the sidecar's stored pair answers for a cache
+    # whose name does not.
+    sidecar_origin_length, sidecar_development_length = stored_lengths(sidecar)
     resolved_origin_length = _int_or_default(parsed_name.get("origin_length") or sidecar_origin_length, max(1, len(values)))
     resolved_development_length = _int_or_default(parsed_name.get("development_length") or sidecar_development_length, max(1, len(values[0]) if values else 1))
     dataset_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]

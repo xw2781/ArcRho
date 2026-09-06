@@ -42,6 +42,7 @@ from app_server.helpers import sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    precedent_cache_service,
     user_identity_service,
 )
 
@@ -256,17 +257,6 @@ def _sidecar_response(payload: Mapping[str, Any], *, exists: bool) -> Dict[str, 
     return {**dict(payload), "exists": True}
 
 
-def _source_period(sidecar: Mapping[str, Any]) -> int:
-    for key in ("period_length", "origin_length"):
-        try:
-            value = int(sidecar.get(key))
-        except (TypeError, ValueError):
-            continue
-        if value > 0:
-            return value
-    return 0
-
-
 # ---------------------------------------------------------------------------
 # The method-to-method edge
 # ---------------------------------------------------------------------------
@@ -413,7 +403,8 @@ def _read_target_snapshot(
             422,
             f"Bootstrap Target Ultimate source '{requested_name}' must be a Vector dataset.",
         )
-    period = _source_period(sidecar)
+    # Stored, not displayed: the CSV opened below is the sidecar's own.
+    period = precedent_cache_service.source_period(sidecar)
     if period and origin_length and period != origin_length:
         raise HTTPException(
             422,
@@ -800,10 +791,9 @@ def _validate_pair(
         raise HTTPException(409, "Bootstrap output sidecar does not identify a Bootstrap output.")
     if _clean(sidecar.get("data_format")).lower() != "vector":
         raise HTTPException(409, "Bootstrap output sidecar must identify a Vector dataset.")
-    try:
-        sidecar_period = int(sidecar.get("period_length"))
-    except (TypeError, ValueError):
-        sidecar_period = 0
+    # Stored, not displayed: the check is that the CSV this method wrote
+    # holds its own periods.
+    sidecar_period = precedent_cache_service.source_period(sidecar)
     method_period = int(_details(method).get("origin_length") or 0)
     if sidecar_period != method_period:
         raise HTTPException(409, "Bootstrap method and output sidecar origin lengths do not match.")

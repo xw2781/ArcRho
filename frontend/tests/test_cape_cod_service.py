@@ -198,6 +198,11 @@ class CapeCodServiceTests(unittest.TestCase):
             "method_type": method_type,
             "data_format": data_format,
             "period_length": 12,
+            **(
+                {"stored_period_length": 12}
+                if data_format == "Vector"
+                else {"stored_origin_length": 12, "stored_development_length": 12}
+            ),
             "csv_file": csv_file,
             "status": status,
             "precedents": [],
@@ -984,6 +989,8 @@ class CapeCodServiceTests(unittest.TestCase):
             "method_type": "None",
             "data_format": "Triangle",
             "period_length": 12,
+            "stored_origin_length": 12,
+            "stored_development_length": 12,
             "csv_file": "Gross Incurred@12.csv",
             "status": 0,
             "precedents": [],

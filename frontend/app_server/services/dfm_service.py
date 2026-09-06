@@ -31,6 +31,7 @@ from arcrho_api.dfm_contract import (
 )
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
+from arcrho_api.sidecar_core_contract import stored_lengths
 from arcrho_api.timestamps import persisted_timestamp, utc_now_text
 from app_server import config
 from app_server.helpers import sanitize_dataset_file_name
@@ -267,15 +268,16 @@ def _load_source_snapshot(
     is_vector = data_format.lower() == "vector"
     if not vector and is_vector:
         raise HTTPException(422, f"DFM input '{dataset_name}' must be a Triangle dataset.")
-    source_origin_length = _positive_int(
-        sidecar.get("period_length") if is_vector else sidecar.get("origin_length")
-    )
+    # Stored, not displayed: the method reads this precedent's own CSV, so the
+    # shape that must match is the one that file holds.
+    stored_origin_length, stored_development_length = stored_lengths(sidecar)
+    source_origin_length = _positive_int(stored_origin_length)
     required_origin_length = _positive_int(expected_origin_length)
     origin_mismatch = bool(
         source_origin_length and required_origin_length
         and source_origin_length != required_origin_length
     )
-    source_development_length = _positive_int(sidecar.get("development_length"))
+    source_development_length = 0 if is_vector else _positive_int(stored_development_length)
     required_development_length = _positive_int(expected_development_length)
     development_mismatch = bool(
         not vector and source_development_length and required_development_length
@@ -375,12 +377,11 @@ def _load_source_snapshot(
         else:
             development_labels = _axis_labels(sidecar.get("development_labels"))
         if not method_development_labels and len(development_labels) != column_count:
-            try:
-                first_development = max(1, int(sidecar.get("origin_length") or 12))
-                development_step = max(1, int(sidecar.get("development_length") or 12))
-            except (TypeError, ValueError):
-                first_development = 12
-                development_step = 12
+            # These labels describe the CSV just opened: the method's own
+            # lengths when an Engine precedent was rebuilt at them, and the
+            # sidecar's stored shape otherwise.
+            first_development = max(1, required_origin_length or source_origin_length or 12)
+            development_step = max(1, required_development_length or source_development_length or 12)
             development_labels = [
                 str(first_development + development_step * index)
                 for index in range(column_count)

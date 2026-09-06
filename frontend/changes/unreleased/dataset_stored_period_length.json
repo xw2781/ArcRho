@@ -5,6 +5,7 @@
   "summary": "Every dataset record now stores the period the data is really held at, separately from the period it is displayed at.",
   "details": [
     "The existing origin, development and period lengths are now the display shape, and a new stored pair beside them is the granularity of the dataset's own CSV, following ResQ's naming.",
-    "Every writer emits the pair its format takes, the reserving-class index projects it, and a record whose display shape is not a whole multiple of its stored shape is refused."
+    "Every writer emits the pair its format takes, the reserving-class index projects it, and a record whose display shape is not a whole multiple of its stored shape is refused.",
+    "Every part of the app that opens a dataset's data file now reads the stored shape to learn how fine it is, so a coarser view on screen can no longer be mistaken for the data itself; the parts that ask for a dataset to be rebuilt, or that only report what a page is showing, keep reading the displayed shape."
   ]
 }

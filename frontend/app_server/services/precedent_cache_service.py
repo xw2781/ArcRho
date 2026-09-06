@@ -13,6 +13,8 @@ from __future__ import annotations
 import os
 from typing import Any, Mapping
 
+from arcrho_api.sidecar_core_contract import stored_lengths
+
 from app_server import config
 from app_server.helpers import build_dataset_cache_file_name, set_data_path_like_vba
 
@@ -22,14 +24,14 @@ def _clean(value: Any) -> str:
 
 
 def source_period(sidecar: Mapping[str, Any]) -> int:
-    """Return the origin period length a sidecar's cache is stored at, or 0."""
+    """Return the origin period length a sidecar's cache is stored at, or 0.
 
-    is_vector = _clean(sidecar.get("data_format")).lower() == "vector"
-    value = sidecar.get("period_length") if is_vector else sidecar.get("origin_length")
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
+    Stored, not displayed: this decides which file on disk holds the values,
+    so it must describe the CSV the sidecar names rather than the coarser
+    shape a window may be showing it at.
+    """
+
+    return stored_lengths(sidecar)[0]
 
 
 def materialize_engine_source(

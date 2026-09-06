@@ -495,10 +495,12 @@ def _read_source_values(
     sidecar_format = _clean(sidecar.get("data_format")).lower()
     if sidecar_format != data_format.lower():
         raise RuntimeError(f"{label} must be an annual {data_format.lower()} dataset: {name}")
+    # Stored, not displayed: the CSV chosen below is the sidecar's own, so it
+    # is that file that has to hold annual periods.
     if data_format == "Vector":
-        _annual_or_raise(sidecar, ("period_length",), name)
+        _annual_or_raise(sidecar, ("stored_period_length",), name)
     else:
-        _annual_or_raise(sidecar, ("origin_length", "development_length"), name)
+        _annual_or_raise(sidecar, ("stored_origin_length", "stored_development_length"), name)
     data_dir = config.get_project_dataset_cache_dir(project_name, reserving_class)
     candidates: List[str] = []
     recorded = os.path.basename(_clean(sidecar.get("csv_file")))

@@ -85,6 +85,34 @@ class DatasetSidecarGraphLookupTests(unittest.TestCase):
         )
         self.assertEqual(result["dependents"][0]["formula"], "Input A + Input B")
 
+    def test_the_load_answers_with_both_the_displayed_and_the_stored_shape(self) -> None:
+        """The window reopens at the saved view; the stored pair says how fine
+        the data underneath it really is."""
+
+        payload = {
+            "dataset_name": "Output",
+            "dataset_type": "Output",
+            "data_format": "Triangle",
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_origin_length": 1,
+            "stored_development_length": 3,
+        }
+
+        with (
+            mock.patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="Output.json"),
+            mock.patch.object(dataset_service, "_read_dataset_sidecar", return_value=payload),
+            mock.patch.object(dataset_service, "_dataset_type_calculation_map", return_value={}),
+            mock.patch.object(dataset_service, "_dataset_index_entry_map", return_value={}),
+        ):
+            result = dataset_service.load_dataset_sidecar("Project", "Path", "Output")
+
+        self.assertEqual((result["origin_length"], result["development_length"]), (12, 12))
+        self.assertEqual(
+            (result["stored_origin_length"], result["stored_development_length"]),
+            (1, 3),
+        )
+
     def test_a_graphless_sidecar_never_reads_the_index(self) -> None:
         payload = {"dataset_name": "Output", "dataset_type": "Output", "data_format": "Triangle"}
 

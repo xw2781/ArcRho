@@ -173,6 +173,33 @@ def stored_length_fields(
     }
 
 
+def stored_lengths(payload: Mapping[str, Any]) -> tuple[int, int]:
+    """The ``(origin, development)`` months per period of *payload*'s own CSV.
+
+    The read-side counterpart of :func:`stored_length_fields`: every reader
+    that opens the file ``csv_file`` names asks here what shape it is at, so
+    which field a format carries stays written in one place. A vector keeps
+    one stored length and reports it on both axes; a value that is missing or
+    unusable reads ``0``, which every caller treats as "not stated".
+    """
+
+    if is_vector_format(payload.get("data_format")):
+        period = _stored_months(payload.get(SIDECAR_STORED_PERIOD_FIELD))
+        return period, period
+    return (
+        _stored_months(payload.get(SIDECAR_STORED_ORIGIN_FIELD)),
+        _stored_months(payload.get(SIDECAR_STORED_DEVELOPMENT_FIELD)),
+    )
+
+
+def _stored_months(value: Any) -> int:
+    try:
+        months = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return months if months > 0 else 0
+
+
 def dependency_names(entries: Any) -> list[str]:
     """The unique dataset names of persisted dependency entries, in order."""
 
@@ -373,6 +400,7 @@ __all__ = [
     "finalize_sidecar",
     "is_vector_format",
     "stored_length_fields",
+    "stored_lengths",
     "validate_sidecar_core",
     "with_audit_log_last",
 ]

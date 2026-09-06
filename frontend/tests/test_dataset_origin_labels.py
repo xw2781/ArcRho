@@ -287,7 +287,11 @@ class EmptyDatasetSettingsTests(unittest.TestCase):
             patch.object(
                 dataset_service,
                 "_read_dataset_sidecar",
-                return_value={"project_name": "Example Project", "origin_length": 12, "development_length": 12},
+                return_value={
+                    "project_name": "Example Project",
+                    "stored_origin_length": 12,
+                    "stored_development_length": 12,
+                },
             ),
             patch.object(
                 dataset_service,
@@ -313,7 +317,11 @@ class EmptyDatasetSettingsTests(unittest.TestCase):
             patch.object(
                 dataset_service,
                 "_read_dataset_sidecar",
-                return_value={"project_name": "Former Project", "origin_length": 12, "development_length": 12},
+                return_value={
+                    "project_name": "Former Project",
+                    "stored_origin_length": 12,
+                    "stored_development_length": 12,
+                },
             ),
             patch.object(
                 dataset_service,
@@ -324,6 +332,36 @@ class EmptyDatasetSettingsTests(unittest.TestCase):
             actual = dataset_service._dataset_patch_mask(str(dataset_path), 2, 2)
         self.assertIs(actual, expected_mask)
         geometry.assert_called_once_with("Renamed Project", 12, 12)
+
+    def test_patch_mask_follows_the_stored_shape_not_the_displayed_one(self) -> None:
+        """The blank cells belong to the CSV, which stays at the stored shape."""
+
+        expected_mask = dataset_service.np.ones((2, 2), dtype=bool)
+        with (
+            patch.object(
+                dataset_service.dataset_instance_index_service,
+                "_dataset_sidecar_path_for_cached_csv",
+                return_value="dataset.json",
+            ),
+            patch.object(
+                dataset_service,
+                "_read_dataset_sidecar",
+                return_value={
+                    "project_name": "Example Project",
+                    "origin_length": 12,
+                    "development_length": 12,
+                    "stored_origin_length": 3,
+                    "stored_development_length": 3,
+                },
+            ),
+            patch.object(
+                dataset_service,
+                "_empty_dataset_geometry_from_general_settings",
+                return_value=(2, 2, expected_mask),
+            ) as geometry,
+        ):
+            dataset_service._dataset_patch_mask("dataset.csv", 2, 2)
+        geometry.assert_called_once_with("Example Project", 3, 3)
 
 
 class DatasetPublicReadTests(unittest.TestCase):

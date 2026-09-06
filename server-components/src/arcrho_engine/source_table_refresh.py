@@ -246,6 +246,8 @@ def _regeneration_request(
     is_vector = str(sidecar.get("data_format") or "").strip().casefold() == "vector"
     dataset_type = str(sidecar.get("dataset_type") or "").strip()
     instance_name = str(sidecar.get("dataset_name") or "").strip()
+    # Display, not stored: this asks the Engine to regenerate the dataset, and
+    # the shape it must produce is the one the dataset is shown at.
     origin_length = int(sidecar.get("origin_length") or 0) or 12
     development_length = int(sidecar.get("development_length") or 0) or origin_length
     pairs = [

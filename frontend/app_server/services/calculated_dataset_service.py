@@ -15,7 +15,7 @@ import pandas as pd
 
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.dataset_link_contract import link_precedent_names
-from arcrho_api.sidecar_core_contract import stored_length_fields
+from arcrho_api.sidecar_core_contract import stored_length_fields, stored_lengths
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -934,6 +934,8 @@ def _existing_target_settings(project_name: str, reserving_class: str, dataset_n
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
+    # Display, not stored: these settings are what the output is regenerated
+    # at, and a calculated output is written at the shape it is shown at.
     return {
         "origin_length": int(payload.get("origin_length") or 12),
         "development_length": int(payload.get("development_length") or 12),
@@ -1189,15 +1191,16 @@ def _load_components(
         var = f"_d{index}"
         values[var] = arr
         sidecar = item.get("sidecar") if isinstance(item.get("sidecar"), dict) else {}
+        # Stored, not displayed: this records what was read from ``path``.
+        stored_origin, stored_development = stored_lengths(sidecar)
         dependency_info.append({
             "dataset_type_name": component,
             "dataset_name": _clean_text(sidecar.get("dataset_name") or component),
             "path": path,
             "source_kind": _clean_text(sidecar.get("source_kind")),
             "data_format": _clean_text(sidecar.get("data_format")),
-            "origin_length": sidecar.get("origin_length"),
-            "development_length": sidecar.get("development_length"),
-            "period_length": sidecar.get("period_length"),
+            "stored_origin_length": stored_origin,
+            "stored_development_length": stored_development,
             "cumulative": sidecar.get("cumulative"),
             "calendar": sidecar.get("calendar"),
             "mtime": fingerprint["mtime_ns"] / 1_000_000_000,

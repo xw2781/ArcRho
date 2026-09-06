@@ -178,6 +178,8 @@ class ExcelLinkFixture(unittest.TestCase):
             "data_format": "Triangle",
             "origin_length": 12,
             "development_length": 12,
+            "stored_origin_length": 12,
+            "stored_development_length": 12,
             "csv_file": f"{name}@12@12@cum@dev.csv",
             "updated_at": "2026-01-05T00:00:00Z",
             "audit_log": [
@@ -435,6 +437,19 @@ class ExcelLinkRetargetTests(ExcelLinkFixture):
         # The response carries the refreshed inventory, resolved on this host.
         self.assertEqual(response["workbooks"][0]["workbook_name"], "Book 2026.xlsx")
         self.assertTrue(response["workbooks"][0]["exists"])
+
+    def test_retarget_writes_the_csv_back_at_its_stored_shape(self) -> None:
+        # The window was left on a coarser view. The refreshed workbook values
+        # are the dataset's own data, so they go back at the shape it holds.
+        sidecar = self.linked_sidecar()
+        sidecar["origin_length"] = 36
+        sidecar["development_length"] = 36
+        self.write_json(self.sidecars / "Manual Paid.json", sidecar)
+
+        self.assertTrue(self.run_retarget()["ok"])
+
+        kwargs = self.dataset_save.call_args.kwargs
+        self.assertEqual((kwargs["origin_length"], kwargs["development_length"]), (12, 12))
 
     def test_retarget_reads_the_new_workbook_and_applies_changed_values(self) -> None:
         self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())

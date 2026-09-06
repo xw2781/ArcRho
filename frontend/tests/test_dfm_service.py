@@ -160,6 +160,9 @@ class DfmServiceTests(unittest.TestCase):
             "origin_length": 12,
             "development_length": 12,
             "period_length": 12 if data_format == "Vector" else None,
+            "stored_origin_length": 12,
+            "stored_development_length": 12,
+            "stored_period_length": 12 if data_format == "Vector" else None,
             "origin_labels": ["2024", "2025"],
             "csv_file": csv_file,
             "number_format": "#,##0",
@@ -745,7 +748,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(output_path.read_bytes(), before_output)
 
         (self.datasets / "Paid@12.csv").write_text("100,150\n200,\n", encoding="utf-8")
-        source["origin_length"] = 3
+        source["stored_origin_length"] = 3
         self.write_json(source_path, source)
 
         period_result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
@@ -754,6 +757,42 @@ class DfmServiceTests(unittest.TestCase):
         self.assertIn("incompatible origin period length", period_result["errors"][0]["reason"])
         self.assertEqual(method_path.read_bytes(), before_method)
         self.assertEqual(output_path.read_bytes(), before_output)
+
+    def test_precedent_period_is_read_from_the_stored_shape_not_the_displayed_one(self) -> None:
+        """A quarterly triangle shown yearly is still quarterly data to a method."""
+
+        method = self.method_payload()
+        self.write_source("Paid", "100,150\n200,\n", data_format="Triangle")
+        source_path = self.sidecars / "Paid.json"
+        source = json.loads(source_path.read_text(encoding="utf-8"))
+        source["stored_origin_length"] = 3
+        source["stored_development_length"] = 3
+        self.write_json(source_path, source)
+
+        with self.assertRaisesRegex(HTTPException, r"incompatible origin period length \(3; expected 12\)"):
+            dfm_service._source_snapshots(
+                "Project",
+                "Class",
+                method,
+                load_input=True,
+                load_basis=False,
+            )
+
+        source["stored_origin_length"] = 12
+        source["stored_development_length"] = 12
+        source["origin_length"] = 36
+        source["development_length"] = 36
+        self.write_json(source_path, source)
+
+        snapshot, _ = dfm_service._source_snapshots(
+            "Project",
+            "Class",
+            method,
+            load_input=True,
+            load_basis=False,
+        )
+
+        self.assertEqual(snapshot["values"], [[100, 150], [200, None]])
 
     def test_engine_generated_precedent_is_regenerated_at_the_method_period(self) -> None:
         method = self.method_payload()

@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 and 2 done, 2 of 10.
-Last updated: 2026-09-05 — every dataset record now carries the shape its data is really stored at, beside the shape it is displayed at.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 3 done, 3 of 10.
+Last updated: 2026-09-05 — every part of the app that opens a dataset's data now reads how fine that data really is.
 
 ## Progress
 
@@ -11,7 +11,7 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Coarser views of a hand‑entered triangle add up correctly | [x] | 2026-09-05 | 2 h | 15 min | Opening a monthly or quarterly triangle at a yearly view now adds the figures up along the calendar, so the numbers on screen are the ones a method would use. |
 | 2 | Every dataset records the shape its data is really stored at | [x] | 2026-09-05 | 1 h 45 | 30 min | Every dataset's record now says how fine its figures really are, separately from how coarsely it is shown, so a yearly view of a monthly triangle can no longer be mistaken for monthly data. |
-| 3 | The parts of the app that read a dataset's shape use the right one | [ ] | | 2 h | | |
+| 3 | The parts of the app that read a dataset's shape use the right one | [x] | 2026-09-05 | 2 h | 25 min | Anything that opens a dataset's figures now asks how fine they really are, so a yearly view of a monthly triangle is no longer mistaken for yearly data. |
 | 4 | Existing projects on the server get the new shape record | [ ] | | 1 h 15 | | |
 | 5 | Generated datasets know how fine their source data is | [ ] | | 45 min | | |
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 45 min | | |
@@ -20,9 +20,9 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 2 of 10 steps done.
+Overall: 3 of 10 steps done.
 
-Time remaining: about 1 h 45 across the eight steps still open — 8 h 30 of estimates scaled by the fifth of them the two finished steps actually cost. Treat that as a floor rather than a forecast: Step 1 resumed work already written, Step 2 spent much of its half hour waiting on test runs it could not shorten, and Step 4 and Step 10 are mostly waiting on the share and on a component rebuild, which no amount of agent speed touches.
+Time remaining: about 1 h 15 across the seven steps still open — 6 h 30 of estimates scaled by the fifth of them the three finished steps actually cost. Treat that as a floor rather than a forecast: Step 1 resumed work already written, Steps 2 and 3 spent much of their time waiting on test runs they could not shorten, and Step 4 and Step 10 are mostly waiting on the share and on a component rebuild, which no amount of agent speed touches.
 
 ### How the time figures are kept
 
@@ -168,8 +168,8 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 **Read first.** The list below and each linked range. The runtime's variant candidates parse the lengths from the CSV file name and are unaffected; the Engine's source refresh regenerates at `origin_length`, which is the display shape it should produce.
 
 **Do.**
-- [ ] Move to `stored_*`: the DFM compatibility check ([dfm_service.py:272-306](../../frontend/app_server/services/dfm_service.py#L272-L306)), the precedent resolver ([precedent_cache_service.py:82-127](../../frontend/app_server/services/precedent_cache_service.py#L82-L127)), the patch mask ([dataset_service.py:1152-1170](../../frontend/app_server/services/dataset_service.py#L1152-L1170)), the Excel‑link geometry ([excel_link_service.py:961-979](../../frontend/app_server/services/excel_link_service.py#L961-L979)), and the sidecar‑load response the Data tab reads (`load_dataset_sidecar`, which must return both shapes).
-- [ ] Review each other service that reads `origin_length` (Bornhuetter‑Ferguson, Cape Cod, Berquist‑Sherman, Result Selection, Bootstrap, calculated datasets) and decide per read: stored when it opens the CSV, display when it asks for a regeneration. Record the decision as a one‑line comment at each read.
+- [x] Move to `stored_*`: the DFM compatibility check ([dfm_service.py:272-306](../../frontend/app_server/services/dfm_service.py#L272-L306)), the precedent resolver ([precedent_cache_service.py:82-127](../../frontend/app_server/services/precedent_cache_service.py#L82-L127)), the patch mask ([dataset_service.py:1152-1170](../../frontend/app_server/services/dataset_service.py#L1152-L1170)), the Excel‑link geometry ([excel_link_service.py:961-979](../../frontend/app_server/services/excel_link_service.py#L961-L979)), and the sidecar‑load response the Data tab reads (`load_dataset_sidecar`, which must return both shapes).
+- [x] Review each other service that reads `origin_length` (Bornhuetter‑Ferguson, Cape Cod, Berquist‑Sherman, Result Selection, Bootstrap, calculated datasets) and decide per read: stored when it opens the CSV, display when it asks for a regeneration. Record the decision as a one‑line comment at each read.
 
 **Tests.** Each moved reader's existing test gains a case where display and stored differ and the reader picks the stored one.
 

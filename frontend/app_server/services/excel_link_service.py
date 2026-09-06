@@ -43,6 +43,7 @@ from arcrho_api.dfm_contract import (
     normalize_dfm_method,
     _evaluate_internal_formula,
 )
+from arcrho_api.sidecar_core_contract import stored_lengths
 from app_server import config
 from app_server.services import (
     dataset_sidecar_status_service,
@@ -957,16 +958,13 @@ def _retarget_dataset(
             links, values, new_key, read_map, new_book_path
         )
 
-    is_vector = _clean(payload.get("data_format")).casefold() == "vector"
-    period_length = payload.get("period_length") if is_vector else None
-    origin_length = int(
-        period_length or payload.get("origin_length") or (len(values) if values else 0) or 1
-    )
+    # Stored, not displayed: this save rewrites the dataset's own CSV from the
+    # refreshed workbook values, so it writes it back at the shape those
+    # values are held at.
+    stored_origin, stored_development = stored_lengths(payload)
+    origin_length = int(stored_origin or (len(values) if values else 0) or 1)
     development_length = int(
-        period_length
-        or payload.get("development_length")
-        or max((len(row) for row in values or []), default=0)
-        or 1
+        stored_development or max((len(row) for row in values or []), default=0) or 1
     )
     dataset_service.save_dataset_sidecar(
         project,

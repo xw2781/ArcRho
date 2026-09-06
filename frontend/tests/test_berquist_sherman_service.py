@@ -107,8 +107,11 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         if data_format == "Triangle":
             sidecar["origin_length"] = 12
             sidecar["development_length"] = 12
+            sidecar["stored_origin_length"] = 12
+            sidecar["stored_development_length"] = 12
         else:
             sidecar["period_length"] = 12
+            sidecar["stored_period_length"] = 12
         self.write_json(self.sidecars / f"{name}.json", sidecar)
 
     def method_payload(self) -> dict:
@@ -274,7 +277,9 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
         ultimate_path = self.sidecars / "Ultimate Counts.json"
         ultimate = self.read_json(ultimate_path)
-        ultimate["period_length"] = 3
+        # The stored shape is what the walk reads the CSV at: a window
+        # left on an annual view of quarterly data is still quarterly.
+        ultimate["stored_period_length"] = 3
         self.write_json(ultimate_path, ultimate)
 
         with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"):

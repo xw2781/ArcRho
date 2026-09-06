@@ -506,6 +506,8 @@ def _sidecar_response(payload: Dict[str, Any], *, exists: bool) -> Dict[str, Any
         "dataset_name": _clean(payload.get("dataset_name")),
         "dataset_type": _clean(payload.get("dataset_type")),
         "data_format": _clean(payload.get("data_format")),
+        # Display, not stored: this is what the page shows beside the output,
+        # not a shape anything reads a file at.
         "origin_length": payload.get("period_length") if vector else payload.get("origin_length"),
         "origin_labels": [str(item) for item in payload.get("origin_labels", [])]
         if isinstance(payload.get("origin_labels"), list) else [],
@@ -531,10 +533,9 @@ def _validate_method_sidecar_pair(method_name: str, method: Dict[str, Any], side
         raise HTTPException(409, "Result Selection sidecar does not identify a Result Selection output.")
     if _clean(sidecar.get("data_format")).lower() != "vector":
         raise HTTPException(409, "Result Selection output sidecar must use Vector data format.")
-    try:
-        sidecar_period = int(sidecar.get("period_length") or 0)
-    except (TypeError, ValueError):
-        sidecar_period = 0
+    # Stored, not displayed: the check is that the CSV this method wrote
+    # holds its own periods.
+    sidecar_period = precedent_cache_service.source_period(sidecar)
     if sidecar_period != int(details["origin_length"]):
         raise HTTPException(409, "Result Selection method and sidecar origin lengths do not match.")
     sidecar_labels = sidecar.get("origin_labels")
