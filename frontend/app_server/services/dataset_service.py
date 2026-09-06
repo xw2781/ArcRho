@@ -1950,6 +1950,29 @@ def load_cached_dataset_values(
     }
 
 
+def _dataset_cache_dir(project_name: str, reserving_class: str) -> str:
+    try:
+        return config.get_project_dataset_cache_dir(project_name, reserving_class)
+    except ValueError as err:
+        raise HTTPException(404, str(err))
+
+
+def _stored_csv_holds_values(csv_path: str) -> bool:
+    """Whether the CSV at *csv_path* holds a value that is not blank or zero.
+
+    The stored shape of a hand-entered dataset may move only while its file
+    holds nothing, which is the same "blank or zero" test the Data tab already
+    applies before it lets a length be lowered.
+    """
+
+    if not csv_path or not os.path.exists(csv_path):
+        return False
+    frame = load_triangle_values(csv_path)
+    if frame.empty:
+        return False
+    return bool(np.any(np.nan_to_num(frame.to_numpy(dtype="float64"), nan=0.0) != 0.0))
+
+
 def _save_dataset_sidecar_impl(
     project_name: str,
     reserving_class: str,
@@ -2028,11 +2051,47 @@ def _save_dataset_sidecar_impl(
 
     csv_path = ""
     csv_file_value = str(csv_file or existing.get("csv_file") or "")
-    if values is not None:
-        try:
-            data_dir = config.get_project_dataset_cache_dir(p, rc)
-        except ValueError as err:
-            raise HTTPException(404, str(err))
+    stored_origin_months = int(origin_length)
+    stored_development_months = int(development_length)
+    superseded_csv_path = ""
+    relabel_empty_input = False
+    if source_kind_value.strip().casefold() == "input" and existing and not csv_file:
+        # A hand-entered dataset's own CSV is its data, and the request's
+        # lengths are only the shape it is displayed at, so the stored shape
+        # and the file it names both stay put. The one exception is a dataset
+        # whose file holds nothing: nothing is lost by relabelling it, so the
+        # shape asked for becomes the stored one and the old file goes.
+        existing_origin, existing_development = stored_lengths(existing)
+        if is_vector:
+            existing_shape = (existing_origin,)
+            requested_shape = (int(origin_length),)
+        else:
+            existing_shape = (existing_origin, existing_development)
+            requested_shape = (int(origin_length), int(development_length))
+        if all(months > 0 for months in existing_shape) and existing_shape != requested_shape:
+            existing_csv_file = os.path.basename(str(existing.get("csv_file") or "").strip())
+            existing_csv_path = (
+                os.path.join(_dataset_cache_dir(p, rc), existing_csv_file)
+                if existing_csv_file
+                else ""
+            )
+            if _stored_csv_holds_values(existing_csv_path):
+                if values is not None:
+                    shape_text = (
+                        f"period length {existing_origin}"
+                        if is_vector
+                        else f"origin length {existing_origin} and development length {existing_development}"
+                    )
+                    raise HTTPException(
+                        422,
+                        f"Dataset '{ds}' stores its values at {shape_text}. Values can be entered "
+                        "only at the stored period; set the lengths back to edit.",
+                    )
+                stored_origin_months, stored_development_months = existing_origin, existing_development
+            else:
+                relabel_empty_input = True
+                superseded_csv_path = existing_csv_path
+    if values is not None or relabel_empty_input:
         csv_stem = build_dataset_cache_file_name(
             ds,
             data_format_value,
@@ -2042,7 +2101,7 @@ def _save_dataset_sidecar_impl(
             calendar,
         )
         csv_file_value = f"{csv_stem}.csv"
-        csv_path = os.path.join(data_dir, csv_file_value)
+        csv_path = os.path.join(_dataset_cache_dir(p, rc), csv_file_value)
 
     action_value = "Update" if existing else "Insert"
     updated_at = _now_utc_iso()
@@ -2085,14 +2144,14 @@ def _save_dataset_sidecar_impl(
         payload["calendar"] = bool(calendar)
         payload.pop("period_length", None)
         payload.pop("stored_period_length", None)
-    if values is not None or csv_file:
-        # This save names the CSV -- it writes one from ``values``, or the
-        # caller published one and passed its name -- and that file is at the
-        # requested lengths, so they are the shape the values are stored at.
-        # A settings-only save leaves the CSV alone, and the stored shape the
-        # sidecar already records travels with it.
+    if values is not None or csv_file or relabel_empty_input:
+        # This save names the CSV -- it writes one from ``values``, relabels an
+        # empty one, or the caller published one and passed its name -- so the
+        # lengths that file is written at are the shape the values are stored
+        # at. A settings-only save leaves the CSV alone, and the stored shape
+        # the sidecar already records travels with it.
         payload.update(
-            stored_length_fields(data_format_value, origin_length, development_length)
+            stored_length_fields(data_format_value, stored_origin_months, stored_development_months)
         )
     if origin_labels is not None:
         payload["origin_labels"] = _normalize_origin_labels(origin_labels)
@@ -2134,14 +2193,27 @@ def _save_dataset_sidecar_impl(
         method_type=method_type_value,
         force_status=force_status,
     )
-    if values is not None:
-        df = _dataset_values_to_frame(values, mask)
+    if values is not None or relabel_empty_input:
+        if values is not None:
+            df = _dataset_values_to_frame(values, mask)
+        else:
+            origin_count, development_count, empty_mask = _empty_dataset_geometry_from_general_settings(
+                p, int(origin_length), int(development_length)
+            )
+            df = _empty_dataset_values(data_format_value, origin_count, development_count, empty_mask)
         try:
             _write_dataset_csv_and_sidecar(df, csv_path, path, payload)
         except PermissionError:
             raise HTTPException(423, "Dataset cache CSV is locked or inaccessible.")
         except OSError as err:
             raise HTTPException(500, f"Failed to write dataset cache CSV: {str(err)}")
+        if superseded_csv_path and os.path.normcase(superseded_csv_path) != os.path.normcase(csv_path):
+            # The relabelled dataset is stored at its new shape now, so the
+            # file it was stored at before is not the dataset's data any more.
+            try:
+                os.remove(superseded_csv_path)
+            except OSError:
+                pass
     else:
         _write_dataset_sidecar_payload(path, payload)
     ds_id = ""

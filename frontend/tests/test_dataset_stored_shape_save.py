@@ -1,0 +1,188 @@
+"""The save rule that keeps a hand-entered dataset's stored shape put.
+
+Step 6 of ``docs/plans/manual_input_period_rollup.md``: the lengths a save
+carries are the shape the dataset is displayed at, so an ``input`` sidecar's
+stored shape and its CSV survive a display-only save, a save that carries
+values at any other shape is refused, and only a dataset whose file holds
+nothing is relabelled to the shape asked for.
+"""
+
+from __future__ import annotations
+
+import copy
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+
+
+FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+if str(FRONTEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_ROOT))
+
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+from fastapi import HTTPException
+
+from app_server.services import calculated_dataset_service, dataset_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
+
+
+MONTHLY_CSV = "Dataset@1@1@cum@dev.csv"
+ANNUAL_CSV = "Dataset@12@12@cum@dev.csv"
+
+
+class ManualDatasetStoredShapeSaveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.data_dir = self.temp.name
+        self.sidecar_path = os.path.join(self.data_dir, "Dataset.json")
+        self.existing = {
+            "dataset_name": "Dataset",
+            "dataset_type": "Input Type",
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "source_kind": "input",
+            "data_format": "Triangle",
+            "origin_length": 1,
+            "development_length": 1,
+            "stored_origin_length": 1,
+            "stored_development_length": 1,
+            "cumulative": True,
+            "calendar": False,
+            "csv_file": MONTHLY_CSV,
+        }
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+        self.propagation_workspace.stop()
+
+    def _write_stored_csv(self, name: str, values) -> str:
+        path = os.path.join(self.data_dir, name)
+        pd.DataFrame(values).to_csv(path, header=False, index=False)
+        return path
+
+    def _save(self, *, origin_length: int, development_length: int, values=None):
+        written: dict = {}
+
+        def capture_write(path, payload):
+            written["path"] = path
+            written["payload"] = copy.deepcopy(payload)
+
+        with (
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value=self.sidecar_path),
+            patch.object(dataset_service, "_read_dataset_sidecar", return_value=copy.deepcopy(self.existing)),
+            patch.object(dataset_service, "_write_dataset_sidecar_payload", side_effect=capture_write),
+            patch.object(dataset_service, "_is_app_calculated_dataset_type", return_value=(False, "")),
+            patch.object(
+                dataset_service.config,
+                "get_project_dataset_cache_dir",
+                return_value=self.data_dir,
+            ),
+            patch.object(dataset_service.dataset_instance_index_service, "rebuild_index"),
+            patch.object(
+                dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
+            patch.object(
+                calculated_dataset_service,
+                "recalculate_dependents",
+                return_value={"ok": True, "steps": []},
+            ),
+        ):
+            result = dataset_service.save_dataset_sidecar(
+                "Project",
+                "Class",
+                "Dataset",
+                dataset_type="Input Type",
+                source_kind="input",
+                data_format="Triangle",
+                origin_length=origin_length,
+                development_length=development_length,
+                values=values,
+            )
+
+        return result, written.get("payload")
+
+    def test_display_only_save_keeps_the_stored_shape_and_the_csv(self) -> None:
+        monthly_path = self._write_stored_csv(MONTHLY_CSV, [[100.0, 110.0], [120.0, np.nan]])
+
+        result, payload = self._save(origin_length=12, development_length=12)
+
+        self.assertEqual(payload["origin_length"], 12)
+        self.assertEqual(payload["development_length"], 12)
+        self.assertEqual(payload["stored_origin_length"], 1)
+        self.assertEqual(payload["stored_development_length"], 1)
+        self.assertEqual(payload["csv_file"], MONTHLY_CSV)
+        self.assertEqual(result["origin_length"], 12)
+        self.assertTrue(os.path.exists(monthly_path))
+        self.assertFalse(os.path.exists(os.path.join(self.data_dir, ANNUAL_CSV)))
+
+    def test_values_save_at_another_shape_is_refused(self) -> None:
+        self._write_stored_csv(MONTHLY_CSV, [[100.0, 110.0], [120.0, np.nan]])
+
+        with self.assertRaises(HTTPException) as raised:
+            self._save(origin_length=12, development_length=12, values=[[230.0]])
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertIn("stores its values at", raised.exception.detail)
+        self.assertFalse(os.path.exists(os.path.join(self.data_dir, ANNUAL_CSV)))
+
+    def test_values_save_at_the_stored_shape_is_written(self) -> None:
+        self._write_stored_csv(MONTHLY_CSV, [[100.0, 110.0], [120.0, np.nan]])
+
+        _, payload = self._save(
+            origin_length=1,
+            development_length=1,
+            values=[[130.0, 140.0], [150.0, None]],
+        )
+
+        self.assertEqual(payload["stored_origin_length"], 1)
+        self.assertEqual(payload["csv_file"], MONTHLY_CSV)
+        written = dataset_service.load_triangle_values(os.path.join(self.data_dir, MONTHLY_CSV))
+        self.assertEqual(written.iat[0, 0], 130.0)
+
+    def test_empty_dataset_is_relabelled_and_its_old_csv_deleted(self) -> None:
+        monthly_path = self._write_stored_csv(MONTHLY_CSV, [[0.0, 0.0], [0.0, np.nan]])
+
+        _, payload = self._save(
+            origin_length=12,
+            development_length=12,
+            values=[[0.0, 0.0], [0.0, None]],
+        )
+
+        self.assertEqual(payload["stored_origin_length"], 12)
+        self.assertEqual(payload["stored_development_length"], 12)
+        self.assertEqual(payload["csv_file"], ANNUAL_CSV)
+        self.assertTrue(os.path.exists(os.path.join(self.data_dir, ANNUAL_CSV)))
+        self.assertFalse(os.path.exists(monthly_path))
+
+    def test_empty_dataset_relabel_without_values_rebuilds_the_grid(self) -> None:
+        monthly_path = self._write_stored_csv(MONTHLY_CSV, [[0.0, 0.0], [0.0, np.nan]])
+
+        with patch.object(
+            dataset_service,
+            "_empty_dataset_geometry_from_general_settings",
+            return_value=(2, 2, np.array([[True, True], [True, False]])),
+        ):
+            _, payload = self._save(origin_length=12, development_length=12)
+
+        self.assertEqual(payload["stored_origin_length"], 12)
+        self.assertEqual(payload["csv_file"], ANNUAL_CSV)
+        self.assertFalse(os.path.exists(monthly_path))
+        rebuilt = dataset_service.load_triangle_values(os.path.join(self.data_dir, ANNUAL_CSV))
+        self.assertEqual(rebuilt.shape, (2, 2))
+        self.assertTrue(bool(pd.isna(rebuilt.iat[1, 1])))
+
+
+if __name__ == "__main__":
+    unittest.main()

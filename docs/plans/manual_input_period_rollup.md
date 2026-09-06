@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 5 done, 5 of 10.
-Last updated: 2026-09-05 — a project now records how fine its source data is, and generated datasets record that as their stored shape.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 6 done, 6 of 10.
+Last updated: 2026-09-05 — saving a hand‑entered dataset can no longer move the shape its values are stored at, or leave its file behind.
 
 ## Progress
 
@@ -14,15 +14,15 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 3 | The parts of the app that read a dataset's shape use the right one | [x] | 2026-09-05 | 2 h | 25 min | Anything that opens a dataset's figures now asks how fine they really are, so a yearly view of a monthly triangle is no longer mistaken for yearly data. |
 | 4 | Existing projects on the server get the new shape record | [x] | 2026-09-05 | 1 h 15 | 2 h | Every dataset already on the server now records how fine its figures really are, so nothing has to guess at it, and every project's dataset list was rebuilt to match. |
 | 5 | Generated datasets know how fine their source data is | [x] | 2026-09-05 | 45 min | 20 min | A project now records how fine its source data is, so a dataset the app builds from that data says it can be rebuilt monthly even when you last looked at it a year at a time. |
-| 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 45 min | | |
+| 6 | Saving a hand‑entered dataset can no longer lose its detail | [x] | 2026-09-05 | 45 min | 15 min | Looking at a hand‑entered triangle a year at a time and saving no longer turns it into yearly data: the figures stay in the file you typed them into, and the app refuses to write values back at a coarser view. |
 | 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 1 h 45 | | |
 | 8 | A method can use a finer hand‑entered triangle as its input | [ ] | | 45 min | | |
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 5 of 10 steps done.
+Overall: 6 of 10 steps done.
 
-Time remaining: about 2 h across the five steps still open — 4 h 30 of estimates scaled by the just‑under‑half the five finished steps have really cost. Step 5 came in at 20 minutes against 45, which nudges the scaling back down after Step 4's 2 h against 1 h 15; that overrun was the share handing back 10,997 files one round trip at a time, not the work itself. Steps 6 to 9 are code steps like Steps 1 to 3 and 5, and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
+Time remaining: about 1 h 45 across the four steps still open — 3 h 45 of estimates scaled by the just‑under‑half the six finished steps have really cost. Step 6 came in at 15 minutes against 45, pulling the scaling down again after Step 4's 2 h against 1 h 15; that overrun was the share handing back 10,997 files one round trip at a time, not the work itself. Steps 7 to 9 are code steps like Steps 1 to 3, 5 and 6, and should keep beating their estimates, though Step 7 is the one that touches the UI; Step 10 is a deploy, which takes the time it takes.
 
 ### How the time figures are kept
 
@@ -211,16 +211,18 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 
 **Goal.** A save can never move a populated manual dataset's stored shape or orphan its CSV.
 
-**Read first.** `save_dataset_sidecar` ([dataset_service.py:2016-2065](../../frontend/app_server/services/dataset_service.py#L2016-L2065)) and `_write_dataset_csv_and_sidecar`; "Where ArcRho breaks the rule today" above; open decisions 2 and 3.
+**Read first.** `save_dataset_sidecar` ([dataset_service.py:2016-2065](../../frontend/app_server/services/dataset_service.py#L2016-L2065)) and `_write_dataset_csv_and_sidecar`; `_empty_dataset_geometry_from_general_settings` and `_empty_dataset_values`, which build the grid a relabelled empty dataset is rewritten at; "Where ArcRho breaks the rule today" above; open decisions 2 and 3.
 
 **Do.**
-- [ ] The request's lengths keep going into `origin_length` / `development_length` (the display shape). On an `input` sidecar `stored_*` and `csv_file` stay as they are.
-- [ ] Exception: when the stored CSV holds no non‑zero value, a save at a new shape moves `stored_*` to it, rewrites the CSV at that shape and deletes the old `csv_file`.
-- [ ] A save that carries `values` for a populated `input` dataset at a shape other than `stored_*` is refused with `422`. It is the backstop behind Step 7 and should never be reachable from the UI.
+- [x] The request's lengths keep going into `origin_length` / `development_length` (the display shape). On an `input` sidecar `stored_*` and `csv_file` stay as they are. A save that names `csv_file` itself is publishing a file and states its shape, so it stays outside the rule.
+- [x] Exception: when the stored CSV holds no non‑zero value, a save at a new shape moves `stored_*` to it, rewrites the CSV at that shape and deletes the old `csv_file`. Without `values` the rewritten grid is the empty geometry the project's General Settings give at the new shape, the same one a new dataset is created with.
+- [x] A save that carries `values` for a populated `input` dataset at a shape other than `stored_*` is refused with `422`. It is the backstop behind Step 7 and should never be reachable from the UI.
 
-**Tests.** Beside `test_dataset_external_links.py`: `stored_*` surviving a display‑only save, the `422` on a values save at the wrong shape, the empty‑dataset relabel, and the deleted old CSV.
+**Tests.** Beside `test_dataset_external_links.py`: `stored_*` surviving a display‑only save, the `422` on a values save at the wrong shape, the empty‑dataset relabel, and the deleted old CSV. Landed as `frontend/tests/test_dataset_stored_shape_save.py`.
 
 **Done when.** Both wrong outcomes listed under "Where ArcRho breaks the rule today" are impossible through the save endpoint.
+
+**For Step 7.** An Excel-link refresh republishes the dataset at its stored lengths ([excel_link_service.py:961-985](../../frontend/app_server/services/excel_link_service.py#L961-L985)), so it resets the saved display shape to the stored one. Harmless today; if the display shape is to survive a link refresh, that save has to carry the sidecar's display fields rather than the stored ones.
 
 ### Step 7 — Dataset Viewer: readout, dropdowns, read‑only view
 

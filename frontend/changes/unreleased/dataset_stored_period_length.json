@@ -8,6 +8,7 @@
     "Every writer emits the pair its format takes, the reserving-class index projects it, and a record whose display shape is not a whole multiple of its stored shape is refused.",
     "Every part of the app that opens a dataset's data file now reads the stored shape to learn how fine it is, so a coarser view on screen can no longer be mistaken for the data itself; the parts that ask for a dataset to be rebuilt, or that only report what a page is showing, keep reading the displayed shape.",
     "Every dataset record already on the server has been given the stored pair by a one-time script, so no reader has to cope with a record that leaves it out.",
-    "A project now records how fine its source data is when its field mapping is saved, and a project mapped before that is measured once on first use, so a dataset the app builds from the source table records the shape it can be rebuilt at rather than the period it was last shown at."
+    "A project now records how fine its source data is when its field mapping is saved, and a project mapped before that is measured once on first use, so a dataset the app builds from the source table records the shape it can be rebuilt at rather than the period it was last shown at.",
+    "Saving a hand-entered dataset can no longer lose its detail: the length you are viewing it at is saved as a display setting, the figures themselves stay in the file they were entered into, and a save that tries to write values at a coarser length is refused. A dataset that is still empty is simply relabelled to the new length instead."
   ]
 }
