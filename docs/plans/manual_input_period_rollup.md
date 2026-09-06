@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 3 done, 3 of 10.
-Last updated: 2026-09-05 — every part of the app that opens a dataset's data now reads how fine that data really is.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 4 done, 4 of 10.
+Last updated: 2026-09-05 — every dataset already on the server now records how fine its figures really are.
 
 ## Progress
 
@@ -12,7 +12,7 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 1 | Coarser views of a hand‑entered triangle add up correctly | [x] | 2026-09-05 | 2 h | 15 min | Opening a monthly or quarterly triangle at a yearly view now adds the figures up along the calendar, so the numbers on screen are the ones a method would use. |
 | 2 | Every dataset records the shape its data is really stored at | [x] | 2026-09-05 | 1 h 45 | 30 min | Every dataset's record now says how fine its figures really are, separately from how coarsely it is shown, so a yearly view of a monthly triangle can no longer be mistaken for monthly data. |
 | 3 | The parts of the app that read a dataset's shape use the right one | [x] | 2026-09-05 | 2 h | 25 min | Anything that opens a dataset's figures now asks how fine they really are, so a yearly view of a monthly triangle is no longer mistaken for yearly data. |
-| 4 | Existing projects on the server get the new shape record | [ ] | | 1 h 15 | | |
+| 4 | Existing projects on the server get the new shape record | [x] | 2026-09-05 | 1 h 15 | 2 h | Every dataset already on the server now records how fine its figures really are, so nothing has to guess at it, and every project's dataset list was rebuilt to match. |
 | 5 | Generated datasets know how fine their source data is | [ ] | | 45 min | | |
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [ ] | | 45 min | | |
 | 7 | The Dataset Viewer shows the stored shape and only offers valid views | [ ] | | 1 h 45 | | |
@@ -20,9 +20,9 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 3 of 10 steps done.
+Overall: 4 of 10 steps done.
 
-Time remaining: about 1 h 15 across the seven steps still open — 6 h 30 of estimates scaled by the fifth of them the three finished steps actually cost. Treat that as a floor rather than a forecast: Step 1 resumed work already written, Steps 2 and 3 spent much of their time waiting on test runs they could not shorten, and Step 4 and Step 10 are mostly waiting on the share and on a component rebuild, which no amount of agent speed touches.
+Time remaining: about 2 h 15 across the six steps still open — 5 h 15 of estimates scaled by the just‑under‑half the four finished steps have really cost. The scaling moved a long way up after Step 4, which took 2 h against 1 h 15: the code was written and tested in half an hour and the other ninety minutes were the share, which handed back 10,997 files one round trip at a time however fast the agent worked. Steps 5 to 9 are code steps like Steps 1 to 3 and should keep beating their estimates; Step 10 is a deploy, which takes the time it takes.
 
 ### How the time figures are kept
 
@@ -182,12 +182,14 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 **Read first.** The data access restrictions in `AGENT_GUIDELINES.md`; the memory notes on the offline dependent‑walk replay (patch the project directory helpers, probe paths first); `tools/` for the existing script conventions.
 
 **Do.**
-- [ ] One script under `tools/` that walks every project's sidecars and writes the stored fields once: `input`, imported, calculated and method outputs copy their current lengths (which equal the CSV's, as the file name confirms); regenerable Engine sidecars take the field‑mapping granularity when Step 5 has landed, else the current lengths with a report line. Dry‑run by default; rebuild every reserving‑class index afterwards.
-- [ ] Make the sidecar core validation require the fields (the Step 2 assertion).
+- [x] One script under `tools/` that walks every project's sidecars and writes the stored fields once: `input`, imported, calculated and method outputs copy their current lengths (which equal the CSV's, as the file name confirms); regenerable Engine sidecars take the field‑mapping granularity when Step 5 has landed, else the current lengths with a report line. Dry‑run by default; rebuild every reserving‑class index afterwards. Landed as `tools/backfill_stored_period_lengths.py`.
+- [x] Make the sidecar core validation require the fields (the Step 2 assertion). Step 2 already landed it in `_validate_period_lengths`; Step 4 only made that half of the check separately callable, as `validate_period_lengths`, so the backfill can hold a file to the period rule without also holding it to core fields another conversion fills in.
 
 **Tests.** The script on a scratch project tree copied under the scratchpad, covering each source kind and the dry‑run report.
 
 **Done when.** The script has been run for real against the share in dry‑run and then for real, with the report saved beside this plan, and the required‑field validation passes on a live index rebuild.
+
+**Run 2026-09-05.** [manual_input_period_rollup_backfill_report.md](manual_input_period_rollup_backfill_report.md) records it: 10,997 sidecars across 38 projects and 116 reserving classes, every one of them without a stored shape beforehand, and not one whose recorded lengths disagreed with the `@origin@development@` in its own `csv_file` — so the "copy the current lengths" rule above held everywhere. All 116 indexes rebuilt afterwards and their rows carry the stored pair. The one thing the dry run turned up that this plan had not accounted for: 4,034 of those sidecars fall short of the shared core for older reasons, 2,927 of them with no `json_format` stamp at all, because the share has never been through `tools/migrate_persisted_json_v4.py` (step 6 of [persisted_json_contract_v4.md](persisted_json_contract_v4.md), still open). The backfill therefore checks only the period‑length rule it owns, counts the rest, and leaves them to that conversion.
 
 ### Step 5 — Source granularity for generated datasets
 

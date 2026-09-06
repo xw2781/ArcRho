@@ -16,7 +16,7 @@ index is a summary of those lines, not a second source of truth.
 | [hosted_save_http_transport.md](hosted_save_http_transport.md) | Dataset-sidecar and DFM-method pilot implemented; the broader rollout is still proposed. |
 | [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) | Phase 1 reads and Phase 2 engine calculations implemented; the bounded-server foundation, SSE, and small writes remain. |
 | [local_runtime_log_retention_plan.md](local_runtime_log_retention_plan.md) | Audit complete (2026-08-09); remediation not started. |
-| [manual_input_period_rollup.md](manual_input_period_rollup.md) | Design settled 2026-09-05 and broken into ten session-sized steps with a progress table; 3 of 10 done — the shared roll-up helper is in, every dataset record carries its stored shape, and every reader now takes the shape its job needs. |
+| [manual_input_period_rollup.md](manual_input_period_rollup.md) | Design settled 2026-09-05 and broken into ten session-sized steps with a progress table; 4 of 10 done — the shared roll-up helper is in, every dataset record carries its stored shape, every reader takes the shape its job needs, and the 10,997 records already on the server have been backfilled ([run report](manual_input_period_rollup_backfill_report.md)). |
 | [persisted_json_contract_v4.md](persisted_json_contract_v4.md) | In progress: steps 1-5 landed, step 6 (the conversion script) is next. |
 
 ## Completed

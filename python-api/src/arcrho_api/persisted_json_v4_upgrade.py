@@ -46,8 +46,7 @@ from .revision_contract import FINGERPRINT_HEX_LENGTH, FINGERPRINT_PREFIX
 from .sidecar_core_contract import (
     dependency_entries,
     finalize_sidecar,
-    is_vector_format,
-    stored_length_fields,
+    stored_length_fields_from_display,
 )
 from .source_table_contract import SOURCE_IMPORT_JSON_FORMAT
 from .timestamps import normalize_persisted_timestamp
@@ -93,8 +92,6 @@ PLACEHOLDER_SECTIONS = frozenset({
 # nothing a reader would have seen, and without it the shared validator
 # refuses the converted sidecar. Measured on ``NJ_Annual_Prod_202605_Fake``
 # 2026-08-23: 314 of 2,079 sidecars are missing at least one of these.
-_DEFAULT_PERIOD_MONTHS = 12
-
 SIDECAR_CORE_DEFAULTS: dict[str, Any] = {
     "method_type": "",
     "status": 0,
@@ -247,30 +244,6 @@ def upgrade_method(payload: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
     return upgraded, notes_text
 
 
-def _converted_stored_lengths(renamed: Mapping[str, Any]) -> dict[str, int]:
-    """The stored shape of a sidecar written before there were two shapes.
-
-    An old file recorded one period length per axis, and it was both what the
-    dataset was displayed at and what its CSV held, so the conversion copies
-    it into the stored fields. A file that recorded none at all is read the
-    way every consumer already reads a missing length: as annual.
-    """
-
-    def months(field: str) -> int:
-        value = renamed.get(field)
-        try:
-            months_value = int(value)
-        except (TypeError, ValueError):
-            return _DEFAULT_PERIOD_MONTHS
-        return months_value if months_value > 0 else _DEFAULT_PERIOD_MONTHS
-
-    if is_vector_format(renamed.get("data_format")):
-        return stored_length_fields("Vector", months("period_length"))
-    return stored_length_fields(
-        "Triangle", months("origin_length"), months("development_length")
-    )
-
-
 def upgrade_dataset_sidecar(
     payload: Mapping[str, Any],
     *,
@@ -300,7 +273,7 @@ def upgrade_dataset_sidecar(
         renamed["modified_by"] = str(source.get("user") or "").strip()
     for field, default in SIDECAR_CORE_DEFAULTS.items():
         renamed.setdefault(field, default)
-    renamed.update(_converted_stored_lengths(renamed))
+    renamed.update(stored_length_fields_from_display(renamed))
     renamed["precedents"] = dependency_entries([
         {"dataset_name": item.get("dataset_name") or item.get("dataset_type_name") or item.get("name"), "method_type": item.get("method_type")}
         if isinstance(item, Mapping) else item

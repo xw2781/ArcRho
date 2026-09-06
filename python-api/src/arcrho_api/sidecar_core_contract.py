@@ -111,6 +111,10 @@ SIDECAR_STORED_PERIOD_FIELD = "stored_period_length"
 SIDECAR_STORED_ORIGIN_FIELD = "stored_origin_length"
 SIDECAR_STORED_DEVELOPMENT_FIELD = "stored_development_length"
 
+# What a length reads as when a file states none, which is how every consumer
+# already reads a missing one.
+DEFAULT_PERIOD_MONTHS = 12
+
 # stored field -> the display field it must divide, per data format.
 _VECTOR_PERIOD_FIELDS = ((SIDECAR_STORED_PERIOD_FIELD, SIDECAR_DISPLAY_PERIOD_FIELD),)
 _TRIANGLE_PERIOD_FIELDS = (
@@ -171,6 +175,34 @@ def stored_length_fields(
         SIDECAR_STORED_ORIGIN_FIELD: int(origin_length),
         SIDECAR_STORED_DEVELOPMENT_FIELD: int(development_length),
     }
+
+
+def stored_length_fields_from_display(payload: Mapping[str, Any]) -> dict[str, int]:
+    """The stored-shape fields of a sidecar that records only a display shape.
+
+    A file written before there were two shapes recorded one length per axis,
+    and it was both what the dataset was displayed at and what its CSV held,
+    so the single shape becomes the stored one. A file that recorded none at
+    all is read the way every consumer already reads a missing length: as
+    annual. Both the pre-v4 conversion and the one-time backfill of existing
+    server projects fill the stored fields this way.
+    """
+
+    def months(field: str) -> int:
+        value = payload.get(field)
+        try:
+            months_value = int(value)
+        except (TypeError, ValueError):
+            return DEFAULT_PERIOD_MONTHS
+        return months_value if months_value > 0 else DEFAULT_PERIOD_MONTHS
+
+    if is_vector_format(payload.get("data_format")):
+        return stored_length_fields("Vector", months(SIDECAR_DISPLAY_PERIOD_FIELD))
+    return stored_length_fields(
+        "Triangle",
+        months(SIDECAR_DISPLAY_ORIGIN_FIELD),
+        months(SIDECAR_DISPLAY_DEVELOPMENT_FIELD),
+    )
 
 
 def stored_lengths(payload: Mapping[str, Any]) -> tuple[int, int]:
@@ -297,8 +329,13 @@ def _period_months(payload: Mapping[str, Any], field: str) -> int:
     return value
 
 
-def _validate_period_lengths(payload: Mapping[str, Any]) -> None:
-    """Assert the stored shape is present and the display shape a multiple of it."""
+def validate_period_lengths(payload: Mapping[str, Any]) -> None:
+    """Assert the stored shape is present and the display shape a multiple of it.
+
+    Part of :func:`validate_sidecar_core`, and separately callable so the
+    one-time backfill of existing server projects can hold a file to this rule
+    alone without also holding it to core fields another conversion fills in.
+    """
 
     pairs = (
         _VECTOR_PERIOD_FIELDS
@@ -367,7 +404,7 @@ def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise SidecarContractError("Sidecar audit_log is not in the canonical policy form.")
     if not isinstance(payload["calculated"], bool):
         raise SidecarContractError("Sidecar calculated must be a boolean.")
-    _validate_period_lengths(payload)
+    validate_period_lengths(payload)
     is_method_output = bool(_clean(payload.get("method_name")))
     if is_method_output and payload["calculated"] is not True:
         raise SidecarContractError("A method-output sidecar is always calculated.")
@@ -380,6 +417,7 @@ def validate_sidecar_core(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "DATASET_SIDECAR_JSON_FORMAT",
+    "DEFAULT_PERIOD_MONTHS",
     "METHOD_OUTPUT_PUBLICATION_FIELD",
     "METHOD_OUTPUT_SIDECAR_FIELDS",
     "RETIRED_SIDECAR_FIELDS",
@@ -400,7 +438,9 @@ __all__ = [
     "finalize_sidecar",
     "is_vector_format",
     "stored_length_fields",
+    "stored_length_fields_from_display",
     "stored_lengths",
+    "validate_period_lengths",
     "validate_sidecar_core",
     "with_audit_log_last",
 ]
