@@ -118,6 +118,47 @@ def rollup_rows(
     )
 
 
+def precedent_source(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Mapping[str, Any],
+    origin_length: Any,
+) -> tuple[str, bool]:
+    """The CSV a method reads for this precedent at ``origin_length`` months.
+
+    Returns ``(csv_path, needs_rollup)``. A precedent stored at the method's
+    own period is read from the CSV its sidecar names. A finer one is served
+    the way the DFM already serves it: an Engine-generated dataset is rebuilt
+    at the method's period, and a hand-entered one is read from its own CSV
+    and rolled up in memory, so a monthly exposure vector feeds a yearly
+    method. ``csv_path`` is empty when the sidecar names no CSV. Raises
+    ``RuntimeError`` with the reason when the precedent cannot be brought to
+    the method's period, which is the case for a coarser one.
+    """
+
+    stored = source_period(sidecar)
+    target = _positive_int(origin_length)
+    if not stored or not target or stored == target:
+        return sidecar_csv_path(project_name, reserving_class, sidecar), False
+    if _clean(sidecar.get("source_kind")).lower() == "engine":
+        try:
+            path = materialize_engine_source(
+                project_name, reserving_class, dataset_name, sidecar, target
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"could not be generated at {target} months: {exc}"
+            ) from exc
+        return path, False
+    reason = rollup_reason(sidecar, target)
+    if reason:
+        raise RuntimeError(
+            f"uses {stored}-month origins; expected {target} ({reason})"
+        )
+    return sidecar_csv_path(project_name, reserving_class, sidecar), True
+
+
 def materialize_engine_source(
     project_name: str,
     reserving_class: str,

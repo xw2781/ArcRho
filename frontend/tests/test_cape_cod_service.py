@@ -224,6 +224,50 @@ class CapeCodServiceTests(unittest.TestCase):
             dependents=["CC Method"],
         )
 
+    def test_a_finer_exposure_precedent_is_brought_to_the_method_period(self) -> None:
+        """A monthly exposure vector feeds a yearly Cape Cod instead of being refused."""
+
+        self.write_all_sources()
+        path = self.sidecars / "Exposure.json"
+        sidecar = json.loads(path.read_text(encoding="utf-8"))
+
+        # Hand-entered and stored quarterly: summed up to the method's year.
+        sidecar["stored_period_length"] = 3
+        self.write_json(path, sidecar)
+        (self.datasets / "Exposure@12.csv").write_text(
+            "100\n200\n300\n400\n50\n60\n70\n80\n", encoding="utf-8"
+        )
+        snapshot = cape_cod_service._source_snapshots(
+            "Project", "Class", self.method_payload(), {"exposure"},
+        )
+        self.assertEqual(snapshot["exposure"]["values"], [[1000], [260]])
+
+        # Engine-generated and stored monthly: rebuilt at the method's period.
+        sidecar["source_kind"] = "engine"
+        sidecar["stored_period_length"] = 1
+        self.write_json(path, sidecar)
+        rebuilt = self.datasets / "Exposure@12.rebuilt.csv"
+        rebuilt.write_text("700\n800\n", encoding="utf-8")
+        with mock.patch.object(
+            cape_cod_service.precedent_cache_service,
+            "materialize_engine_source",
+            return_value=str(rebuilt),
+        ) as materialize:
+            snapshot = cape_cod_service._source_snapshots(
+                "Project", "Class", self.method_payload(), {"exposure"},
+            )
+        self.assertEqual(snapshot["exposure"]["values"], [[700], [800]])
+        self.assertEqual(materialize.call_args.args[2:], ("Exposure", sidecar, 12))
+
+        # Coarser than the method: still refused, yearly figures cannot be split.
+        sidecar["source_kind"] = "input"
+        sidecar["stored_period_length"] = 36
+        self.write_json(path, sidecar)
+        with self.assertRaisesRegex(HTTPException, "uses 36-month origins; expected 12"):
+            cape_cod_service._source_snapshots(
+                "Project", "Class", self.method_payload(), {"exposure"},
+            )
+
     def test_load_reads_method_sidecar_and_latest_source_only(self) -> None:
         self.write_method_pair()
         self.write_all_sources()

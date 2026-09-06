@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "methods",
+  "audience": "user",
+  "summary": "Bornhuetter Ferguson, Cape Cod, and Bootstrap now accept a precedent stored at a finer period than the method, instead of refusing it with 'uses 1-month origins; expected 12'.",
+  "details": [
+    "A generated precedent, such as an exposure vector in a monthly project, is rebuilt at the method's own period, the way the DFM already does it.",
+    "A hand-entered precedent stored finer than the method is summed up to the method's period from the figures you typed.",
+    "A precedent stored coarser than the method is still refused, because yearly figures cannot be split into months."
+  ]
+}

@@ -452,6 +452,71 @@ class BootstrapServiceTests(unittest.TestCase):
             refreshed["method"]["results_tab"]["bootstrap_ultimate"], original
         )
 
+    def test_a_finer_target_precedent_is_brought_to_the_method_period(self) -> None:
+        """A target vector stored finer than the Bootstrap is rolled up or rebuilt."""
+
+        self._write_target()
+        sidecar_path = self.sidecars / f"{TARGET_NAME}.json"
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        rows = len(self.origin_labels)
+
+        # Hand-entered and stored quarterly: four quarters sum to each year.
+        sidecar.update({
+            "source_kind": "input",
+            "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
+            "stored_period_length": 3,
+            "csv_file": f"{TARGET_NAME}@3.csv",
+        })
+        self._write_json(sidecar_path, sidecar)
+        quarters = [float(10 * index + quarter) for index in range(rows) for quarter in range(1, 5)]
+        (self.datasets / f"{TARGET_NAME}@3.csv").write_text(
+            "\n".join(str(value) for value in quarters) + "\n", encoding="utf-8", newline="\n"
+        )
+        snapshot = bootstrap_service._read_target_snapshot(
+            "Project",
+            "Class",
+            TARGET_NAME,
+            sidecar,
+            origin_length=12,
+            origin_labels=self.origin_labels,
+        )
+        self.assertEqual(snapshot["values"], [40 * index + 10 for index in range(rows)])
+        self.assertEqual(snapshot["origin_labels"], self.origin_labels)
+
+        # Engine-generated and stored monthly: rebuilt at the method's period.
+        sidecar.update({"source_kind": "engine", "stored_period_length": 1})
+        rebuilt = self.datasets / f"{TARGET_NAME}@12.rebuilt.csv"
+        rebuilt.write_text(
+            "\n".join(str(float(index)) for index in range(rows)) + "\n", encoding="utf-8", newline="\n"
+        )
+        with mock.patch.object(
+            bootstrap_service.precedent_cache_service,
+            "materialize_engine_source",
+            return_value=str(rebuilt),
+        ) as materialize:
+            snapshot = bootstrap_service._read_target_snapshot(
+                "Project",
+                "Class",
+                TARGET_NAME,
+                sidecar,
+                origin_length=12,
+                origin_labels=self.origin_labels,
+            )
+        self.assertEqual(snapshot["values"], [float(index) for index in range(rows)])
+        self.assertEqual(materialize.call_args.args[2:], (TARGET_NAME, sidecar, 12))
+
+        # Coarser than the method: still refused.
+        sidecar.update({"source_kind": "input", "stored_period_length": 36})
+        with self.assertRaisesRegex(HTTPException, "uses 36-month origins; expected 12"):
+            bootstrap_service._read_target_snapshot(
+                "Project",
+                "Class",
+                TARGET_NAME,
+                sidecar,
+                origin_length=12,
+                origin_labels=self.origin_labels,
+            )
+
     def test_an_unchanged_dfm_snapshot_skips_the_simulation(self) -> None:
         self.save()
         sidecar = json.loads(

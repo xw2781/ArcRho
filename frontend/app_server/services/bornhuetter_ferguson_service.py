@@ -249,20 +249,17 @@ def _read_source_snapshot_from_sidecar(
         raise HTTPException(422, f"BF {role.title()} source '{requested_name}' must be a Vector dataset.")
     if role == "dfm" and method_type != dataset_sidecar_status_service.METHOD_TYPE_DFM:
         raise HTTPException(422, f"BF Development Pattern source '{requested_name}' must be a DFM output.")
-    # Stored, not displayed: the CSV opened below is the sidecar's own.
-    period = precedent_cache_service.source_period(sidecar)
-    if period and period != origin_length:
-        raise HTTPException(
-            422,
-            f"BF precedent '{requested_name}' uses {period}-month origins; expected {origin_length}.",
+    # Stored, not displayed: the CSV opened below is the sidecar's own. A
+    # precedent stored finer than the method's period is brought to it, an
+    # Engine-generated one by a rebuild and a hand-entered one by a roll-up.
+    try:
+        csv_path, needs_rollup = precedent_cache_service.precedent_source(
+            project_name, reserving_class, requested_name, sidecar, origin_length
         )
-    csv_file = os.path.basename(_clean(sidecar.get("csv_file")))
-    if not csv_file:
+    except RuntimeError as exc:
+        raise HTTPException(422, f"BF precedent '{requested_name}' {exc}.") from exc
+    if not csv_path:
         raise HTTPException(422, f"BF precedent '{requested_name}' does not identify its cache CSV.")
-    csv_path = os.path.join(
-        config.get_project_dataset_cache_dir(project_name, reserving_class),
-        csv_file,
-    )
     try:
         frame = pd.read_csv(csv_path, header=None).astype(object)
     except FileNotFoundError as exc:
@@ -273,6 +270,14 @@ def _read_source_snapshot_from_sidecar(
         raise HTTPException(422, f"BF precedent CSV is invalid: {requested_name}: {exc}") from exc
     frame = frame.where(pd.notnull(frame), None)
     raw_values = frame.values.tolist()
+    if needs_rollup:
+        try:
+            raw_values = precedent_cache_service.rollup_rows(sidecar, raw_values, origin_length)
+        except ValueError as exc:
+            raise HTTPException(
+                422,
+                f"BF precedent '{requested_name}' could not be rolled up to the method's period: {exc}",
+            ) from exc
     method_origin_labels = [str(item if item is not None else "") for item in origin_labels]
     if not method_origin_labels:
         raise HTTPException(422, "BF method origin labels are required before loading precedents.")

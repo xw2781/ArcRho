@@ -557,31 +557,71 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         self.assertEqual(second_snapshot["priors"]["Prior"]["origin_labels"], ["2023", "2025"])
         self.assertEqual(len(cache), 2)
 
-    def test_precedent_period_is_the_stored_one_not_the_displayed_one(self) -> None:
-        """A quarterly vector shown yearly is still quarterly to the method."""
+    def test_a_finer_hand_entered_precedent_is_rolled_up_to_the_method(self) -> None:
+        """A quarterly vector shown yearly feeds the yearly method summed by year."""
 
-        self.write_source("Prior", "500\n600\n", data_format="Vector")
+        self.write_source("Prior", "100\n200\n300\n400\n50\n60\n70\n80\n", data_format="Vector")
         path = self.sidecars / "Prior.json"
         sidecar = json.loads(path.read_text(encoding="utf-8"))
         sidecar["stored_period_length"] = 3
-        self.write_json(path, sidecar)
-
-        with self.assertRaisesRegex(HTTPException, "uses 3-month origins; expected 12"):
-            bornhuetter_ferguson_service._source_snapshots(
-                "Project", "Class", self.method_payload(), {"priors"},
-            )
-
-        # The other way round: the window was left on a yearly view of yearly
-        # data, and the method loads it without complaint.
-        sidecar["stored_period_length"] = 12
-        sidecar["period_length"] = 36
         self.write_json(path, sidecar)
 
         snapshot = bornhuetter_ferguson_service._source_snapshots(
             "Project", "Class", self.method_payload(), {"priors"},
         )
 
+        self.assertEqual(snapshot["priors"]["Prior"]["values"], [[1000], [260]])
+
+        # The window was left on a yearly view of yearly data: nothing to roll
+        # up, and the method loads the file as it is.
+        sidecar["stored_period_length"] = 12
+        sidecar["period_length"] = 36
+        self.write_json(path, sidecar)
+        (self.datasets / "Prior@12.csv").write_text("500\n600\n", encoding="utf-8")
+
+        snapshot = bornhuetter_ferguson_service._source_snapshots(
+            "Project", "Class", self.method_payload(), {"priors"},
+        )
+
         self.assertEqual(snapshot["priors"]["Prior"]["values"], [[500], [600]])
+
+    def test_a_coarser_precedent_is_still_refused(self) -> None:
+        """Yearly figures cannot be split, so a three-year vector stays refused."""
+
+        self.write_source("Prior", "500\n600\n", data_format="Vector")
+        path = self.sidecars / "Prior.json"
+        sidecar = json.loads(path.read_text(encoding="utf-8"))
+        sidecar["stored_period_length"] = 36
+        self.write_json(path, sidecar)
+
+        with self.assertRaisesRegex(HTTPException, "uses 36-month origins; expected 12"):
+            bornhuetter_ferguson_service._source_snapshots(
+                "Project", "Class", self.method_payload(), {"priors"},
+            )
+
+    def test_a_finer_generated_precedent_is_rebuilt_at_the_method_period(self) -> None:
+        """A monthly Engine vector is regenerated yearly rather than refused."""
+
+        self.write_source("Prior", "1\n2\n3\n", data_format="Vector")
+        path = self.sidecars / "Prior.json"
+        sidecar = json.loads(path.read_text(encoding="utf-8"))
+        sidecar["source_kind"] = "engine"
+        sidecar["stored_period_length"] = 1
+        self.write_json(path, sidecar)
+        rebuilt = self.datasets / "Prior@12.rebuilt.csv"
+        rebuilt.write_text("700\n800\n", encoding="utf-8")
+
+        with mock.patch.object(
+            bornhuetter_ferguson_service.precedent_cache_service,
+            "materialize_engine_source",
+            return_value=str(rebuilt),
+        ) as materialize:
+            snapshot = bornhuetter_ferguson_service._source_snapshots(
+                "Project", "Class", self.method_payload(), {"priors"},
+            )
+
+        self.assertEqual(snapshot["priors"]["Prior"]["values"], [[700], [800]])
+        self.assertEqual(materialize.call_args.args[2:], ("Prior", sidecar, 12))
 
     def test_explicit_refresh_keeps_review_alert_until_save(self) -> None:
         self.write_method_pair(status=2)
