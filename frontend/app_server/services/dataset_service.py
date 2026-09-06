@@ -28,6 +28,7 @@ from arcrho_api.sidecar_audit_contract import (
 )
 from arcrho_api.sidecar_core_contract import finalize_sidecar, stored_length_fields, stored_lengths
 from arcrho_api.timestamps import utc_now_text
+from arcrho_api.triangle_rollup import rollup_triangle
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
@@ -1362,12 +1363,51 @@ def create_empty_cached_dataset(
         )
 
 
+def register_rollup_handle(ds_id: str, recipe: Dict[str, Any]) -> None:
+    """Bind a dataset id to the roll-up that builds it from a finer stored CSV.
+
+    A hand-entered triangle is only ever stored at the shape it was typed at.
+    A coarser view of it is built again on every read from that CSV, so a
+    later edit to the figures can never be served from an older view.
+    """
+
+    config.DATASET_ROLLUPS[ds_id] = dict(recipe)
+
+
+def _rolled_up_dataset(ds_id: str) -> Tuple[pd.DataFrame, float] | None:
+    recipe = config.DATASET_ROLLUPS.get(ds_id)
+    if not recipe:
+        return None
+    source_path = str(recipe.get("source_path") or "")
+    if not source_path or not os.path.exists(source_path):
+        return None
+    rows = pd.read_csv(
+        source_path, header=None, dtype="float64", keep_default_na=True
+    ).to_numpy().tolist()
+    values = rollup_triangle(
+        rows,
+        source_origin_length=int(recipe["source_origin_length"]),
+        source_development_length=int(recipe["source_development_length"]),
+        target_origin_length=int(recipe["target_origin_length"]),
+        target_development_length=int(recipe["target_development_length"]),
+        cumulative=bool(recipe.get("cumulative", True)),
+        calendar=bool(recipe.get("calendar", False)),
+    )
+    return pd.DataFrame(values, dtype="float64"), os.stat(source_path).st_mtime
+
+
 def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
-    if not path or not os.path.exists(path):
+    if not path:
         return None
-
-    df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
+    rolled_up = _rolled_up_dataset(ds_id)
+    if rolled_up is None:
+        if not os.path.exists(path):
+            return None
+        df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True)
+        mtime = os.stat(path).st_mtime
+    else:
+        df, mtime = rolled_up
     n_origin, n_dev = df.shape
 
     origin_labels = _resolve_origin_labels(ds_id, path, project_name, origin_length, n_origin)
@@ -1376,14 +1416,13 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     values = df.to_numpy()
     mask = ~np.isnan(values)
 
-    st = os.stat(path)
     return {
         "id": ds_id,
         "origin_labels": origin_labels,
         "dev_labels": dev_labels,
         "values": np.where(np.isnan(values), _BLANK_CELL, values).tolist(),
         "mask": mask.tolist(),
-        "mtime": st.st_mtime,
+        "mtime": mtime,
     }
 
 
@@ -1391,10 +1430,15 @@ def get_diagonal(
     ds_id: str, project_name: str, origin_length: int, k: int = 0
 ) -> Dict[str, Any] | None:
     path = config.DATASETS.get(ds_id)
-    if not path or not os.path.exists(path):
+    if not path:
         return None
-
-    df = load_triangle_values(path)
+    rolled_up = _rolled_up_dataset(ds_id)
+    if rolled_up is None:
+        if not os.path.exists(path):
+            return None
+        df = load_triangle_values(path)
+    else:
+        df = rolled_up[0]
     n_origin, n_dev = df.shape
     origin_labels = _resolve_origin_labels(ds_id, path, project_name, origin_length, n_origin)
     dev_labels = [str(12 * (j + 1)) for j in range(n_dev)]

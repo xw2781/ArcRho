@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A coarser view of a hand-entered triangle is now built from the figures you typed every time it is opened, instead of from a saved copy that never updated.",
+  "details": [
+    "Opening a monthly or quarterly hand-entered triangle at a yearly view used to leave a yearly copy of it beside the file; every later yearly open served that copy, so an edit to the figures, including an Excel refresh, was never shown.",
+    "No such copy is written any more, and one left behind by an earlier version is ignored."
+  ]
+}

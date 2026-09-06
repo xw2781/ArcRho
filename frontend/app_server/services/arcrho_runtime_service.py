@@ -774,6 +774,23 @@ def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]
     return _triangle_sidecar_payload(data_path, pairs, local_only=False)
 
 
+def _is_stale_input_variant(data_path: str, pairs: list) -> bool:
+    """Is this a coarser copy of a hand-entered dataset left behind on disk?
+
+    A hand-entered dataset is current only in the CSV its sidecar names. Any
+    other copy beside it is a view an older release wrote down, and nothing
+    updates it when the figures are edited, so it is never served.
+    """
+
+    payload = _safe_read_json(_dataset_sidecar_path(data_path, pairs))
+    if not isinstance(payload, dict):
+        return False
+    if _clean_cache_text(payload.get("source_kind")).lower() != "input":
+        return False
+    csv_file = _clean_cache_text(payload.get("csv_file"))
+    return bool(csv_file) and os.path.basename(csv_file) != os.path.basename(data_path)
+
+
 def _is_generated_triangle_payload(payload: Dict[str, Any]) -> bool:
     source_kind = _clean_cache_text(payload.get("source_kind")).lower()
     return source_kind == "engine"
@@ -907,12 +924,7 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     )
     target_rows = len(values)
     target_cols = len(values[0])
-
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    tmp_path = f"{target_path}.{uuid.uuid4()}.tmp"
-    pd.DataFrame(values).to_csv(tmp_path, header=False, index=False)
-    os.replace(tmp_path, target_path)
-    return {
+    derived = {
         "source_path": source_path,
         "source_origin_length": source_origin,
         "source_development_length": source_dev,
@@ -921,6 +933,35 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
         "target_rows": target_rows,
         "target_cols": target_cols,
     }
+
+    payload = candidate.get("payload")
+    if isinstance(payload, dict) and _clean_cache_text(payload.get("source_kind")).lower() == "input":
+        # A hand-entered triangle is the only copy of figures nobody can
+        # produce again, so a coarser view of it is never written beside it:
+        # the grid is handed the roll-up recipe and builds the view from the
+        # stored CSV on every read.
+        from app_server.services import dataset_service
+
+        dataset_service.register_rollup_handle(
+            _arcrho_dataset_id(target_path, pairs),
+            {
+                "source_path": source_path,
+                "source_origin_length": source_origin,
+                "source_development_length": source_dev,
+                "target_origin_length": target_origin,
+                "target_development_length": target_dev,
+                "cumulative": _pair_bool_value(pairs, "Cumulative", True),
+                "calendar": _pair_bool_value(pairs, "Calendar", False),
+            },
+        )
+        derived["in_memory"] = True
+        return derived
+
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    tmp_path = f"{target_path}.{uuid.uuid4()}.tmp"
+    pd.DataFrame(values).to_csv(tmp_path, header=False, index=False)
+    os.replace(tmp_path, target_path)
+    return derived
 
 
 def _arcrho_dataset_id(data_path: str, pairs: list | None = None) -> str:
@@ -958,7 +999,7 @@ def resolve_local_triangle_cache(
         if calculated_validation_memo is not None
         else {}
     )
-    if arcrho_tri_cache_matches(
+    if not _is_stale_input_variant(data_path, pairs) and arcrho_tri_cache_matches(
         data_path,
         pairs,
         allow_runtime_cache_provenance=allow_runtime_cache_provenance,
@@ -1079,7 +1120,7 @@ def resolve_local_triangle_cache(
         except Exception as err:
             rejected.append(str(err))
             continue
-        if refresh_index_on_materialize:
+        if refresh_index_on_materialize and not derived.get("in_memory"):
             try:
                 dataset_instance_index_service.rebuild_index(_pair_value(pairs, "ProjectName"), _pair_value(pairs, "Path"))
             except Exception:
@@ -2392,7 +2433,8 @@ def run_arcrho_tri(
     )
     if local_result.get("ok") and not force_refresh:
         out = _local_cache_response(local_result, data_path, pairs)
-        if local_result.get("status") == "cache_derived":
+        derived_in_memory = bool((local_result.get("derived") or {}).get("in_memory"))
+        if local_result.get("status") == "cache_derived" and not derived_in_memory:
             if write_sidecar:
                 _write_dataset_sidecar(data_path, pairs)
                 if refresh_index and not recalculate_dependents_on_cache_write:
@@ -2406,6 +2448,7 @@ def run_arcrho_tri(
         if (
             write_sidecar
             and recalculate_dependents_on_cache_write
+            and not derived_in_memory
             and local_result.get("status") != "cache_exact"
         ):
             out["calculated_updates"] = _recalculate_dependents_after_cache_write(pairs)

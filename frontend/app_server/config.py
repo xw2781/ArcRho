@@ -331,10 +331,16 @@ def refresh_runtime_paths() -> None:
 # In-memory dataset cache
 DATASETS: Dict[str, str] = {}
 
+# A coarser view of a hand-entered dataset is never written down: the grid
+# routes keep the recipe that builds it here and roll the stored CSV up again
+# on every read, so an edit to that CSV can never be served stale.
+DATASET_ROLLUPS: Dict[str, Dict[str, Any]] = {}
+
 
 def clear_runtime_path_caches() -> None:
     """Clear in-memory caches that contain absolute workspace paths."""
     DATASETS.clear()
+    DATASET_ROLLUPS.clear()
 
 
 # Initialise paths on first import

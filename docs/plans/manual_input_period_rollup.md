@@ -1,7 +1,7 @@
 # Manual Input Triangles at a Coarser Method Period
 
-Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 8 done, 8 of 10.
-Last updated: 2026-09-05 — a yearly method now reads a monthly or quarterly hand‑entered triangle by adding it up along the calendar as it loads, and never from a coarser copy left on disk.
+Status: Design settled 2026-09-05, broken into ten session‑sized steps; Steps 1 to 9 done, 9 of 10.
+Last updated: 2026-09-05 — a coarser view of a hand‑entered triangle is now worked out from the stored figures every time it is opened, and no copy of it is written beside them.
 
 ## Progress
 
@@ -17,14 +17,12 @@ Plain‑language tracking. The agent that finishes a step ticks its box, fills i
 | 6 | Saving a hand‑entered dataset can no longer lose its detail | [x] | 2026-09-05 | 45 min | 15 min | Looking at a hand‑entered triangle a year at a time and saving no longer turns it into yearly data: the figures stay in the file you typed them into, and the app refuses to write values back at a coarser view. |
 | 7 | The Dataset Viewer shows the stored shape and only offers valid views | [x] | 2026-09-05 | 1 h 45 | 15 min | The dataset window now says how fine each triangle's figures really are, offers only the coarser views that add up honestly, reopens at the view you last saved, and will not let you type over a rolled‑up figure. |
 | 8 | A method can use a finer hand‑entered triangle as its input | [x] | 2026-09-05 | 45 min | 15 min | A yearly method can now take a monthly or quarterly hand‑entered triangle as its input: the figures are added up along the calendar every time the method reads them, and an old rolled‑up copy left on disk is never used. |
-| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [ ] | | 30 min | | |
+| 9 | Old rolled‑up copies of a hand‑entered dataset are never trusted | [x] | 2026-09-05 | 30 min | 10 min | Looking at a hand‑entered triangle at a coarser period now works the figures out from the ones you typed every time the window opens, so an edit to them always shows, and the coarser copy that used to be left beside the file is neither written nor read. |
 | 10 | The change is live on the server | [ ] | | 45 min | | |
 
-Overall: 8 of 10 steps done.
+Overall: 9 of 10 steps done.
 
-Time remaining: about 30 min across the two steps still open — 1 h 15 of estimates scaled by the just under two fifths the eight finished steps have really cost. Step 8 landed in 15 minutes against 45, so the scaling has not moved; the only overrun in the plan is still Step 4's 2 h against 1 h 15, which was the share handing back 10,997 files one round trip at a time. Step 9 is a code step like the rest and should keep beating its estimate; Step 10 is a deploy, which takes the time it takes.
-
-### How the time figures are kept
+Time remaining: about 15 min for the one step still open — 45 min of estimate scaled by the just over a third the nine finished steps have really cost. Step 9 landed in 10 minutes against 30, so the scaling has not moved; the only overrun in the plan is still Step 4's 2 h against 1 h 15, which was the share handing back 10,997 files one round trip at a time. Step 10 is a deploy, and a component rebuild takes the time it takes however fast the agent thinks, so it is the one step likely to overrun its estimate rather than beat it.
 
 The **Est.** column is what the step is expected to cost and **Took** is the wall‑clock time it really ran, filled in once by the agent that lands it. Keeping both is the point: a column of estimates nobody ever checks is worthless.
 
@@ -263,7 +261,7 @@ Ten steps, each sized for one agent context (a 1M session or one workflow subage
 **Read first.** "A derived cache is trusted forever" above; `resolve_local_triangle_cache`, `_processing_config_matches` and `arcrho_tri_cache_matches` in `arcrho_runtime_service.py`.
 
 **Do.**
-- [ ] Option A (preferred, and Step 7 makes it natural since a coarser view can never be edited): stop materialising variants for `source_kind == "input"` and derive in memory for the view. Option B, only if A proves impractical: record the source file's fingerprint in the derived cache's runtime provenance and check it.
+- [x] Option A: no variant is materialised for `source_kind == "input"`. The roll‑up is registered as a recipe against the sidecar's own CSV and rebuilt on every grid read, and a coarser copy already on disk is no longer accepted as the current cache.
 
 **Tests.** Change the monthly CSV, reload at 12 months, expect the new numbers.
 
