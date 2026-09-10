@@ -6,7 +6,8 @@
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
   <title>Dependency Graph</title>
   <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a"/>
-  <link rel="stylesheet" href="/ui/project_instance/dependency_graph_window.css?v=20260909b"/>
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
+  <link rel="stylesheet" href="/ui/project_instance/dependency_graph_window.css?v=20260910e"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260903a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
@@ -19,11 +20,11 @@
         <input id="dependencyGraphShowAll" type="checkbox"/>
         <span>Show all</span>
       </label>
-      <span class="pi-dependency-graph-cue">Click a box to light its chain, double-click to open it. Drag to pan, wheel to zoom.</span>
+      <span class="pi-dependency-graph-cue">Click a box to light its chain, double-click or right-click to open it. Drag to pan, wheel to zoom.</span>
       <div class="pi-dependency-graph-legend" aria-label="Node families">
         <span data-family="dataset">Dataset</span>
         <span data-family="calculated">Calculated</span>
-        <span data-family="engine">Engine</span>
+        <span data-family="engine">Imported</span>
         <span data-family="method">Method</span>
       </div>
       <button class="pi-dependency-graph-icon-btn" id="dependencyGraphZoomOut" type="button" data-icon="zoom-out" aria-label="Zoom out"></button>
@@ -31,12 +32,17 @@
       <button class="pi-dependency-graph-icon-btn" id="dependencyGraphFit" type="button" data-icon="fit" aria-label="Fit the whole graph in the window"></button>
       <button class="pi-dependency-graph-icon-btn" id="dependencyGraphRefresh" type="button" data-icon="refresh" aria-label="Refresh the dependency graph"></button>
     </div>
-    <div class="pi-dependency-graph-canvas ar-framed-scroll" id="dependencyGraphCanvas">
+    <div class="pi-dependency-graph-canvas" id="dependencyGraphCanvas">
       <svg class="pi-dependency-graph-svg" id="dependencyGraphSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dependency graph"></svg>
       <div class="pi-dependency-graph-state" id="dependencyGraphState" hidden></div>
     </div>
     <div class="pi-dependency-graph-status" id="dependencyGraphStatus" aria-live="polite"></div>
   </div>
-  <script type="module" src="/ui/project_instance/dependency_graph_window.js?v=20260909b"></script>
+  <div class="ctx-menu pi-dependency-graph-menu" id="dependencyGraphMenu" role="menu" aria-label="Graph box actions">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" type="button" role="menuitem" data-action="open">Show Dataset</button>
+    </div>
+  </div>
+  <script type="module" src="/ui/project_instance/dependency_graph_window.js?v=20260910f"></script>
 </body>
 </html>

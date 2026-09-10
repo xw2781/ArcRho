@@ -4,6 +4,7 @@ import test from "node:test";
 
 const stubUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 const tooltipStubUrl = stubUrl("export function attachArcrhoTooltip() {}");
+const contextMenuStubUrl = stubUrl("export function openContextMenu() {}");
 
 const layoutUrl = new URL("../ui/project_instance/dependency_graph_layout.js", import.meta.url).href;
 const {
@@ -23,12 +24,14 @@ const rawWindowSource = (await readFile(
 )).replaceAll("\r\n", "\n");
 const windowModule = await import(stubUrl(
   rawWindowSource
+    .replace(/"\/ui\/shared\/components\/context_menu\/context_menu\.js\?v=\d{8}[a-z]"/, JSON.stringify(contextMenuStubUrl))
     .replace(/"\/ui\/shared\/components\/tooltip\/tooltip\.js\?v=\d{8}[a-z]"/, JSON.stringify(tooltipStubUrl))
     .replace(/"\/ui\/project_instance\/dependency_graph_layout\.js\?v=\d{8}[a-z]"/, JSON.stringify(layoutUrl))
     .replace(/^import "\/ui\/shared\/integrations\/zoom_bridge\.js[^"]*";$/m, "")
     .replace(/^const params = new URLSearchParams[\s\S]*$/m, ""),
 ));
 const {
+  dependencyGraphFitScale,
   dependencyGraphOpenRequest,
   dependencyGraphPortList,
   dependencyGraphScrollTo,
@@ -75,7 +78,8 @@ test("the graph keeps one node per name and one edge per pair, dropping unknown 
 test("node families come from the method type, then the source kind, and a missing node is its own family", () => {
   assert.deepEqual(dependencyNodeKind({ source_kind: "input", method_type: "None" }), { family: "dataset", label: "Dataset" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "calculated" }), { family: "calculated", label: "Calculated" });
-  assert.deepEqual(dependencyNodeKind({ source_kind: "engine" }), { family: "engine", label: "Engine" });
+  // An engine-built dataset reads as where its numbers came from.
+  assert.deepEqual(dependencyNodeKind({ source_kind: "engine" }), { family: "engine", label: "Imported" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "dfm", method_type: "DFM" }), { family: "method", label: "DFM" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "input", in_index: false }), { family: "missing", label: "Not In Index" });
 });
@@ -228,17 +232,43 @@ test("each port lists the direct precedents or dependents with the label their b
   assert.deepEqual(dependencyGraphPortList(graph.byKey.get("paid"), graph, "out").entries.map((e) => e.family), ["calculated"]);
 });
 
-test("the scroll surface centres a small graph and scrolls a large one to the point asked for", () => {
+test("the scroll surface keeps half a canvas of margin on every side of the graph", () => {
   const layout = { width: 400, height: 200 };
+  // Half of the 800x600 canvas on each side, so any edge of the graph reaches
+  // the middle of the window.
   const small = dependencyGraphViewport(layout, { width: 800, height: 600 }, 1, 16);
-  assert.deepEqual(small, { width: 800, height: 600, offsetX: 200, offsetY: 200 });
+  assert.deepEqual(small, { width: 1200, height: 800, offsetX: 400, offsetY: 300 });
   const large = dependencyGraphViewport(layout, { width: 300, height: 100 }, 2, 16);
-  assert.deepEqual(large, { width: 832, height: 432, offsetX: 16, offsetY: 16 });
+  assert.deepEqual(large, { width: 1100, height: 500, offsetX: 150, offsetY: 50 });
+  // A canvas too small to have been measured yet falls back to the padding.
+  assert.deepEqual(
+    dependencyGraphViewport(layout, { width: 0, height: 0 }, 1, 16),
+    { width: 432, height: 232, offsetX: 16, offsetY: 16 },
+  );
   // A node centred at graph (100, 50) lands in the middle of the 300x100 canvas.
   assert.deepEqual(
     dependencyGraphScrollTo(large, 2, { x: 100, y: 50 }, { x: 150, y: 50 }),
-    { scrollLeft: 66, scrollTop: 66 },
+    { scrollLeft: 200, scrollTop: 100 },
   );
+  // The leftmost box, at the graph's own left edge, reaches that middle too.
+  assert.deepEqual(
+    dependencyGraphScrollTo(large, 2, { x: 0, y: 0 }, { x: 150, y: 50 }),
+    { scrollLeft: 0, scrollTop: 0 },
+  );
+});
+
+test("the fit zoom shows the whole graph and never magnifies past 1:1", () => {
+  const layout = { width: 400, height: 200 };
+  // A graph wider than the canvas is shrunk until both sides fit inside the
+  // padding: (300 - 32) / 400 is tighter than (200 - 32) / 200.
+  assert.equal(dependencyGraphFitScale(layout, { width: 300, height: 200 }, 16), 0.67);
+  // A graph with room to spare stays at 1:1 rather than being blown up.
+  assert.equal(dependencyGraphFitScale(layout, { width: 900, height: 700 }, 16), 1);
+  // A canvas too small to reach even the smallest zoom stops at that zoom.
+  assert.equal(dependencyGraphFitScale(layout, { width: 40, height: 40 }, 16), 0.2);
+  // Nothing to measure yet.
+  assert.equal(dependencyGraphFitScale(layout, { width: 0, height: 0 }, 16), 0);
+  assert.equal(dependencyGraphFitScale(null, { width: 800, height: 600 }, 16), 0);
 });
 
 test("the Project Instance page wires the toolbar icon, the window kind, and the redraw hook", async () => {
@@ -286,27 +316,84 @@ test("the graph page and its read are registered end to end", async () => {
   for (const id of ["dependencyGraphSearch", "dependencyGraphShowAll", "dependencyGraphZoomOut", "dependencyGraphZoomIn", "dependencyGraphFit", "dependencyGraphRefresh", "dependencyGraphCanvas", "dependencyGraphSvg", "dependencyGraphState", "dependencyGraphStatus"]) {
     assert.ok(pageHtml.includes(`id="${id}"`), id);
   }
+  // Each legend swatch spells the same label the boxes of that family show.
+  for (const sourceKind of ["input", "calculated", "engine"]) {
+    const kind = dependencyNodeKind({ source_kind: sourceKind });
+    assert.ok(pageHtml.includes(`<span data-family="${kind.family}">${kind.label}</span>`), kind.label);
+  }
   assert.match(rawWindowSource, /const GRAPH_ENDPOINT = "\/datasets\/dependency-graph";/);
   // The drag handle captures the pointer (arcrho-ui-design L16).
   assert.match(rawWindowSource, /svg\.setPointerCapture\(event\.pointerId\);/);
 
-  // The canvas is a framed ArcRho scroll surface and its scrollbars are the pan.
+  // The canvas scrolls to pan but draws no scrollbars; only the port list keeps
+  // the framed ArcRho ones.
   assert.match(pageHtml, /\/ui\/shared\/styles\/framed_scrollbars\.css\?v=\d{8}[a-z]/);
-  assert.match(pageHtml, /class="pi-dependency-graph-canvas ar-framed-scroll" id="dependencyGraphCanvas"/);
+  assert.match(pageHtml, /class="pi-dependency-graph-canvas" id="dependencyGraphCanvas"/);
   assert.match(rawWindowSource, /scrollCanvasTo\(drag\.scrollLeft - dx, drag\.scrollTop - dy\);/);
-  assert.match(rawWindowSource, /canvas\.classList\.add\("isScrolling"\);/);
+  // The graph sits in a pannable margin, so the fit centres it instead of
+  // scrolling to the origin.
+  assert.doesNotMatch(rawWindowSource, /scrollCanvasTo\(0, 0\)/);
+
+  // Zooming out stops once the whole graph is on screen, and the button with it.
+  assert.match(rawWindowSource, /const floor = factor < 1 \? Math\.min\(zoomOutFloor\(\), view\.scale\) : ZOOM_MIN;/);
+  assert.match(rawWindowSource, /const next = Math\.max\(floor, Math\.min\(ZOOM_MAX, view\.scale \* factor\)\);/);
+  assert.match(rawWindowSource, /els\.zoomOut\.disabled = busy \|\| empty \|\| wholeGraphShowing;/);
+  assert.doesNotMatch(rawWindowSource, /canvas\.classList\.add\("isScrolling"\)/);
 
   // Single click selects and pins the chain, double click opens, and a box
   // carries two ports instead of a tooltip.
-  assert.match(rawWindowSource, /box\.addEventListener\("click", \(\) => setSelection\(node\.key\)\);/);
-  assert.match(rawWindowSource, /box\.addEventListener\("dblclick", \(event\) => \{\n\s+event\.preventDefault\(\);\n\s+openNode\(node\);/);
+  assert.match(rawWindowSource, /if \(event\.detail <= 1\) view\.chainBeforeClick = view\.selectedKey;\n\s+setSelection\(node\.key\);/);
+  // Opening a box leaves the lit chain alone: the double click puts back what
+  // its own first click replaced.
+  assert.match(rawWindowSource, /box\.addEventListener\("dblclick", \(event\) => \{\n\s+event\.preventDefault\(\);\n\s+setSelection\(view\.chainBeforeClick\);\n\s+openNode\(node\);/);
   assert.doesNotMatch(rawWindowSource, /attachArcrhoTooltip\(box/);
   assert.match(rawWindowSource, /wrap\.appendChild\(buildPortElement\(node, "in"\)\);\n\s+wrap\.appendChild\(buildPortElement\(node, "out"\)\);/);
   const css = await read("../ui/project_instance/dependency_graph_window.css");
-  for (const selector of [".dg-port.is-in", ".dg-port.is-out", ".dg-port-popover", ".dg-port-popover-row", ".dg-node.is-upstream", ".dg-node.is-downstream", ".dg-node.is-target"]) {
+  assert.match(css, /\.pi-dependency-graph-canvas::-webkit-scrollbar \{ width: 0; height: 0; \}/);
+  assert.match(css, /\.pi-dependency-graph-canvas \{[^}]*scrollbar-width: none;/);
+  for (const selector of [".dg-port.is-in", ".dg-port.is-out", ".dg-port-popover", ".dg-port-popover-row", ".dg-node.is-upstream", ".dg-node.is-downstream", ".dg-node.is-target", ".dg-node.is-context-target"]) {
     assert.ok(css.includes(selector), selector);
   }
-  assert.match(pageHtml, /Click a box to light its chain, double-click to open it\./);
+  assert.match(pageHtml, /Click a box to light its chain, double-click or right-click to open it\./);
+
+  // A hovered box walks a name too long to fit from end to end: the page
+  // measures that one name's overflow and times the turns, the stylesheet
+  // owns the slide, and a name that fits keeps its resting ellipsis.
+  assert.match(rawWindowSource, /box\.addEventListener\("pointerenter", \(\) => startNameScroll\(nameText\)\);/);
+  assert.match(rawWindowSource, /box\.addEventListener\("pointerleave", \(\) => stopNameScroll\(nameText\)\);/);
+  assert.match(rawWindowSource, /const shift = textEl\.scrollWidth - textEl\.clientWidth;\n\s+if \(shift < NAME_SCROLL_MIN_PX\) return;/);
+  assert.match(rawWindowSource, /textEl\.style\.setProperty\("--dg-name-shift", `\$\{-shift\}px`\);/);
+  // Even a name hanging a few pixels over travels, but no quicker than the
+  // floor, and it rests at each end for a fixed while before turning back.
+  assert.ok(Number(rawWindowSource.match(/const NAME_SCROLL_MIN_PX = (\d+);/)?.[1]) <= 3);
+  assert.ok(Number(rawWindowSource.match(/const NAME_SCROLL_MIN_MS = (\d+);/)?.[1]) >= 1000);
+  assert.ok(Number(rawWindowSource.match(/const NAME_SCROLL_HOLD_MS = (\d+);/)?.[1]) >= 1000);
+  assert.match(rawWindowSource, /Math\.round\(Math\.max\(NAME_SCROLL_MIN_MS, \(shift \/ NAME_SCROLL_PX_PER_S\) \* 1000\)\)/);
+  assert.match(rawWindowSource, /nameScroll\.timer = window\.setTimeout\(turn, travelMs \+ NAME_SCROLL_HOLD_MS\);/);
+  assert.match(rawWindowSource, /nameScroll\.timer = window\.setTimeout\(turn, NAME_SCROLL_START_MS\);/);
+  // A redraw or a pointer that left stops the trip and puts the name back.
+  assert.match(rawWindowSource, /nameScroll\.el\?\.classList\.remove\("is-scrolling", "is-scrolled"\);/);
+  assert.match(rawWindowSource, /closeNodeMenu\(\);\n\s+stopNameScroll\(\);/);
+  assert.match(css, /\.dg-node-name-text \{[^}]*text-overflow: ellipsis;/);
+  // It travels on `left`, not on a transform: an animating transform is lifted
+  // onto its own layer, which the zoomed diagram rasterizes at the wrong scale
+  // and the name goes soft for exactly as long as it moves.
+  assert.match(css, /\.dg-node-name-text\.is-scrolling \{[^}]*transition: left var\(--dg-name-duration, 2s\) ease-in-out;/);
+  assert.match(css, /\.dg-node-name-text\.is-scrolled \{ left: var\(--dg-name-shift, 0px\); \}/);
+  assert.doesNotMatch(css, /\.dg-node-name-text[^{]*\{[^}]*transform:/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.dg-node-name-text\.is-scrolling \{[^}]*transition: none;/);
+
+  // The right-click menu offers the same open action without selecting the box.
+  assert.match(pageHtml, /context_menu\.css\?v=\d{8}[a-z]/);
+  const menu = pageHtml.match(/<div class="ctx-menu pi-dependency-graph-menu" id="dependencyGraphMenu"[\s\S]*?<\/div>\s*<\/div>/)?.[0];
+  assert.ok(menu, "the page carries the box context menu");
+  assert.match(menu, /<button class="ctx-item" type="button" role="menuitem" data-action="open">Show Dataset<\/button>/);
+  assert.match(css, /\.pi-dependency-graph-menu \{ display: none;/);
+  assert.match(rawWindowSource, /box\.addEventListener\("contextmenu", \(event\) => \{\n\s+event\.preventDefault\(\);\n\s+openNodeMenu\(node, box, event\);/);
+  assert.match(rawWindowSource, /item\.textContent = node\.methodType \? "Show Method" : "Show Dataset";/);
+  assert.match(rawWindowSource, /item\.disabled = node\.inIndex === false;/);
+  // The menu marks its box instead of selecting it, so the chain survives.
+  assert.match(rawWindowSource, /box\.classList\.add\("is-context-target"\);/);
 
   const router = await read("../app_server/api/dataset_router.py");
   assert.match(router, /@router\.get\("\/datasets\/dependency-graph"\)/);

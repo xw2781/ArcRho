@@ -13,19 +13,26 @@
 // on is left out by default and comes back with the Show all box. A single
 // click selects a box and keeps its chain lit - inputs in blue, what depends
 // on it in green, everything else dimmed - until another box is selected or
-// the background is clicked; a double click asks the Project Instance page to
-// open it - a dataset in Dataset Viewer, a method output in its method page -
-// through the same arcrho:project-instance-open-dependent-dataset message a
-// method page uses for a precedent. Hovering a box reveals two ports on its
-// edges: the left one lists the box's precedents, the right one its
-// dependents, and each name in the list scrolls the diagram to that box.
+// the background is clicked; a double click, and the right-click menu, ask the
+// Project Instance page to open it - a dataset in Dataset Viewer, a method
+// output in its method page - through the same
+// arcrho:project-instance-open-dependent-dataset message a method page uses
+// for a precedent. Opening a box never disturbs the lit chain: the right-click
+// menu leaves the selection alone, and a double click puts back whatever its
+// own first click replaced. Hovering a box scrolls a name too long to fit
+// through its own line, and reveals two ports on the box's edges: the left one
+// lists the box's precedents, the right one its dependents, and each name in
+// the list scrolls the diagram to that box.
 //
-// The diagram scrolls inside a framed ArcRho scroll surface: the SVG is sized
-// to the zoomed graph, so the canvas's own scrollbars pan it, and dragging the
-// background or scrolling the wheel moves those same scrollbars. The host posts
+// The diagram pans inside a scrolling canvas that draws no scrollbars: the SVG
+// is sized to the zoomed graph plus half a canvas of margin on every side, so
+// a box on any edge can be dragged to the middle of the window, and dragging
+// the background, the wheel, and a jump from the port list all move the
+// canvas's scroll offsets. The host posts
 // arcrho:dependency-graph-refresh whenever it reloads its own dataset table
 // from disk, so the diagram follows a save, a delete, or an import without a
 // manual refresh.
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import {
   buildDependencyGraph,
@@ -34,7 +41,7 @@ import {
   dependencyGraphReach,
   layoutDependencyGraph,
   pruneDependencyGraph,
-} from "/ui/project_instance/dependency_graph_layout.js?v=20260909b";
+} from "/ui/project_instance/dependency_graph_layout.js?v=20260910a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const GRAPH_ENDPOINT = "/datasets/dependency-graph";
@@ -42,7 +49,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 1.2;
-// Breathing room around the zoomed graph inside the scroll surface.
+// Zoom comparisons are float maths, so the floor needs a hair of slack.
+const ZOOM_EPSILON = 1e-6;
+// Breathing room between the fitted graph and the edge of the canvas.
 const CANVAS_PADDING = 16;
 // The node holder overhangs the box on both sides so the ports can straddle
 // the edge an arrow attaches to.
@@ -52,9 +61,18 @@ const PORT_CLOSE_GRACE_MS = 260;
 const PORT_POPOVER_GAP = 6;
 const PORT_POPOVER_MARGIN = 8;
 const TARGET_FLASH_MS = 1600;
+// A hovered name travels at a reading pace rather than in a fixed time, waits
+// out the settle before it first moves, and rests at each end of the trip so
+// the tail can be read before it slides back. Even a name hanging a few
+// pixels over its box makes the trip, but never quicker than the floor, so it
+// drifts rather than flicking. Only a rounded pixel of overflow is ignored.
+const NAME_SCROLL_PX_PER_S = 38;
+const NAME_SCROLL_MIN_PX = 2;
+const NAME_SCROLL_MIN_MS = 1200;
+const NAME_SCROLL_START_MS = 450;
+const NAME_SCROLL_HOLD_MS = 1500;
 // A background press that travels less than this is a click, not a pan.
 const CLICK_SLOP_PX = 3;
-const SCROLL_IDLE_MS = 550;
 
 const PORT_SIDES = Object.freeze({
   in: { field: "precedents", title: "Precedents", empty: "No precedents" },
@@ -123,21 +141,41 @@ export function dependencyGraphPortList(node, graph, side) {
 }
 
 /**
- * How the zoomed graph sits in the scroll surface: the SVG is at least as
- * large as the canvas, the graph is centred on any axis it does not fill, and
- * the scroll position puts one graph point under one canvas point.
+ * How the zoomed graph sits in the scroll surface.
+ *
+ * The graph is surrounded by half a canvas of empty space on every side, so a
+ * box against any edge can still be dragged to the middle of the window
+ * instead of stopping against its frame - which is where the leftmost column
+ * and the rightmost method always sit. The margin is what the pan and the
+ * jump-to-box scroll move through, never a visual gap: nothing is drawn in it,
+ * a graph smaller than the canvas still comes out centred, and the zoom that
+ * fits the whole diagram is measured against CANVAS_PADDING instead.
  */
 export function dependencyGraphViewport(layout, canvas, scale, padding = CANVAS_PADDING) {
-  const contentWidth = layout.width * scale + padding * 2;
-  const contentHeight = layout.height * scale + padding * 2;
-  const width = Math.max(contentWidth, canvas.width);
-  const height = Math.max(contentHeight, canvas.height);
+  const marginX = Math.max(padding, canvas.width / 2);
+  const marginY = Math.max(padding, canvas.height / 2);
   return {
-    width,
-    height,
-    offsetX: (width - layout.width * scale) / 2,
-    offsetY: (height - layout.height * scale) / 2,
+    width: layout.width * scale + marginX * 2,
+    height: layout.height * scale + marginY * 2,
+    offsetX: marginX,
+    offsetY: marginY,
   };
+}
+
+/**
+ * The zoom at which the whole graph fits the canvas, never magnifying past
+ * 1:1. Fit lands on it, and zooming out stops there, so a diagram already
+ * showing every box cannot be shrunk into a speck. Zero when there is
+ * nothing to measure.
+ */
+export function dependencyGraphFitScale(layout, canvas, padding = CANVAS_PADDING) {
+  if (!layout?.width || !layout?.height || !canvas.width || !canvas.height) return 0;
+  const scale = Math.min(
+    (canvas.width - padding * 2) / layout.width,
+    (canvas.height - padding * 2) / layout.height,
+    1,
+  );
+  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scale));
 }
 
 /** The scroll offsets that put one graph point under one canvas point. */
@@ -162,6 +200,7 @@ const els = {
   refresh: document.getElementById("dependencyGraphRefresh"),
   canvas: document.getElementById("dependencyGraphCanvas"),
   svg: document.getElementById("dependencyGraphSvg"),
+  menu: document.getElementById("dependencyGraphMenu"),
   state: document.getElementById("dependencyGraphState"),
   status: document.getElementById("dependencyGraphStatus"),
 };
@@ -179,6 +218,9 @@ const view = {
   edgeEls: [],
   scale: 1,
   selectedKey: "",
+  // What the chain looked like before the first click of a double click, so
+  // opening a box can put it back.
+  chainBeforeClick: "",
   query: "",
   requestSeq: 0,
   loading: false,
@@ -186,7 +228,6 @@ const view = {
   // A frame resize keeps the diagram fitted until the user pans or zooms.
   userSteered: false,
   flashTimer: 0,
-  scrollIdleTimer: 0,
 };
 
 function postToParent(type, payload = {}) {
@@ -212,9 +253,12 @@ function syncControls() {
   const empty = !view.layout?.nodes.length;
   if (els.refresh) els.refresh.disabled = busy;
   if (els.showAll) els.showAll.disabled = busy || !view.loaded;
-  for (const button of [els.zoomOut, els.zoomIn, els.fit]) {
+  for (const button of [els.zoomIn, els.fit]) {
     if (button) button.disabled = busy || empty;
   }
+  // Nothing is gained by shrinking a diagram that already shows every box.
+  const wholeGraphShowing = !empty && view.scale <= zoomOutFloor() + ZOOM_EPSILON;
+  if (els.zoomOut) els.zoomOut.disabled = busy || empty || wholeGraphShowing;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,26 +286,40 @@ function scrollCanvasTo(scrollLeft, scrollTop) {
   els.canvas.scrollTop = Math.max(0, scrollTop);
 }
 
+/** The floor zooming out stops at: the zoom that shows the whole graph. */
+function zoomOutFloor() {
+  if (!view.layout?.nodes.length) return ZOOM_MIN;
+  return dependencyGraphFitScale(view.layout, canvasSize()) || ZOOM_MIN;
+}
+
 function fitGraph() {
-  const layout = view.layout;
-  if (!layout?.nodes.length) return;
-  const { width, height } = canvasSize();
-  if (!width || !height) return;
-  const scale = Math.min(
-    (width - CANVAS_PADDING * 2) / layout.width,
-    (height - CANVAS_PADDING * 2) / layout.height,
-    1,
+  if (!view.layout?.nodes.length) return;
+  const size = canvasSize();
+  const scale = dependencyGraphFitScale(view.layout, size);
+  if (!scale) return;
+  view.scale = scale;
+  const viewport = applyViewport();
+  // The graph sits inside a margin the pan moves through, so the fit scrolls
+  // it back to the middle of the canvas rather than to the scroll origin.
+  const target = dependencyGraphScrollTo(
+    viewport,
+    scale,
+    { x: view.layout.width / 2, y: view.layout.height / 2 },
+    { x: size.width / 2, y: size.height / 2 },
   );
-  view.scale = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scale));
-  applyViewport();
-  scrollCanvasTo(0, 0);
+  scrollCanvasTo(target.scrollLeft, target.scrollTop);
+  syncControls();
 }
 
 function zoomAt(factor, clientX, clientY) {
   if (!view.layout?.nodes.length) return;
-  const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, view.scale * factor));
+  // Zooming out never goes below the fit, but a canvas that has since been
+  // resized may leave the diagram under it already: hold it where it is.
+  const floor = factor < 1 ? Math.min(zoomOutFloor(), view.scale) : ZOOM_MIN;
+  const next = Math.max(floor, Math.min(ZOOM_MAX, view.scale * factor));
   if (next === view.scale) return;
   closePortPopover();
+  closeNodeMenu();
   const canvas = els.canvas;
   const rect = canvas.getBoundingClientRect();
   const size = canvasSize();
@@ -279,6 +337,7 @@ function zoomAt(factor, clientX, clientY) {
   const after = applyViewport();
   const target = dependencyGraphScrollTo(after, next, graphPoint, canvasPoint);
   scrollCanvasTo(target.scrollLeft, target.scrollTop);
+  syncControls();
 }
 
 /** Scrolls the diagram so one box sits in the middle of the canvas and flashes it. */
@@ -361,8 +420,15 @@ function installPanAndZoom() {
   });
   canvas.addEventListener("wheel", (event) => {
     // The application zoom bridge owns Ctrl + wheel; a plain wheel zooms the
-    // diagram around the cursor, and Shift + wheel is left to the scrollbars.
-    if (event.ctrlKey || event.shiftKey) return;
+    // diagram around the cursor, and Shift + wheel pans it sideways now that
+    // there are no scrollbars to leave it to.
+    if (event.ctrlKey) return;
+    if (event.shiftKey) {
+      event.preventDefault();
+      view.userSteered = true;
+      scrollCanvasTo(canvas.scrollLeft + event.deltaY, canvas.scrollTop);
+      return;
+    }
     event.preventDefault();
     view.userSteered = true;
     zoomAt(event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, event.clientX, event.clientY);
@@ -370,28 +436,14 @@ function installPanAndZoom() {
   window.addEventListener("beforeunload", stop);
 }
 
-/** The framed scroll surface strengthens its thumbs only while in use. */
+/** The canvas pans without scrollbars, so a pan only closes what floats over it. */
 function installScrollSurface() {
   const canvas = els.canvas;
   if (!canvas) return;
   canvas.addEventListener("scroll", () => {
     closePortPopover();
-    canvas.classList.add("isScrolling");
-    if (view.scrollIdleTimer) window.clearTimeout(view.scrollIdleTimer);
-    view.scrollIdleTimer = window.setTimeout(() => {
-      view.scrollIdleTimer = 0;
-      canvas.classList.remove("isScrolling");
-    }, SCROLL_IDLE_MS);
+    closeNodeMenu();
   }, { passive: true });
-  canvas.addEventListener("pointermove", (event) => {
-    const rect = canvas.getBoundingClientRect();
-    const laneWidth = Math.max(0, canvas.offsetWidth - canvas.clientWidth);
-    const laneHeight = Math.max(0, canvas.offsetHeight - canvas.clientHeight);
-    const nearVertical = laneWidth > 0 && event.clientX >= rect.right - Math.max(laneWidth, 16);
-    const nearHorizontal = laneHeight > 0 && event.clientY >= rect.bottom - Math.max(laneHeight, 16);
-    canvas.classList.toggle("isScrollbarHover", nearVertical || nearHorizontal);
-  }, { passive: true });
-  canvas.addEventListener("pointerleave", () => canvas.classList.remove("isScrollbarHover"), { passive: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +607,63 @@ function buildPortElement(node, side) {
 }
 
 // ---------------------------------------------------------------------------
+// Box context menu: opening one box without touching the lit chain
+// ---------------------------------------------------------------------------
+
+const nodeMenu = { node: null, box: null };
+
+function closeNodeMenu() {
+  if (!els.menu) return;
+  // openContextMenu shows the menu with an inline display; clearing it hands
+  // the menu back to the stylesheet's hidden default.
+  els.menu.style.display = "";
+  nodeMenu.box?.classList.remove("is-context-target");
+  nodeMenu.node = null;
+  nodeMenu.box = null;
+}
+
+function openNodeMenu(node, box, event) {
+  if (!els.menu) return;
+  closeNodeMenu();
+  closePortPopover();
+  nodeMenu.node = node;
+  nodeMenu.box = box;
+  // The menu marks its own box rather than selecting it, so the chain the user
+  // is reading survives a right click.
+  box.classList.add("is-context-target");
+  const item = els.menu.querySelector('[data-action="open"]');
+  if (item) {
+    item.textContent = node.methodType ? "Show Method" : "Show Dataset";
+    item.disabled = node.inIndex === false;
+  }
+  openContextMenu(els.menu, {
+    anchorEl: box,
+    clientX: Number(event?.clientX),
+    clientY: Number(event?.clientY),
+    offset: 8,
+    align: "top-left",
+  });
+  item?.focus();
+}
+
+function wireNodeMenu() {
+  const menu = els.menu;
+  if (!menu) return;
+  menu.addEventListener("click", (event) => {
+    const item = event.target.closest?.(".ctx-item");
+    if (!item) return;
+    const node = nodeMenu.node;
+    closeNodeMenu();
+    if (node && item.dataset.action === "open") openNode(node);
+  });
+  document.addEventListener("mousedown", (event) => {
+    if (!menu.contains(event.target)) closeNodeMenu();
+  }, true);
+  window.addEventListener("resize", closeNodeMenu);
+  window.addEventListener("blur", closeNodeMenu);
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 
@@ -593,6 +702,52 @@ function openNode(node) {
     : `Opening dataset ${node.name}...`);
 }
 
+// Only the hovered name travels, so one handle is enough to stop it.
+const nameScroll = { el: null, timer: 0 };
+
+/** Puts a travelling name back where it started and forgets it. */
+function stopNameScroll(textEl) {
+  if (textEl && nameScroll.el !== textEl) return;
+  if (nameScroll.timer) window.clearTimeout(nameScroll.timer);
+  nameScroll.timer = 0;
+  nameScroll.el?.classList.remove("is-scrolling", "is-scrolled");
+  nameScroll.el = null;
+}
+
+/**
+ * Walks a name too long for its box from end to end while the pointer is on
+ * the box.
+ *
+ * How far it has to travel is that one name's overflow at this moment, so it
+ * is measured here and handed to the stylesheet, which owns the slide itself.
+ * The pace is fixed rather than the duration, so a long name is not whipped
+ * past faster than a short one, and no trip is quicker than the floor. The
+ * rest at each end is a fixed wait instead, because a name is read while it
+ * is still - which is why the pacing is a timer here rather than one CSS
+ * animation: keyframe holds are a share of the whole, so a long name would
+ * sit for many seconds and a short one would barely stop. A name that fits
+ * keeps its resting ellipsis and never moves.
+ */
+function startNameScroll(textEl) {
+  stopNameScroll();
+  // scrollWidth is rounded up, so a name that just fits can report a pixel of
+  // overflow that is not worth a trip.
+  const shift = textEl.scrollWidth - textEl.clientWidth;
+  if (shift < NAME_SCROLL_MIN_PX) return;
+  const travelMs = Math.round(Math.max(NAME_SCROLL_MIN_MS, (shift / NAME_SCROLL_PX_PER_S) * 1000));
+  textEl.style.setProperty("--dg-name-shift", `${-shift}px`);
+  textEl.style.setProperty("--dg-name-duration", `${travelMs}ms`);
+  textEl.classList.add("is-scrolling");
+  nameScroll.el = textEl;
+  let scrolled = false;
+  const turn = () => {
+    scrolled = !scrolled;
+    textEl.classList.toggle("is-scrolled", scrolled);
+    nameScroll.timer = window.setTimeout(turn, travelMs + NAME_SCROLL_HOLD_MS);
+  };
+  nameScroll.timer = window.setTimeout(turn, NAME_SCROLL_START_MS);
+}
+
 function buildNodeElement(node) {
   const box = document.createElement("div");
   box.className = "dg-node";
@@ -601,12 +756,17 @@ function buildNodeElement(node) {
   box.tabIndex = 0;
   box.setAttribute("role", "button");
   box.setAttribute("aria-label", node.methodType
-    ? `${node.methodType} method ${node.name}. Click to select, double-click to open.`
-    : `Dataset ${node.name}. Click to select, double-click to open.`);
+    ? `${node.methodType} method ${node.name}. Click to select, double-click or right-click to open.`
+    : `Dataset ${node.name}. Click to select, double-click or right-click to open.`);
 
   const name = document.createElement("span");
   name.className = "dg-node-name";
-  name.textContent = node.name;
+  // The name line is the window; the span inside it is what scrolls when the
+  // name is too long for the box.
+  const nameText = document.createElement("span");
+  nameText.className = "dg-node-name-text";
+  nameText.textContent = node.name;
+  name.appendChild(nameText);
   box.appendChild(name);
 
   const kind = document.createElement("span");
@@ -623,13 +783,24 @@ function buildNodeElement(node) {
   }
   box.appendChild(kind);
 
-  // A single click pins the chain; a double click opens. The first click of a
-  // double click selects the same box, so the two never fight.
-  box.addEventListener("click", () => setSelection(node.key));
+  // A single click pins the chain; a double click opens the box and hands the
+  // chain back to whatever was lit before its own first click, so opening one
+  // box never costs the user the chain they were reading.
+  box.addEventListener("click", (event) => {
+    if (event.detail <= 1) view.chainBeforeClick = view.selectedKey;
+    setSelection(node.key);
+  });
   box.addEventListener("dblclick", (event) => {
     event.preventDefault();
+    setSelection(view.chainBeforeClick);
     openNode(node);
   });
+  box.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    openNodeMenu(node, box, event);
+  });
+  box.addEventListener("pointerenter", () => startNameScroll(nameText));
+  box.addEventListener("pointerleave", () => stopNameScroll(nameText));
   box.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -666,6 +837,8 @@ function render() {
   const layout = view.layout;
   if (!svg || !layout) return;
   closePortPopover();
+  closeNodeMenu();
+  stopNameScroll();
   if (view.flashTimer) window.clearTimeout(view.flashTimer);
   view.flashTimer = 0;
   svg.replaceChildren();
@@ -697,6 +870,7 @@ function render() {
   view.viewport = viewport;
   // A selected box that the reload dropped or the filter hid is no longer selected.
   if (view.selectedKey && !view.nodeEls.has(view.selectedKey)) view.selectedKey = "";
+  if (view.chainBeforeClick && !view.nodeEls.has(view.chainBeforeClick)) view.chainBeforeClick = "";
   applyViewport();
   applyHighlight();
 }
@@ -813,6 +987,7 @@ async function loadGraph({ keepViewport = false } = {}) {
 function init() {
   installPanAndZoom();
   installScrollSurface();
+  wireNodeMenu();
   els.zoomOut?.addEventListener("click", () => { view.userSteered = true; zoomAt(1 / ZOOM_STEP); });
   els.zoomIn?.addEventListener("click", () => { view.userSteered = true; zoomAt(ZOOM_STEP); });
   els.fit?.addEventListener("click", () => { view.userSteered = false; closePortPopover(); fitGraph(); });
@@ -837,6 +1012,10 @@ function init() {
   });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (nodeMenu.node) {
+      closeNodeMenu();
+      return;
+    }
     if (popover.el && !popover.el.hidden) {
       closePortPopover();
       return;
@@ -844,8 +1023,12 @@ function init() {
     if (view.selectedKey) setSelection("");
   });
   new ResizeObserver(() => {
-    if (!view.userSteered) fitGraph();
-    else applyViewport();
+    if (!view.userSteered) {
+      fitGraph();
+      return;
+    }
+    applyViewport();
+    syncControls();
   }).observe(els.canvas);
   syncControls();
   void loadGraph();

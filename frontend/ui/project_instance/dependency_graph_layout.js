@@ -14,10 +14,13 @@ export const DEPENDENCY_GRAPH_ROW_GAP = 14;
 export const DEPENDENCY_GRAPH_MARGIN = 24;
 const BARYCENTER_SWEEPS = 4;
 
+// An engine-built dataset is labelled by where its numbers come from rather
+// than by the component that produced them, which is what the box's reader
+// wants to know: the source table, not a hand-entered grid or a formula.
 const KIND_LABEL_BY_SOURCE_KIND = Object.freeze({
   input: "Dataset",
   calculated: "Calculated",
-  engine: "Engine",
+  engine: "Imported",
 });
 
 function text(value) {
@@ -32,9 +35,9 @@ export function dependencyGraphKey(name) {
  * The family a node is drawn as and the label its second line shows.
  *
  * A method output is labelled by its method type; a plain dataset by whether
- * it is entered, calculated by a formula, or built by the Engine. A name a
- * sidecar still references but the index no longer lists is its own family, so
- * a dangling edge reads as a problem rather than as a dataset.
+ * it is entered, calculated by a formula, or imported from the source table.
+ * A name a sidecar still references but the index no longer lists is its own
+ * family, so a dangling edge reads as a problem rather than as a dataset.
  */
 export function dependencyNodeKind(node = {}) {
   if (node.in_index === false || node.inIndex === false) {

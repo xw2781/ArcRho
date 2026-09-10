@@ -6,8 +6,10 @@
   "details": [
     "Open it from the new graph icon in the dataset toolbar; it is a nested window like Manage Excel Links, pinned to the reserving class it was opened on.",
     "Click a box to light up what it is computed from and what depends on it, and keep it lit until you click elsewhere; double-click a box to open the dataset in Dataset Viewer or a method output in its method page.",
-    "Hover a box for two small ports on its edges: the left one lists its precedents, the right one its dependents, and clicking a name scrolls the diagram to that box.",
-    "Datasets nothing depends on are hidden by default; tick Show all to see them. The diagram scrolls inside ArcRho scrollbars, and dragging the background or scrolling the wheel steers it.",
+    "Right-click a box for a Show Dataset command that opens the same window, and opening a box no longer changes the chain you have lit.",
+    "Hover a box for two small ports on its edges: the left one lists its precedents, the right one its dependents, and clicking a name scrolls the diagram to that box. A name too long for its box scrolls across the card while you hover it, so you can read the whole of it.",
+    "Datasets nothing depends on are hidden by default; tick Show all to see them. The diagram has no scrollbars: drag the background to pan it and use the wheel to zoom. Zooming out stops once the whole graph is on screen, so it can never be shrunk into a speck.",
+    "There is room to drag past every edge of the diagram, so a box in the first column or the last one can be pulled into the middle of the window while you are zoomed in.",
     "The diagram redraws on its own after a save, delete, or import changes the class."
   ]
 }

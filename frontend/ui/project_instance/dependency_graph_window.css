@@ -6,9 +6,11 @@
    project_instance_windows.js. Every colour reads a shared --ar-color-* token,
    so the Dark and High Contrast themes need no companion rule.
 
-   The diagram is one SVG sized to the zoomed graph inside a framed ArcRho
-   scroll surface (shared/styles/framed_scrollbars.css), so the canvas's own
-   scrollbars pan it. Edges are paths; nodes are foreignObject boxes so their
+   The diagram is one SVG sized to the zoomed graph inside a scrolling canvas
+   that draws no scrollbars, so dragging and the wheel pan it and nothing
+   frames it but its own border. The port list keeps the framed ArcRho
+   scrollbars (shared/styles/framed_scrollbars.css) it needs when it is long.
+   Edges are paths; nodes are foreignObject boxes so their
    text ellipsizes and their colours come from this sheet rather than from
    attributes written at render time. Each box carries two ports on its edges
    that reveal on hover and open a list of its precedents or dependents. */
@@ -175,16 +177,21 @@
   mask-image: url("../shared/icons/library/refresh.svg?v=20260908a");
 }
 
-/* The canvas takes whatever height the resized frame leaves and scrolls the
-   zoomed diagram inside its own framed scrollbars. */
+/* The canvas takes whatever height the resized frame leaves and pans the
+   zoomed diagram inside itself. It still scrolls - dragging the background,
+   the wheel, and the popover's scroll-to all move it - but it draws no
+   scrollbars, so nothing borders the diagram but the frame. */
 .pi-dependency-graph-canvas {
   flex: 1 1 auto;
   min-height: 120px;
   position: relative;
   overflow: auto;
+  scrollbar-width: none;
   border: 1px solid var(--ar-color-border);
   background: var(--ar-color-surface);
 }
+
+.pi-dependency-graph-canvas::-webkit-scrollbar { width: 0; height: 0; }
 
 /* The SVG takes its size from the width and height attributes the page
    writes, never smaller than the canvas, so a small graph sits centred and a
@@ -300,6 +307,15 @@
 .dg-node.is-match { border-color: var(--ar-color-accent); border-left-color: var(--dg-node-accent); }
 .dg-node.is-dim { opacity: 0.28; }
 
+/* The box an open context menu belongs to. It is marked instead of selected,
+   so a right click cannot disturb the chain the user has lit. */
+.dg-node.is-context-target {
+  opacity: 1;
+  border-color: var(--ar-color-border-focus);
+  border-left-color: var(--dg-node-accent);
+  box-shadow: 0 0 0 2px var(--ar-color-border-focus);
+}
+
 /* A box the popover just scrolled to announces itself for a moment. */
 .dg-node.is-target {
   opacity: 1;
@@ -311,6 +327,8 @@
   100% { box-shadow: 0 0 0 8px rgba(43, 109, 246, 0); }
 }
 
+/* The name line is the window the name scrolls through: it clips, and the span
+   inside it carries the text. */
 .dg-node-name {
   font-size: 12px;
   font-weight: 700;
@@ -318,7 +336,52 @@
   color: var(--ar-color-text-strong);
   white-space: nowrap;
   overflow: hidden;
+}
+
+.dg-node-name-text {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A name too long for its box travels through that window while the box is
+   hovered, so the whole of it can be read without opening anything. It has
+   two positions - its own start and its far end - and slides between them;
+   the page owns when it turns, so it can rest at each end for a fixed while
+   rather than for a share of the trip. The distance and the duration are the
+   one name's own overflow, also measured by the page.
+
+   It travels on `left` rather than on a transform. A transform being animated
+   is lifted onto its own compositing layer, and a layer inside the zoomed
+   diagram is rasterized at the wrong scale, so the name went soft for exactly
+   as long as it was moving while every box beside it stayed sharp. Offsetting
+   a relatively positioned box repaints it with the rest of the diagram
+   instead, at the zoom actually on screen; one short line of text is nothing
+   to repaint. */
+.dg-node-name-text.is-scrolling {
+  position: relative;
+  left: 0;
+  max-width: none;
+  width: max-content;
+  text-overflow: clip;
+  transition: left var(--dg-name-duration, 2s) ease-in-out;
+}
+
+.dg-node-name-text.is-scrolled { left: var(--dg-name-shift, 0px); }
+
+/* Without motion the name keeps its resting ellipsis instead of a hard clip,
+   and the turns the page keeps timing move nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .dg-node-name-text.is-scrolling {
+    max-width: 100%;
+    width: auto;
+    text-overflow: ellipsis;
+    transition: none;
+  }
+
+  .dg-node-name-text.is-scrolled { left: 0; }
 }
 
 .dg-node-kind {
@@ -467,6 +530,18 @@
   font-size: 11px;
   color: var(--ar-color-text-muted);
   white-space: nowrap;
+}
+
+/* The box's right-click menu. Hidden until openContextMenu shows it; closeNodeMenu
+   clears that inline display. A box the class index no longer lists cannot be
+   opened, so its one item is offered greyed out rather than left out. */
+.pi-dependency-graph-menu { display: none; width: 148px; max-width: min(148px, calc(100vw - 16px)); }
+
+.pi-dependency-graph-menu .ctx-item:disabled { cursor: default; color: var(--ar-color-text-muted); }
+
+.pi-dependency-graph-menu .ctx-item:disabled:hover {
+  background: transparent;
+  color: var(--ar-color-text-muted);
 }
 
 /* One accent per family, shared by the node stripe, the popover rows, and

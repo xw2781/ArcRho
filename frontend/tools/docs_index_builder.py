@@ -634,7 +634,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/project_instance/excel_links_table.js", "Excel link detail-row table: column widths, resizing, and per-column filters."),
             ("ui/project_instance/project_instance_dependency_graph.js", "Dependency Graph nested-window host: opens the window and tells it to redraw after a table reload."),
             ("ui/project_instance/dependency_graph_window.html", "Dependency Graph nested-window page."),
-            ("ui/project_instance/dependency_graph_window.js", "Dependency Graph diagram: hosted graph load, scroll-surface pan/zoom, click-to-select chain, double-click-to-open, and port lists."),
+            ("ui/project_instance/dependency_graph_window.js", "Dependency Graph diagram: hosted graph load, scroll-surface pan/zoom, click-to-select chain, double-click-to-open, the box right-click menu, and port lists."),
             ("ui/project_instance/dependency_graph_layout.js", "Dependency Graph layered layout, ordering, edge routing, reach, and the default hide of unread datasets."),
             ("ui/project_instance/project_instance_windows.js", "Floating Dataset and DFM window lifecycle, geometry, dirty state, and restore snapshots."),
             ("ui/project_instance/project_instance_hidden_tabs.js", "Hidden floating-window tab strip, menu, drop target, and dock animations."),
