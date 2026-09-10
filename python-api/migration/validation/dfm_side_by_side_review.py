@@ -1,13 +1,14 @@
-"""Side-by-side ArcRho vs ResQ DFM ratio triangle review workbook.
+"""Side-by-side ArcRho vs ResQ DFM review workbook: ratios and outputs.
 
-For every DFM in the 17 reserving-class paths of NJ_Annual_Prod_2026 Q3-Aug,
-this lays the persisted ArcRho ratio triangle and the live ResQ ratio
-triangle next to each other, with a difference triangle (ArcRho minus ResQ)
-to their right, followed by the DFM's output (ultimate) vector compared the
-same way -- one sheet per reserving class. A Summary sheet links straight to
-every DFM that disagrees on a ratio cell or an ultimate value by more than
-tolerance, or that is missing from one side, so a reviewer does not have to
-hunt through 17 sheets to find what needs attention.
+For every DFM in the reserving-class paths listed below -- the 17 of
+NJ_Annual_Prod_2026 Q3-Aug -- this lays the persisted ArcRho ratio triangle
+and the live ResQ ratio triangle next to each other, with a difference
+triangle (ArcRho minus ResQ) to their right, followed by the DFM's output
+(ultimate) vector compared the same way -- one sheet per reserving class. A
+Summary sheet links straight to every DFM that disagrees on a ratio cell or
+an ultimate value by more than tolerance, or that is missing from one side,
+so a reviewer does not have to hunt through 17 sheets to find what needs
+attention.
 
 DFMs whose name contains "Adjusted" are left out entirely: their ratios are
 deliberately altered from the raw ResQ triangle by the reserve review's
@@ -15,13 +16,19 @@ growth/cutoff adjustment and are not expected to match ResQ.
 
 Nothing is written back to ArcRho or ResQ.
 
+``--project`` points the run at another ResQ project, on both sides: the
+ResQ project opened and the ArcRho project folder read. The reserving-class
+paths stay the fixed list below, so another project is only covered where it
+shares those paths; ``--rc`` narrows that list further.
+
 Run with Python 3.10 from the repository root:
 
-    py -3.10 python-api/migration/validation/dfm_ratio_side_by_side_review.py
+    py -3.10 python-api/migration/validation/dfm_side_by_side_review.py
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -71,9 +78,11 @@ ULTIMATE_DECIMAL_PLACES = 2
 ULTIMATE_TOLERANCE = 0.5 * 10 ** (-ULTIMATE_DECIMAL_PLACES)
 ULTIMATE_NUMBER_FORMAT = "#,##0.00"
 
-OUTPUT_PATH = _VALIDATION_DIR / "results" / f"dfm_ratio_side_by_side_{TARGET_PROJECT_NAME}.xlsx"
-
 _INVALID_SHEET_CHARS = re.compile(r"[\\/*?:\[\]]")
+
+
+def _output_path(project_name: str) -> Path:
+    return _VALIDATION_DIR / "results" / f"dfm_side_by_side_{project_name}.xlsx"
 
 
 def _is_adjusted(name: str) -> bool:
@@ -287,7 +296,11 @@ def _build_dfm_record(rc_path: str, name: str, arcrho_payload: dict | None, dfm:
             if arcrho_payload is not None and dfm is not None:
                 if a_val is not None:
                     only_arcrho_ultimate += 1
-                elif r_val is not None:
+                # ResQ hands back a plain 0 for an origin period it has no
+                # ultimate for, where ArcRho simply leaves the cell empty.
+                # The two say the same thing, so a zero against a blank is
+                # not a disagreement worth reporting.
+                elif r_val is not None and abs(float(r_val)) > ULTIMATE_TOLERANCE:
                     only_resq_ultimate += 1
             continue
         diff = float(a_val) - float(r_val)
@@ -332,28 +345,36 @@ def _build_dfm_record(rc_path: str, name: str, arcrho_payload: dict | None, dfm:
     }
 
 
-def run_comparison(app_factory=None, progress=print) -> tuple[list[dict], list[tuple[str, str]]]:
+def run_comparison(
+    *,
+    project_name: str = TARGET_PROJECT_NAME,
+    rc_paths: list[str] | None = None,
+    app_factory=None,
+    progress=print,
+) -> tuple[list[dict], list[tuple[str, str]]]:
     """Compare every non-adjusted DFM in scope.
 
     Returns (records, rc_errors) where records covers every DFM found on
     either side and rc_errors lists reserving classes ResQ itself refused.
     """
 
-    try:
-        import win32com.client
-    except ImportError as exc:
-        raise RuntimeError("pywin32 is required: pip install pywin32") from exc
+    if app_factory is None:
+        try:
+            import win32com.client
+        except ImportError as exc:
+            raise RuntimeError("pywin32 is required: pip install pywin32") from exc
 
-    previous_scope = migration._apply_runtime_scope(TARGET_PROJECT_NAME, migration.SERVER_ROOT)
+    rc_paths = list(rc_paths if rc_paths is not None else RC_PATHS)
+    previous_scope = migration._apply_runtime_scope(project_name, migration.SERVER_ROOT)
     app = app_factory() if app_factory is not None else win32com.client.Dispatch("ResQ3Automation.ResQApplication")
     records: list[dict] = []
     rc_errors: list[tuple[str, str]] = []
     try:
         app.ConnectByName(migration.CONNECTION_NAME, migration.USER_NAME, migration.PASSWORD)
-        project = app.Projects().Item(TARGET_PROJECT_NAME)
+        project = app.Projects().Item(project_name)
 
-        for rc_index, rc_path in enumerate(RC_PATHS, start=1):
-            progress(f"RC {rc_index}/{len(RC_PATHS)}: {rc_path}")
+        for rc_index, rc_path in enumerate(rc_paths, start=1):
+            progress(f"RC {rc_index}/{len(rc_paths)}: {rc_path}")
             rc_dir = migration.PROJECT_DATA_DIR / _encode_rc_folder(rc_path)
             arcrho_methods = _read_arcrho_dfm_methods(rc_dir)
 
@@ -512,7 +533,14 @@ def _autosize(sheet, *, min_width: int, max_width: int) -> None:
             sheet.column_dimensions[column_letter].width = min(max(width + 2, min_width), max_width)
 
 
-def write_workbook(path: Path, records: list[dict], rc_errors: list[tuple[str, str]]) -> None:
+def write_workbook(
+    path: Path,
+    records: list[dict],
+    rc_errors: list[tuple[str, str]],
+    *,
+    project_name: str = TARGET_PROJECT_NAME,
+    rc_paths: list[str] | None = None,
+) -> None:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -525,20 +553,21 @@ def write_workbook(path: Path, records: list[dict], rc_errors: list[tuple[str, s
         "link": Font(color="0563C1", underline="single"),
     }
 
+    rc_paths = list(rc_paths if rc_paths is not None else RC_PATHS)
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     summary_sheet = workbook.active
     summary_sheet.title = "Summary"
 
     used_titles = {"summary"}
-    sheet_by_rc = {rc_path: workbook.create_sheet(_sheet_title(rc_path, used_titles)) for rc_path in RC_PATHS}
+    sheet_by_rc = {rc_path: workbook.create_sheet(_sheet_title(rc_path, used_titles)) for rc_path in rc_paths}
 
     records_by_rc: dict[str, list[dict]] = {}
     for record in records:
         records_by_rc.setdefault(record["rc_path"], []).append(record)
 
     dfm_anchor: dict[tuple[str, str], tuple[str, int]] = {}
-    for rc_path in RC_PATHS:
+    for rc_path in rc_paths:
         sheet = sheet_by_rc[rc_path]
         title_cell = sheet.cell(row=1, column=1, value=rc_path)
         title_cell.font = styles["bold"]
@@ -555,7 +584,7 @@ def write_workbook(path: Path, records: list[dict], rc_errors: list[tuple[str, s
         row=1,
         column=1,
         value=(
-            f'Project: {TARGET_PROJECT_NAME}    Ratio tolerance: {DECIMAL_PLACES} decimal places (±{TOLERANCE:g})'
+            f'Project: {project_name}    Ratio tolerance: {DECIMAL_PLACES} decimal places (±{TOLERANCE:g})'
             f'    Ultimate tolerance: {ULTIMATE_DECIMAL_PLACES} decimal places (±{ULTIMATE_TOLERANCE:g})'
             '    DFMs with "Adjusted" in their name are excluded'
         ),
@@ -619,17 +648,40 @@ def write_workbook(path: Path, records: list[dict], rc_errors: list[tuple[str, s
             temporary_path.unlink()
 
 
-def main() -> int:
-    records, rc_errors = run_comparison()
-    write_workbook(OUTPUT_PATH, records, rc_errors)
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--project", default=TARGET_PROJECT_NAME, help="ResQ project name to review.")
+    parser.add_argument(
+        "--rc",
+        action="append",
+        help="Only review reserving classes whose path contains this text; repeatable.",
+    )
+    parser.add_argument("--no-open", action="store_true", help="Do not open the workbook when the run finishes.")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+
+    rc_paths = RC_PATHS
+    if args.rc:
+        needles = [text.casefold() for text in args.rc]
+        rc_paths = [path for path in RC_PATHS if any(needle in path.casefold() for needle in needles)]
+        if not rc_paths:
+            print("No reserving class matched --rc.")
+            return 2
+
+    records, rc_errors = run_comparison(project_name=args.project, rc_paths=rc_paths)
+    output_path = _output_path(args.project)
+    write_workbook(output_path, records, rc_errors, project_name=args.project, rc_paths=rc_paths)
     review_records = [record for record in records if record["needs_review"]]
     needs_attention = bool(review_records) or bool(rc_errors)
-    print(f"Compared {len(RC_PATHS)} reserving classes, {len(records)} DFM(s) (Adjusted DFMs excluded).")
+    print(f"Compared {len(rc_paths)} reserving classes, {len(records)} DFM(s) (Adjusted DFMs excluded).")
     print(f"{len(review_records)} DFM(s) need review" + (f", {len(rc_errors)} reserving class(es) could not be read" if rc_errors else "") + ".")
-    print(f"Excel report: {OUTPUT_PATH}")
-    if needs_attention:
+    print(f"Excel report: {output_path}")
+    if needs_attention and not args.no_open:
         try:
-            os.startfile(OUTPUT_PATH)  # noqa: S606 - opening the report just written, for the operator running this script
+            os.startfile(output_path)  # noqa: S606 - opening the report just written, for the operator running this script
         except Exception as exc:
             print(f"Could not open the report automatically: {type(exc).__name__}: {exc}")
     return 0 if not needs_attention else 1
