@@ -828,6 +828,33 @@ function beginWindowDragCapture(mode) {
   };
 }
 
+// Follows every pointer event of one gesture on the handle that received the
+// pointerdown (arcrho-ui-design L16): the handle captures the pointer, so a
+// fast drag across an embedded iframe or out of the app never loses the window.
+function trackPointerDrag(handle, event, onMove, onEnd) {
+  const pointerId = event.pointerId;
+  let ended = false;
+  const move = (e) => {
+    if (e.pointerId === pointerId) onMove(e);
+  };
+  const end = (e) => {
+    if (e.pointerId !== pointerId || ended) return;
+    ended = true;
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", end);
+    handle.removeEventListener("pointercancel", end);
+    handle.removeEventListener("lostpointercapture", end);
+    if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
+    onEnd();
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+  handle.addEventListener("lostpointercapture", end);
+  handle.setPointerCapture?.(pointerId);
+  event.preventDefault();
+}
+
 function startMove(frame, event) {
   if (event.button !== 0) return;
   raiseWindow(frame);
@@ -846,7 +873,7 @@ function startMove(frame, event) {
   };
   let start = getStart(event);
 
-  const onMove = (e) => {
+  trackPointerDrag(event.currentTarget || frame, event, (e) => {
     if (isDatasetWindowMaximized(frame)) {
       restoreDatasetWindow(frame, e);
       start = getStart(e);
@@ -857,16 +884,10 @@ function startMove(frame, event) {
       width: start.width,
       height: start.height,
     });
-  };
-  const onUp = () => {
+  }, () => {
     releaseDragCapture();
-    document.removeEventListener("mousemove", onMove, true);
-    document.removeEventListener("mouseup", onUp, true);
     notifyProjectInstanceStateChanged();
-  };
-  document.addEventListener("mousemove", onMove, true);
-  document.addEventListener("mouseup", onUp, true);
-  event.preventDefault();
+  });
 }
 
 function startResize(frame, event, corner = "se") {
@@ -888,21 +909,15 @@ function startResize(frame, event, corner = "se") {
     py: event.clientY,
   };
 
-  const onMove = (e) => {
+  trackPointerDrag(event.currentTarget || frame, event, (e) => {
     applyWindowRect(
       frame,
       resizeRectFromCorner(start, resizeCorner, e.clientX - start.px, e.clientY - start.py)
     );
-  };
-  const onUp = () => {
+  }, () => {
     releaseDragCapture();
-    document.removeEventListener("mousemove", onMove, true);
-    document.removeEventListener("mouseup", onUp, true);
     notifyProjectInstanceStateChanged();
-  };
-  document.addEventListener("mousemove", onMove, true);
-  document.addEventListener("mouseup", onUp, true);
-  event.preventDefault();
+  });
 }
 
 function createFloatingContentWindow(options = {}) {
@@ -1022,19 +1037,12 @@ function createFloatingContentWindow(options = {}) {
   body.appendChild(iframe);
 
   const titlebar = frame.querySelector(".pi-window-titlebar");
-  titlebar?.addEventListener("mousedown", (e) => {
+  titlebar?.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button")) return;
-    if (Number(e.detail) >= 2) {
-      e.preventDefault();
-      frame.__piLastTitlebarToggle = Date.now();
-      toggleDatasetWindowMaximized(frame);
-      return;
-    }
     startMove(frame, e);
   });
   titlebar?.addEventListener("dblclick", (e) => {
     if (e.target.closest("button")) return;
-    if (Number(frame.__piLastTitlebarToggle || 0) && Date.now() - frame.__piLastTitlebarToggle < 400) return;
     e.preventDefault();
     toggleDatasetWindowMaximized(frame);
   });
@@ -1044,7 +1052,7 @@ function createFloatingContentWindow(options = {}) {
     hideDatasetWindow(frame, getFrameRect(frame));
   });
   for (const handle of frame.querySelectorAll(".pi-window-resize")) {
-    handle.addEventListener("mousedown", (e) => {
+    handle.addEventListener("pointerdown", (e) => {
       startResize(frame, e, handle.getAttribute("data-corner") || "se");
     });
   }

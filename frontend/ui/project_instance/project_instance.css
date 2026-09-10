@@ -1794,6 +1794,7 @@ body.resizing-left-panel .pi-table-wrap {
 }
 .pi-window {
   position: absolute;
+  box-sizing: border-box;
   min-width: 420px;
   min-height: 280px;
   background: #fff;

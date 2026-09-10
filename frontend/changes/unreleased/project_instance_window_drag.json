@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Nested windows in Project Instance keep their size when dragged by the title bar instead of growing a little on every move.",
+  "details": [
+    "Moving or resizing a nested window now follows the pointer with capture, so a fast drag across an embedded page or past the app edge no longer drops the window."
+  ]
+}
