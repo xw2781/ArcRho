@@ -1,0 +1,15 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM Notes can quote live method values with Python-style {...} placeholders that render as text outside editing.",
+  "details": [
+    "Names such as {development_label(1)}, {ratio_value(2, 1):.4f}, {selected_value(1)}, and {ultimate_value(-1):,.0f} follow the method JSON fields; positions are 1-based and -1 means the last.",
+    "Placeholders may calculate: arithmetic, comparisons, and/or/not, a conditional, round/min/max, and Python format specs such as .2f, ,.0f, .1%.",
+    "Any field of the method JSON is reachable by its path, such as {ratio_triangle.development_label(1)} or {average_formulas.values(2, 3)}; lists are called with a position.",
+    "While editing, placeholders show in deep blue and typing inside braces opens a popup that previews and completes the available names, properties, and values.",
+    "Braces and parentheses close themselves while typing a placeholder: the pair opens around the caret or a selection, the closer steps over one already there, and Backspace removes an empty pair.",
+    "An Insert Value button on the Notes toolbar lists every available name; hovering a rendered value shows its placeholder, and one that cannot be rendered stays as typed with the reason.",
+    "The rendered note can be selected and copied; a plain click enters editing at that spot."
+  ]
+}

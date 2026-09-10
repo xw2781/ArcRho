@@ -151,6 +151,7 @@
 }
 
 .arNotesTabDecor,
+.arNotesTabEditLayer,
 .arNotesTabInput {
   position: absolute;
   inset: 0;
@@ -170,20 +171,40 @@
   text-decoration-color: var(--ar-notes-text-color);
 }
 
+/* The rendered view sits above the textarea while nothing is being edited:
+   it scrolls on its own, its text can be selected and copied, and a plain
+   click hands the caret to the textarea underneath. */
 .arNotesTabDecor {
-  z-index: 1;
+  z-index: 2;
+  overflow: auto;
+  border: 1px solid #aeb8c8;
+  background: #fff;
+  color: var(--ar-notes-text-color);
+  cursor: text;
+  user-select: text;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* While editing, the textarea draws only its caret and selection over a
+   mirror of its text, so the `{...}` placeholders can be coloured. Both keep
+   a scrollbar gutter so their lines wrap identically. */
+.arNotesTabEditLayer {
+  z-index: 0;
+  display: none;
   overflow: hidden;
+  scrollbar-gutter: stable;
   border: 1px solid transparent;
   background: #fff;
   color: var(--ar-notes-text-color);
-  pointer-events: auto;
+  pointer-events: none;
   user-select: none;
 }
 
 .arNotesTabInput {
-  z-index: 2;
+  z-index: 1;
   resize: none;
   overflow: auto;
+  scrollbar-gutter: stable;
   border: 1px solid #aeb8c8;
   outline: none;
   background: transparent;
@@ -196,9 +217,136 @@
   display: none;
 }
 
-.arNotesTab.is-editing .arNotesTabInput {
+.arNotesTab.is-editing .arNotesTabEditLayer {
+  display: block;
+}
+
+.arNotesTabEditExpression {
+  color: #1d4ed8;
+}
+
+.arNotesTabCompletionMenu {
+  min-width: 320px;
+  max-width: min(560px, calc(100vw - 16px));
+  max-height: min(280px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: 3px;
+}
+
+.arNotesTabCompletionItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+  padding: 3px 8px;
+  box-sizing: border-box;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  color: #1f2937;
+  font: 12px/1.25 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  cursor: pointer;
+}
+
+.arNotesTabCompletionItem:hover,
+.arNotesTabCompletionItem.is-active {
+  background: #edf3ff;
+}
+
+.arNotesTabCompletionName {
+  flex: 0 0 auto;
+  color: #0b3d91;
+  font: 12px/1.25 Consolas, "Courier New", monospace;
+}
+
+.arNotesTabCompletionKind {
+  flex: 0 0 auto;
+  min-width: 52px;
+  color: #8089a0;
+  font-size: 11px;
+}
+
+.arNotesTabCompletionPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #59606b;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.arNotesTabPlaceholder {
+  color: #8089a0;
+  user-select: none;
+}
+
+.arNotesTabExpression {
+  border-radius: 2px;
+  padding: 0 1px;
+  background: rgba(43, 109, 246, 0.08);
+  transition: background-color 120ms ease-out;
+}
+
+.arNotesTabExpression:hover {
+  background: rgba(43, 109, 246, 0.16);
+}
+
+.arNotesTabExpression.is-error {
+  color: #be123c;
+  background: rgba(190, 18, 60, 0.06);
+  text-decoration: underline dotted #be123c;
+  text-underline-offset: 2px;
+}
+
+.arNotesTabInsertButton {
+  height: 28px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--tabbed-page-control-radius, 4px);
   background: #fff;
-  color: var(--ar-notes-text-color);
+  color: #2c3138;
+  font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.arNotesTabInsertButton:hover {
+  border-color: #aeb8c8;
+  background: #f1f5f9;
+}
+
+.arNotesTabInsertButton:focus-visible,
+.arNotesTabInsertButton[aria-expanded="true"] {
+  border-color: #60a5fa;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+
+.arNotesTabInsertMenu {
+  min-width: 360px;
+  max-width: min(520px, calc(100vw - 16px));
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+}
+
+.arNotesTabInsertMenu .arNotesTabInsertItem {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.arNotesTabInsertSnippet {
+  flex: 0 0 auto;
+  min-width: 250px;
+  color: #0b3d91;
+  font: 12px/1.25 Consolas, "Courier New", monospace;
+}
+
+.arNotesTabInsertDescription {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #59606b;
+  white-space: normal;
 }
 
 .arNotesTabInput::placeholder {

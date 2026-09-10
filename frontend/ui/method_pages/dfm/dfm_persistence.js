@@ -83,7 +83,7 @@ import {
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260907a";
-import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
 import {
   applyDfmCurvesTabPayload,
   buildDfmCurvesTabPayload,

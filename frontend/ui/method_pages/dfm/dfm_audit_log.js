@@ -9,7 +9,7 @@ import {
   getResolvedReservingClass,
   getDefaultMethodName,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import { setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
 
 let auditLogView = null;
 let auditRequestSequence = 0;

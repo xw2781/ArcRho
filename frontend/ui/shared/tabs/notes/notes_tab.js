@@ -6,9 +6,17 @@ import {
   indentNotesText,
   outdentNotesText,
 } from "./notes_text.js";
+import {
+  findNotesCompletionQuery,
+  findNotesExpressionMatches,
+  listNotesCompletions,
+  renderNotesExpressions,
+} from "./notes_expressions.js";
 
 const NOTES_TAB_STYLESHEET_ID = "arNotesTabStylesheet";
-const NOTES_TAB_STYLESHEET_HREF = "/ui/shared/tabs/notes/notes_tab.css?v=20260714a";
+const NOTES_TAB_STYLESHEET_HREF = "/ui/shared/tabs/notes/notes_tab.css?v=20260910a";
+const CLICK_DRAG_THRESHOLD_PX = 3;
+const AUTO_CLOSE_PAIRS = { "{": "}", "(": ")" };
 const MOUNTED_NOTES_TABS = new WeakMap();
 
 function ensureNotesTabStylesheet(documentRef) {
@@ -171,6 +179,29 @@ function buildNotesTabElements(documentRef, {
     strike: appendFormatToggle(documentRef, toolbar, "strike", "S", "Strikethrough"),
   };
 
+  // Shown only when the page supplies an expression context.
+  const insertDivider = appendElement(
+    documentRef,
+    toolbar,
+    "span",
+    "arNotesTabFormatDivider",
+  );
+  insertDivider.setAttribute("aria-hidden", "true");
+  insertDivider.hidden = true;
+  const insert = appendElement(
+    documentRef,
+    toolbar,
+    "button",
+    "arNotesTabInsertButton",
+    "Insert Value",
+  );
+  insert.type = "button";
+  insert.dataset.notesInsert = "1";
+  insert.title = "Insert a value from this method into the note";
+  insert.setAttribute("aria-haspopup", "menu");
+  insert.setAttribute("aria-expanded", "false");
+  insert.hidden = true;
+
   const inputWrap = appendElement(
     documentRef,
     root,
@@ -184,6 +215,16 @@ function buildNotesTabElements(documentRef, {
     "arNotesTabDecor",
   );
   decor.setAttribute("aria-hidden", "true");
+
+  // Mirrors the raw text under the transparent-text textarea while editing
+  // so `{...}` can be coloured and the caret can be located on screen.
+  const editLayer = appendElement(
+    documentRef,
+    inputWrap,
+    "pre",
+    "arNotesTabEditLayer",
+  );
+  editLayer.setAttribute("aria-hidden", "true");
 
   const input = appendElement(
     documentRef,
@@ -207,7 +248,10 @@ function buildNotesTabElements(documentRef, {
     toolbar,
     inputWrap,
     decor,
+    editLayer,
     input,
+    insert,
+    insertDivider,
     styleControls: {
       fontFamily,
       fontSize,
@@ -245,9 +289,22 @@ function buildPathOverlayElements(documentRef) {
   const openReadOnly = appendMenuItem("open-read-only", "Open as Read-Only");
   openReadOnly.hidden = true;
   const copy = appendMenuItem("copy", "Copy File Path");
+
+  const insertMenu = documentRef.createElement("div");
+  insertMenu.className = "arNotesTabPathMenu arNotesTabInsertMenu";
+  insertMenu.setAttribute("role", "menu");
+  insertMenu.setAttribute("aria-hidden", "true");
+
+  const completionMenu = documentRef.createElement("div");
+  completionMenu.className = "arNotesTabPathMenu arNotesTabCompletionMenu";
+  completionMenu.setAttribute("role", "listbox");
+  completionMenu.setAttribute("aria-label", "Available names");
+  completionMenu.setAttribute("aria-hidden", "true");
   return {
     tooltip,
     menu,
+    insertMenu,
+    completionMenu,
     menuItems: { open, openReadOnly, copy },
   };
 }
@@ -304,6 +361,9 @@ function normalizeOpenPathResult(result, customHandlerUsed) {
  * @param {(dirty: boolean, detail: Object) => void} [options.onDirtyChange]
  * @param {(text: string) => void} [options.onStatus]
  * @param {(path: string, options: {readOnly: boolean}) => Promise<Object>|Object} [options.onOpenPath]
+ * @param {() => Object} [options.expressionContext] Returns the names a `{...}`
+ *   placeholder may use (see notes_expressions.js). When given, the rendered
+ *   view shows each placeholder's value and the toolbar offers Insert Value.
  * @param {Document} [options.documentRef]
  * @returns {Object}
  */
@@ -316,6 +376,7 @@ export function mountNotesTab({
   onDirtyChange,
   onStatus,
   onOpenPath,
+  expressionContext,
   documentRef,
 } = {}) {
   const documentObject = documentRef
@@ -342,6 +403,9 @@ export function mountNotesTab({
     : () => {};
   const setStatus = typeof onStatus === "function" ? onStatus : () => {};
   const openPathHandler = typeof onOpenPath === "function" ? onOpenPath : null;
+  const resolveExpressionContext = typeof expressionContext === "function"
+    ? expressionContext
+    : null;
 
   ensureNotesTabStylesheet(documentObject);
   const elements = buildNotesTabElements(documentObject, {
@@ -352,6 +416,8 @@ export function mountNotesTab({
   const overlayHost = documentObject.body || documentObject.documentElement;
   overlayHost.appendChild(overlays.tooltip);
   overlayHost.appendChild(overlays.menu);
+  overlayHost.appendChild(overlays.insertMenu);
+  overlayHost.appendChild(overlays.completionMenu);
   container.classList?.add("arNotesTabMount");
   container.appendChild(elements.root);
 
@@ -360,14 +426,24 @@ export function mountNotesTab({
     toolbar,
     inputWrap,
     decor,
+    editLayer,
     input,
+    insert,
+    insertDivider,
     styleControls,
   } = elements;
   const {
     tooltip,
     menu,
+    insertMenu,
+    completionMenu,
     menuItems,
   } = overlays;
+  // The completion popup: the query being typed, its entries, and the
+  // highlighted row.
+  let completionState = null;
+  insert.hidden = !resolveExpressionContext;
+  insertDivider.hidden = !resolveExpressionContext;
 
   const cleanupCallbacks = [];
   const pendingBridgeCancels = new Set();
@@ -375,13 +451,15 @@ export function mountNotesTab({
   let cleanValue = String(value ?? "");
   let dirty = false;
   let plainTextEditMode = false;
-  let decorRenderPending = false;
   let hoverPathToken = null;
   let contextMenuPath = "";
   let textStyleState = null;
   let selectionSnapshot = { start: 0, end: 0 };
   let flushTimer = null;
   let resizeObserver = null;
+  // Where the mouse went down on the rendered view; a release without a drag
+  // enters editing, a drag leaves the rendered text selected for copying.
+  let decorPress = null;
 
   input.value = cleanValue;
 
@@ -421,31 +499,63 @@ export function mountNotesTab({
     if (width) toolbar.style.width = String(width) + "px";
   };
 
-  const renderDecor = () => {
-    if (destroyed) return;
-    const source = String(input.value || "");
-    const matches = findNotesPathMatches(source);
-    const fragment = documentObject.createDocumentFragment();
+  const buildTextSegment = (segmentText, rawStart) => {
+    const span = documentObject.createElement("span");
+    span.className = "arNotesTabTextSegment";
+    span.dataset.rawStart = String(rawStart);
     let cursor = 0;
-    matches.forEach((match, index) => {
+    findNotesPathMatches(segmentText).forEach((match) => {
       if (match.start > cursor) {
-        fragment.appendChild(documentObject.createTextNode(source.slice(cursor, match.start)));
+        span.appendChild(documentObject.createTextNode(segmentText.slice(cursor, match.start)));
       }
       const token = documentObject.createElement("span");
       token.className = "arNotesTabPathToken";
       token.dataset.path = match.path;
-      token.dataset.notesPathIndex = String(index);
-      token.textContent = source.slice(match.start, match.end);
-      fragment.appendChild(token);
+      token.textContent = segmentText.slice(match.start, match.end);
+      span.appendChild(token);
       cursor = match.end;
     });
-    if (cursor < source.length) {
-      fragment.appendChild(documentObject.createTextNode(source.slice(cursor)));
+    if (cursor < segmentText.length) {
+      span.appendChild(documentObject.createTextNode(segmentText.slice(cursor)));
     }
-    if (!source) fragment.appendChild(documentObject.createTextNode(" "));
+    return span;
+  };
+
+  const buildExpressionSegment = (segment) => {
+    const span = documentObject.createElement("span");
+    span.className = "arNotesTabExpression" + (segment.error ? " is-error" : "");
+    span.textContent = segment.text;
+    span.dataset.source = segment.source;
+    if (segment.error) span.dataset.error = segment.error;
+    span.dataset.rawStart = String(segment.start);
+    return span;
+  };
+
+  // The rendered view: every segment remembers the raw note span it came
+  // from so a click on it can put the caret at the matching raw position.
+  const renderDecor = () => {
+    if (destroyed) return;
+    const source = String(input.value || "");
+    const fragment = documentObject.createDocumentFragment();
+    if (!source) {
+      const empty = documentObject.createElement("span");
+      empty.className = "arNotesTabPlaceholder";
+      empty.textContent = input.placeholder;
+      fragment.appendChild(empty);
+    } else {
+      const segments = resolveExpressionContext
+        ? renderNotesExpressions(source, resolveExpressionContext())
+        : [{ kind: "text", start: 0, end: source.length, text: source }];
+      for (const segment of segments) {
+        const element = segment.kind === "expression"
+          ? buildExpressionSegment(segment)
+          : buildTextSegment(segment.text, segment.start);
+        element.dataset.rawEnd = String(segment.end);
+        fragment.appendChild(element);
+      }
+    }
     decor.replaceChildren(fragment);
     setHoverPathToken(null);
-    syncDecorScroll();
   };
 
   const hidePathTooltip = () => {
@@ -506,6 +616,236 @@ export function mountNotesTab({
     positionOverlay(menu, clientX, clientY);
   };
 
+  const hideInsertMenu = () => {
+    insertMenu.classList.remove("is-open");
+    insertMenu.setAttribute("aria-hidden", "true");
+    insertMenu.style.left = "";
+    insertMenu.style.top = "";
+    insert.setAttribute("aria-expanded", "false");
+  };
+
+  const showInsertMenu = () => {
+    const catalog = resolveExpressionContext?.()?.catalog;
+    insertMenu.replaceChildren();
+    for (const entry of Array.isArray(catalog) ? catalog : []) {
+      const item = appendElement(
+        documentObject,
+        insertMenu,
+        "button",
+        "arNotesTabPathMenuItem arNotesTabInsertItem",
+      );
+      item.type = "button";
+      item.setAttribute("role", "menuitem");
+      item.dataset.notesSnippet = String(entry.snippet || "");
+      appendElement(documentObject, item, "code", "arNotesTabInsertSnippet", entry.snippet);
+      appendElement(documentObject, item, "span", "arNotesTabInsertDescription", entry.description);
+    }
+    hidePathTooltip();
+    hidePathMenu();
+    insertMenu.classList.add("is-open");
+    insertMenu.setAttribute("aria-hidden", "false");
+    insert.setAttribute("aria-expanded", "true");
+    const anchor = insert.getBoundingClientRect();
+    positionOverlay(insertMenu, anchor.left, anchor.bottom + 4);
+  };
+
+  const insertSnippet = (snippet) => {
+    if (destroyed || !snippet) return;
+    const length = String(input.value || "").length;
+    const start = Math.max(0, Math.min(length, Number(selectionSnapshot.start) || 0));
+    const end = Math.max(start, Math.min(length, Number(selectionSnapshot.end) || start));
+    focusInput();
+    input.selectionStart = start;
+    input.selectionEnd = end;
+    // execCommand keeps the textarea's undo history; setRangeText is the
+    // fallback where it is unavailable.
+    if (!documentObject.execCommand?.("insertText", false, snippet)) {
+      input.setRangeText(snippet, start, end, "end");
+      input.dispatchEvent(new windowObject.Event("input", { bubbles: true }));
+    }
+    rememberSelection();
+  };
+
+  // The edit-mode mirror: the raw text with each `{...}` in deep blue. A
+  // trailing zero-width space keeps a final empty line the same height the
+  // textarea gives it.
+  const renderEditLayer = () => {
+    if (destroyed) return;
+    const source = String(input.value || "");
+    const fragment = documentObject.createDocumentFragment();
+    let cursor = 0;
+    const matches = resolveExpressionContext ? findNotesExpressionMatches(source) : [];
+    for (const match of matches) {
+      if (match.literal !== undefined) continue;
+      if (match.start > cursor) fragment.appendChild(documentObject.createTextNode(source.slice(cursor, match.start)));
+      const span = documentObject.createElement("span");
+      span.className = "arNotesTabEditExpression";
+      span.textContent = source.slice(match.start, match.end);
+      fragment.appendChild(span);
+      cursor = match.end;
+    }
+    fragment.appendChild(documentObject.createTextNode(source.slice(cursor) + "\u200b"));
+    editLayer.replaceChildren(fragment);
+    editLayer.scrollTop = input.scrollTop;
+    editLayer.scrollLeft = input.scrollLeft;
+  };
+
+  // Where a raw text offset sits on screen, read off the mirror layer.
+  const caretRectAt = (offset) => {
+    let remaining = Math.max(0, offset);
+    const walker = documentObject.createTreeWalker(editLayer, 4);
+    let node = walker.nextNode();
+    while (node) {
+      const length = node.textContent.length;
+      if (remaining <= length) {
+        const range = documentObject.createRange();
+        const at = Math.min(remaining, Math.max(0, length - 1));
+        range.setStart(node, at);
+        range.setEnd(node, Math.min(length, at + 1));
+        const rects = range.getClientRects();
+        const rect = rects.length ? rects[remaining >= length && rects.length > 1 ? rects.length - 1 : 0] : range.getBoundingClientRect();
+        if (rect && (rect.width || rect.height)) {
+          return remaining >= length && length > 0 ? { left: rect.right, top: rect.top, bottom: rect.bottom } : rect;
+        }
+        break;
+      }
+      remaining -= length;
+      node = walker.nextNode();
+    }
+    const fallback = editLayer.getBoundingClientRect();
+    return { left: fallback.left + 10, top: fallback.top + 10, bottom: fallback.top + 28 };
+  };
+
+  const hideCompletions = () => {
+    completionState = null;
+    completionMenu.classList.remove("is-open");
+    completionMenu.setAttribute("aria-hidden", "true");
+    completionMenu.style.left = "";
+    completionMenu.style.top = "";
+  };
+
+  const renderCompletions = () => {
+    const { entries, active } = completionState;
+    completionMenu.replaceChildren();
+    entries.forEach((entry, index) => {
+      const item = appendElement(
+        documentObject,
+        completionMenu,
+        "div",
+        "arNotesTabCompletionItem" + (index === active ? " is-active" : ""),
+      );
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", index === active ? "true" : "false");
+      item.dataset.notesCompletion = String(index);
+      appendElement(documentObject, item, "code", "arNotesTabCompletionName", entry.name);
+      appendElement(documentObject, item, "span", "arNotesTabCompletionKind", entry.kind);
+      appendElement(documentObject, item, "span", "arNotesTabCompletionPreview", entry.description || entry.preview);
+    });
+    completionMenu.querySelector(".is-active")?.scrollIntoView?.({ block: "nearest" });
+  };
+
+  // Offers the names that can follow what the caret is typing inside `{...}`.
+  const updateCompletions = () => {
+    if (destroyed || !resolveExpressionContext || documentObject.activeElement !== input) {
+      hideCompletions();
+      return;
+    }
+    const caret = Number.isFinite(input.selectionStart) ? input.selectionStart : 0;
+    if (caret !== input.selectionEnd) {
+      hideCompletions();
+      return;
+    }
+    const value = String(input.value || "");
+    const query = findNotesCompletionQuery(value.slice(0, caret));
+    if (!query) {
+      hideCompletions();
+      return;
+    }
+    const partial = query.partial.toLowerCase();
+    const entries = listNotesCompletions(resolveExpressionContext(), query.path)
+      .filter((entry) => entry.name.toLowerCase().startsWith(partial));
+    if (!entries.length || (entries.length === 1 && entries[0].name === query.partial && entries[0].kind === "value")) {
+      hideCompletions();
+      return;
+    }
+    const previousName = completionState?.entries[completionState.active]?.name;
+    const active = Math.max(0, entries.findIndex((entry) => entry.name === previousName));
+    completionState = { query, entries, active };
+    renderCompletions();
+    completionMenu.classList.add("is-open");
+    completionMenu.setAttribute("aria-hidden", "false");
+    const rect = caretRectAt(caret);
+    positionOverlay(completionMenu, rect.left, rect.bottom + 4);
+  };
+
+  const moveCompletion = (step) => {
+    if (!completionState) return;
+    const count = completionState.entries.length;
+    completionState.active = (completionState.active + step + count) % count;
+    renderCompletions();
+  };
+
+  // Replaces [start, end) with text, keeping the textarea's undo history
+  // where execCommand is available.
+  const replaceRange = (start, end, text) => {
+    input.selectionStart = start;
+    input.selectionEnd = end;
+    if (!documentObject.execCommand?.(text ? "insertText" : "delete", false, text)) {
+      input.setRangeText(text, start, end, "end");
+      input.dispatchEvent(new windowObject.Event("input", { bubbles: true }));
+    }
+  };
+
+  const setCaret = (start, end = start) => {
+    input.selectionStart = start;
+    input.selectionEnd = end;
+    rememberSelection();
+    updateCompletions();
+  };
+
+  const acceptCompletion = (index = completionState?.active) => {
+    if (!completionState) return;
+    const entry = completionState.entries[index];
+    const { query } = completionState;
+    if (!entry) return;
+    const caret = Number.isFinite(input.selectionStart) ? input.selectionStart : 0;
+    focusInput();
+    // A list or function completion lands inside its parentheses.
+    const closing = AUTO_CLOSE_PAIRS[entry.insert.slice(-1)] || "";
+    replaceRange(query.start, caret, entry.insert + closing);
+    setCaret(query.start + entry.insert.length);
+  };
+
+  // Brackets close themselves while a note has placeholders: the opener
+  // inserts its pair around the selection, the closer steps over one already
+  // there, and Backspace inside an empty pair removes both.
+  const handleBracketKey = (event) => {
+    if (!resolveExpressionContext || event.ctrlKey || event.metaKey || event.altKey) return false;
+    const value = String(input.value || "");
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const closing = AUTO_CLOSE_PAIRS[event.key];
+    if (closing) {
+      if (start === end && /\w/u.test(value[end] || "")) return false;
+      event.preventDefault();
+      replaceRange(start, end, event.key + value.slice(start, end) + closing);
+      setCaret(start + 1, end + 1);
+      return true;
+    }
+    if (Object.values(AUTO_CLOSE_PAIRS).includes(event.key) && start === end && value[start] === event.key) {
+      event.preventDefault();
+      setCaret(start + 1);
+      return true;
+    }
+    if (event.key === "Backspace" && start === end && start > 0 && AUTO_CLOSE_PAIRS[value[start - 1]] === value[start]) {
+      event.preventDefault();
+      replaceRange(start - 1, start + 1, "");
+      setCaret(start - 1);
+      return true;
+    }
+    return false;
+  };
+
   const rememberSelection = () => {
     const start = Number.isFinite(input.selectionStart) ? input.selectionStart : 0;
     const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : start;
@@ -540,14 +880,13 @@ export function mountNotesTab({
     if (destroyed) return;
     if (documentObject.activeElement === input) return;
     if (isToolbarElement(documentObject.activeElement)) return;
-    input.style.cursor = "";
     setHoverPathToken(null);
     hidePathTooltip();
-    if (decorRenderPending) {
-      renderDecor();
-      decorRenderPending = false;
-    }
+    hideInsertMenu();
+    hideCompletions();
+    renderDecor();
     setPlainTextMode(false);
+    syncDecorScroll();
   };
 
   const scheduleEditingViewFlush = () => {
@@ -587,7 +926,7 @@ export function mountNotesTab({
       : "none";
 
     root.style.setProperty("--ar-notes-text-color", textStyleState.color);
-    for (const textSurface of [decor, input]) {
+    for (const textSurface of [decor, editLayer, input]) {
       textSurface.style.fontFamily = textStyleState.fontFamily;
       textSurface.style.fontSize = String(textStyleState.fontSize) + "px";
       textSurface.style.fontWeight = textStyleState.bold ? "700" : "400";
@@ -631,10 +970,10 @@ export function mountNotesTab({
 
   const handleInput = () => {
     if (plainTextEditMode) {
-      decorRenderPending = true;
+      renderEditLayer();
+      updateCompletions();
     } else {
       renderDecor();
-      decorRenderPending = false;
     }
     updateDirtyState("user");
     notifyChange(String(input.value || ""), {
@@ -643,18 +982,43 @@ export function mountNotesTab({
     });
   };
 
-  const getPathTokenAtPoint = (clientX, clientY) => {
-    const previousPointerEvents = input.style.pointerEvents;
-    input.style.pointerEvents = "none";
-    let node = null;
-    try {
-      node = documentObject.elementFromPoint(clientX, clientY);
-    } finally {
-      input.style.pointerEvents = previousPointerEvents;
+  const caretPointAt = (clientX, clientY) => {
+    if (typeof documentObject.caretPositionFromPoint === "function") {
+      const position = documentObject.caretPositionFromPoint(clientX, clientY);
+      return position ? { node: position.offsetNode, offset: position.offset } : null;
     }
-    const token = node?.closest?.(".arNotesTabPathToken");
-    if (!token || !decor.contains(token)) return null;
-    return token;
+    if (typeof documentObject.caretRangeFromPoint === "function") {
+      const range = documentObject.caretRangeFromPoint(clientX, clientY);
+      return range ? { node: range.startContainer, offset: range.startOffset } : null;
+    }
+    return null;
+  };
+
+  // Maps a point on the rendered view to a caret position in the raw note.
+  // Inside a text segment the rendered and raw characters line up; a click on
+  // a rendered value lands at the opening brace of its placeholder.
+  const rawOffsetFromPoint = (clientX, clientY) => {
+    const length = String(input.value || "").length;
+    const point = caretPointAt(clientX, clientY);
+    if (!point?.node) return length;
+    const element = point.node.nodeType === 3 ? point.node.parentElement : point.node;
+    const segment = element?.closest?.("[data-raw-start]");
+    if (!segment || !decor.contains(segment)) return length;
+    const rawStart = Number(segment.dataset.rawStart);
+    if (segment.classList.contains("arNotesTabExpression")) return rawStart;
+    const range = documentObject.createRange();
+    range.setStart(segment, 0);
+    range.setEnd(point.node, point.offset);
+    return Math.min(Number(segment.dataset.rawEnd), rawStart + range.toString().length);
+  };
+
+  const beginEditingAt = (offset) => {
+    focusInput();
+    try {
+      input.selectionStart = offset;
+      input.selectionEnd = offset;
+    } catch {}
+    rememberSelection();
   };
 
   const getPathFromToken = (token) => String(token?.dataset?.path || "");
@@ -792,66 +1156,126 @@ export function mountNotesTab({
   };
 
   listen(input, "input", handleInput);
-  listen(input, "scroll", () => {
-    syncDecorScroll();
-    setHoverPathToken(null);
-    hidePathTooltip();
-    hidePathMenu();
-  }, { passive: true });
-  listen(input, "mousemove", (event) => {
-    if ((event.buttons & 1) === 1) {
-      input.style.cursor = "";
-      setHoverPathToken(null);
-      hidePathTooltip();
-      return;
-    }
-    const token = getPathTokenAtPoint(event.clientX, event.clientY);
-    if (!token) {
-      input.style.cursor = "";
-      setHoverPathToken(null);
-      hidePathTooltip();
-      return;
-    }
-    input.style.cursor = "pointer";
-    setHoverPathToken(token);
-    const editing = documentObject.activeElement === input
-      || isToolbarElement(documentObject.activeElement);
-    showPathTooltip(
-      event.clientX,
-      event.clientY,
-      editing
-        ? "Exit editing, then right-click for file options"
-        : "Right-click for file options",
-    );
-  });
-  listen(input, "mouseleave", () => {
-    input.style.cursor = "";
-    setHoverPathToken(null);
-    hidePathTooltip();
-  });
   listen(input, "focus", () => {
     clearFlushTimer();
     rememberSelection();
-    setPlainTextMode(true);
-    input.style.cursor = "";
     setHoverPathToken(null);
     hidePathTooltip();
+    // Carry the rendered view's scroll position into the editor before the
+    // view is hidden.
+    input.scrollTop = decor.scrollTop;
+    input.scrollLeft = decor.scrollLeft;
+    setPlainTextMode(true);
+    renderEditLayer();
+  });
+  listen(input, "scroll", () => {
+    editLayer.scrollTop = input.scrollTop;
+    editLayer.scrollLeft = input.scrollLeft;
+    hideCompletions();
+  }, { passive: true });
+
+  // The rendered view is a selectable surface: dragging selects rendered text
+  // for copying, a plain click enters editing at the clicked position.
+  listen(decor, "mousedown", (event) => {
+    hidePathTooltip();
+    hidePathMenu();
+    hideInsertMenu();
+    decorPress = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+  });
+  listen(decor, "mouseup", (event) => {
+    const press = decorPress;
+    decorPress = null;
+    if (event.button !== 0 || !press) return;
+    const dragged = Math.abs(event.clientX - press.x) > CLICK_DRAG_THRESHOLD_PX
+      || Math.abs(event.clientY - press.y) > CLICK_DRAG_THRESHOLD_PX;
+    const selection = windowObject.getSelection?.();
+    if (dragged || (selection && !selection.isCollapsed && decor.contains(selection.anchorNode))) return;
+    beginEditingAt(rawOffsetFromPoint(event.clientX, event.clientY));
+  });
+  listen(decor, "mousemove", (event) => {
+    if ((event.buttons & 1) === 1) {
+      setHoverPathToken(null);
+      hidePathTooltip();
+      return;
+    }
+    const token = event.target?.closest?.(".arNotesTabPathToken");
+    if (token) {
+      setHoverPathToken(token);
+      showPathTooltip(
+        event.clientX,
+        event.clientY,
+        isToolbarElement(documentObject.activeElement)
+          ? "Exit editing, then right-click for file options"
+          : "Right-click for file options",
+      );
+      return;
+    }
+    setHoverPathToken(null);
+    const expression = event.target?.closest?.(".arNotesTabExpression");
+    if (!expression) {
+      hidePathTooltip();
+      return;
+    }
+    const source = String(expression.dataset.source || "");
+    const error = String(expression.dataset.error || "");
+    showPathTooltip(event.clientX, event.clientY, error ? source + ": " + error : source);
+  });
+  listen(decor, "mouseleave", () => {
+    setHoverPathToken(null);
+    hidePathTooltip();
+  });
+  listen(decor, "scroll", () => {
+    hidePathTooltip();
+    hidePathMenu();
+  }, { passive: true });
+  listen(decor, "contextmenu", (event) => {
+    const token = event.target?.closest?.(".arNotesTabPathToken");
+    const targetPath = getPathFromToken(token);
+    if (!targetPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setHoverPathToken(token);
+    showPathMenu(event.clientX, event.clientY, targetPath);
   });
   listen(input, "blur", () => {
     rememberSelection();
     scheduleEditingViewFlush();
   });
   listen(input, "select", rememberSelection);
-  listen(input, "keyup", rememberSelection);
+  listen(input, "keyup", (event) => {
+    rememberSelection();
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) updateCompletions();
+  });
   listen(input, "mouseup", rememberSelection);
   listen(input, "keydown", (event) => {
     rememberSelection();
+    if (completionState) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        moveCompletion(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        acceptCompletion();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        hideCompletions();
+        return;
+      }
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       input.blur();
       return;
     }
+    if (handleBracketKey(event)) return;
     if (event.key !== "Tab") return;
 
     event.preventDefault();
@@ -869,43 +1293,30 @@ export function mountNotesTab({
     input.dispatchEvent(new windowObject.Event("input", { bubbles: true }));
   });
   listen(input, "mousedown", (event) => {
-    if (event.button === 2) {
-      if (plainTextEditMode) return;
-      const token = getPathTokenAtPoint(event.clientX, event.clientY);
-      const targetPath = getPathFromToken(token);
-      if (!targetPath) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setHoverPathToken(token);
-      showPathMenu(event.clientX, event.clientY, targetPath);
-      return;
-    }
     if (event.button !== 0) return;
     hidePathTooltip();
     hidePathMenu();
+    hideInsertMenu();
   });
-  listen(input, "contextmenu", (event) => {
-    if (plainTextEditMode) return;
-    const token = getPathTokenAtPoint(event.clientX, event.clientY);
-    const targetPath = getPathFromToken(token);
-    if (!targetPath) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setHoverPathToken(token);
-    showPathMenu(event.clientX, event.clientY, targetPath);
-  });
-  listen(input, "click", (event) => {
+  listen(input, "click", () => {
     rememberSelection();
-    if (event.button === 0) hidePathTooltip();
+    updateCompletions();
   });
 
   listen(toolbar, "mousedown", (event) => {
-    const toggle = event.target?.closest?.("[data-notes-toggle]");
-    if (!toggle || !toolbar.contains(toggle)) return;
+    const control = event.target?.closest?.("[data-notes-toggle], [data-notes-insert]");
+    if (!control || !toolbar.contains(control)) return;
     event.preventDefault();
     event.stopPropagation();
   });
   listen(toolbar, "click", (event) => {
+    if (event.target?.closest?.("[data-notes-insert]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (insertMenu.classList.contains("is-open")) hideInsertMenu();
+      else showInsertMenu();
+      return;
+    }
     const toggle = event.target?.closest?.("[data-notes-toggle]");
     if (!toggle || !toolbar.contains(toggle)) return;
     const key = String(toggle.dataset.notesToggle || "");
@@ -967,14 +1378,49 @@ export function mountNotesTab({
     visibleItems[nextIndex]?.focus();
   });
 
+  // Keep focus in the textarea while the Insert Value menu is used so leaving
+  // and re-entering edit mode does not flicker around the click.
+  listen(insertMenu, "mousedown", (event) => {
+    event.preventDefault();
+  });
+  listen(insertMenu, "click", (event) => {
+    const item = event.target?.closest?.("[data-notes-snippet]");
+    if (!item || !insertMenu.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hideInsertMenu();
+    insertSnippet(String(item.dataset.notesSnippet || ""));
+  });
+
+  // Clicking a completion must not blur the textarea, or the accept would
+  // land after the editor has already left edit mode.
+  listen(completionMenu, "mousedown", (event) => {
+    event.preventDefault();
+  });
+  listen(completionMenu, "click", (event) => {
+    const item = event.target?.closest?.("[data-notes-completion]");
+    if (!item || !completionMenu.contains(item)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    acceptCompletion(Number(item.dataset.notesCompletion));
+  });
+
   listen(documentObject, "mousedown", (event) => {
     if (!menu.contains(event.target)) hidePathMenu();
+    if (!insertMenu.contains(event.target) && !insert.contains(event.target)) hideInsertMenu();
+    if (!completionMenu.contains(event.target)) hideCompletions();
+  });
+  listen(documentObject, "mouseup", () => {
+    decorPress = null;
   });
   listen(windowObject, "keydown", (event) => {
-    if (event.key === "Escape") hidePathMenu();
+    if (event.key !== "Escape") return;
+    hidePathMenu();
+    hideInsertMenu();
   });
   listen(windowObject, "resize", syncToolbarWidth);
   listen(windowObject, "resize", hidePathMenu);
+  listen(windowObject, "resize", hideInsertMenu);
 
   applyTextStyle(getDefaultTextStyle());
   renderDecor();
@@ -1008,7 +1454,7 @@ export function mountNotesTab({
         end: Math.min(length, selectionSnapshot.end),
       };
       renderDecor();
-      decorRenderPending = false;
+      renderEditLayer();
       updateDirtyState("programmatic");
       if (notify) {
         notifyChange(String(input.value || ""), {
@@ -1037,6 +1483,16 @@ export function mountNotesTab({
       syncDecorScroll();
     },
 
+    /**
+     * Re-renders the view so `{...}` placeholders show current values. A note
+     * being edited shows raw text and is rendered when editing ends anyway.
+     */
+    render() {
+      if (destroyed || plainTextEditMode) return;
+      renderDecor();
+      syncDecorScroll();
+    },
+
     destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -1056,6 +1512,8 @@ export function mountNotesTab({
       setHoverPathToken(null);
       tooltip.remove();
       menu.remove();
+      insertMenu.remove();
+      completionMenu.remove();
       root.remove();
       container.classList?.remove("arNotesTabMount");
       if (MOUNTED_NOTES_TABS.get(container) === controller) {
@@ -1075,6 +1533,9 @@ export function mountNotesTab({
       input,
       tooltip,
       pathMenu: menu,
+      insertMenu,
+      completionMenu,
+      editLayer,
       styleControls,
     },
   };

@@ -47,7 +47,7 @@ import {
   buildPercentDevelopedVector,
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260907a";
-import { wireNotesInput } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260714a";
+import { wireNotesInput, refreshDfmNotesView } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
 import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260907a";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
 import {
@@ -70,6 +70,7 @@ import {
   stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
+  buildDfmMethodPayload,
 } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260909c";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260907a";
 import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260907a";
@@ -552,7 +553,7 @@ function initDfmTabs() {
   wireDfmSpinnerControls();
   wireMethodName();
   wireDfmInstanceCreationNotice();
-  wireNotesInput();
+  wireNotesInput({ buildExpressionPayload: buildDfmMethodPayload });
   initDfmLinks();
   wireDfmSaveControls();
   wireDetailsThresholdReset();
@@ -580,6 +581,7 @@ function initDfmTabs() {
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "curves") renderDfmCurvesTab();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "notes") refreshDfmNotesView();
       if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
@@ -599,6 +601,7 @@ function initDfmTabs() {
       if (tabId === "ratios") renderRatioTable();
       if (tabId === "curves") renderDfmCurvesTab();
       if (tabId === "results") renderResultsTable();
+      if (tabId === "notes") refreshDfmNotesView();
       if (tabId === "links") refreshDfmLinks();
       if (tabId === "audit") refreshDfmAuditLog();
       notifyDfmEditState();
