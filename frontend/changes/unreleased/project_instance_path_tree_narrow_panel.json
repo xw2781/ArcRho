@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The reserving-class path tree keeps its favorite stars on the right edge when the left panel is narrow.",
+  "details": [
+    "Once any visible level tag no longer fits beside its path label, all level tags hide together instead of being cut mid-word, and return when the panel widens.",
+    "A long path label runs under its star instead of pushing the star out of view; hovering still shows the full path."
+  ]
+}

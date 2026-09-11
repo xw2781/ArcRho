@@ -712,7 +712,8 @@ function ensureStyles(doc) {
       font-size: 11px;
       color: #999;
     }
-    .ptree-window.ptree-hide-segment-labels .ptree-level {
+    .ptree-window.ptree-hide-segment-labels .ptree-level,
+    .ptree-window.ptree-levels-overflow .ptree-level {
       display: none;
     }
     .ptree-window.ptree-hide-segment-labels .ptree-folder > .ptree-fav-btn {
@@ -1836,7 +1837,8 @@ function openFavoriteFolderContextMenu(doc, folder, options = {}, ctx = {}) {
 
 function disposeFloatingPathTreePicker(picker, reason = "programmatic", options = {}) {
   if (!picker) return;
-  const { doc, win, onEsc, onClose, onBeforeClose, onWheelGuard, getExpandedPaths } = picker;
+  const { doc, win, onEsc, onClose, onBeforeClose, onWheelGuard, getExpandedPaths, stopLevelOverflowSync } = picker;
+  if (typeof stopLevelOverflowSync === "function") stopLevelOverflowSync();
   if (options?.beforeClose !== false && typeof onBeforeClose === "function") {
     let rect = null;
     let body = null;
@@ -2638,6 +2640,41 @@ export function openFloatingPathTreePicker(options = {}) {
   setActivePath(initialActivePath, null, false);
   win.appendChild(body);
 
+  // Level tags hide all at once: a host stylesheet may wrap a tag that no longer
+  // fits beside its label onto a clipped second line, and as soon as one visible
+  // row has to do that, every tag is hidden so the column never looks ragged.
+  // Measuring with the tags shown and re-hiding happens before the next paint.
+  const LEVELS_OVERFLOW_CLASS = "ptree-levels-overflow";
+  let levelOverflowFrame = 0;
+  const syncLevelOverflow = () => {
+    levelOverflowFrame = 0;
+    win.classList.remove(LEVELS_OVERFLOW_CLASS);
+    const overflow = Array.from(body.querySelectorAll(".ptree-level")).some((level) => {
+      const label = level.parentElement?.querySelector(".ptree-label, .ptree-favorite-name");
+      return !!label && label.offsetHeight > 0 && level.offsetTop >= label.offsetTop + label.offsetHeight;
+    });
+    win.classList.toggle(LEVELS_OVERFLOW_CLASS, overflow);
+  };
+  const scheduleLevelOverflowSync = () => {
+    if (levelOverflowFrame) return;
+    levelOverflowFrame = requestAnimationFrame(syncLevelOverflow);
+  };
+  const levelObservers = [];
+  if (typeof ResizeObserver === "function") {
+    const resizeObserver = new ResizeObserver(scheduleLevelOverflowSync);
+    resizeObserver.observe(win);
+    levelObservers.push(resizeObserver);
+  }
+  if (typeof MutationObserver === "function") {
+    const mutationObserver = new MutationObserver(scheduleLevelOverflowSync);
+    mutationObserver.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    levelObservers.push(mutationObserver);
+  }
+  const stopLevelOverflowSync = () => {
+    if (levelOverflowFrame) cancelAnimationFrame(levelOverflowFrame);
+    for (const observer of levelObservers) observer.disconnect();
+  };
+
   if (options?.draggable !== false && !embedded) {
     makeDraggable(doc, win, bar);
   }
@@ -2734,6 +2771,7 @@ export function openFloatingPathTreePicker(options = {}) {
     onWheelGuard,
     onClose: options?.onClose,
     getExpandedPaths: () => collectExpandedPaths(renderContext.nodeControls, delimiter),
+    stopLevelOverflowSync,
   };
 
   const removePath = async (rawPath) => {

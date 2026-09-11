@@ -1,4 +1,4 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260904a";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260911a";
 import { buildWorkflowPathRootNode } from "/ui/shared/integrations/workflow_picker_options.js";
 
 const LOOKUP_MODEL_CACHE = new Map();
