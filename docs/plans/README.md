@@ -13,7 +13,7 @@ index is a summary of those lines, not a second source of truth.
 | Plan | Status |
 | :--- | :--- |
 | [build_new_methods.md](build_new_methods.md) | Four of five ResQ methods shipped; Bootstrap Consolidation is still open. Also holds the ResQ API and sample-project reference notes agents rely on. |
-| [generated_formula_dependency_refresh.md](generated_formula_dependency_refresh.md) | Investigated 2026-09-05; scoped Engine refresh and missing generated-formula dependency links explained; implementation proposed. |
+| [generated_formula_dependency_refresh.md](generated_formula_dependency_refresh.md) | Investigated 2026-09-05; broken into 7 session-sized steps on 2026-09-11 covering the shared formula graph, sidecar links, the scoped Engine refresh, the Project Instance Dependency Graph window, and a one-off script that fixes the existing projects; 0 of 7 done. |
 | [hosted_save_http_transport.md](hosted_save_http_transport.md) | Implemented for every hosted-save kind; TLS, traffic limits, and retiring the SMB path remain. |
 | [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) | Phase 1 reads and Phase 2 engine calculations implemented; the bounded-server foundation, SSE, and small writes remain. |
 | [local_runtime_log_retention_plan.md](local_runtime_log_retention_plan.md) | Audit complete (2026-08-09); remediation not started. |
