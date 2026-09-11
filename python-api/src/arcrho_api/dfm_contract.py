@@ -2013,6 +2013,7 @@ def apply_owned_patch(
     """Rebase an owned-state patch onto the newest embedded derived snapshot."""
 
     method = normalize_dfm_method(base, require_complete=False, timestamp=timestamp)
+    base_basis = _clean(method["results_tab"].get("ratio_basis_dataset"))
     _apply_owned_exclusion_patch(method, patch)
     for path in _OWNED_PATHS:
         exists, value = _path_value(patch, path)
@@ -2022,9 +2023,39 @@ def apply_owned_patch(
     method["method_metadata"]["last_modified"] = modified_at
     return recalculate_dfm_method(
         method,
+        ratio_basis_snapshot=_patched_ratio_basis_snapshot(method, patch, base_basis),
         timestamp=modified_at,
         update_refresh_timestamp=False,
     )
+
+
+def _patched_ratio_basis_snapshot(
+    method: Mapping[str, Any],
+    patch: Mapping[str, Any],
+    base_basis: str,
+) -> dict[str, Any] | None:
+    """The client's Ratio Basis column when the patch switches to another dataset.
+
+    Only the basis *name* is owned, so the base file still embeds the previous
+    dataset's column (or none at all). Rebasing the name alone would fail the
+    completeness check before the caller has a chance to reload the new basis
+    from disk, so the column the editor already loaded bridges that gap; a
+    save that changes the basis reloads it from the source right after.
+    """
+
+    results = method.get("results_tab") if isinstance(method.get("results_tab"), Mapping) else {}
+    next_basis = _clean(results.get("ratio_basis_dataset"))
+    if not next_basis or next_basis.casefold() == base_basis.casefold():
+        return None
+    patch_results = patch.get("results_tab") if isinstance(patch.get("results_tab"), Mapping) else {}
+    return {
+        "name": next_basis,
+        "origin_labels": _labels(patch_results.get("ratio_basis_origin_labels")),
+        "values": _input_numbers(patch_results.get("ratio_basis_values")),
+        "data_format": patch_results.get("ratio_basis_data_format"),
+        "number_format": patch_results.get("ratio_basis_number_format"),
+        "decimal_places": patch_results.get("ratio_basis_decimal_places"),
+    }
 
 
 def stamp_last_modified(payload: Mapping[str, Any], modified_at: Any) -> dict[str, Any]:

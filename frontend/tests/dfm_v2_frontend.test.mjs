@@ -72,6 +72,7 @@ test("aggregate DFM API sends method and output identities with revision-aware s
       reserving_class: "RC",
       method: { "json_format": api.DFM_METHOD_JSON_FORMAT },
       notes: "keep",
+      notes_source: "keep {name}",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
     });
@@ -96,6 +97,7 @@ test("aggregate DFM API sends method and output identities with revision-aware s
       reserving_class: "RC",
       method: { "json_format": api.DFM_METHOD_JSON_FORMAT },
       notes: "keep",
+      notes_source: "keep {name}",
       expected_owned_revision: "owned",
       expected_derived_revision: "derived",
     });
@@ -447,4 +449,20 @@ test("an Ex hi/lo row averages within its window instead of reaching past it", a
     summaryTableSource,
     /computeAverageForColumn\([^)]*summaryRuntime\.ratioStrikeSet\s*\)/u,
   );
+});
+
+test("Results ratio-basis options read the Data Format column the server labels with a space", () => {
+  const slice = functionSlice(resultsSource, "function getDatasetTypeColumnIndexes", "function getDatasetTypeCell");
+  const normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
+  const getDatasetTypeColumnIndexes = new Function(
+    "normalizeKey",
+    `${slice}; return getDatasetTypeColumnIndexes;`,
+  )(normalizeKey);
+  // The live /dataset_types payload: a missing dataFormat index left every
+  // option format-less, so a freshly picked Ratio Basis reported itself as
+  // "not available in current project" and the save refused it.
+  const live = getDatasetTypeColumnIndexes(["Name", "Data Format", "Category", "Calculated", "Formula", "Source", "Generated"]);
+  assert.deepEqual(live, { name: 0, dataFormat: 1, calculated: 3 });
+  const snake = getDatasetTypeColumnIndexes(["name", "data_format", "calculated"]);
+  assert.deepEqual(snake, { name: 0, dataFormat: 1, calculated: 2 });
 });

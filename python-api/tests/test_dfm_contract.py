@@ -823,6 +823,49 @@ class DfmContractTests(unittest.TestCase):
         with self.assertRaisesRegex(DfmContractError, "missing exact origin"):
             recalculate_dfm_method(initial, ratio_basis_snapshot=case_mismatch)
 
+    def test_owned_patch_carries_the_client_column_when_the_ratio_basis_changes(self) -> None:
+        # A method saved without a Ratio Basis embeds no basis column, and only
+        # the basis name is owned; picking a vector in the Results tab must not
+        # trip the completeness check before the caller reloads that vector.
+        without_basis = owned_payload()
+        without_basis["results_tab"]["ratio_basis_dataset"] = ""
+        method = recalculate_dfm_method(without_basis, input_snapshot=input_snapshot())
+        self.assertEqual(method["results_tab"]["ratio_basis_values"], [])
+
+        patch = deepcopy(method)
+        patch["results_tab"].update({
+            "ratio_basis_dataset": "Earned Premium",
+            "ratio_basis_data_format": "Vector",
+            "ratio_basis_origin_labels": ["2020", "2021", "2022"],
+            "ratio_basis_values": [1000, 2000, 3000],
+            "ratio_basis_number_format": "$#,##0",
+            "ratio_basis_decimal_places": 0,
+            "ratio_basis_source_revision": "",
+        })
+        patched = apply_owned_patch(method, patch, timestamp="save")
+        results = patched["results_tab"]
+        self.assertEqual(results["ratio_basis_dataset"], "Earned Premium")
+        self.assertEqual(results["ratio_basis_origin_labels"], ["2020", "2021", "2022"])
+        self.assertEqual(results["ratio_basis_values"], [1000, 2000, 3000])
+        self.assertEqual(results["ratio_basis_number_format"], "$#,##0")
+        self.assertTrue(results["ratio_basis_source_revision"])
+
+        # Switching to another basis without its column still fails loudly.
+        bare = deepcopy(patched)
+        bare["results_tab"]["ratio_basis_dataset"] = "Earned Exposure"
+        bare["results_tab"]["ratio_basis_origin_labels"] = []
+        bare["results_tab"]["ratio_basis_values"] = []
+        with self.assertRaisesRegex(DfmContractError, "missing exact origin"):
+            apply_owned_patch(patched, bare, timestamp="save")
+
+        # An unchanged basis keeps rebasing onto the embedded column, not the patch.
+        stale = deepcopy(patched)
+        stale["results_tab"]["ratio_basis_values"] = [1, 2, 3]
+        self.assertEqual(
+            apply_owned_patch(patched, stale, timestamp="save")["results_tab"]["ratio_basis_values"],
+            [1000, 2000, 3000],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

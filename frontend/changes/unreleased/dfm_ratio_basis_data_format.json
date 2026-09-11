@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Picking a Ratio Basis vector in the DFM Results tab, and saving the DFM afterwards, works again.",
+  "details": [
+    "The Results tab read the dataset-type list with a column key the server does not use, so every option lost its data format and a freshly chosen Ratio Basis was rejected as 'not available in current project'. The lookup now accepts the 'Data Format' label the server sends as well as the older data_format spelling.",
+    "Saving an existing DFM whose Ratio Basis had just changed failed with 'DFM Ratio Basis values must align exactly to the DFM origins': the save merged only the new dataset name onto the stored method and checked it before reloading the vector. The merge now carries the column the editor already loaded, and the save still reloads the vector from its source right after."
+  ]
+}

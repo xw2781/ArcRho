@@ -4,7 +4,7 @@ DFM Results Tab - results table rendering and CSV export
 ===============================================================================
 */
 import { getDataset } from "/ui/shared/dataset/dataset_api.js";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260907c";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260910a";
 import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import { formatDatasetNumberValue } from "/ui/shared/dataset/dataset_number_format.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
@@ -170,9 +170,12 @@ function getDatasetTypeColumnIndexes(columns) {
     if (!key || indexByName[key] != null) continue;
     indexByName[key] = i;
   }
+  // /dataset_types labels the column "Data Format"; older payloads and object
+  // rows spell it data_format. Missing this index left every option without a
+  // format, which made a freshly picked Ratio Basis read as "not available".
   return {
     name: indexByName.name,
-    dataFormat: indexByName["data_format"],
+    dataFormat: indexByName["data format"] ?? indexByName["data_format"],
     calculated: indexByName.calculated,
   };
 }
