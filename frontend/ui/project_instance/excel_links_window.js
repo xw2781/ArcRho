@@ -4,8 +4,8 @@
 // in project_instance_windows.js owns the titlebar, dragging, resizing,
 // minimize/maximize/close and the dock; this page owns the inventory and the
 // row actions reached from a right-click menu: open the workbook, open it
-// read-only, change what it points at, and - on a Folder cell - open the
-// containing folder. The window is pinned to the
+// read-only, change what it points at, and - on a Workbook Path cell - open
+// the containing folder. The window is pinned to the
 // reserving class it was opened on, which arrives in the query string, so
 // selecting another class in the tree leaves it alone exactly like a Dataset or
 // DFM window.
@@ -33,7 +33,7 @@
 //                                        the cached dataset table when files changed
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260907b";
-import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260911a";
+import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260911b";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
@@ -346,10 +346,10 @@ function openMenu(row, rowEl, event, columnKey = "") {
   manager.menuRow = row;
   manager.menuRowEl = rowEl;
   rowEl.classList.add("context-target");
-  // Opening the folder belongs to the Folder cell, so it appears only there
-  // rather than adding a fourth item to every row's menu.
+  // Opening the folder belongs to the Workbook Path cell, so it appears only
+  // there rather than adding a fourth item to every row's menu.
   const folderItem = els.menu.querySelector('[data-action="open-folder"]');
-  if (folderItem) folderItem.hidden = columnKey !== "folder" || !text(row?.folder);
+  if (folderItem) folderItem.hidden = columnKey !== "workbookPath" || !text(row?.folder);
   openContextMenu(els.menu, {
     anchorEl: rowEl,
     clientX: Number(event?.clientX),

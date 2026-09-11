@@ -151,12 +151,31 @@
   gap: 6px;
 }
 
+/* Clicking the label sorts by its column; the sort triangle sits in the
+   padding the sorted label reserves, exactly as in the dataset table. */
 .pi-excel-links-col-label {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pi-excel-links-col-label.is-sorted { padding-right: 12px; }
+
+.pi-excel-links-sort-icon {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  color: var(--ar-color-accent);
+  fill: currentColor;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .pi-excel-links-filter-btn {
@@ -214,10 +233,9 @@ body.pi-excel-links-resizing-column * {
   user-select: none !important;
 }
 
-/* One row per usage, so the folder, the method type, and the workbook's own
-   Created/Last Modified/User stay quiet next to the two cells the reader acts
-   on: the workbook and the object name. */
-.pi-excel-links-table tbody td.pi-excel-links-cell.folder,
+/* One row per usage, so the method type and the workbook's own Created/Last
+   Modified/User stay quiet next to the two cells the reader acts on: the
+   workbook path and the object name. */
 .pi-excel-links-table tbody td.pi-excel-links-cell.methodType,
 .pi-excel-links-table tbody td.pi-excel-links-cell.lastModified,
 .pi-excel-links-table tbody td.pi-excel-links-cell.created,
@@ -236,8 +254,8 @@ body.pi-excel-links-resizing-column * {
 }
 
 /* The listing's Found/Missing verdict has no column of its own; a workbook
-   ArcRho Server cannot open is called out on its name. */
-.pi-excel-links-table tbody td.pi-excel-links-cell.workbook.missing {
+   ArcRho Server cannot open is called out on its path. */
+.pi-excel-links-table tbody td.pi-excel-links-cell.workbookPath.missing {
   color: var(--ar-color-danger);
 }
 

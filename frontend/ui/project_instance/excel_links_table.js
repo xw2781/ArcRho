@@ -3,9 +3,10 @@
 // The manager lists one row per *usage*, not one per workbook: a workbook read
 // by two datasets shows two rows, so the reader sees which datasets and DFM
 // methods depend on it without hovering a summary cell. Everything that
-// describes the workbook - folder, Last Modified, Created, User - repeats on
+// describes the workbook - its path, Last Modified, Created, User - repeats on
 // every row of the same workbook, which is what makes the per-column filters
-// meaningful.
+// meaningful. Clicking a header sorts by that column, ascending, then
+// descending, then back to the listing's own order, as the dataset table does.
 //
 // Last Modified, Created, and User answer the same questions the Project
 // Instance dataset table's columns of those names answer, about the workbook
@@ -50,8 +51,7 @@ export const EXCEL_LINK_COLUMNS = [
   // An icon-only cell: the cap keeps the column at its header's width.
   { key: "status", label: "Status", width: 76, minWidth: 60, maxAutoWidth: 76, filterable: true },
   { key: "methodType", label: "Method Type", width: 132, minWidth: 70, maxAutoWidth: 180, filterable: true },
-  { key: "workbook", label: "Workbook", width: 190, minWidth: 90, maxAutoWidth: 300, filterable: true },
-  { key: "folder", label: "Location", width: 280, minWidth: 90, maxAutoWidth: 420, filterable: true },
+  { key: "workbookPath", label: "Workbook Path", width: 340, minWidth: 110, maxAutoWidth: 520, filterable: true },
   { key: "lastModified", label: "Last Modified", width: 151, minWidth: 110, maxAutoWidth: 200, filterable: true },
   { key: "created", label: "Created", width: 142, minWidth: 110, maxAutoWidth: 200, filterable: true },
   { key: "user", label: "User", width: 129, minWidth: 90, maxAutoWidth: 220, filterable: true },
@@ -106,10 +106,7 @@ export function excelLinkDetailRows(workbooks) {
 
 /** The text one column shows for a row; also the value its filter matches. */
 export function excelLinkCellText(row, key) {
-  if (key === "workbook") return text(row?.workbookName);
-  // `row.folder` keeps its trailing separator for building an Excel external
-  // reference; the column only displays the path, so it drops that separator.
-  if (key === "folder") return text(row?.folder).replace(/[\\/]+$/, "");
+  if (key === "workbookPath") return text(row?.workbookPath);
   if (key === "methodType") {
     // The server resolves Method Type through the same owner the dataset table
     // reads. The kind stands in only for a server that predates the field.
@@ -156,6 +153,33 @@ export function filterExcelLinkRows(rows, filters) {
   });
 }
 
+function compareExcelLinkRows(a, b, key) {
+  // The two dates sort by the moment they name, not by their local-time text;
+  // a workbook with no readable properties sorts before every dated one.
+  if (key === "lastModified" || key === "created") {
+    const field = key === "lastModified" ? "modified" : "created";
+    return (Date.parse(text(a?.[field])) || 0) - (Date.parse(text(b?.[field])) || 0);
+  }
+  return excelLinkCellText(a, key).localeCompare(
+    excelLinkCellText(b, key),
+    undefined,
+    { numeric: true, sensitivity: "base" },
+  );
+}
+
+/**
+ * Orders the rows by one column; `sort` is `{ key, dir }` with `dir` "asc" or
+ * "desc". An unknown or empty key keeps the listing's own order, and rows the
+ * column cannot tell apart stay in that order too.
+ */
+export function sortExcelLinkRows(rows, sort) {
+  const source = Array.isArray(rows) ? rows.slice() : [];
+  const key = text(sort?.key);
+  if (!COLUMN_BY_KEY.has(key)) return source;
+  const direction = sort?.dir === "desc" ? -1 : 1;
+  return source.sort((a, b) => compareExcelLinkRows(a, b, key) * direction);
+}
+
 /** Drops filter values the current rows no longer contain. */
 export function pruneExcelLinkFilters(filters, rows) {
   if (!(filters instanceof Map) || !filters.size) return filters;
@@ -200,15 +224,29 @@ function measureTextWidth(value, sample) {
   return ctx.measureText(source).width;
 }
 
-function filterIconSvg() {
+function iconSvg(className, viewBox, pathData) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", className);
+  svg.setAttribute("viewBox", viewBox);
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", "M2 3h12L9.5 8v4l-3 1V8z");
+  path.setAttribute("d", pathData);
   svg.appendChild(path);
   return svg;
+}
+
+function filterIconSvg() {
+  return iconSvg("", "0 0 16 16", "M2 3h12L9.5 8v4l-3 1V8z");
+}
+
+// The dataset table's sort triangles: up for ascending, down for descending.
+function sortIconSvg(dir) {
+  return iconSvg(
+    "pi-excel-links-sort-icon",
+    "0 0 12 12",
+    dir === "desc" ? "M6 9.5L2.2 4h7.6L6 9.5z" : "M6 2.5L9.8 8H2.2L6 2.5z",
+  );
 }
 
 /**
@@ -233,6 +271,8 @@ export function createExcelLinksTable(options = {}) {
   // so a refresh never undoes a deliberate resize.
   const manualWidths = new Set();
   const filters = new Map();
+  // The column the rows are ordered by; an empty key is the listing's order.
+  let sort = { key: "", dir: "asc" };
   let rows = [];
   let visibleRows = [];
   let autoFitPending = false;
@@ -311,10 +351,19 @@ export function createExcelLinksTable(options = {}) {
     document.addEventListener("mouseup", onUp, true);
   }
 
+  // Ascending, then descending, then the listing's own order again.
+  function toggleSort(key) {
+    if (sort.key === key && sort.dir === "desc") sort = { key: "", dir: "asc" };
+    else sort = { key, dir: sort.key === key ? "desc" : "asc" };
+    render();
+  }
+
   function buildHeadCell(col) {
     const th = document.createElement("th");
     th.dataset.colKey = col.key;
     th.scope = "col";
+    const sorted = sort.key === col.key;
+    th.setAttribute("aria-sort", sorted ? (sort.dir === "desc" ? "descending" : "ascending") : "none");
 
     const inner = document.createElement("div");
     inner.className = "pi-excel-links-th";
@@ -322,6 +371,12 @@ export function createExcelLinksTable(options = {}) {
     const label = document.createElement("span");
     label.className = "pi-excel-links-col-label";
     label.textContent = col.label;
+    label.title = `Sort by ${col.label}`;
+    if (sorted) {
+      label.classList.add("is-sorted");
+      label.appendChild(sortIconSvg(sort.dir));
+    }
+    label.addEventListener("click", () => toggleSort(col.key));
     inner.appendChild(label);
 
     if (col.filterable) {
@@ -374,8 +429,8 @@ export function createExcelLinksTable(options = {}) {
   function buildBodyCell(row, col) {
     const td = document.createElement("td");
     td.className = `pi-excel-links-cell ${col.key}`;
-    // The page's row menu is column-aware: a Folder cell offers to open the
-    // folder, every other cell offers the workbook actions only.
+    // The page's row menu is column-aware: a Workbook Path cell offers to open
+    // the folder, every other cell offers the workbook actions only.
     td.dataset.colKey = col.key;
     const value = excelLinkCellText(row, col.key);
 
@@ -414,15 +469,11 @@ export function createExcelLinksTable(options = {}) {
     }
 
     td.appendChild(cellText(value));
-    if (col.key === "workbook") {
+    if (col.key === "workbookPath" && !row.exists) {
       // The listing's Found/Missing verdict has no column of its own; a
-      // workbook ArcRho Server cannot open is called out on its name instead.
-      td.classList.toggle("missing", !row.exists);
-      attachArcrhoTooltip(td, row.exists
-        ? row.workbookPath
-        : `${row.workbookPath}\n\nArcRho Server cannot open this workbook at this path.`);
-    } else if (col.key === "folder") {
-      attachArcrhoTooltip(td, value);
+      // workbook ArcRho Server cannot open is called out on its path instead.
+      td.classList.add("missing");
+      attachArcrhoTooltip(td, "ArcRho Server cannot open this workbook at this path.");
     }
     return td;
   }
@@ -447,7 +498,7 @@ export function createExcelLinksTable(options = {}) {
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    visibleRows = filterExcelLinkRows(rows, filters);
+    visibleRows = sortExcelLinkRows(filterExcelLinkRows(rows, filters), sort);
     for (const row of visibleRows) {
       const tr = document.createElement("tr");
       for (const col of EXCEL_LINK_COLUMNS) tr.appendChild(buildBodyCell(row, col));

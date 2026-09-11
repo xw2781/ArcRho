@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links shows one Workbook Path column in place of Workbook and Location, and clicking any column header sorts the table.",
+  "details": [
+    "Clicking a header sorts ascending, clicking again sorts descending, and a third click restores the original order.",
+    "Right-click the Workbook Path cell to open the workbook's folder, as the Location cell offered before."
+  ]
+}

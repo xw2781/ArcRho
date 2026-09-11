@@ -152,9 +152,10 @@ test("excelLinkDetailRows gives every usage its own row", () => {
       ["Tail.xlsx", "dfm", "Tail"],
     ],
   );
-  // The workbook's folder and found/missing verdict repeat on each of its rows,
-  // which is what lets the Folder column filter and the missing cue work.
+  // The workbook's path and found/missing verdict repeat on each of its rows,
+  // which is what lets the Workbook Path column filter and the missing cue work.
   assert.equal(rows[1].folder, "C:\\Data\\");
+  assert.equal(excelLinksTable.excelLinkCellText(rows[1], "workbookPath"), "C:\\Data\\Book.xlsx");
   assert.equal(rows[1].exists, true);
   assert.equal(rows[3].exists, false);
   assert.equal(rows[0].datasetType, "Paid Loss");
@@ -174,14 +175,14 @@ test("excelLinkDetailRows gives every usage its own row", () => {
 test("the table columns name the detail row and carry explicit widths", () => {
   assert.deepEqual(
     excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => col.key),
-    ["name", "status", "methodType", "workbook", "folder", "lastModified", "created", "user"],
-    "Status sits right after Dataset Name; the used-by column became one row per object",
+    ["name", "status", "methodType", "workbookPath", "lastModified", "created", "user"],
+    "Status sits right after Dataset Name; Workbook and Location became one Workbook Path column",
   );
   const byKey = new Map(excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
   assert.equal(byKey.get("name").label, "Dataset Name");
   assert.equal(byKey.get("status").label, "Status");
   assert.equal(byKey.get("methodType").label, "Method Type");
-  assert.equal(byKey.get("folder").label, "Location");
+  assert.equal(byKey.get("workbookPath").label, "Workbook Path");
   // The three workbook-metadata columns are named exactly as the dataset
   // table's, because they answer the same question about a different object.
   assert.equal(byKey.get("lastModified").label, "Last Modified");
@@ -201,8 +202,8 @@ test("column filters keep the rows every active column accepts", () => {
     "Method Type carries the same values the dataset table shows",
   );
   assert.deepEqual(
-    excelLinksTable.excelLinkColumnOptions(rows, "workbook").map((option) => option.label),
-    ["Book.xlsx", "Tail.xlsx"],
+    excelLinksTable.excelLinkColumnOptions(rows, "workbookPath").map((option) => option.label),
+    ["C:\\Data\\Book.xlsx", "C:\\Other\\Tail.xlsx"],
   );
 
   const noFilter = excelLinksTable.filterExcelLinkRows(rows, new Map());
@@ -213,7 +214,7 @@ test("column filters keep the rows every active column accepts", () => {
 
   const both = excelLinksTable.filterExcelLinkRows(rows, new Map([
     ["methodType", new Set(["DFM"])],
-    ["workbook", new Set(["Book.xlsx"])],
+    ["workbookPath", new Set(["C:\\Data\\Book.xlsx"])],
   ]));
   assert.deepEqual(both.map((row) => row.name), ["Development"]);
 
@@ -260,6 +261,38 @@ test("the Status column is the dataset table's review glyph, settled by the list
     "2 linked workbooks, 4 references. 2 references need review. 1 file could not be read.",
   );
   assert.match(rawModuleSource, /needsReviewCount: manager\.rows\.filter\(\(row\) => row\.status === "needs_review"\)\.length/);
+});
+
+test("clicking a header sorts by that column, then reverses, then restores the listing order", () => {
+  const rows = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  const names = (sorted) => sorted.map((row) => row.name);
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "name", dir: "asc" })),
+    ["Development", "Manual Incurred", "Manual Paid", "Tail"]);
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "name", dir: "desc" })),
+    ["Tail", "Manual Paid", "Manual Incurred", "Development"]);
+  // Ties keep the listing's order, and no key means the listing's order.
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "methodType", dir: "asc" })),
+    ["Development", "Tail", "Manual Paid", "Manual Incurred"]);
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "", dir: "asc" })), names(rows));
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "nope", dir: "desc" })), names(rows));
+  // Dates order by the moment they name, with an undated workbook first.
+  assert.deepEqual(
+    names(excelLinksTable.sortExcelLinkRows(rows, { key: "lastModified", dir: "asc" })),
+    ["Tail", "Manual Paid", "Manual Incurred", "Development"],
+  );
+  assert.deepEqual(names(excelLinksTable.sortExcelLinkRows(rows, { key: "status", dir: "asc" })),
+    ["Tail", "Manual Paid", "Manual Incurred", "Development"]);
+  assert.ok(Object.isFrozen(rows) === false && rows[0].name === "Manual Paid", "sorting never reorders the source rows");
+  // The header wiring: the label toggles asc -> desc -> off and carries the
+  // dataset table's sort triangle; the cell exposes the state to assistive tech.
+  assert.match(rawTableSource, /if \(sort\.key === key && sort\.dir === "desc"\) sort = \{ key: "", dir: "asc" \};/);
+  assert.match(rawTableSource, /label\.addEventListener\("click", \(\) => toggleSort\(col\.key\)\)/);
+  assert.match(rawTableSource, /th\.setAttribute\("aria-sort"/);
+  assert.match(rawTableSource, /label\.appendChild\(sortIconSvg\(sort\.dir\)\)/);
+  assert.match(rawTableSource, /visibleRows = sortExcelLinkRows\(filterExcelLinkRows\(rows, filters\), sort\)/);
+  assert.match(windowCssSource, /\.pi-excel-links-col-label\.is-sorted \{ padding-right: 12px; \}/);
+  assert.match(windowCssSource, /\.pi-excel-links-sort-icon \{[\s\S]*position: absolute;/);
+  assert.match(windowHtmlSource, /a header to sort\./);
 });
 
 test("excelLinkInventorySummary counts workbooks, references, and hidden rows", () => {
@@ -438,7 +471,7 @@ test("the retarget tells the host to quiet its index watch and reload the table"
   assert.doesNotMatch(hostSource, /valueChangedFileCount/);
 });
 
-test("the row menu opens, relinks, and - on a Folder cell - opens the folder", () => {
+test("the row menu opens, relinks, and - on a Workbook Path cell - opens the folder", () => {
   // No Status column, no per-row button, no recalculation choice: the toolbar
   // holds the refresh icon and the row's right-click menu holds the actions.
   for (const gone of [
@@ -457,9 +490,9 @@ test("the row menu opens, relinks, and - on a Folder cell - opens the folder", (
   for (const action of ["open-workbook", "open-workbook-read-only", "open-folder", "change-link"]) {
     assert.match(windowHtmlSource, new RegExp(`class="ctx-item"[^>]*data-action="${action}"`));
   }
-  // Opening the folder belongs to the Folder cell only.
+  // Opening the folder belongs to the Workbook Path cell only.
   assert.match(windowHtmlSource, /data-action="open-folder"[^>]*hidden/);
-  assert.match(moduleSource, /folderItem\.hidden = columnKey !== "folder"/);
+  assert.match(moduleSource, /folderItem\.hidden = columnKey !== "workbookPath"/);
   assert.match(rawModuleSource, /import \{ openPathThroughDesktopHost \} from "\/ui\/shared\/integrations\/open_path\.js\?v=\d{8}[a-z]"/);
   assert.match(moduleSource, /openPathThroughDesktopHost\(path, \{ readOnly: !!readOnly \}\)/);
   assert.match(moduleSource, /opened: "Folder opened in File Explorer\."/);
