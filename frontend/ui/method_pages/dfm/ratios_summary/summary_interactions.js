@@ -47,6 +47,8 @@ const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBar
 const applyExcelRangeHighlights = (...args) => summaryRuntime.applyExcelRangeHighlights(...args);
 const applyUserEntryReferenceHighlights = (...args) => summaryRuntime.applyUserEntryReferenceHighlights(...args);
 const pasteUserEntryClipboardGrid = (...args) => summaryRuntime.pasteUserEntryClipboardGrid(...args);
+const isUserEntryFormulaClipboardText = (...args) => summaryRuntime.isUserEntryFormulaClipboardText(...args);
+const pasteFormulaIntoSummaryFormulaBar = (...args) => summaryRuntime.pasteFormulaIntoSummaryFormulaBar(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
 const wireSummaryFormulaBarPointer = (...args) => summaryRuntime.wireSummaryFormulaBarPointer(...args);
@@ -800,6 +802,12 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     const text = e.clipboardData?.getData("text/plain");
     if (typeof text !== "string") return;
     e.preventDefault();
+    // One copied formula or workbook link goes to the formula bar, as if it
+    // had been typed there; anything else is numbers for the grid.
+    if (isUserEntryFormulaClipboardText(text)) {
+      pasteFormulaIntoSummaryFormulaBar(summaryTable, cell, text);
+      return;
+    }
     pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
   });
 

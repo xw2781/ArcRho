@@ -56,6 +56,9 @@ const hideAvgModal = (...args) => summaryRuntime.hideAvgModal(...args);
 const computeAutoNameWithExclude = (...args) => summaryRuntime.computeAutoNameWithExclude(...args);
 const scrollSummaryFormulaInputToEnd = (...args) => summaryRuntime.scrollSummaryFormulaInputToEnd(...args);
 const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBarDisplayMode(...args);
+const getSummaryFormulaBarParts = (...args) => summaryRuntime.getSummaryFormulaBarParts(...args);
+const collapseFormulaEquals = (...args) => summaryRuntime.collapseFormulaEquals(...args);
+const submitSummaryFormulaBarInput = (...args) => summaryRuntime.submitSummaryFormulaBarInput(...args);
 const positionSummaryFormulaBar = (...args) => summaryRuntime.positionSummaryFormulaBar(...args);
 const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
 const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
@@ -262,6 +265,49 @@ function isSummaryFormulaCommitPending(inputEl) {
   return inputEl?.dataset?.formulaCommitPending === "1";
 }
 
+/**
+ * Whether the clipboard holds one formula rather than numbers: a single cell
+ * that opens with "=" or names a workbook or dataset. Such a paste belongs in
+ * the formula bar, where a typed formula goes, not in the numeric grid paste.
+ */
+function isUserEntryFormulaClipboardText(rawText) {
+  const parsed = parseUserEntryClipboardGrid(rawText);
+  if (!parsed.ok || parsed.rows.length !== 1 || parsed.width !== 1) return false;
+  const text = String(parsed.rows[0][0] || "").trim();
+  return text.startsWith("=") || containsExcelRef(text) || containsDfmDatasetReference(text);
+}
+
+/**
+ * Put a pasted formula into the active User Entry cell's formula bar and commit
+ * it as Enter would, so a copied workbook link lands without opening the bar
+ * first. The bar's own "=" absorbs the one the paste brings. Returns whether
+ * the paste was taken; a refusal is shown on the bar, as for a typed formula.
+ */
+function pasteFormulaIntoSummaryFormulaBar(summaryTable, startCell, rawText) {
+  if (!summaryTable || !startCell) return false;
+  if (startCell.classList.contains("excelRangeSpillCell")) {
+    showSummaryFormulaBarValidationError("Edit the first cell of the Excel-linked range instead.");
+    return true;
+  }
+  const rowId = String(startCell.dataset.r || "");
+  const col = Number(startCell.dataset.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) return false;
+  if (!isUserEntryConfig(summaryRowMap.get(rowId))) return false;
+
+  updateSummaryFormulaBarForCell(startCell);
+  const { bar, input } = getSummaryFormulaBarParts();
+  if (!bar || !input || input.disabled || input.readOnly) return false;
+  if (isSummaryFormulaCommitPending(input) || summaryRuntime.summaryFormulaBarState.mode === "validating") return false;
+
+  const formula = stripFormulaEquals(collapseFormulaEquals(String(rawText ?? "").trim()));
+  input.value = `= ${normalizeExcelReferenceAddressCase(formula)}`;
+  updateFormulaBarDisplayMode(bar, true);
+  input.focus?.({ preventScroll: true });
+  beginSummaryFormulaEditSession(summaryTable, startCell, input, col);
+  void submitSummaryFormulaBarInput(bar, input);
+  return true;
+}
+
 async function commitSummaryFormulaInput(inputEl) {
   const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
   const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
@@ -285,7 +331,7 @@ async function commitSummaryFormulaInput(inputEl) {
   );
   clearSummaryFormulaBarValidationError();
   try {
-    const raw = normalizeExcelReferenceAddressCase(String(inputEl.value || "").trim());
+    const raw = normalizeExcelReferenceAddressCase(collapseFormulaEquals(String(inputEl.value || "").trim()));
     inputEl.value = raw;
     const excelRange = parseStandaloneExcelRange(raw);
     if (excelRange) {
@@ -972,6 +1018,8 @@ registerSummaryFunctions({
   parseUserEntryClipboardGrid,
   parseUserEntryClipboardValue,
   pasteUserEntryClipboardGrid,
+  isUserEntryFormulaClipboardText,
+  pasteFormulaIntoSummaryFormulaBar,
   commitUserEntryArrayFormula,
   isSummaryFormulaCommitPending,
   commitSummaryFormulaInput,

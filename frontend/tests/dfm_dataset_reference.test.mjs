@@ -140,7 +140,7 @@ test("DFM formula resolution batches every reference into one API request", asyn
   );
   formulaSource = formulaSource
     .replace(
-      '"/ui/method_pages/dfm/dfm_method_api.js?v=20260814b"',
+      '"/ui/method_pages/dfm/dfm_method_api.js?v=20260910a"',
       JSON.stringify(apiUrl),
     )
     .replace(

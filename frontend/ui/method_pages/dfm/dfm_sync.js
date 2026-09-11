@@ -19,7 +19,7 @@ import {
   isRatiosTabVisible,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { renderRatioTable, setNotifyRatioStateChanged } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260909c";
-import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260907a";
+import { renderResultsTable } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260910a";
 
 function getRatioSyncPayload() {
   return {

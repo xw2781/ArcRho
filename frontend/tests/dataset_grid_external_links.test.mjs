@@ -81,7 +81,7 @@ interactionSource = interactionSource
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260907c"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260910a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(
@@ -124,6 +124,8 @@ function setup({
   decorateExternalLinkCell,
   getExternalLinkCellInfo,
   model,
+  isReadOnly,
+  gridShown = true,
 } = {}) {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -135,6 +137,9 @@ function setup({
   };
   const tableWrap = {
     addEventListener() {},
+    // A DFM hides this grid behind its other tabs; the browser answers this
+    // for the real element.
+    checkVisibility() { return gridShown; },
     querySelector() { return null; },
   };
   globalThis.document = {
@@ -178,6 +183,7 @@ function setup({
   };
   interactions.wireDatasetGridInteractions({
     state,
+    isReadOnly,
     renderTable: () => {
       calls.renders += 1;
       calls.events.push("render");
@@ -381,6 +387,48 @@ test("pasting an Excel reference updates the unsaved DSV without refreshing the 
     assert.deepEqual(context.calls.postedMessages, []);
   } finally {
     context.cleanup();
+  }
+});
+
+test("a paste while the grid's tab is hidden is left to the page that is shown", () => {
+  const context = setup({ isReadOnly: () => true, gridShown: false });
+  try {
+    const paste = context.listeners.get("paste")?.at(-1);
+    let prevented = false;
+    paste({
+      target: null,
+      clipboardData: { getData: () => EXCEL_REFERENCE },
+      preventDefault() { prevented = true; },
+    });
+
+    assert.equal(prevented, false);
+    assert.deepEqual(globalThis.__arTestMessageBoxes || [], []);
+    assert.deepEqual(context.calls.statuses, []);
+    assert.equal(context.state.dirty.size, 0);
+  } finally {
+    context.cleanup();
+    delete globalThis.__arTestMessageBoxes;
+  }
+});
+
+test("a paste on a read-only grid that is shown still reports the refusal", () => {
+  const context = setup({ isReadOnly: () => true });
+  try {
+    const paste = context.listeners.get("paste")?.at(-1);
+    paste({
+      target: null,
+      clipboardData: { getData: () => "5" },
+      preventDefault() {},
+    });
+
+    assert.equal(
+      (globalThis.__arTestMessageBoxes || []).at(-1)?.message,
+      "Generated datasets are read-only.",
+    );
+    assert.equal(context.state.dirty.size, 0);
+  } finally {
+    context.cleanup();
+    delete globalThis.__arTestMessageBoxes;
   }
 });
 

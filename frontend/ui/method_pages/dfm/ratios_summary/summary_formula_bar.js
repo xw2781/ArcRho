@@ -194,6 +194,17 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
 let summaryExcelLink = null;
 
 /** Show/hide display overlay vs input based on focus state. */
+/**
+ * Fold a doubled leading "=" into one. A copied Excel link carries its own
+ * sign and the bar already shows one, so "= ='C:\...'!A1" is one formula with
+ * the sign written twice, not an error worth reporting.
+ */
+function collapseFormulaEquals(raw) {
+  const text = String(raw ?? "");
+  const match = /^(\s*=)(?:\s*=)+/u.exec(text);
+  return match ? `${match[1]}${text.slice(match[0].length)}` : text;
+}
+
 function updateFormulaBarDisplayMode(barEl, isEditing) {
   if (!barEl) return;
   const input = barEl.querySelector("#dfmSummaryFormulaBarInput");
@@ -419,6 +430,37 @@ function scheduleFormulaBarDisplayMode(barEl, inputEl) {
   });
 }
 
+/**
+ * Commit what the bar holds, as Enter does: the bar shows "Validating…" while
+ * the formula is checked, leaves edit mode when it is accepted, and keeps the
+ * draft, caret, and edit session in place when it is refused. Returns whether
+ * the formula was accepted.
+ */
+async function submitSummaryFormulaBarInput(barEl, input) {
+  if (!barEl || !input || isSummaryFormulaCommitPending(input)) return false;
+  const selection = captureFormulaInputSelection(input);
+  setSummaryFormulaBarMode("validating", input);
+  const validationStateGeneration = summaryRuntime.summaryFormulaBarState.generation;
+  const ok = await commitSummaryFormulaInput(input);
+  if (
+    summaryRuntime.summaryFormulaBarState.generation !== validationStateGeneration ||
+    summaryRuntime.summaryFormulaBarState.input !== input ||
+    summaryRuntime.summaryFormulaBarState.mode !== "validating"
+  ) return !!ok;
+  if (ok) {
+    setSummaryFormulaBarMode("display", input);
+    if (document.activeElement === input) {
+      input.dataset.skipFormulaBlurCommit = "1";
+      input.blur();
+    } else {
+      scheduleFormulaBarDisplayMode(barEl, input);
+    }
+  } else {
+    restoreFormulaBarEditingAfterValidation(barEl, input, selection);
+  }
+  return !!ok;
+}
+
 function captureFormulaInputSelection(inputEl) {
   const valueLength = String(inputEl?.value || "").length;
   const start = Number.isInteger(inputEl?.selectionStart) ? inputEl.selectionStart : valueLength;
@@ -550,6 +592,16 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       delete input.dataset.skipFormulaBlurCommit;
       setSummaryFormulaBarMode("editing", input);
       clearSummaryFormulaBarValidationError();
+      // A pasted formula brings its own "=", which folds into the one the bar
+      // shows; the caret keeps its place in the text that remains.
+      const collapsed = collapseFormulaEquals(input.value);
+      if (collapsed !== input.value) {
+        const removed = input.value.length - collapsed.length;
+        const selectionStart = Math.max(PREFIX_LEN, (input.selectionStart ?? collapsed.length) - removed);
+        const selectionEnd = Math.max(selectionStart, (input.selectionEnd ?? collapsed.length) - removed);
+        input.value = collapsed;
+        input.setSelectionRange(selectionStart, selectionEnd);
+      }
       // Keep the leading "= " undeletable
       if (!input.value.startsWith(FORMULA_PREFIX)) {
         const cleaned = input.value.replace(/^=\s*/, "");
@@ -604,27 +656,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        if (isSummaryFormulaCommitPending(input)) return;
-        const selection = captureFormulaInputSelection(input);
-        setSummaryFormulaBarMode("validating", input);
-        const validationStateGeneration = summaryRuntime.summaryFormulaBarState.generation;
-        const ok = await commitSummaryFormulaInput(input);
-        if (
-          summaryRuntime.summaryFormulaBarState.generation !== validationStateGeneration ||
-          summaryRuntime.summaryFormulaBarState.input !== input ||
-          summaryRuntime.summaryFormulaBarState.mode !== "validating"
-        ) return;
-        if (ok) {
-          setSummaryFormulaBarMode("display", input);
-          if (document.activeElement === input) {
-            input.dataset.skipFormulaBlurCommit = "1";
-            input.blur();
-          } else {
-            scheduleFormulaBarDisplayMode(el, input);
-          }
-        } else {
-          restoreFormulaBarEditingAfterValidation(el, input, selection);
-        }
+        await submitSummaryFormulaBarInput(el, input);
       } else if (e.key === "Escape") {
         e.preventDefault();
         cancelActiveSummaryFormulaCommit();
@@ -715,4 +747,6 @@ registerSummaryFunctions({
   ensureSummaryFormulaBarValidationTooltip,
   ensureSummaryFormulaBarEl,
   setStatusBarText,
+  collapseFormulaEquals,
+  submitSummaryFormulaBarInput,
 });

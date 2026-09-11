@@ -7,7 +7,7 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260907c";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260910a";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260908b";
 import {
@@ -341,6 +341,17 @@ export function wireDatasetGridInteractions(deps) {
         ? t.closest("input, textarea, select, option, button, [contenteditable='true']")
         : (t.matches && t.matches("input, textarea, select, option, button, [contenteditable='true']"))
     ) || !!t.isContentEditable;
+  }
+
+  // The grid's document-level listeners serve the page it is shown on. A DFM
+  // hosts this grid on its Data tab beside pages with editors of their own, so
+  // a paste or keystroke meant for the Ratios formula bar must not be answered
+  // by a hidden Data tab, least of all with a read-only refusal.
+  function gridIsShown() {
+    const wrap = document.getElementById("tableWrap");
+    if (!wrap) return false;
+    if (typeof wrap.checkVisibility === "function") return wrap.checkVisibility();
+    return wrap.offsetParent !== null;
   }
 
   function displayToActualCell(displayR, displayC) {
@@ -1097,7 +1108,7 @@ export function wireDatasetGridInteractions(deps) {
 
     // Ctrl+C copy
     document.addEventListener("keydown", (e) => {
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || !gridIsShown()) return;
 
       const isCopy = (e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey);
       if (!isCopy) return;
@@ -1110,7 +1121,7 @@ export function wireDatasetGridInteractions(deps) {
     });
 
     document.addEventListener("keydown", (e) => {
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || !gridIsShown()) return;
       if (e.key === "Escape" && (state.activeCell || state.selRanges?.length)) {
         e.preventDefault();
         clearGridSelection();
@@ -1172,7 +1183,7 @@ export function wireDatasetGridInteractions(deps) {
     });
 
     document.addEventListener("paste", (e) => {
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || !gridIsShown()) return;
       if (isReadOnly()) {
         reportReadOnlyRefusal();
         return;

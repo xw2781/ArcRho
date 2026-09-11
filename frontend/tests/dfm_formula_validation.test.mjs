@@ -50,7 +50,7 @@ const summaryFormatterSource = summarySource
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";`,
     'const summaryRuntime = { formatUserEntryFormulaEvaluationValue: (value) => Number(value).toFixed(4) }; const registerSummaryFunctions = (functions) => Object.assign(summaryRuntime, functions);',
   )
-  .concat("\nexport { tokenizeFormula, formatFormulaText, openDfmFormulaDataset, renderFormulaBarDisplay, updateFormulaBarDisplayMode };\n");
+  .concat("\nexport { tokenizeFormula, formatFormulaText, openDfmFormulaDataset, renderFormulaBarDisplay, updateFormulaBarDisplayMode, collapseFormulaEquals };\n");
 const summaryFormatter = await import(
   `data:text/javascript;base64,${Buffer.from(summaryFormatterSource).toString("base64")}`,
 );
@@ -525,4 +525,21 @@ test("a dataset reference worth exactly 1 renders as a quiet pill", async () => 
     if (priorWindow === undefined) delete globalThis.window;
     else globalThis.window = priorWindow;
   }
+});
+
+test("a doubled leading = folds into the one the bar already shows", () => {
+  const { collapseFormulaEquals } = summaryFormatter;
+  const link = "'C:\\Data\\[Book.xlsx]Sheet 1'!$A$1";
+
+  // The bar holds "= " and a copied Excel link arrives with its own "=".
+  assert.equal(collapseFormulaEquals(`= =${link}`), `=${link}`);
+  assert.equal(collapseFormulaEquals(`==${link}`), `=${link}`);
+  assert.equal(collapseFormulaEquals("= = = 1.05"), "= 1.05");
+  // One sign, or none, is left exactly as written.
+  assert.equal(collapseFormulaEquals(`= ${link}`), `= ${link}`);
+  assert.equal(collapseFormulaEquals('= "Simple - 2" * 1'), '= "Simple - 2" * 1');
+  assert.equal(collapseFormulaEquals("1.05"), "1.05");
+  assert.equal(collapseFormulaEquals(""), "");
+  // An "=" past the start is an operator's business, not the prefix's.
+  assert.equal(collapseFormulaEquals("= 1 == 2"), "= 1 == 2");
 });

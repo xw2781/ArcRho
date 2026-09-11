@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A copied Excel link can be pasted straight onto a DFM User Entry cell, and a doubled leading = in the formula bar is folded into one instead of being refused.",
+  "details": [
+    "Pasting a single formula or workbook link onto the active User Entry cell now goes to the formula bar and is applied as if it had been typed there, so the bar no longer has to be opened first.",
+    "A paste on the Ratios tab used to be answered by the hidden Data tab with a 'Generated datasets are read-only' notice; the shared dataset grid now ignores pastes and keystrokes while its tab is not shown.",
+    "The formula bar already shows a leading =, so a pasted formula's own = now folds into it while typing and on commit rather than failing validation as '= ='."
+  ]
+}
