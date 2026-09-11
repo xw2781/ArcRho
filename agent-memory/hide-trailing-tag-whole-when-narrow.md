@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 570bc3a3-d95e-41b4-87b6-38e6b27bf5dd
-  modified: 2026-09-11T18:48:03.930Z
+  modified: 2026-09-11T18:55:24.642Z
 ---
 
 The PI reserving-class path tree (`.pi-path-tree` rules in `frontend/ui/project_instance/project_instance.css`)
@@ -20,6 +20,12 @@ hides a row's level tag whole when it no longer fits, with no JS:
 - the star is `position: absolute; right: 4px` on a `::after` strip that uses `background: inherit` +
   `box-shadow: inherit` + `clip-path: inset(0 0 0 1px)`, so it repeats the row's normal/hover/selected look in
   every theme (dark.css forces `.ptree-fav-btn` background transparent, so the star itself cannot carry it).
+
+The wrap is only the detector: the shared picker (`syncLevelOverflow` in `path_tree_picker.js`) re-measures
+on a ResizeObserver of the window plus a MutationObserver of the body (expand/collapse), and once any visible
+row's tag has wrapped it adds `ptree-levels-overflow` on the window so every tag hides together (user asked
+for all-or-nothing). Measure with `level.offsetTop >= label.offsetTop + label.offsetHeight`, not a top-vs-top
+compare: a shorter tag centred on the same line sits a few px lower than the label and reads as wrapped.
 
 Earlier attempt worth not repeating: `max-width: calc(100% - 40px)` + ellipsis on the label keeps the wrap
 trick working but shrinks labels to "C…" at 170px; the user preferred labels running under the star.
