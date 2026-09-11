@@ -12,12 +12,14 @@ The core problem is structural: traditional project hierarchies require pre-comp
 ArcRho replaces that model with on-demand queries against analytics-ready source data, exposed through familiar Excel formulas. It reduces manual transfer, removes vendor dependency, and helps reserving teams respond faster.
 
 ## Modernized Web UI for a Seamless User Experience
-![Screenshot](./assets/images/UI_Plots.png)
+The images below are illustrative UI demos with sample data.
+
+![ArcRho development curves demo](./assets/images/UI_Plots.png)
 
 ArcRho's web UI gives actuaries a flexible workspace for customizing, retrieving, and reviewing triangle datasets without rebuilding a project structure. Users can pull any configured dataset at the level or segment they need, switch assumptions quickly, and use multiple built-in visualization presets to inspect trends, compare patterns, and validate selections before moving deeper into the analysis.
 
 ## A New Way to Work with Reserving Methods
-![Screenshot](./assets/images/UI_ChainLadder.png)
+![Development factor method demo](./assets/images/UI_ChainLadder.png)
 
 ArcRho keeps familiar actuarial methods at the center, then equips them with modern, user-friendly tools that make method review faster and more transparent. The goal is not only to provide accurate data, but to help actuaries reach more accurate insights through clearer assumptions, easier interaction, and more productive review workflows.
 
@@ -25,6 +27,12 @@ ArcRho keeps familiar actuarial methods at the center, then equips them with mod
 ![DFM version comparison](./assets/images/version_control.png)
 
 Method Version Compare helps teams review any two historical versions of a chain-ladder method before adopting changes. The comparison view highlights which version is newer, shows side-by-side snapshots of ratio selections, formulas, and notes, and lets users choose which version to keep. This gives actuaries a clear review step before overwriting assumptions, reducing accidental drift while keeping collaboration fast.
+
+## Trace Dependencies in Project Instance
+
+![Project Instance dependency graph demo](./assets/images/UI_PI_DependencyGraph.png)
+
+The Project Instance (PI) dependency graph shows how datasets feed calculations, reserving methods, and result selections within a reserving class. Select a node to highlight its upstream inputs in blue and downstream dependents in green. Search for a dataset, pan and zoom through the graph, or double-click a node to open its dataset or method. Review indicators help identify objects that need attention.
 
 ---
 
@@ -86,7 +94,7 @@ The ArcRho Excel Add-in exposes the data processing engine directly inside Excel
 
 ### Ribbon
 
-<img src="./assets/images/addin_ribbon_v2.png" width="600"/>
+<img src="./assets/images/addin_ribbon_v2.png" alt="ArcRho Excel ribbon demo" width="1000"/>
 
 The **ArcRho** ribbon tab provides quick-access shortcuts for the two most common setup actions before calling any formula:
 
@@ -101,14 +109,14 @@ The **ArcRho** ribbon tab provides quick-access shortcuts for the two most commo
 
 ### Step 1 — Select a Reserving Class Path
 
-<img src="./assets/images/addin_load_classes.png" width="480"/>
+<img src="./assets/images/addin_load_classes.png" alt="Reserving class selection demo" width="800"/>
 
 Click **Load Reserving Classes** in the ribbon. The dialog presents a cascading set of dropdowns corresponding to the reserving class hierarchy (Company → Product → State → Channel → IBNR Category). Each selection narrows the next level. The resulting path string (shown at the bottom of the dialog) is what you pass as the `Path` argument to any UDF.
 
 ### Step 2 — Select a Dataset
 
-<img src="./assets/images/addin_ribbon_datasets.png" width="360"/>
-<img src="./assets/images/addin_load_datasets.png" width="480"/>
+<img src="./assets/images/addin_ribbon_datasets.png" alt="Select Datasets ribbon command demo" width="480"/>
+<img src="./assets/images/addin_load_datasets.png" alt="Dataset selection demo" width="560"/>
 
 Click **Select Datasets** to browse all datasets defined for the active project. Results can be filtered by name, category, or data format. The selected dataset name maps directly to the `TriangleName` / `VectorName` argument in the formulas below.
 
