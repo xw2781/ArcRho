@@ -131,6 +131,21 @@ class StaleLabelTests(unittest.TestCase):
         self.assertEqual(linked, [("(1) 8-20", "{ratio_development_label(1)}")])
         self.assertEqual(updated, [("(2) 17-29", "{ratio_development_label(2)}")])
 
+    def test_an_old_development_age_moves_up_to_its_column(self):
+        self.assertEqual(
+            link("Paid at 5 months and 17months; the 29-month point, 2 Months later."),
+            "Paid at 8 months and 20 months; the 32-month point, 8 Months later.",
+        )
+
+    def test_an_old_age_written_like_the_label_becomes_its_placeholder(self):
+        self.assertEqual(link("Selected at 5m and 17m."), "Selected at {development_label(1)} and {development_label(2)}.")
+
+    def test_a_current_age_a_period_length_and_an_age_past_the_last_column_are_left_alone(self):
+        self.assertEqual(
+            link("At 8 months, over 12 months, until 50 months, in 5mm."),
+            "At 8 months, over {development_length} months, until 50 months, in 5mm.",
+        )
+
     def test_quarter_stamps_are_restated_in_the_form_they_were_written(self):
         self.assertEqual(
             link(r"Source: \\srv\reserving\2025Q4\NJ\1Q26_paid.xlsx and 4Q2025 notes, Q1-26 review, 2025 q4."),
@@ -161,7 +176,7 @@ class StaleLabelTests(unittest.TestCase):
         )
 
     def test_running_twice_changes_nothing(self):
-        once = link("(1) 5-17 under 2025Q4.")
+        once = link("(1) 5-17 at 5 months and 5m under 2025Q4.")
         self.assertEqual(link(once), once)
 
 

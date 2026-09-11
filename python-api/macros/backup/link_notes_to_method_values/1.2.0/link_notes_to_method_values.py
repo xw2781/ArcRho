@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Link Notes to Method Values
-# Version: 1.3.0
-# Release Note: A development age carried over from an earlier valuation, "5 months", "17months" or "5m" when the columns now read 8m and 20m, moves up to the age its column has now.
+# Version: 1.2.0
+# Release Note: A ratio column heading carried over from an earlier valuation, such as "(1) 5-17" when the column now reads "(1) 8-20", is linked to the current column, and a quarter stamp such as 2026Q2 or 2Q26 in a file path is restated as the project's Development End Date quarter.
 # Description: Rewrite the raw Notes text so every label repeated by hand becomes a
 #   placeholder that reads it from the method, for example "(3) 32-44" becomes
 #   "{ratio_development_label(3)}" and "AY 2025" becomes "AY {origin_label(6)}".
@@ -13,12 +13,10 @@
 #   still reads the way it was written, with two exceptions that bring a note
 #   copied from an earlier valuation up to date: a ratio column heading whose
 #   ages no longer match, "(1) 5-17" when the column now reads "(1) 8-20", is
-#   linked to the current column, a development age such as "5 months" or "5m"
-#   that no column has any more moves up to the age its column has now, and a
-#   quarter stamp such as "2026Q2", "2Q26" or "Q2 2026" is restated as the
-#   quarter of the project's Development End Date in the same form. Text
-#   already inside braces is left alone, so running the macro twice changes
-#   nothing.
+#   linked to the current column, and a quarter stamp such as "2026Q2", "2Q26"
+#   or "Q2 2026" is restated as the quarter of the project's Development End
+#   Date in the same form. Text already inside braces is left alone, so running
+#   the macro twice changes nothing.
 # Scope: DFM
 # Icon: wand
 # </arcrho-macro>
@@ -61,11 +59,6 @@ ORIGIN_WORDS = re.compile(r"origin|accident|policy|exposure|underwriting", re.IG
 # recognised by that shape even though its ages no longer match the method.
 STALE_RATIO_LABEL = re.compile(r"\((\d{1,3})\) \d+(?:\.\d+)?-\d+(?:\.\d+)?")
 STALE_TAIL_LABEL = re.compile(r"\d+(?:\.\d+)? - Ult\b")
-
-# A development age, "5 months", "17months", "5-month" or "5m". One carried
-# over from an earlier valuation is smaller than the age its column has now,
-# so it moves up to the next age the method holds.
-STALE_AGE = re.compile(r"(\d{1,3})((?:\s*-\s*|\s*)months?|m)\b", re.IGNORECASE)
 
 # A quarter stamp in a file path or a sentence, in the forms people write it:
 # "2026Q2" and "2026 Q2", "2Q26" and "2Q2026", "Q2 2026" and "Q2-26".
@@ -273,36 +266,6 @@ def _match_stale_ratio_label(text: str, index: int, ratio_labels: list[str]) -> 
     return surface, f"{{ratio_development_label({position})}}"
 
 
-def _match_stale_age(text: str, index: int, development_labels: list[str]) -> tuple[str, str] | None:
-    """A development age no column has any more, moved up to its column's current age.
-
-    The age is linked when the method writes the column the same way ("5m"
-    becomes `{development_label(1)}`, which renders "8m"); otherwise it is
-    restated as text, "5 months" becoming "8 months".
-    """
-    match = STALE_AGE.match(text, index)
-    if not match:
-        return None
-    surface = match.group(0)
-    if not (_left_is_clear(text, index, surface) and _right_is_clear(text, match.end(), surface)):
-        return None
-    ages: dict[int, tuple[int, str]] = {}
-    for position, label in enumerate(development_labels, start=1):
-        number = re.match(r"\d+", label)
-        if number:
-            ages.setdefault(int(number.group(0)), (position, label))
-    stale = int(match.group(1))
-    later = sorted(age for age in ages if age > stale)
-    if stale in ages or not later:
-        return None
-    position, label = ages[later[0]]
-    unit = match.group(2)
-    if unit.lower() != "m" and not unit[0].isspace() and "-" not in unit:
-        unit = f" {unit}"
-    restated = f"{later[0]}{unit}"
-    return surface, f"{{development_label({position})}}" if restated == label else restated
-
-
 def _match_quarter_stamp(
     text: str, index: int, current: tuple[int, int] | None
 ) -> tuple[str, str] | None:
@@ -370,7 +333,6 @@ def link_notes_to_method_values(
     candidates = placeholder_candidates(payload)
     current_surfaces = {surface for surface, _ in candidates}
     ratio_labels = [_text(label) for label in _node(payload, LABEL_SOURCES[0][1]) or []]
-    development_labels = [_text(label) for label in _node(payload, LABEL_SOURCES[1][1]) or []]
     origin_length = _period_length(payload, "origin_length")
     development_length = _period_length(payload, "development_length")
     skip = dict(protected_spans(text))
@@ -398,9 +360,7 @@ def link_notes_to_method_values(
                     text, index, origin_length, development_length
                 )
                 if hit is None:
-                    hit = _match_stale_ratio_label(text, index, ratio_labels) or _match_stale_age(
-                        text, index, development_labels
-                    )
+                    hit = _match_stale_ratio_label(text, index, ratio_labels)
                     stale = hit is not None
         if hit and index + len(hit[0]) <= region_end:
             surface, replacement = hit
