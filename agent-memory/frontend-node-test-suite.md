@@ -5,16 +5,15 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 70ce39fb-ac39-4edd-a4ac-59ca01231bb8
-  modified: 2026-09-11T14:10:50.381Z
+  modified: 2026-09-11T14:11:10.524Z
 ---
 
 `frontend/package.json` has no `test` script. Run the suite from `frontend/` with the
 portable Node: `./node-portable/node.exe --test "tests/**/*.test.mjs"` (bare `node` is not
-on PATH). Node 24 here picks the `spec` reporter even when piped, so a `grep "not ok"` or
-`grep "# pass"` on its output prints nothing at all (seen 2026-09-11); pass
-`--test-reporter=tap` to get the `not ok N - name` / `# pass N` / `# fail N` lines.
-(bare `node` is not
-on PATH; passing the directory instead of the glob fails to resolve).
+on PATH; passing the directory instead of the glob fails to resolve). Node 24 here picks the
+`spec` reporter even when piped, so a `grep "not ok"` or `grep "# pass"` on its output prints
+nothing at all (seen 2026-09-11); pass `--test-reporter=tap` to get the `not ok N - name` /
+`# pass N` / `# fail N` lines.
 
 As of 2026-08-14 the suite at clean HEAD (a71614b) has grown to 705 tests with 14 failures;
 the failing set now includes several version-stamp/modularity tests ("DFM runtime imports
