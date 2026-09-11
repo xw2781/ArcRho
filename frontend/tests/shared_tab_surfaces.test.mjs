@@ -249,6 +249,21 @@ test("shared Notes renders the canonical full toolbar and preserves the shell br
   assert.match(notesSource, /destroy\(\)/u);
 });
 
+test("shared Notes remembers its font size and panel size and marks the editing frame", async () => {
+  const notesSource = await source("ui/shared/tabs/notes/notes_tab.js");
+  const notesStyles = await source("ui/shared/tabs/notes/notes_tab.css");
+
+  assert.match(notesSource, /localStorage\?\.getItem\(NOTES_FONT_SIZE_STORAGE_KEY\)/u);
+  assert.match(notesSource, /localStorage\?\.setItem\(NOTES_FONT_SIZE_STORAGE_KEY/u);
+  assert.match(notesSource, /fontSize:\s*readStoredNotesFontSize\(windowObject\)/u);
+  assert.match(notesStyles, /\.arNotesTab\.is-editing \.arNotesTabInput,/u);
+  assert.match(notesStyles, /box-shadow:\s*inset 0 0 0 2px/u);
+  assert.match(notesSource, /localStorage\?\.getItem\(NOTES_PANEL_SIZE_STORAGE_KEY\)/u);
+  assert.match(notesSource, /localStorage\?\.setItem\(NOTES_PANEL_SIZE_STORAGE_KEY/u);
+  assert.match(notesSource, /restoreNotesPanelSize\(\);/u);
+  assert.match(notesSource, /scheduleNotesPanelSizeSave\(\);/u);
+});
+
 test("legacy top-level shared entry points are removed", async () => {
   const removedFiles = [
     "ui/shared/tabbed_page.js",

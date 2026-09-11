@@ -358,6 +358,17 @@
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
 }
 
+/* Editing is the one state where the note stops being a read-only surface,
+   so its frame wears a stronger version of the standard blue ring than a
+   plain focus does, and has to read as "typing here" across the page. The
+   ring is drawn inside the frame because the resizable wrap clips anything
+   painted outside it. */
+.arNotesTab.is-editing .arNotesTabInput,
+.arNotesTab.is-editing .arNotesTabInput:focus {
+  border-color: #2b6df6;
+  box-shadow: inset 0 0 0 2px rgba(43, 109, 246, 0.32);
+}
+
 .arNotesTabPathToken {
   border-radius: 2px;
   color: #0b3d91;

@@ -999,6 +999,11 @@
   color: var(--ar-color-text);
 }
 
+:root[data-arcrho-theme="dark"] .arNotesTab.is-editing .arNotesTabInput {
+  border-color: var(--ar-color-accent);
+  box-shadow: inset 0 0 0 2px var(--ar-color-focus-ring);
+}
+
 :root[data-arcrho-theme="dark"] :is(.arNotesTabPathTooltip, .arNotesTabPathMenu) {
   border-color: var(--ar-color-border-strong);
   background-color: var(--ar-color-surface-raised);

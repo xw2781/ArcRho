@@ -15,8 +15,19 @@ import {
 } from "./notes_expressions.js";
 
 const NOTES_TAB_STYLESHEET_ID = "arNotesTabStylesheet";
-const NOTES_TAB_STYLESHEET_HREF = "/ui/shared/tabs/notes/notes_tab.css?v=20260910a";
+const NOTES_TAB_STYLESHEET_HREF = "/ui/shared/tabs/notes/notes_tab.css?v=20260911a";
 const CLICK_DRAG_THRESHOLD_PX = 3;
+// The note font size the user picked last, remembered for every Notes tab in
+// the app so a panel opens at the size they were reading at.
+const NOTES_FONT_SIZE_STORAGE_KEY = "arcrho.notes.font-size";
+const DEFAULT_NOTES_FONT_SIZE = 13;
+const MIN_NOTES_FONT_SIZE = 8;
+const MAX_NOTES_FONT_SIZE = 48;
+// The panel size the user dragged the note to, remembered the same way.
+const NOTES_PANEL_SIZE_STORAGE_KEY = "arcrho.notes.panel-size";
+const MIN_NOTES_PANEL_SIZE_PX = 160;
+const MAX_NOTES_PANEL_SIZE_PX = 4000;
+const NOTES_PANEL_SIZE_SAVE_DELAY_MS = 200;
 const AUTO_CLOSE_PAIRS = { "{": "}", "(": ")" };
 const MOUNTED_NOTES_TABS = new WeakMap();
 
@@ -316,6 +327,57 @@ function clampInteger(value, min, max, fallback) {
   return Math.min(max, Math.max(min, number));
 }
 
+/** The remembered note font size, or the default when none is stored. */
+function readStoredNotesFontSize(windowObject) {
+  try {
+    const stored = windowObject?.localStorage?.getItem(NOTES_FONT_SIZE_STORAGE_KEY);
+    if (stored === null || stored === undefined || stored === "") return DEFAULT_NOTES_FONT_SIZE;
+    return clampInteger(
+      stored,
+      MIN_NOTES_FONT_SIZE,
+      MAX_NOTES_FONT_SIZE,
+      DEFAULT_NOTES_FONT_SIZE,
+    );
+  } catch {
+    return DEFAULT_NOTES_FONT_SIZE;
+  }
+}
+
+function writeStoredNotesFontSize(windowObject, fontSize) {
+  try {
+    windowObject?.localStorage?.setItem(NOTES_FONT_SIZE_STORAGE_KEY, String(fontSize));
+  } catch {
+    // A blocked or full storage only costs the panel its remembered size.
+  }
+}
+
+/**
+ * The remembered panel size, or null when none is stored. Only a drag of the
+ * resize grip is remembered: the browser writes the dragged width and height
+ * to the inline style, while a window resize leaves the style alone.
+ */
+function readStoredNotesPanelSize(windowObject) {
+  try {
+    const raw = windowObject?.localStorage?.getItem(NOTES_PANEL_SIZE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const width = clampInteger(parsed?.width, MIN_NOTES_PANEL_SIZE_PX, MAX_NOTES_PANEL_SIZE_PX, 0);
+    const height = clampInteger(parsed?.height, MIN_NOTES_PANEL_SIZE_PX, MAX_NOTES_PANEL_SIZE_PX, 0);
+    if (!width && !height) return null;
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredNotesPanelSize(windowObject, size) {
+  try {
+    windowObject?.localStorage?.setItem(NOTES_PANEL_SIZE_STORAGE_KEY, JSON.stringify(size));
+  } catch {
+    // A blocked or full storage only costs the panel its remembered size.
+  }
+}
+
 function rgbStringToHex(value) {
   const source = String(value || "").trim();
   if (!source) return "";
@@ -457,6 +519,7 @@ export function mountNotesTab({
   let textStyleState = null;
   let selectionSnapshot = { start: 0, end: 0 };
   let flushTimer = null;
+  let panelSizeSaveTimer = null;
   let resizeObserver = null;
   // Where the mouse went down on the rendered view; a release without a drag
   // enters editing, a drag leaves the rendered text selected for copying.
@@ -475,6 +538,40 @@ export function mountNotesTab({
     if (flushTimer === null) return;
     windowObject.clearTimeout(flushTimer);
     flushTimer = null;
+  };
+
+  const clearPanelSizeSaveTimer = () => {
+    if (panelSizeSaveTimer === null) return;
+    windowObject.clearTimeout(panelSizeSaveTimer);
+    panelSizeSaveTimer = null;
+  };
+
+  /**
+   * Remembers the size the grip was dragged to. The inline width and height
+   * are the browser's own record of that drag, so an empty pair means the
+   * panel is still at its stylesheet size and nothing is stored.
+   */
+  const scheduleNotesPanelSizeSave = () => {
+    if (destroyed) return;
+    const { width, height } = inputWrap.style;
+    if (!width && !height) return;
+    clearPanelSizeSaveTimer();
+    panelSizeSaveTimer = windowObject.setTimeout(() => {
+      panelSizeSaveTimer = null;
+      if (destroyed) return;
+      writeStoredNotesPanelSize(windowObject, {
+        width: Math.round(inputWrap.offsetWidth || 0),
+        height: Math.round(inputWrap.offsetHeight || 0),
+      });
+    }, NOTES_PANEL_SIZE_SAVE_DELAY_MS);
+  };
+
+  const restoreNotesPanelSize = () => {
+    const stored = readStoredNotesPanelSize(windowObject);
+    if (!stored) return;
+    // `max-width: 100%` keeps a panel wider than its host from overflowing.
+    if (stored.width) inputWrap.style.width = String(stored.width) + "px";
+    if (stored.height) inputWrap.style.height = String(stored.height) + "px";
   };
 
   const setPlainTextMode = (enabled) => {
@@ -898,7 +995,7 @@ export function mountNotesTab({
   const getDefaultTextStyle = () => {
     return {
       fontFamily: "",
-      fontSize: 13,
+      fontSize: readStoredNotesFontSize(windowObject),
       color: "#1c2433",
       bold: false,
       italic: false,
@@ -911,7 +1008,12 @@ export function mountNotesTab({
     if (destroyed || !nextState) return;
     textStyleState = {
       fontFamily: String(nextState.fontFamily || ""),
-      fontSize: clampInteger(nextState.fontSize, 8, 48, 13),
+      fontSize: clampInteger(
+        nextState.fontSize,
+        MIN_NOTES_FONT_SIZE,
+        MAX_NOTES_FONT_SIZE,
+        DEFAULT_NOTES_FONT_SIZE,
+      ),
       color: rgbStringToHex(nextState.color) || "#1c2433",
       bold: !!nextState.bold,
       italic: !!nextState.italic,
@@ -953,6 +1055,7 @@ export function mountNotesTab({
       fontSize: styleControls.fontSize.value,
       color: styleControls.color.value,
     });
+    if (textStyleState) writeStoredNotesFontSize(windowObject, textStyleState.fontSize);
     if (refocus) restoreSelectionAndFocus();
   };
 
@@ -1426,10 +1529,14 @@ export function mountNotesTab({
   applyTextStyle(getDefaultTextStyle());
   renderDecor();
   setPlainTextMode(false);
+  restoreNotesPanelSize();
   syncToolbarWidth();
 
   if (typeof windowObject.ResizeObserver === "function") {
-    resizeObserver = new windowObject.ResizeObserver(syncToolbarWidth);
+    resizeObserver = new windowObject.ResizeObserver(() => {
+      syncToolbarWidth();
+      scheduleNotesPanelSizeSave();
+    });
     resizeObserver.observe(inputWrap);
   }
 
@@ -1527,6 +1634,7 @@ export function mountNotesTab({
       if (destroyed) return;
       destroyed = true;
       clearFlushTimer();
+      clearPanelSizeSaveTimer();
       for (const cancel of Array.from(pendingBridgeCancels)) cancel();
       pendingBridgeCancels.clear();
       try {

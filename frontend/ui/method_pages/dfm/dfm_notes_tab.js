@@ -4,7 +4,7 @@ DFM Notes Tab - shared Notes controller adapter
 ===============================================================================
 */
 import { markDfmDirty } from "/ui/method_pages/dfm/dfm_state.js";
-import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260910b";
+import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260911b";
 import { buildDfmNotesExpressionContext } from "/ui/method_pages/dfm/dfm_notes_expressions.js";
 
 let notesController = null;
