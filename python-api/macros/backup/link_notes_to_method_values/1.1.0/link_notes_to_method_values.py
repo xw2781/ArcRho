@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Link Notes to Method Values
-# Version: 1.2.0
-# Release Note: A ratio column heading carried over from an earlier valuation, such as "(1) 5-17" when the column now reads "(1) 8-20", is linked to the current column, and a quarter stamp such as 2026Q2 or 2Q26 in a file path is restated as the project's Development End Date quarter.
+# Version: 1.1.0
+# Release Note: Text highlighted in the Notes tab now limits the rewrite to that stretch; with nothing highlighted the whole note is still linked.
 # Description: Rewrite the raw Notes text so every label repeated by hand becomes a
 #   placeholder that reads it from the method, for example "(3) 32-44" becomes
 #   "{ratio_development_label(3)}" and "AY 2025" becomes "AY {origin_label(6)}".
@@ -10,13 +10,8 @@
 #   dataset names, and a month phrase such as "12 months" that states the origin
 #   or development period length are all recognised. A phrase is replaced only
 #   when its placeholder renders back to exactly the same characters, so the note
-#   still reads the way it was written, with two exceptions that bring a note
-#   copied from an earlier valuation up to date: a ratio column heading whose
-#   ages no longer match, "(1) 5-17" when the column now reads "(1) 8-20", is
-#   linked to the current column, and a quarter stamp such as "2026Q2", "2Q26"
-#   or "Q2 2026" is restated as the quarter of the project's Development End
-#   Date in the same form. Text already inside braces is left alone, so running
-#   the macro twice changes nothing.
+#   still reads the way it was written; text already inside braces is left alone,
+#   so running the macro twice changes nothing.
 # Scope: DFM
 # Icon: wand
 # </arcrho-macro>
@@ -53,20 +48,6 @@ NAME_SOURCES: tuple[tuple[str, tuple[str, ...]], ...] = (
 # rest stays literal so the sentence reads as it did.
 MONTH_PHRASE = re.compile(r"(\d{1,3})(\s*-\s*|\s+)(months?)\b", re.IGNORECASE)
 ORIGIN_WORDS = re.compile(r"origin|accident|policy|exposure|underwriting", re.IGNORECASE)
-
-# A ratio column heading names its own position, "(3) 32-44", and the last one
-# is the tail, "44 - Ult". A heading carried over from an earlier valuation is
-# recognised by that shape even though its ages no longer match the method.
-STALE_RATIO_LABEL = re.compile(r"\((\d{1,3})\) \d+(?:\.\d+)?-\d+(?:\.\d+)?")
-STALE_TAIL_LABEL = re.compile(r"\d+(?:\.\d+)? - Ult\b")
-
-# A quarter stamp in a file path or a sentence, in the forms people write it:
-# "2026Q2" and "2026 Q2", "2Q26" and "2Q2026", "Q2 2026" and "Q2-26".
-QUARTER_STAMPS = (
-    re.compile(r"(?P<year>(?:19|20)\d{2})(?P<sep>[ -]?)(?P<q>[Qq])(?P<quarter>[1-4])"),
-    re.compile(r"(?P<quarter>[1-4])(?P<q>[Qq])(?P<sep>[ -]?)(?P<year>(?:19|20)\d{2}|\d{2})"),
-    re.compile(r"(?P<q>[Qq])(?P<quarter>[1-4])(?P<sep>[ -]?)(?P<year>(?:19|20)\d{2}|\d{2})"),
-)
 
 # A bare number this short says too little to be worth linking; a year does.
 SHORTEST_NUMERIC_LABEL = 4
@@ -248,55 +229,6 @@ def _match_month_phrase(
     return match.group(0), f"{{{name}}}{match.group(2)}{match.group(3)}"
 
 
-def _match_stale_ratio_label(text: str, index: int, ratio_labels: list[str]) -> tuple[str, str] | None:
-    """A ratio column heading whose position the method still has, read back from it."""
-    match = STALE_RATIO_LABEL.match(text, index)
-    if match:
-        position = int(match.group(1))
-        if not (1 <= position < len(ratio_labels) and ratio_labels[position - 1].startswith(f"({position}) ")):
-            return None
-    else:
-        match = STALE_TAIL_LABEL.match(text, index)
-        if not match or not ratio_labels or not ratio_labels[-1].endswith(" - Ult"):
-            return None
-        position = len(ratio_labels)
-    surface = match.group(0)
-    if not (_left_is_clear(text, index, surface) and _right_is_clear(text, match.end(), surface)):
-        return None
-    return surface, f"{{ratio_development_label({position})}}"
-
-
-def _match_quarter_stamp(
-    text: str, index: int, current: tuple[int, int] | None
-) -> tuple[str, str] | None:
-    """A quarter stamp restated as the current quarter in the form it was written.
-
-    The stamp is returned unchanged when it already names the current quarter,
-    so the caller copies it through instead of linking the year inside it.
-    An underscore counts as a boundary here because file names use it.
-    """
-    if current is None:
-        return None
-    for pattern in QUARTER_STAMPS:
-        match = pattern.match(text, index)
-        if match:
-            break
-    else:
-        return None
-    end = match.end()
-    if (index and text[index - 1].isalnum()) or (end < len(text) and text[end].isalnum()):
-        return None
-    year, quarter = current
-    year_text = str(year) if len(match.group("year")) == 4 else f"{year % 100:02d}"
-    restated = match.group(0)
-    for group, value in sorted(
-        (("year", year_text), ("quarter", str(quarter))), key=lambda item: -match.start(item[0])
-    ):
-        start, stop = match.start(group) - index, match.end(group) - index
-        restated = restated[:start] + value + restated[stop:]
-    return match.group(0), restated
-
-
 # ---------------------------------------------------------------------------
 # The rewrite
 # ---------------------------------------------------------------------------
@@ -315,14 +247,9 @@ def selected_region(notes: str, selection: Any) -> tuple[int, int]:
 
 
 def link_notes_to_method_values(
-    notes: str, payload: Any, selection: Any = None, current_quarter: tuple[int, int] | None = None
-) -> tuple[str, list[tuple[str, str]], list[tuple[str, str]]]:
-    """Return the note with its labels linked, what was linked, and what was brought up to date.
-
-    The second list holds the phrases whose placeholder renders back to the
-    same text; the third holds the stale ratio headings and quarter stamps,
-    which now read differently. `current_quarter` is (year, quarter) from the
-    project's Development End Date; without it quarter stamps are left alone.
+    notes: str, payload: Any, selection: Any = None
+) -> tuple[str, list[tuple[str, str]]]:
+    """Return the note with its labels linked, plus what was replaced.
 
     Only the selected region is rewritten, but the braces are read across the
     whole note: a `{` before the selection still swallows a `}` written into
@@ -331,15 +258,12 @@ def link_notes_to_method_values(
     text = str(notes or "")
     region_start, region_end = selected_region(text, selection)
     candidates = placeholder_candidates(payload)
-    current_surfaces = {surface for surface, _ in candidates}
-    ratio_labels = [_text(label) for label in _node(payload, LABEL_SOURCES[0][1]) or []]
     origin_length = _period_length(payload, "origin_length")
     development_length = _period_length(payload, "development_length")
     skip = dict(protected_spans(text))
 
     pieces: list[str] = []
-    linked: list[tuple[str, str]] = []
-    updated: list[tuple[str, str]] = []
+    replacements: list[tuple[str, str]] = []
     index = 0
     while index < len(text):
         end = skip.get(index)
@@ -348,57 +272,28 @@ def link_notes_to_method_values(
             index = end
             continue
         hit = None
-        stale = False
         if region_start <= index < region_end:
-            # A quarter stamp is a period, not an origin label, unless the
-            # method really has an origin by that name.
-            hit = _match_quarter_stamp(text, index, current_quarter)
-            if hit and hit[0] not in current_surfaces:
-                stale = hit[0] != hit[1]
-            else:
-                hit = _match_candidate(text, index, candidates) or _match_month_phrase(
-                    text, index, origin_length, development_length
-                )
-                if hit is None:
-                    hit = _match_stale_ratio_label(text, index, ratio_labels)
-                    stale = hit is not None
+            hit = _match_candidate(text, index, candidates) or _match_month_phrase(
+                text, index, origin_length, development_length
+            )
         if hit and index + len(hit[0]) <= region_end:
-            surface, replacement = hit
-            pieces.append(replacement)
-            if stale:
-                updated.append(hit)
-            elif replacement != surface:
-                linked.append(hit)
+            surface, placeholder = hit
+            pieces.append(placeholder)
+            replacements.append(hit)
             index += len(surface)
             continue
         pieces.append(text[index])
         index += 1
-    return "".join(pieces), linked, updated
+    return "".join(pieces), replacements
 
 
-def _summary(linked: list[tuple[str, str]], updated: list[tuple[str, str]], part: str) -> str:
-    def shown(items: list[tuple[str, str]]) -> str:
-        distinct = sorted({surface for surface, _ in items})
-        more = f" and {len(distinct) - 5} more" if len(distinct) > 5 else ""
-        return ", ".join(f'"{surface}"' for surface in distinct[:5]) + more
-
-    sentences = []
-    if linked:
-        sentences.append(f"Linked {len(linked)} phrase(s) in {part} to method values: {shown(linked)}.")
-    if updated:
-        sentences.append(f"Brought {len(updated)} stale label(s) up to date: {shown(updated)}.")
-    if not sentences:
+def _summary(replacements: list[tuple[str, str]], part: str) -> str:
+    if not replacements:
         return f"No text in {part} matches a value the method can supply."
-    return " ".join(sentences)
-
-
-def _current_quarter(active_dfm) -> tuple[int, int] | None:
-    """(year, quarter) of the project's Development End Date, "202605" -> (2026, 2)."""
-    settings = getattr(active_dfm.project, "settings", None)
-    stamp = str(settings().general_settings.get("development_end_date") or "") if callable(settings) else ""
-    if not re.fullmatch(r"\d{6}", stamp):
-        return None
-    return int(stamp[:4]), (int(stamp[4:]) - 1) // 3 + 1
+    distinct = sorted({surface for surface, _ in replacements})
+    shown = ", ".join(f'"{surface}"' for surface in distinct[:5])
+    more = f" and {len(distinct) - 5} more" if len(distinct) > 5 else ""
+    return f"Linked {len(replacements)} phrase(s) in {part} to method values: {shown}{more}."
 
 
 def run_macro(active_dfm=None, active_context=None):
@@ -412,21 +307,19 @@ def run_macro(active_dfm=None, active_context=None):
     selection = (active_context or {}).get("notesSelection") if isinstance(active_context, dict) else None
     start, end = selected_region(original_notes, selection)
     part = "the selected text" if (start, end) != (0, len(original_notes)) else "these notes"
-    linked_notes, linked, updated = link_notes_to_method_values(
-        original_notes, payload, selection, _current_quarter(active_dfm)
-    )
-    summary = _summary(linked, updated, part)
-    if linked or updated:
+    linked_notes, replacements = link_notes_to_method_values(original_notes, payload, selection)
+    summary = _summary(replacements, part)
+    if replacements:
         active_dfm.update_notes(linked_notes)
 
     preview = {
         "type": "notes_diff",
         "title": MACRO_TITLE,
-        "summary": f"{summary} Review the note before applying.",
+        "summary": f"{summary} The note reads the same; review it before applying.",
         "original_notes": original_notes,
         "suggested_notes": linked_notes,
         "has_changes": linked_notes != original_notes,
-        "changes": [f"{surface} -> {replacement}" for surface, replacement in linked + updated],
+        "changes": [f"{surface} -> {placeholder}" for surface, placeholder in replacements],
     }
     return {
         "success": True,
