@@ -74,6 +74,7 @@ function dfmMethodSaveBody({
   reserving_class,
   method,
   notes,
+  notes_source,
   expected_owned_revision,
   expected_derived_revision,
 } = {}) {
@@ -82,6 +83,9 @@ function dfmMethodSaveBody({
     reserving_class: text(reserving_class),
     method,
     notes: String(notes ?? ""),
+    // The raw placeholder text behind rendered notes; sent only when there
+    // is one, so a note without placeholders keeps its old request shape.
+    ...(notes_source ? { notes_source: String(notes_source) } : {}),
     ...(text(expected_owned_revision) ? { expected_owned_revision: text(expected_owned_revision) } : {}),
     ...(text(expected_derived_revision) ? { expected_derived_revision: text(expected_derived_revision) } : {}),
   };

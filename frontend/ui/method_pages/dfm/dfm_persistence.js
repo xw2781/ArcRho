@@ -82,8 +82,8 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260907a";
-import { getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260910a";
+import { getDfmNotesSaveFields, getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910b";
 import {
   applyDfmCurvesTabPayload,
   buildDfmCurvesTabPayload,
@@ -110,7 +110,7 @@ import {
   hydrateDfmOutputSidecar,
   refreshDfmAuditLog,
   renderDfmAuditLog,
-} from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
+} from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260910a";
 import {
   DFM_METHOD_JSON_FORMAT,
   isDfmV2Method,
@@ -118,7 +118,7 @@ import {
   previewDfmMethod,
   readDfmMethodIdentityFromPage,
   saveDfmMethod,
-} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260814b";
+} from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
@@ -1723,7 +1723,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     project_name: identity.project_name,
     reserving_class: identity.reserving_class,
     method,
-    notes: getDfmNotesText(),
+    ...getDfmNotesSaveFields(),
     ...((forceSaveAs || identityChanged) ? {} : {
       expected_owned_revision: currentOwnedRevision,
       expected_derived_revision: currentDerivedRevision,

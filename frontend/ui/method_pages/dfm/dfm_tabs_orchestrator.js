@@ -28,7 +28,7 @@ import {
   consumePendingDfmPropagationJobId,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { ALLOWED_DFM_TABS, DFM_TAB_DEFS } from "/ui/method_pages/dfm/dfm_tab_config.js?v=20260903a";
-import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260726a";
+import { initDfmAuditLog, refreshDfmAuditLog } from "/ui/method_pages/dfm/dfm_audit_log.js?v=20260910a";
 import {
   renderRatioTable,
   wireRatioStrikeToggle,
@@ -46,8 +46,8 @@ import {
   wireResultsRatioBasisControls,
   buildPercentDevelopedVector,
   buildResultsVector,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260907a";
-import { wireNotesInput, refreshDfmNotesView } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260910a";
+import { getDfmNotesSelection, wireNotesInput, refreshDfmNotesView } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910b";
 import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260907a";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
 import {
@@ -71,7 +71,7 @@ import {
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
   buildDfmMethodPayload,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260909c";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260910a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260907a";
 import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260907a";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260907a";
@@ -240,6 +240,10 @@ async function buildAssistantContext() {
     activeJsonSource: activeJson ? "dfm-ui-state" : "",
     activeJsonError,
     dirty: getDfmIsDirty(),
+    // Deliberately outside `activeJson` and `fields`: the macro run fingerprint
+    // is taken over those, and moving the caret must not read as the method
+    // having changed while the macro was running.
+    notesSelection: getDfmNotesSelection(),
     fields: {
       project: inputSnap.resolved?.project || document.getElementById("projectSelect")?.value?.trim() || "",
       reservingClass: inputSnap.resolved?.reservingClass || document.getElementById("pathInput")?.value?.trim() || "",

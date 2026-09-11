@@ -10,6 +10,7 @@ import {
   findNotesCompletionQuery,
   findNotesExpressionMatches,
   listNotesCompletions,
+  renderNotesExpressionText,
   renderNotesExpressions,
 } from "./notes_expressions.js";
 
@@ -1438,6 +1439,30 @@ export function mountNotesTab({
     },
 
     /**
+     * The range last selected while editing, as offsets into the raw text.
+     * Editing ends as soon as focus leaves, so the range outlives it and is
+     * still what a tool run from another window means by "the selected text".
+     * `start === end` when nothing is selected.
+     */
+    getSelection() {
+      const length = String(input.value || "").length;
+      const start = Math.max(0, Math.min(length, Number(selectionSnapshot.start) || 0));
+      const end = Math.max(start, Math.min(length, Number(selectionSnapshot.end) || start));
+      return { start, end };
+    },
+
+    /**
+     * The note with every placeholder rendered against the current
+     * expression context, or the raw text when the page supplies none.
+     */
+    getRenderedValue() {
+      const source = String(input.value || "");
+      return resolveExpressionContext
+        ? renderNotesExpressionText(source, resolveExpressionContext())
+        : source;
+    },
+
+    /**
      * Programmatically replaces the note. By default this can make the
      * controller dirty; pass markClean true when loading persisted content.
      */
@@ -1446,13 +1471,18 @@ export function mountNotesTab({
       notify = false,
     } = {}) {
       if (destroyed) return;
+      const previousValue = String(input.value || "");
       input.value = String(nextValue ?? "");
       if (markClean) cleanValue = input.value;
       const length = input.value.length;
-      selectionSnapshot = {
-        start: Math.min(length, selectionSnapshot.start),
-        end: Math.min(length, selectionSnapshot.end),
-      };
+      // Different text makes the remembered range meaningless, so it starts
+      // over; the same text keeps it, clamped.
+      selectionSnapshot = input.value === previousValue
+        ? {
+          start: Math.min(length, selectionSnapshot.start),
+          end: Math.min(length, selectionSnapshot.end),
+        }
+        : { start: 0, end: 0 };
       renderDecor();
       renderEditLayer();
       updateDirtyState("programmatic");

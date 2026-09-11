@@ -56,6 +56,9 @@ def _dfm_method_save_call(req: DfmMethodSaveRequest) -> Dict[str, Any]:
         "args": [req.project_name, req.reserving_class, req.method],
         "kwargs": {
             "notes": req.notes,
+            # Only a note with placeholders carries a source, so a plain save
+            # keeps the argument shape an Engine built before the field knows.
+            **({"notes_source": req.notes_source} if req.notes_source else {}),
             "expected_owned_revision": req.expected_owned_revision,
             "expected_derived_revision": req.expected_derived_revision,
         },

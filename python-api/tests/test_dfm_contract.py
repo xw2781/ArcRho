@@ -443,6 +443,39 @@ class DfmContractTests(unittest.TestCase):
         self.assertIs(first["show_subtotal"], False)
         self.assertEqual(first["publication_revision"], method["method_metadata"]["publication_revision"])
 
+    def test_output_sidecar_keeps_placeholder_source_only_beside_the_notes_it_renders_to(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot(), timestamp="same"
+        )
+
+        def build(existing, **kwargs):
+            return build_dfm_output_sidecar(
+                method,
+                project_name="Demo",
+                reserving_class=r"Auto\PP",
+                csv_file="Paid Selected@12.csv",
+                existing=existing,
+                timestamp="new",
+                user="tester",
+                **kwargs,
+            )
+
+        stored = build({}, notes="Latest origin 2025.", notes_source="Latest origin {origin_label(-1)}.")
+        self.assertEqual(stored["notes"], "Latest origin 2025.")
+        self.assertEqual(stored["notes_source"], "Latest origin {origin_label(-1)}.")
+        keys = list(stored)
+        self.assertEqual(keys.index("notes_source"), keys.index("notes") + 1)
+        # Untouched notes keep their source; the same rendered text written
+        # back without one (a ResQ round trip) keeps it too.
+        self.assertEqual(build(stored)["notes_source"], stored["notes_source"])
+        self.assertEqual(build(stored, notes="Latest origin 2025.")["notes_source"], stored["notes_source"])
+        # Replaced notes without a source drop it, so a stale template never
+        # shows over text another writer changed.
+        self.assertEqual(build(stored, notes="Rewritten by a macro.")["notes_source"], "")
+        # A source equal to its notes carries nothing and is not stored.
+        self.assertEqual(build({}, notes="Plain note", notes_source="Plain note")["notes_source"], "")
+        self.assertEqual(build({"notes": "Old"})["notes_source"], "")
+
     def test_dataset_formula_inputs_are_owned_precedents_and_preserve_stored_values(self) -> None:
         payload = owned_payload()
         formulas = payload["ratios_tab"]["average_formulas"]

@@ -10,6 +10,7 @@
     "While editing, placeholders show in deep blue and typing inside braces opens a popup that previews and completes the available names, properties, and values.",
     "Braces and parentheses close themselves while typing a placeholder: the pair opens around the caret or a selection, the closer steps over one already there, and Backspace removes an empty pair.",
     "An Insert Value button on the Notes toolbar lists every available name; hovering a rendered value shows its placeholder, and one that cannot be rendered stays as typed with the reason.",
-    "The rendered note can be selected and copied; a plain click enters editing at that spot."
+    "The rendered note can be selected and copied; a plain click enters editing at that spot.",
+    "A save stores the rendered text as the sidecar's notes, so the ResQ export, macros, and the RPC bridge see values instead of placeholders, and keeps the raw placeholder text beside it for the Notes tab; a note replaced by a macro or by a ResQ note applied through the bridge drops its placeholders."
   ]
 }

@@ -1120,6 +1120,7 @@ def build_dfm_output_sidecar(
     existing_record: bool | None = None,
     dependents: Any = None,
     notes: Any = None,
+    notes_source: Any = None,
     timestamp: Any = None,
     user: Any = "",
     output_changed: bool = True,
@@ -1127,7 +1128,17 @@ def build_dfm_output_sidecar(
     audit_action: Any = None,
     status: Any = 0,
 ) -> dict[str, Any]:
-    """Build the sole canonical parsed payload for a DFM output sidecar."""
+    """Build the sole canonical parsed payload for a DFM output sidecar.
+
+    ``notes`` is the Method Notes text as every reader sees it, the ResQ
+    export included. ``notes_source`` is the text the Notes tab edits when it
+    differs from that: the raw ``{...}`` placeholders the app rendered into
+    ``notes`` at save time. The source is trusted only when it was written
+    together with the notes it renders to, so a writer that replaces the
+    notes without one (a macro, the RPC bridge applying a ResQ note) clears
+    it, and the app never shows a stale template over text that changed
+    elsewhere. Passing ``notes=None`` keeps both fields as they are.
+    """
 
     method = normalize_dfm_method(payload, require_complete=True, timestamp=timestamp)
     prior = existing if isinstance(existing, Mapping) else {}
@@ -1143,7 +1154,15 @@ def build_dfm_output_sidecar(
         published_at = str(prior.get("updated_at") or "").strip() or published_at
         actor = _clean(prior.get("modified_by")) or actor
     created = str(prior.get("created") or "").strip() or published_at
-    sidecar_notes = str(prior.get("notes") or "") if notes is None else str(notes)
+    prior_notes = str(prior.get("notes") or "")
+    sidecar_notes = prior_notes if notes is None else str(notes)
+    if notes is None or (notes_source is None and sidecar_notes == prior_notes):
+        # Unchanged notes still render from the template they came with.
+        sidecar_notes_source = str(prior.get("notes_source") or "")
+    else:
+        sidecar_notes_source = str(notes_source or "")
+    if sidecar_notes_source == sidecar_notes:
+        sidecar_notes_source = ""
     if append_audit:
         audits = append_audit_entry(
             prior.get("audit_log"),
@@ -1176,6 +1195,7 @@ def build_dfm_output_sidecar(
         "decimal_places": _integer(details.get("decimal_places"), 0, minimum=0, maximum=8),
         "csv_file": _clean(csv_file),
         "notes": sidecar_notes,
+        "notes_source": sidecar_notes_source,
         "origin_labels": deepcopy(data.get("origin_labels") or []),
         "development_labels": ["Ultimate"],
         "precedents": dependency_entries(dfm_precedent_names(method)),

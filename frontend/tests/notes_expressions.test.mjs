@@ -206,3 +206,13 @@ test("completions list root names and an object's properties with previews", () 
   assert.deepEqual(listNotesCompletions(context, ["name"]), []);
   assert.deepEqual(listNotesCompletions(context, ["nope"]), []);
 });
+
+test("the rendered text a save stores replaces every placeholder and keeps a broken one as typed", () => {
+  const { renderNotesExpressionText } = expressions;
+  const source = "Latest origin {origin_label(-1)} at {ratio_value(1, 1):.2f}; {{kept}} {origin_label(9)}.";
+  assert.equal(
+    renderNotesExpressionText(source, context),
+    "Latest origin 2021 at 1.50; {kept} {origin_label(9)}.",
+  );
+  assert.equal(renderNotesExpressionText("plain text", context), "plain text");
+});

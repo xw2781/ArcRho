@@ -346,6 +346,7 @@ class DfmMethod:
         self.file_path = file_path
         self.payload = payload
         self._pending_notes: str | None = None
+        self._pending_notes_source: str | None = None
         self._last_ratio_adjustment: dict[str, Any] | None = None
         self._last_refreshed_dfm_outputs: tuple[str, ...] = ()
         self._propagation_warnings: tuple[str, ...] = ()
@@ -654,6 +655,7 @@ class DfmMethod:
                 csv_file=csv_path.name,
                 existing=existing,
                 notes=self._pending_notes,
+                notes_source=self._pending_notes_source,
                 timestamp=modified_at,
                 user=getpass.getuser(),
                 output_changed=changed,
@@ -794,6 +796,7 @@ class DfmMethod:
             })
             _commit_bytes_atomic(files, last_paths=(sidecar_path,))
         self._pending_notes = None
+        self._pending_notes_source = None
         rebuild_one = getattr(self.project, "rebuild_reserving_class_index", None)
         if callable(rebuild_one):
             rebuild_one(self.reserving_class_obj.path)
@@ -852,12 +855,23 @@ class DfmMethod:
 
     @property
     def notes(self) -> str:
+        """The Method Notes as every reader sees them, placeholders rendered."""
         if self._pending_notes is not None:
             return self._pending_notes
+        return self._sidecar_notes_field("notes")
+
+    @property
+    def notes_source(self) -> str:
+        """The raw ``{...}`` text behind :attr:`notes`, empty when there is none."""
+        if self._pending_notes_source is not None:
+            return self._pending_notes_source
+        return self._sidecar_notes_field("notes_source")
+
+    def _sidecar_notes_field(self, field: str) -> str:
         path = self._sidecar_path()
         if not path.exists():
             return ""
-        return str(read_json(path).get("notes") or "")
+        return str(read_json(path).get(field) or "")
 
     @property
     def last_modified(self) -> str:
@@ -914,7 +928,9 @@ class DfmMethod:
         return self
 
     def update_notes(self, text: str) -> "DfmMethod":
+        """Replace the notes; any placeholder source behind them is dropped on save."""
         self._pending_notes = str(text or "")
+        self._pending_notes_source = None
         return self
 
     def add_notes(self, text: str, *, append: bool = True, add_space: bool | None = None) -> "DfmMethod":
@@ -925,7 +941,13 @@ class DfmMethod:
         if not existing:
             return self.update_notes(new_text)
         separator = "\n\n" if add_space is not False else "\n"
-        return self.update_notes(f"{existing}{separator}{new_text}")
+        source = self.notes_source
+        self.update_notes(f"{existing}{separator}{new_text}")
+        # Plain text appended to rendered notes belongs at the end of their
+        # placeholder source as well, so the Notes tab keeps its placeholders.
+        if source:
+            self._pending_notes_source = f"{source}{separator}{new_text}"
+        return self
 
     def clear_notes(self) -> "DfmMethod":
         return self.update_notes("")

@@ -287,6 +287,37 @@ class ArcRhoApiTests(unittest.TestCase):
         self.assertIn("reviewed", json.loads(self.sidecar_path.read_text(encoding="utf-8"))["notes"])
         self.assertNotEqual(saved["method_metadata"]["last_modified"], "2026-01-01T00:00:00")
 
+    def test_dfm_add_notes_keeps_the_placeholder_source_and_update_notes_drops_it(self) -> None:
+        rc = ArcRhoClient(self.root).project("Demo").reserving_class(r"Auto\PP")
+        rc.new_dfm(
+            "Notes DFM",
+            output_vector="Notes Ultimate",
+            input_triangle="Paid Loss",
+            origin_length=12,
+            development_length=12,
+        ).save()
+        # The app renders placeholders into ``notes`` at save time and keeps
+        # the raw text beside it; the macro API reads both.
+        sidecar_path = self.sidecars_dir / "Notes DFM.json"
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        sidecar["notes"] = "Latest origin 2021."
+        sidecar["notes_source"] = "Latest origin {origin_label(-1)}."
+        sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+        dfm = rc.dfm("Notes DFM")
+        self.assertEqual(dfm.notes, "Latest origin 2021.")
+        self.assertEqual(dfm.notes_source, "Latest origin {origin_label(-1)}.")
+        dfm.add_notes("reviewed")
+        dfm.save()
+        saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["notes"], "Latest origin 2021.\n\nreviewed")
+        self.assertEqual(saved["notes_source"], "Latest origin {origin_label(-1)}.\n\nreviewed")
+
+        dfm.update_notes("rewritten")
+        dfm.save()
+        saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["notes"], "rewritten")
+        self.assertEqual(saved["notes_source"], "")
+
     def test_dfm_save_rebuilds_only_its_reserving_class_index(self) -> None:
         project = ArcRhoClient(self.root).project("Demo")
         dfm = project.reserving_class(r"Auto\PP").dfm("Paid DFM")

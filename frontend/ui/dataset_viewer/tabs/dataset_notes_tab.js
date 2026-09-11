@@ -1,4 +1,4 @@
-import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260910a";
+import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260910b";
 
 export function wireDatasetNotesEditor(deps = {}) {
   const setNotesDirty = typeof deps.setNotesDirty === "function"

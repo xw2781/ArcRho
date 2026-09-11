@@ -489,6 +489,37 @@ class DfmServiceTests(unittest.TestCase):
             "updated",
         )
 
+    def test_save_keeps_rendered_notes_and_their_placeholder_source(self) -> None:
+        method = self.write_method_pair()
+        with (
+            mock.patch.object(
+                dfm_service.dependent_propagation_service,
+                "enqueue_marked_save_propagation",
+                return_value={"ok": True, "job_id": "job-1", "status": "queued"},
+            ),
+            mock.patch.object(
+                dfm_service.dependent_propagation_service,
+                "require_reserving_class_writable",
+            ),
+        ):
+            result = dfm_service.save_dfm_method(
+                "Project",
+                "Class",
+                method,
+                notes="Latest origin 2025.",
+                notes_source="Latest origin {origin_label(-1)}.",
+                expected_owned_revision=method_revisions(self.method_payload())["owned_revision"],
+            )
+
+        self.assertTrue(result["ok"])
+        sidecar = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
+        # The rendered text is what every reader sees; the raw placeholder
+        # text sits beside it for the Notes tab, and the load returns both.
+        self.assertEqual(sidecar["notes"], "Latest origin 2025.")
+        self.assertEqual(sidecar["notes_source"], "Latest origin {origin_label(-1)}.")
+        self.assertEqual(result["sidecar"]["notes_source"], "Latest origin {origin_label(-1)}.")
+        self.assertLess(list(sidecar).index("notes"), list(sidecar).index("notes_source"))
+
     def test_explicit_save_warns_and_still_saves_with_unreviewed_precedent(self) -> None:
         method = self.write_method_pair(status=2)
         self.write_source(

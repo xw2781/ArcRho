@@ -9,7 +9,7 @@ import {
   getResolvedReservingClass,
   getDefaultMethodName,
 } from "/ui/method_pages/dfm/dfm_state.js";
-import { setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910a";
+import { notesTextFromSidecar, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260910b";
 
 let auditLogView = null;
 let auditRequestSequence = 0;
@@ -56,7 +56,7 @@ export function hydrateDfmOutputSidecar(sidecar, options = {}) {
   hydratedDfmSidecar = sidecar && typeof sidecar === "object" ? sidecar : {};
   hydratedOutputDataset = String(options.outputDataset || hydratedDfmSidecar.dataset_name || "").trim();
   if (options.hydrateNotes !== false) {
-    setDfmNotesText(String(hydratedDfmSidecar.notes ?? ""));
+    setDfmNotesText(notesTextFromSidecar(hydratedDfmSidecar));
   }
   initDfmAuditLog()?.render(hydratedDfmSidecar.audit_log || []);
   return hydratedDfmSidecar;
@@ -74,7 +74,7 @@ export async function refreshDfmAuditLog(options = {}) {
 
   if (hydratedDfmSidecar) {
     if (options.hydrateNotes === true) {
-      setDfmNotesText(String(hydratedDfmSidecar.notes ?? ""));
+      setDfmNotesText(notesTextFromSidecar(hydratedDfmSidecar));
     }
     view.render(hydratedDfmSidecar.audit_log || []);
     return true;
@@ -100,7 +100,7 @@ export async function refreshDfmAuditLog(options = {}) {
       return false;
     }
     if (options.hydrateNotes === true) {
-      setDfmNotesText(response.data?.exists ? String(response.data.notes ?? "") : "");
+      setDfmNotesText(response.data?.exists ? notesTextFromSidecar(response.data) : "");
     }
     view.render(response.data?.exists ? response.data.audit_log : []);
     return true;

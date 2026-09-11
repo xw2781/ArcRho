@@ -51,7 +51,7 @@ results tab
 method metadata
 ```
 
-`details tab.name` is the method-file identity, `details tab.output dataset` is the output CSV/sidecar identity, and `details tab.output type` is the Vector Dataset Type. DFM notes are stored only in the declared output dataset sidecar's top-level `notes` field, not in method JSON.
+`details tab.name` is the method-file identity, `details tab.output dataset` is the output CSV/sidecar identity, and `details tab.output type` is the Vector Dataset Type. DFM notes are stored only in the declared output dataset sidecar's top-level `notes` field, not in method JSON. That field is the rendered text every reader sees; when the note was written with `{...}` placeholders in the app, the sidecar's `notes_source` holds the raw text behind it. `DfmMethod.notes` reads the rendered text and `DfmMethod.notes_source` the raw one; `update_notes()` replaces the notes and drops the source, `add_notes()` appends its plain text to both.
 
 V2 embeds the complete input triangle snapshot, Ratio Basis snapshot, calculated ratio/average state, ultimate vector, formatting, and source revisions. It does not persist absolute input/output CSV paths. Ratio-cell notes remain in method JSON; Method Notes, Audit, status, and dependency graph remain in the output sidecar.
 

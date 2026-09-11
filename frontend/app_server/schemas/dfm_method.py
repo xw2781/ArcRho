@@ -33,6 +33,9 @@ class DfmMethodSaveRequest(BaseModel):
     reserving_class: str = Field(..., min_length=1)
     method: Dict[str, Any]
     notes: str | None = None
+    # The raw placeholder text the Notes tab edits, when it differs from the
+    # rendered `notes`; the output sidecar keeps both.
+    notes_source: str | None = None
     expected_owned_revision: str | None = None
     expected_derived_revision: str | None = None
     # Fingerprint of the dependent-update plan the user confirmed. The Engine

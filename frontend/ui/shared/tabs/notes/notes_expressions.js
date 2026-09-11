@@ -705,6 +705,15 @@ export function renderNotesExpressions(source, context) {
   return segments;
 }
 
+/**
+ * The note as plain text with every placeholder replaced by its rendered
+ * value; a placeholder that cannot be rendered keeps its raw text. This is
+ * what a save stores for readers that cannot render, such as the ResQ export.
+ */
+export function renderNotesExpressionText(source, context) {
+  return renderNotesExpressions(source, context).map((segment) => segment.text).join("");
+}
+
 // -----------------------------------------------------------------------------
 // Completions while typing inside `{...}`
 // -----------------------------------------------------------------------------

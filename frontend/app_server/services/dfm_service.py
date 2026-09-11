@@ -855,6 +855,7 @@ def _build_sidecar(
     existing: Mapping[str, Any],
     *,
     notes: str | None,
+    notes_source: str | None = None,
     changed: bool,
     automatic: bool,
 ) -> Dict[str, Any]:
@@ -898,6 +899,7 @@ def _build_sidecar(
         existing_record=bool(existing),
         dependents=canonical_existing.get("dependents"),
         notes=notes,
+        notes_source=notes_source,
         timestamp=now,
         user=user_name,
         output_changed=bool(changed or not automatic),
@@ -917,6 +919,7 @@ def _publish(
     existing_sidecar: Mapping[str, Any],
     *,
     notes: str | None,
+    notes_source: str | None = None,
     changed: bool,
     automatic: bool,
     write_outputs: bool,
@@ -930,6 +933,7 @@ def _publish(
         payload,
         existing_sidecar,
         notes=notes,
+        notes_source=notes_source,
         changed=changed,
         automatic=automatic,
     )
@@ -1087,6 +1091,7 @@ def save_dfm_method(
     method: Dict[str, Any],
     *,
     notes: str | None = None,
+    notes_source: str | None = None,
     expected_owned_revision: str | None = None,
     expected_derived_revision: str | None = None,
 ) -> Dict[str, Any]:
@@ -1166,6 +1171,7 @@ def save_dfm_method(
             refreshed,
             existing_sidecar,
             notes=notes,
+            notes_source=notes_source,
             changed=publication_changed,
             automatic=False,
             write_outputs=True,
