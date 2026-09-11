@@ -225,6 +225,16 @@ body.pi-excel-links-resizing-column * {
   color: var(--ar-color-text-muted);
 }
 
+/* Status shows only the dataset table's review glyph (.pi-status-cell, from
+   shared/styles/pi_table.css), so both the header label and the icon sit
+   centred in the narrow column. */
+.pi-excel-links-table th[data-col-key="status"] .pi-excel-links-th { justify-content: center; }
+.pi-excel-links-table th[data-col-key="status"] .pi-excel-links-col-label { flex: 0 1 auto; }
+.pi-excel-links-table tbody td.pi-excel-links-cell.status {
+  text-align: center;
+  vertical-align: middle;
+}
+
 /* The listing's Found/Missing verdict has no column of its own; a workbook
    ArcRho Server cannot open is called out on its name. */
 .pi-excel-links-table tbody td.pi-excel-links-cell.workbook.missing {

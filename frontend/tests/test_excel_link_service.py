@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -148,6 +149,11 @@ class ExcelLinkFixture(unittest.TestCase):
                 excel_link_service.config,
                 "get_project_method_data_dir",
                 return_value=str(self.methods),
+            ),
+            mock.patch.object(
+                excel_link_service.config,
+                "get_project_dataset_cache_dir",
+                return_value=str(self.datasets),
             ),
         ]
         for patcher in self.patchers:
@@ -301,11 +307,57 @@ class ExcelLinkListingTests(ExcelLinkFixture):
         sidecar = self.linked_sidecar()
         sidecar["external_links"][0]["reference"] = "='C:\\Gone\\[Missing.xlsx]S1'!A1:B1"
         self.write_json(self.sidecars / "Manual Paid.json", sidecar)
+        (self.datasets / sidecar["csv_file"]).write_text("100,150\n", encoding="utf-8")
 
         listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
 
         self.assertEqual(listing["workbooks"][0]["workbook_name"], "Missing.xlsx")
         self.assertFalse(listing["workbooks"][0]["exists"])
+        # Nothing to compare the values against, so no verdict: a blank must
+        # never read as "current".
+        self.assertEqual(listing["workbooks"][0]["usages"][0]["status"], "")
+
+    def test_listing_flags_linked_values_older_than_their_workbook(self) -> None:
+        # Opening the manager is the staleness check. Each usage compares the
+        # workbook's file time with the file that holds its linked values -
+        # the dataset's CSV, the DFM's method JSON - the same comparison a
+        # Dataset window makes when it opens, so a workbook saved after that
+        # file reads Needs Review and one saved before (or at the same
+        # moment) reads Updated.
+        stale = self.linked_sidecar("Manual Paid")
+        current = self.linked_sidecar("Manual Incurred")
+        same = self.linked_sidecar("Manual Same")
+        for sidecar in (stale, current, same):
+            self.write_json(self.sidecars / f"{sidecar['dataset_name']}.json", sidecar)
+            (self.datasets / sidecar["csv_file"]).write_text("100,150\n", encoding="utf-8")
+        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+        book_mtime = self.old_book.stat().st_mtime
+        os.utime(self.datasets / stale["csv_file"], (book_mtime - 60, book_mtime - 60))
+        os.utime(self.datasets / current["csv_file"], (book_mtime + 60, book_mtime + 60))
+        os.utime(self.datasets / same["csv_file"], (book_mtime, book_mtime))
+        os.utime(self.methods / "DFM@Development.json", (book_mtime - 1, book_mtime - 1))
+
+        listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
+
+        self.assertEqual(
+            [(item["name"], item["status"]) for item in listing["workbooks"][0]["usages"]],
+            [
+                ("Manual Incurred", "updated"),
+                ("Manual Paid", "needs_review"),
+                ("Manual Same", "updated"),
+                ("Development", "needs_review"),
+            ],
+        )
+        # The comparison never leaks the file times themselves.
+        self.assertNotIn("values_mtime", listing["workbooks"][0]["usages"][0])
+
+    def test_listing_status_is_blank_without_a_data_file_to_compare(self) -> None:
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar())
+
+        listing = excel_link_service.list_reserving_class_excel_links("Project", "Class")
+
+        self.assertTrue(listing["workbooks"][0]["exists"])
+        self.assertEqual(listing["workbooks"][0]["usages"][0]["status"], "")
 
 
 class ExcelLinkRetargetTests(ExcelLinkFixture):

@@ -7,7 +7,9 @@ from one workbook file to another.
 
 Both halves run on the ArcRho Server host, never against a Client PC's mapped
 drives: the listing is a hosted workspace read (so "found" means the server
-can open the workbook) and the retarget is an Engine-hosted save. A retarget
+can open the workbook, and each usage's ``status`` says whether the workbook
+was saved after the file holding its linked values) and the retarget is an
+Engine-hosted save. A retarget
 opens the new workbook where it runs and refuses when it cannot; otherwise it
 reads every mapped cell in one batch, rewrites and refreshes every affected
 dataset and DFM through the canonical save flows (``save_dataset_sidecar`` /
@@ -61,6 +63,14 @@ _READ_EXECUTOR = ThreadPoolExecutor(
     max_workers=READ_MAX_WORKERS,
     thread_name_prefix="arcrho-excel-link-read",
 )
+
+# A workbook saved this much later than the file holding its linked values is
+# newer; the same tolerance ``findNewerWorkbooks`` in
+# ``ui/shared/dataset/dataset_external_links.js`` applies when a Dataset
+# window opens, so the manager and the window agree on what is stale.
+NEWER_WORKBOOK_TOLERANCE_SECONDS = 0.001
+STATUS_NEEDS_REVIEW = "needs_review"
+STATUS_UPDATED = "updated"
 
 # Mirrors EXCEL_REFERENCE_INLINE_RE / EXCEL_REFERENCE_RE in excel_reference.js.
 _QUOTED_INLINE_RE = re.compile(
@@ -186,18 +196,50 @@ def _require_reserving_class_dirs(project_name: str, reserving_class: str) -> Tu
     return sidecar_dir, method_dir
 
 
-def _list_json_files(folder: str, pattern: re.Pattern[str]) -> List[str]:
+def _scan_json_files(folder: str, pattern: re.Pattern[str]) -> List[Tuple[str, float]]:
+    """Matching files in name order, each with the modification time the
+    directory listing already carried, so no file is stat'ed a second time."""
+
     try:
-        entries = os.listdir(folder)
+        with os.scandir(folder) as entries:
+            found = [
+                (entry.path, entry.stat().st_mtime)
+                for entry in entries
+                if pattern.fullmatch(entry.name)
+            ]
     except FileNotFoundError:
         return []
     except OSError as err:
         raise HTTPException(500, f"Could not list {os.path.basename(folder)} folder: {err}")
-    return sorted(
-        os.path.join(folder, name)
-        for name in entries
-        if pattern.fullmatch(name)
-    )
+    return sorted(found)
+
+
+def _list_json_files(folder: str, pattern: re.Pattern[str]) -> List[str]:
+    return [path for path, _mtime in _scan_json_files(folder, pattern)]
+
+
+def _file_mtime(path: str) -> float | None:
+    try:
+        return os.stat(path).st_mtime
+    except OSError:
+        return None
+
+
+def excel_link_status(workbook_mtime: Any, values_mtime: Any) -> str:
+    """Whether one usage's stored values predate the workbook they were read from.
+
+    The file holding the linked values - a dataset's CSV, a DFM's method JSON
+    - is written whenever those values are refreshed, so a workbook saved
+    after it is one ArcRho has not loaded since: ``needs_review``. Blank when
+    either side cannot be stated (a workbook this host cannot open, a dataset
+    with no data file), because "unknown" must not read as current.
+    """
+
+    if workbook_mtime is None or values_mtime is None:
+        return ""
+    if float(workbook_mtime) > float(values_mtime) + NEWER_WORKBOOK_TOLERANCE_SECONDS:
+        return STATUS_NEEDS_REVIEW
+    return STATUS_UPDATED
 
 
 _SIDECAR_FILE_RE = re.compile(r".+\.json", re.IGNORECASE)
@@ -237,6 +279,7 @@ def _dataset_link_cells(link: Mapping[str, Any]) -> int:
 
 def _dataset_usages(
     sidecar_payloads: List[Tuple[str, Dict[str, Any] | None, str]],
+    cache_dir: str,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
     usages: List[Dict[str, Any]] = []
     errors: List[Dict[str, str]] = []
@@ -248,6 +291,10 @@ def _dataset_usages(
         if not isinstance(links, list) or not links:
             continue
         name = _clean(payload.get("dataset_name")) or os.path.splitext(os.path.basename(path))[0]
+        # The linked values live in the dataset's CSV, the file a Dataset
+        # window compares its workbooks against when it opens.
+        csv_file = os.path.basename(_clean(payload.get("csv_file")))
+        values_mtime = _file_mtime(os.path.join(cache_dir, csv_file)) if csv_file else None
         # The Dataset Type Name travels with the usage so the manager can open
         # the exact instance: an instance whose name differs from its type is
         # addressed by both, and the client must not guess one from the other.
@@ -275,6 +322,7 @@ def _dataset_usages(
                 "name": name,
                 "dataset_type": dataset_type,
                 "method_type": method_type,
+                "values_mtime": values_mtime,
                 **entry,
             })
     return usages, errors
@@ -295,6 +343,7 @@ def _dfm_input_matrices(payload: Mapping[str, Any]) -> List[List[Any]]:
 
 def _dfm_usages(
     method_payloads: List[Tuple[str, Dict[str, Any] | None, str]],
+    method_mtimes: Mapping[str, float],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
     usages: List[Dict[str, Any]] = []
     errors: List[Dict[str, str]] = []
@@ -330,6 +379,8 @@ def _dfm_usages(
                 "kind": "dfm",
                 "name": name,
                 "method_type": dataset_sidecar_status_service.METHOD_TYPE_DFM,
+                # A DFM's linked values are stored in the method JSON itself.
+                "values_mtime": method_mtimes.get(path),
                 **entry,
             })
     return usages, errors
@@ -351,6 +402,7 @@ def _group_workbooks(usages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "method_type": usage.get("method_type", ""),
             "link_count": usage["link_count"],
             "cell_count": usage["cell_count"],
+            "values_mtime": usage.get("values_mtime"),
         })
     workbooks: List[Dict[str, Any]] = []
     for group in groups.values():
@@ -382,6 +434,9 @@ def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
     Created, Last Modified, and User columns. A workbook that carries none -
     a legacy ``.xls``, an encrypted package - keeps them blank; only a file
     this host cannot stat at all is reported as missing.
+
+    The same stat settles each usage's ``status``: the workbook's file time
+    against the time of the file holding that usage's linked values.
     """
 
     if not workbooks:
@@ -397,6 +452,8 @@ def _apply_workbook_stats(workbooks: List[Dict[str, Any]]) -> None:
         workbook["mtime"] = result.get("mtime") if ok else None
         for field in ("created", "modified", "last_modified_by"):
             workbook[field] = _clean(result.get(field)) if ok else ""
+        for usage in workbook["usages"]:
+            usage["status"] = excel_link_status(workbook["mtime"], usage.pop("values_mtime", None))
 
 
 def list_reserving_class_excel_links(project_name: str, reserving_class: str) -> Dict[str, Any]:
@@ -405,7 +462,10 @@ def list_reserving_class_excel_links(project_name: str, reserving_class: str) ->
     Reads every dataset sidecar and v2 DFM method JSON in the class, groups
     the references by workbook, and stamps ``exists``/``mtime`` plus each
     workbook's own document properties from this machine's view of the
-    workbook path. It is the registered
+    workbook path. Each usage also carries a ``status``
+    (``excel_link_status``): ``needs_review`` when the workbook was saved
+    after the dataset's CSV or the DFM's method JSON, so opening the manager
+    is itself the check for stale linked values. It is the registered
     ``excel_link_listing`` workspace read so both halves run on the ArcRho
     Server host: the scan because it is local disk there and one round trip
     per file from a Client PC, and the workbook stats because the server is
@@ -414,10 +474,11 @@ def list_reserving_class_excel_links(project_name: str, reserving_class: str) ->
     """
 
     sidecar_dir, method_dir = _require_reserving_class_dirs(project_name, reserving_class)
+    cache_dir = config.get_project_dataset_cache_dir(_clean(project_name), _clean(reserving_class))
     sidecar_paths = _list_json_files(sidecar_dir, _SIDECAR_FILE_RE)
-    method_paths = _list_json_files(method_dir, _DFM_METHOD_FILE_RE)
-    dataset_usages, dataset_errors = _dataset_usages(_read_json_files(sidecar_paths))
-    dfm_usages, dfm_errors = _dfm_usages(_read_json_files(method_paths))
+    method_mtimes = dict(_scan_json_files(method_dir, _DFM_METHOD_FILE_RE))
+    dataset_usages, dataset_errors = _dataset_usages(_read_json_files(sidecar_paths), cache_dir)
+    dfm_usages, dfm_errors = _dfm_usages(_read_json_files(list(method_mtimes)), method_mtimes)
     workbooks = _group_workbooks(dataset_usages + dfm_usages)
     _apply_workbook_stats(workbooks)
     return {
@@ -426,7 +487,7 @@ def list_reserving_class_excel_links(project_name: str, reserving_class: str) ->
         "reserving_class": _clean(reserving_class),
         "workbooks": workbooks,
         "dataset_scan_count": len(sidecar_paths),
-        "method_scan_count": len(method_paths),
+        "method_scan_count": len(method_mtimes),
         "errors": dataset_errors + dfm_errors,
     }
 
@@ -837,7 +898,9 @@ def _apply_dfm_refresh(
                 "A formula mixing Excel and dataset references must be refreshed from the DFM Links tab."
             )
             continue
-        result = _evaluate_internal_formula(expression, labels, values, col_index)
+        result = _evaluate_internal_formula(
+            expression, labels, values, col_index, merged["details_tab"]["decimal_places"]
+        )
         if result is None or result <= 0:
             failed += 1
             errors.append("The refreshed formula result must be a number greater than 0.")

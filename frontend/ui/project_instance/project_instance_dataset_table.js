@@ -1,4 +1,5 @@
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
+import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
 import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
 import {
   BERQUIST_SHERMAN_VARIANTS,
@@ -1808,21 +1809,8 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
 }
 
 function getDatasetStatusIconSvg(status) {
-  if (normalizeDatasetStatus(status) === 2) {
-    return `
-      <svg class="pi-status-icon warning" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-        <path class="pi-status-stroke" d="M9 2.3 16 15.2H2z"></path>
-        <path class="pi-status-dark-mark" d="M8.25 6h1.5v4.8h-1.5zm0 5.9h1.5v1.45h-1.5z"></path>
-      </svg>
-    `;
-  }
-  return `
-    <svg class="pi-status-icon updated" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-      <circle class="pi-status-stroke" cx="9" cy="9" r="7"></circle>
-      <circle class="pi-status-soft-fill" cx="9" cy="9" r="4.8"></circle>
-      <path class="pi-status-stroke" d="m6 9 2 2 4.1-4.2"></path>
-    </svg>
-  `;
+  // The shared glyphs, so the Excel Link Manager's Status column reads the same.
+  return reviewStatusIconSvg(normalizeDatasetStatus(status) === 2);
 }
 
 function getTemporaryDatasetStatusIconSvg(isIndexed) {

@@ -18,11 +18,13 @@
 // uses for a precedent.
 //
 // Everything about a workbook is answered by ArcRho Server: the listing's
-// found/missing verdict is whether the server can open the file, and a change
-// is an Engine-hosted job that opens the picked workbook there, refreshes every
-// affected dataset and DFM, and flags them and their dependents Needs Review.
-// Opening a workbook is the exception and runs on the client machine, through
-// the desktop host, because that is where Excel is.
+// found/missing verdict is whether the server can open the file, its Status
+// per row is whether the workbook was saved after the file holding that row's
+// linked values (so opening the window is itself the staleness check), and a
+// change is an Engine-hosted job that opens the picked workbook there,
+// refreshes every affected dataset and DFM, and flags them and their
+// dependents Needs Review. Opening a workbook is the exception and runs on the
+// client machine, through the desktop host, because that is where Excel is.
 //
 // Two messages go back to the Project Instance page, because the retarget
 // writes files the host is watching:
@@ -31,7 +33,7 @@
 //                                        the cached dataset table when files changed
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260907b";
-import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260818b";
+import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260911a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
@@ -82,6 +84,8 @@ export function normalizeExcelLinkWorkbooks(value) {
           name: text(usage?.name),
           datasetType: text(usage?.dataset_type),
           methodType: text(usage?.method_type),
+          // needs_review / updated, or blank when the server could not settle it.
+          status: text(usage?.status),
           linkCount: count(usage?.link_count),
           cellCount: count(usage?.cell_count),
         }))
@@ -90,7 +94,7 @@ export function normalizeExcelLinkWorkbooks(value) {
     .filter((item) => item.workbookPath);
 }
 
-export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRows, scanErrorCount }) {
+export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRows, needsReviewCount, scanErrorCount }) {
   const books = count(workbookCount);
   const total = count(totalRows);
   const visible = count(visibleRows);
@@ -99,9 +103,11 @@ export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRow
   const references = visible === total
     ? `${total} reference${total === 1 ? "" : "s"}`
     : `${visible} of ${total} references shown`;
+  const stale = count(needsReviewCount);
+  const review = stale ? ` ${stale} reference${stale === 1 ? " needs" : "s need"} review.` : "";
   const errors = count(scanErrorCount);
   const skipped = errors ? ` ${errors} file${errors === 1 ? "" : "s"} could not be read.` : "";
-  return `${workbooks}, ${references}.${skipped}`;
+  return `${workbooks}, ${references}.${review}${skipped}`;
 }
 
 export function excelLinkRetargetSummary(payload) {
@@ -219,6 +225,7 @@ function syncInventoryStatus() {
     workbookCount: manager.workbooks.length,
     visibleRows: manager.visibleRows,
     totalRows: manager.rows.length,
+    needsReviewCount: manager.rows.filter((row) => row.status === "needs_review").length,
     scanErrorCount: manager.scanErrorCount,
   }), manager.scanErrorCount ? "error" : "");
 }

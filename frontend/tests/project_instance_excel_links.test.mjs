@@ -14,10 +14,13 @@ const tableStubUrl = stubUrl(
 const TOOLTIP_IMPORT = /"\/ui\/shared\/components\/tooltip\/tooltip\.js\?v=\d{8}[a-z]"/;
 const MENU_IMPORT = /"\/ui\/shared\/components\/context_menu\/context_menu\.js\?v=\d{8}[a-z]"/;
 const TIMESTAMP_IMPORT = /"\/ui\/shared\/utils\/timestamp\.js\?v=\d{8}[a-z]"/;
+const STATUS_ICON_IMPORT = /"\/ui\/shared\/components\/status_icon\/status_icon\.js\?v=\d{8}[a-z]"/;
 // Not a stub: the table's Created and Last Modified must read exactly as the
 // dataset table's do, so the real shared formatter is what runs here.
 const timestampUrl = new URL("../ui/shared/utils/timestamp.js", import.meta.url).href;
 const { formatArcrhoTimestamp } = await import(timestampUrl);
+// Likewise the Status glyphs: the real module the dataset table draws from.
+const statusIconUrl = new URL("../ui/shared/components/status_icon/status_icon.js", import.meta.url).href;
 
 const rawModuleSource = await readFile(
   new URL("../ui/project_instance/excel_links_window.js", import.meta.url),
@@ -44,11 +47,16 @@ const excelLinksTable = await import(stubUrl(
   rawTableSource
     .replace(TOOLTIP_IMPORT, JSON.stringify(tooltipStubUrl))
     .replace(MENU_IMPORT, JSON.stringify(menuStubUrl))
-    .replace(TIMESTAMP_IMPORT, JSON.stringify(timestampUrl)),
+    .replace(TIMESTAMP_IMPORT, JSON.stringify(timestampUrl))
+    .replace(STATUS_ICON_IMPORT, JSON.stringify(statusIconUrl)),
 ));
 
 const htmlSource = await readFile(
   new URL("../ui/project_instance/project_instance.html", import.meta.url),
+  "utf8",
+);
+const datasetTableSource = await readFile(
+  new URL("../ui/project_instance/project_instance_dataset_table.js", import.meta.url),
   "utf8",
 );
 const windowHtmlSource = await readFile(
@@ -94,9 +102,9 @@ const LISTING = [
     link_count: 4,
     cell_count: 9,
     usages: [
-      { kind: "dataset", name: "Manual Paid", dataset_type: "Paid Loss", method_type: "None", link_count: 2, cell_count: 6 },
-      { kind: "dataset", name: "Manual Incurred", dataset_type: "Manual Incurred", method_type: "Result Selection", link_count: 1, cell_count: 2 },
-      { kind: "dfm", name: "Development", dataset_type: "", method_type: "DFM", link_count: 1, cell_count: 1 },
+      { kind: "dataset", name: "Manual Paid", dataset_type: "Paid Loss", method_type: "None", status: "needs_review", link_count: 2, cell_count: 6 },
+      { kind: "dataset", name: "Manual Incurred", dataset_type: "Manual Incurred", method_type: "Result Selection", status: "updated", link_count: 1, cell_count: 2 },
+      { kind: "dfm", name: "Development", dataset_type: "", method_type: "DFM", status: "updated", link_count: 1, cell_count: 1 },
     ],
   },
   {
@@ -108,7 +116,8 @@ const LISTING = [
     method_count: 1,
     link_count: 1,
     cell_count: 1,
-    usages: [{ kind: "dfm", name: "Tail", method_type: "DFM", link_count: 1, cell_count: 1 }],
+    // A workbook the server cannot open has no status to report.
+    usages: [{ kind: "dfm", name: "Tail", method_type: "DFM", status: "", link_count: 1, cell_count: 1 }],
   },
 ];
 
@@ -165,11 +174,12 @@ test("excelLinkDetailRows gives every usage its own row", () => {
 test("the table columns name the detail row and carry explicit widths", () => {
   assert.deepEqual(
     excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => col.key),
-    ["name", "methodType", "workbook", "folder", "lastModified", "created", "user"],
-    "Status and Links are gone; the used-by column became one row per object",
+    ["name", "status", "methodType", "workbook", "folder", "lastModified", "created", "user"],
+    "Status sits right after Dataset Name; the used-by column became one row per object",
   );
   const byKey = new Map(excelLinksTable.EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
   assert.equal(byKey.get("name").label, "Dataset Name");
+  assert.equal(byKey.get("status").label, "Status");
   assert.equal(byKey.get("methodType").label, "Method Type");
   assert.equal(byKey.get("folder").label, "Location");
   // The three workbook-metadata columns are named exactly as the dataset
@@ -215,6 +225,41 @@ test("column filters keep the rows every active column accepts", () => {
   excelLinksTable.pruneExcelLinkFilters(filters, rows);
   assert.deepEqual([...filters.get("name")], ["Manual Paid"]);
   assert.ok(!filters.has("type"), "a filter left with no live value is cleared");
+});
+
+test("the Status column is the dataset table's review glyph, settled by the listing", () => {
+  const rows = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  // Opening the window is the check: the server compares each workbook's file
+  // time with the file holding the row's linked values, and the row shows the
+  // verdict. A workbook the server cannot open settles nothing and stays blank.
+  assert.deepEqual(
+    rows.map((row) => [row.name, excelLinksTable.excelLinkCellText(row, "status")]),
+    [["Manual Paid", "Needs Review"], ["Manual Incurred", "Updated"], ["Development", "Updated"], ["Tail", ""]],
+  );
+  assert.deepEqual(
+    excelLinksTable.excelLinkColumnOptions(rows, "status").map((option) => option.label),
+    ["(blank)", "Needs Review", "Updated"],
+  );
+  // The glyph is the one the dataset table paints, from the one module both
+  // tables draw it from, coloured by the pi_table.css rules the window loads.
+  assert.match(rawTableSource, STATUS_ICON_IMPORT);
+  assert.match(datasetTableSource, STATUS_ICON_IMPORT);
+  assert.doesNotMatch(datasetTableSource, /pi-status-icon warning/, "the dataset table no longer carries its own copy");
+  assert.match(rawTableSource, /className = `pi-status-cell \$\{needsReview \? "warning" : "updated"\}`/);
+  assert.match(rawTableSource, /wrap\.innerHTML = reviewStatusIconSvg\(needsReview\)/);
+  assert.match(rawTableSource, /if \(!value\) return td;/, "a blank verdict leaves the cell empty");
+  assert.match(windowHtmlSource, /\/ui\/shared\/styles\/pi_table\.css\?v=\d{8}[a-z]/);
+  assert.match(windowCssSource, /td\.pi-excel-links-cell\.status \{\s*text-align: center;/);
+  // The status line counts the rows that need review.
+  assert.equal(
+    excelLinks.excelLinkInventorySummary({ workbookCount: 2, visibleRows: 4, totalRows: 4, needsReviewCount: 1 }),
+    "2 linked workbooks, 4 references. 1 reference needs review.",
+  );
+  assert.equal(
+    excelLinks.excelLinkInventorySummary({ workbookCount: 2, visibleRows: 4, totalRows: 4, needsReviewCount: 2, scanErrorCount: 1 }),
+    "2 linked workbooks, 4 references. 2 references need review. 1 file could not be read.",
+  );
+  assert.match(rawModuleSource, /needsReviewCount: manager\.rows\.filter\(\(row\) => row\.status === "needs_review"\)\.length/);
 });
 
 test("excelLinkInventorySummary counts workbooks, references, and hidden rows", () => {

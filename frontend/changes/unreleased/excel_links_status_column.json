@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links now checks every linked workbook when it opens and shows a Status column: a yellow Needs Review icon marks a dataset or DFM method whose workbook was saved after its linked values were last loaded.",
+  "details": [
+    "The check compares the workbook's saved time with the dataset's data file or the DFM method file, the same rule the Dataset window applies when it opens; a workbook the server cannot open leaves the cell blank.",
+    "The status line under the table counts the references that need review, and the column filters like every other."
+  ]
+}

@@ -15,7 +15,7 @@ import { installProjectInstanceDatasetCache } from "./project_instance_dataset_c
 import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824g";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260821a";
 import { installProjectInstanceDependencyGraph } from "./project_instance_dependency_graph.js?v=20260909a";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260824c";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260911a";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260817a";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260909a";

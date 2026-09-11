@@ -13,6 +13,11 @@
 // read server-side where the workbook lives, so they survive a copy or a move
 // that would reset the file's creation time.
 //
+// Status is the dataset table's review glyph, settled by the listing itself:
+// a workbook saved after the file that holds the row's linked values reads
+// Needs Review, otherwise Updated, and a verdict the server could not settle
+// leaves the cell blank.
+//
 // The table follows the pi-table column model used by the Project Instance
 // dataset table: every column carries an explicit width, a colgroup sets those
 // widths, and the table's own width is the sum, so a drag resizes only the
@@ -32,6 +37,7 @@
 // a row can raise (open the used-by object, open the row's context menu).
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
+import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
 import { formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a";
 
 // `width` is the fallback the column starts at before any rows arrive;
@@ -41,6 +47,8 @@ import { formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a
 // in excel_links_window.css).
 export const EXCEL_LINK_COLUMNS = [
   { key: "name", label: "Dataset Name", width: 200, minWidth: 90, maxAutoWidth: 300, filterable: true },
+  // An icon-only cell: the cap keeps the column at its header's width.
+  { key: "status", label: "Status", width: 76, minWidth: 60, maxAutoWidth: 76, filterable: true },
   { key: "methodType", label: "Method Type", width: 132, minWidth: 70, maxAutoWidth: 180, filterable: true },
   { key: "workbook", label: "Workbook", width: 190, minWidth: 90, maxAutoWidth: 300, filterable: true },
   { key: "folder", label: "Location", width: 280, minWidth: 90, maxAutoWidth: 420, filterable: true },
@@ -51,6 +59,9 @@ export const EXCEL_LINK_COLUMNS = [
 
 const COLUMN_BY_KEY = new Map(EXCEL_LINK_COLUMNS.map((col) => [col.key, col]));
 const BLANK_LABEL = "(blank)";
+// The listing's verdict per usage, and the text its filter offers.
+const STATUS_NEEDS_REVIEW = "needs_review";
+const STATUS_LABELS = { [STATUS_NEEDS_REVIEW]: "Needs Review", updated: "Updated" };
 // What a column needs beyond its text: cell padding for a body cell, and for a
 // header also the gap and the filter button that sit beside the label.
 const AUTOFIT_CELL_EXTRA_WIDTH = 20;
@@ -76,7 +87,7 @@ export function excelLinkDetailRows(workbooks) {
       lastModifiedBy: text(workbook?.lastModifiedBy),
     };
     if (!usages.length) {
-      rows.push({ ...base, kind: "", name: "", datasetType: "", methodType: "" });
+      rows.push({ ...base, kind: "", name: "", datasetType: "", methodType: "", status: "" });
       continue;
     }
     for (const usage of usages) {
@@ -86,6 +97,7 @@ export function excelLinkDetailRows(workbooks) {
         name: text(usage?.name),
         datasetType: text(usage?.datasetType),
         methodType: text(usage?.methodType),
+        status: text(usage?.status),
       });
     }
   }
@@ -106,6 +118,7 @@ export function excelLinkCellText(row, key) {
     return row?.kind === "dataset" ? "None" : "";
   }
   if (key === "name") return text(row?.name);
+  if (key === "status") return STATUS_LABELS[row?.status] || "";
   // Last Modified, Created, and User describe the workbook, not the dataset in
   // the row: they are the workbook's own document properties, read server-side
   // where the workbook lives. They repeat on every row of the same workbook,
@@ -379,6 +392,24 @@ export function createExcelLinksTable(options = {}) {
         onOpenUsage(row);
       });
       td.appendChild(open);
+      return td;
+    }
+
+    if (col.key === "status") {
+      // The dataset table's glyph, from the module that table draws it from;
+      // a verdict the server could not settle leaves the cell empty rather
+      // than showing a check the reader would trust.
+      if (!value) return td;
+      const needsReview = row.status === STATUS_NEEDS_REVIEW;
+      const wrap = document.createElement("span");
+      wrap.className = `pi-status-cell ${needsReview ? "warning" : "updated"}`;
+      wrap.setAttribute("aria-label", value);
+      wrap.innerHTML = reviewStatusIconSvg(needsReview);
+      const object = row.kind === "dfm" ? "DFM method" : "dataset";
+      attachArcrhoTooltip(td, needsReview
+        ? `${row.workbookName} was saved after this ${object}'s linked values were last loaded. Open the ${object} and refresh its links to review them.`
+        : `The linked values were loaded after ${row.workbookName} was last saved.`);
+      td.appendChild(wrap);
       return td;
     }
 

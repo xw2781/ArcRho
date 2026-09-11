@@ -10,11 +10,11 @@ Excluded directories: `.cache`, `.pytest_cache`, `__pycache__`, `dist`, `local_w
 | `(root)` | 10 |
 | `app_server` | 149 |
 | `build` | 59 |
-| `changes` | 1122 |
+| `changes` | 1123 |
 | `docs` | 115 |
 | `electron` | 14 |
 | `icons` | 18 |
 | `tests` | 232 |
 | `tools` | 2 |
-| `ui` | 648 |
+| `ui` | 649 |
 | `user-manual` | 18 |
