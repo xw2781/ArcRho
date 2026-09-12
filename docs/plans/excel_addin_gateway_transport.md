@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (4 of 9 done).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (4 of 9 done, step 5 written and checked but paused on an open decision about its measured speed).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -14,7 +14,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [x] | 2026-09-12 | Excel can now reach the ArcRho Server directly, and a one-line check says whether this PC can. |
 | 3 | The server can hand Excel a triangle's figures in one answer | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a triangle with its figures, so Excel will not have to open files on the shared drive. |
 | 4 | The server can hand Excel its period headings and project settings the same way | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a project's period headings or its settings with their figures, so every Excel formula has an answer that does not need the shared drive. |
-| 5 | Formulas get their figures from the server instead of the shared drive | [ ] | | |
+| 5 | Formulas get their figures from the server instead of the shared drive | [ ] | 2026-09-12 | In progress: formulas now read from the server and every figure matches the shared drive, but the server was not faster on the day, so whether to go on is a question for you. |
 | 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
@@ -74,6 +74,7 @@ Made 2026-09-12. An implementer who finds one of these no longer holds should st
 
 ## Open decisions
 
+- **Whether to go on deleting the share path when the speed gain no longer shows.** Step 5's recorded comparison on 2026-09-12 found every value identical on both paths — 566 cells across all six worksheet functions, and 1,104 more across twenty-three triangles in one class — but the Gateway was not faster: 0.60 s against the share's 0.46 s on the first workbook and 1.14 s against 1.03 s on the second, each the median of three alternating passes with the share's directory cache allowed to expire first. One dataset cost about 45 ms over the share and 50 ms over the server. That is not the 320 ms against 145 ms the plan measured on the same triangle the same week; the share half of that figure did not reproduce, which the plan's own caveat about day-to-day share latency anticipated. The measurement also does not cover what the plan expected the win to come from — a workbook spanning many reserving classes, and a dataset the Engine has to calculate. Recommended answer: keep going, because the values match, because the coarser view already works only on the server, and because the other reasons for the move — one call per formula, no request files, no view files, and the server owning the output location — do not depend on the timing; but re-run [check_gateway_transport.md](../../excel-addin/tools/check_gateway_transport.md) against a real multi-class workbook before step 6 deletes the share path, and record that result. Step 6 must not start until this is answered.
 - **How every Excel user gets a Gateway credential.** The credential is provisioned one user at a time by `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`, which writes the user's secret into the server registry and installs the client copy under their `%APPDATA%`. Nothing runs it automatically, so a user who has only ever opened Excel has no credential and, after step 6, no way to read project data. Recommended answer: run that command once per Excel user as part of the step 9 rollout, from the Server PC, and list the users in the step's commit message. Step 9 must not start until this is answered, because an unprovisioned user loses access rather than falling back.
 
 ## Where the duplication is today
@@ -180,7 +181,7 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Goal.** With a credential present, every worksheet function gets its figures from the Gateway. The share path stays in place for a user without a credential until step 6 removes it.
 
-**Read first.** [Decisions](#decisions) items 1, 3, 4 and 6; [Where the duplication is today](#where-the-duplication-is-today). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253), [Core.bas:443-600](../../excel-addin/src_vba/Core.bas#L443-L600), [Core.bas:1254-1310](../../excel-addin/src_vba/Core.bas#L1254-L1310); `GatewayClient.bas` from step 2; [ArcRhoFunctions.bas](../../excel-addin/src_vba/ArcRhoFunctions.bas); [Json.bas](../../excel-addin/src_vba/Json.bas); [ufSettings.frm](../../excel-addin/src_vba/ufSettings.frm) and [Core.bas:317-442](../../excel-addin/src_vba/Core.bas#L317-L442) for how a setting is stored. Steps 1 to 4 must be committed.
+**Read first.** [Decisions](#decisions) items 1, 3, 4 and 6; [Where the duplication is today](#where-the-duplication-is-today). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253), [Core.bas:443-600](../../excel-addin/src_vba/Core.bas#L443-L600), [Core.bas:1254-1310](../../excel-addin/src_vba/Core.bas#L1254-L1310); `GatewayClient.bas` from step 2; [ArcRhoFunctions.bas](../../excel-addin/src_vba/ArcRhoFunctions.bas); [Json.bas](../../excel-addin/src_vba/Json.bas); [ufSettings.frm](../../excel-addin/src_vba/ufSettings.frm) and [Core.bas:317-442](../../excel-addin/src_vba/Core.bas#L317-L442) for how a setting is stored. Steps 1 to 4 must be committed. Added while implementing: [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py) `build_engine_calculation_request` for the exact request body the add-in has to write by hand, and [main.py:600-635](../../server-components/src/arcrho_gateway/main.py#L600-L635) for what a refusal answers with; [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md), because steps 3 and 4 are not live until the Engine and the Gateway are redeployed and nothing in this step can be checked before that.
 
 **Do.**
 

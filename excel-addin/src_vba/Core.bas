@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "2.4.0"
+Public Const ARCRHO_VERSION As String = "2.5.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -12,6 +12,10 @@ Public disable_ufLoading As Boolean
 Public teamProfile As String
 Public debugMode As Boolean
 Public disableProgressBar As Boolean
+' Diagnostics only: read project data from the workspace share even when this PC
+' has an ArcRho Gateway credential, so the two paths can be compared cell by
+' cell. Off for everyone; ArcRhoForceSharePath turns it on.
+Public forceSharePath As Boolean
 
 ' Internal Controls
 Public disableRequest As Boolean
@@ -203,6 +207,22 @@ Public Function GetDataset(funcArgs As String)
         GoTo CleanExit
     End If
 
+    ' --- Case 0b: the ArcRho Server answers with the figures themselves ---
+    ' One signed call replaces the metadata looks, the request file and the poll
+    ' loop the share path below performs. The server owns the output location,
+    ' so nothing about a path, a user or a coarser view is sent.
+    If DatasetGatewayIsReady() Then
+        ufLoading.UpdateText "Updating [" & DatasetRequestLabel(funcArgs) & "]"
+        datasetFetchCount = datasetFetchCount + 1
+        datasetValues = GetDatasetFromGateway(funcArgs)
+        If IsArray(datasetValues) Then
+            StoreDatasetResult funcArgs, datasetValues
+            errCount = 0
+        End If
+        GetDataset = datasetValues
+        GoTo CleanExit
+    End If
+
     ' t1 = Timer
     ' Debug.Print "Time - Start: " & TimeMS()
 
@@ -308,6 +328,37 @@ ErrHandler:
 
 End Function
 
+
+' True when this PC should read project data from the ArcRho Server rather than
+' the workspace share: a credential is installed, the server advertises the
+' answer-with-figures operation, and the diagnostics setting is off.
+Private Function DatasetGatewayIsReady() As Boolean
+    If forceSharePath Then Exit Function
+    If Not GatewayIsConfigured() Then Exit Function
+    DatasetGatewayIsReady = GatewayServesDatasetCsv()
+End Function
+
+' What the loading window names while the server answers.
+Private Function DatasetRequestLabel(ByVal funcArgs As String) As String
+    DatasetRequestLabel = GetParamValue(funcArgs, "DatasetName")
+    If Len(DatasetRequestLabel) > 0 Then Exit Function
+    DatasetRequestLabel = GetParamValue(funcArgs, "Function")
+End Function
+
+' The dataset as the server sees it, or the reason it could not answer. The
+' server's own message is passed through, so a user is never told a file is
+' missing when the real cause was a refusal or an unreachable server.
+Private Function GetDatasetFromGateway(ByVal funcArgs As String)
+    Dim csvText As String
+    Dim message As String
+
+    If GatewayDatasetCsv(funcArgs, removeData, csvText, message) Then
+        GetDatasetFromGateway = DataArrayFromText(csvText)
+    Else
+        Debug.Print "[error] - ArcRho Server: "; message
+        GetDatasetFromGateway = "(" & message & ")"
+    End If
+End Function
 
 Private Function FolderExists(ByVal folderPath As String) As Boolean
     On Error GoTo Missing
@@ -421,6 +472,7 @@ Public Sub LoadConfig()
         Print #f, "teamProfile = Default"
         Print #f, "debugMode = False"
         Print #f, "disableProgressBar = False"
+        Print #f, "forceSharePath = False"
         Close #f
     End If
 
@@ -455,6 +507,9 @@ Public Sub LoadConfig()
 
                 Case "disableProgressBar"
                     disableProgressBar = CBool(Trim$(parts(1)))
+
+                Case "forcesharepath"
+                    forceSharePath = CBool(Trim$(parts(1)))
 
             End Select
         End If
@@ -1270,7 +1325,7 @@ Private Function IsJsonInteger(ByVal value As String) As Boolean
     IsJsonInteger = True
 End Function
 
-Private Function JsonQuote(ByVal value As String) As String
+Public Function JsonQuote(ByVal value As String) As String
     Dim i As Long
     Dim ch As String
     Dim code As Long
@@ -1310,19 +1365,30 @@ Public Function GetDataArray(dataPath As String)
 ' *----------------------------------------------*
 ' | Get the data array from an external csv file |
 ' *----------------------------------------------*
-    Dim outputArray() As Variant
-    Dim lines() As String
     Dim aFile As Integer
-    Dim dateTimeString As String
-    Dim data() As String
     Dim fileContent As String
-    Dim normalizedContent As String
-    Dim i As Long, j As Long
 
     aFile = FreeFile
     Open dataPath For Input As #aFile
     fileContent = Input$(LOF(aFile), #aFile)
     Close #aFile
+
+    GetDataArray = DataArrayFromText(fileContent)
+End Function
+
+Public Function DataArrayFromText(ByVal fileContent As String)
+' *-------------------------------------------------------------*
+' | Turn CSV text into the array a worksheet formula returns.    |
+' | The text is the same whether it came from a file on the      |
+' | share or from the ArcRho Server's answer, so both paths      |
+' | parse every number here and can never disagree about one.    |
+' *-------------------------------------------------------------*
+    Dim outputArray() As Variant
+    Dim lines() As String
+    Dim dateTimeString As String
+    Dim data() As String
+    Dim normalizedContent As String
+    Dim i As Long, j As Long
 
     normalizedContent = Replace(fileContent, vbCrLf, vbLf)
     normalizedContent = Replace(normalizedContent, vbCr, vbLf)
@@ -1332,7 +1398,7 @@ Public Function GetDataArray(dataPath As String)
 
     If Len(normalizedContent) = 0 Then
         ReDim outputArray(0 To 0, 0 To 0)
-        GetDataArray = outputArray
+        DataArrayFromText = outputArray
         Exit Function
     End If
 
@@ -1361,7 +1427,7 @@ Public Function GetDataArray(dataPath As String)
         Next j
     Next i
 
-    GetDataArray = outputArray
+    DataArrayFromText = outputArray
 End Function
 
 

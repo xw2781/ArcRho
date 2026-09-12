@@ -1,0 +1,13 @@
+{
+  "type": "improvement",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel formulas now get their figures from the ArcRho Server instead of opening files on the shared drive.",
+  "details": [
+    "A PC that has an ArcRho Server credential asks the server for a triangle, a vector, the period headings or the project settings in one request, and the server answers with the figures.",
+    "A triangle typed in at one set of periods and asked for at a coarser one is now rolled up on the server and nothing is left behind on the shared drive.",
+    "When the server cannot answer, the formula shows the server's own explanation instead of saying a file is missing.",
+    "A PC without a credential still reads from the shared drive exactly as before.",
+    "The add-in version moves to 2.5.0, which resets each user's saved add-in settings to their defaults on first use."
+  ]
+}

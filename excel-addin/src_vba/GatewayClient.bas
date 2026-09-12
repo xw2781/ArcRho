@@ -23,6 +23,22 @@ Public Const GATEWAY_ENGINE_CALCULATION_PATH As String = "/api/engine-calculatio
 ' The capabilities field naming the calculation operations this Gateway serves.
 Public Const GATEWAY_OPERATIONS_FIELD As String = "engine_calculation_operations"
 
+' --- begin gateway calculation names ---
+' The request and answer spellings arcrho_engine_calculation_contract owns.
+Private Const GATEWAY_CALCULATION_FUNCTION As String = "ArcRhoEngineCalculation"
+Private Const GATEWAY_CONTRACT_VERSION As String = "1"
+Private Const GATEWAY_OPERATION_DATASET_CSV As String = "dataset_csv"
+Private Const GATEWAY_OUTPUT_VARIANT As String = "canonical"
+Private Const GATEWAY_FORCE_REFRESH_OPTION As String = "force_refresh"
+Private Const GATEWAY_CSV_FIELD As String = "csv_text"
+' --- end gateway calculation names ---
+
+' How long the server may spend on one formula's figures, and how long this PC
+' waits for the answer. The margin is the contract's own
+' ENGINE_CALCULATION_HTTP_TIMEOUT_MARGIN_SECONDS.
+Private Const DATASET_WAIT_SECONDS As Long = 60
+Private Const DATASET_HTTP_TIMEOUT_SECONDS As Long = 75
+
 ' --- begin gateway signing vector ---
 ' One fixed request signed against sign_request in the contract above.
 ' "\uXXXX" stands for one character, so that this file stays ASCII.
@@ -48,6 +64,9 @@ Private gatewayUser As String
 Private gatewaySecret As String
 Private gatewayRequest As Object
 Private gatewayCapabilities As Object
+Private gatewayServesCsv As Boolean
+Private gatewayServesCsvRead As Boolean
+Private gatewayRequestCounter As Long
 
 ' True when this PC carries a credential the Gateway will accept.
 Public Function GatewayIsConfigured() As Boolean
@@ -170,6 +189,171 @@ Public Function GatewayAdvertises(ByVal fieldName As String, ByVal value As Stri
             Exit Function
         End If
     Next i
+End Function
+
+' True when this Gateway answers a dataset request with its figures. Asked once
+' per Excel session, so a formula never pays for the capabilities call.
+Public Function GatewayServesDatasetCsv() As Boolean
+    If Not gatewayServesCsvRead Then
+        gatewayServesCsvRead = True
+        gatewayServesCsv = GatewayAdvertises(GATEWAY_OPERATIONS_FIELD, GATEWAY_OPERATION_DATASET_CSV)
+    End If
+    GatewayServesDatasetCsv = gatewayServesCsv
+End Function
+
+' Ask the ArcRho Server for one dataset's figures. funcArgs is the request text
+' a worksheet function already builds; its pairs travel as they are, and the
+' server derives the dataset's location, the acting user and the shape itself.
+' Answers True with the CSV text, or False with the reason to show the user.
+Public Function GatewayDatasetCsv(ByVal funcArgs As String, ByVal forceRefresh As Boolean, _
+                                  ByRef outText As String, ByRef outMessage As String) As Boolean
+    Dim replyStatus As Long
+    Dim replyText As String
+    Dim reply As Object
+
+    outText = ""
+    outMessage = ""
+    If Not GatewayPost(GATEWAY_ENGINE_CALCULATION_PATH, _
+                       DatasetCalculationBody(funcArgs, forceRefresh), _
+                       DATASET_HTTP_TIMEOUT_SECONDS, replyStatus, replyText) Then
+        outMessage = "ArcRho Server not reached: " & OneLine(TextOrNoAnswer(replyText))
+        Exit Function
+    End If
+
+    Set reply = ParsedReply(replyText)
+    If replyStatus <> 200 Then
+        outMessage = "ArcRho Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
+        Exit Function
+    End If
+    If reply Is Nothing Then
+        outMessage = "ArcRho Server sent an answer this add-in could not read."
+        Exit Function
+    End If
+    If Not ReplyIsOk(reply) Then
+        outMessage = ReplyMessage(reply, replyText)
+        Exit Function
+    End If
+    If Not reply.Exists(GATEWAY_CSV_FIELD) Then
+        outMessage = "ArcRho Server answered without the dataset's figures."
+        Exit Function
+    End If
+
+    outText = CStr(reply(GATEWAY_CSV_FIELD))
+    GatewayDatasetCsv = True
+End Function
+
+' The request body the calculation contract validates: only the logical pairs
+' the worksheet function asked with, the operation, and the one option the
+' add-in's "always refresh" setting controls.
+Private Function DatasetCalculationBody(ByVal funcArgs As String, ByVal forceRefresh As Boolean) As String
+    Dim body As String
+
+    body = "{" & JsonQuote("Function") & ":" & JsonQuote(GATEWAY_CALCULATION_FUNCTION)
+    body = body & "," & JsonQuote("ContractVersion") & ":" & GATEWAY_CONTRACT_VERSION
+    body = body & "," & JsonQuote("RequestId") & ":" & JsonQuote(NextRequestId())
+    body = body & "," & JsonQuote("Pairs") & ":[" & RequestPairsJson(funcArgs) & "]"
+    body = body & "," & JsonQuote("TimeoutSeconds") & ":" & DATASET_WAIT_SECONDS
+    body = body & "," & JsonQuote("OutputVariant") & ":" & JsonQuote(GATEWAY_OUTPUT_VARIANT)
+    body = body & "," & JsonQuote("Operation") & ":" & JsonQuote(GATEWAY_OPERATION_DATASET_CSV)
+    body = body & "," & JsonQuote("Options") & ":{" & JsonQuote(GATEWAY_FORCE_REFRESH_OPTION) & _
+           ":" & JsonBoolean(forceRefresh) & "}"
+    body = body & "," & JsonQuote("UserName") & ":" & JsonQuote(gatewayUser)
+    body = body & "," & JsonQuote("UserDisplayName") & ":" & JsonQuote("") & "}"
+    DatasetCalculationBody = body
+End Function
+
+' "Key = Value" pairs, in the order the worksheet function wrote them: the
+' header function's own output name is derived from that order on the server.
+'
+' The name a worksheet formula gives is the name of one dataset in the class,
+' which is what the server calls the instance name. The share path says so by
+' choosing the instance name over the type name when it builds the file name;
+' this says the same thing by naming the instance, so the server can tell a
+' dataset whose own name differs from its type's from a stale cache.
+Private Function RequestPairsJson(ByVal funcArgs As String) As String
+    Dim lines() As String
+    Dim line As String
+    Dim key As String
+    Dim value As String
+    Dim sepPos As Long
+    Dim i As Long
+    Dim pairs As String
+    Dim instanceName As String
+    Dim namesInstance As Boolean
+
+    lines = Split(Replace(Replace(Replace(funcArgs, vbCrLf, "#"), vbCr, "#"), vbLf, "#"), "#")
+    For i = LBound(lines) To UBound(lines)
+        line = Trim$(lines(i))
+        sepPos = InStr(1, line, "=", vbBinaryCompare)
+        If sepPos > 1 Then
+            key = Trim$(Left$(line, sepPos - 1))
+            value = Trim$(Mid$(line, sepPos + 1))
+            If Len(key) > 0 Then
+                Select Case LCase$(key)
+                    Case "instancename"
+                        namesInstance = True
+                    Case "datasetname", "trianglename", "vectorname"
+                        If Len(instanceName) = 0 Then instanceName = value
+                End Select
+                If Len(pairs) > 0 Then pairs = pairs & ","
+                pairs = pairs & "[" & JsonQuote(key) & "," & JsonQuote(value) & "]"
+            End If
+        End If
+    Next i
+    If Not namesInstance And Len(instanceName) > 0 Then
+        pairs = pairs & ",[" & JsonQuote("InstanceName") & "," & JsonQuote(instanceName) & "]"
+    End If
+    RequestPairsJson = pairs
+End Function
+
+Private Function JsonBoolean(ByVal value As Boolean) As String
+    If value Then
+        JsonBoolean = "true"
+    Else
+        JsonBoolean = "false"
+    End If
+End Function
+
+' A token the server logs this request under. Unique within the session, and
+' made only of the characters the contract accepts.
+Private Function NextRequestId() As String
+    gatewayRequestCounter = gatewayRequestCounter + 1
+    NextRequestId = "excel-" & Format$(Now, "yyyymmdd-hhmmss") & "-" & gatewayRequestCounter
+End Function
+
+Private Function ParsedReply(ByVal replyText As String) As Object
+    On Error Resume Next
+    Set ParsedReply = JsonParse(replyText)
+End Function
+
+Private Function ReplyIsOk(ByVal reply As Object) As Boolean
+    If Not reply.Exists("ok") Then Exit Function
+    On Error Resume Next
+    ReplyIsOk = CBool(reply("ok"))
+End Function
+
+' What the server said went wrong, in the order the server says it: a refusal
+' carries "detail", a run that failed carries "message", and "status" is the
+' last resort before the raw answer.
+Private Function ReplyMessage(ByVal reply As Object, ByVal replyText As String) As String
+    Dim names As Variant
+    Dim i As Long
+
+    If Not reply Is Nothing Then
+        names = Array("message", "detail", "status")
+        For i = LBound(names) To UBound(names)
+            If reply.Exists(CStr(names(i))) Then
+                ReplyMessage = Trim$(CStr(reply(CStr(names(i)))))
+                If Len(ReplyMessage) > 0 Then Exit Function
+            End If
+        Next i
+    End If
+    ReplyMessage = OneLine(TextOrNoAnswer(replyText))
+End Function
+
+Private Function TextOrNoAnswer(ByVal text As String) As String
+    TextOrNoAnswer = Trim$(text)
+    If Len(TextOrNoAnswer) = 0 Then TextOrNoAnswer = "no answer"
 End Function
 
 ' Sign the fixed vector, then talk to the Gateway this PC is pointed at.

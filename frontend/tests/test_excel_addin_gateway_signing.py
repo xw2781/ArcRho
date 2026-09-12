@@ -24,8 +24,14 @@ if str(PYTHON_API_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_API_SRC))
 
 from arcrho_engine_calculation_contract import (
+    ENGINE_CALCULATION_CONTRACT_VERSION,
+    ENGINE_CALCULATION_CSV_FIELD,
+    ENGINE_CALCULATION_FUNCTION,
     ENGINE_CALCULATION_OPERATION_FIELD,
     ENGINE_CALCULATION_PATH,
+    OPERATION_DATASET_CSV,
+    OPERATION_OPTIONS,
+    OUTPUT_VARIANT_CANONICAL,
 )
 from arcrho_hosted_save_http_contract import (
     AUTH_SIGNATURE_HEADER,
@@ -142,6 +148,28 @@ class ExcelAddInGatewayConstantTests(unittest.TestCase):
         self.assertEqual(self.constants["HEADER_USER"], AUTH_USER_HEADER)
         self.assertEqual(self.constants["HEADER_TIMESTAMP"], AUTH_TIMESTAMP_HEADER)
         self.assertEqual(self.constants["HEADER_SIGNATURE"], AUTH_SIGNATURE_HEADER)
+
+    def test_calculation_request_names_match_the_contract(self) -> None:
+        """What the add-in has to write into the request body and read back out."""
+
+        self.assertEqual(
+            self.constants["GATEWAY_CALCULATION_FUNCTION"], ENGINE_CALCULATION_FUNCTION
+        )
+        self.assertEqual(
+            self.constants["GATEWAY_CONTRACT_VERSION"],
+            str(ENGINE_CALCULATION_CONTRACT_VERSION),
+        )
+        self.assertEqual(
+            self.constants["GATEWAY_OPERATION_DATASET_CSV"], OPERATION_DATASET_CSV
+        )
+        self.assertEqual(self.constants["GATEWAY_OUTPUT_VARIANT"], OUTPUT_VARIANT_CANONICAL)
+        self.assertEqual(self.constants["GATEWAY_CSV_FIELD"], ENGINE_CALCULATION_CSV_FIELD)
+
+    def test_the_only_option_the_add_in_sends_is_accepted(self) -> None:
+        self.assertIn(
+            self.constants["GATEWAY_FORCE_REFRESH_OPTION"],
+            OPERATION_OPTIONS[OPERATION_DATASET_CSV],
+        )
 
 
 if __name__ == "__main__":

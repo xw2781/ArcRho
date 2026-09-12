@@ -142,9 +142,30 @@ Private Function JsonParseString() As String
     Dim result As String
     Dim ch As String
     Dim hexValue As String
-    
+    Dim quotePos As Long
+    Dim escapePos As Long
+    Dim stopPos As Long
+
     JsonExpectChar """"
     Do While jsonPos <= Len(jsonText)
+        ' Take the whole run of ordinary characters at once. A dataset's figures
+        ' arrive as one JSON string of tens of thousands of characters, and
+        ' appending them one at a time copies the result again for every one.
+        quotePos = InStr(jsonPos, jsonText, """", vbBinaryCompare)
+        escapePos = InStr(jsonPos, jsonText, "\", vbBinaryCompare)
+        If quotePos = 0 Then quotePos = Len(jsonText) + 1
+        If escapePos = 0 Then escapePos = Len(jsonText) + 1
+        If escapePos < quotePos Then
+            stopPos = escapePos
+        Else
+            stopPos = quotePos
+        End If
+        If stopPos > jsonPos Then
+            result = result & Mid$(jsonText, jsonPos, stopPos - jsonPos)
+            jsonPos = stopPos
+        End If
+        If jsonPos > Len(jsonText) Then Exit Do
+
         ch = Mid$(jsonText, jsonPos, 1)
         jsonPos = jsonPos + 1
         Select Case ch
@@ -176,8 +197,6 @@ Private Function JsonParseString() As String
                     Case Else
                         Err.Raise 5, "JsonParse", "Invalid JSON escape."
                 End Select
-            Case Else
-                result = result & ch
         End Select
     Loop
     Err.Raise 5, "JsonParse", "Unterminated JSON string."
