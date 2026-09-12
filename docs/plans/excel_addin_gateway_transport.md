@@ -1,0 +1,270 @@
+# Excel Add-in over the ArcRho Gateway
+
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation not started (0 of 9 done).
+Last updated: 2026-09-12
+Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
+
+## Progress
+
+Plain-language tracking. The agent that finishes a step ticks its box, fills in the date, and leaves one short line on what a user would notice. Nothing technical goes here.
+
+| # | Step | Done | Date | What changed for the user |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [ ] | | |
+| 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [ ] | | |
+| 3 | The server can hand Excel a triangle's figures in one answer | [ ] | | |
+| 4 | The server can hand Excel its period headings and project settings the same way | [ ] | | |
+| 5 | Formulas get their figures from the server instead of the shared drive | [ ] | | |
+| 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
+| 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
+| 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
+| 9 | Released to the server and checked against a real workbook | [ ] | | |
+
+Overall: 0 of 9 steps done.
+
+## How agents work this plan
+
+- Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
+- Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date and the one-line user note, update the "Overall" count, and update the `Status:` line at the top and this plan's row in [README.md](README.md).
+- If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
+- Do not start a step while the previous one is uncommitted.
+
+## The question
+
+The add-in reads every dataset off the workspace share. On a Client PC each filesystem operation is a network round trip, and [Core.bas](../../excel-addin/src_vba/Core.bas) performs several per formula before it opens the CSV: a look and a timestamp on the project's dataset-type table, a look and a timestamp on the reserving-class index, a directory check, a file check, then the read. A calculated dataset adds a request file written onto the share and a poll loop that checks for the Engine's answer every tenth of a second.
+
+[hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) decided in August 2026 that Excel would coexist on SMB indefinitely, on the grounds that "HMAC and byte-exact canonical JSON in VBA is the expensive part". That premise was tested on 2026-09-12 and is wrong, which is why this plan exists.
+
+## What was measured
+
+On the developer Client PC (`L-H2MQ6280FVP`) against the stored triangle `Net Loss--Incurred Adjusted***` in `NJ_Annual_Prod_202605_Fake`, reserving class `HPPREF_\_HO+DF_\_NJ_\_Legacy_\_HOL`. One pass is the metadata looks and the CSV read that one warm formula performs today, against one hosted read of the same dataset. Eight alternating passes.
+
+| Path for one warm formula | Median |
+| :--- | :--- |
+| The share, in the order the add-in visits it | 320 ms |
+| `dataset_cache_load` through the Gateway | 145 ms |
+
+Two caveats. The HTTP figure built a fresh connection every pass and still returned 140 KB of JSON against a 33 KB CSV, so a reused connection and a leaner payload widen the gap. Share latency on this network varies between days, as the "PI path-load SMB cost" memory records, so treat the ratio rather than the absolute numbers as the result.
+
+The larger win is not in that table. A calculated dataset today costs a request-file write plus a poll loop; the Gateway already hosts that whole exchange as one call, and the transport plan measured the exchange at roughly 3 s of a 15 s length-change run before it was hosted.
+
+## What was proven
+
+Both on 2026-09-12, on the developer Client PC, from a standalone script using the same late-bound COM objects and the same HTTP object VBA has:
+
+- **The signature matches byte for byte.** `System.Security.Cryptography.SHA256Managed` and `HMACSHA256` through `CreateObject`, UTF-8 bytes through `ADODB.Stream`, hex through the `bin.hex` node type of `MSXML2.DOMDocument`. Compared against `sign_request` in [arcrho_hosted_save_http_contract.py](../../python-api/src/arcrho_hosted_save_http_contract.py) on a payload containing a non-ASCII dataset name: identical body digest and identical signature. No new add-in reference, no pure-VBA crypto, nothing beyond what Windows ships.
+- **A live authenticated read works.** A signed `table_summary` read for the fake project returned 200 with a real summary of the 84 MB source table in 0.105 s, using the credential already installed at `%APPDATA%\ArcRho\arcrho_gateway.json`.
+
+The canonical-JSON half of the old objection turns out not to apply. The signature covers the SHA-256 of the exact bytes the client sends, so a client only has to hash its own body. Sorted canonical JSON is used for the save fingerprint, and the read and calculation transports keep no idempotency receipt by contract, so neither needs it.
+
+The Gateway's advertised capabilities on the same day already included `dataset_cache_load`, `dataset_index`, `dataset_grid_load`, and the `ArcRhoTri` / `ArcRhoVec` / `ArcRhoHeaders` functions with the `exchange`, `dataset_run`, and `dataset_precheck` operations.
+
+## Decisions
+
+Made 2026-09-12. An implementer who finds one of these no longer holds should stop and record it under "Open decisions".
+
+1. **Straight to the Gateway, not through the local app server.** The add-in signs its own requests and posts them. The alternative, hopping through the ArcRho app already running on the same PC, needs no signing code at all, but it requires the desktop app to be open, and an Excel-only user will not always have it. Chosen for that reason alone; the hop remains the fallback design if signing ever becomes a problem.
+2. **The answer carries CSV text, not a JSON grid.** One field holds exactly the text the CSV would have held, produced by the same `pandas` call the runtime already uses to materialize one, so [GetDataArray](../../excel-addin/src_vba/Core.bas#L1254) is reused unchanged and no number can parse differently than it does today. A JSON grid would need a second numeric path in VBA and a larger payload for no gain.
+3. **One call per formula.** A new operation on the hosted calculation route resolves the cache, rolls a coarser view up in memory, runs the Engine only when the dataset genuinely needs it, and returns the figures in the same answer. Asking the existing precheck first and loading second is two round trips, which measured barely better than the share.
+4. **The server owns the output location.** Only logical names travel: project, reserving-class path, dataset name, the two period lengths, and the two flags. The server derives the path with [set_data_path_like_vba](../../frontend/app_server/helpers.py#L137), the canonical builder already named for this rule. The add-in's own path building and its folder-name and filename escaping are deleted rather than kept in parallel.
+5. **No coarser-view files on the HTTP path.** Those files exist only because a worksheet formula could not be handed a frame in memory. Over HTTP it can, and the runtime already registers an in-memory roll-up handle when it is not materializing. The materializing producer and its Engine handler are removed once the share path is gone, not before.
+6. **This is a replacement, not a fallback.** Per the "Server-Hosted Project Data I/O" rule in [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md), the share path is not kept as a safety net. Step 5 adds the HTTP path and chooses it whenever a credential is present, which is a rollout window; step 6 deletes the share path. The add-in is loaded from the share on every launch, so every user is on the new version as soon as it is released, and the "All users run the latest app version" memory makes old-client compatibility a non-goal.
+7. **Shared library files stay on the share.** The reserving-class input CSV under `library\`, the version-track document, the team profile workbook, and the add-in itself are not project data and are out of scope.
+
+## Open decisions
+
+- **How every Excel user gets a Gateway credential.** The credential is provisioned one user at a time by `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`, which writes the user's secret into the server registry and installs the client copy under their `%APPDATA%`. Nothing runs it automatically, so a user who has only ever opened Excel has no credential and, after step 6, no way to read project data. Recommended answer: run that command once per Excel user as part of the step 9 rollout, from the Server PC, and list the users in the step's commit message. Step 9 must not start until this is answered, because an unprovisioned user loses access rather than falling back.
+
+## Where the duplication is today
+
+Moving to HTTP is also the removal of four copies of a server-owned rule from the add-in. Naming them here so an implementer does not preserve them out of habit.
+
+| Rule | Canonical owner | Copy in the add-in |
+| :--- | :--- | :--- |
+| Where a dataset's CSV lives | [set_data_path_like_vba](../../frontend/app_server/helpers.py#L137) | [BuildDatasetRequestSpec](../../excel-addin/src_vba/Core.bas#L449) |
+| How a name becomes a folder or file name | `encode_filename_segment` in [arcrho_project_duplication_contract.py](../../python-api/src/arcrho_project_duplication_contract.py), documented in [filename-escaping-rules.md](../../server-components/docs/filename-escaping-rules.md) | [Core.bas:1041-1069](../../excel-addin/src_vba/Core.bas#L1041-L1069) |
+| Whether a dataset type is Engine-generated | [dataset_type_contract.py](../../python-api/src/arcrho_api/dataset_type_contract.py) and the project's dataset-type table | [ResolveDatasetRequestMode](../../excel-addin/src_vba/Core.bas#L629) and the generated-flag cache below it |
+| When a coarser view is possible and when it is stale | [materialize_dataset_view](../../frontend/app_server/services/arcrho_runtime_service.py#L1173) and the runtime's roll-up rules | [DatasetViewStoredFile](../../excel-addin/src_vba/Core.bas#L791) and [DatasetViewIsStale](../../excel-addin/src_vba/Core.bas#L843) |
+
+## Code evidence and ownership
+
+- [Core.bas](../../excel-addin/src_vba/Core.bas): [GetDataset:144-253](../../excel-addin/src_vba/Core.bas#L144-L253) is the single entry every worksheet function funnels through. It resolves the request mode, derives the CSV path, reuses the file when one exists, otherwise deletes the cache, writes a request file with [SendRequest:1082](../../excel-addin/src_vba/Core.bas#L1082) and polls with `WaitForFileReady`. [GetDataArray:1254](../../excel-addin/src_vba/Core.bas#L1254) turns CSV text into the array a formula returns; it takes a path today and is the one piece that must survive unchanged.
+- [ArcRhoFunctions.bas](../../excel-addin/src_vba/ArcRhoFunctions.bas): `ArcRhoTri:2`, `ArcRhoVec:192`, `ArcRhoHeaders:111` and `ArcRhoProjectSettings:285` call `GetDataset` directly. `ArcRhoTriDiag:56`, `ArcRhoTriCell:87`, `ArcRhoTriOrigin:143` and `ArcRhoVecCell:224` each re-enter through `ArcRhoTri` or `ArcRhoVec`, so a sheet of single-cell formulas fetches the same dataset once per cell. The `ADAS*` aliases from 306 onwards delegate to the same functions and need no change.
+- `processedArrays` and `processedCells` are declared in [Core.bas:24-25](../../excel-addin/src_vba/Core.bas#L24-L25) but populated only by the development helper in [DevScratch.bas](../../excel-addin/src_vba/DevScratch.bas); the ribbon's refresh loops in [RibbonActions.bas:100-215](../../excel-addin/src_vba/RibbonActions.bas#L100-L215) fill them through `SearchArcRhoFormulas:261` and refresh a block at a time with `RefreshArcRhoBlock` in [Utilities.bas:249](../../excel-addin/src_vba/Utilities.bas#L249). There is no cache of dataset contents anywhere.
+- [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py): `ENGINE_CALCULATION_KINDS` names the three hosted functions and their exact request-file keys; `OPERATIONS` and `OPERATION_OPTIONS` are the tables a new operation is added to. `SERVER_OWNED_REQUEST_KEYS` is why a client may not name an output path. `DATASET_VIEW_REQUEST_KEY` is deliberately absent from every kind and stays absent.
+- [engine_calculation_service.py:182-238](../../frontend/app_server/services/engine_calculation_service.py#L182-L238): `execute_hosted_engine_calculation` is the one function the Gateway calls, and its operation branches are where a new operation is implemented. [engine_calculations.py](../../server-components/src/arcrho_gateway/engine_calculations.py) forwards the operation name and needs no change of its own, but the Gateway bundles `frontend/app_server`, so it is redeployed.
+- [arcrho_runtime_service.py](../../frontend/app_server/services/arcrho_runtime_service.py): `run_arcrho_tri:2425` is the whole dataset route. `resolve_local_triangle_cache:996` resolves or derives a triangle and, at [956-981](../../frontend/app_server/services/arcrho_runtime_service.py#L956-L981), either registers an in-memory roll-up handle or writes the CSV with `pd.DataFrame(values).to_csv(header=False, index=False)`; that call is the parity anchor for the text a hosted answer returns. `materialize_dataset_view:1173` is the producer step 7 removes. `arcrho_headers:1484` already returns values rather than a path.
+- [dataset_service.py](../../frontend/app_server/services/dataset_service.py): `get_dataset:1503` resolves a registered handle, preferring the in-memory roll-up over the file; `load_cached_dataset_values:1941` is the existing hosted read that proved the measurement.
+- [arcrho_hosted_save_http_contract.py](../../python-api/src/arcrho_hosted_save_http_contract.py): `sign_request:102` and `verify_request_signature:127` own the signature; the message is the casefolded user, the Unix timestamp, the method, the path, and the hex digest of the body, joined by newlines. `normalize_client_config:225` owns the client credential file's shape. Skew is 300 seconds, so the add-in must send UTC seconds.
+- [main.py](../../server-components/src/arcrho_gateway/main.py): the HTTP surface. `GET /api/health` and `GET /api/capabilities` are unauthenticated; the four POST paths are signed. Capabilities is how a client discovers whether an operation exists before using it.
+- The cross-language pin precedent this plan follows for VBA: [log_retention.js](../../frontend/electron/log_retention.js) mirrors a Python contract and [log_retention.test.mjs](../../frontend/tests/log_retention.test.mjs) fails until the mirror follows, as the "Log File Retention" rule in [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md) describes.
+
+## Plan
+
+Nine steps. Steps 1 and 2 are independent of each other and of everything else, and 3 and 4 are independent of 1 and 2; every other step depends on the one before it. Every step that changes a file under `excel-addin/` ends with the build and release scripts from [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md), and the "Excel add-in build needs the server clone" memory applies: those scripts cannot run from the Client PC, so a step that cannot run them says so in its commit message and leaves the release to step 9.
+
+Every step that changes user-visible behaviour adds a fragment under `frontend/changes/unreleased/` with scope `excel add-in`, the way [excel_addin_requested_dataset_shape.json](../../frontend/changes/unreleased/excel_addin_requested_dataset_shape.json) does.
+
+### Step 1 — One dataset is fetched once per recalculation
+
+**Goal.** A dataset that several formulas ask for during one recalculation is fetched once. This removes most of the add-in's reads on a real workbook and is worth having whichever transport is underneath, so it lands first and independently.
+
+**Read first.** [The question](#the-question), [Code evidence and ownership](#code-evidence-and-ownership). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253) and [Core.bas:1-60](../../excel-addin/src_vba/Core.bas#L1-L60) for the module-level state; [ArcRhoFunctions.bas:1-260](../../excel-addin/src_vba/ArcRhoFunctions.bas#L1-L260); [RibbonActions.bas:60-215](../../excel-addin/src_vba/RibbonActions.bas#L60-L215) and `SearchArcRhoFormulas` at 261; [Utilities.bas:249-300](../../excel-addin/src_vba/Utilities.bas#L249-L300). The `$arcrho-ui-design` skill does not apply; there is no UI change here.
+
+**Do.**
+
+- [ ] Add a module-level dictionary in `Core.bas` keyed by the request text `GetDataset` already receives, holding the array it returned. Look it up at the top of `GetDataset` and fill it on every successful return, for all three request modes.
+- [ ] Clear the dictionary at the start of every full recalculation and every ribbon refresh: the existing entry points in `RibbonActions.bas` already bracket those passes, and `removeData` being on must bypass the cache entirely rather than serve a stale entry.
+- [ ] Clear it as well when the add-in's own refresh writes a block, so a refreshed dataset is not served from the pass that preceded it.
+- [ ] Leave the two file-freshness caches for the dataset-type table and the class index exactly as they are; they are removed in step 6 along with the rest of the share path.
+- [ ] Bump `ARCRHO_VERSION` in [Core.bas:4](../../excel-addin/src_vba/Core.bas#L4). Note in the commit message that this resets each user's saved add-in settings, because [LoadConfig](../../excel-addin/src_vba/Core.bas#L317) deletes a config file whose version differs.
+
+**Tests.** No automated harness covers VBA, so the check is a recorded manual one. Add `excel-addin/tools/check_dataset_cache.md` describing the two-minute check: a sheet with one array formula and twenty single-cell formulas over the same triangle, the add-in's debug output on, and the count of dataset fetches before and after. Record the two counts in the commit message and in the Progress row.
+
+**Done when.** A sheet of twenty single-cell formulas over one triangle fetches that triangle once per recalculation instead of twenty times, a ribbon refresh still picks up an edited dataset, and turning the "always refresh" setting on still bypasses every cache.
+
+### Step 2 — The add-in can sign and send one Gateway request
+
+**Goal.** A new VBA module finds the user's credential, signs a request the way the server verifies it, and posts it. Nothing in the add-in uses it yet, and a check the implementer can run proves the signature matches the server's.
+
+**Read first.** [What was proven](#what-was-proven), [Decisions](#decisions) item 1. [arcrho_hosted_save_http_contract.py](../../python-api/src/arcrho_hosted_save_http_contract.py) (whole file); [main.py:490-560](../../server-components/src/arcrho_gateway/main.py#L490-L560) for the paths and headers; [Core.bas:1018-1040](../../excel-addin/src_vba/Core.bas#L1018-L1040) for the existing UTF-8 file helpers and [Json.bas](../../excel-addin/src_vba/Json.bas) for the parser already in the add-in; [log_retention.test.mjs](../../frontend/tests/log_retention.test.mjs) as the pinning pattern to copy. The "Python test runner" memory: pytest lives in the repo-local `.pytest-tools`.
+
+**Do.**
+
+- [ ] Add `excel-addin/src_vba/GatewayClient.bas`: read and cache the credential file from `%APPDATA%\ArcRho\arcrho_gateway.json`, treating a missing or disabled file as "no gateway"; UTF-8 bytes through `ADODB.Stream` skipping the byte-order mark; SHA-256 and HMAC-SHA256 hex through the late-bound .NET classes with hex via the `bin.hex` node; UTC Unix seconds through `WbemScripting.SWbemDateTime`; one `POST` through `WinHttp.WinHttpRequest.5.1` returning status and body. Reuse one request object across calls so the connection is not rebuilt per formula.
+- [ ] Give the module one public entry that takes a path, a body, and a timeout and answers with status and text, plus a public check routine that signs the fixed vector below and reports whether it matches.
+- [ ] Add `excel-addin/tools/verify_gateway_signing.vbs`: the same helpers standalone, printing the digest and signature for the fixed vector, so the check can be run without opening Excel. Keep the expected values in one named constant block at the top of the file.
+- [ ] Add a health and capabilities call to the module so later steps can ask whether an operation is advertised before using it.
+
+**Tests.** New `frontend/tests/test_excel_addin_gateway_signing.py`: derive the digest and signature for the fixed vector from `arcrho_hosted_save_http_contract`, read the constant block out of `verify_gateway_signing.vbs`, and assert they agree, so a change on either side fails. Use the vector proved on 2026-09-12: secret `probe-secret-value`, user `XWei`, timestamp `1757650000`, method `POST`, path `/api/workspace-reads`, body `{"Function":"ArcRhoWorkspaceRead","Name":"Net Loss--Paid é"}`, giving digest `bede0538b3ba1824f3572ce81a492868099b0bfc4ba90b1ce9c105cb3cfc5656` and signature `3a81facfc86c05784d7978f8a2f2de06b6172b513c9f75d496777aff6008d2d0`.
+
+**Done when.** The new test passes, the standalone script prints those two values on a Client PC, and the check routine run from Excel reports a successful capabilities call against the live Gateway.
+
+### Step 3 — The server answers a dataset request with its figures
+
+**Goal.** One hosted operation takes the add-in's logical dataset request and answers with the CSV text the add-in would have read, resolving the cache, rolling a coarser view up in memory, and running the Engine only when needed.
+
+**Read first.** [Decisions](#decisions) items 2 to 5, [Code evidence and ownership](#code-evidence-and-ownership). [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py) (whole file); [engine_calculation_service.py:150-260](../../frontend/app_server/services/engine_calculation_service.py#L150-L260); [arcrho_runtime_service.py:900-1000](../../frontend/app_server/services/arcrho_runtime_service.py#L900-L1000) (the materialize-or-register branch), `resolve_local_triangle_cache:996`, `materialize_dataset_view:1173`, `run_arcrho_tri:2425`; [dataset_service.py:1503-1535](../../frontend/app_server/services/dataset_service.py#L1503-L1535); [test_arcrho_router_hosted_operations.py](../../frontend/tests/test_arcrho_router_hosted_operations.py), [test_manual_dataset_rollup_view.py](../../frontend/tests/test_manual_dataset_rollup_view.py), [test_engine_calculation_in_process.py](../../frontend/tests/test_engine_calculation_in_process.py). Memories: "Method precision: observed, not projected", "Engine stored lengths are source granularity", "origin_length is NOT the row count". AGENT_GUIDELINES "Single Source of Truth" and "Minimal Diff".
+
+**Do.**
+
+- [ ] Add one operation to `OPERATIONS`, to `OPERATION_OPTIONS`, and to the `operations` tuple of the `ArcRhoTri` and `ArcRhoVec` kinds in the contract. Its options are the run's existing `force_refresh`, `local_only` and `allow_derived`; it accepts no output variant other than the canonical one and no session id, and `DATASET_VIEW_REQUEST_KEY` stays absent from every kind.
+- [ ] Add a service function in `arcrho_runtime_service.py` that derives the path with the canonical builder, runs the dataset route, then produces the text: from the registered in-memory roll-up when one exists, otherwise from the resolved file. Serialize with the same `pd.DataFrame(values).to_csv(header=False, index=False)` call the materializing branch uses, into a string buffer, so the text cannot differ from the file's.
+- [ ] Branch to it from `execute_hosted_engine_calculation`, returning the run's own status fields alongside the text so a failure still reports why, and never writing a view file on this path.
+- [ ] Confirm a hand-entered triangle asked for at a coarser shape is answered from the in-memory roll-up with no file appearing in the class's view folder.
+
+**Tests.** `python-api/tests` gains the contract cases: the new operation is accepted for both dataset functions and refused for the headers function, its option table rejects an unlisted option, and a request naming a server-owned key or the view key is still refused. `test_arcrho_router_hosted_operations.py` gains: the operation returns text for a cached triangle; the text is byte-identical to the file the same request writes through the existing run; a generated dataset that needs the Engine returns the run's failure status and no text when the Engine does not answer. `test_manual_dataset_rollup_view.py` gains a coarser-shape case asserting the text matches the materialized view byte for byte and that no file was created.
+
+**Done when.** For a stored triangle, a coarser view of a hand-entered triangle, and a generated dataset, the hosted operation's text equals the CSV the share path produces byte for byte, and the coarser case writes nothing to disk.
+
+### Step 4 — The server answers headings and project settings the same way
+
+**Goal.** The period-heading and project-settings formulas can be served over HTTP too, so no worksheet function is left needing the share.
+
+**Read first.** [Decisions](#decisions) item 2. [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py) `ENGINE_CALCULATION_KINDS`; [arcrho_runtime_service.py:1484-1560](../../frontend/app_server/services/arcrho_runtime_service.py#L1484-L1560) (`arcrho_headers`); [arcrho_router.py:108-135](../../frontend/app_server/api/arcrho_router.py#L108-L135); [ArcRhoFunctions.bas:111-142](../../excel-addin/src_vba/ArcRhoFunctions.bas#L111-L142) and [ArcRhoFunctions.bas:285-292](../../excel-addin/src_vba/ArcRhoFunctions.bas#L285-L292) for what the two formulas expect back; [Core.bas:583-590](../../excel-addin/src_vba/Core.bas#L583-L590) for the unscoped request path they use; [test_arcrho_router_hosted_operations.py](../../frontend/tests/test_arcrho_router_hosted_operations.py). Step 3 must be committed first, because this reuses its operation.
+
+**Do.**
+
+- [ ] Extend the headings kind with the step 3 operation, served by the existing headings service, which already answers with values rather than a path.
+- [ ] Register the project-settings function as a hosted kind with its exact request-file keys, no reserving class, the canonical output variant only, and the step 3 operation.
+- [ ] Return both as the same text field step 3 defined, so the add-in has one answer shape to parse.
+
+**Tests.** `python-api/tests`: both kinds accept the operation and refuse an unlisted key. `test_arcrho_router_hosted_operations.py`: the headings answer matches the existing route's values for the same request, and the project-settings answer matches the CSV the share path produces.
+
+**Done when.** All four worksheet functions have a hosted answer, and each one's text matches what the share path produces for the same request.
+
+### Step 5 — Formulas read through the Gateway
+
+**Goal.** With a credential present, every worksheet function gets its figures from the Gateway. The share path stays in place for a user without a credential until step 6 removes it.
+
+**Read first.** [Decisions](#decisions) items 1, 3, 4 and 6; [Where the duplication is today](#where-the-duplication-is-today). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253), [Core.bas:443-600](../../excel-addin/src_vba/Core.bas#L443-L600), [Core.bas:1254-1310](../../excel-addin/src_vba/Core.bas#L1254-L1310); `GatewayClient.bas` from step 2; [ArcRhoFunctions.bas](../../excel-addin/src_vba/ArcRhoFunctions.bas); [Json.bas](../../excel-addin/src_vba/Json.bas); [ufSettings.frm](../../excel-addin/src_vba/ufSettings.frm) and [Core.bas:317-442](../../excel-addin/src_vba/Core.bas#L317-L442) for how a setting is stored. Steps 1 to 4 must be committed.
+
+**Do.**
+
+- [ ] Split `GetDataArray` so the text-to-array conversion is a function taking text, and have the existing path read the file and call it. Nothing about the conversion changes.
+- [ ] In `GetDataset`, when the Gateway is configured and advertises the operation, build the logical pairs from the request text, post one call, and convert the returned text. Send no path, no user name and no view key; the server owns all three.
+- [ ] Carry a failure through as the message the server gave, not as a file-not-found, so a user sees why. Keep the existing loading indicator around the call.
+- [ ] Reuse the step 1 cache for the HTTP answers unchanged, so the two paths cache identically.
+- [ ] Add one setting that forces the share path, defaulting to off, for diagnosing a difference between the two. Bump `ARCRHO_VERSION` so the setting reaches existing users.
+- [ ] Add a change fragment under `frontend/changes/unreleased/`.
+
+**Tests.** Manual, recorded: add `excel-addin/tools/check_gateway_transport.md` describing the comparison. One workbook covering an array triangle, a single cell, a diagonal, a vector, headings and project settings, evaluated with the force setting on and off, values compared cell by cell, and the elapsed time of a full recalculation recorded for both. Put the two times and the comparison result in the commit message and the Progress row.
+
+**Done when.** Every cell of the check workbook holds the same value on both paths, and a full recalculation over the Gateway is measurably faster than the same recalculation forced onto the share.
+
+### Step 6 — The add-in stops reading project data from the share
+
+**Goal.** Delete the share path and the four copied rules with it, so the add-in reaches project data only over HTTP and a missing credential is an explicit, readable failure.
+
+**Read first.** [Decisions](#decisions) items 4, 6 and 7; [Where the duplication is today](#where-the-duplication-is-today); the "Server-Hosted Project Data I/O" rule in [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md); the [Open decisions](#open-decisions) entry, which must be answered before step 9 but not before this step. [Core.bas](../../excel-addin/src_vba/Core.bas) whole file; [Utilities.bas:140-190](../../excel-addin/src_vba/Utilities.bas#L140-L190) (`WaitForFileReady`); [RibbonActions.bas:60-215](../../excel-addin/src_vba/RibbonActions.bas#L60-L215). Step 5 must be committed and its comparison recorded.
+
+**Do.**
+
+- [ ] Remove from `Core.bas`: the request-mode resolution and the dataset-type generated-flag cache, the class-index cache and the coarser-view naming and staleness checks, the path building and the project, class and file-name escaping, the request-file writer and its JSON helpers, and the folder creation and cache deletion the share path needed.
+- [ ] Remove `WaitForFileReady` and the force-the-share setting added in step 5, together with the config key and its control.
+- [ ] Replace a missing or disabled credential with one clear message naming what to do, not a file path.
+- [ ] Keep `ProductRootPath` and `ProductPath`: the add-in itself, the reserving-class input CSV, the version-track document and the team profile workbook still live on the share and are not project data.
+- [ ] Confirm no remaining reference in `excel-addin/src_vba/` opens anything under a project's data folder.
+- [ ] Bump `ARCRHO_VERSION` and add a change fragment.
+
+**Tests.** Manual, recorded: re-run the step 5 check workbook and confirm every value is unchanged. Then rename the credential file aside and confirm every formula reports the new message rather than a path or a blank, and restore it. Record both in the commit message.
+
+**Done when.** Nothing under `excel-addin/src_vba/` touches a project data folder, the check workbook's values are unchanged from step 5, and a user without a credential gets one readable message.
+
+### Step 7 — The coarser-view files stop being written
+
+**Goal.** With no worksheet formula reading a CSV any more, the one producer that materializes a coarser view of a hand-entered dataset is removed, along with the Engine handler and the request key that reached it.
+
+**Read first.** [Decisions](#decisions) item 5; the commit that added this producer, `21d2cda9`. [arcrho_runtime_service.py:1173-1200](../../frontend/app_server/services/arcrho_runtime_service.py#L1173-L1200) and the `write_input_view` and `materialize_path` arguments of `resolve_local_triangle_cache:996`; [main.py:470-530](../../server-components/src/arcrho_engine/main.py#L470-L530) for the Engine's view handler and the branch that reaches it; `DATASET_VIEW_REQUEST_KEY` in [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py); [test_manual_dataset_rollup_view.py](../../frontend/tests/test_manual_dataset_rollup_view.py); [arcrho.md](../../frontend/docs/app_server/domains/arcrho.md). Step 6 must be committed, because the share path is the only remaining caller. Memory: "Deploy staleness is mtime-based".
+
+**Do.**
+
+- [ ] Remove the view materializer, the Engine handler that calls it, and the request key from the contract.
+- [ ] Keep the `write_input_view` behaviour of `resolve_local_triangle_cache` only if another caller uses it; if the materializer was its only caller, remove that argument too.
+- [ ] Leave the in-memory roll-up handle and its registration untouched: that is how both the app and, since step 3, Excel get a coarser view.
+- [ ] Delete any leftover view folders the old path created under the fake project only, and say in the commit message that live projects keep theirs until someone clears them.
+- [ ] Update the arcrho domain doc to say a coarser view is never materialized.
+
+**Tests.** `test_manual_dataset_rollup_view.py` keeps its in-memory cases and loses the materializing ones. Add a case asserting a request carrying the removed key is refused by the contract.
+
+**Done when.** No code path writes a dataset view file, a coarser view still comes back correct in the app and over the hosted operation, and the removed key is refused.
+
+### Step 8 — A user can set Excel up and read a failure
+
+**Goal.** One short page tells a user what Excel needs in order to reach the server, and what each failure message means.
+
+**Read first.** [Open decisions](#open-decisions); `GatewayClient.bas` and the messages written in steps 5 and 6; [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md). Steps 6 and 7 must be committed, so the messages are final.
+
+**Do.**
+
+- [ ] Write `excel-addin/README.md` covering: what the credential is and where it lives, the one command that installs it, how to run the check routine, every failure message the add-in can now show with its cause, and the two check documents from steps 1 and 5.
+- [ ] Link it from the plans index row and from the arcrho domain doc.
+- [ ] Note the shared library files that still come from the share, so nobody concludes the add-in needs no drive mapping at all.
+
+**Tests.** None; this step changes no behaviour. Confirm every message the page lists appears verbatim in the sources.
+
+**Done when.** The page names every failure message the add-in can produce, and each one is findable in the sources by the exact wording the page uses.
+
+### Step 9 — Release and check against a real workbook
+
+**Goal.** The change reaches the server and one real workbook is checked against it.
+
+**Read first.** The answered [Open decisions](#open-decisions) entry; [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md); [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md); memories "Excel add-in build needs the server clone", "Remote component deploy", "Deploy staleness is mtime-based", "Bridge restart after deploy". Every earlier step committed.
+
+**Do.**
+
+- [ ] Stop and report rather than continuing if the credential question under Open decisions is unanswered.
+- [ ] Deploy the server components the contract and app-server changes made stale, derived by the deploy CLI rather than by hand, and say which ones in the commit message.
+- [ ] Provision the credential for each Excel user named in the answer, from the Server PC, and list the users.
+- [ ] Build and release the add-in from the server clone, since the beta workbook and signature files exist only there.
+- [ ] Check one real workbook a user already relies on: values unchanged, and the recalculation time before and after.
+- [ ] Move this plan to `completed/` and update the plans index, as [README.md](README.md) describes.
+
+**Tests.** The full frontend and Python suites before the release, compared against a stash in the same tree rather than a fresh worktree, per the "Worktree baselines mask new failures" memory.
+
+**Done when.** The components are deployed, the add-in is released, every named user has a credential, and one real workbook returns the same values faster than before.
+
+## Rough size
+
+Nine sessions, one per step. Steps 1, 2, 3 and 5 are the substantial ones; 4, 7 and 8 are short; 6 is mostly deletion; 9 is a release and a measurement. Steps 1 and 2 can run in parallel with 3 and 4, because the first two touch only the add-in and the second two only the server.

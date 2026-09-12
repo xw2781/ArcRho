@@ -113,7 +113,7 @@ file-protocol consumers keep working on SMB unchanged.
 | End state | Full HTTP client: the Client PC never touches the share for project data | Removes every per-file SMB round trip, not only the expensive ones; a single transport is easier to reason about, instrument, and secure |
 | Sequencing | Straight to gateway endpoints; no separate SMB micro-fix phase | The affected SMB paths are being replaced; effort goes into the replacement. Measurement comes from the client latency log added alongside the first endpoints |
 | Authentication / transport | Keep the pilot's per-user HMAC over plain HTTP for the current 5–6 user cohort | Adequate authentication and integrity for a small, hand-managed group on a controlled network with limited IT support. See [Authentication Posture](#authentication-posture) for the triggers that require change |
-| Excel add-in and legacy consumers | Coexist on SMB indefinitely | The Engine keeps watching `requests\` for the legacy contract at negligible cost; migrating VBA is gated on the auth decision and on HTTP reads being proven first |
+| Excel add-in and legacy consumers | Coexist on SMB indefinitely. Revised 2026-09-12: the add-in migrates in [excel_addin_gateway_transport.md](excel_addin_gateway_transport.md); `arcrho_api` and the migration still coexist | The Engine keeps watching `requests\` for the legacy contract at negligible cost. The two conditions named here are met: HTTP reads are proven, and the auth question turned out not to gate VBA at all |
 | Server shape | Grow the Gateway into a threaded general server API | One process, one port, existing Orchestrator supervision and kill switch; read handlers call the same `app_server` services on local disk; heavy mutations still go to Engine workers through the local queue |
 | First endpoints | Reserving-class index and cached-dataset load bundle together, each behind its own capability probe | Fixes the two reported symptoms (PI class listing, DSV open) in the first phase |
 | Change notifications | Server-Sent Events from the start | One stream per client replaces every per-window SMB stat poller and the Electron `fs.watch` over SMB |
@@ -365,15 +365,25 @@ Triggers that require changing this posture, in likely order:
 2. The user population outgrows a hand-managed registry, or revocation and
    rotation are needed when people leave. Remedy: Windows Integrated
    authentication (Negotiate), tying access to the AD account lifecycle.
-3. The Excel add-in migrates to HTTP. HMAC and byte-exact canonical JSON in VBA
-   is the expensive part; Windows Integrated auth through `WinHttp` is nearly
-   free. This is the strongest practical reason to eventually switch.
+3. ~~The Excel add-in migrates to HTTP. HMAC and byte-exact canonical JSON in
+   VBA is the expensive part; Windows Integrated auth through `WinHttp` is
+   nearly free.~~ Withdrawn 2026-09-12: no canonical JSON is involved, and VBA
+   reproduces the signature byte for byte, so the add-in migrates on the
+   existing credential. Trigger 2 still stands on its own.
 4. ArcRho runs on anything other than a trusted internal segment.
 
-TLS is the first gate to lift before any of these triggers; Windows Integrated
-auth is the target if and when Excel migrates.
+TLS is the first gate to lift before any of these triggers. Windows Integrated
+auth remains the answer to trigger 2, not a prerequisite for Excel.
 
 ## Excel Add-in and Legacy Consumers
+
+**Superseded for the Excel add-in on 2026-09-12.** The decision below rested on
+HMAC and byte-exact canonical JSON in VBA being expensive. Neither holds: the
+signature covers the SHA-256 of the bytes the client itself sends, so no
+canonical JSON is involved, and late-bound .NET cryptography reproduced the
+server's signature byte for byte on a Client PC. The add-in's migration is
+planned in [excel_addin_gateway_transport.md](excel_addin_gateway_transport.md);
+`arcrho_api` and the migration keep the decision below.
 
 Decision: coexist on SMB. The Engine keeps watching `requests\` for the legacy
 `ArcRhoTri`/`ArcRhoVec`/`ArcRhoHeaders`/`ArcRhoProjectSettings` contract at
