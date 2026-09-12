@@ -2,23 +2,37 @@
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 API_SOURCE = FRONTEND_ROOT.parent / "python-api" / "src"
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 for path in (FRONTEND_ROOT, API_SOURCE):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from arcrho_engine_calculation_contract import OPERATION_DATASET_PRECHECK, OPERATION_DATASET_RUN
+from arcrho_engine_calculation_contract import (
+    OPERATION_DATASET_CSV,
+    OPERATION_DATASET_PRECHECK,
+    OPERATION_DATASET_RUN,
+    OUTPUT_VARIANT_CANONICAL,
+)
 
 import app_server.api  # noqa: F401  (registers the submodules)
 arcrho_router = sys.modules["app_server.api.arcrho_router"]
+from app_server import config
 from app_server.schemas.arcrho import ArcRhoTriRequest, ArcRhoVecRequest
-from app_server.services import arcrho_runtime_service, engine_calculation_service
+from app_server.services import (
+    arcrho_runtime_service,
+    calculated_dataset_service,
+    engine_calculation_service,
+)
 
 
 class ArcRhoRouterHostedOperationTests(unittest.TestCase):
@@ -111,6 +125,134 @@ class ArcRhoRouterHostedOperationTests(unittest.TestCase):
         self.assertEqual(self.calls[0]["options"]["allow_runtime_cache_provenance"], True)
         self.assertEqual(seen[0]["allow_runtime_cache_provenance"], True)
         self.assertEqual(seen[0]["local_only"], False)
+
+
+class HostedDatasetCsvTests(unittest.TestCase):
+    """``dataset_csv`` answers with the figures, or with the run's own failure."""
+
+    project_name = "Example Project"
+    reserving_class = "Example Reserving Class"
+    dataset_name = "Paid Losses"
+    # Whole numbers written the way the Engine writes them: a pandas round
+    # trip would turn every one of these into ``100.0``.
+    ENGINE_TEXT = "100,200,300\n400,500,\n700,,\n"
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        self.addCleanup(self.temp_dir.cleanup)
+        root = Path(self.temp_dir.name)
+        self.cache_dir = root / "data" / self.reserving_class / config.DATASET_CACHE_DIR
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.sidecar_dir = self.cache_dir.parent / config.DATASET_SIDECAR_DIR
+        self.sidecar_dir.mkdir(parents=True, exist_ok=True)
+        self.csv_path = self.cache_dir / f"{self.dataset_name}@12@12@cum@dev.csv"
+        # This project lives only in the temp folder: the dataset cache is
+        # there, the dataset is not a calculated one, and the processing
+        # settings a recalculated cache records provenance from are stubbed.
+        for target, name, value in (
+            (config, "get_project_dataset_cache_dir", str(self.cache_dir)),
+            (calculated_dataset_service, "calculated_dataset_contract", None),
+            (arcrho_runtime_service, "get_processing_config_hash", "processing-hash"),
+            (
+                arcrho_runtime_service,
+                "get_processing_provenance",
+                {"config_hash": "processing-hash"},
+            ),
+        ):
+            item = patch.object(target, name, return_value=value)
+            item.start()
+            self.addCleanup(item.stop)
+        self.addCleanup(config.DATASETS.clear)
+        self.addCleanup(config.DATASET_ROLLUPS.clear)
+
+    def _pairs(self) -> list:
+        return [
+            ("Function", "ArcRhoTri"),
+            ("Path", self.reserving_class),
+            ("DatasetName", self.dataset_name),
+            ("InstanceName", self.dataset_name),
+            ("ProjectName", self.project_name),
+            ("Cumulative", "True"),
+            ("Calendar", "False"),
+            ("OriginLength", "12"),
+            ("DevelopmentLength", "12"),
+        ]
+
+    def _answer(self, **options) -> dict:
+        return engine_calculation_service.execute_hosted_engine_calculation(
+            self._pairs(), 15.0, OUTPUT_VARIANT_CANONICAL, OPERATION_DATASET_CSV, options
+        )
+
+    def _write_csv(self, text: str) -> None:
+        with open(self.csv_path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+
+    def _read_csv(self) -> str:
+        with open(self.csv_path, "r", encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def _write_sidecar(self) -> None:
+        payload = {
+            "dataset_name": self.dataset_name,
+            "dataset_type": self.dataset_name,
+            "reserving_class": self.reserving_class,
+            "project_name": self.project_name,
+            "source_kind": "input",
+            "data_format": "Triangle",
+            "csv_file": self.csv_path.name,
+            "cumulative": True,
+            "calendar": False,
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_origin_length": 12,
+            "stored_development_length": 12,
+        }
+        (self.sidecar_dir / f"{self.dataset_name}.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
+    def test_a_cached_triangle_answers_with_its_figures(self) -> None:
+        self._write_csv(self.ENGINE_TEXT)
+        self._write_sidecar()
+
+        answer = self._answer()
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_exact")
+        self.assertFalse(answer["need_request"])
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+
+    def test_the_text_is_the_file_the_run_wrote(self) -> None:
+        def fake_engine(pairs, data_path, timeout_sec, **kwargs):
+            with open(data_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(self.ENGINE_TEXT)
+            return {"ok": True, "status": "completed", "request_file": "r.json"}
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", fake_engine):
+            answer = self._answer()
+
+        self.assertTrue(answer["ok"])
+        self.assertTrue(answer["need_request"])
+        self.assertEqual(answer["csv_text"], self._read_csv())
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+
+    def test_a_dataset_the_engine_does_not_answer_reports_why(self) -> None:
+        timeout = {
+            "ok": False,
+            "status": "timeout",
+            "request_file": "r.json",
+            "message": "Timed out waiting for the ArcRho Engine.",
+        }
+        with patch.object(
+            engine_calculation_service, "run_engine_calculation", return_value=timeout
+        ):
+            answer = self._answer()
+
+        self.assertFalse(answer["ok"])
+        self.assertEqual(answer["status"], "timeout")
+        self.assertNotIn("csv_text", answer)
+        self.assertIn("Timed out", answer["message"])
+        self.assertFalse(self.csv_path.exists())
 
 
 if __name__ == "__main__":

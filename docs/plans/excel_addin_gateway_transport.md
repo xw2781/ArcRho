@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (2 of 9 done).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (3 of 9 done).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -12,7 +12,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [x] | 2026-09-12 | Twenty-one formulas over one triangle now read it once instead of twenty-one times. |
 | 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [x] | 2026-09-12 | Excel can now reach the ArcRho Server directly, and a one-line check says whether this PC can. |
-| 3 | The server can hand Excel a triangle's figures in one answer | [ ] | | |
+| 3 | The server can hand Excel a triangle's figures in one answer | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a triangle with its figures, so Excel will not have to open files on the shared drive. |
 | 4 | The server can hand Excel its period headings and project settings the same way | [ ] | | |
 | 5 | Formulas get their figures from the server instead of the shared drive | [ ] | | |
 | 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
@@ -20,7 +20,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 2 of 9 steps done.
+Overall: 3 of 9 steps done.
 
 ## How agents work this plan
 
@@ -149,10 +149,11 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Do.**
 
-- [ ] Add one operation to `OPERATIONS`, to `OPERATION_OPTIONS`, and to the `operations` tuple of the `ArcRhoTri` and `ArcRhoVec` kinds in the contract. Its options are the run's existing `force_refresh`, `local_only` and `allow_derived`; it accepts no output variant other than the canonical one and no session id, and `DATASET_VIEW_REQUEST_KEY` stays absent from every kind.
-- [ ] Add a service function in `arcrho_runtime_service.py` that derives the path with the canonical builder, runs the dataset route, then produces the text: from the registered in-memory roll-up when one exists, otherwise from the resolved file. Serialize with the same `pd.DataFrame(values).to_csv(header=False, index=False)` call the materializing branch uses, into a string buffer, so the text cannot differ from the file's.
-- [ ] Branch to it from `execute_hosted_engine_calculation`, returning the run's own status fields alongside the text so a failure still reports why, and never writing a view file on this path.
-- [ ] Confirm a hand-entered triangle asked for at a coarser shape is answered from the in-memory roll-up with no file appearing in the class's view folder.
+- [x] Add one operation to `OPERATIONS`, to `OPERATION_OPTIONS`, and to the `operations` tuple of the `ArcRhoTri` and `ArcRhoVec` kinds in the contract. Its options are the run's existing `force_refresh`, `local_only` and `allow_derived`; it accepts no output variant other than the canonical one and no session id, and `DATASET_VIEW_REQUEST_KEY` stays absent from every kind. Landed as `dataset_csv`, with the answer's field name owned by the contract as `ENGINE_CALCULATION_CSV_FIELD`.
+- [x] Add a service function in `arcrho_runtime_service.py` that derives the path with the canonical builder, runs the dataset route, then produces the text: from the registered in-memory roll-up when one exists, otherwise from the resolved file. Serialize with the same `pd.DataFrame(values).to_csv(header=False, index=False)` call the materializing branch uses, into a string buffer, so the text cannot differ from the file's. The resolved file's own text is returned verbatim rather than round-tripped through `pandas`, which would respell `100` as `100.0`.
+- [x] Branch to it from `execute_hosted_engine_calculation`, returning the run's own status fields alongside the text so a failure still reports why, and never writing a view file on this path.
+- [x] Confirm a hand-entered triangle asked for at a coarser shape is answered from the in-memory roll-up with no file appearing in the class's view folder.
+- [x] Decided while implementing: the operation runs the route with `write_sidecar` false, like the method loaders, so reading a figure in a worksheet records only the technical cache provenance and never restates a dataset's record or starts a dependent walk. It is not an option a client can set.
 
 **Tests.** `python-api/tests` gains the contract cases: the new operation is accepted for both dataset functions and refused for the headers function, its option table rejects an unlisted option, and a request naming a server-owned key or the view key is still refused. `test_arcrho_router_hosted_operations.py` gains: the operation returns text for a cached triangle; the text is byte-identical to the file the same request writes through the existing run; a generated dataset that needs the Engine returns the run's failure status and no text when the Engine does not answer. `test_manual_dataset_rollup_view.py` gains a coarser-shape case asserting the text matches the materialized view byte for byte and that no file was created.
 

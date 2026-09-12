@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import io
 import json
 import os
 import re
@@ -26,7 +27,11 @@ from arcrho_api.field_mapping_contract import (
 from arcrho_api.sidecar_core_contract import stored_length_fields
 from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
 from arcrho_api.triangle_rollup import rollup_reason, rollup_triangle
-from arcrho_engine_calculation_contract import OUTPUT_VARIANT_TEMPORARY_VIEW
+from arcrho_engine_calculation_contract import (
+    ENGINE_CALCULATION_CSV_FIELD,
+    OUTPUT_VARIANT_CANONICAL,
+    OUTPUT_VARIANT_TEMPORARY_VIEW,
+)
 
 from app_server import config
 from app_server.helpers import (
@@ -2613,4 +2618,69 @@ def run_arcrho_tri(
     }
     if force_refresh:
         out["cache_cleared"] = cache_cleared
+    return out
+
+
+def _dataset_csv_text(ds_id: str, data_path: str) -> str:
+    """The CSV text a worksheet formula reads for a dataset the route resolved.
+
+    A coarser view of a hand-entered dataset has no file at all: it is
+    registered as a roll-up handle and rebuilt on every read, so its text is
+    produced here with the same ``to_csv`` call the materializing branch of
+    ``_derive_triangle_cache`` writes a view with. Every other dataset already
+    has its CSV on disk and that file's own text is returned, so a number can
+    never come back spelled differently than the Engine wrote it.
+    """
+
+    from app_server.services import dataset_service
+
+    rolled_up = dataset_service._rolled_up_dataset(ds_id) if ds_id else None
+    if rolled_up is not None:
+        buffer = io.StringIO()
+        rolled_up[0].to_csv(buffer, header=False, index=False)
+        return buffer.getvalue()
+    with open(data_path, "r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def run_arcrho_dataset_csv(
+    pairs: list,
+    timeout_sec: float,
+    force_refresh: bool = False,
+    local_only: bool = False,
+    allow_derived: bool = True,
+) -> Dict[str, Any]:
+    """Run the dataset route and answer with the dataset's figures as CSV text.
+
+    The whole route runs first -- the cache is validated, a coarser view is
+    rolled up in memory, and the Engine runs only when the dataset genuinely
+    needs recalculating -- and the text comes from whatever that produced. A
+    failure is returned exactly as the route reported it, with no text, so the
+    caller still sees why. Nothing is written to the reserving class's view
+    cache on this path.
+
+    Like every other reader of a dataset, this restates no dataset record: a
+    recalculated cache gets the technical provenance the method loaders record
+    rather than a fresh sidecar and a dependent walk, so reading a figure in a
+    worksheet never rewrites the reserving class.
+    """
+
+    data_path = engine_calculation_service.resolve_engine_output_path(
+        pairs, OUTPUT_VARIANT_CANONICAL
+    )
+    result = run_arcrho_tri(
+        pairs,
+        data_path,
+        timeout_sec=timeout_sec,
+        force_refresh=force_refresh,
+        local_only=local_only,
+        allow_derived=allow_derived,
+        write_sidecar=False,
+    )
+    if not result.get("ok"):
+        return result
+    out = dict(result)
+    out[ENGINE_CALCULATION_CSV_FIELD] = _dataset_csv_text(
+        str(result.get("ds_id") or ""), data_path
+    )
     return out

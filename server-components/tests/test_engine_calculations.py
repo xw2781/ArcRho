@@ -199,7 +199,8 @@ class EngineCalculationContractTests(unittest.TestCase):
 
     def test_advertised_operations_are_the_registry(self) -> None:
         self.assertEqual(
-            HTTP_ENGINE_CALCULATION_OPERATIONS, ("dataset_precheck", "dataset_run", "exchange")
+            HTTP_ENGINE_CALCULATION_OPERATIONS,
+            ("dataset_csv", "dataset_precheck", "dataset_run", "exchange"),
         )
 
     def test_timeout_is_clamped(self) -> None:

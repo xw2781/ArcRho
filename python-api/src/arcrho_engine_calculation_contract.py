@@ -82,7 +82,17 @@ OUTPUT_VARIANTS: tuple[str, ...] = (OUTPUT_VARIANT_CANONICAL, OUTPUT_VARIANT_TEM
 OPERATION_EXCHANGE = "exchange"
 OPERATION_DATASET_RUN = "dataset_run"
 OPERATION_DATASET_PRECHECK = "dataset_precheck"
-OPERATIONS: tuple[str, ...] = (OPERATION_EXCHANGE, OPERATION_DATASET_RUN, OPERATION_DATASET_PRECHECK)
+# ``dataset_csv`` is ``dataset_run`` plus the figures. A worksheet formula has
+# no way to open the server's CSV, so the answer carries the text that file
+# holds -- or, for a coarser view of a hand-entered dataset, the text it would
+# have held, built from the in-memory roll-up so nothing is written.
+OPERATION_DATASET_CSV = "dataset_csv"
+OPERATIONS: tuple[str, ...] = (
+    OPERATION_EXCHANGE,
+    OPERATION_DATASET_RUN,
+    OPERATION_DATASET_PRECHECK,
+    OPERATION_DATASET_CSV,
+)
 # ``/api/capabilities`` field listing the operations the Gateway hosts, so a
 # client facing an older gateway that only knows ``exchange`` keeps the
 # dataset route local.
@@ -106,6 +116,14 @@ OPERATION_OPTIONS: dict[str, dict[str, str]] = {
         "allow_derived": _BOOL,
         "temporary_session_id": _OPTIONAL_TEXT,
         "allow_runtime_cache_provenance": _BOOL,
+    },
+    # No temporary session and no sidecar switch: this operation answers a
+    # worksheet formula, which reads the reserving class's own datasets and
+    # never a Temporary view.
+    OPERATION_DATASET_CSV: {
+        "force_refresh": _BOOL,
+        "local_only": _BOOL,
+        "allow_derived": _BOOL,
     },
 }
 PROJECT_NAME_KEY = "ProjectName"
@@ -376,6 +394,11 @@ def validate_engine_calculation_request(payload: Mapping[str, Any]) -> dict[str,
         "UserDisplayName": str(payload.get("UserDisplayName") or "").strip(),
     }
 
+
+# Response field carrying the dataset's CSV text for ``dataset_csv``. Present
+# only when the run succeeded; a failed run answers with its status and
+# message alone.
+ENGINE_CALCULATION_CSV_FIELD = "csv_text"
 
 # Response status values the Gateway returns for a request it ran.
 ENGINE_CALCULATION_STATUS_COMPLETED = "completed"

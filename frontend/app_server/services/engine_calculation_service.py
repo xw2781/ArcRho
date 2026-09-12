@@ -40,6 +40,7 @@ from arcrho_engine_calculation_contract import (
     ENGINE_CALCULATION_PATH,
     ENGINE_CALCULATION_STATUS_COMPLETED,
     ENGINE_CALCULATION_STATUS_TIMEOUT,
+    OPERATION_DATASET_CSV,
     OPERATION_DATASET_PRECHECK,
     OPERATION_DATASET_RUN,
     OPERATION_EXCHANGE,
@@ -214,6 +215,16 @@ def execute_hosted_engine_calculation(
     from app_server.services import arcrho_runtime_service
 
     normalized_pairs = [(str(key), str(value)) for key, value in pairs]
+    if operation == OPERATION_DATASET_CSV:
+        # The dataset route plus the figures, for a caller that cannot open
+        # the CSV the route resolved -- a worksheet formula.
+        return arcrho_runtime_service.run_arcrho_dataset_csv(
+            normalized_pairs,
+            timeout_sec=clamp_engine_calculation_wait(timeout_sec),
+            force_refresh=bool(settings.get("force_refresh", False)),
+            local_only=bool(settings.get("local_only", False)),
+            allow_derived=bool(settings.get("allow_derived", True)),
+        )
     data_path = resolve_engine_output_path(normalized_pairs, OUTPUT_VARIANT_CANONICAL)
     if operation == OPERATION_DATASET_RUN:
         return arcrho_runtime_service.run_arcrho_tri(

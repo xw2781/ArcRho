@@ -197,6 +197,29 @@ class ManualDatasetRollupViewTests(unittest.TestCase):
         self.assertEqual(first, 7800.0)
         self.assertEqual(second, 15600.0)
 
+    def test_the_hosted_text_is_the_view_without_the_file(self) -> None:
+        """Excel gets the same figures over HTTP, and nothing is written down."""
+
+        with self._cache_dir_patches():
+            answer = arcrho_runtime_service.run_arcrho_dataset_csv(
+                self._pairs(), timeout_sec=15.0
+            )
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_derived")
+        self.assertTrue(answer["derived"]["in_memory"])
+        self.assertFalse(
+            self.view_csv.exists(), "a coarser copy was written beside the stored data"
+        )
+        self.assertFalse(
+            self.add_in_view_csv.exists(), "a coarser copy was written into the view cache"
+        )
+
+        self._materialize_add_in_view()
+        with open(self.add_in_view_csv, "r", encoding="utf-8", newline="") as handle:
+            written = handle.read()
+        self.assertEqual(answer["csv_text"], written)
+
     def test_an_add_in_view_beside_the_stored_data_is_refused(self) -> None:
         with self.assertRaises(HTTPException) as raised:
             self._materialize_add_in_view(self.view_csv)
