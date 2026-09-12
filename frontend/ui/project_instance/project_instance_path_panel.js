@@ -536,6 +536,10 @@ function getFirstShortcutPath() {
   return "";
 }
 
+function getFirstTreePath() {
+  return normalizePath(state.pathPickerController?.getFirstVisibleLeafPath?.() || "");
+}
+
 async function selectStartupFallbackPath() {
   await waitForPathTreeRender();
   if (state.selectedPath) {
@@ -543,11 +547,17 @@ async function selectStartupFallbackPath() {
     return;
   }
   const shortcutPath = getFirstShortcutPath();
-  if (!shortcutPath) {
+  if (shortcutPath) {
+    setSelectedPath(shortcutPath, { persist: false });
+    markPathTreeActive(shortcutPath);
     return;
   }
-  setSelectedPath(shortcutPath, { persist: false });
-  markPathTreeActive(shortcutPath);
+  const treePath = getFirstTreePath();
+  if (!treePath) {
+    return;
+  }
+  setSelectedPath(treePath, { persist: false });
+  await revealPathTreeSelection(treePath);
 }
 
 function getLeftPanelMaxWidth() {
@@ -736,6 +746,7 @@ async function loadPathTree() {
     clampLeftPanelWidth,
     getCurrentLeftPanelWidth,
     getFirstShortcutPath,
+    getFirstTreePath,
     getLeftPanelMaxWidth,
     initLeftPanelResizer,
     loadLastSelectedPath,

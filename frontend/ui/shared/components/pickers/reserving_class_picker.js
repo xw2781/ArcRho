@@ -3921,6 +3921,14 @@ export async function openReservingClassPicker(options = {}) {
       return true;
     };
 
+    const getFirstVisibleLeafPath = () => {
+      let node = filterHiddenNodes(model.getRootNodes())[0] || null;
+      while (node && (node.has_children || node.hasChildren)) {
+        node = filterHiddenNodes(model.getChildrenForPrefix(node.path))[0] || null;
+      }
+      return toText(node?.path);
+    };
+
     const opened = openTreeWindow();
     if (!opened) return { ok: false, reason: "empty" };
 
@@ -3928,6 +3936,7 @@ export async function openReservingClassPicker(options = {}) {
       ok: true,
       picker: treeWindowPicker,
       model,
+      getFirstVisibleLeafPath,
       revealPath: (path, revealOptions = {}) => {
         activePath = toText(path);
         if (typeof treeWindowPicker?.revealPath !== "function") return Promise.resolve(false);

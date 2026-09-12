@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Opening a project for the first time now starts on the first reserving class path instead of an empty page.",
+  "details": [
+    "When the project has no last-used path and no Shortcut item, Project Instance selects the first path of the All Paths tree and expands the tree to show it.",
+    "The automatic choice skips hidden paths and is not saved as the project's last used path; only a path you pick is remembered."
+  ]
+}
