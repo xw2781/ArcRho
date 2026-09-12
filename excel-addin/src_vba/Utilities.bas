@@ -251,7 +251,11 @@ Public Sub RefreshArcRhoBlock(ByVal ref As String)
     Dim shName As String, addr As String
     Dim ws As Worksheet
     Dim rng As Range, topCell As Range
-    
+
+    ' The Engine is still writing datasets while this loop runs, so a block being
+    ' re-entered must read the file again rather than the pass that preceded it.
+    ClearDatasetResultCache
+
     parts = Split(ref, "!")
     If UBound(parts) <> 1 Then Exit Sub
     

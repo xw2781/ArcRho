@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "2.3.0"
+Public Const ARCRHO_VERSION As String = "2.4.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -58,6 +58,18 @@ Private datasetTypesCache As Object
 Private datasetTypesStampCache As Object
 Private datasetIndexCache As Object
 Private datasetIndexStampCache As Object
+
+' One recalculation pass fetches a dataset once. The dictionary is keyed by the
+' request text GetDataset receives and holds the array that request returned, so
+' every later formula asking for the same dataset in the same pass is answered
+' from memory. It is dropped at each pass boundary.
+Private datasetResults As Object
+
+' Counts the dataset requests formulas make and the reads GetDataset actually
+' performs, for the check in excel-addin\tools\check_dataset_cache.md.
+Public datasetRequestCount As Long
+Public datasetFetchCount As Long
+Public datasetHitCount As Long
 
 Public Function FirstExistingPath(ParamArray paths() As Variant) As String
     Dim i As Long
@@ -136,6 +148,27 @@ Public Function ProductPath(ByVal relativePath As String) As String
     ProductPath = ProductRootPath() & "\" & relativePath
 End Function
 
+Public Sub ClearDatasetResultCache()
+    Set datasetResults = Nothing
+End Sub
+
+Private Sub StoreDatasetResult(ByVal requestText As String, ByRef values As Variant)
+    ' "Always refresh" means every formula reads the dataset again, so nothing is
+    ' remembered while it is on. Only a real dataset array is worth keeping; a
+    ' message such as "request time out" must be retried by the next formula.
+    If removeData Then Exit Sub
+    If Not IsArray(values) Then Exit Sub
+    If datasetResults Is Nothing Then Set datasetResults = CreateObject("Scripting.Dictionary")
+    datasetResults(requestText) = values
+End Sub
+
+Private Function TryDatasetResult(ByVal requestText As String, ByRef values As Variant) As Boolean
+    If datasetResults Is Nothing Then Exit Function
+    If Not datasetResults.Exists(requestText) Then Exit Function
+    values = datasetResults(requestText)
+    TryDatasetResult = True
+End Function
+
 Private Sub InitConfigPaths()
     configDir = Environ$("LOCALAPPDATA") & "\ArcRho"
     configPath = configDir & "\config.txt"
@@ -150,11 +183,24 @@ Public Function GetDataset(funcArgs As String)
     Dim projectDataDir As String
     Dim t1 As Double, t2 As Double
     Dim requestInfo As String
+    Dim datasetValues As Variant
     Const MAX_WAIT_SEC As Double = 5
     On Error GoTo ErrHandler
 
     If skipDataProcess Then
         Exit Function
+    End If
+
+    datasetRequestCount = datasetRequestCount + 1
+
+    ' --- Case 0: this pass already fetched the same dataset ---
+    If removeData Then
+        ClearDatasetResultCache
+    ElseIf TryDatasetResult(funcArgs, datasetValues) Then
+        datasetHitCount = datasetHitCount + 1
+        GetDataset = datasetValues
+        errCount = 0
+        GoTo CleanExit
     End If
 
     ' t1 = Timer
@@ -179,7 +225,10 @@ Public Function GetDataset(funcArgs As String)
     ' datasets should not create request files or clear existing cache files.
     If spec.RequestMode = DATA_REQUEST_LOCAL Then
         If FileExists(dataPath) Then
-            GetDataset = GetDataArray(dataPath)
+            datasetFetchCount = datasetFetchCount + 1
+            datasetValues = GetDataArray(dataPath)
+            StoreDatasetResult funcArgs, datasetValues
+            GetDataset = datasetValues
             errCount = 0
         Else
             Debug.Print "[error] - local dataset file not found: "; dataPath
@@ -191,7 +240,10 @@ Public Function GetDataset(funcArgs As String)
     ' --- Case 1: reuse existing generated/runtime data if allowed ---
     If (Dir(dataPath) <> "") And (removeData = False) Then
         If spec.RequestMode <> DATA_REQUEST_VIEW Or Not DatasetViewIsStale(spec) Then
-            GetDataset = GetDataArray(dataPath)
+            datasetFetchCount = datasetFetchCount + 1
+            datasetValues = GetDataArray(dataPath)
+            StoreDatasetResult funcArgs, datasetValues
+            GetDataset = datasetValues
             errCount = 0
             GoTo CleanExit
         End If
@@ -229,7 +281,10 @@ Public Function GetDataset(funcArgs As String)
     ' Debug.Print "Time - Spent: " & Format(t2 - t1, "0.000")
 
     If Dir(dataPath) <> "" Then
-        GetDataset = GetDataArray(dataPath)
+        datasetFetchCount = datasetFetchCount + 1
+        datasetValues = GetDataArray(dataPath)
+        StoreDatasetResult funcArgs, datasetValues
+        GetDataset = datasetValues
     Else
         Debug.Print "[error] - data path not found"
         GetDataset = "data path not found"

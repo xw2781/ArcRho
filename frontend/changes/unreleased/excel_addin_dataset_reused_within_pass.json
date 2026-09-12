@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "A dataset several Excel formulas ask for is now read once per recalculation instead of once per formula.",
+  "details": [
+    "A sheet of single-cell formulas over one triangle used to read that triangle again for every cell; it is now read once and reused for the rest of the pass.",
+    "A ribbon refresh still picks up an edited dataset, because the reuse is dropped at the start of each pass and again before each block it re-enters.",
+    "Turning \"always refresh\" on still makes every formula read its dataset again.",
+    "The add-in version moves to 2.4.0, which resets each user's saved add-in settings to their defaults on first use."
+  ]
+}

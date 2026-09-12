@@ -242,10 +242,12 @@ Sub CalculateWorkbookNoUI()
     ' (1) Send Request Only, No Wait
     disableRequest = False
     disableWaitTime = True
+    ClearDatasetResultCache
     Application.Calculate
-    
+
     ' (2) Pull Cached Datasets
     disableWaitTime = False
+    ClearDatasetResultCache
     Application.CalculateFull
 
 CleanExit:
@@ -271,7 +273,10 @@ Public Sub SearchArcRhoFormulas(Optional ByVal ActiveSheetOnly As Boolean = Fals
     
     On Error GoTo ErrorHandler
     disableWaitTime = True
-    
+
+    ' A new pass starts here, so nothing remembered from the last one is served.
+    ClearDatasetResultCache
+
     Set processedCells = New Collection
     Set processedArrays = New Collection
 

@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation not started (0 of 9 done).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (1 of 9 done).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -10,7 +10,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [ ] | | |
+| 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [x] | 2026-09-12 | Twenty-one formulas over one triangle now read it once instead of twenty-one times. |
 | 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [ ] | | |
 | 3 | The server can hand Excel a triangle's figures in one answer | [ ] | | |
 | 4 | The server can hand Excel its period headings and project settings the same way | [ ] | | |
@@ -20,7 +20,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 0 of 9 steps done.
+Overall: 1 of 9 steps done.
 
 ## How agents work this plan
 
@@ -110,15 +110,15 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Goal.** A dataset that several formulas ask for during one recalculation is fetched once. This removes most of the add-in's reads on a real workbook and is worth having whichever transport is underneath, so it lands first and independently.
 
-**Read first.** [The question](#the-question), [Code evidence and ownership](#code-evidence-and-ownership). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253) and [Core.bas:1-60](../../excel-addin/src_vba/Core.bas#L1-L60) for the module-level state; [ArcRhoFunctions.bas:1-260](../../excel-addin/src_vba/ArcRhoFunctions.bas#L1-L260); [RibbonActions.bas:60-215](../../excel-addin/src_vba/RibbonActions.bas#L60-L215) and `SearchArcRhoFormulas` at 261; [Utilities.bas:249-300](../../excel-addin/src_vba/Utilities.bas#L249-L300). The `$arcrho-ui-design` skill does not apply; there is no UI change here.
+**Read first.** [The question](#the-question), [Code evidence and ownership](#code-evidence-and-ownership). [Core.bas:144-253](../../excel-addin/src_vba/Core.bas#L144-L253) and [Core.bas:1-60](../../excel-addin/src_vba/Core.bas#L1-L60) for the module-level state; [ArcRhoFunctions.bas:1-260](../../excel-addin/src_vba/ArcRhoFunctions.bas#L1-L260); [RibbonActions.bas:60-215](../../excel-addin/src_vba/RibbonActions.bas#L60-L215) and `SearchArcRhoFormulas` at 261; [Utilities.bas:249-300](../../excel-addin/src_vba/Utilities.bas#L249-L300); [Excel Add-in Build and Release](../../agent-instructions/excel-addin-build-and-release.md) and [build_xlam.ps1](../../excel-addin/tools/build_xlam.ps1), which updates an add-in package that already exists rather than creating one. The `$arcrho-ui-design` skill does not apply; there is no UI change here.
 
 **Do.**
 
-- [ ] Add a module-level dictionary in `Core.bas` keyed by the request text `GetDataset` already receives, holding the array it returned. Look it up at the top of `GetDataset` and fill it on every successful return, for all three request modes.
-- [ ] Clear the dictionary at the start of every full recalculation and every ribbon refresh: the existing entry points in `RibbonActions.bas` already bracket those passes, and `removeData` being on must bypass the cache entirely rather than serve a stale entry.
-- [ ] Clear it as well when the add-in's own refresh writes a block, so a refreshed dataset is not served from the pass that preceded it.
-- [ ] Leave the two file-freshness caches for the dataset-type table and the class index exactly as they are; they are removed in step 6 along with the rest of the share path.
-- [ ] Bump `ARCRHO_VERSION` in [Core.bas:4](../../excel-addin/src_vba/Core.bas#L4). Note in the commit message that this resets each user's saved add-in settings, because [LoadConfig](../../excel-addin/src_vba/Core.bas#L317) deletes a config file whose version differs.
+- [x] Add a module-level dictionary in `Core.bas` keyed by the request text `GetDataset` already receives, holding the array it returned. Look it up at the top of `GetDataset` and fill it on every successful return, for all three request modes.
+- [x] Clear the dictionary at the start of every full recalculation and every ribbon refresh: the existing entry points in `RibbonActions.bas` already bracket those passes, and `removeData` being on must bypass the cache entirely rather than serve a stale entry.
+- [x] Clear it as well when the add-in's own refresh writes a block, so a refreshed dataset is not served from the pass that preceded it.
+- [x] Leave the two file-freshness caches for the dataset-type table and the class index exactly as they are; they are removed in step 6 along with the rest of the share path.
+- [x] Bump `ARCRHO_VERSION` in [Core.bas:4](../../excel-addin/src_vba/Core.bas#L4). Note in the commit message that this resets each user's saved add-in settings, because [LoadConfig](../../excel-addin/src_vba/Core.bas#L317) deletes a config file whose version differs.
 
 **Tests.** No automated harness covers VBA, so the check is a recorded manual one. Add `excel-addin/tools/check_dataset_cache.md` describing the two-minute check: a sheet with one array formula and twenty single-cell formulas over the same triangle, the add-in's debug output on, and the count of dataset fetches before and after. Record the two counts in the commit message and in the Progress row.
 
