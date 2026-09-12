@@ -1070,7 +1070,7 @@ Private Function BoolLike(ByVal value As Variant, ByVal defaultValue As Boolean)
     End Select
 End Function
 
-Private Function ReadUtf8TextFile(ByVal filePath As String) As String
+Public Function ReadUtf8TextFile(ByVal filePath As String) As String
     Dim stream As Object
     Set stream = CreateObject("ADODB.Stream")
     stream.Type = 2

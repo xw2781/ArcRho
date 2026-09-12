@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (1 of 9 done).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (2 of 9 done).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -11,7 +11,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [x] | 2026-09-12 | Twenty-one formulas over one triangle now read it once instead of twenty-one times. |
-| 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [ ] | | |
+| 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [x] | 2026-09-12 | Excel can now reach the ArcRho Server directly, and a one-line check says whether this PC can. |
 | 3 | The server can hand Excel a triangle's figures in one answer | [ ] | | |
 | 4 | The server can hand Excel its period headings and project settings the same way | [ ] | | |
 | 5 | Formulas get their figures from the server instead of the shared drive | [ ] | | |
@@ -20,7 +20,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 1 of 9 steps done.
+Overall: 2 of 9 steps done.
 
 ## How agents work this plan
 
@@ -132,12 +132,12 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Do.**
 
-- [ ] Add `excel-addin/src_vba/GatewayClient.bas`: read and cache the credential file from `%APPDATA%\ArcRho\arcrho_gateway.json`, treating a missing or disabled file as "no gateway"; UTF-8 bytes through `ADODB.Stream` skipping the byte-order mark; SHA-256 and HMAC-SHA256 hex through the late-bound .NET classes with hex via the `bin.hex` node; UTC Unix seconds through `WbemScripting.SWbemDateTime`; one `POST` through `WinHttp.WinHttpRequest.5.1` returning status and body. Reuse one request object across calls so the connection is not rebuilt per formula.
-- [ ] Give the module one public entry that takes a path, a body, and a timeout and answers with status and text, plus a public check routine that signs the fixed vector below and reports whether it matches.
-- [ ] Add `excel-addin/tools/verify_gateway_signing.vbs`: the same helpers standalone, printing the digest and signature for the fixed vector, so the check can be run without opening Excel. Keep the expected values in one named constant block at the top of the file.
-- [ ] Add a health and capabilities call to the module so later steps can ask whether an operation is advertised before using it.
+- [x] Add `excel-addin/src_vba/GatewayClient.bas`: read and cache the credential file from `%APPDATA%\ArcRho\arcrho_gateway.json`, treating a missing or disabled file as "no gateway"; UTF-8 bytes through `ADODB.Stream` skipping the byte-order mark; SHA-256 and HMAC-SHA256 hex through the late-bound .NET classes with hex via the `bin.hex` node; UTC Unix seconds through `WbemScripting.SWbemDateTime`; one `POST` through `WinHttp.WinHttpRequest.5.1` returning status and body. Reuse one request object across calls so the connection is not rebuilt per formula.
+- [x] Give the module one public entry that takes a path, a body, and a timeout and answers with status and text, plus a public check routine that signs the fixed vector below and reports whether it matches.
+- [x] Add `excel-addin/tools/verify_gateway_signing.vbs`: the same helpers standalone, printing the digest and signature for the fixed vector, so the check can be run without opening Excel. Keep the expected values in one named constant block at the top of the file.
+- [x] Add a health and capabilities call to the module so later steps can ask whether an operation is advertised before using it.
 
-**Tests.** New `frontend/tests/test_excel_addin_gateway_signing.py`: derive the digest and signature for the fixed vector from `arcrho_hosted_save_http_contract`, read the constant block out of `verify_gateway_signing.vbs`, and assert they agree, so a change on either side fails. Use the vector proved on 2026-09-12: secret `probe-secret-value`, user `XWei`, timestamp `1757650000`, method `POST`, path `/api/workspace-reads`, body `{"Function":"ArcRhoWorkspaceRead","Name":"Net Loss--Paid é"}`, giving digest `bede0538b3ba1824f3572ce81a492868099b0bfc4ba90b1ce9c105cb3cfc5656` and signature `3a81facfc86c05784d7978f8a2f2de06b6172b513c9f75d496777aff6008d2d0`.
+**Tests.** New `frontend/tests/test_excel_addin_gateway_signing.py`: derive the digest and signature for the fixed vector from `arcrho_hosted_save_http_contract`, read the same named constant block out of both `GatewayClient.bas` and `verify_gateway_signing.vbs`, and assert the two blocks agree with each other and with the contract, so a change on any side fails. Pin the route and header names the add-in has to spell out for itself there too, and record the manual run in `excel-addin/tools/check_gateway_signing.md`. Use the vector proved on 2026-09-12: secret `probe-secret-value`, user `XWei`, timestamp `1757650000`, method `POST`, path `/api/workspace-reads`, body `{"Function":"ArcRhoWorkspaceRead","Name":"Net Loss--Paid é"}`, giving digest `bede0538b3ba1824f3572ce81a492868099b0bfc4ba90b1ce9c105cb3cfc5656` and signature `3a81facfc86c05784d7978f8a2f2de06b6172b513c9f75d496777aff6008d2d0`.
 
 **Done when.** The new test passes, the standalone script prints those two values on a Client PC, and the check routine run from Excel reports a successful capabilities call against the live Gateway.
 
