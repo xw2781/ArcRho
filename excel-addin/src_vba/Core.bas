@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "2.2.0"
+Public Const ARCRHO_VERSION As String = "2.3.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -33,7 +33,12 @@ Public triangle_tool_col As Long
 
 Private Const DATA_REQUEST_ENGINE As String = "engine"
 Private Const DATA_REQUEST_LOCAL As String = "local"
+' A hand-entered dataset held at a finer period than the shape asked for. The
+' roll-up belongs to the server, so this mode reads a view the Engine builds
+' into the reserving class's view folder instead of the dataset's own file.
+Private Const DATA_REQUEST_VIEW As String = "view"
 Private Const DATASET_CACHE_DIR As String = "datasets"
+Private Const DATASET_VIEW_CACHE_DIR As String = ".temporary-view"
 Private Const DATASET_INDEX_FILE As String = "index.json"
 
 Private Type DatasetRequestSpec
@@ -44,6 +49,7 @@ Private Type DatasetRequestSpec
     InstanceName As String
     ProjectDataPath As String
     DataPath As String
+    StoredDataPath As String
     DatasetIndexPath As String
     RequestMode As String
 End Type
@@ -163,7 +169,11 @@ Public Function GetDataset(funcArgs As String)
             GoTo CleanExit
         End If
     End If
-    requestInfo = funcArgs & "#DataPath = " & dataPath
+    requestInfo = funcArgs
+    If spec.RequestMode = DATA_REQUEST_VIEW Then
+        requestInfo = requestInfo & "#DatasetView = True"
+    End If
+    requestInfo = requestInfo & "#DataPath = " & dataPath
 
     ' Local datasets are read-only from Excel. Missing local
     ' datasets should not create request files or clear existing cache files.
@@ -180,9 +190,11 @@ Public Function GetDataset(funcArgs As String)
 
     ' --- Case 1: reuse existing generated/runtime data if allowed ---
     If (Dir(dataPath) <> "") And (removeData = False) Then
-        GetDataset = GetDataArray(dataPath)
-        errCount = 0
-        GoTo CleanExit
+        If spec.RequestMode <> DATA_REQUEST_VIEW Or Not DatasetViewIsStale(spec) Then
+            GetDataset = GetDataArray(dataPath)
+            errCount = 0
+            GoTo CleanExit
+        End If
     End If
 
     ' --- Case 2: need fresh data ---
@@ -457,6 +469,7 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
     Dim requestedInstanceName As String
     Dim requestLookupName As String
     Dim datasetFile As String
+    Dim storedFile As String
     Dim spec As DatasetRequestSpec
 
     ' Normalize delimiters: allow either "#" or newlines between pairs
@@ -552,8 +565,21 @@ Private Function BuildDatasetRequestSpec(inputString As String) As DatasetReques
                 And Len(Trim$(originLength)) > 0 Then
             datasetFile = datasetFile & "@" & Trim$(originLength)
         End If
-        spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
         spec.DatasetIndexPath = rcDataPath & "\" & DATASET_INDEX_FILE
+        ' A hand-entered triangle is only ever held at the periods it was typed
+        ' at. When a coarser shape is asked for, the Engine builds that view
+        ' into the class's view folder and Excel reads it from there.
+        If requestMode = DATA_REQUEST_LOCAL Then
+            storedFile = DatasetViewStoredFile(spec.DatasetIndexPath, requestedInstanceName, _
+                                               originLength, developmentLength, _
+                                               cumulativeMode, calendarMode)
+            If Len(storedFile) > 0 Then
+                requestMode = DATA_REQUEST_VIEW
+                spec.StoredDataPath = datasetDataPath & "\" & storedFile
+                datasetDataPath = datasetDataPath & "\" & DATASET_VIEW_CACHE_DIR
+            End If
+        End If
+        spec.DataPath = datasetDataPath & "\" & datasetFile & ".csv"
     Else
         ' Fallback for requests that are not scoped by reserving class and dataset
         ' name, such as ArcRhoHeaders and ArcRhoProjectSettings.
@@ -762,6 +788,71 @@ Private Function DatasetInstanceExistsInIndex(ByVal indexPath As String, ByVal i
     DatasetInstanceExistsInIndex = instanceMap.Exists(key)
 End Function
 
+Private Function DatasetViewStoredFile(ByVal indexPath As String, ByVal instanceName As String, _
+                                       ByVal originLength As String, ByVal developmentLength As String, _
+                                       ByVal cumulativeMode As String, ByVal calendarMode As String) As String
+' Name the file a hand-entered triangle is held in when the shape requested is
+' a coarser view of it, or return "" when the dataset's own file already is the
+' answer. The test here is deliberately the cheap one - coarser, whole
+' multiples, and not the stored shape itself. Whether the periods really line
+' up is the server's rule, and the server reports why when they do not.
+    Dim instanceMap As Object
+    Dim record As Object
+    Dim key As String
+    Dim storedOrigin As Long, storedDevelopment As Long
+    Dim wantedOrigin As Long, wantedDevelopment As Long
+
+    If Len(Trim$(instanceName)) = 0 Then Exit Function
+
+    Set instanceMap = GetDatasetIndexInstanceMap(indexPath)
+    key = NormalizeDatasetKey(instanceName)
+    If Not instanceMap.Exists(key) Then Exit Function
+    If Not IsObject(instanceMap(key)) Then Exit Function
+    Set record = instanceMap(key)
+
+    If StrComp(DatasetIndexRecordValue(record, "data_format"), "Triangle", vbTextCompare) <> 0 Then Exit Function
+    If StrComp(DatasetIndexRecordValue(record, "source_kind"), "input", vbTextCompare) <> 0 Then Exit Function
+
+    storedOrigin = PeriodLengthOrZero(DatasetIndexRecordValue(record, "stored_origin_length"))
+    storedDevelopment = PeriodLengthOrZero(DatasetIndexRecordValue(record, "stored_development_length"))
+    wantedOrigin = PeriodLengthOrZero(originLength)
+    wantedDevelopment = PeriodLengthOrZero(developmentLength)
+    If storedOrigin = 0 Or storedDevelopment = 0 Then Exit Function
+    If wantedOrigin = 0 Or wantedDevelopment = 0 Then Exit Function
+    If storedOrigin = wantedOrigin And storedDevelopment = wantedDevelopment Then Exit Function
+    If wantedOrigin < storedOrigin Or wantedDevelopment < storedDevelopment Then Exit Function
+    If wantedOrigin Mod storedOrigin <> 0 Then Exit Function
+    If wantedDevelopment Mod storedDevelopment <> 0 Then Exit Function
+
+    DatasetViewStoredFile = SanitizeDataFileName(instanceName) _
+        & "@" & CStr(storedOrigin) & "@" & CStr(storedDevelopment) _
+        & "@" & RequestBoolSuffix(cumulativeMode, "cum", "inc") _
+        & "@" & RequestBoolSuffix(calendarMode, "cal", "dev") & ".csv"
+End Function
+
+Private Function PeriodLengthOrZero(ByVal value As String) As Long
+    Dim text As String
+    text = Trim$(value)
+    If Len(text) = 0 Then Exit Function
+    If Not IsNumeric(text) Then Exit Function
+    If CDbl(text) <> Int(CDbl(text)) Then Exit Function
+    If CDbl(text) < 1 Then Exit Function
+    PeriodLengthOrZero = CLng(text)
+End Function
+
+Private Function DatasetViewIsStale(ByRef spec As DatasetRequestSpec) As Boolean
+' A view is rebuilt from the stored file, so it is out of date the moment that
+' file is the newer of the two. With no stored file to compare against, leave
+' the decision to the server.
+    If Len(spec.StoredDataPath) = 0 Then Exit Function
+    If Not FileExists(spec.StoredDataPath) Then Exit Function
+    If Not FileExists(spec.DataPath) Then
+        DatasetViewIsStale = True
+        Exit Function
+    End If
+    DatasetViewIsStale = (FileDateTime(spec.StoredDataPath) > FileDateTime(spec.DataPath))
+End Function
+
 Private Function GetDatasetIndexInstanceMap(ByVal indexPath As String) As Object
     Dim cacheKey As String
     Dim stamp As String
@@ -824,7 +915,9 @@ Private Function LoadDatasetIndexInstanceMap(ByVal indexPath As String) As Objec
             If Len(name) = 0 Then name = JsonObjectString(item, "dataset_name")
             If Len(name) > 0 Then
                 key = NormalizeDatasetKey(name)
-                If Not instanceMap.Exists(key) Then instanceMap.Add key, True
+                If Not instanceMap.Exists(key) Then
+                    instanceMap.Add key, DatasetIndexRecord(item)
+                End If
             End If
         End If
     Next i
@@ -836,6 +929,28 @@ LoadFinished:
 LoadFailed:
     Debug.Print "Failed to load dataset index: "; indexPath; " - "; Err.Description
     Set LoadDatasetIndexInstanceMap = instanceMap
+End Function
+
+Private Function DatasetIndexRecord(ByVal item As Object) As Object
+' Only the four fields the add-in reads. The reserving class index already
+' publishes the shape a dataset is shown at and the finer shape its file is
+' held at, so nothing here has to open the dataset's own metadata.
+    Dim record As Object
+
+    Set record = CreateObject("Scripting.Dictionary")
+    record.CompareMode = vbTextCompare
+    record.Add "data_format", JsonObjectString(item, "data_format")
+    record.Add "source_kind", JsonObjectString(item, "source_kind")
+    record.Add "stored_origin_length", JsonObjectString(item, "stored_origin_length")
+    record.Add "stored_development_length", JsonObjectString(item, "stored_development_length")
+
+    Set DatasetIndexRecord = record
+End Function
+
+Private Function DatasetIndexRecordValue(ByVal record As Object, ByVal key As String) As String
+    If record Is Nothing Then Exit Function
+    If Not record.Exists(key) Then Exit Function
+    DatasetIndexRecordValue = Trim$(CStr(record(key)))
 End Function
 
 Private Sub EnsureDatasetIndexCache()
@@ -1062,7 +1177,7 @@ Private Function JsonScalar(ByVal key As String, ByVal value As String) As Strin
     trimmed = Trim$(value)
 
     Select Case normalizedKey
-        Case "cumulative", "transposed", "calendar", "rpcserverwriteconfirmed"
+        Case "cumulative", "transposed", "calendar", "datasetview", "rpcserverwriteconfirmed"
             Select Case LCase$(trimmed)
                 Case "true", "yes", "1"
                     JsonScalar = "true"

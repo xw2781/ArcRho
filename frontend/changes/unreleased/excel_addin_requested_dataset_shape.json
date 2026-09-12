@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel formulas can now pull a hand-entered triangle at a coarser shape than the one it is stored at.",
+  "details": [
+    "A triangle typed in monthly and shown yearly used to answer \"local dataset cache not found\" in Excel; it now returns the yearly figures.",
+    "The rolled-up figures are built on the server from the stored triangle, exactly as the app builds them, and are rebuilt whenever the stored figures change.",
+    "Hand-entered vectors are not covered: a vector still has to be asked for at the period it is stored at."
+  ]
+}

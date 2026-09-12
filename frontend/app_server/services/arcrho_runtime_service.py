@@ -904,7 +904,13 @@ def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) 
     return (not reason), reason
 
 
-def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> Dict[str, Any]:
+def _derive_triangle_cache(
+    candidate: Dict[str, Any],
+    pairs: list,
+    target_path: str,
+    *,
+    write_input_view: bool = False,
+) -> Dict[str, Any]:
     source_path = str(candidate["path"])
     source_origin = int(candidate["origin_length"])
     source_dev = int(candidate["development_length"])
@@ -943,7 +949,11 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     }
 
     payload = candidate.get("payload")
-    if isinstance(payload, dict) and _clean_cache_text(payload.get("source_kind")).lower() == "input":
+    if (
+        isinstance(payload, dict)
+        and _clean_cache_text(payload.get("source_kind")).lower() == "input"
+        and not write_input_view
+    ):
         # A hand-entered triangle is the only copy of figures nobody can
         # produce again, so a coarser view of it is never written beside it:
         # the grid is handed the roll-up recipe and builds the view from the
@@ -992,6 +1002,7 @@ def resolve_local_triangle_cache(
     materialize_path: str | None = None,
     refresh_index_on_materialize: bool = True,
     allow_runtime_cache_provenance: bool = False,
+    write_input_view: bool = False,
     processing_hash_getter: ProcessingHashGetter | None = None,
     file_fingerprint_getter: FileFingerprintGetter | None = None,
     calculated_validation_memo: CalculatedValidationMemo | None = None,
@@ -1123,7 +1134,9 @@ def resolve_local_triangle_cache(
                 },
             }
         try:
-            derived = _derive_triangle_cache(candidate, pairs, target_path)
+            derived = _derive_triangle_cache(
+                candidate, pairs, target_path, write_input_view=write_input_view
+            )
         except Exception as err:
             rejected.append(str(err))
             continue
@@ -1155,6 +1168,35 @@ def resolve_local_triangle_cache(
         ),
         "data_path": data_path,
     }
+
+
+def materialize_dataset_view(pairs: list, target_path: str) -> Dict[str, Any]:
+    """Write the coarser view of a hand-entered dataset the add-in asked for.
+
+    The app never writes such a view. It builds the roll-up from the stored
+    CSV on every read, so an edit to the figures can never be served from an
+    older copy. A worksheet formula cannot be handed a frame in memory, which
+    makes this the one producer that materializes one — into the reserving
+    class's non-indexed view cache, never beside the dataset's own data, and
+    the add-in rebuilds it whenever the stored CSV is the newer file.
+
+    Only a hand-entered dataset is served here: an Engine-generated one is
+    recalculated at the requested shape by the ordinary calculation request.
+    """
+
+    data_path = set_data_path_like_vba(pairs)
+    view_path = temporary_dataset_path(data_path, pairs)
+    if not _same_resolved_path(target_path, view_path):
+        raise HTTPException(
+            400, "A dataset view must be written to the reserving class's view cache."
+        )
+    return resolve_local_triangle_cache(
+        data_path,
+        pairs,
+        materialize_path=view_path,
+        refresh_index_on_materialize=False,
+        write_input_view=True,
+    )
 
 
 def _engine_stored_lengths(project_name: str, origin: int, development: int) -> tuple:

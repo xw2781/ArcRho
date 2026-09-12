@@ -5,8 +5,11 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
+
+from fastapi import HTTPException
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTEND_ROOT.parent
@@ -46,6 +49,8 @@ class ManualDatasetRollupViewTests(unittest.TestCase):
 
         self.stored_csv = self.cache_dir / f"{self.dataset_name}@1@1@cum@dev.csv"
         self.view_csv = self.cache_dir / f"{self.dataset_name}@12@12@cum@dev.csv"
+        self.add_in_view_dir = self.cache_dir / config.TEMPORARY_VIEW_DATASET_CACHE_DIR
+        self.add_in_view_csv = self.add_in_view_dir / self.view_csv.name
         self._write_stored_rows(100.0)
 
         sidecar = {
@@ -140,6 +145,64 @@ class ManualDatasetRollupViewTests(unittest.TestCase):
         self.assertTrue(result["derived"]["in_memory"])
         self.assertEqual(self.view_csv.read_text(encoding="utf-8"), "1,2\n3,4\n")
         self.assertEqual(self._view_values(result)[0][0], 7800.0)
+
+    def _cache_dir_patches(self) -> ExitStack:
+        stack = ExitStack()
+        stack.enter_context(
+            patch.object(
+                config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                config,
+                "get_project_temporary_view_dataset_cache_dir",
+                return_value=str(self.add_in_view_dir),
+            )
+        )
+        return stack
+
+    def _materialize_add_in_view(self, target: Path | None = None) -> dict:
+        with self._cache_dir_patches():
+            return arcrho_runtime_service.materialize_dataset_view(
+                self._pairs(), str(target or self.add_in_view_csv)
+            )
+
+    def _add_in_view_rows(self) -> list:
+        text = self.add_in_view_csv.read_text(encoding="utf-8").strip()
+        return [[cell for cell in line.split(",")] for line in text.splitlines()]
+
+    def test_the_add_in_view_is_written_into_the_view_cache(self) -> None:
+        result = self._materialize_add_in_view()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "cache_derived")
+        self.assertFalse(result["derived"].get("in_memory"))
+        self.assertTrue(self.add_in_view_csv.exists())
+        self.assertFalse(
+            self.view_csv.exists(),
+            "a coarser copy of a hand-entered dataset was written beside it",
+        )
+        rows = self._add_in_view_rows()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(float(rows[0][0]), 7800.0)
+
+    def test_a_rebuilt_add_in_view_carries_the_edited_figures(self) -> None:
+        self._materialize_add_in_view()
+        first = float(self._add_in_view_rows()[0][0])
+        self._write_stored_rows(200.0)
+        self._materialize_add_in_view()
+        second = float(self._add_in_view_rows()[0][0])
+
+        self.assertEqual(first, 7800.0)
+        self.assertEqual(second, 15600.0)
+
+    def test_an_add_in_view_beside_the_stored_data_is_refused(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            self._materialize_add_in_view(self.view_csv)
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertFalse(self.view_csv.exists())
 
 
 if __name__ == "__main__":
