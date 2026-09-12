@@ -52,6 +52,10 @@ HEADER_PAIRS = [
     ["ProjectName", "Demo Project"],
     ["StoredPeriodLength", "-1"],
 ]
+PROJECT_SETTINGS_PAIRS = [
+    ["Function", "ArcRhoProjectSettings"],
+    ["ProjectName", "Demo Project"],
+]
 
 
 def _request(pairs=None, **overrides) -> dict:
@@ -74,9 +78,26 @@ class DatasetCsvOperationTests(unittest.TestCase):
             self.assertEqual(request["Operation"], OPERATION_DATASET_CSV)
             self.assertEqual(request["Options"], {})
 
-    def test_the_headers_function_refuses_the_operation(self) -> None:
+    def test_the_project_level_functions_accept_the_operation(self) -> None:
+        """The headings and project-settings formulas answer the same way."""
+
+        for pairs in (HEADER_PAIRS, PROJECT_SETTINGS_PAIRS):
+            request = _request(pairs)
+            self.assertEqual(request["Operation"], OPERATION_DATASET_CSV)
+            self.assertEqual(request["Options"], {})
+
+    def test_the_project_level_functions_refuse_an_unlisted_key(self) -> None:
+        for pairs in (HEADER_PAIRS, PROJECT_SETTINGS_PAIRS):
+            with self.assertRaises(EngineCalculationContractError):
+                _request(pairs + [["Path", "PA\\All States\\COL"]])
+        # The project-settings request names the project and nothing else.
         with self.assertRaises(EngineCalculationContractError):
-            _request(HEADER_PAIRS)
+            _request(PROJECT_SETTINGS_PAIRS + [["PeriodLength", "12"]])
+
+    def test_the_project_level_functions_take_no_output_variant(self) -> None:
+        for pairs in (HEADER_PAIRS, PROJECT_SETTINGS_PAIRS):
+            with self.assertRaises(EngineCalculationContractError):
+                _request(pairs, output_variant=OUTPUT_VARIANT_TEMPORARY_VIEW)
 
     def test_the_operation_is_advertised(self) -> None:
         self.assertIn(OPERATION_DATASET_CSV, HTTP_ENGINE_CALCULATION_OPERATIONS)

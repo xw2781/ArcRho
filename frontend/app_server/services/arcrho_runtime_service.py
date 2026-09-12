@@ -1486,20 +1486,49 @@ def _require_valid_header_project_settings(pairs: list) -> Dict[str, Any]:
     return settings
 
 
+def _drop_project_csv_cache(data_path: str, what: str) -> None:
+    """Delete a cached project-level CSV so the next read asks the Engine again."""
+
+    if not os.path.exists(data_path):
+        return
+    try:
+        os.remove(data_path)
+    except PermissionError:
+        raise HTTPException(423, f"ArcRho project {what} cache is locked or inaccessible.")
+    except OSError as err:
+        raise HTTPException(500, f"Failed to refresh ArcRho project {what} cache: {str(err)}")
+
+
+def _drop_project_csv_cache_older_than_settings(
+    data_path: str, settings_path: str, what: str
+) -> None:
+    """Drop the cache when the project's general settings were saved after it.
+
+    Both project-level CSVs the Engine writes -- the period headings and the
+    settings table -- are derived from the project's origin and development
+    dates, so a cache older than that file answers with the previous dates.
+    """
+
+    if not os.path.exists(data_path) or not settings_path or not os.path.exists(settings_path):
+        return
+    try:
+        stale = os.path.getmtime(data_path) < os.path.getmtime(settings_path)
+    except PermissionError:
+        raise HTTPException(423, f"ArcRho project {what} cache is locked or inaccessible.")
+    except OSError as err:
+        raise HTTPException(500, f"Failed to refresh ArcRho project {what} cache: {str(err)}")
+    if stale:
+        _drop_project_csv_cache(data_path, what)
+
+
 def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
     settings = _require_valid_header_project_settings(pairs)
     data_path = set_data_path_like_vba(pairs)
     request_file = None
 
-    settings_path = str(settings.get("path") or "").strip()
-    if os.path.exists(data_path) and settings_path and os.path.exists(settings_path):
-        try:
-            if os.path.getmtime(data_path) < os.path.getmtime(settings_path):
-                os.remove(data_path)
-        except PermissionError:
-            raise HTTPException(423, "ArcRho project headers cache is locked or inaccessible.")
-        except OSError as err:
-            raise HTTPException(500, f"Failed to refresh ArcRho project headers cache: {str(err)}")
+    _drop_project_csv_cache_older_than_settings(
+        data_path, str(settings.get("path") or "").strip(), "headers"
+    )
 
     if not os.path.exists(data_path):
         try:
@@ -1530,6 +1559,89 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
         "request_file": request_file,
         "data_path": data_path,
     }
+
+
+def arcrho_project_settings(pairs: list, timeout_sec: float) -> Dict[str, Any]:
+    """Resolve the project-settings CSV the Engine writes for one project.
+
+    The Engine reads the project's general settings and writes the two-column
+    table a worksheet puts on a sheet. The cache beside the project data is
+    reused until those settings are saved again, which is the rule the period
+    headings follow for the same reason.
+    """
+
+    project_name = _pair_value(pairs, "ProjectName")
+    settings = project_settings_service.get_general_settings(project_name)
+    data_path = set_data_path_like_vba(pairs)
+    request_file = None
+
+    _drop_project_csv_cache_older_than_settings(
+        data_path, str(settings.get("path") or "").strip(), "settings"
+    )
+
+    if not os.path.exists(data_path):
+        try:
+            os.makedirs(os.path.dirname(data_path), exist_ok=True)
+        except OSError as err:
+            raise HTTPException(500, f"Failed to create ArcRho project data folder: {str(err)}")
+        outcome = engine_calculation_service.run_engine_calculation(
+            pairs, data_path, max(0.1, float(timeout_sec))
+        )
+        request_file = outcome.get("request_file")
+        if not outcome["ok"]:
+            return {
+                "ok": False,
+                "status": outcome["status"],
+                "message": outcome.get("message")
+                or "Timed out while loading ArcRho project settings. Verify the data engine is running, then try again.",
+                "request_file": request_file,
+                "data_path": data_path,
+            }
+
+    return {
+        "ok": True,
+        "request_file": request_file,
+        "data_path": data_path,
+    }
+
+
+def run_arcrho_headers_csv(
+    pairs: list, timeout_sec: float, force_refresh: bool = False
+) -> Dict[str, Any]:
+    """The headings route's own answer, plus the text of the cache it read.
+
+    A worksheet formula parses CSV text, so the label cache's own text comes
+    back in the field the dataset operation answers with; the labels the app
+    reads are left beside it untouched.
+    """
+
+    if force_refresh:
+        _drop_project_csv_cache(set_data_path_like_vba(pairs), "headers")
+    return _with_csv_text(arcrho_headers(pairs, max(0.1, float(timeout_sec))))
+
+
+def run_arcrho_project_settings_csv(
+    pairs: list, timeout_sec: float, force_refresh: bool = False
+) -> Dict[str, Any]:
+    """The project-settings table as the text a worksheet formula parses."""
+
+    if force_refresh:
+        _drop_project_csv_cache(set_data_path_like_vba(pairs), "settings")
+    return _with_csv_text(arcrho_project_settings(pairs, max(0.1, float(timeout_sec))))
+
+
+def _with_csv_text(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Return ``result`` carrying the text of the CSV it resolved.
+
+    A failure is returned exactly as it was reported, with no text, so the
+    caller still sees why.
+    """
+
+    if not result.get("ok"):
+        return result
+    out = dict(result)
+    out[ENGINE_CALCULATION_CSV_FIELD] = _csv_file_text(str(result.get("data_path") or ""))
+    return out
 
 
 def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, period_length: int, calendar: bool = False) -> list:
@@ -2621,6 +2733,17 @@ def run_arcrho_tri(
     return out
 
 
+def _csv_file_text(data_path: str) -> str:
+    """The exact text of one CSV the Engine or the runtime wrote.
+
+    Read with the file's own line endings, so a number can never come back
+    spelled differently than it was written.
+    """
+
+    with open(data_path, "r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
 def _dataset_csv_text(ds_id: str, data_path: str) -> str:
     """The CSV text a worksheet formula reads for a dataset the route resolved.
 
@@ -2639,8 +2762,7 @@ def _dataset_csv_text(ds_id: str, data_path: str) -> str:
         buffer = io.StringIO()
         rolled_up[0].to_csv(buffer, header=False, index=False)
         return buffer.getvalue()
-    with open(data_path, "r", encoding="utf-8", newline="") as handle:
-        return handle.read()
+    return _csv_file_text(data_path)
 
 
 def run_arcrho_dataset_csv(

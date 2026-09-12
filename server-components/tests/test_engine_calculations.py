@@ -128,7 +128,7 @@ class EngineCalculationContractTests(unittest.TestCase):
 
     def test_validation_rejects_unknown_function_and_keys(self) -> None:
         with self.assertRaises(EngineCalculationContractError):
-            _request([["Function", "ArcRhoProjectSettings"], ["ProjectName", "Demo"]])
+            _request([["Function", "ArcRhoDatasetTypes"], ["ProjectName", "Demo"]])
         with self.assertRaises(EngineCalculationContractError):
             _request(TRI_PAIRS + [["periodType", "0"]])
         with self.assertRaises(EngineCalculationContractError):
@@ -216,7 +216,10 @@ class EngineCalculationContractTests(unittest.TestCase):
             validate_engine_calculation_request({"Function": "ArcRhoWorkspaceRead"})
 
     def test_advertised_functions_are_the_registry(self) -> None:
-        self.assertEqual(HTTP_ENGINE_CALCULATION_FUNCTIONS, ("ArcRhoHeaders", "ArcRhoTri", "ArcRhoVec"))
+        self.assertEqual(
+            HTTP_ENGINE_CALCULATION_FUNCTIONS,
+            ("ArcRhoHeaders", "ArcRhoProjectSettings", "ArcRhoTri", "ArcRhoVec"),
+        )
 
 
 class _FakeEngine:

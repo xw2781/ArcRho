@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (3 of 9 done).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps, one decision open on credential rollout; implementation started 2026-09-12 (4 of 9 done).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -13,14 +13,14 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | A workbook full of single-cell formulas stops fetching the same triangle over and over | [x] | 2026-09-12 | Twenty-one formulas over one triangle now read it once instead of twenty-one times. |
 | 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [x] | 2026-09-12 | Excel can now reach the ArcRho Server directly, and a one-line check says whether this PC can. |
 | 3 | The server can hand Excel a triangle's figures in one answer | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a triangle with its figures, so Excel will not have to open files on the shared drive. |
-| 4 | The server can hand Excel its period headings and project settings the same way | [ ] | | |
+| 4 | The server can hand Excel its period headings and project settings the same way | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a project's period headings or its settings with their figures, so every Excel formula has an answer that does not need the shared drive. |
 | 5 | Formulas get their figures from the server instead of the shared drive | [ ] | | |
 | 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 3 of 9 steps done.
+Overall: 4 of 9 steps done.
 
 ## How agents work this plan
 
@@ -163,13 +163,14 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Goal.** The period-heading and project-settings formulas can be served over HTTP too, so no worksheet function is left needing the share.
 
-**Read first.** [Decisions](#decisions) item 2. [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py) `ENGINE_CALCULATION_KINDS`; [arcrho_runtime_service.py:1484-1560](../../frontend/app_server/services/arcrho_runtime_service.py#L1484-L1560) (`arcrho_headers`); [arcrho_router.py:108-135](../../frontend/app_server/api/arcrho_router.py#L108-L135); [ArcRhoFunctions.bas:111-142](../../excel-addin/src_vba/ArcRhoFunctions.bas#L111-L142) and [ArcRhoFunctions.bas:285-292](../../excel-addin/src_vba/ArcRhoFunctions.bas#L285-L292) for what the two formulas expect back; [Core.bas:583-590](../../excel-addin/src_vba/Core.bas#L583-L590) for the unscoped request path they use; [test_arcrho_router_hosted_operations.py](../../frontend/tests/test_arcrho_router_hosted_operations.py). Step 3 must be committed first, because this reuses its operation.
+**Read first.** [Decisions](#decisions) item 2. [arcrho_engine_calculation_contract.py](../../python-api/src/arcrho_engine_calculation_contract.py) `ENGINE_CALCULATION_KINDS`; [arcrho_runtime_service.py:1484-1560](../../frontend/app_server/services/arcrho_runtime_service.py#L1484-L1560) (`arcrho_headers`); [arcrho_router.py:108-135](../../frontend/app_server/api/arcrho_router.py#L108-L135); [ArcRhoFunctions.bas:111-142](../../excel-addin/src_vba/ArcRhoFunctions.bas#L111-L142) and [ArcRhoFunctions.bas:285-292](../../excel-addin/src_vba/ArcRhoFunctions.bas#L285-L292) for what the two formulas expect back; [Core.bas:583-590](../../excel-addin/src_vba/Core.bas#L583-L590) for the unscoped request path they use; [test_arcrho_router_hosted_operations.py](../../frontend/tests/test_arcrho_router_hosted_operations.py) and [test_engine_calculations.py](../../server-components/tests/test_engine_calculations.py), whose advertised-function list is a pin a new kind moves. Step 3 must be committed first, because this reuses its operation.
 
 **Do.**
 
-- [ ] Extend the headings kind with the step 3 operation, served by the existing headings service, which already answers with values rather than a path.
-- [ ] Register the project-settings function as a hosted kind with its exact request-file keys, no reserving class, the canonical output variant only, and the step 3 operation.
-- [ ] Return both as the same text field step 3 defined, so the add-in has one answer shape to parse.
+- [x] Extend the headings kind with the step 3 operation, served by the existing headings service, which already answers with values rather than a path.
+- [x] Register the project-settings function as a hosted kind with its exact request-file keys, no reserving class, the canonical output variant only, and the step 3 operation. Its keys are `Function` and `ProjectName`, the only two the Engine's handler reads.
+- [x] Return both as the same text field step 3 defined, so the add-in has one answer shape to parse. The headings answer keeps its labels beside the text, so the app's own route is unchanged.
+- [x] Decided while implementing: the project-settings table is served by a new `arcrho_project_settings` in the runtime service, which reuses the cache beside the project data until the project's general settings are saved again. That staleness rule was already the headings cache's and is now shared between them, because both CSVs are derived from the project's origin and development dates. The operation's `force_refresh` drops either cache before the read, so the add-in's "always refresh" reaches them; `local_only` and `allow_derived` describe a dataset route and do not apply.
 
 **Tests.** `python-api/tests`: both kinds accept the operation and refuse an unlisted key. `test_arcrho_router_hosted_operations.py`: the headings answer matches the existing route's values for the same request, and the project-settings answer matches the CSV the share path produces.
 

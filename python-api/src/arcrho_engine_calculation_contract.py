@@ -157,6 +157,12 @@ class EngineCalculationKind:
         return frozenset(self.keys)
 
 
+# The Engine functions a worksheet formula calls, spelled once here.
+ENGINE_FUNCTION_TRIANGLE = "ArcRhoTri"
+ENGINE_FUNCTION_VECTOR = "ArcRhoVec"
+ENGINE_FUNCTION_HEADERS = "ArcRhoHeaders"
+ENGINE_FUNCTION_PROJECT_SETTINGS = "ArcRhoProjectSettings"
+
 _DATASET_KEYS = (
     "Function",
     "Path",
@@ -175,14 +181,20 @@ _DATASET_KEYS = (
 # Engine function -> hosted kind. Only a function registered here may run
 # through the Gateway; every other legacy request stays a plain request file.
 ENGINE_CALCULATION_KINDS: dict[str, EngineCalculationKind] = {
-    "ArcRhoTri": EngineCalculationKind(
-        "ArcRhoTri", _DATASET_KEYS, output_variants=OUTPUT_VARIANTS, operations=OPERATIONS
+    ENGINE_FUNCTION_TRIANGLE: EngineCalculationKind(
+        ENGINE_FUNCTION_TRIANGLE,
+        _DATASET_KEYS,
+        output_variants=OUTPUT_VARIANTS,
+        operations=OPERATIONS,
     ),
-    "ArcRhoVec": EngineCalculationKind(
-        "ArcRhoVec", _DATASET_KEYS, output_variants=OUTPUT_VARIANTS, operations=OPERATIONS
+    ENGINE_FUNCTION_VECTOR: EngineCalculationKind(
+        ENGINE_FUNCTION_VECTOR,
+        _DATASET_KEYS,
+        output_variants=OUTPUT_VARIANTS,
+        operations=OPERATIONS,
     ),
-    "ArcRhoHeaders": EngineCalculationKind(
-        "ArcRhoHeaders",
+    ENGINE_FUNCTION_HEADERS: EngineCalculationKind(
+        ENGINE_FUNCTION_HEADERS,
         (
             "Function",
             "periodType",
@@ -193,6 +205,17 @@ ENGINE_CALCULATION_KINDS: dict[str, EngineCalculationKind] = {
             "StoredPeriodLength",
         ),
         reserving_class=False,
+        operations=(OPERATION_EXCHANGE, OPERATION_DATASET_CSV),
+    ),
+    # The period-heading and project-settings formulas read a project-level
+    # CSV rather than a dataset, so they name no reserving class and have no
+    # coarser view; ``dataset_csv`` answers them with the same text field, so
+    # a worksheet formula has one answer shape whatever it asked for.
+    ENGINE_FUNCTION_PROJECT_SETTINGS: EngineCalculationKind(
+        ENGINE_FUNCTION_PROJECT_SETTINGS,
+        ("Function", "ProjectName"),
+        reserving_class=False,
+        operations=(OPERATION_EXCHANGE, OPERATION_DATASET_CSV),
     ),
 }
 
@@ -395,9 +418,9 @@ def validate_engine_calculation_request(payload: Mapping[str, Any]) -> dict[str,
     }
 
 
-# Response field carrying the dataset's CSV text for ``dataset_csv``. Present
-# only when the run succeeded; a failed run answers with its status and
-# message alone.
+# Response field carrying the CSV text for ``dataset_csv`` -- a dataset's
+# figures, a project's period headings, or its settings table. Present only
+# when the run succeeded; a failure answers with its status and message alone.
 ENGINE_CALCULATION_CSV_FIELD = "csv_text"
 
 # Response status values the Gateway returns for a request it ran.

@@ -40,6 +40,8 @@ from arcrho_engine_calculation_contract import (
     ENGINE_CALCULATION_PATH,
     ENGINE_CALCULATION_STATUS_COMPLETED,
     ENGINE_CALCULATION_STATUS_TIMEOUT,
+    ENGINE_FUNCTION_HEADERS,
+    ENGINE_FUNCTION_PROJECT_SETTINGS,
     OPERATION_DATASET_CSV,
     OPERATION_DATASET_PRECHECK,
     OPERATION_DATASET_RUN,
@@ -216,12 +218,26 @@ def execute_hosted_engine_calculation(
 
     normalized_pairs = [(str(key), str(value)) for key, value in pairs]
     if operation == OPERATION_DATASET_CSV:
-        # The dataset route plus the figures, for a caller that cannot open
-        # the CSV the route resolved -- a worksheet formula.
+        # The figures themselves, for a caller that cannot open the CSV the
+        # server resolved -- a worksheet formula. The period headings and the
+        # project-settings table are project-level CSVs with no dataset route
+        # behind them, so each is served by its own function; every one of the
+        # three answers in the same text field.
+        wait = clamp_engine_calculation_wait(timeout_sec)
+        force_refresh = bool(settings.get("force_refresh", False))
+        function = engine_function_of(normalized_pairs)
+        if function == ENGINE_FUNCTION_HEADERS:
+            return arcrho_runtime_service.run_arcrho_headers_csv(
+                normalized_pairs, timeout_sec=wait, force_refresh=force_refresh
+            )
+        if function == ENGINE_FUNCTION_PROJECT_SETTINGS:
+            return arcrho_runtime_service.run_arcrho_project_settings_csv(
+                normalized_pairs, timeout_sec=wait, force_refresh=force_refresh
+            )
         return arcrho_runtime_service.run_arcrho_dataset_csv(
             normalized_pairs,
-            timeout_sec=clamp_engine_calculation_wait(timeout_sec),
-            force_refresh=bool(settings.get("force_refresh", False)),
+            timeout_sec=wait,
+            force_refresh=force_refresh,
             local_only=bool(settings.get("local_only", False)),
             allow_derived=bool(settings.get("allow_derived", True)),
         )

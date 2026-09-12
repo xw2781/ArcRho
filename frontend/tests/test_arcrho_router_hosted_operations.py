@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -27,11 +28,14 @@ from arcrho_engine_calculation_contract import (
 import app_server.api  # noqa: F401  (registers the submodules)
 arcrho_router = sys.modules["app_server.api.arcrho_router"]
 from app_server import config
+from app_server.helpers import set_data_path_like_vba
 from app_server.schemas.arcrho import ArcRhoTriRequest, ArcRhoVecRequest
 from app_server.services import (
     arcrho_runtime_service,
     calculated_dataset_service,
     engine_calculation_service,
+    file_read_cache,
+    project_settings_service,
 )
 
 
@@ -253,6 +257,132 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertNotIn("csv_text", answer)
         self.assertIn("Timed out", answer["message"])
         self.assertFalse(self.csv_path.exists())
+
+
+class HostedProjectLevelCsvTests(unittest.TestCase):
+    """``dataset_csv`` answers the headings and project-settings formulas too."""
+
+    project_name = "Example Project"
+    # Written the way the Engine writes a project-level CSV, line endings and
+    # all: the answer carries that text unchanged.
+    HEADER_TEXT = "2020,2021,2022\r\n"
+    SETTINGS_TEXT = "Name,Example Project\r\nOrigin Length,12\r\n"
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        self.addCleanup(self.temp_dir.cleanup)
+        root = Path(self.temp_dir.name)
+        self.data_dir = root / "data"
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.settings_path = root / "general_settings.json"
+        self.settings_path.write_text("{}", encoding="utf-8")
+        item = patch.object(config, "get_project_data_dir", return_value=str(self.data_dir))
+        item.start()
+        self.addCleanup(item.stop)
+        item = patch.object(
+            project_settings_service,
+            "get_general_settings",
+            return_value={
+                "ok": True,
+                "exists": True,
+                "path": str(self.settings_path),
+                "data": {"origin_start_date": "202001"},
+            },
+        )
+        item.start()
+        self.addCleanup(item.stop)
+        self.addCleanup(file_read_cache.clear_file_read_cache)
+
+    def _header_pairs(self) -> list:
+        return [
+            ("Function", "ArcRhoHeaders"),
+            ("periodType", "0"),
+            ("Transposed", "False"),
+            ("Calendar", "False"),
+            ("PeriodLength", "12"),
+            ("ProjectName", self.project_name),
+            ("StoredPeriodLength", "-1"),
+        ]
+
+    def _settings_pairs(self) -> list:
+        return [("Function", "ArcRhoProjectSettings"), ("ProjectName", self.project_name)]
+
+    def _answer(self, pairs: list, **options) -> dict:
+        return engine_calculation_service.execute_hosted_engine_calculation(
+            pairs, 15.0, OUTPUT_VARIANT_CANONICAL, OPERATION_DATASET_CSV, options
+        )
+
+    def _write_cache(self, pairs: list, text: str) -> Path:
+        path = Path(set_data_path_like_vba([(str(k), str(v)) for k, v in pairs]))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        return path
+
+    def _engine_writes(self, text: str):
+        def fake_engine(pairs, data_path, timeout_sec, **kwargs):
+            with open(data_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+            return {"ok": True, "status": "completed", "request_file": "r.json"}
+
+        return patch.object(engine_calculation_service, "run_engine_calculation", fake_engine)
+
+    def test_the_headings_answer_matches_the_existing_route(self) -> None:
+        self._write_cache(self._header_pairs(), self.HEADER_TEXT)
+
+        answer = self._answer(self._header_pairs())
+        route = arcrho_runtime_service.arcrho_headers(self._header_pairs(), timeout_sec=15.0)
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["labels"], route["labels"])
+        self.assertEqual(answer["labels"], ["2020", "2021", "2022"])
+        self.assertEqual(answer["csv_text"], self.HEADER_TEXT)
+
+    def test_the_project_settings_answer_is_the_engine_csv(self) -> None:
+        with self._engine_writes(self.SETTINGS_TEXT):
+            answer = self._answer(self._settings_pairs())
+
+        path = Path(set_data_path_like_vba([(k, v) for k, v in self._settings_pairs()]))
+        with open(path, "r", encoding="utf-8", newline="") as handle:
+            self.assertEqual(answer["csv_text"], handle.read())
+        self.assertEqual(answer["csv_text"], self.SETTINGS_TEXT)
+        self.assertTrue(answer["ok"])
+
+    def test_a_cached_project_settings_table_is_reused(self) -> None:
+        self._write_cache(self._settings_pairs(), self.SETTINGS_TEXT)
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("A cached project-settings table must not ask the Engine.")
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
+            answer = self._answer(self._settings_pairs())
+
+        self.assertEqual(answer["csv_text"], self.SETTINGS_TEXT)
+
+    def test_a_settings_save_after_the_cache_asks_the_engine_again(self) -> None:
+        path = self._write_cache(self._settings_pairs(), self.SETTINGS_TEXT)
+        os.utime(path, (0, 0))
+
+        with self._engine_writes("Name,Renamed Project\r\n"):
+            answer = self._answer(self._settings_pairs())
+
+        self.assertEqual(answer["csv_text"], "Name,Renamed Project\r\n")
+
+    def test_an_unanswered_project_settings_request_reports_why(self) -> None:
+        timeout = {
+            "ok": False,
+            "status": "timeout",
+            "request_file": "r.json",
+            "message": "Timed out waiting for the ArcRho Engine.",
+        }
+        with patch.object(
+            engine_calculation_service, "run_engine_calculation", return_value=timeout
+        ):
+            answer = self._answer(self._settings_pairs())
+
+        self.assertFalse(answer["ok"])
+        self.assertEqual(answer["status"], "timeout")
+        self.assertNotIn("csv_text", answer)
 
 
 if __name__ == "__main__":
