@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "internal",
+  "summary": "One shared rule now decides which dataset types a formula reads, wherever the app reads a formula.",
+  "details": [
+    "A formula that quotes one input and leaves another unquoted counts both everywhere; the Dataset Types tab used to ignore the unquoted ones as soon as any name was quoted.",
+    "The shared reader also answers which types a formula-built dataset feeds, generated types included, which later steps use to keep those datasets current."
+  ]
+}

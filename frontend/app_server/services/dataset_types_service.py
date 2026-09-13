@@ -12,6 +12,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from fastapi import HTTPException
 
+from arcrho_api.dataset_type_contract import formula_references
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
@@ -540,61 +541,13 @@ def _replace_formula_components_with_sources(
 
 
 def _extract_formula_components(formula: str, known_dataset_names: List[str]) -> List[str]:
-    text = str(formula or "").strip()
-    if not text:
-        return []
+    """The type names a formula reads, by the one rule in ``arcrho_api.dataset_type_contract``.
 
-    quoted = [str(x or "").strip() for x in re.findall(r'"([^"]+)"', text)]
-    quoted = [q for q in quoted if q]
-    if quoted:
-        seen: set[str] = set()
-        out: List[str] = []
-        for q in quoted:
-            k = _canon_dataset_name(q)
-            if not k or k in seen:
-                continue
-            seen.add(k)
-            out.append(q)
-        return out
-
-    unique_names = sorted(
-        set([str(n or "").strip() for n in known_dataset_names if str(n or "").strip()]),
-        key=len,
-        reverse=True,
-    )
-    if not unique_names:
-        return []
-
-    matches: List[Tuple[int, int, str]] = []
-    for name in unique_names:
-        pattern = re.compile(
-            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])",
-            flags=re.IGNORECASE,
-        )
-        for m in pattern.finditer(text):
-            matches.append((m.start(), m.end(), name))
-    if not matches:
-        return []
-
-    matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
-    used: List[Tuple[int, int]] = []
-    out_list: List[str] = []
-    seen_keys: set[str] = set()
-    for start, end, name in matches:
-        overlap = False
-        for us, ue in used:
-            if start < ue and end > us:
-                overlap = True
-                break
-        if overlap:
-            continue
-        used.append((start, end))
-        k = _canon_dataset_name(name)
-        if not k or k in seen_keys:
-            continue
-        seen_keys.add(k)
-        out_list.append(name)
-    return out_list
+    Source expansion and save-time validation therefore read a formula exactly
+    as the persisted links do, including one that mixes quoted and unquoted
+    names.
+    """
+    return formula_references(formula, known_dataset_names)
 
 
 def _find_unresolved_dataset_refs(text: str, known_dataset_names: List[str]) -> List[str]:

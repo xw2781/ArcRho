@@ -15,7 +15,11 @@ import pandas as pd
 
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.dataset_link_contract import link_precedent_names
-from arcrho_api.dataset_type_contract import dataset_type_keys, is_app_calculated_dataset_type
+from arcrho_api.dataset_type_contract import (
+    dataset_type_keys,
+    formula_references,
+    is_app_calculated_dataset_type,
+)
 from arcrho_api.sidecar_core_contract import stored_length_fields, stored_lengths
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
@@ -107,39 +111,8 @@ def _dataset_type_name_by_key(project_name: str) -> Dict[str, str]:
 
 
 def _formula_components(formula: str, known_names: List[str]) -> List[str]:
-    text = _clean_text(formula)
-    if not text:
-        return []
-
-    out: List[str] = []
-    seen: Set[str] = set()
-    masked_parts = []
-    last = 0
-    for match in re.finditer(r'"([^"]+)"', text):
-        token = _clean_text(match.group(1))
-        key = _canon_dataset_name(token)
-        if token and key and key not in seen:
-            seen.add(key)
-            out.append(token)
-        masked_parts.append(text[last:match.start()])
-        masked_parts.append(" ")
-        last = match.end()
-    masked_parts.append(text[last:])
-    unquoted_text = "".join(masked_parts)
-
-    for name in sorted(
-        {str(item or "").strip() for item in known_names if str(item or "").strip()},
-        key=len,
-        reverse=True,
-    ):
-        key = _canon_dataset_name(name)
-        if not key or key in seen:
-            continue
-        pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", flags=re.IGNORECASE)
-        if pattern.search(unquoted_text):
-            seen.add(key)
-            out.append(name)
-    return out
+    """The type names a formula reads, by the one rule in ``arcrho_api.dataset_type_contract``."""
+    return formula_references(formula, known_names)
 
 
 def _app_calculated_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

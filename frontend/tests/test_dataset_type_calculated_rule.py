@@ -7,9 +7,12 @@ from unittest.mock import patch
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
-if str(FRONTEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(FRONTEND_ROOT))
+PYTHON_API_SRC = FRONTEND_ROOT.parent / "python-api" / "src"
+for _path in (FRONTEND_ROOT, PYTHON_API_SRC):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
+from arcrho_api.dataset_type_contract import dataset_type_formula_graph
 from app_server.services import calculated_dataset_service, dataset_service
 
 
@@ -54,6 +57,40 @@ class DatasetTypeCalculatedRuleTests(unittest.TestCase):
             dataset_service._is_app_calculated_dataset_type("Demo", "Net Loss--Paid", calculation_map=calculation_map),
             (False, '"Gross Loss--Paid"'),
         )
+
+
+# The fake project's three generated types: two source columns and the formula
+# the Engine builds from them.
+GENERATED_ROWS = [
+    {"name": "Earned Premium", "data_format": "Triangle", "category": "Premium", "calculated": False, "formula": "", "source": "Earned_Premium", "generated": True},
+    {"name": "Remaining Budget Premium", "data_format": "Triangle", "category": "Premium", "calculated": False, "formula": "", "source": "Remaining_Budget_Premium", "generated": True},
+    {"name": "Total Earned Premium", "data_format": "Triangle", "category": "Premium", "calculated": True, "formula": '"Earned Premium" + "Remaining Budget Premium"', "source": "Earned_Premium + Remaining_Budget_Premium", "generated": True},
+]
+
+
+class GeneratedFormulaGraphTests(unittest.TestCase):
+    """A generated formula has logical inputs even though the Engine computes it."""
+
+    def setUp(self) -> None:
+        patcher = patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[dict(row) for row in GENERATED_ROWS])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_shared_graph_links_both_source_types_to_the_formula(self) -> None:
+        graph = dataset_type_formula_graph(GENERATED_ROWS)
+        self.assertEqual(
+            graph.precedents["total earned premium"],
+            ("earned premium", "remaining budget premium"),
+        )
+        self.assertEqual(graph.dependents["earned premium"], ("total earned premium",))
+        self.assertEqual(graph.dependents["remaining budget premium"], ("total earned premium",))
+
+    def test_a_generated_formula_is_still_not_the_evaluator_s_to_compute(self) -> None:
+        rows = calculated_dataset_service._dataset_type_rows("Demo")
+        self.assertEqual(calculated_dataset_service._app_calculated_rows(rows), [])
+        self.assertEqual(calculated_dataset_service._target_dependency_map("Demo"), {})
+        self.assertEqual(calculated_dataset_service._dependency_map("Demo"), {})
+        self.assertIsNone(calculated_dataset_service.calculated_dataset_contract("Demo", "Total Earned Premium"))
 
 
 if __name__ == "__main__":

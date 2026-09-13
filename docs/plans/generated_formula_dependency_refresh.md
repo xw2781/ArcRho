@@ -1,7 +1,7 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; implementation not started (0 of 7 done).
-Last updated: 2026-09-11
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 1 of 7 done, the shared formula reader landed 2026-09-12.
+Last updated: 2026-09-12
 
 ## Progress
 
@@ -9,7 +9,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | One shared rule decides which datasets a formula reads | [ ] | | |
+| 1 | One shared rule decides which datasets a formula reads | [x] | 2026-09-12 | Nothing visible yet, but a formula that names some inputs in quotes and others plain now reads the same way everywhere; checked against the fake project, where all 61 formulas keep the inputs they already had and 10 mixed ones gain the plain-named inputs the Dataset Types tab used to drop. |
 | 2 | A dataset's Details show its formula inputs and readers, and a rebuild keeps them current | [ ] | | |
 | 3 | A project imported from ResQ shows the same links | [ ] | | |
 | 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [ ] | | |
@@ -17,7 +17,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 6 | A one-off script fixes the links of the few existing projects | [ ] | | |
 | 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
 
-Overall: 0 of 7 steps done.
+Overall: 1 of 7 steps done.
 
 ## How agents work this plan
 
@@ -106,14 +106,15 @@ Steps 1 and 2 come first and in order. Steps 3, 4, 5, and 6 are independent of o
 
 **Goal.** One function in the Python API contract layer turns a project's dataset-type table into the logical formula graph, for generated and app-calculated types alike, and both of the app server's formula readers delegate to it. The evaluator's "which types may ArcRho compute" rule stays exactly where it is.
 
-**Read first.** [Answer](#answer), [Why the change is safe](#why-the-change-is-safe), [Proposed behavior](#proposed-behavior) item 1. [dataset_type_contract.py](../../python-api/src/arcrho_api/dataset_type_contract.py) (whole file), [calculated_dataset_service.py:100-148](../../frontend/app_server/services/calculated_dataset_service.py#L100-L148) and [calculated_dataset_service.py:1326-1351](../../frontend/app_server/services/calculated_dataset_service.py#L1326-L1351), [dataset_types_service.py:491-621](../../frontend/app_server/services/dataset_types_service.py#L491-L621) (`_replace_formula_components_with_sources`, `_extract_formula_components`, `_find_unresolved_dataset_refs`) and [dataset_types_service.py:718-784](../../frontend/app_server/services/dataset_types_service.py#L718-L784) (`require_resolvable_formulas`, `resolve_persisted_rows`), [test_dataset_type_contract.py](../../python-api/tests/test_dataset_type_contract.py), [test_dataset_type_calculated_rule.py](../../frontend/tests/test_dataset_type_calculated_rule.py). AGENT_GUIDELINES "Single Source of Truth", "Agent Project Data Access" (the fake project's `dataset_types.json` may be read for the check below), and "Python test runner" memory (pytest lives in the repo-local `.pytest-tools`).
+**Read first.** [Answer](#answer), [Why the change is safe](#why-the-change-is-safe), [Proposed behavior](#proposed-behavior) item 1. [dataset_type_contract.py](../../python-api/src/arcrho_api/dataset_type_contract.py) (whole file), [calculated_dataset_service.py:100-148](../../frontend/app_server/services/calculated_dataset_service.py#L100-L148) and [calculated_dataset_service.py:1326-1351](../../frontend/app_server/services/calculated_dataset_service.py#L1326-L1351), [dataset_types_service.py:491-621](../../frontend/app_server/services/dataset_types_service.py#L491-L621) (`_replace_formula_components_with_sources`, `_extract_formula_components`, `_find_unresolved_dataset_refs`) and [dataset_types_service.py:718-784](../../frontend/app_server/services/dataset_types_service.py#L718-L784) (`require_resolvable_formulas`, `resolve_persisted_rows`), [test_dataset_type_contract.py](../../python-api/tests/test_dataset_type_contract.py), [test_dataset_type_calculated_rule.py](../../frontend/tests/test_dataset_type_calculated_rule.py). The reader's other callers, so the change of a mixed formula's reading is seen where it lands: [dataset_types_service.py:869](../../frontend/app_server/services/dataset_types_service.py#L869) (`_formula_component_map`), [dataset_types_plan_service.py:273-290](../../frontend/app_server/services/dataset_types_plan_service.py#L273-L290), [reserving_class_service.py:1024](../../frontend/app_server/services/reserving_class_service.py#L1024) and [reserving_class_service.py:1669](../../frontend/app_server/services/reserving_class_service.py#L1669). AGENT_GUIDELINES "Single Source of Truth", "Agent Project Data Access" (the fake project's `dataset_types.json` may be read for the check below), and "Python test runner" memory (pytest lives in the repo-local `.pytest-tools`).
 
 **Do.**
 
-- [ ] Add to `dataset_type_contract.py`: `formula_references(formula, known_names)` with the behaviour of `_formula_components` (quoted names in order, then unquoted known names matched longest first on word boundaries, case-insensitive, whitespace-normalized, once each); `dataset_type_formula_graph(rows)` returning, for every row flagged calculated with a non-empty formula and regardless of `generated`, its direct precedents in formula order plus the reverse map; `formula_closure(rows, names, direction)` returning the transitive precedents or dependents in a deterministic order with a cycle guard.
-- [ ] Make `_formula_components` in `calculated_dataset_service.py` delegate to `formula_references` and delete its body. Leave `_app_calculated_rows`, `_dependency_map`, and `_target_dependency_map` guarded by `is_app_calculated_dataset_type`: they are the evaluator's target maps and must keep excluding generated types.
-- [ ] Make `_extract_formula_components` in `dataset_types_service.py` delegate to `formula_references` too and delete its body, so Source expansion and save-time validation read a mixed formula the way the links do. `_replace_formula_components_with_sources` and `_find_unresolved_dataset_refs` keep their own jobs; only the name extraction moves.
-- [ ] Before committing, read the fake project's `dataset_types.json` once and confirm every formula in it lists the same names under the old reader and the shared one; note the result in the Progress row. A live project is not touched.
+- [x] Add to `dataset_type_contract.py`: `formula_references(formula, known_names)` with the behaviour of `_formula_components` (quoted names in order, then unquoted known names matched longest first on word boundaries, case-insensitive, whitespace-normalized, once each); `dataset_type_formula_graph(rows)` returning, for every row flagged calculated with a non-empty formula and regardless of `generated`, its direct precedents in formula order plus the reverse map; `formula_closure(rows, names, direction)` returning the transitive precedents or dependents in a deterministic order with a cycle guard.
+- [x] Make `_formula_components` in `calculated_dataset_service.py` delegate to `formula_references` and delete its body. Leave `_app_calculated_rows`, `_dependency_map`, and `_target_dependency_map` guarded by `is_app_calculated_dataset_type`: they are the evaluator's target maps and must keep excluding generated types.
+- [x] Make `_extract_formula_components` in `dataset_types_service.py` delegate to `formula_references` too and delete its body, so Source expansion and save-time validation read a mixed formula the way the links do. `_replace_formula_components_with_sources` and `_find_unresolved_dataset_refs` keep their own jobs; only the name extraction moves.
+- [x] Before committing, read the fake project's `dataset_types.json` once and confirm every formula in it lists the same names under the old reader and the shared one; note the result in the Progress row. A live project is not touched.
+- [x] As built, one refinement of `_formula_components`: each matched name is taken off the text, so the shorter type `Premium` is not also read out of the words `Earned Premium`. The old reader searched the whole formula once per name and could report both, which is what "longest first" was there to prevent; `_extract_formula_components` already eliminated the overlap its own way. Checked on the fake project: all 61 formulas keep exactly the inputs the links reader gave them, and the 10 mixed formulas gain the unquoted names the Dataset Types tab dropped (the other 3 differences are ordering only).
 
 **Tests.** `python-api/tests/test_dataset_type_contract.py` gains: quoted, unquoted, and mixed references; whitespace and case differences; overlapping names (a name that is a prefix of another); a generated type's edges present; a transitive A -> B -> D chain; a cycle that terminates. `frontend/tests/test_dataset_type_calculated_rule.py` gains the A/C/B fixture from the example: both direct edges come from the graph while `_app_calculated_rows` still leaves B out and `_target_dependency_map` has no entry for it. A new `frontend/tests/test_dataset_types_formula_reader.py`: `require_resolvable_formulas` rejects an unquoted name that is not in the table only when it matches nothing, accepts a mixed formula whose names all exist, and `resolve_persisted_rows` expands a mixed formula's Source from both names.
 
