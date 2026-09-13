@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A dataset the app builds from a formula over other datasets now shows what it is made from, and what is made from it.",
+  "details": [
+    "The Details tab lists the formula's inputs on one side and the datasets and methods that read it on the other, the same way a hand-written formula has always been listed.",
+    "Rebuilding such a dataset now brings those links up to date, so importing source data repairs them instead of keeping whatever they were first written with.",
+    "An input that has no dataset in the class is left out of a formula-built dataset's inputs, because the app rebuilds it from the source table rather than from those datasets."
+  ]
+}

@@ -9,6 +9,9 @@ from unittest.mock import patch
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
@@ -16,13 +19,15 @@ from app_server import config
 from app_server.services import (
     arcrho_runtime_service,
     calculated_dataset_service,
+    dataset_service,
+    dataset_sidecar_status_service,
     engine_calculation_service,
 )
 
 
 class CalculatedDatasetRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.cache_dir = (
             Path(self.temp_dir.name)
             / "data"
@@ -501,6 +506,159 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
                 "F 13 - Paid DFM",
             ],
             finalize_method_review_status=False,
+        )
+
+
+class GeneratedFormulaSidecarGraphTests(unittest.TestCase):
+    """A dataset the Engine builds from a formula gets the same links as any other.
+
+    The fake project's example: two source columns feed one formula the Engine
+    evaluates, and an app-calculated ratio reads that formula's output.
+    """
+
+    ROWS = [
+        {"name": "Earned Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Earned_Premium", "generated": True},
+        {"name": "Remaining Budget Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Remaining_Budget_Premium", "generated": True},
+        {"name": "Total Earned Premium", "data_format": "Triangle", "calculated": True, "formula": '"Earned Premium" + "Remaining Budget Premium"', "source": "Earned_Premium + Remaining_Budget_Premium", "generated": True},
+        {"name": "Written Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Written_Premium", "generated": True},
+        {"name": "Premium Ratio", "data_format": "Triangle", "calculated": True, "formula": '"Total Earned Premium" / "Written Premium"', "source": "", "generated": False},
+    ]
+    # Every type but Written Premium has an instance in the class.
+    EXISTING = {"earned premium", "remaining budget premium", "total earned premium", "premium ratio"}
+
+    def setUp(self) -> None:
+        rows_patcher = patch.object(
+            calculated_dataset_service,
+            "_dataset_type_rows",
+            return_value=[dict(row) for row in self.ROWS],
+        )
+        rows_patcher.start()
+        self.addCleanup(rows_patcher.stop)
+        keys_patcher = patch.object(
+            calculated_dataset_service,
+            "_existing_dataset_keys",
+            return_value=set(self.EXISTING),
+        )
+        keys_patcher.start()
+        self.addCleanup(keys_patcher.stop)
+
+    @staticmethod
+    def _graph(dataset_type_name: str):
+        fields = calculated_dataset_service.sidecar_graph_fields(
+            "Demo",
+            dataset_type_name,
+            reserving_class="Auto",
+        )
+        return (
+            dataset_sidecar_status_service.entry_names(fields["precedents"]),
+            dataset_sidecar_status_service.entry_names(fields["dependents"]),
+        )
+
+    def test_the_formula_lists_its_inputs_and_each_input_lists_the_formula(self) -> None:
+        self.assertEqual(
+            self._graph("Total Earned Premium"),
+            (["Earned Premium", "Remaining Budget Premium"], ["Premium Ratio"]),
+        )
+        self.assertEqual(self._graph("Earned Premium"), ([], ["Total Earned Premium"]))
+        self.assertEqual(self._graph("Remaining Budget Premium"), ([], ["Total Earned Premium"]))
+
+    def test_a_generated_input_without_an_instance_is_left_out_and_an_app_calculated_one_is_kept(self) -> None:
+        with patch.object(
+            calculated_dataset_service,
+            "_existing_dataset_keys",
+            return_value={"earned premium", "total earned premium", "premium ratio"},
+        ):
+            self.assertEqual(
+                self._graph("Total Earned Premium"),
+                (["Earned Premium"], ["Premium Ratio"]),
+            )
+            # Written Premium has no instance either, but an app-calculated
+            # formula that cannot find its input has a real problem and says so.
+            self.assertEqual(
+                self._graph("Premium Ratio")[0],
+                ["Total Earned Premium", "Written Premium"],
+            )
+
+    def test_a_method_dependent_survives_the_link_rewrite(self) -> None:
+        payload = {
+            "dataset_name": "Total Earned Premium",
+            "dataset_type": "Total Earned Premium",
+            "project_name": "Demo",
+            "reserving_class": "Auto",
+            "source_kind": "engine",
+            "method_type": "None",
+            "precedents": [],
+            "dependents": [{"dataset_name": "D 13 - Paid DFM w/ Selected LDFs"}],
+        }
+        with (
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "sidecar_path",
+                return_value="dfm.json",
+            ),
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "read_sidecar",
+                return_value={"method_type": "DFM", "source_kind": "dfm"},
+            ),
+        ):
+            calculated_dataset_service.apply_sidecar_graph_fields(payload)
+
+        self.assertEqual(
+            dataset_sidecar_status_service.entry_names(payload["precedents"]),
+            ["Earned Premium", "Remaining Budget Premium"],
+        )
+        self.assertEqual(
+            dataset_sidecar_status_service.entry_names(payload["dependents"]),
+            ["Premium Ratio", "D 13 - Paid DFM w/ Selected LDFs"],
+        )
+
+    def test_details_shows_the_formula_s_inputs_and_the_input_s_reader(self) -> None:
+        sidecars = {
+            "Total Earned Premium": {
+                "dataset_name": "Total Earned Premium",
+                "dataset_type": "Total Earned Premium",
+                "source_kind": "engine",
+                "precedents": [{"dataset_name": "Earned Premium"}, {"dataset_name": "Remaining Budget Premium"}],
+                "dependents": [],
+            },
+            "Earned Premium": {
+                "dataset_name": "Earned Premium",
+                "dataset_type": "Earned Premium",
+                "source_kind": "engine",
+                "precedents": [],
+                "dependents": [{"dataset_name": "Total Earned Premium"}],
+            },
+        }
+        index_map = {
+            name.lower(): {"dataset_name": name, "dataset_type": name, "method_type": "None"}
+            for name in ("Earned Premium", "Remaining Budget Premium", "Total Earned Premium")
+        }
+
+        def read(path: str):
+            return dict(sidecars[Path(path).stem])
+
+        with (
+            patch.object(dataset_service, "_get_dataset_sidecar_path", side_effect=lambda _p, _rc, ds: f"{ds}.json"),
+            patch.object(dataset_service, "_read_dataset_sidecar", side_effect=read),
+            patch.object(dataset_service, "_dataset_index_entry_map", return_value=index_map),
+        ):
+            formula_output = dataset_service.load_dataset_sidecar("Demo", "Auto", "Total Earned Premium")
+            source_column = dataset_service.load_dataset_sidecar("Demo", "Auto", "Earned Premium")
+
+        self.assertEqual(
+            [item["dataset_name"] for item in formula_output["precedents"]],
+            ["Earned Premium", "Remaining Budget Premium"],
+        )
+        self.assertEqual(
+            [item["dataset_name"] for item in source_column["dependents"]],
+            ["Total Earned Premium"],
+        )
+        # The reader chip carries the Engine's formula, the way a calculated
+        # dependent's chip always has.
+        self.assertEqual(
+            source_column["dependents"][0]["formula"],
+            '"Earned Premium" + "Remaining Budget Premium"',
         )
 
 

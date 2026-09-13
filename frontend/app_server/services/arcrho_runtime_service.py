@@ -1269,6 +1269,16 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
             ),
         )
         payload["csv_file"] = os.path.basename(data_path)
+        from app_server.services import calculated_dataset_service
+
+        # A regeneration recomputes the two link lists, the same way the first
+        # write does, so an import repairs the links of everything it rebuilds
+        # and nobody has to ask for a repair.
+        calculated_dataset_service.apply_sidecar_graph_fields(
+            payload,
+            project_name,
+            dataset_type,
+        )
         from app_server.services.dataset_service import _append_dataset_audit_entry
 
         _append_dataset_audit_entry(payload, "Update", event_date=updated_at, user_name=user_name)

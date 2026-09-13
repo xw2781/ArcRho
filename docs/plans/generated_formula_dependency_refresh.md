@@ -1,6 +1,6 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 1 of 7 done, the shared formula reader landed 2026-09-12.
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 2 of 7 done, the sidecar links landed 2026-09-12.
 Last updated: 2026-09-12
 
 ## Progress
@@ -10,14 +10,14 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | One shared rule decides which datasets a formula reads | [x] | 2026-09-12 | Nothing visible yet, but a formula that names some inputs in quotes and others plain now reads the same way everywhere; checked against the fake project, where all 61 formulas keep the inputs they already had and 10 mixed ones gain the plain-named inputs the Dataset Types tab used to drop. |
-| 2 | A dataset's Details show its formula inputs and readers, and a rebuild keeps them current | [ ] | | |
+| 2 | A dataset's Details show its formula inputs and readers, and a rebuild keeps them current | [x] | 2026-09-12 | A dataset the app builds from a formula over other datasets now lists what it is made from and what reads it, and rebuilding one brings those links up to date instead of leaving whatever they were first written with. |
 | 3 | A project imported from ResQ shows the same links | [ ] | | |
 | 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [ ] | | |
 | 5 | The Dependency Graph draws the formula links and marks a generated formula | [ ] | | |
 | 6 | A one-off script fixes the links of the few existing projects | [ ] | | |
 | 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
 
-Overall: 1 of 7 steps done.
+Overall: 2 of 7 steps done.
 
 ## How agents work this plan
 
@@ -124,14 +124,14 @@ Steps 1 and 2 come first and in order. Steps 3, 4, 5, and 6 are independent of o
 
 **Goal.** Every sidecar the app server writes or rewrites for an Engine-built dataset lists its formula inputs and formula readers, and the dependent walk's calculated tier still never tries to rebuild one.
 
-**Read first.** [Proposed behavior](#proposed-behavior) items 5, 6, and 8; [Why the change is safe](#why-the-change-is-safe). [calculated_dataset_service.py:151-400](../../frontend/app_server/services/calculated_dataset_service.py#L151-L400) (`_calculated_dataset_contract_from_rows` through `apply_sidecar_graph_fields`) and [calculated_dataset_service.py:1892-1960](../../frontend/app_server/services/calculated_dataset_service.py#L1892-L1960) (walk targets); [arcrho_runtime_service.py:1218-1321](../../frontend/app_server/services/arcrho_runtime_service.py#L1218-L1321); [dataset_service.py:1637-1660](../../frontend/app_server/services/dataset_service.py#L1637-L1660) and the Details enrichment that follows it; [test_calculated_dataset_runtime.py](../../frontend/tests/test_calculated_dataset_runtime.py), [test_engine_dataset_sidecar_contract.py](../../frontend/tests/test_engine_dataset_sidecar_contract.py), [test_dataset_method_calculated_sidecar.py](../../frontend/tests/test_dataset_method_calculated_sidecar.py). Memory: "Propagation hold and test isolation" (a saving test must use the workspace stub) and "Hosted-save fix needs Engine deploy" (nothing here is live until step 9).
+**Read first.** [Proposed behavior](#proposed-behavior) items 5, 6, and 8; [Why the change is safe](#why-the-change-is-safe). [calculated_dataset_service.py:151-400](../../frontend/app_server/services/calculated_dataset_service.py#L151-L400) (`_calculated_dataset_contract_from_rows` through `apply_sidecar_graph_fields`) and [calculated_dataset_service.py:1892-1960](../../frontend/app_server/services/calculated_dataset_service.py#L1892-L1960) (walk targets); [arcrho_runtime_service.py:1218-1321](../../frontend/app_server/services/arcrho_runtime_service.py#L1218-L1321); [dataset_service.py:1637-1660](../../frontend/app_server/services/dataset_service.py#L1637-L1660) and the Details enrichment that follows it; [test_calculated_dataset_runtime.py](../../frontend/tests/test_calculated_dataset_runtime.py), [test_engine_dataset_sidecar_contract.py](../../frontend/tests/test_engine_dataset_sidecar_contract.py), [test_dataset_method_calculated_sidecar.py](../../frontend/tests/test_dataset_method_calculated_sidecar.py). Step 1's helpers, since the graph fields are built from them: `dataset_type_formula_graph` and `dataset_type_key` in [dataset_type_contract.py](../../python-api/src/arcrho_api/dataset_type_contract.py). Memory: "Propagation hold and test isolation" (a saving test must use the workspace stub) and "Hosted-save fix needs Engine deploy" (nothing here is live until step 9).
 
 **Do.**
 
-- [ ] `sidecar_graph_fields`: for a generated formula type, precedents come from the step 1 graph and are filtered to instances existing in the class (the filter `_existing_dataset_keys` already applies to dependents); app-calculated precedents are unchanged. Dependents gain the generated readers of the type, filtered the same way; app-calculated readers and preserved method dependents are unchanged.
-- [ ] `_write_dataset_sidecar_impl`, existing-sidecar branch: call `apply_sidecar_graph_fields` before the write, exactly as the new-sidecar branch does, so a regeneration recomputes the two lists and nothing else changes in what that branch already writes.
-- [ ] Confirm, with a test rather than code, that the walk's calculated tier never targets a generated type: a walk rooted at A must not list B as a calculated target, and B's methods are refreshed only when B itself is a root. If the guard from step 1 holds, no walk code changes.
-- [ ] Check Details on the A/C/B fixture through `load_dataset_sidecar`: B's precedent chips show A and C, A's dependent chips show B. Change `dataset_service` or the chip renderer only if the check fails.
+- [x] `sidecar_graph_fields`: for a generated formula type, precedents come from the step 1 graph and are filtered to instances existing in the class (the filter `_existing_dataset_keys` already applies to dependents); app-calculated precedents are unchanged. Dependents gain the generated readers of the type, filtered the same way; app-calculated readers and preserved method dependents are unchanged.
+- [x] `_write_dataset_sidecar_impl`, existing-sidecar branch: call `apply_sidecar_graph_fields` before the write, exactly as the new-sidecar branch does, so a regeneration recomputes the two lists and nothing else changes in what that branch already writes.
+- [x] Confirm, with a test rather than code, that the walk's calculated tier never targets a generated type: a walk rooted at A must not list B as a calculated target, and B's methods are refreshed only when B itself is a root. If the guard from step 1 holds, no walk code changes.
+- [x] Check Details on the A/C/B fixture through `load_dataset_sidecar`: B's precedent chips show A and C, A's dependent chips show B. Change `dataset_service` or the chip renderer only if the check fails. As built the check passed with no change to either: the chips resolve from the reserving-class index, and the reader's chip already carries the Engine's formula because `_dataset_type_calculation_map` hands a generated type its formula for display.
 
 **Tests.** `test_calculated_dataset_runtime.py`: graph fields for A, C, and B; a generated precedent with no instance in the class is left out while an app-calculated one is kept; method dependents survive a rewrite. `test_engine_dataset_sidecar_contract.py`: regenerating an existing Engine dataset recomputes the two link lists and changes only the fields the branch already changed before. A walk test in `test_dataset_method_calculated_sidecar.py` or beside it: root A does not target B; root B refreshes the DFM reading it.
 

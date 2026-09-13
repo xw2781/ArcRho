@@ -177,5 +177,89 @@ class SavedSidecarAnswersTheDetailsTabTests(unittest.TestCase):
             self.assertEqual(saved[field], loaded[field], field)
 
 
+class GeneratedFormulaWalkTargetTests(unittest.TestCase):
+    """The calculated tier rebuilds only what ArcRho evaluates.
+
+    A generated formula is the Engine's to rebuild from the source table, so
+    the walk must never try to recompute one, however many links now point at
+    it. Its methods still refresh when it is itself republished.
+    """
+
+    ROWS = [
+        {"name": "Earned Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Earned_Premium", "generated": True},
+        {"name": "Remaining Budget Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Remaining_Budget_Premium", "generated": True},
+        {"name": "Total Earned Premium", "data_format": "Triangle", "calculated": True, "formula": '"Earned Premium" + "Remaining Budget Premium"', "source": "Earned_Premium + Remaining_Budget_Premium", "generated": True},
+    ]
+
+    def setUp(self) -> None:
+        self.propagation_workspace = IsolatedPropagationWorkspace().start()
+
+    def tearDown(self) -> None:
+        self.propagation_workspace.stop()
+
+    def _walk_from(self, root: str):
+        with (
+            patch.object(
+                calculated_dataset_service,
+                "_dataset_type_rows",
+                return_value=[dict(row) for row in self.ROWS],
+            ),
+            patch.object(
+                calculated_dataset_service,
+                "_existing_dataset_keys",
+                return_value={"earned premium", "remaining budget premium", "total earned premium"},
+            ),
+            patch.object(calculated_dataset_service, "_refresh_link_driven_dependents", return_value=[]),
+            patch.object(calculated_dataset_service, "recalculate_dataset") as recalculate,
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+                return_value=[],
+            ),
+            patch("app_server.services.dfm_service.refresh_dependents", return_value={
+                "ok": True,
+                "updated": [],
+                "status_refreshed": [],
+                "skipped": [],
+                "errors": [],
+            }) as refresh_dfm,
+            patch("app_server.services.result_selection_service.refresh_dependents", return_value={
+                "ok": True,
+                "updated": [],
+                "errors": [],
+            }),
+            patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
+        ):
+            result = calculated_dataset_service.recalculate_dependents(
+                "Demo",
+                "Auto",
+                root,
+                root,
+                include_berquist_sherman=False,
+                include_bornhuetter_ferguson=False,
+                include_cape_cod=False,
+                include_bootstrap=False,
+            )
+        return result, recalculate, refresh_dfm
+
+    def test_a_root_that_feeds_a_generated_formula_never_targets_it(self) -> None:
+        result, recalculate, _refresh_dfm = self._walk_from("Earned Premium")
+
+        self.assertTrue(result["ok"], result)
+        recalculate.assert_not_called()
+        self.assertEqual(result["updated"], [])
+        self.assertEqual(result["skipped"], [])
+
+    def test_the_generated_formula_s_own_refresh_reaches_the_method_reading_it(self) -> None:
+        _result, recalculate, refresh_dfm = self._walk_from("Total Earned Premium")
+
+        recalculate.assert_not_called()
+        refresh_dfm.assert_called_once()
+        self.assertEqual(
+            refresh_dfm.call_args.args[2],
+            ["Total Earned Premium", "Total Earned Premium"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,17 +10,24 @@ from unittest.mock import patch
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 for candidate in (FRONTEND_ROOT, REPO_ROOT / "python-api" / "src", REPO_ROOT / "python-api" / "migration"):
     if str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from app_server.services import arcrho_runtime_service, user_identity_service
+from app_server.services import (
+    arcrho_runtime_service,
+    calculated_dataset_service,
+    dataset_sidecar_status_service,
+    user_identity_service,
+)
 from resq_migration import extractors
 
 
 class EngineDatasetSidecarContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.runtime_rc = self.root / "runtime" / "rc"
         self.migration_rc = self.root / "migration" / "rc"
@@ -141,6 +148,126 @@ class EngineDatasetSidecarContractTests(unittest.TestCase):
         self.assertNotIn("development_labels", migration_payload)
         self.assertNotIn(str(self.runtime_rc), json.dumps(runtime_payload))
         self.assertNotIn(str(self.migration_rc), json.dumps(migration_payload))
+
+
+class EngineDatasetRegenerationTests(unittest.TestCase):
+    """Regenerating an existing Engine dataset brings its links up to date.
+
+    Until now a rebuild refreshed only status, timestamps, shape and cache
+    name, so a dataset kept whatever links it was first written with, right or
+    wrong.
+    """
+
+    ROWS = [
+        {"name": "Earned Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Earned_Premium", "generated": True},
+        {"name": "Remaining Budget Premium", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Remaining_Budget_Premium", "generated": True},
+        {"name": "Total Earned Premium", "data_format": "Triangle", "calculated": True, "formula": '"Earned Premium" + "Remaining Budget Premium"', "source": "Earned_Premium + Remaining_Budget_Premium", "generated": True},
+    ]
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        self.root = Path(self.temp_dir.name)
+        (self.root / "datasets").mkdir(parents=True)
+        (self.root / "sidecars").mkdir()
+        self.csv_path = self.root / "datasets" / "Total Earned Premium@12@12@cum@dev.csv"
+        self.csv_path.write_text("1,2\n3,4\n", encoding="utf-8")
+        self.sidecar_path = self.root / "sidecars" / "Total Earned Premium.json"
+        self.pairs = [
+            ("ProjectName", "Demo"),
+            ("Path", "Auto"),
+            ("DatasetName", "Total Earned Premium"),
+            ("InstanceName", "Total Earned Premium"),
+            ("Function", "ArcRhoTri"),
+            ("OriginLength", "12"),
+            ("DevelopmentLength", "12"),
+            ("Cumulative", "true"),
+            ("Calendar", "false"),
+        ]
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _write(self, *, generated_at: str, graph):
+        with (
+            user_identity_service.acting_identity("tester", "Tester Name"),
+            patch.object(arcrho_runtime_service, "utc_now_text", return_value=generated_at),
+            patch.object(arcrho_runtime_service, "_utc_timestamp_from_stat", return_value="2026-09-11T00:00:00Z"),
+            patch.object(arcrho_runtime_service, "_dataset_sidecar_path", return_value=str(self.sidecar_path)),
+            patch.object(arcrho_runtime_service, "get_processing_provenance", return_value={"rules_revision": 7}),
+            patch.object(arcrho_runtime_service, "_engine_stored_lengths", return_value=(12, 12)),
+            patch.object(
+                arcrho_runtime_service.dataset_number_format_service,
+                "dataset_type_number_format_settings",
+                return_value={"number_format": "#,##0", "decimal_places": 0},
+            ),
+            patch.object(
+                arcrho_runtime_service.dataset_sidecar_status_service,
+                "refresh_method_statuses_for_dependents",
+            ),
+            graph,
+        ):
+            arcrho_runtime_service._write_dataset_sidecar_impl(str(self.csv_path), self.pairs)
+        return json.loads(self.sidecar_path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _stale_graph(payload, *_args, **_kwargs):
+        payload["precedents"] = []
+        payload["dependents"] = [{"dataset_name": "D 13 - Paid DFM w/ Selected LDFs"}]
+        return payload
+
+    def test_a_regeneration_recomputes_the_links_and_changes_nothing_else(self) -> None:
+        first = self._write(
+            generated_at="2026-09-11T10:00:00Z",
+            graph=patch(
+                "app_server.services.calculated_dataset_service.apply_sidecar_graph_fields",
+                side_effect=self._stale_graph,
+            ),
+        )
+
+        real_graph = patch.multiple(
+            calculated_dataset_service,
+            _dataset_type_rows=lambda _project: [dict(row) for row in self.ROWS],
+            _existing_dataset_keys=lambda _project, _rc: {
+                "earned premium",
+                "remaining budget premium",
+                "total earned premium",
+            },
+        )
+        def read_sidecar(path: str):
+            # The dataset's own sidecar comes off disk; its method dependent is
+            # the only other file the rewrite reads.
+            if Path(path).name.startswith("D 13"):
+                return {"method_type": "DFM", "source_kind": "dfm"}
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+
+        with (
+            patch.object(
+                dataset_sidecar_status_service,
+                "sidecar_path",
+                return_value=str(self.root / "sidecars" / "D 13 - Paid DFM w Selected LDFs.json"),
+            ),
+            patch.object(dataset_sidecar_status_service, "read_sidecar", side_effect=read_sidecar),
+        ):
+            second = self._write(generated_at="2026-09-12T10:00:00Z", graph=real_graph)
+
+        self.assertEqual(
+            dataset_sidecar_status_service.entry_names(second["precedents"]),
+            ["Earned Premium", "Remaining Budget Premium"],
+        )
+        # The method reading this dataset is still its dependent; the type
+        # graph cannot re-derive a method edge.
+        self.assertEqual(
+            dataset_sidecar_status_service.entry_names(second["dependents"]),
+            ["D 13 - Paid DFM w/ Selected LDFs"],
+        )
+        # Nothing else moved but what a rebuild always stamps: when it ran, who
+        # ran it, and the audit line saying so.
+        changed = {
+            key
+            for key in set(first) | set(second)
+            if first.get(key) != second.get(key)
+        }
+        self.assertEqual(changed, {"precedents", "updated_at", "audit_log"})
 
 
 if __name__ == "__main__":
