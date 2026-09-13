@@ -154,6 +154,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_table_summary",
         ("project_name",),
     ),
+    # The project's dataset-type table. The Excel add-in's dataset picker is
+    # the caller: it lists the types a project defines and has no other way to
+    # reach them now that the add-in opens nothing on the share.
+    "project_dataset_types": WorkspaceReadKind(
+        "dataset_types_service",
+        "load_dataset_types_data",
+        ("project_name",),
+    ),
     # Planning a dataset-type change reads one index per reserving class of
     # the project; from a Client PC that is one round trip each, so the plan
     # the confirmation dialog shows is built on the server host when it can be.

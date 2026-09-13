@@ -1,21 +1,5 @@
 Private mAlertCloseTime As Date
 
-' Diagnostics only. Formulas read project data from the ArcRho Server whenever
-' this PC has a credential; run this to send them back to the workspace share
-' for one comparison, and again with False to undo it. The choice is remembered
-' with the add-in's other settings and is off for everyone by default.
-Public Sub ArcRhoForceSharePath(Optional ByVal useSharedDrive As Boolean = True)
-    LoadConfig
-    forceSharePath = useSharedDrive
-    UpdateConfigValue "forceSharePath", CStr(useSharedDrive)
-    ClearDatasetResultCache
-    If useSharedDrive Then
-        Application.StatusBar = "ArcRho formulas read project data from the workspace share."
-    Else
-        Application.StatusBar = "ArcRho formulas read project data from the ArcRho Server."
-    End If
-End Sub
-
 Public Sub CopyActiveRangeAddress()
     Dim selectedRange As Range
     Dim selectedWorkbook As Workbook

@@ -143,45 +143,6 @@ Function TimeMS() As String
         "(" & Right(Format(Timer - Int(Timer), "0.000"), 3) & ")"
 End Function
 
-Public Function WaitForFileReady(ByVal filePath As String, _
-                                 ByVal maxWaitSeconds As Double) As Boolean
-    Dim deadline As Double
-    Dim ff As Integer
-
-    Show_ufLoading
-
-    deadline = Timer + maxWaitSeconds
-    ' Handle midnight rollover
-    If deadline >= 86400 Then deadline = deadline - 86400
-
-    Do While Timer < deadline
-        ' Use Dir on a fresh call each iteration to avoid VBA caching
-        If Len(Dir(filePath)) > 0 Then
-            ff = FreeFile
-            On Error Resume Next
-            Open filePath For Input As #ff
-            If Err.Number = 0 Then
-                ' File exists and can be opened for reading
-                Close #ff
-                On Error GoTo 0
-                WaitForFileReady = True
-                Exit Function
-            Else
-                ' Exists but still locked / being written by the agent
-                Err.Clear
-                On Error GoTo 0
-            End If
-        End If
-
-        ' Small delay to avoid hammering the filesystem and to let
-        ' the Python agent finish writing and release the file lock
-        WaitSec 0.1
-    Loop
-
-    ' Timed out
-    WaitForFileReady = False
-End Function
-
 'Row-preserving: tri row 1 -> out row 1, tri row i -> out row i
 'Latest = rightmost non-empty; DiagonalIndex=1 means 2nd rightmost non-empty, etc.
 Public Function GetDiagonal(tri As Variant, Optional DiagonalIndex As Long = 0) As Variant

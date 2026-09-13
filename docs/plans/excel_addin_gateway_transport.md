@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (5 of 9 done; the speed question raised by step 5 was answered on 2026-09-12 and the plan continues at step 6).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (6 of 9 done; the share path is deleted and the add-in reaches project data only over HTTP).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -15,12 +15,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 3 | The server can hand Excel a triangle's figures in one answer | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a triangle with its figures, so Excel will not have to open files on the shared drive. |
 | 4 | The server can hand Excel its period headings and project settings the same way | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a project's period headings or its settings with their figures, so every Excel formula has an answer that does not need the shared drive. |
 | 5 | Formulas get their figures from the server instead of the shared drive | [x] | 2026-09-12 | Formulas now read from the server, and every figure matches the shared drive exactly. The server is about twice as quick when a triangle has to be worked out, and neither quicker nor slower than the drive when it is only being read back. |
-| 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
+| 6 | Excel no longer needs the shared drive for project data at all | [x] | 2026-09-12 | Excel now gets every ArcRho figure and the Select Datasets list from the server, opens nothing on the shared drive, and tells a PC that has not been given access what to do about it in one line. |
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 5 of 9 steps done.
+Overall: 6 of 9 steps done.
 
 ## How agents work this plan
 
@@ -224,6 +224,11 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 - [ ] Keep `ProductRootPath` and `ProductPath`: the add-in itself, the reserving-class input CSV, the version-track document and the team profile workbook still live on the share and are not project data.
 - [ ] Confirm no remaining reference in `excel-addin/src_vba/` opens anything under a project's data folder.
 - [ ] Bump `ARCRHO_VERSION` and add a change fragment.
+
+Two things the checklist above did not foresee, found while confirming that last point and done in the same step:
+
+- [x] The **Select Datasets** window read the project's dataset-type table off the share, which is the only other thing in `src_vba/` that opened a project folder and the only reason the project file-name escaping was still there. A `project_dataset_types` workspace read was registered in [arcrho_workspace_read_contract.py](../../python-api/src/arcrho_workspace_read_contract.py) and the form now asks the Gateway for it, so Bridge, Engine and Gateway are redeployed by this step too.
+- [x] `ArcRhoTriCell`, `ArcRhoTriDiag`, `ArcRhoTriOrigin` and `ArcRhoHeaders` assumed `ArcRhoTri` had returned an array and silently turned a refusal into `0` or `#VALUE!`. Without that fix a PC with no credential shows a blank rather than the message this step adds, so each now passes a non-array answer straight through.
 
 **Tests.** Manual, recorded: re-run the step 5 check workbook and confirm every value is unchanged. Then rename the credential file aside and confirm every formula reports the new message rather than a path or a blank, and restore it. Record both in the commit message.
 

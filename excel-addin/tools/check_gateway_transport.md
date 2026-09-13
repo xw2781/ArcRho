@@ -5,20 +5,21 @@ whether it reads project data from the ArcRho Server or from the workspace
 share, and how long a full recalculation takes each way. There is no automated
 harness for the add-in's VBA, so this is the check.
 
-## The setting that forces the share
+Since add-in 2.6.0 the share path is gone, so the check compares two builds of
+the add-in rather than two settings of one; see the section below.
 
-With a Gateway credential installed, every formula reads from the server. Run
-this in the Immediate window to send them back to the share, and again with
-`False` to undo it:
+## The setting that forced the share, and what replaced it
 
-```
-ArcRhoForceSharePath True
-ArcRhoForceSharePath False
-```
+While both paths existed, `ArcRhoForceSharePath True` sent formulas back to the
+share for one pass and `False` returned them to the server. That setting was
+removed with the share path itself, so the two paths can no longer be compared
+inside one add-in. From this point on the comparison is between two builds of
+the add-in: build the older sources to a second `.xlam` with
+`build_xlam.ps1 -SourceDir <sources> -TargetPath <second xlam>`, run the
+workbook once against each, and compare the two dumps.
 
-The choice is remembered with the add-in's other settings and is off for
-everyone by default. It exists only for this comparison and is removed once the
-share path is gone.
+`build_xlam.ps1` updates an existing package rather than creating one, so copy
+`ARCRHO_BETA.xlam` to the second target first.
 
 ## The workbook
 
@@ -40,12 +41,20 @@ One sheet covering every worksheet function, all against
 Each array block is entered over a fixed range so that the two passes can be
 compared cell by cell.
 
+**No block may overlap another.** Writing a single-cell formula into a cell that
+already belongs to an array block raises "You can't change part of an array",
+and Excel shows that as a modal dialog on the desktop even when the instance is
+invisible and alerts are off — the COM call then never returns. An extended
+version of this workbook once put a single-cell block three rows inside a
+twenty-row vector block and stalled for eighteen seconds on it.
+
 ## The passes
 
 Put Excel in manual calculation. Then, alternating and starting with a warm-up
-pass on each side: set the force setting, wait twelve seconds so Windows drops
-the share's cached directory metadata, recalculate everything, and read every
-block. Three measured passes each way; take the median of the three times.
+pass on each side: put the add-in on the path being measured, wait twelve
+seconds so Windows drops the share's cached directory metadata, recalculate
+everything, and read every block. Three measured passes each way; take the
+median of the three times.
 
 Without that wait the share is measured warmer than a user opening a workbook
 ever meets it, because Windows answers a repeated look at the same folder from
@@ -181,3 +190,48 @@ seconds of polling, which the server path has no equivalent of.
 Neither case covered the coarser view, so the UNC failure recorded in the first
 run above was neither reproduced nor re-checked here, and nothing was written to
 the share to work around it.
+
+## Third recorded run: the share path is gone
+
+2026-09-12 on the developer Client PC `L-H2MQ6280FVP`, Excel 16.0 driven over
+COM. The check for the step that deleted the share path: the same workbook run
+once against the previous add-in (2.5.0, both paths, reading from the server)
+and once against the new one (2.6.0, server only), then the two dumps compared
+cell by cell. The workbook carries the ten blocks above plus the second run's
+case A and case B datasets: seventeen blocks, 2,224 cells.
+
+### Values
+
+| Comparison | Cells compared | Cells that differ |
+| :--- | :--- | :--- |
+| 2.5.0 against 2.6.0, both reading from the server | 2,224 | 21 |
+
+Not one figure moved. All twenty-one are cells of the two blocks the previous
+run already recorded as failing on both paths for a reason that is not about
+transport — `ArcRhoTriCell` and `ArcRhoTriDiag` asking for a calendar-period
+view of a hand-entered triangle. They used to come back as `0` and `#VALUE!`,
+because the wrappers around `ArcRhoTri` assumed an array and quietly discarded a
+message. They now read
+
+> (Input triangle 'Net Loss--Incurred Adjusted***' exists as a local cache that
+> cannot derive 1x1 periods: calendar mode differs.)
+
+which is the same refusal the array block itself has always shown.
+
+### Without a credential
+
+The credential at `%APPDATA%\ArcRho\arcrho_gateway.json` was renamed aside and
+the same workbook run again, then the credential was restored. All 2,224 cells
+read
+
+> (this PC is not set up to read ArcRho data. Ask the ArcRho team to give you
+> access, then restart Excel.)
+
+No cell showed a path, a blank, `0` or an Excel error.
+
+### Times
+
+One pass over the whole workbook took 1.63 s on 2.5.0 and 1.46 s on 2.6.0.
+These are single passes, not medians, and the difference is well inside the
+spread the second run recorded; nothing here was expected to move, since only
+the share path was removed and neither build used it.

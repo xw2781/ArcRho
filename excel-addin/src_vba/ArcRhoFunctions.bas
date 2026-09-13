@@ -65,17 +65,24 @@ Public Function ArcRhoTriDiag( _
     Optional SuppressWarnings _
   ) As Variant
   
-    Dim tri() As Variant
+    Dim tri As Variant
     Dim outArr() As Variant
-    
+
     On Error Resume Next
-    
+
     tri = ArcRhoTri( _
               Path, TriangleName, _
               Cumulative, Transposed = 1, Calendar = 0, _
               ProjectName, OriginLength, DevelopmentLength, _
               ByTypeName, SuppressWarnings)
-    
+
+    ' Not a triangle but the reason there is none: show it rather than the
+    ' blank or the #VALUE! that reading a row out of it would leave behind.
+    If Not IsArray(tri) Then
+        ArcRhoTriDiag = tri
+        Exit Function
+    End If
+
     outArr = GetDiagonal(tri, -DiagonalIndex)
     
     If Transposed Then outArr = TransposeArray(outArr)
@@ -103,9 +110,14 @@ Public Function ArcRhoTriCell( _
               Cumulative, Transposed = False, Calendar = False, _
               ProjectName, OriginLength, DevelopmentLength, _
               ByTypeName, SuppressWarnings)
-    
+
+    If Not IsArray(tri) Then
+        ArcRhoTriCell = tri
+        Exit Function
+    End If
+
     ArcRhoTriCell = tri(DevelopmentPeriod, OriginPeriod)
-    
+
 End Function
 
 Public Function ArcRhoHeaders( _
@@ -117,9 +129,9 @@ Public Function ArcRhoHeaders( _
     Optional Calendar As Boolean = False _
   ) As Variant
   
-    Dim outArr() As Variant
+    Dim outArr As Variant
     On Error Resume Next
-    
+
     outArr = GetDataset( _
       "Function = ArcRhoHeaders" & "#" & _
       "periodType = " & periodType & "#" & _
@@ -129,7 +141,12 @@ Public Function ArcRhoHeaders( _
       "ProjectName = " & SetDefaultProject(ProjectName) & "#" & _
       "StoredPeriodLength = " & StoredPeriodLength _
     )
-    
+
+    If Not IsArray(outArr) Then
+        ArcRhoHeaders = outArr
+        Exit Function
+    End If
+
     outArr = FormatYYYYMM_ToMmmYYYY(outArr)
     
     If Transposed Then
@@ -164,6 +181,11 @@ Public Function ArcRhoTriOrigin( _
             Cumulative, 0, Calendar, _
             ProjectName, OriginLength, DevelopmentLength, _
             ByTypeName, SuppressWarnings)
+
+    If Not IsArray(tri) Then
+        ArcRhoTriOrigin = tri
+        Exit Function
+    End If
 
     lb1 = LBound(tri, 1)
     ub1 = UBound(tri, 1)

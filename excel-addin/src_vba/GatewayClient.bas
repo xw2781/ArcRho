@@ -23,6 +23,15 @@ Public Const GATEWAY_ENGINE_CALCULATION_PATH As String = "/api/engine-calculatio
 ' The capabilities field naming the calculation operations this Gateway serves.
 Public Const GATEWAY_OPERATIONS_FIELD As String = "engine_calculation_operations"
 
+' --- begin gateway workspace read names ---
+' The request spellings arcrho_workspace_read_contract owns, and the one read
+' the add-in makes: the dataset picker's list of the project's dataset types.
+Private Const GATEWAY_READ_FUNCTION As String = "ArcRhoWorkspaceRead"
+Private Const GATEWAY_READ_CONTRACT_VERSION As String = "1"
+Private Const GATEWAY_READ_DATASET_TYPES As String = "project_dataset_types"
+Private Const GATEWAY_READ_TIMEOUT_SECONDS As Long = 60
+' --- end gateway workspace read names ---
+
 ' --- begin gateway calculation names ---
 ' The request and answer spellings arcrho_engine_calculation_contract owns.
 Private Const GATEWAY_CALCULATION_FUNCTION As String = "ArcRhoEngineCalculation"
@@ -240,6 +249,66 @@ Public Function GatewayDatasetCsv(ByVal funcArgs As String, ByVal forceRefresh A
 
     outText = CStr(reply(GATEWAY_CSV_FIELD))
     GatewayDatasetCsv = True
+End Function
+
+' Ask the ArcRho Server for the project's dataset-type table, which is what the
+' dataset picker lists. Answers True with the parsed table, or False with the
+' reason to show the user.
+Public Function GatewayProjectDatasetTypes(ByVal projectName As String, _
+                                          ByRef outTable As Object, _
+                                          ByRef outMessage As String) As Boolean
+    Dim replyStatus As Long
+    Dim replyText As String
+    Dim reply As Object
+
+    Set outTable = Nothing
+    outMessage = ""
+    EnsureGatewayConfig
+    If Not gatewayEnabled Then
+        outMessage = "This PC is not set up to read ArcRho data. " & _
+                     "Ask the ArcRho team to give you access, then restart Excel."
+        Exit Function
+    End If
+
+    If Not GatewayPost(GATEWAY_WORKSPACE_READ_PATH, _
+                       DatasetTypesReadBody(projectName), _
+                       GATEWAY_READ_TIMEOUT_SECONDS, replyStatus, replyText) Then
+        outMessage = "ArcRho Server not reached: " & OneLine(TextOrNoAnswer(replyText))
+        Exit Function
+    End If
+
+    Set reply = ParsedReply(replyText)
+    If replyStatus <> 200 Then
+        outMessage = "ArcRho Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
+        Exit Function
+    End If
+    If reply Is Nothing Then
+        outMessage = "ArcRho Server sent an answer this add-in could not read."
+        Exit Function
+    End If
+    If Not reply.Exists("columns") Or Not reply.Exists("rows") Then
+        outMessage = "ArcRho Server answered without the project's dataset types."
+        Exit Function
+    End If
+
+    Set outTable = reply
+    GatewayProjectDatasetTypes = True
+End Function
+
+' The request body the workspace-read contract validates: the read's name and
+' the project it is asked for, and nothing about where the project lives.
+Private Function DatasetTypesReadBody(ByVal projectName As String) As String
+    Dim body As String
+
+    body = "{" & JsonQuote("Function") & ":" & JsonQuote(GATEWAY_READ_FUNCTION)
+    body = body & "," & JsonQuote("ContractVersion") & ":" & GATEWAY_READ_CONTRACT_VERSION
+    body = body & "," & JsonQuote("RequestId") & ":" & JsonQuote(NextRequestId())
+    body = body & "," & JsonQuote("ReadKind") & ":" & JsonQuote(GATEWAY_READ_DATASET_TYPES)
+    body = body & "," & JsonQuote("Kwargs") & ":{" & JsonQuote("project_name") & _
+           ":" & JsonQuote(projectName) & "}"
+    body = body & "," & JsonQuote("UserName") & ":" & JsonQuote(gatewayUser)
+    body = body & "," & JsonQuote("UserDisplayName") & ":" & JsonQuote("") & "}"
+    DatasetTypesReadBody = body
 End Function
 
 ' The request body the calculation contract validates: only the logical pairs

@@ -16,16 +16,16 @@ Attribute VB_Exposed = False
 
 Option Explicit
 
-' in-memory data from dataset_types.json
+' The project's dataset types as the ArcRho Server answered with them.
 ' mData is a 2D array including headers (row 1)
 Private mData As Variant
 Private mColCat As Long, mColName As Long, mColFmt As Long
-Private mDatasetTypesPath As String
+Private mProjectName As String
 
 Private Sub UserForm_Initialize()
     Dim oldScr As Boolean, oldEvt As Boolean, oldCalc As XlCalculation
     Dim projectName As String
-    
+
     'Me.lbl1.Font.Size = 12
 
     projectName = CurrentWorkbookDefaultProject()
@@ -34,8 +34,8 @@ Private Sub UserForm_Initialize()
         Unload Me
         Exit Sub
     End If
-    mDatasetTypesPath = GetProjectDatasetTypesJsonPath(projectName)
-    
+    mProjectName = projectName
+
     oldScr = Application.ScreenUpdating
     oldEvt = Application.EnableEvents
     oldCalc = Application.Calculation
@@ -45,8 +45,9 @@ Private Sub UserForm_Initialize()
     
     On Error GoTo clean_fail
     
-    ' Load dataset_types.json to an array compatible with the existing filter code.
-    mData = LoadDatasetTypesJsonData(mDatasetTypesPath)
+    ' Ask the ArcRho Server for the project's dataset types, in the array shape
+    ' the filter code below already works with.
+    mData = LoadDatasetTypesData(mProjectName)
     
     ' Find column indices by header names
     mColCat = FindHeaderCol("Category")
@@ -72,7 +73,7 @@ clean_exit:
     Exit Sub
 
 clean_fail:
-    MsgBox "Unable to load dataset list:" & vbCrLf & mDatasetTypesPath & vbCrLf & Err.Description, vbExclamation
+    MsgBox "Unable to load dataset list:" & vbCrLf & Err.Description, vbExclamation
     Resume clean_exit
 End Sub
 
@@ -120,8 +121,9 @@ Private Sub ShowDefaultProjectWarning()
     On Error GoTo 0
 End Sub
 
-Private Function LoadDatasetTypesJsonData(ByVal filePath As String) As Variant
+Private Function LoadDatasetTypesData(ByVal projectName As String) As Variant
     Dim root As Object
+    Dim message As String
     Dim columns As Collection
     Dim rows As Collection
     Dim outData() As Variant
@@ -129,20 +131,15 @@ Private Function LoadDatasetTypesJsonData(ByVal filePath As String) As Variant
     Dim r As Long, c As Long
     Dim rowCount As Long, colCount As Long
 
-    If Len(Dir$(filePath, vbNormal Or vbReadOnly Or vbHidden Or vbSystem)) = 0 Then
-        Err.Raise 53, , "File not found."
-    End If
-
-    Set root = JsonParse(ReadUtf8Text(filePath))
-    If Not root.Exists("columns") Or Not root.Exists("rows") Then
-        Err.Raise 5, , "dataset_types.json must contain columns and rows."
+    If Not GatewayProjectDatasetTypes(projectName, root, message) Then
+        Err.Raise 5, , message
     End If
 
     Set columns = root("columns")
     Set rows = root("rows")
     colCount = columns.Count
     rowCount = rows.Count
-    If colCount = 0 Then Err.Raise 5, , "dataset_types.json has no columns."
+    If colCount = 0 Then Err.Raise 5, , "This project defines no dataset types."
 
     ReDim outData(1 To rowCount + 1, 1 To colCount)
 
@@ -169,20 +166,9 @@ Private Function LoadDatasetTypesJsonData(ByVal filePath As String) As Variant
         End If
     Next r
 
-    LoadDatasetTypesJsonData = outData
+    LoadDatasetTypesData = outData
 End Function
 
-Private Function ReadUtf8Text(ByVal filePath As String) As String
-    Dim stream As Object
-
-    Set stream = CreateObject("ADODB.Stream")
-    stream.Type = 2
-    stream.Charset = "utf-8"
-    stream.Open
-    stream.LoadFromFile filePath
-    ReadUtf8Text = stream.ReadText(-1)
-    stream.Close
-End Function
 ' ==== Filtering ====
 
 Private Sub ApplyFilters()

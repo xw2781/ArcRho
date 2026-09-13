@@ -1,0 +1,14 @@
+{
+  "type": "improvement",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel formulas now read ArcRho data only from the ArcRho Server, never from the shared drive.",
+  "details": [
+    "The add-in no longer opens any project file on the shared drive: it asks the ArcRho Server for a triangle, a vector, the period headings or the project settings, and the server answers with the figures.",
+    "Nothing is written to the shared drive any more, so no request files and no leftover copies of a rolled-up triangle are created while a workbook calculates.",
+    "A PC that has not been given ArcRho Server access now sees one short explanation in the cell instead of a missing-file message, telling the user to ask the ArcRho team for access.",
+    "The Select Datasets window now asks the ArcRho Server for the project's list of dataset types instead of opening the project's own file on the shared drive.",
+    "The diagnostic command that sent formulas back to the shared drive has been removed.",
+    "The add-in version moves to 2.6.0, which resets each user's saved add-in settings to their defaults on first use."
+  ]
+}
