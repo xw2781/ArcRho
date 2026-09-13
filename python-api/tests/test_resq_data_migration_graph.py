@@ -1547,5 +1547,105 @@ class ResqDataMigrationGraphTests(unittest.TestCase):
         )
 
 
+class ResqMigrationGeneratedFormulaGraphTests(unittest.TestCase):
+    """A formula the Engine builds gets the same links the app writes.
+
+    The fake project's example: two source columns, ``Earned Premium`` (A) and
+    ``Remaining Budget Premium`` (C), and a generated formula over them,
+    ``Total Earned Premium`` (B).
+    """
+
+    ROWS = [
+        ["", True, "Earned Premium", False, "Triangle", "Premium", "Earned_Premium"],
+        ["", True, "Remaining Budget Premium", False, "Triangle", "Premium", "Remaining_Budget_Premium"],
+        [
+            '"Earned Premium" + "Remaining Budget Premium"',
+            True,
+            "Total Earned Premium",
+            True,
+            "Triangle",
+            "Premium",
+            "Earned_Premium + Remaining_Budget_Premium",
+        ],
+    ]
+
+    def setUp(self) -> None:
+        _TMP_ROOT.mkdir(parents=True, exist_ok=True)
+        self.tmp = tempfile.TemporaryDirectory(dir=str(_TMP_ROOT))
+        self.root = Path(self.tmp.name) / "ArcRho Server"
+        self.project_dir = self.root / "projects" / "Demo"
+        self.rc_dir = self.project_dir / "data" / "Auto_%5C_PP"
+        self.datasets_dir = self.rc_dir / "datasets"
+        self.sidecars_dir = self.rc_dir / "sidecars"
+        self.datasets_dir.mkdir(parents=True)
+        self.sidecars_dir.mkdir()
+
+        self.module = load_migration_module()
+        self.catalog = importlib.import_module("resq_migration.catalog")
+        self.catalog.configure_catalog(
+            server_root=self.root,
+            project_name="Demo",
+            rs_json_format=self.module.RS_JSON_FORMAT,
+            method_data_dir=self.module.METHOD_DATA_DIR,
+        )
+        (self.project_dir / "dataset_types.json").write_text(json.dumps({
+            "columns": ["Formula", "Generated", "Name", "Calculated", "Data Format", "Category", "Source"],
+            "rows": [list(row) for row in self.ROWS],
+        }), encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _write_instance(self, name: str) -> None:
+        (self.datasets_dir / f"{name}@12@12@cum@dev.csv").write_text("1,2\n", encoding="utf-8")
+        (self.sidecars_dir / f"{name}.json").write_text(json.dumps({
+            "dataset_name": name,
+            "dataset_type": name,
+            "source_kind": "engine",
+            "formula": "",
+        }), encoding="utf-8")
+
+    def test_the_engine_formula_lists_its_inputs_and_they_list_it(self) -> None:
+        for name in ("Earned Premium", "Remaining Budget Premium", "Total Earned Premium"):
+            self._write_instance(name)
+
+        total = self.catalog._dataset_type_graph_fields("Total Earned Premium", self.rc_dir)
+        self.assertEqual(
+            total["precedents"],
+            [{"dataset_name": "Earned Premium"}, {"dataset_name": "Remaining Budget Premium"}],
+        )
+        self.assertEqual(total["dependents"], [])
+
+        for name in ("Earned Premium", "Remaining Budget Premium"):
+            fields = self.catalog._dataset_type_graph_fields(name, self.rc_dir)
+            self.assertEqual(fields["precedents"], [])
+            self.assertEqual(fields["dependents"], [{"dataset_name": "Total Earned Premium"}])
+
+    def test_an_input_with_no_instance_in_the_class_is_not_a_link(self) -> None:
+        # The Engine rebuilds the total from the source table, so a type this
+        # class does not hold is simply not a link here.
+        self._write_instance("Earned Premium")
+        self._write_instance("Total Earned Premium")
+
+        total = self.catalog._dataset_type_graph_fields("Total Earned Premium", self.rc_dir)
+        self.assertEqual(total["precedents"], [{"dataset_name": "Earned Premium"}])
+
+    def test_a_formula_naming_an_unquoted_type_reads_it_too(self) -> None:
+        rows = [list(row) for row in self.ROWS]
+        rows[2][0] = '"Earned Premium" + Remaining Budget Premium'
+        (self.project_dir / "dataset_types.json").write_text(json.dumps({
+            "columns": ["Formula", "Generated", "Name", "Calculated", "Data Format", "Category", "Source"],
+            "rows": rows,
+        }), encoding="utf-8")
+        for name in ("Earned Premium", "Remaining Budget Premium", "Total Earned Premium"):
+            self._write_instance(name)
+
+        total = self.catalog._dataset_type_graph_fields("Total Earned Premium", self.rc_dir)
+        self.assertEqual(
+            total["precedents"],
+            [{"dataset_name": "Earned Premium"}, {"dataset_name": "Remaining Budget Premium"}],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

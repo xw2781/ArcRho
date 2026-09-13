@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A project brought in from ResQ now shows the same formula links the app writes.",
+  "details": [
+    "A dataset the app builds from a formula over other datasets arrives from an import already listing what it is made from and what reads it, instead of arriving with nothing.",
+    "An input that has no dataset in the class is left out of such a dataset's inputs, matching what the app writes when it rebuilds one."
+  ]
+}

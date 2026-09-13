@@ -1,6 +1,6 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 2 of 7 done, the sidecar links landed 2026-09-12.
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 3 of 7 done, the sidecar links and the matching ResQ import landed 2026-09-12.
 Last updated: 2026-09-12
 
 ## Progress
@@ -11,13 +11,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | One shared rule decides which datasets a formula reads | [x] | 2026-09-12 | Nothing visible yet, but a formula that names some inputs in quotes and others plain now reads the same way everywhere; checked against the fake project, where all 61 formulas keep the inputs they already had and 10 mixed ones gain the plain-named inputs the Dataset Types tab used to drop. |
 | 2 | A dataset's Details show its formula inputs and readers, and a rebuild keeps them current | [x] | 2026-09-12 | A dataset the app builds from a formula over other datasets now lists what it is made from and what reads it, and rebuilding one brings those links up to date instead of leaving whatever they were first written with. |
-| 3 | A project imported from ResQ shows the same links | [ ] | | |
+| 3 | A project imported from ResQ shows the same links | [x] | 2026-09-12 | A project brought in from ResQ now arrives with the same inputs and readers on a formula-built dataset that the app writes itself, instead of arriving with none. |
 | 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [ ] | | |
 | 5 | The Dependency Graph draws the formula links and marks a generated formula | [ ] | | |
 | 6 | A one-off script fixes the links of the few existing projects | [ ] | | |
 | 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
 
-Overall: 2 of 7 steps done.
+Overall: 3 of 7 steps done.
 
 ## How agents work this plan
 
@@ -141,7 +141,7 @@ Steps 1 and 2 come first and in order. Steps 3, 4, 5, and 6 are independent of o
 
 **Goal.** A project re-imported from ResQ gets exactly the sidecar links the app writes, from the same helper.
 
-**Read first.** [Proposed behavior](#proposed-behavior) item 5; AGENT_GUIDELINES "Generated Dataset Import Parity" and "Persisted JSON Producer Parity". [catalog.py:110-140](../../python-api/migration/resq_migration/catalog.py#L110-L140) (`_formula_components`), [catalog.py:240-340](../../python-api/migration/resq_migration/catalog.py#L240-L340) (`_direct_precedent_names`, `_direct_dependent_names`, `_filter_existing_dependents`), [catalog.py:400-520](../../python-api/migration/resq_migration/catalog.py#L400-L520) (`_dataset_type_graph_fields`, `_apply_sidecar_graph_meta`, `_reconcile_sidecar_dependents`); [test_resq_data_migration_graph.py](../../python-api/tests/test_resq_data_migration_graph.py); the parity tests in [test_engine_dataset_sidecar_contract.py](../../frontend/tests/test_engine_dataset_sidecar_contract.py). Skill `$arcrho-json-contract`. Memory: "Macro tests poisoned by test_resq_dfm_v2" (run the migration tests in their own pytest process).
+**Read first.** [Proposed behavior](#proposed-behavior) item 5; AGENT_GUIDELINES "Generated Dataset Import Parity" and "Persisted JSON Producer Parity". [catalog.py:110-140](../../python-api/migration/resq_migration/catalog.py#L110-L140) (`_formula_components`), [catalog.py:240-340](../../python-api/migration/resq_migration/catalog.py#L240-L340) (`_direct_precedent_names`, `_direct_dependent_names`, `_filter_existing_dependents`), [catalog.py:400-520](../../python-api/migration/resq_migration/catalog.py#L400-L520) (`_dataset_type_graph_fields`, `_apply_sidecar_graph_meta`, `_reconcile_sidecar_dependents`); [test_resq_data_migration_graph.py](../../python-api/tests/test_resq_data_migration_graph.py); the parity tests in [test_engine_dataset_sidecar_contract.py](../../frontend/tests/test_engine_dataset_sidecar_contract.py). Also the two things the import has to match, added 2026-09-12 while doing the step: the step 1 helper itself in [dataset_type_contract.py](../../python-api/src/arcrho_api/dataset_type_contract.py) (`formula_references`, `dataset_type_formula_graph`), and step 2's rule in [calculated_dataset_service.py](../../frontend/app_server/services/calculated_dataset_service.py) (`_generated_formula_rows`, `_direct_precedent_names`, `_direct_dependent_names`, `sidecar_graph_fields`), which the migration mirrors line for line. Skill `$arcrho-json-contract`. Memory: "Macro tests poisoned by test_resq_dfm_v2" (run the migration tests in their own pytest process).
 
 **Do.**
 

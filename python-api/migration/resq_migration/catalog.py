@@ -21,7 +21,13 @@ from arcrho_api.dataset_index_contract import (
     write_index_json_unlocked,
 )
 from arcrho_api.dataset_link_contract import link_precedent_names
-from arcrho_api.dataset_type_contract import dataset_type_keys, is_app_calculated_dataset_type
+from arcrho_api.dataset_type_contract import (
+    dataset_type_formula_graph,
+    dataset_type_key,
+    dataset_type_keys,
+    formula_references,
+    is_app_calculated_dataset_type,
+)
 
 from .core import (
     BS_CRA_FILE_PREFIX,
@@ -116,33 +122,8 @@ def _canon_dataset_name(value: object) -> str:
     return re.sub(r"\s+", " ", _clean_name(value)).casefold()
 
 def _formula_components(formula: str, known_names: list[str]) -> list[str]:
-    text = _clean_name(formula)
-    if not text:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    masked_parts: list[str] = []
-    last = 0
-    for match in re.finditer(r'"([^"]+)"', text):
-        token = _clean_name(match.group(1))
-        key = _canon_dataset_name(token)
-        if token and key and key not in seen:
-            seen.add(key)
-            out.append(token)
-        masked_parts.append(text[last:match.start()])
-        masked_parts.append(" ")
-        last = match.end()
-    masked_parts.append(text[last:])
-    unquoted_text = "".join(masked_parts)
-    for name in sorted({item.strip() for item in known_names if item.strip()}, key=len, reverse=True):
-        key = _canon_dataset_name(name)
-        if not key or key in seen:
-            continue
-        pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", flags=re.I)
-        if pattern.search(unquoted_text):
-            seen.add(key)
-            out.append(name)
-    return out
+    """The type names a formula reads, by the one rule in ``arcrho_api.dataset_type_contract``."""
+    return formula_references(formula, known_names)
 
 def _dataset_type_rows_by_key(rows: list[dict]) -> dict[str, dict]:
     return {
@@ -241,6 +222,26 @@ def _unknown_dataset_type_skip_detail(kind: str, name: object, dataset_type_name
     display_type = _clean_name(dataset_type_name) or "<blank>"
     return f"    SKIP {kind} {_clean_name(name) or '<unnamed>'}: dataset type {display_type!r} not found in dataset_types.json"
 
+def _generated_formula_rows(rows: list[dict]) -> list[dict]:
+    """The rows the Engine builds from a formula over other dataset types.
+
+    The Engine evaluates such a type against the source table, so it is never
+    the formula evaluator's to rebuild, but its formula names other types
+    exactly as an app-calculated one does. Those names are the links a user
+    sees in Details, and the import must write them the way the app does.
+    """
+    return [
+        row
+        for row in rows
+        if row.get("generated") and row.get("calculated") and _clean_name(row.get("formula"))
+    ]
+
+def _is_generated_formula_type(rows: list[dict], dataset_type_name: object) -> bool:
+    key = dataset_type_key(dataset_type_name)
+    return bool(key) and any(
+        dataset_type_key(row.get("name")) == key for row in _generated_formula_rows(rows)
+    )
+
 def _direct_precedent_names(rows: list[dict], dataset_type_name: str) -> list[str]:
     known_names = [row["name"] for row in rows]
     known_keys = dataset_type_keys(rows)
@@ -248,33 +249,39 @@ def _direct_precedent_names(rows: list[dict], dataset_type_name: str) -> list[st
     for row in rows:
         if _canon_dataset_name(row.get("name")) != target_key:
             continue
-        if not is_app_calculated_dataset_type(row, known_keys):
-            return []
-        return _formula_components(_clean_name(row.get("formula")), known_names)
-    return []
+        if is_app_calculated_dataset_type(row, known_keys):
+            return _formula_components(_clean_name(row.get("formula")), known_names)
+        break
+    if not _is_generated_formula_type(rows, dataset_type_name):
+        return []
+    graph = dataset_type_formula_graph(rows)
+    return [
+        graph.names.get(key, key)
+        for key in graph.precedents.get(dataset_type_key(dataset_type_name), ())
+    ]
 
 def _direct_dependent_names(rows: list[dict], dataset_type_name: str) -> list[str]:
-    known_names = [row["name"] for row in rows]
-    known_keys = dataset_type_keys(rows)
-    target_key = _canon_dataset_name(dataset_type_name)
-    out: list[str] = []
-    seen: set[str] = set()
+    target_key = dataset_type_key(dataset_type_name)
     if not target_key:
-        return out
-    for row in rows:
-        if not is_app_calculated_dataset_type(row, known_keys):
-            continue
-        component_keys = {
-            _canon_dataset_name(name)
-            for name in _formula_components(_clean_name(row.get("formula")), known_names)
-        }
-        if target_key not in component_keys:
-            continue
-        dep_key = _canon_dataset_name(row.get("name"))
-        if dep_key and dep_key not in seen:
-            seen.add(dep_key)
-            out.append(row["name"])
-    return out
+        return []
+    # Both kinds of formula reader: ArcRho evaluates an app-calculated type and
+    # the Engine builds a generated one, and each reads the types its formula
+    # names. A calculated type whose formula names a type the table lacks is
+    # neither, so it reads nothing.
+    known_keys = dataset_type_keys(rows)
+    reader_keys = {
+        dataset_type_key(row.get("name"))
+        for row in rows
+        if is_app_calculated_dataset_type(row, known_keys)
+    } | {
+        dataset_type_key(row.get("name")) for row in _generated_formula_rows(rows)
+    }
+    graph = dataset_type_formula_graph(rows)
+    return [
+        graph.names.get(key, key)
+        for key in graph.dependents.get(target_key, ())
+        if key in reader_keys
+    ]
 
 
 @dataclass
@@ -410,6 +417,13 @@ def _dataset_type_graph_fields(
         if existing_dataset_keys is None
         else existing_dataset_keys
     )
+    precedent_names = _direct_precedent_names(rows, dataset_type_name)
+    if _is_generated_formula_type(rows, dataset_type_name):
+        # The Engine rebuilds a generated formula from the source table rather
+        # than from its inputs' caches, so a type with no instance in this class
+        # is simply not a link here. An app-calculated dataset keeps naming a
+        # missing input, because for it that is a real problem.
+        precedent_names = _filter_existing_dependents(precedent_names, rc_dataset_keys)
     precedents = [
         _dependency_entry(
             name,
@@ -417,7 +431,7 @@ def _dataset_type_graph_fields(
             rc_dir,
             physical_inventory=inventory,
         )
-        for name in _direct_precedent_names(rows, dataset_type_name)
+        for name in precedent_names
     ]
     dependents = [
         _dependency_entry(
