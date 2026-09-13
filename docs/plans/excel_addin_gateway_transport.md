@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 10 session-sized steps; implementation started 2026-09-12 (8 of 10 done; the share path is deleted, the add-in reaches project data only over HTTP, no coarser view is written to disk any more, and a PC with no credential now installs its own when Excel opens). Steps 8 and 9 remain: the user note, and the release with a real workbook behind it.
+Status: Investigated and decided 2026-09-12; broken into 10 session-sized steps; implementation started 2026-09-12 (9 of 10 done; the share path is deleted, the add-in reaches project data only over HTTP, no coarser view is written to disk any more, a PC with no credential now installs its own when Excel opens, and [excel-addin/README.md](../../excel-addin/README.md) is the one-page note for users). Step 9 remains: the release with a real workbook behind it.
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -17,11 +17,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 5 | Formulas get their figures from the server instead of the shared drive | [x] | 2026-09-12 | Formulas now read from the server, and every figure matches the shared drive exactly. The server is about twice as quick when a triangle has to be worked out, and neither quicker nor slower than the drive when it is only being read back. |
 | 6 | Excel no longer needs the shared drive for project data at all | [x] | 2026-09-12 | Excel now gets every ArcRho figure and the Select Datasets list from the server, opens nothing on the shared drive, and tells a PC that has not been given access what to do about it in one line. |
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [x] | 2026-09-12 | Asking for a hand-typed triangle at a coarser shape no longer leaves a copy of it on the server; the figures are worked out fresh each time and sent straight to Excel. |
-| 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
+| 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [x] | 2026-09-12 | One page now says what a PC needs for Excel to reach ArcRho, that Excel sets itself up the first time it opens, and what every message a cell can show means. |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 | 10 | Excel gives itself access to the server the first time it opens, with nobody setting the PC up by hand | [x] | 2026-09-12 | A PC that has never been given access to ArcRho now gives itself access the first time Excel opens, so nobody has to set a new PC up by hand. |
 
-Overall: 8 of 10 steps done.
+Overall: 9 of 10 steps done.
 
 Step 10 was added on 2026-09-12, after steps 1 to 7 were already done, so it carries the next free number but ran next: step 10 landed the same day, and steps 8 and 9 follow it. Nothing is renumbered, because the numbers are already written into commits.
 
@@ -273,11 +273,11 @@ One thing the checklist above did not foresee, done in the same step:
 
 **Do.**
 
-- [ ] Write `excel-addin/README.md` covering: what the credential is, where it lives, that the add-in installs it on its own the first time it runs and what to do on the rare PC where that fails, how to run the check routine, every failure message the add-in can now show with its cause, and the three check documents from steps 1, 5 and 10.
-- [ ] Link it from the plans index row and from the arcrho domain doc.
-- [ ] Note the shared library files that still come from the share, so nobody concludes the add-in needs no drive mapping at all.
+- [x] Write `excel-addin/README.md` covering: what the credential is, where it lives, that the add-in installs it on its own the first time it runs and what to do on the rare PC where that fails, how to run the check routine, every failure message the add-in can now show with its cause, and the three check documents from steps 1, 5 and 10. All four check documents are listed, since the signing check from step 2 is the one a user runs when a PC cannot reach the server.
+- [x] Link it from the plans index row and from the arcrho domain doc.
+- [x] Note the shared library files that still come from the share, so nobody concludes the add-in needs no drive mapping at all.
 
-**Tests.** None; this step changes no behaviour. Confirm every message the page lists appears verbatim in the sources.
+**Tests.** None; this step changes no behaviour. Confirm every message the page lists appears verbatim in the sources. Done by joining each source file's continued string literals and searching for the page's exact wording: all twenty-five quoted strings and paths were found, none missing.
 
 **Done when.** The page names every failure message the add-in can produce, and each one is findable in the sources by the exact wording the page uses.
 
