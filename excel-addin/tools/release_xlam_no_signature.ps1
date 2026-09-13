@@ -197,22 +197,60 @@ Update-XlamPackageFromUnpackedFiles $betaPathFull $customUIPathFull $extractDirF
 Update-WorkbookCoreProperties $betaPathFull (Get-RibbonLabelForWorkbook $betaPathFull)
 Assert-XlamPackage $betaPathFull
 
-if (Test-Path -LiteralPath $releasePathFull -PathType Leaf) {
-    Clear-ReadOnly $releasePathFull
-    $timestamp = Get-Date -Format "yy.MM.dd-HH.mm.ss"
-    $milliseconds = (Get-Date).Millisecond
-    $archiveName = "ArcRho v.$timestamp ($milliseconds).xlam"
-    $archivePath = Join-Path $archiveDirFull $archiveName
-    Move-Item -LiteralPath $releasePathFull -Destination $archivePath -Force
-    Write-Host "Archived existing XLAM: $archivePath"
+# Build the finished release package locally, next to the beta add-in, so the
+# share is touched only twice at the end (archive the old file, copy the new
+# one). Editing the package in place on the share used to fail whenever the
+# server still held the file after a write ("being used by another process").
+# The staged file carries the release file name because the ribbon label and
+# the workbook title are derived from it.
+$stageDirFull = Join-Path (Split-Path -Parent $extractDirFull) "_release_stage"
+$stagePathFull = Join-Path $stageDirFull ([System.IO.Path]::GetFileName($releasePathFull))
+if (Test-Path -LiteralPath $stageDirFull) {
+    Remove-Item -LiteralPath $stageDirFull -Recurse -Force
 }
+New-Item -ItemType Directory -Path $stageDirFull | Out-Null
 
-Copy-Item -LiteralPath $betaPathFull -Destination $releasePathFull -Force
-Update-XlamPackageFromUnpackedFiles $releasePathFull $customUIPathFull $extractDirFull $releasePathFull
-Update-WorkbookCoreProperties $releasePathFull (Get-RibbonLabelForWorkbook $releasePathFull)
-Assert-XlamPackage $releasePathFull
-(Get-Item -LiteralPath $releasePathFull).Attributes =
-    (Get-Item -LiteralPath $releasePathFull).Attributes -bor [System.IO.FileAttributes]::ReadOnly
+try {
+    Copy-Item -LiteralPath $betaPathFull -Destination $stagePathFull -Force
+    Update-XlamPackageFromUnpackedFiles $stagePathFull $customUIPathFull $extractDirFull $stagePathFull
+    Update-WorkbookCoreProperties $stagePathFull (Get-RibbonLabelForWorkbook $stagePathFull)
+    Assert-XlamPackage $stagePathFull
+
+    $archivePath = $null
+    if (Test-Path -LiteralPath $releasePathFull -PathType Leaf) {
+        $timestamp = Get-Date -Format "yy.MM.dd-HH.mm.ss"
+        $milliseconds = (Get-Date).Millisecond
+        $archiveName = "ArcRho v.$timestamp ($milliseconds).xlam"
+        $archivePath = Join-Path $archiveDirFull $archiveName
+        Invoke-FileOperationWithRetry "Archive existing XLAM: $releasePathFull" {
+            Clear-ReadOnly $releasePathFull
+            Move-Item -LiteralPath $releasePathFull -Destination $archivePath -Force
+        } | Out-Null
+        Write-Host "Archived existing XLAM: $archivePath"
+    }
+
+    try {
+        Invoke-FileOperationWithRetry "Copy release XLAM: $releasePathFull" {
+            Copy-Item -LiteralPath $stagePathFull -Destination $releasePathFull -Force
+        } | Out-Null
+    }
+    catch {
+        if ($null -ne $archivePath) {
+            Write-Warning "The previous release was archived but the new one could not be copied. Restore it from: $archivePath"
+        }
+        throw
+    }
+
+    Invoke-FileOperationWithRetry "Validate release XLAM: $releasePathFull" {
+        Assert-XlamPackage $releasePathFull
+    } | Out-Null
+    Set-FileReadOnlyWithRetry $releasePathFull
+}
+finally {
+    if (Test-Path -LiteralPath $stageDirFull -PathType Container) {
+        Remove-Item -LiteralPath $stageDirFull -Recurse -Force
+    }
+}
 
 Write-Host "Released XLAM: $releasePathFull"
 

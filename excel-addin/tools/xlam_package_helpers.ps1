@@ -104,3 +104,51 @@ function Assert-XlamPackage([string]$WorkbookPath) {
 
     Write-Host "Validated XLAM package: $WorkbookPath"
 }
+
+function Test-FileInUseError([System.Management.Automation.ErrorRecord]$ErrorRecord) {
+    $exception = $ErrorRecord.Exception
+    while ($null -ne $exception) {
+        if ($exception -is [System.IO.IOException] -or
+            $exception -is [System.UnauthorizedAccessException]) {
+            return $true
+        }
+        $exception = $exception.InnerException
+    }
+    $false
+}
+
+function Invoke-FileOperationWithRetry(
+    [string]$Description,
+    [scriptblock]$Operation,
+    [int]$MaxAttempts = 12,
+    [int]$InitialDelaySeconds = 1,
+    [int]$MaxDelaySeconds = 10
+) {
+    # A file on the share can stay locked for a few seconds after it was
+    # written or replaced (antivirus scan, SMB handle caching, an Excel that
+    # is just closing it). Retry "used by another process" style failures
+    # with a growing delay instead of failing the release on the first one.
+    $delay = $InitialDelaySeconds
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            return (& $Operation)
+        }
+        catch {
+            $isLastAttempt = ($attempt -ge $MaxAttempts)
+            if ($isLastAttempt -or -not (Test-FileInUseError $_)) {
+                throw
+            }
+            Write-Warning ("{0}: {1} (attempt {2} of {3}, retrying in {4}s)" -f
+                $Description, $_.Exception.Message, $attempt, $MaxAttempts, $delay)
+            Start-Sleep -Seconds $delay
+            $delay = [Math]::Min($delay * 2, $MaxDelaySeconds)
+        }
+    }
+}
+
+function Set-FileReadOnlyWithRetry([string]$Path) {
+    Invoke-FileOperationWithRetry "Mark read-only: $Path" {
+        $item = Get-Item -LiteralPath $Path
+        $item.Attributes = $item.Attributes -bor [System.IO.FileAttributes]::ReadOnly
+    } | Out-Null
+}
