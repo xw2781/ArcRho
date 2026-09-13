@@ -26,6 +26,15 @@ for them with `executeJavaScript` before `capturePage`. Used 2026-09-03 to verif
 Sherman cell-selection module (drag, TSV copy, row/column select, two-grid exclusivity, context
 menu, Escape) against the real shared spreadsheet controller and stylesheets.
 
+**Client PC fallback (2026-09-13):** `frontend/node_modules/electron` is absent on the
+L-H2MQ6280FVP clone, so for a pure CSS/markup mock-up use headless Chrome instead:
+`"/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --no-first-run
+--disable-gpu --hide-scrollbars --user-data-dir=<scratch>/chrome-profile --virtual-time-budget=1500
+--window-size=1000,720 --screenshot=<out.png> "file:///C:/…/mock.html"`. Build the `file://` URL
+from the `C:/` path, not Git Bash's `/c/…` `$PWD` (that yields ERR_FILE_NOT_FOUND). Edge with the
+same flags hung past 60 s. Link stylesheets by `file:///C:/…` path; `/ui/` module imports still
+need the Electron http-server harness above.
+
 **Why:** Claude Code's shell exports `ELECTRON_RUN_AS_NODE=1`, so the bundled `electron.exe` starts as plain Node and `require("electron")` fails with "Cannot find module 'electron'". Passing a script path instead of an app directory fails the same way. There is no cairosvg, ImageMagick, or rsvg on the Client PC, so this is the only local rasterizer. Mask-image icons resolve off disk because the icon stylesheets use relative `url()`s (see [[frontend-node-test-suite]] for the sibling node-portable note).
 
 **How to apply:** Reach for this whenever a task changes icons, toolbar chrome, or states that a test cannot judge; the icon rules require a preview before claiming a set looks right.
