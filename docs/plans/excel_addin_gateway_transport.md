@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (7 of 9 done; the share path is deleted, the add-in reaches project data only over HTTP, and no coarser view is written to disk any more).
+Status: Investigated and decided 2026-09-12; broken into 10 session-sized steps; implementation started 2026-09-12 (7 of 10 done; the share path is deleted, the add-in reaches project data only over HTTP, and no coarser view is written to disk any more). The last open decision was answered on 2026-09-12 and became step 10, which installs each user's Gateway credential on the add-in's first run instead of a person running a command.
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -19,12 +19,15 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [x] | 2026-09-12 | Asking for a hand-typed triangle at a coarser shape no longer leaves a copy of it on the server; the figures are worked out fresh each time and sent straight to Excel. |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
+| 10 | Excel gives itself access to the server the first time it opens, with nobody setting the PC up by hand | [ ] | | |
 
-Overall: 7 of 9 steps done.
+Overall: 7 of 10 steps done.
+
+Step 10 was added on 2026-09-12, after steps 1 to 7 were already done, so it carries the next free number but runs next: take step 10, then 8, then 9. Nothing is renumbered, because the numbers are already written into commits.
 
 ## How agents work this plan
 
-- Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
+- Take the first unticked step in the Progress table, except that step 10 runs before steps 8 and 9, as the note under the table says. One step is one context (a session or one workflow subagent), one commit.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
 - A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date and the one-line user note, update the "Overall" count, and update the `Status:` line at the top and this plan's row in [README.md](README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
@@ -74,9 +77,15 @@ Made 2026-09-12. An implementer who finds one of these no longer holds should st
 
 ## Open decisions
 
-- **How every Excel user gets a Gateway credential.** The credential is provisioned one user at a time by `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`, which writes the user's secret into the server registry and installs the client copy under their `%APPDATA%`. Nothing runs it automatically, so a user who has only ever opened Excel has no credential and, after step 6, no way to read project data. Recommended answer: run that command once per Excel user as part of the step 9 rollout, from the Server PC, and list the users in the step's commit message. Step 9 must not start until this is answered, because an unprovisioned user loses access rather than falling back.
+None open. The credential question that stood here was answered on 2026-09-12 and is recorded below.
 
 ## Answered decisions
+
+- **How every Excel user gets a Gateway credential. Answered 2026-09-12: the add-in installs one for itself the first time it runs.** The question was whether to provision each Excel user by hand, one `configure_pilot.py` run at a time, during the step 9 rollout. The user decided against it: nobody is to be set up by hand, so the add-in must give the PC its own credential on first use. That is new work no step covered, so it became **step 10**, which runs after step 7 and before steps 8 and 9.
+
+  **Step 9 therefore provisions nobody by hand any more.** Its "provision the credential for each Excel user" item is gone, and so is the item telling it to stop while this question was open. What step 9 now checks is that a PC with no credential sets itself up when Excel opens.
+
+  The server still knows who is asking, because the credential is written through the workspace share under the user's own Windows account, and the share's own permissions are the authentication. Nothing new is handed out over the network: the Gateway grows no enrollment route, and no secret reaches a caller that can only reach the Gateway's port. This is the same trust boundary the ArcRho desktop app has used since the hosted-save pilot, where startup enrolls the logged-in user the same way.
 
 - **Whether to go on deleting the share path when the speed gain no longer shows. Answered 2026-09-12: go on.** The user decided to continue with step 6 whatever the timing shows, because every value matches cell for cell on both paths, because a coarser view of a hand-entered triangle already works only on the server, and because the other reasons for the move — one call per formula, no request files, no view files, and the server owning the output location — do not depend on speed. The timing is recorded, not required.
 
@@ -117,7 +126,7 @@ Moving to HTTP is also the removal of four copies of a server-owned rule from th
 
 ## Plan
 
-Nine steps. Steps 1 and 2 are independent of each other and of everything else, and 3 and 4 are independent of 1 and 2; every other step depends on the one before it. Every step that changes a file under `excel-addin/` ends with the build and release scripts from [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md), and the "Excel add-in build needs the server clone" memory applies: those scripts cannot run from the Client PC, so a step that cannot run them says so in its commit message and leaves the release to step 9.
+Ten steps, numbered in the order they were written and run in the order 1 to 7, then 10, then 8 and 9. Steps 1 and 2 are independent of each other and of everything else, and 3 and 4 are independent of 1 and 2; every other step depends on the one before it in that order. Every step that changes a file under `excel-addin/` ends with the build and release scripts from [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md), and the "Excel add-in build needs the server clone" memory applies: those scripts cannot run from the Client PC, so a step that cannot run them says so in its commit message and leaves the release to step 9.
 
 Every step that changes user-visible behaviour adds a fragment under `frontend/changes/unreleased/` with scope `excel add-in`, the way [excel_addin_requested_dataset_shape.json](../../frontend/changes/unreleased/excel_addin_requested_dataset_shape.json) does.
 
@@ -260,11 +269,11 @@ One thing the checklist above did not foresee, done in the same step:
 
 **Goal.** One short page tells a user what Excel needs in order to reach the server, and what each failure message means.
 
-**Read first.** [Open decisions](#open-decisions); `GatewayClient.bas` and the messages written in steps 5 and 6; [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md). Steps 6 and 7 must be committed, so the messages are final.
+**Read first.** The answered credential decision under [Answered decisions](#answered-decisions); `GatewayClient.bas` and the messages written in steps 5 and 6; [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md). Steps 6, 7 and 10 must be committed, so the messages are final.
 
 **Do.**
 
-- [ ] Write `excel-addin/README.md` covering: what the credential is and where it lives, the one command that installs it, how to run the check routine, every failure message the add-in can now show with its cause, and the two check documents from steps 1 and 5.
+- [ ] Write `excel-addin/README.md` covering: what the credential is, where it lives, that the add-in installs it on its own the first time it runs and what to do on the rare PC where that fails, how to run the check routine, every failure message the add-in can now show with its cause, and the three check documents from steps 1, 5 and 10.
 - [ ] Link it from the plans index row and from the arcrho domain doc.
 - [ ] Note the shared library files that still come from the share, so nobody concludes the add-in needs no drive mapping at all.
 
@@ -276,21 +285,50 @@ One thing the checklist above did not foresee, done in the same step:
 
 **Goal.** The change reaches the server and one real workbook is checked against it.
 
-**Read first.** The answered [Open decisions](#open-decisions) entry; [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md); [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md); memories "Excel add-in build needs the server clone", "Remote component deploy", "Deploy staleness is mtime-based", "Bridge restart after deploy". Every earlier step committed.
+**Read first.** The answered credential decision under [Answered decisions](#answered-decisions); [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md); [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md); memories "Excel add-in build needs the server clone", "Remote component deploy", "Deploy staleness is mtime-based", "Bridge restart after deploy". Every earlier step committed.
 
 **Do.**
 
-- [ ] Stop and report rather than continuing if the credential question under Open decisions is unanswered.
-- [ ] Deploy the server components the contract and app-server changes made stale, derived by the deploy CLI rather than by hand, and say which ones in the commit message.
-- [ ] Provision the credential for each Excel user named in the answer, from the Server PC, and list the users.
+- [ ] Deploy the server components the contract and app-server changes made stale, derived by the deploy CLI rather than by hand, and say which ones in the commit message. The credential helper from step 10 is one of them, and it must reach the share before the add-in is released, or a new PC has nothing to run.
 - [ ] Build and release the add-in from the server clone, since the beta workbook and signature files exist only there.
+- [ ] Check that a PC with no credential sets itself up: on one machine that has never been provisioned, open the released add-in and confirm a formula returns figures without anyone running a command. Nobody is provisioned by hand.
 - [ ] Check one real workbook a user already relies on: values unchanged, and the recalculation time before and after.
 - [ ] Move this plan to `completed/` and update the plans index, as [README.md](README.md) describes.
 
 **Tests.** The full frontend and Python suites before the release, compared against a stash in the same tree rather than a fresh worktree, per the "Worktree baselines mask new failures" memory.
 
-**Done when.** The components are deployed, the add-in is released, every named user has a credential, and one real workbook returns the same values faster than before.
+**Done when.** The components are deployed, the add-in is released, every PC that opens the workbook has set itself up, and one real workbook returns the same values faster than before.
+
+### Step 10 — The add-in gives its own PC a credential on first run
+
+**Goal.** This step runs after step 7 and before steps 8 and 9; it carries the next free number only because steps 1 to 7 were already committed when it was added. The first time the add-in loads on a PC with no Gateway credential, it installs one for the logged-in Windows user, so an Excel-only user is never set up by hand and never meets the "no credential" message that step 6 wrote.
+
+**Read first.** The answered credential decision under [Answered decisions](#answered-decisions); [Decisions](#decisions) items 1 and 7. [hosted_save_enrollment.py](../../python-api/src/arcrho_api/hosted_save_enrollment.py) (whole file — `provision_gateway_user` is the canonical enrollment and must stay the only one); [hosted_save_enrollment_service.py](../../frontend/app_server/services/hosted_save_enrollment_service.py), which holds the "enroll once" policy the desktop app has used since the hosted-save pilot; [configure_pilot.py](../../server-components/src/arcrho_gateway/configure_pilot.py); [arcrho_hosted_save_http_contract.py](../../python-api/src/arcrho_hosted_save_http_contract.py) `normalize_client_config:225` and `normalize_gateway_config:170` for the two file shapes; [GatewayClient.bas:483-499](../../excel-addin/src_vba/GatewayClient.bas#L483-L499) (`EnsureGatewayConfig`) and [ThisWorkbook.cls](../../excel-addin/src_vba/ThisWorkbook.cls); [Core.bas:64-95](../../excel-addin/src_vba/Core.bas#L64-L95) for `ProductRootPath`, which is already the workspace root; [RibbonActions.bas:452-463](../../excel-addin/src_vba/RibbonActions.bas#L452-L463), where the add-in already runs an executable from the share; [arcrho_build_components.py:133-175](../../server-components/src/arcrho_build_components.py#L133-L175) and [utils.py:67-79](../../server-components/src/utils.py#L67-L79) for how a role joins the deployed set; [build_exe.py](../../server-components/src/arcrho_gateway/build_exe.py) as the build script to copy; [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md); [excel-addin-build-and-release.md](../../agent-instructions/excel-addin-build-and-release.md). Steps 6 and 7 must be committed. Memory: "Excel add-in build needs the server clone".
+
+Three facts settle the shape of this step, and an implementer should not re-litigate them.
+
+- **The share is the authentication.** A credential is created by adding the user's secret to `<workspace>\config\arcrho_gateway.json` and writing the matching file to `%APPDATA%\ArcRho\arcrho_gateway.json`. Both happen on the client, over the share, under the user's own Windows account, which is how the server can be sure who asked. The Gateway itself cannot tell: it is plain HTTP with no Windows authentication, so an enrollment route there would hand a secret to anything that could reach the port. No such route is added.
+- **The registry write does not happen in VBA.** `provision_gateway_user` updates the shared file under an OS byte-range lock. A VBA file lock does not interlock with it, so a losing write would silently drop another user's entry and lock that person out, and it would be a second copy of a rule the "Single Source of Truth" section of [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md) says must have one owner.
+- **So a small frozen helper does the work and VBA only starts it.** The helper is the canonical Python, built and deployed by the machinery every other component uses. The add-in already starts an executable from the share, so this is an established pattern here rather than a new one.
+
+**Do.**
+
+- [ ] Move the "enroll once" policy out of `hosted_save_enrollment_service.auto_enroll_current_user` and into `arcrho_api.hosted_save_enrollment`, keeping every rule it already has: an existing local file is authoritative including an explicit `enabled: false`, the shared `client_url` is read and probed before anything is written, and a failure before enrollment leaves no file. The app-server service becomes a thin caller. This removes a duplication rather than creating one; do not let the new helper grow a second copy of the policy.
+- [ ] Add `server-components/src/arcrho_credential/` with a `main.py` that calls that one function and a `build_exe.py` modelled on the Gateway's. It takes the workspace root as an argument, because an Excel-only PC may have no `workspace_paths.json` to resolve one from. It prints one line saying what it did and exits non-zero on failure.
+- [ ] Register `credential` in `DEPLOYED_COMPONENT_ROLES` only, the way `gateway` is: it is deployed from the repository and is not part of the installed server payload. Give it no instance role, as the Launcher has none, so it writes no heartbeat and the Orchestrator does not supervise it.
+- [ ] Fix the URL default while moving this code: `configure_pilot.py` falls back to `http://<this machine's name>` when `--url` is absent, which is the client's own name when it runs on a Client PC. The shared registry's `client_url` is the only correct answer, so pass nothing and let `provision_gateway_user` use it. Keep `configure_pilot.py` working for a person at the Server PC; it delegates to the same function.
+- [ ] In the add-in, at `Workbook_Open` and nowhere inside a worksheet function, check for the local credential file and run the helper once per Excel session when it is missing. The helper is `ProductPath("apps\ArcRho Credential\ArcRho Credential.exe")` and it is handed `ProductRootPath()` as the workspace root, so no path is written out in VBA. Run it hidden and wait for it, and put the reason in the existing loading indicator so a user sees why Excel paused. Clear the module's cached "no gateway" answer afterwards so the first formula of that session sees the new credential.
+- [ ] Attempt this at most once per Excel session, and never when the workspace share cannot be reached, so a PC that is off the network pays one short failure rather than one per launch.
+- [ ] Leave the step 6 message exactly as it is for every case that still fails, and leave an `enabled: false` file untouched: that file is a deliberate opt-out, not a missing credential.
+- [ ] Do not bump `ARCRHO_VERSION`. This step adds no setting, and a bump would reset every user's saved add-in settings for nothing.
+- [ ] Confirm a plain user can run the helper from `apps\ArcRho Credential` on the share with no warning dialog. If Windows blocks an executable opened from the share, say so in the commit message and leave step 9 to sign it with the certificate the add-in release already uses.
+- [ ] Add a change fragment under `frontend/changes/unreleased/` with scope `excel add-in`.
+- [ ] Deploy the components the deploy CLI reports stale, which includes the new helper, and say which in the commit message. Build the add-in with `build_xlam.ps1`; the release stays with step 9.
+
+**Tests.** `frontend/tests/test_hosted_save_auto_enrollment.py` keeps passing unchanged against the service that now delegates, which is the proof the policy moved rather than changed. New `python-api/tests/test_gateway_credential_helper.py`: against a temporary workspace root and a temporary `%APPDATA%`, the helper writes a file `normalize_client_config` accepts for a user the shared registry then holds; it takes the shared `client_url` rather than one built from the local machine name; it leaves an existing `enabled: false` file untouched and reports that it did; and it exits non-zero without writing anything when the shared registry has no `client_url`. `server-components/tests`: the new role is in the deployed set, is absent from the installed payload, and owns no instance role. Manual, recorded in `excel-addin/tools/check_first_run_credential.md`: rename the credential aside, open Excel, and confirm it comes back and a triangle formula returns figures with no command run by hand; then make the share unreachable and confirm one short failure, the step 6 message, and no hang.
+
+**Done when.** Opening Excel on a PC that has never had a credential installs one and the add-in's formulas work, with nobody running a command; an `enabled: false` file is still honoured; every remaining failure leaves the step 6 message and a usable Excel; and no secret can be obtained from the Gateway by a caller that only reaches its port.
 
 ## Rough size
 
-Nine sessions, one per step. Steps 1, 2, 3 and 5 are the substantial ones; 4, 7 and 8 are short; 6 is mostly deletion; 9 is a release and a measurement. Steps 1 and 2 can run in parallel with 3 and 4, because the first two touch only the add-in and the second two only the server.
+Ten sessions, one per step. Steps 1, 2, 3, 5 and 10 are the substantial ones; 4, 7 and 8 are short; 6 is mostly deletion; 9 is a release and a measurement. Steps 1 and 2 can run in parallel with 3 and 4, because the first two touch only the add-in and the second two only the server. Step 10 is substantial because it spans three trees — the canonical enrollment in `python-api`, a new small component in `server-components`, and the add-in's first-run path — even though each piece is small.
