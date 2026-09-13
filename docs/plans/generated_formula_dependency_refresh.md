@@ -1,6 +1,6 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 5 of 7 done, the Dependency Graph now draws the formula links and marks a generated formula (2026-09-12).
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 6 of 7 done, a one-off script now repairs the links of the projects that already exist (2026-09-12). Only the deploy and the runs on the server are left.
 Last updated: 2026-09-12
 
 ## Progress
@@ -14,10 +14,10 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 3 | A project imported from ResQ shows the same links | [x] | 2026-09-12 | A project brought in from ResQ now arrives with the same inputs and readers on a formula-built dataset that the app writes itself, instead of arriving with none. |
 | 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [x] | 2026-09-12 | Importing source data for chosen dataset types now rebuilds the datasets built from them by formula, and the formulas built on those, in every reserving class the import covers, then refreshes the methods that read them; saving Data Processing Rules does the same. |
 | 5 | The Dependency Graph draws the formula links and marks a generated formula | [x] | 2026-09-12 | The Dependency Graph now marks a dataset built by a formula as Generated, in its own colour, and draws arrows from the datasets it is made from, so clicking one of those inputs lights the formula and every method that reads it; those inputs are drawn straight away instead of waiting for the Show all box. |
-| 6 | A one-off script fixes the links of the few existing projects | [ ] | | |
+| 6 | A one-off script fixes the links of the few existing projects | [x] | 2026-09-12 | Nothing changes on its own, but there is now a one-off repair that can be run over a project that already exists so its formula-built datasets list what they are made from and what reads them, without touching anything else in the file and without marking any method for review. |
 | 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
 
-Overall: 5 of 7 steps done.
+Overall: 6 of 7 steps done.
 
 ## How agents work this plan
 
@@ -198,9 +198,10 @@ Steps 1 and 2 come first and in order. Steps 3, 4, 5, and 6 are independent of o
 
 **Do.**
 
-- [ ] Add `repair_reserving_class_graph_fields(project_name, reserving_class)` to `calculated_dataset_service.py`: under the class io lock, read each `source_kind == engine` sidecar of the class, run `apply_sidecar_graph_fields`, write only when the parsed payload differs, and return counts (sidecars read, sidecars written) plus the names it could not read. Touch nothing but the two link lists: no `updated_at`, no audit entry, no index rebuild (the index carries no link fields). A second run writes nothing.
-- [ ] Add `tools/repair_dataset_graph_fields.py`: `--project` once or many, or every project under the server root; `--apply` to write, otherwise report only; take the reserving-class lease from the propagation contract for each class before writing and release it after, so a save landing at the same moment is refused with the 423 hold it already understands, and skip and report a class whose lease is held by a running job; print per-project and per-class counts and finish with a summary the deploy step can paste into this plan.
-- [ ] The script imports the working tree's app server directly, so it needs nothing deployed, but it must be run on the Server PC where the workspace is local disk; the module docstring says so and names the machine, and there is no check in code.
+- [x] Add `repair_reserving_class_graph_fields(project_name, reserving_class)` to `calculated_dataset_service.py`: under the class io lock, read each `source_kind == engine` sidecar of the class, run `apply_sidecar_graph_fields`, write only when the parsed payload differs, and return counts (sidecars read, sidecars written) plus the names it could not read. Touch nothing but the two link lists: no `updated_at`, no audit entry, no index rebuild (the index carries no link fields). A second run writes nothing.
+- [x] Add `tools/repair_dataset_graph_fields.py`: `--project` once or many, or every project under the server root; `--apply` to write, otherwise report only; take the reserving-class lease from the propagation contract for each class before writing and release it after, so a save landing at the same moment is refused with the 423 hold it already understands, and skip and report a class whose lease is held by a running job; print per-project and per-class counts and finish with a summary the deploy step can paste into this plan.
+- [x] The script imports the working tree's app server directly, so it needs nothing deployed, but it must be run on the Server PC where the workspace is local disk; the module docstring says so and names the machine, and there is no check in code.
+- [x] The script walks a project's classes through `calculated_dataset_service.project_reserving_classes`, added beside the repair: the same enumeration the Engine's source refresh makes, the canonical name from each class's own `index.json` and the folder name only as a fallback. The Engine keeps its own copy, because its tests stand a minimal `app_server` module in for the real one and delegating would pull the whole service into them.
 
 **Tests.** A new `frontend/tests/test_dataset_graph_repair.py`: a fake project with two classes, one holding A, C, and B with stale links and a method reading B, the other already correct; the first run writes only the stale sidecars, keeps the method dependent, and leaves every other field byte-identical; the second run writes nothing; an unreadable sidecar is reported and the rest still repaired. A new `tools/tests/test_repair_dataset_graph_fields.py`: without `--apply` nothing is written and the report is right; with it the class is repaired; a held class is skipped and reported.
 

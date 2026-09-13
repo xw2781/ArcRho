@@ -3185,3 +3185,116 @@ def apply_planned_dataset_types_change(
         "chains": chains,
         "errors": errors,
     }
+
+
+# ---------------------------------------------------------------------------
+# One-off repair of the persisted link lists
+# ---------------------------------------------------------------------------
+
+
+def project_reserving_classes(project_name: str) -> List[str]:
+    """Every reserving class of *project_name* that owns persisted data.
+
+    The folder name is an encoded form of the class path, so the canonical
+    spelling is taken from the class's own ``index.json`` when it has one and
+    only decoded from the folder name when it does not. This is the one
+    enumeration; the Engine's source-refresh job asks it the same question.
+    """
+
+    from arcrho_api.dataset_index_contract import INDEX_FILE_NAME
+
+    data_dir = config.get_project_data_dir(project_name)
+    try:
+        entries = sorted(
+            (entry for entry in os.scandir(data_dir) if entry.is_dir()),
+            key=lambda entry: (entry.name.casefold(), entry.name),
+        )
+    except FileNotFoundError:
+        return []
+
+    classes: List[str] = []
+    seen: Set[str] = set()
+    for entry in entries:
+        name = ""
+        try:
+            with open(os.path.join(entry.path, INDEX_FILE_NAME), "r", encoding="utf-8-sig") as fh:
+                payload = json.load(fh)
+            if isinstance(payload, Mapping):
+                name = _clean_text(payload.get("reserving_class"))
+        except (OSError, ValueError, TypeError):
+            name = ""
+        if not name:
+            name = _clean_text(config.decode_filename_segment(entry.name))
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            classes.append(name)
+    return classes
+
+
+def repair_reserving_class_graph_fields(
+    project_name: str,
+    reserving_class: str,
+    *,
+    apply: bool = True,
+) -> Dict[str, Any]:
+    """Recompute the two link lists of every Engine dataset in one class.
+
+    A sidecar written before a generated formula's links were derived keeps
+    whichever lists it was first written with, and a regeneration only repairs
+    the ones it rebuilds, so the projects that already exist are repaired once
+    by hand. This is the dataset-type change job's "graphs" stage over every
+    Engine instance of a class rather than the ones a plan named.
+
+    Nothing but ``precedents`` and ``dependents`` moves: the payload is read,
+    handed to :func:`apply_sidecar_graph_fields`, and written only when it
+    differs, so no ``updated_at`` and no audit record is stamped and a second
+    run writes nothing. The reserving-class index carries no link field, so it
+    is not rebuilt either. ``apply=False`` reports what would be written.
+    """
+
+    project = _clean_text(project_name)
+    rc = _clean_text(reserving_class)
+    result: Dict[str, Any] = {
+        "project_name": project,
+        "reserving_class": rc,
+        "sidecars_read": 0,
+        "sidecars_written": 0,
+        "written": [],
+        "unreadable": [],
+    }
+    folder = config.get_project_dataset_sidecar_dir(project, rc)
+    try:
+        with os.scandir(folder) as iterator:
+            paths = sorted(
+                entry.path
+                for entry in iterator
+                if entry.name.lower().endswith(".json") and entry.is_file()
+            )
+    except FileNotFoundError:
+        return result
+
+    with dataset_sidecar_status_service.reserving_class_io_lock(project, rc):
+        for path in paths:
+            name = _sidecar_instance_name(path)
+            try:
+                with dataset_sidecar_status_service.sidecar_write_lock(path):
+                    with open(path, "r", encoding="utf-8") as fh:
+                        payload = json.load(fh)
+                    if not isinstance(payload, dict):
+                        raise ValueError("A dataset sidecar must hold a JSON object.")
+                    result["sidecars_read"] += 1
+                    if _clean_text(payload.get("source_kind")).casefold() != "engine":
+                        continue
+                    before = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                    apply_sidecar_graph_fields(payload, project)
+                    after = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+                    if before == after:
+                        continue
+                    if apply:
+                        _write_sidecar_json(path, payload)
+                    result["sidecars_written"] += 1
+                    result["written"].append(name)
+            except Exception as exc:
+                result["unreadable"].append({"dataset_name": name, "detail": str(exc)})
+    return result
