@@ -12,6 +12,7 @@ import {
   getShowNaBorders, setShowNaBorders,
   getEffectiveDevLabelsForModel, getRatioHeaderLabels,
   getOriginLabelTextForRatio, buildSummaryRows, getDfmDecimalPlaces,
+  getRatioChartCol,
   markDfmDirty, notifyDfmEditState,
 } from "/ui/method_pages/dfm/dfm_state.js";
 import {
@@ -62,7 +63,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260901a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913a";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -261,7 +262,7 @@ export {
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260901a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913a";
 
 
 
@@ -679,6 +680,17 @@ export function applyRatioColHighlight() {
     const on = getRatioColAllActive() ? Number.isFinite(col) : activeRatioCols.has(col);
     el.classList.toggle("ratioColActive", on);
   });
+}
+
+// An open chart always shows the highlighted column, so a single click on a
+// column label moves the chart there.
+function syncRatioChartToColumn(colRaw) {
+  if (!isRatioChartOpen()) return;
+  const col = Number(colRaw);
+  if (!Number.isInteger(col) || col < 0) return;
+  if (isRatioEditMode() && !getRatioColAllActive() && !activeRatioCols.has(col)) return;
+  if (getRatioChartCol() === col) return;
+  showRatioColumnChart(col);
 }
 
 export function getActiveRatioCols(model) {
@@ -1278,7 +1290,13 @@ export function wireRatioStrikeToggle() {
 
   wrap.addEventListener("click", (e) => {
     if (e.detail > 1) return;
-    if (!isRatioEditMode()) return;
+    if (!isRatioEditMode()) {
+      // Select mode highlights the clicked column itself, so the chart only has
+      // to follow it.
+      const selectTh = e.target?.closest?.("th[data-col]");
+      if (selectTh) syncRatioChartToColumn(selectTh.dataset.col);
+      return;
+    }
     const rowHead = e.target?.closest?.("tbody th.ratioRowHeader[data-r]");
     if (rowHead) {
       e.preventDefault();
@@ -1315,13 +1333,16 @@ export function wireRatioStrikeToggle() {
       } else {
         const wasActive = activeRatioCols.size === 1 && activeRatioCols.has(col);
         activeRatioCols.clear();
-        if (!wasActive) activeRatioCols.add(col);
+        // While the chart is open the highlight has to keep naming the charted
+        // column, so clicking it again re-selects instead of clearing.
+        if (!wasActive || isRatioChartOpen()) activeRatioCols.add(col);
       }
     }
     const ratiosPage = document.getElementById("dfmRatiosPage");
     const keepTop = ratiosPage ? ratiosPage.scrollTop : 0;
     const keepLeft = ratiosPage ? ratiosPage.scrollLeft : 0;
     applyRatioColHighlight();
+    syncRatioChartToColumn(colRaw);
     if (ratiosPage) {
       requestAnimationFrame(() => {
         ratiosPage.scrollTop = keepTop;

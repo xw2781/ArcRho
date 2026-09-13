@@ -44,6 +44,9 @@ let ratioChartDragAxisRange = null;
 let ratioChartYAxisRangeByCol = new Map();
 let ratioChartAxisDragPreview = null;
 let ratioChartAxisDragStart = null;
+// Where the user last dragged the chart window, kept for as long as this DFM
+// page lives so closing the chart or picking another column reopens it there.
+let ratioChartWindowOffset = { dx: 0, dy: 0 };
 
 function getRatioChartColor(propertyName, fallback) {
   return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
@@ -671,10 +674,18 @@ function renderRatioColumnChart(canvas, labels, values, status) {
       }
     }
   }
-  // Expand y-axis to include threshold lines so they're always visible
+  if (yMin === yMax) {
+    yMin -= 1;
+    yMax += 1;
+  }
+  // Expand y-axis to include threshold lines so they're always visible. The
+  // thresholds are seeded here, from the data range plus the same padding the
+  // axis gets below, so the first paint already uses the range every later
+  // paint uses and the lines never shift once the chart is on screen.
   if (chartColForRange != null) {
-    const upperTh = getThresholdValueForCol(chartColForRange);
-    const lowerTh = getLowerThresholdValueForCol(chartColForRange);
+    const seedPad = (yMax - yMin) * 0.04;
+    const upperTh = getThresholdValueForCol(chartColForRange, yMax + seedPad);
+    const lowerTh = getLowerThresholdValueForCol(chartColForRange, yMin - seedPad);
     if (Number.isFinite(upperTh)) {
       yMin = Math.min(yMin, upperTh);
       yMax = Math.max(yMax, upperTh);
@@ -683,10 +694,6 @@ function renderRatioColumnChart(canvas, labels, values, status) {
       yMin = Math.min(yMin, lowerTh);
       yMax = Math.max(yMax, lowerTh);
     }
-  }
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
   }
   // Add a small padding so edge values aren't clipped against the axis boundary
   const yPad = (yMax - yMin) * 0.04;
@@ -808,8 +815,9 @@ function renderRatioColumnChart(canvas, labels, values, status) {
 
   // Interactive threshold lines (upper/lower)
   const chartCol = getRatioChartCol();
-  const upperVal = getThresholdValueForCol(chartCol, yMax);
-  const lowerVal = getLowerThresholdValueForCol(chartCol, yMin);
+  // Seeded with the axis range above, so read them without a fallback here.
+  const upperVal = getThresholdValueForCol(chartCol);
+  const lowerVal = getLowerThresholdValueForCol(chartCol);
   const leftCutoffIndex = getLeftThresholdIndexForCol(chartCol, 0);
   // Dim regions outside the threshold band
   const leftSpan = Math.max(1, labels.length - 1);
@@ -1065,6 +1073,32 @@ function renderRatioChartNow() {
   renderRatioColumnChart(canvas, labels, values, status);
 }
 
+function applyRatioChartWindowOffset(card) {
+  if (!card) return;
+  const { dx, dy } = ratioChartWindowOffset;
+  card.style.transform = (dx || dy) ? `translate(${dx}px,${dy}px)` : "";
+}
+
+// Pull the remembered window back if the DFM page shrank since the last drag,
+// so the header always stays reachable.
+function restoreRatioChartWindowPosition(card) {
+  if (!card) return;
+  applyRatioChartWindowOffset(card);
+  const rect = card.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const margin = 40;
+  let { dx, dy } = ratioChartWindowOffset;
+  const maxX = window.innerWidth - margin;
+  const maxY = window.innerHeight - margin;
+  if (rect.left > maxX) dx -= rect.left - maxX;
+  if (rect.right < margin) dx += margin - rect.right;
+  if (rect.top > maxY) dy -= rect.top - maxY;
+  if (rect.top < 0) dy -= rect.top;
+  if (dx === ratioChartWindowOffset.dx && dy === ratioChartWindowOffset.dy) return;
+  ratioChartWindowOffset = { dx, dy };
+  applyRatioChartWindowOffset(card);
+}
+
 export function showRatioColumnChart(col) {
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return;
@@ -1085,8 +1119,8 @@ export function showRatioColumnChart(col) {
     const formulaLabel = cfg?.label || cfg?.id || "Selected";
     metaEl.textContent = `Selected: ${formulaLabel} - ${rowLabel}`;
   }
-  modal.querySelector(".dfmModalCard")?._resetDrag?.();
   modal.classList.add("open");
+  restoreRatioChartWindowPosition(modal.querySelector(".dfmModalCard"));
   scheduleRatioChartRender();
 }
 
@@ -1117,21 +1151,39 @@ export function wireRatioChartModal() {
   const header = modal.querySelector(".dfmRatioChartHeader");
   const card = modal.querySelector(".dfmModalCard");
   if (header && card) {
-    let dx = 0, dy = 0, sx = 0, sy = 0;
+    let dragPointerId = null;
+    let sx = 0, sy = 0;
+    const onMove = (ev) => {
+      if (ev.pointerId !== dragPointerId) return;
+      ratioChartWindowOffset = {
+        dx: ratioChartWindowOffset.dx + (ev.clientX - sx),
+        dy: ratioChartWindowOffset.dy + (ev.clientY - sy),
+      };
+      sx = ev.clientX; sy = ev.clientY;
+      applyRatioChartWindowOffset(card);
+    };
+    const stopDrag = (ev) => {
+      if (dragPointerId == null) return;
+      if (ev && ev.pointerId != null && ev.pointerId !== dragPointerId) return;
+      try { header.releasePointerCapture(dragPointerId); } catch { /* already released */ }
+      dragPointerId = null;
+      header.removeEventListener("pointermove", onMove);
+      header.removeEventListener("pointerup", stopDrag);
+      header.removeEventListener("pointercancel", stopDrag);
+      header.removeEventListener("lostpointercapture", stopDrag);
+    };
     header.addEventListener("pointerdown", (e) => {
       if (e.target.closest("button")) return;
+      if (dragPointerId != null) return;
       e.preventDefault();
+      dragPointerId = e.pointerId;
       sx = e.clientX; sy = e.clientY;
-      const onMove = (ev) => {
-        dx += ev.clientX - sx; dy += ev.clientY - sy;
-        sx = ev.clientX; sy = ev.clientY;
-        card.style.transform = `translate(${dx}px,${dy}px)`;
-      };
-      const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      try { header.setPointerCapture(e.pointerId); } catch { /* capture unsupported */ }
+      header.addEventListener("pointermove", onMove);
+      header.addEventListener("pointerup", stopDrag);
+      header.addEventListener("pointercancel", stopDrag);
+      header.addEventListener("lostpointercapture", stopDrag);
     });
-    card._resetDrag = () => { dx = dy = 0; card.style.transform = ""; };
   }
   const canvas = getRatioChartCanvas();
   canvas?.addEventListener("pointerdown", (e) => {
