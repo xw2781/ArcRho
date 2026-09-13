@@ -57,7 +57,7 @@ Every cell holds the same value on both paths. A failure is expected to read
 differently: the server's own message is passed through, where the share path
 could only say that a file was missing.
 
-## Recorded run
+## First recorded run: one reserving class, every dataset already cached
 
 2026-09-12 on the developer Client PC `L-H2MQ6280FVP`, Excel 16.0 driven over
 COM, add-in version 2.5.0, against the Gateway on `NE7SASWPN02`, with the Engine
@@ -108,3 +108,76 @@ Both predate this change and appear identically on both paths:
 - **`ArcRhoTriDiag` asks for the transposed calendar shape** rather than the one
   its caller asked for, so the diagonal of a hand-entered triangle fails on both
   paths.
+
+## Second recorded run: many classes, and datasets the Engine has to calculate
+
+Later the same day, 2026-09-12, on the same PC, the same Excel 16.0 driven over
+COM, the same add-in package and the same Gateway on `NE7SASWPN02`. Nothing was
+rebuilt or redeployed between the two runs.
+
+The first run covered one reserving class and only datasets whose figures were
+already sitting in the class's cache, which is the case the share path is best
+at. It did not cover the two the plan expected the win to come from, so both
+were measured here.
+
+- **Case A, many classes.** Twelve reserving classes of
+  `NJ_Annual_Prod_202605_Fake`, each contributing one annual triangle
+  (`Net Loss--Paid`) and one vector (`Earned Premium`): twenty-four datasets,
+  1,332 figures, every one of them already cached. The share path pays its
+  dataset-type look, class-index look and directory check in twelve different
+  folders rather than one.
+- **Case B, the Engine actually calculates.** Three engine triangles
+  (`Net Loss--Paid`, `Net Loss--Incurred`, `Gross Loss--Paid`) in
+  `HPPREF\HO+DF\NJ\Legacy\HOL`, with the add-in's "always refresh" setting
+  turned on so that neither path may serve a cached figure. Over the share that
+  is a cache delete, a request file and the poll loop; over the server it is the
+  same one call as any other read. The cache CSVs' timestamps after each pass
+  confirm the Engine really recalculated on both paths rather than answering
+  from the cache.
+
+Passes were run exactly as described above: alternating, the force setting
+written before every pass so the add-in's own per-pass memory is dropped, twelve
+seconds of waiting so Windows lets go of the share's cached directory metadata,
+and one unmeasured warm-up pass on each side first. Five measured passes each
+way for case A, three each way for case B.
+
+### Values
+
+| Workbook | Cells compared | Cells that differ |
+| :--- | :--- | :--- |
+| Case A, twenty-four datasets in twelve classes | 1,332 | 0 |
+| Case B, three recalculated triangles | 297 | 0 |
+
+### Times
+
+| Workbook | Share | Server | Faster |
+| :--- | :--- | :--- | :--- |
+| Case A, twenty-four cached datasets in twelve classes | 1.78 s | 1.46 s | the server, by about 18% |
+| Case B, three datasets the Engine recalculates | 1.74 s | 0.86 s | the server, by about half |
+
+Medians, and the passes behind them:
+
+| Workbook | Share passes | Server passes |
+| :--- | :--- | :--- |
+| Case A | 1.84, 1.78, 1.50, 1.92, 1.35 | 1.27, 1.20, 1.46, 1.51, 1.78 |
+| Case B | 1.81, 1.74, 1.72 | 0.88, 0.86, 0.86 |
+
+**Case A: the server is faster, but not by more than the noise.** Its median is
+0.32 s ahead over twenty-four datasets, about 13 ms a dataset, and the spread
+between the slowest and fastest pass is wider than that on both sides. An
+earlier three-pass set the same evening put the share at 1.31 s and the server
+at 1.23 s. Read together, the honest reading is that the server is at least as
+fast as the share for cached datasets spread across many classes, and probably a
+little faster; it is not the two-to-one win the plan's original single-dataset
+measurement suggested.
+
+**Case B: the server is clearly and repeatably faster.** Roughly twice as fast,
+0.29 s a dataset saved, and every pass on each side landed within 0.1 s of its
+own median, so this one is not noise. This is the case the plan predicted: the
+share pays a request file and a poll loop for a calculation the server answers
+in the same call it answers a read with. The share path also gives up after five
+seconds of polling, which the server path has no equivalent of.
+
+Neither case covered the coarser view, so the UNC failure recorded in the first
+run above was neither reproduced nor re-checked here, and nothing was written to
+the share to work around it.

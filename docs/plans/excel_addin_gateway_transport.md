@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (4 of 9 done, step 5 written and checked but paused on an open decision about its measured speed).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (5 of 9 done; the speed question raised by step 5 was answered on 2026-09-12 and the plan continues at step 6).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -14,13 +14,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | Excel can talk to the ArcRho Server directly, and a check button proves it | [x] | 2026-09-12 | Excel can now reach the ArcRho Server directly, and a one-line check says whether this PC can. |
 | 3 | The server can hand Excel a triangle's figures in one answer | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a triangle with its figures, so Excel will not have to open files on the shared drive. |
 | 4 | The server can hand Excel its period headings and project settings the same way | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a project's period headings or its settings with their figures, so every Excel formula has an answer that does not need the shared drive. |
-| 5 | Formulas get their figures from the server instead of the shared drive | [ ] | 2026-09-12 | In progress: formulas now read from the server and every figure matches the shared drive, but the server was not faster on the day, so whether to go on is a question for you. |
+| 5 | Formulas get their figures from the server instead of the shared drive | [x] | 2026-09-12 | Formulas now read from the server, and every figure matches the shared drive exactly. The server is about twice as quick when a triangle has to be worked out, and neither quicker nor slower than the drive when it is only being read back. |
 | 6 | Excel no longer needs the shared drive for project data at all | [ ] | | |
 | 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 4 of 9 steps done.
+Overall: 5 of 9 steps done.
 
 ## How agents work this plan
 
@@ -74,8 +74,22 @@ Made 2026-09-12. An implementer who finds one of these no longer holds should st
 
 ## Open decisions
 
-- **Whether to go on deleting the share path when the speed gain no longer shows.** Step 5's recorded comparison on 2026-09-12 found every value identical on both paths — 566 cells across all six worksheet functions, and 1,104 more across twenty-three triangles in one class — but the Gateway was not faster: 0.60 s against the share's 0.46 s on the first workbook and 1.14 s against 1.03 s on the second, each the median of three alternating passes with the share's directory cache allowed to expire first. One dataset cost about 45 ms over the share and 50 ms over the server. That is not the 320 ms against 145 ms the plan measured on the same triangle the same week; the share half of that figure did not reproduce, which the plan's own caveat about day-to-day share latency anticipated. The measurement also does not cover what the plan expected the win to come from — a workbook spanning many reserving classes, and a dataset the Engine has to calculate. Recommended answer: keep going, because the values match, because the coarser view already works only on the server, and because the other reasons for the move — one call per formula, no request files, no view files, and the server owning the output location — do not depend on the timing; but re-run [check_gateway_transport.md](../../excel-addin/tools/check_gateway_transport.md) against a real multi-class workbook before step 6 deletes the share path, and record that result. Step 6 must not start until this is answered.
 - **How every Excel user gets a Gateway credential.** The credential is provisioned one user at a time by `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`, which writes the user's secret into the server registry and installs the client copy under their `%APPDATA%`. Nothing runs it automatically, so a user who has only ever opened Excel has no credential and, after step 6, no way to read project data. Recommended answer: run that command once per Excel user as part of the step 9 rollout, from the Server PC, and list the users in the step's commit message. Step 9 must not start until this is answered, because an unprovisioned user loses access rather than falling back.
+
+## Answered decisions
+
+- **Whether to go on deleting the share path when the speed gain no longer shows. Answered 2026-09-12: go on.** The user decided to continue with step 6 whatever the timing shows, because every value matches cell for cell on both paths, because a coarser view of a hand-entered triangle already works only on the server, and because the other reasons for the move — one call per formula, no request files, no view files, and the server owning the output location — do not depend on speed. The timing is recorded, not required.
+
+  Both sets of numbers, from [check_gateway_transport.md](../../excel-addin/tools/check_gateway_transport.md), all on `L-H2MQ6280FVP` on 2026-09-12 with the same add-in package and the same server:
+
+  | Workbook | Share | Server |
+  | :--- | :--- | :--- |
+  | First run: ten blocks, nine datasets, one class | 0.46 s | 0.60 s |
+  | First run: twenty-three annual triangles, one class | 1.03 s | 1.14 s |
+  | Second run, case A: twenty-four cached datasets across twelve classes | 1.78 s | 1.46 s |
+  | Second run, case B: three datasets the Engine recalculates | 1.74 s | 0.86 s |
+
+  The first run covered one reserving class and only datasets already cached, and there the share was a shade faster. The second run covered the two cases the plan expected the win to come from and the first run did not: across twelve classes the server is about 18% faster, which is less than the spread between passes and so should be read as "at least as fast, probably a little faster"; on datasets the Engine has to calculate the server is about twice as fast, repeatably, because the share pays a request file and a poll loop for what the server answers in one call. Values matched exactly in both runs: 1,332 figures in case A and 297 in case B, none differing, on top of the first run's 566 and 1,104.
 
 ## Where the duplication is today
 
@@ -185,16 +199,16 @@ Every step that changes user-visible behaviour adds a fragment under `frontend/c
 
 **Do.**
 
-- [ ] Split `GetDataArray` so the text-to-array conversion is a function taking text, and have the existing path read the file and call it. Nothing about the conversion changes.
-- [ ] In `GetDataset`, when the Gateway is configured and advertises the operation, build the logical pairs from the request text, post one call, and convert the returned text. Send no path, no user name and no view key; the server owns all three.
-- [ ] Carry a failure through as the message the server gave, not as a file-not-found, so a user sees why. Keep the existing loading indicator around the call.
-- [ ] Reuse the step 1 cache for the HTTP answers unchanged, so the two paths cache identically.
-- [ ] Add one setting that forces the share path, defaulting to off, for diagnosing a difference between the two. Bump `ARCRHO_VERSION` so the setting reaches existing users.
-- [ ] Add a change fragment under `frontend/changes/unreleased/`.
+- [x] Split `GetDataArray` so the text-to-array conversion is a function taking text, and have the existing path read the file and call it. Nothing about the conversion changes.
+- [x] In `GetDataset`, when the Gateway is configured and advertises the operation, build the logical pairs from the request text, post one call, and convert the returned text. Send no path, no user name and no view key; the server owns all three.
+- [x] Carry a failure through as the message the server gave, not as a file-not-found, so a user sees why. Keep the existing loading indicator around the call.
+- [x] Reuse the step 1 cache for the HTTP answers unchanged, so the two paths cache identically.
+- [x] Add one setting that forces the share path, defaulting to off, for diagnosing a difference between the two. Bump `ARCRHO_VERSION` so the setting reaches existing users.
+- [x] Add a change fragment under `frontend/changes/unreleased/`.
 
 **Tests.** Manual, recorded: add `excel-addin/tools/check_gateway_transport.md` describing the comparison. One workbook covering an array triangle, a single cell, a diagonal, a vector, headings and project settings, evaluated with the force setting on and off, values compared cell by cell, and the elapsed time of a full recalculation recorded for both. Put the two times and the comparison result in the commit message and the Progress row.
 
-**Done when.** Every cell of the check workbook holds the same value on both paths, and a full recalculation over the Gateway is measurably faster than the same recalculation forced onto the share.
+**Done when.** Every cell of the check workbook holds the same value on both paths, and the elapsed time of a full recalculation each way is recorded in [check_gateway_transport.md](../../excel-addin/tools/check_gateway_transport.md). The timing is recorded rather than required: the move does not depend on it, as the answered decision above sets out.
 
 ### Step 6 — The add-in stops reading project data from the share
 
