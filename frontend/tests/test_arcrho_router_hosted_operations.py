@@ -195,13 +195,13 @@ class HostedDatasetCsvTests(unittest.TestCase):
         with open(self.csv_path, "r", encoding="utf-8", newline="") as handle:
             return handle.read()
 
-    def _write_sidecar(self) -> None:
+    def _write_sidecar(self, source_kind: str = "input") -> None:
         payload = {
             "dataset_name": self.dataset_name,
             "dataset_type": self.dataset_name,
             "reserving_class": self.reserving_class,
             "project_name": self.project_name,
-            "source_kind": "input",
+            "source_kind": source_kind,
             "data_format": "Triangle",
             "csv_file": self.csv_path.name,
             "cumulative": True,
@@ -225,6 +225,40 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertEqual(answer["local_cache_status"], "cache_exact")
         self.assertFalse(answer["need_request"])
         self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+
+    def test_always_refresh_leaves_a_hand_entered_dataset_alone(self) -> None:
+        self._write_csv(self.ENGINE_TEXT)
+        self._write_sidecar()
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("A hand-entered dataset has nothing to rebuild from.")
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
+            answer = self._answer(force_refresh=True)
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_exact")
+        self.assertFalse(answer["need_request"])
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+        self.assertEqual(self._read_csv(), self.ENGINE_TEXT)
+
+    def test_always_refresh_still_rebuilds_a_generated_dataset(self) -> None:
+        self._write_csv(self.ENGINE_TEXT)
+        self._write_sidecar(source_kind="engine")
+        rebuilt = "1,2,3\n4,5,\n6,,\n"
+
+        def fake_engine(pairs, data_path, timeout_sec, **kwargs):
+            with open(data_path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(rebuilt)
+            return {"ok": True, "status": "completed", "request_file": "r.json"}
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", fake_engine):
+            answer = self._answer(force_refresh=True)
+
+        self.assertTrue(answer["ok"])
+        self.assertTrue(answer["need_request"])
+        self.assertTrue(answer["cache_cleared"])
+        self.assertEqual(answer["csv_text"], rebuilt)
 
     def test_the_text_is_the_file_the_run_wrote(self) -> None:
         def fake_engine(pairs, data_path, timeout_sec, **kwargs):

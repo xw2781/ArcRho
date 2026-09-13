@@ -779,6 +779,26 @@ def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]
     return _triangle_sidecar_payload(data_path, pairs, local_only=False)
 
 
+def _is_hand_entered_dataset(data_path: str, pairs: list) -> bool:
+    """Were this dataset's figures typed in rather than produced from a source?
+
+    The dataset record's own source kind settles it, whatever shape or format
+    the request asked for and whether or not the stored copy still matches the
+    project's processing settings. A hand-entered dataset has no source to be
+    rebuilt from -- its stored figures are the only copy there is -- so a
+    caller asking for a rebuild must never clear them.
+    """
+
+    payload = _safe_read_json(_dataset_sidecar_path(data_path, pairs))
+    if not isinstance(payload, dict) or not payload:
+        return False
+    if not _cache_payload_name_matches(payload, _request_dataset_name(pairs)):
+        return False
+    if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
+        return False
+    return _clean_cache_text(payload.get("source_kind")).lower() == "input"
+
+
 def _is_stale_input_variant(data_path: str, pairs: list) -> bool:
     """Is this a coarser copy of a hand-entered dataset left behind on disk?
 
@@ -2388,6 +2408,7 @@ def _run_temporary_arcrho_tri(
     session_id = _normalize_temporary_session_id(temporary_session_id)
     temporary_data_path = temporary_dataset_path(data_path, pairs)
     get_processing_hash = _processing_hash_getter(pairs)
+    force_refresh = force_refresh and not _is_hand_entered_dataset(data_path, pairs)
 
     local_result = resolve_local_triangle_cache(
         data_path,
@@ -2445,8 +2466,6 @@ def _run_temporary_arcrho_tri(
     generated_source_found = bool(local_result.get("generated_source_found"))
     if (local_only and not generated_source_found) or manual_source_found:
         message = str(local_result.get("message") or "Input triangle cache is not available.")
-        if force_refresh and manual_source_found:
-            message = "Manual input triangle caches cannot be refreshed from the DFM/Dataset loader."
         return {
             "ok": False,
             "status": local_result.get("status") or "local_cache_unavailable",
@@ -2553,6 +2572,11 @@ def run_arcrho_tri(
     request_file = None
     cache_cleared = False
     get_processing_hash = _processing_hash_getter(pairs)
+    # A rebuild is something only a dataset with a source behind it can be
+    # asked for. A hand-entered one is served from what was typed in, however
+    # the caller asked, so "always refresh" is dropped here rather than
+    # refused: the figures are what they are and there is nothing to redo.
+    force_refresh = force_refresh and not _is_hand_entered_dataset(data_path, pairs)
 
     local_result = resolve_local_triangle_cache(
         data_path,
@@ -2606,8 +2630,6 @@ def run_arcrho_tri(
     generated_source_found = bool(local_result.get("generated_source_found"))
     if (local_only and not generated_source_found) or manual_source_found:
         message = str(local_result.get("message") or "Input triangle cache is not available.")
-        if force_refresh and manual_source_found:
-            message = "Manual input triangle caches cannot be refreshed from the DFM/Dataset loader."
         return {
             "ok": False,
             "status": local_result.get("status") or "local_cache_unavailable",
