@@ -201,6 +201,58 @@ def formula_closure(
     return out
 
 
+def is_generated_formula_dataset_type(row: Mapping[str, Any]) -> bool:
+    """True when the Engine builds this type from a formula over other types.
+
+    Such a type is not the formula evaluator's -- the Engine rebuilds it from
+    the source table -- but its formula still names other types, so it is both
+    a reader of them and, for a refresh, something to rebuild when one of them
+    changes.
+    """
+    formula = str(row.get("formula") if row.get("formula") is not None else "").strip()
+    return bool(row.get("generated") and row.get("calculated") and formula)
+
+
+def generated_formula_refresh_names(
+    rows: Iterable[Mapping[str, Any]],
+    names: Sequence[Any],
+) -> list[str]:
+    """``names`` plus every Engine-built formula type that reads them.
+
+    This is the set a source refresh scoped to ``names`` has to rebuild. The
+    walk is on types rather than instances and crosses every calculated type,
+    so a type with no instance anywhere cannot hide a later generated formula
+    whose source still uses one of ``names``; only the generated types it
+    reaches are added, because those are the ones the Engine rebuilds. The
+    given names keep their order and their spelling and come first. An empty
+    request stays empty, since no scope already means every type.
+    """
+
+    table = list(rows)
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        text = str(name if name is not None else "").strip()
+        key = dataset_type_key(text)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(text)
+    if not out:
+        return []
+
+    graph = dataset_type_formula_graph(table)
+    generated = {
+        dataset_type_key(row.get("name"))
+        for row in table
+        if is_generated_formula_dataset_type(row)
+    }
+    for key in formula_closure(table, list(out), "dependents"):
+        if key in generated and key not in seen:
+            seen.add(key)
+            out.append(graph.names.get(key, key))
+    return out
+
+
 def is_app_calculated_dataset_type(row: Mapping[str, Any], known_keys: Iterable[str]) -> bool:
     """True when ArcRho rebuilds instances of this type from its formula.
 

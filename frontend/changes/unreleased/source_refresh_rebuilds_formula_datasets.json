@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "source data",
+  "audience": "user",
+  "summary": "Importing source data for chosen dataset types now also rebuilds the datasets built from them by formula.",
+  "details": [
+    "Choosing one dataset type on the Import Scope step used to rebuild only that type, so a dataset the app builds from a formula over it kept its old values, and everything downstream of that dataset kept them too.",
+    "The import now works out the whole chain before it starts: the types you chose, the formulas built on them, and the formulas built on those, in every reserving class the import covers. A type with no dataset of its own in between no longer breaks the chain.",
+    "Methods that read a rebuilt dataset are refreshed in the same run, and a dataset that could not be rebuilt is still reported with nothing downstream of it claimed as refreshed.",
+    "Saving Data Processing Rules rebuilds the same chain, for the same reason."
+  ]
+}

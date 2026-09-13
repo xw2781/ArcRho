@@ -20,6 +20,7 @@ for path in (SERVER_COMPONENTS_SRC, PYTHON_API_SRC):
         sys.path.insert(0, str(path))
 
 from arcrho_api.dataset_index_contract import canonicalize_index_row
+from arcrho_api.dataset_type_contract import generated_formula_refresh_names
 from arcrho_source_refresh_contract import (
     SOURCE_REFRESH_FUNCTION,
     acquire_source_refresh_lease,
@@ -362,9 +363,17 @@ class ScopedRefreshTests(unittest.TestCase):
             "HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT",
             "PIC2\\PA\\NY\\Core Direct\\COL",
         ]
+        # No formula in this project's table reads the selected type, so the
+        # expansion gives the selection back unchanged.
+        calculated = SimpleNamespace(
+            generated_formula_refresh_types=lambda project, names: (
+                generated_formula_refresh_names([], names)
+            )
+        )
         with _install_fake_app_server(
             {
                 "arcrho_runtime_service": runtime,
+                "calculated_dataset_service": calculated,
                 "source_table_service": source_table,
                 "table_summary_service": summary,
                 "user_identity_service": _identity_stub([]),
@@ -385,6 +394,7 @@ class ScopedRefreshTests(unittest.TestCase):
         result, refreshed = self._run()
         self.assertEqual(result["classes_total"], 3)
         self.assertEqual([types for _, types in refreshed], [[], [], []])
+        self.assertEqual(result["dataset_types_expanded"], [])
         # "Everything" is recorded too, so a later narrowing never lingers.
         self.assertEqual(self.recorded, [("Demo Project", [], [])])
 
@@ -400,6 +410,7 @@ class ScopedRefreshTests(unittest.TestCase):
         self.assertEqual(
             refreshed, [("HPPREF\\HO+DF\\NJ\\Legacy\\HOL", ["Gross Loss--Paid"])]
         )
+        self.assertEqual(result["dataset_types_expanded"], ["Gross Loss--Paid"])
         self.assertEqual(
             self.recorded,
             [(
@@ -630,6 +641,304 @@ class ClassWalkReportingTests(unittest.TestCase):
         self.assertEqual(result["methods_updated"], 3)
         self.assertEqual(result["failures"], [])
 
+
+class GeneratedFormulaScopeTests(unittest.TestCase):
+    """A narrowed refresh rebuilds the formulas the Engine builds from the selection.
+
+    ``Total Earned Premium`` is an Engine formula over ``Earned Premium`` and
+    ``Remaining Budget Premium``, and ``Premium Ratio`` is a formula over that.
+    Selecting only ``Earned Premium`` therefore has to rebuild all three, in
+    every class the request covers, or the values downstream of the import stay
+    as they were. The type walk is shared with the app server, so the stand-in
+    service here delegates to the canonical reader rather than re-deciding.
+    """
+
+    REQUEST_ID = "0123456789abcdef0123456789abcdef"
+
+    DATASET_TYPE_ROWS = [
+        {"name": "Earned Premium", "calculated": False, "generated": True, "formula": ""},
+        {
+            "name": "Remaining Budget Premium",
+            "calculated": False,
+            "generated": True,
+            "formula": "",
+        },
+        {"name": "Net Loss--Paid", "calculated": False, "generated": True, "formula": ""},
+        {
+            "name": "Total Earned Premium",
+            "calculated": True,
+            "generated": True,
+            "formula": '"Earned Premium" + "Remaining Budget Premium"',
+        },
+        {
+            "name": "Premium Ratio",
+            "calculated": True,
+            "generated": True,
+            "formula": '"Net Loss--Paid" / "Total Earned Premium"',
+        },
+        {
+            # ArcRho's own evaluator owns this one, and the dependent walk
+            # rebuilds it; the Engine must not put it in the regeneration set.
+            "name": "Paid Loss Ratio",
+            "calculated": True,
+            "generated": False,
+            "formula": '"Net Loss--Paid" / "Earned Premium"',
+        },
+    ]
+
+    CLASS_INSTANCES = {
+        "HPPREF\\HO+DF\\NJ\\Legacy\\HOL": [
+            ("Earned Premium", "Earned Premium"),
+            ("Earned Premium 2025", "Earned Premium"),
+            ("Total Earned Premium", "Total Earned Premium"),
+            ("Premium Ratio", "Premium Ratio"),
+            ("Net Loss--Paid", "Net Loss--Paid"),
+        ],
+        "HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT": [
+            ("Earned Premium", "Earned Premium"),
+            # No instance of the formula in between, which must not stop the
+            # ratio built on top of it from being rebuilt here.
+            ("Premium Ratio", "Premium Ratio"),
+        ],
+        "PIC2\\PA\\NY\\Core Direct\\COL": [
+            ("Earned Premium", "Earned Premium"),
+            ("Total Earned Premium", "Total Earned Premium"),
+        ],
+    }
+
+    def _index(self, project, reserving_class):
+        return {
+            "files": [
+                canonicalize_index_row(
+                    {"name": name, "dataset_type": type_name, "source_kind": "engine"}
+                )
+                for name, type_name in self.CLASS_INSTANCES.get(reserving_class, [])
+            ]
+        }
+
+    def _run(self, *, failing_dataset: str = "", **scope):
+        request = build_source_refresh_request(
+            request_id=self.REQUEST_ID,
+            project_name="Demo Project",
+            user_name="Test User",
+            import_source=False,
+            **scope,
+        )
+        self.regenerated: list[tuple[str, str]] = []
+        self.walk_roots: list[tuple[str, list[str]]] = []
+        self.recorded: list[tuple] = []
+
+        def regenerate(root, project, reserving_class, dataset_name):
+            if dataset_name == failing_dataset:
+                raise source_table_refresh.SourceRefreshJobError(
+                    f"{dataset_name}: the ArcRho Engine did not return values."
+                )
+            self.regenerated.append((reserving_class, dataset_name))
+            return True
+
+        def recalculate_dependents(
+            project, reserving_class, first, _kind, *, additional_roots=(), rebuild_index=False
+        ):
+            self.walk_roots.append(
+                (reserving_class, [first, *[name for name, _ in additional_roots]])
+            )
+            return {"ok": True}
+
+        calculated = SimpleNamespace(
+            # The one expansion rule, read through the canonical helper the app
+            # server's service calls; only the table read is stood in for here.
+            generated_formula_refresh_types=lambda project, names: (
+                generated_formula_refresh_names(self.DATASET_TYPE_ROWS, names)
+            ),
+            recalculate_dependents=recalculate_dependents,
+        )
+        source_table = SimpleNamespace(
+            get_source_table_state=lambda project: {"source_type": "csv"},
+            record_refresh_scope=lambda project, types, class_types: self.recorded.append(
+                (project, list(types), list(class_types))
+            ),
+        )
+        modules = {
+            "arcrho_runtime_service": SimpleNamespace(
+                clear_arcrho_headers_cache=lambda project: None
+            ),
+            "calculated_dataset_service": calculated,
+            "dataset_instance_index_service": SimpleNamespace(get_index=self._index),
+            "source_table_service": source_table,
+            "table_summary_service": SimpleNamespace(
+                refresh_table_summary=lambda project, **kwargs: {"row_count": 7}
+            ),
+            "user_identity_service": _identity_stub([]),
+        }
+        with _install_fake_app_server(modules), patch.object(
+            source_table_refresh, "configure_canonical_runtime", lambda root: None
+        ), patch.object(
+            source_table_refresh,
+            "_reserving_class_paths",
+            lambda project: list(self.CLASS_INSTANCES),
+        ), patch.object(
+            source_table_refresh, "acquire_reserving_class_lease", lambda *a: object()
+        ), patch.object(
+            source_table_refresh,
+            "start_reserving_class_lease_heartbeat",
+            lambda lease: (None, None),
+        ), patch.object(
+            source_table_refresh, "stop_reserving_class_lease_heartbeat", lambda *a: None
+        ), patch.object(
+            source_table_refresh, "release_reserving_class_lease", lambda lease: None
+        ), patch.object(
+            source_table_refresh, "_regenerate_engine_dataset", regenerate
+        ), patch.object(source_table_refresh, "_log", lambda *a, **k: None):
+            return source_table_refresh.execute_source_refresh(
+                Path(tempfile.gettempdir()), request
+            )
+
+    def _names_in(self, reserving_class: str) -> list[str]:
+        return [name for klass, name in self.regenerated if klass == reserving_class]
+
+    def test_one_selected_type_rebuilds_the_formulas_built_on_it(self) -> None:
+        result = self._run(dataset_types=["Earned Premium"])
+
+        self.assertEqual(
+            result["dataset_types_expanded"],
+            ["Earned Premium", "Total Earned Premium", "Premium Ratio"],
+        )
+        # Both instances of the selected type, the formula over it, and the
+        # formula over that one; the unrelated engine type stays out.
+        self.assertEqual(
+            self._names_in("HPPREF\\HO+DF\\NJ\\Legacy\\HOL"),
+            ["Earned Premium", "Earned Premium 2025", "Total Earned Premium", "Premium Ratio"],
+        )
+        # Every regenerated dataset is a root of the class's one walk.
+        self.assertEqual(
+            self.walk_roots[0],
+            (
+                "HPPREF\\HO+DF\\NJ\\Legacy\\HOL",
+                ["Earned Premium", "Earned Premium 2025", "Total Earned Premium", "Premium Ratio"],
+            ),
+        )
+        self.assertEqual(len(self.walk_roots), 3)
+        # The selection the person made is what the next Import Scope opens on.
+        self.assertEqual(self.recorded, [("Demo Project", ["Earned Premium"], [])])
+
+    def test_a_type_with_no_instance_does_not_hide_the_formula_above_it(self) -> None:
+        self._run(dataset_types=["Earned Premium"])
+
+        self.assertEqual(
+            self._names_in("HPPREF\\HO+DF\\NJ\\Legacy\\HOPxCAT"),
+            ["Earned Premium", "Premium Ratio"],
+        )
+
+    def test_a_class_scope_leaves_the_classes_outside_it_alone(self) -> None:
+        result = self._run(
+            dataset_types=["Earned Premium"],
+            reserving_class_types=[{"Name": "HPPREF", "Level": 1}],
+        )
+
+        self.assertEqual(result["classes_total"], 2)
+        self.assertEqual(self._names_in("PIC2\\PA\\NY\\Core Direct\\COL"), [])
+        self.assertEqual(result["datasets_regenerated"], 6)
+
+    def test_selecting_the_formula_itself_rebuilds_only_what_reads_it(self) -> None:
+        result = self._run(dataset_types=["Total Earned Premium"])
+
+        self.assertEqual(
+            result["dataset_types_expanded"],
+            ["Total Earned Premium", "Premium Ratio"],
+        )
+        self.assertEqual(
+            self._names_in("HPPREF\\HO+DF\\NJ\\Legacy\\HOL"),
+            ["Total Earned Premium", "Premium Ratio"],
+        )
+
+    def test_an_unscoped_refresh_rebuilds_every_engine_dataset_as_before(self) -> None:
+        result = self._run()
+
+        self.assertEqual(result["dataset_types_expanded"], [])
+        self.assertEqual(
+            self._names_in("HPPREF\\HO+DF\\NJ\\Legacy\\HOL"),
+            [
+                "Earned Premium",
+                "Earned Premium 2025",
+                "Total Earned Premium",
+                "Premium Ratio",
+                "Net Loss--Paid",
+            ],
+        )
+
+    def test_a_formula_that_fails_is_reported_and_left_out_of_the_walk(self) -> None:
+        result = self._run(
+            dataset_types=["Earned Premium"], failing_dataset="Total Earned Premium"
+        )
+
+        self.assertEqual(result["datasets_failed"], 2)
+        self.assertTrue(
+            all("Total Earned Premium" in failure for failure in result["failures"]),
+            result["failures"],
+        )
+        for reserving_class, roots in self.walk_roots:
+            self.assertNotIn("Total Earned Premium", roots, reserving_class)
+        # What did succeed is still walked, so nothing else is left behind.
+        self.assertEqual(
+            self.walk_roots[0],
+            (
+                "HPPREF\\HO+DF\\NJ\\Legacy\\HOL",
+                ["Earned Premium", "Earned Premium 2025", "Premium Ratio"],
+            ),
+        )
+
+
+class RulesJobScopeTests(unittest.TestCase):
+    """Saving the rules expands the affected types exactly as Import Data does."""
+
+    def test_the_rules_job_rebuilds_the_formulas_over_an_affected_type(self) -> None:
+        from arcrho_engine import data_processing_rules_jobs
+
+        refreshed: list[tuple[str, list[str]]] = []
+
+        def refresh_one(root, project, reserving_class, result, *, on_dataset, dataset_types=None):
+            refreshed.append((reserving_class, list(dataset_types or [])))
+
+        calculated = SimpleNamespace(
+            generated_formula_refresh_types=lambda project, names: (
+                generated_formula_refresh_names(
+                    GeneratedFormulaScopeTests.DATASET_TYPE_ROWS, names
+                )
+            )
+        )
+        with _install_fake_app_server(
+            {"calculated_dataset_service": calculated}
+        ), patch.object(
+            source_table_refresh,
+            "_reserving_class_paths",
+            lambda project: ["HPPREF\\HO+DF\\NJ\\Legacy\\HOL"],
+        ), patch.object(
+            source_table_refresh, "_engine_dataset_instances", lambda *a: ["Earned Premium"]
+        ), patch.object(
+            source_table_refresh, "_refresh_one_reserving_class", refresh_one
+        ), patch.object(
+            data_processing_rules_jobs, "_log", lambda *a, **k: None
+        ):
+            result = data_processing_rules_jobs._refresh_affected_datasets(
+                Path(tempfile.gettempdir()),
+                "Demo Project",
+                ["Earned Premium"],
+                notify=lambda *a: None,
+            )
+
+        self.assertEqual(
+            result["dataset_types_expanded"],
+            ["Earned Premium", "Total Earned Premium", "Premium Ratio"],
+        )
+        self.assertEqual(
+            refreshed,
+            [
+                (
+                    "HPPREF\\HO+DF\\NJ\\Legacy\\HOL",
+                    ["Earned Premium", "Total Earned Premium", "Premium Ratio"],
+                )
+            ],
+        )
 
 if __name__ == "__main__":
     unittest.main()

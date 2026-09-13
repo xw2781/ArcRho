@@ -1,6 +1,6 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 3 of 7 done, the sidecar links and the matching ResQ import landed 2026-09-12.
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 4 of 7 done, the scoped import now rebuilds the formula datasets too (2026-09-12).
 Last updated: 2026-09-12
 
 ## Progress
@@ -12,12 +12,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | One shared rule decides which datasets a formula reads | [x] | 2026-09-12 | Nothing visible yet, but a formula that names some inputs in quotes and others plain now reads the same way everywhere; checked against the fake project, where all 61 formulas keep the inputs they already had and 10 mixed ones gain the plain-named inputs the Dataset Types tab used to drop. |
 | 2 | A dataset's Details show its formula inputs and readers, and a rebuild keeps them current | [x] | 2026-09-12 | A dataset the app builds from a formula over other datasets now lists what it is made from and what reads it, and rebuilding one brings those links up to date instead of leaving whatever they were first written with. |
 | 3 | A project imported from ResQ shows the same links | [x] | 2026-09-12 | A project brought in from ResQ now arrives with the same inputs and readers on a formula-built dataset that the app writes itself, instead of arriving with none. |
-| 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [ ] | | |
+| 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [x] | 2026-09-12 | Importing source data for chosen dataset types now rebuilds the datasets built from them by formula, and the formulas built on those, in every reserving class the import covers, then refreshes the methods that read them; saving Data Processing Rules does the same. |
 | 5 | The Dependency Graph draws the formula links and marks a generated formula | [ ] | | |
 | 6 | A one-off script fixes the links of the few existing projects | [ ] | | |
 | 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
 
-Overall: 3 of 7 steps done.
+Overall: 4 of 7 steps done.
 
 ## How agents work this plan
 

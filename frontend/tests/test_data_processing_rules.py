@@ -715,6 +715,44 @@ class GeneratedCacheProcessingHashTests(DataProcessingRulesServiceTests):
             )
         )
 
+    def test_an_import_leaves_no_alternate_period_cache_serving_old_values(self) -> None:
+        """A method's own-period copy of a regenerated dataset cannot survive an import.
+
+        A method running at six months reads the dataset through a second CSV
+        the Engine builds at that period, recorded against the processing
+        configuration it was built under. The import rewrites the master table,
+        which is part of that configuration, so the copy is rebuilt on the next
+        read instead of handing back the values from before the import.
+        """
+        csv_path, sidecar_path = self._cache_paths()
+        sidecar_path.write_text(json.dumps(self._sidecar()), encoding="utf-8")
+        alternate = csv_path.with_name("Earned Premium@6@6@cum@dev.csv")
+        alternate.write_text("1\n", encoding="utf-8")
+        self.assertTrue(
+            arcrho_runtime_service._write_runtime_cache_provenance(
+                str(alternate),
+                self._pairs(6, 6),
+            )
+        )
+        self.assertTrue(
+            arcrho_runtime_service.arcrho_tri_cache_matches(
+                str(alternate),
+                self._pairs(6, 6),
+                allow_runtime_cache_provenance=True,
+            )
+        )
+
+        with self.table_path.open("a", encoding="utf-8") as handle:
+            handle.write("NJ,PD,25\n")
+
+        self.assertFalse(
+            arcrho_runtime_service.arcrho_tri_cache_matches(
+                str(alternate),
+                self._pairs(6, 6),
+                allow_runtime_cache_provenance=True,
+            )
+        )
+
     def test_processing_provenance_is_scoped_to_each_csv_variant(self) -> None:
         csv_path, sidecar_path = self._cache_paths()
         second_path = csv_path.with_name("Earned Premium@6@6@cum@dev.csv")

@@ -101,6 +101,7 @@ def _empty_refresh() -> dict[str, Any]:
         "datasets_regenerated": 0,
         "datasets_failed": 0,
         "methods_updated": 0,
+        "dataset_types_expanded": [],
         "failures": [],
     }
 
@@ -156,6 +157,13 @@ def _refresh_affected_datasets(
 
     notify("scanning", 0, 0, "Finding the datasets the rules affect")
     try:
+        # The same expansion Import Data uses: a generated formula over an
+        # affected type is rebuilt too, once per job and before any instance is
+        # looked up.
+        dataset_types = source_table_refresh._expanded_dataset_types(
+            project_name, dataset_types
+        )
+        result["dataset_types_expanded"] = list(dataset_types)
         classes = [
             reserving_class
             for reserving_class in source_table_refresh._reserving_class_paths(project_name)

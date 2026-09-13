@@ -27,6 +27,7 @@ from arcrho_api.dataset_type_contract import (
     dataset_type_keys,
     formula_references,
     is_app_calculated_dataset_type,
+    is_generated_formula_dataset_type,
 )
 
 from .core import (
@@ -230,11 +231,7 @@ def _generated_formula_rows(rows: list[dict]) -> list[dict]:
     exactly as an app-calculated one does. Those names are the links a user
     sees in Details, and the import must write them the way the app does.
     """
-    return [
-        row
-        for row in rows
-        if row.get("generated") and row.get("calculated") and _clean_name(row.get("formula"))
-    ]
+    return [row for row in rows if is_generated_formula_dataset_type(row)]
 
 def _is_generated_formula_type(rows: list[dict], dataset_type_name: object) -> bool:
     key = dataset_type_key(dataset_type_name)

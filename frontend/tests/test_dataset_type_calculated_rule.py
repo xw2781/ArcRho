@@ -12,7 +12,10 @@ for _path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-from arcrho_api.dataset_type_contract import dataset_type_formula_graph
+from arcrho_api.dataset_type_contract import (
+    dataset_type_formula_graph,
+    generated_formula_refresh_names,
+)
 from app_server.services import calculated_dataset_service, dataset_service
 
 
@@ -44,6 +47,14 @@ class DatasetTypeCalculatedRuleTests(unittest.TestCase):
         self.assertNotIn("f 35 - claim count x severity", calculated_dataset_service._calculated_rows_by_key("Demo"))
         result = calculated_dataset_service.recalculate_dataset("Demo", "Auto", "F 35 - Claim Count x Severity")
         self.assertEqual(result["reason"], "not_calculated")
+
+    def test_an_app_calculated_reader_is_not_the_engine_s_to_rebuild(self) -> None:
+        # "H 06" reads the claim counts, but ArcRho's own evaluator owns it, so
+        # a source refresh leaves it to the dependent walk.
+        self.assertEqual(
+            calculated_dataset_service.generated_formula_refresh_types("Demo", ["Claim Counts--CWP"]),
+            ["Claim Counts--CWP"],
+        )
 
     def test_sidecar_writer_treats_unresolvable_type_as_input_without_a_formula(self) -> None:
         calculation_map = dataset_service._dataset_type_calculation_map("Demo")
@@ -91,6 +102,40 @@ class GeneratedFormulaGraphTests(unittest.TestCase):
         self.assertEqual(calculated_dataset_service._target_dependency_map("Demo"), {})
         self.assertEqual(calculated_dataset_service._dependency_map("Demo"), {})
         self.assertIsNone(calculated_dataset_service.calculated_dataset_contract("Demo", "Total Earned Premium"))
+
+
+class GeneratedFormulaRefreshSetTests(unittest.TestCase):
+    """What a refresh narrowed to one type has to rebuild with it."""
+
+    def setUp(self) -> None:
+        patcher = patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[dict(row) for row in GENERATED_ROWS])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_selected_source_type_carries_the_formula_built_on_it(self) -> None:
+        self.assertEqual(
+            calculated_dataset_service.generated_formula_refresh_types("Demo", ["Earned Premium"]),
+            ["Earned Premium", "Total Earned Premium"],
+        )
+
+    def test_the_formula_itself_carries_nothing_further_and_no_scope_stays_none(self) -> None:
+        self.assertEqual(
+            calculated_dataset_service.generated_formula_refresh_types("Demo", ["Total Earned Premium"]),
+            ["Total Earned Premium"],
+        )
+        self.assertEqual(calculated_dataset_service.generated_formula_refresh_types("Demo", []), [])
+
+    def test_the_chain_is_followed_through_a_type_that_was_not_selected(self) -> None:
+        rows = [
+            *GENERATED_ROWS,
+            {"name": "Premium Ratio", "data_format": "Triangle", "category": "Premium", "calculated": True, "formula": '"Total Earned Premium" / "Earned Premium"', "source": "", "generated": True},
+        ]
+        # The selection is matched however it is spelled, and each name is
+        # returned once, in the order the walk reaches it.
+        self.assertEqual(
+            generated_formula_refresh_names(rows, ["EARNED premium", "Earned Premium"]),
+            ["EARNED premium", "Total Earned Premium", "Premium Ratio"],
+        )
 
 
 if __name__ == "__main__":

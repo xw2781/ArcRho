@@ -19,6 +19,7 @@ for path in (SERVER_COMPONENTS_SRC, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+from arcrho_api.dataset_type_contract import generated_formula_refresh_names
 from arcrho_data_processing_rules_job_contract import (
     DATA_PROCESSING_RULES_JOB_FUNCTION,
     build_data_processing_rules_job_request,
@@ -33,6 +34,18 @@ from arcrho_engine import main as engine_main
 PROJECT = "Demo Project"
 REQUEST_ID = "0123456789abcdef0123456789abcdef"
 RULES = [{"id": "rule-1", "name": "Keep BI", "target": {"source_measure": "Paid"}}]
+# The Engine builds "Paid to Incurred" from the two types the save affects, so
+# the refresh has to rebuild it too even though the save never names it.
+DATASET_TYPE_ROWS = [
+    {"name": "Paid", "calculated": False, "generated": True, "formula": ""},
+    {"name": "Incurred", "calculated": False, "generated": True, "formula": ""},
+    {
+        "name": "Paid to Incurred",
+        "calculated": True,
+        "generated": True,
+        "formula": '"Paid" / "Incurred"',
+    },
+]
 
 
 def _request():
@@ -82,7 +95,15 @@ def _install_fake_app_server(save, bound: list):
     values = types.ModuleType("app_server.services.data_processing_values_service")
     values.DataProcessingValuesLockedError = _ValuesLocked
     identity = SimpleNamespace(acting_identity=acting_identity)
+    # Only the table read is stood in for: which types a formula reaches is
+    # decided by the canonical rule the app server's service calls.
+    calculated = SimpleNamespace(
+        generated_formula_refresh_types=lambda project, names: (
+            generated_formula_refresh_names(DATASET_TYPE_ROWS, names)
+        )
+    )
     services = types.ModuleType("app_server.services")
+    services.calculated_dataset_service = calculated
     services.data_processing_rules_service = rules
     services.data_processing_values_service = values
     services.user_identity_service = identity
@@ -204,8 +225,8 @@ class ExecuteDataProcessingRulesSaveTests(unittest.TestCase):
         self.assertEqual(
             refreshed,
             [
-                ("A\\One", ["Paid", "Incurred"], ["Test User"]),
-                ("A\\Three", ["Paid", "Incurred"], ["Test User"]),
+                ("A\\One", ["Paid", "Incurred", "Paid to Incurred"], ["Test User"]),
+                ("A\\Three", ["Paid", "Incurred", "Paid to Incurred"], ["Test User"]),
             ],
         )
         self.assertEqual(
@@ -216,6 +237,7 @@ class ExecuteDataProcessingRulesSaveTests(unittest.TestCase):
                 "datasets_regenerated": 3,
                 "datasets_failed": 0,
                 "methods_updated": 4,
+                "dataset_types_expanded": ["Paid", "Incurred", "Paid to Incurred"],
                 "failures": [],
             },
         )

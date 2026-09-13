@@ -103,8 +103,16 @@ _RESULT_COUNT_FIELDS = (
 )
 _RESULT_FLAG_FIELDS = ("imported", "dependents_refreshed")
 _RESULT_TEXT_FIELDS = ("source_type",)
+# The dataset types the job actually rebuilt: the selection the person made
+# plus every generated formula built from one of them. Empty when the job was
+# not narrowed, which already means every engine dataset type.
+_RESULT_NAME_LIST_FIELDS = ("dataset_types_expanded",)
 _RESULT_FIELDS = frozenset(
-    _RESULT_COUNT_FIELDS + _RESULT_FLAG_FIELDS + _RESULT_TEXT_FIELDS + ("failures",)
+    _RESULT_COUNT_FIELDS
+    + _RESULT_FLAG_FIELDS
+    + _RESULT_TEXT_FIELDS
+    + _RESULT_NAME_LIST_FIELDS
+    + ("failures",)
 )
 _MAX_RESULT_FAILURES = 25
 
@@ -436,7 +444,8 @@ def _normalize_progress(progress: Any) -> dict[str, Any]:
 def _normalize_result(result: Any) -> dict[str, Any]:
     """Normalize the job's outcome summary.
 
-    Only counts, flags and the logical source kind travel. No path is carried:
+    Only counts, flags, the logical source kind and the names of the dataset
+    types the job rebuilt travel. No path is carried:
     the client already knows the source it configured, and the master copy's
     location is the server's business.
     """
@@ -463,6 +472,16 @@ def _normalize_result(result: Any) -> dict[str, Any]:
                 f"result.{field_name} must be a non-negative integer."
             )
         normalized[field_name] = value
+
+    for field_name in _RESULT_NAME_LIST_FIELDS:
+        value = result.get(field_name, [])
+        if not isinstance(value, (list, tuple)):
+            raise SourceRefreshContractError(
+                f"result.{field_name} must be a list of names."
+            )
+        normalized[field_name] = [
+            str(item or "").strip() for item in value if str(item or "").strip()
+        ]
 
     failures = result.get("failures", [])
     if not isinstance(failures, (list, tuple)):

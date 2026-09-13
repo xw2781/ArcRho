@@ -151,15 +151,30 @@ class SourceRefreshContractTests(unittest.TestCase):
                 "classes_total": 2,
                 "classes_refreshed": 2,
                 "datasets_regenerated": 5,
+                "dataset_types_expanded": ["Earned Premium", "  ", "Total Earned Premium"],
                 "failures": ["  ", "Class A: boom"],
             },
         )
         validated = validate_source_refresh_status(status, expected_request_id=self.REQUEST_ID)
         self.assertEqual(validated["result"]["failures"], ["Class A: boom"])
+        # The types the job rebuilt: the selection plus the formulas over it.
+        self.assertEqual(
+            validated["result"]["dataset_types_expanded"],
+            ["Earned Premium", "Total Earned Premium"],
+        )
         # Absent counts default to zero rather than to a missing key, so every
         # consumer reads the same shape.
         self.assertEqual(validated["result"]["methods_updated"], 0)
         self.assertEqual(validated["result"]["column_count"], 0)
+
+    def test_status_rejects_a_rebuilt_type_list_that_is_not_a_list(self) -> None:
+        with self.assertRaises(SourceRefreshContractError):
+            build_source_refresh_status(
+                self.REQUEST_ID,
+                "success",
+                progress={"stage": "complete", "completed": 1, "total": 1, "label": "Done"},
+                result={"dataset_types_expanded": "Earned Premium"},
+            )
 
     def test_status_rejects_an_unknown_result_field(self) -> None:
         with self.assertRaises(SourceRefreshContractError):

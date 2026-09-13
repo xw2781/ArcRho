@@ -128,6 +128,7 @@ def _empty_result() -> dict[str, Any]:
         "datasets_regenerated": 0,
         "datasets_failed": 0,
         "methods_updated": 0,
+        "dataset_types_expanded": [],
         "failures": [],
     }
 
@@ -183,6 +184,30 @@ def _reserving_class_paths(project_name: str) -> list[str]:
             seen.add(key)
             classes.append(name)
     return classes
+
+
+def _expanded_dataset_types(
+    project_name: str,
+    dataset_types: list[str] | None,
+) -> list[str]:
+    """The selected types plus the generated formulas the Engine builds from them.
+
+    A type the person importing did not select is still rebuilt when its
+    formula reads one that was: the Engine evaluates that formula against the
+    source table, so the values it produced before the import are stale too.
+    The expansion runs once per job, on types and before any instance is
+    looked up, so a type with no instance in a class cannot hide a later
+    formula. An empty selection is left empty, because it already means every
+    engine dataset.
+    """
+
+    if not dataset_types:
+        return []
+    from app_server.services import calculated_dataset_service
+
+    return calculated_dataset_service.generated_formula_refresh_types(
+        project_name, list(dataset_types)
+    )
 
 
 def _engine_dataset_instances(
@@ -509,6 +534,18 @@ def execute_source_refresh(
     reserving_class_types = list(normalized.get("ReservingClassTypes") or [])
 
     with user_identity_service.acting_identity(normalized["UserName"]):
+        # One expansion for the whole job. The user's selection travels on in
+        # the request and the recorded scope exactly as it was chosen; this
+        # derived set is what the classes are rebuilt from, and it is reported
+        # so a status can say what was selected and what was rebuilt.
+        expanded_types = _expanded_dataset_types(project_name, dataset_types)
+        result["dataset_types_expanded"] = list(expanded_types)
+        if dataset_types:
+            _log(
+                root,
+                "dataset types selected=" + ", ".join(dataset_types)
+                + " rebuilt=" + ", ".join(expanded_types),
+            )
         classes = [
             reserving_class
             for reserving_class in (
@@ -598,7 +635,7 @@ def execute_source_refresh(
                     reserving_class,
                     result,
                     on_dataset=on_dataset,
-                    dataset_types=dataset_types,
+                    dataset_types=expanded_types,
                 )
                 result["classes_refreshed"] += 1
             except DependentPropagationLeaseUnavailable as exc:

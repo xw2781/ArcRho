@@ -20,7 +20,9 @@ from arcrho_api.dataset_type_contract import (
     dataset_type_key,
     dataset_type_keys,
     formula_references,
+    generated_formula_refresh_names,
     is_app_calculated_dataset_type,
+    is_generated_formula_dataset_type,
 )
 from arcrho_api.sidecar_core_contract import stored_length_fields, stored_lengths
 from arcrho_api.timestamps import utc_now_text
@@ -174,11 +176,7 @@ def _generated_formula_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     app-calculated one does. Those names are the links a user sees in Details
     and the chain a source refresh follows.
     """
-    return [
-        row
-        for row in rows
-        if row.get("generated") and row.get("calculated") and _clean_text(row.get("formula"))
-    ]
+    return [row for row in rows if is_generated_formula_dataset_type(row)]
 
 
 def _is_generated_formula_type(rows: List[Dict[str, Any]], dataset_type_name: str) -> bool:
@@ -230,6 +228,23 @@ def _direct_dependent_names(project_name: str, dataset_type_name: str) -> List[s
         for key in graph.dependents.get(target_key, ())
         if key in reader_keys
     ]
+
+
+def generated_formula_refresh_types(
+    project_name: str,
+    dataset_type_names: Sequence[Any],
+) -> List[str]:
+    """The requested types plus the Engine-built formulas that read them.
+
+    A source refresh narrowed to a type must rebuild the generated formulas
+    over it as well, and the formulas over those. The expansion is the
+    project's dataset-type table read once through the shared rule, so the
+    Engine job and the rules job both ask the same question here.
+    """
+    return generated_formula_refresh_names(
+        _dataset_type_rows(project_name),
+        list(dataset_type_names or []),
+    )
 
 
 def _name_entries(names: List[str]) -> List[Dict[str, str]]:
