@@ -24,10 +24,6 @@ from watchdog.observers import Observer
 from arcrho_data_processing_rules_job_contract import DATA_PROCESSING_RULES_JOB_FUNCTION
 from arcrho_dataset_types_change_contract import DATASET_TYPES_CHANGE_FUNCTION
 from arcrho_dependent_propagation_contract import DEPENDENT_PROPAGATION_FUNCTION
-from arcrho_engine_calculation_contract import (
-    DATASET_VIEW_REQUEST_KEY,
-    ENGINE_CALCULATION_KINDS,
-)
 from arcrho_engine_save_contract import SAVE_JOB_FUNCTION
 from arcrho_project_duplication_contract import PROJECT_DUPLICATION_FUNCTION
 from arcrho_source_refresh_contract import SOURCE_REFRESH_FUNCTION
@@ -43,7 +39,6 @@ from arcrho_engine.data_processing import (
     UDF_ADASProjectSettings,
     UDF_ADASTri,
     _get_vps_last_modified_time,
-    _request_bool,
     debug_mode,
     get_project_table_path,
     id_path,
@@ -470,55 +465,8 @@ class RequestHandler(FileSystemEventHandler):
                 self._execute_hosted_save(file_path, arg)
             return
 
-        if _request_bool(arg.get(DATASET_VIEW_REQUEST_KEY)):
-            self._process_dataset_view_request(file_path, arg)
-            return
-
         with self._processing_lock:
             self._process_legacy_request(file_path, arg)
-
-    def _process_dataset_view_request(self, file_path, arg):
-        """Serve a coarser view of a hand-entered dataset to the Excel add-in.
-
-        No calculation runs: the roll-up rule, the location of the view, and
-        the refusal to write one beside the dataset's own data all belong to
-        the canonical runtime, which the app reads the same view from. Only
-        the CSV is new, because a worksheet formula cannot be handed a frame
-        in memory. The project's source table is never touched, so this path
-        deliberately skips the project-configuration refresh every calculation
-        request pays.
-        """
-
-        try:
-            if not safe_remove(file_path):
-                return
-        except Exception:  # Already claimed by another engine.
-            return
-
-        if not _write_request_status(arg, "processing"):
-            return
-
-        try:
-            from arcrho_engine.dependent_propagation import configure_canonical_runtime
-
-            configure_canonical_runtime(get_project_root())
-            from app_server.services import arcrho_runtime_service
-
-            result = arcrho_runtime_service.materialize_dataset_view(
-                _dataset_view_pairs(arg), str(arg.get("DataPath") or "")
-            )
-        except Exception as exc:
-            message = f"(dataset view failed: {getattr(exc, 'detail', exc)})"
-            _finish_request_error(arg, message, [[message]])
-            return
-
-        # The add-in waits on the CSV, so success has to mean the CSV is there.
-        if not result.get("ok") or not os.path.isfile(str(arg.get("DataPath") or "")):
-            message = f"({result.get('message') or 'dataset view is not available'})"
-            _finish_request_error(arg, message, [[message]])
-            return
-
-        _write_request_status(arg, "success")
 
     def calculate_in_process(self, arg) -> None:
         """Run one calculation request for the canonical runtime on this Engine.
@@ -744,28 +692,6 @@ def _refresh_project_config(project_name: str) -> None:
                     f">>> Virtual Project Settings Updated -> "
                     f"[{project_name} JSON]\n"
                 )
-
-
-def _dataset_view_pairs(arg) -> list:
-    """Return the dataset request pairs a view request carries.
-
-    The accepted keys come from the calculation contract's own dataset kind,
-    so the view request and the calculation request describe a dataset with
-    one vocabulary. Everything else the file holds -- the requesting user, the
-    output path the service derives itself -- is left out.
-    """
-
-    pairs = []
-    for key in ENGINE_CALCULATION_KINDS["ArcRhoTri"].keys:
-        if arg.get(key) is None:
-            continue
-        # A JSON ``false`` is a value, not an absence: dropping it would let
-        # the cumulative and calendar flags fall back to their defaults and
-        # match a stored file the request did not ask for.
-        value = str(arg[key]).strip()
-        if value:
-            pairs.append((key, value))
-    return pairs
 
 
 def _write_request_status(arg, status, message=""):

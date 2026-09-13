@@ -1,6 +1,6 @@
 # Excel Add-in over the ArcRho Gateway
 
-Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (6 of 9 done; the share path is deleted and the add-in reaches project data only over HTTP).
+Status: Investigated and decided 2026-09-12; broken into 9 session-sized steps; implementation started 2026-09-12 (7 of 9 done; the share path is deleted, the add-in reaches project data only over HTTP, and no coarser view is written to disk any more).
 Last updated: 2026-09-12
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finally extends to Excel, and whose "coexist on SMB" decision this plan reverses)
 
@@ -16,11 +16,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | The server can hand Excel its period headings and project settings the same way | [x] | 2026-09-12 | The ArcRho Server can now answer a request for a project's period headings or its settings with their figures, so every Excel formula has an answer that does not need the shared drive. |
 | 5 | Formulas get their figures from the server instead of the shared drive | [x] | 2026-09-12 | Formulas now read from the server, and every figure matches the shared drive exactly. The server is about twice as quick when a triangle has to be worked out, and neither quicker nor slower than the drive when it is only being read back. |
 | 6 | Excel no longer needs the shared drive for project data at all | [x] | 2026-09-12 | Excel now gets every ArcRho figure and the Select Datasets list from the server, opens nothing on the shared drive, and tells a PC that has not been given access what to do about it in one line. |
-| 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [ ] | | |
+| 7 | Coarser views of a hand-typed triangle stop leaving files behind on the server | [x] | 2026-09-12 | Asking for a hand-typed triangle at a coarser shape no longer leaves a copy of it on the server; the figures are worked out fresh each time and sent straight to Excel. |
 | 8 | A one-page note tells a user how to set Excel up and what to do when it cannot connect | [ ] | | |
 | 9 | Released to the server and checked against a real workbook | [ ] | | |
 
-Overall: 6 of 9 steps done.
+Overall: 7 of 9 steps done.
 
 ## How agents work this plan
 
@@ -242,13 +242,17 @@ Two things the checklist above did not foresee, found while confirming that last
 
 **Do.**
 
-- [ ] Remove the view materializer, the Engine handler that calls it, and the request key from the contract.
-- [ ] Keep the `write_input_view` behaviour of `resolve_local_triangle_cache` only if another caller uses it; if the materializer was its only caller, remove that argument too.
-- [ ] Leave the in-memory roll-up handle and its registration untouched: that is how both the app and, since step 3, Excel get a coarser view.
-- [ ] Delete any leftover view folders the old path created under the fake project only, and say in the commit message that live projects keep theirs until someone clears them.
-- [ ] Update the arcrho domain doc to say a coarser view is never materialized.
+- [x] Remove the view materializer, the Engine handler that calls it, and the request key from the contract.
+- [x] Keep the `write_input_view` behaviour of `resolve_local_triangle_cache` only if another caller uses it; if the materializer was its only caller, remove that argument too. It was the only caller, so the argument is gone from both `resolve_local_triangle_cache` and `_derive_triangle_cache`.
+- [x] Leave the in-memory roll-up handle and its registration untouched: that is how both the app and, since step 3, Excel get a coarser view.
+- [x] Delete any leftover view folders the old path created under the fake project only, and say in the commit message that live projects keep theirs until someone clears them.
+- [x] Update the arcrho domain doc to say a coarser view is never materialized.
 
-**Tests.** `test_manual_dataset_rollup_view.py` keeps its in-memory cases and loses the materializing ones. Add a case asserting a request carrying the removed key is refused by the contract.
+One thing the checklist above did not foresee, done in the same step:
+
+- [x] The contract test that pinned the refusal imported the key by name, so it could not survive the key's removal. It now asserts the contract no longer defines the key and refuses a request naming it as the unknown key it has become, and `test_manual_dataset_rollup_view.py` pins the exact text a worksheet formula receives rather than comparing it against a file it no longer writes.
+
+**Tests.** `test_manual_dataset_rollup_view.py` keeps its in-memory cases and loses the materializing ones. Add a case asserting a request carrying the removed key is refused by the contract, in [test_engine_calculation_dataset_csv_contract.py](../../python-api/tests/test_engine_calculation_dataset_csv_contract.py).
 
 **Done when.** No code path writes a dataset view file, a coarser view still comes back correct in the app and over the hosted operation, and the removed key is refused.
 

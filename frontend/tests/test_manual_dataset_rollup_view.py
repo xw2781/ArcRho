@@ -9,8 +9,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi import HTTPException
-
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTEND_ROOT.parent
 TEST_TEMP_ROOT = REPO_ROOT / "test"
@@ -20,6 +18,12 @@ if str(FRONTEND_ROOT) not in sys.path:
 
 from app_server import config
 from app_server.services import arcrho_runtime_service, dataset_service
+
+# The text a worksheet formula receives for the yearly view of the monthly
+# triangle these tests store. Written out rather than compared against a file,
+# because no coarser view is ever written to disk: this is the one place the
+# spelling of those numbers is pinned.
+EXPECTED_VIEW_CSV_TEXT = "7800.0,22200.0\r\n7800.0,\r\n"
 
 
 class ManualDatasetRollupViewTests(unittest.TestCase):
@@ -162,70 +166,36 @@ class ManualDatasetRollupViewTests(unittest.TestCase):
         )
         return stack
 
-    def _materialize_add_in_view(self, target: Path | None = None) -> dict:
+    def _hosted_answer(self) -> dict:
         with self._cache_dir_patches():
-            return arcrho_runtime_service.materialize_dataset_view(
-                self._pairs(), str(target or self.add_in_view_csv)
-            )
-
-    def _add_in_view_rows(self) -> list:
-        text = self.add_in_view_csv.read_text(encoding="utf-8").strip()
-        return [[cell for cell in line.split(",")] for line in text.splitlines()]
-
-    def test_the_add_in_view_is_written_into_the_view_cache(self) -> None:
-        result = self._materialize_add_in_view()
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["status"], "cache_derived")
-        self.assertFalse(result["derived"].get("in_memory"))
-        self.assertTrue(self.add_in_view_csv.exists())
-        self.assertFalse(
-            self.view_csv.exists(),
-            "a coarser copy of a hand-entered dataset was written beside it",
-        )
-        rows = self._add_in_view_rows()
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(float(rows[0][0]), 7800.0)
-
-    def test_a_rebuilt_add_in_view_carries_the_edited_figures(self) -> None:
-        self._materialize_add_in_view()
-        first = float(self._add_in_view_rows()[0][0])
-        self._write_stored_rows(200.0)
-        self._materialize_add_in_view()
-        second = float(self._add_in_view_rows()[0][0])
-
-        self.assertEqual(first, 7800.0)
-        self.assertEqual(second, 15600.0)
-
-    def test_the_hosted_text_is_the_view_without_the_file(self) -> None:
-        """Excel gets the same figures over HTTP, and nothing is written down."""
-
-        with self._cache_dir_patches():
-            answer = arcrho_runtime_service.run_arcrho_dataset_csv(
+            return arcrho_runtime_service.run_arcrho_dataset_csv(
                 self._pairs(), timeout_sec=15.0
             )
+
+    def test_the_hosted_text_is_the_view_without_the_file(self) -> None:
+        """Excel gets the figures themselves, and nothing is written down."""
+
+        answer = self._hosted_answer()
 
         self.assertTrue(answer["ok"])
         self.assertEqual(answer["local_cache_status"], "cache_derived")
         self.assertTrue(answer["derived"]["in_memory"])
+        self.assertEqual(answer["csv_text"], EXPECTED_VIEW_CSV_TEXT)
         self.assertFalse(
             self.view_csv.exists(), "a coarser copy was written beside the stored data"
         )
         self.assertFalse(
-            self.add_in_view_csv.exists(), "a coarser copy was written into the view cache"
+            self.add_in_view_dir.exists(),
+            "a coarser copy was written into the reserving class's view cache",
         )
 
-        self._materialize_add_in_view()
-        with open(self.add_in_view_csv, "r", encoding="utf-8", newline="") as handle:
-            written = handle.read()
-        self.assertEqual(answer["csv_text"], written)
+    def test_the_hosted_text_follows_the_edited_figures(self) -> None:
+        first = self._hosted_answer()["csv_text"]
+        self._write_stored_rows(200.0)
+        second = self._hosted_answer()["csv_text"]
 
-    def test_an_add_in_view_beside_the_stored_data_is_refused(self) -> None:
-        with self.assertRaises(HTTPException) as raised:
-            self._materialize_add_in_view(self.view_csv)
-
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertFalse(self.view_csv.exists())
+        self.assertEqual(float(first.splitlines()[0].split(",")[0]), 7800.0)
+        self.assertEqual(float(second.splitlines()[0].split(",")[0]), 15600.0)
 
 
 if __name__ == "__main__":

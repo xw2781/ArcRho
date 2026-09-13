@@ -18,8 +18,8 @@ _SRC_ROOT = _TESTS_DIR.parent / "src"
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
+import arcrho_engine_calculation_contract as engine_calculation_contract  # noqa: E402
 from arcrho_engine_calculation_contract import (  # noqa: E402
-    DATASET_VIEW_REQUEST_KEY,
     ENGINE_CALCULATION_CSV_FIELD,
     HTTP_ENGINE_CALCULATION_OPERATIONS,
     OPERATION_DATASET_CSV,
@@ -134,9 +134,20 @@ class DatasetCsvOperationTests(unittest.TestCase):
             with self.assertRaises(EngineCalculationContractError):
                 _request(TRI_PAIRS + [[name, "anything"]])
 
-    def test_the_dataset_view_key_is_still_refused(self) -> None:
+    def test_the_retired_dataset_view_key_is_refused(self) -> None:
+        """``DatasetView`` asked an Engine to write a coarser view as a file.
+
+        Nothing produces or answers it any more -- the figures travel in the
+        answer instead -- so the contract no longer names it and a request
+        carrying it is refused as the unknown key it now is.
+        """
+
+        self.assertFalse(
+            hasattr(engine_calculation_contract, "DATASET_VIEW_REQUEST_KEY"),
+            "the retired dataset view key is still named by the contract",
+        )
         with self.assertRaises(EngineCalculationContractError):
-            _request(TRI_PAIRS + [[DATASET_VIEW_REQUEST_KEY, "True"]])
+            _request(TRI_PAIRS + [["DatasetView", "True"]])
 
     def test_the_answer_field_is_named_once(self) -> None:
         self.assertEqual(ENGINE_CALCULATION_CSV_FIELD, "csv_text")

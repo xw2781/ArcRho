@@ -60,13 +60,6 @@ SERVER_OWNED_REQUEST_KEYS: frozenset[str] = frozenset(
 )
 # The legacy request-file key naming the Engine function.
 ENGINE_FUNCTION_KEY = "Function"
-# The legacy request-file key that asks an Engine for a coarser view of a
-# hand-entered dataset instead of a fresh calculation. The Excel add-in is the
-# only producer: the app builds that roll-up in memory and never writes it,
-# while a worksheet formula can only read a CSV. Deliberately absent from every
-# hosted kind's accepted keys -- this request travels over SMB like the rest of
-# the add-in, and a client may not smuggle it through the Gateway.
-DATASET_VIEW_REQUEST_KEY = "DatasetView"
 # Where the executor places the CSV: the canonical dataset cache the pairs
 # describe, or the reserving class's Temporary view cache beside it. The
 # executor derives either location on its own host from the pairs.
