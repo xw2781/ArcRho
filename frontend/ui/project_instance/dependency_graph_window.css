@@ -550,12 +550,14 @@
   --dg-family-dataset: #94a3b8;
   --dg-family-calculated: #0f766e;
   --dg-family-engine: #475569;
+  --dg-family-generated: #0891b2;
   --dg-family-method: var(--ar-color-accent);
   --dg-family-missing: var(--ar-color-danger);
 }
 
 .dg-node[data-family="calculated"], .dg-port-popover-row[data-family="calculated"], .pi-dependency-graph-legend [data-family="calculated"] { --dg-node-accent: var(--dg-family-calculated); --dg-family-accent: var(--dg-family-calculated); }
 .dg-node[data-family="engine"], .dg-port-popover-row[data-family="engine"], .pi-dependency-graph-legend [data-family="engine"] { --dg-node-accent: var(--dg-family-engine); --dg-family-accent: var(--dg-family-engine); }
+.dg-node[data-family="generated"], .dg-port-popover-row[data-family="generated"], .pi-dependency-graph-legend [data-family="generated"] { --dg-node-accent: var(--dg-family-generated); --dg-family-accent: var(--dg-family-generated); }
 .dg-node[data-family="method"], .dg-port-popover-row[data-family="method"], .pi-dependency-graph-legend [data-family="method"] { --dg-node-accent: var(--dg-family-method); --dg-family-accent: var(--dg-family-method); }
 .dg-node[data-family="dataset"], .dg-port-popover-row[data-family="dataset"], .pi-dependency-graph-legend [data-family="dataset"] { --dg-node-accent: var(--dg-family-dataset); --dg-family-accent: var(--dg-family-dataset); }
 .dg-node[data-family="missing"], .dg-port-popover-row[data-family="missing"] { --dg-node-accent: var(--dg-family-missing); }

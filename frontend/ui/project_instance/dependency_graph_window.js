@@ -41,7 +41,7 @@ import {
   dependencyGraphReach,
   layoutDependencyGraph,
   pruneDependencyGraph,
-} from "/ui/project_instance/dependency_graph_layout.js?v=20260910a";
+} from "/ui/project_instance/dependency_graph_layout.js?v=20260912a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const GRAPH_ENDPOINT = "/datasets/dependency-graph";

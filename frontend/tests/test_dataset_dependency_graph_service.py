@@ -24,6 +24,7 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
         sys.path.insert(0, str(path))
 
 from app_server import config
+from app_server.services import calculated_dataset_service
 from app_server.services import dataset_dependency_graph_service as graph_service
 from app_server.services import dataset_instance_index_service
 from app_server.services import dataset_sidecar_status_service as status_service
@@ -136,6 +137,68 @@ class DependencyGraphTests(unittest.TestCase):
         graph = graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
 
         self.assertEqual(len(graph["nodes"]), 2)
+        self.assertEqual(graph["edges"], [{"source": "Paid", "target": "Paid Vector"}])
+
+    def test_a_generated_formula_joins_its_inputs_to_the_method_that_reads_it(self) -> None:
+        """The fake project's ``Earned Premium`` / ``Remaining Budget Premium`` -> ``Total Earned Premium`` chain.
+
+        The two inputs are Engine-built from one source column each and have no
+        formula; the type the Engine evaluates over them carries the formula the
+        box is drawn with, and the Dataset Types are read once for the graph.
+        """
+
+        self.index_rows = [
+            _index_row("Earned Premium", source_kind="engine"),
+            _index_row("Remaining Budget Premium", source_kind="engine"),
+            _index_row("Total Earned Premium", source_kind="engine"),
+            _index_row("D 13 - Paid DFM w/ Selected LDFs", source_kind="dfm", method_name="D 13"),
+        ]
+        self.write_sidecar("Earned Premium", dependents=("Total Earned Premium",))
+        self.write_sidecar("Remaining Budget Premium", dependents=("Total Earned Premium",))
+        self.write_sidecar(
+            "Total Earned Premium",
+            precedents=("Earned Premium", "Remaining Budget Premium"),
+            dependents=("D 13 - Paid DFM w/ Selected LDFs",),
+        )
+        self.write_sidecar("D 13 - Paid DFM w/ Selected LDFs", precedents=("Total Earned Premium",))
+        rows = [
+            {"name": "Earned Premium", "calculated": False, "formula": "", "generated": True},
+            {"name": "Remaining Budget Premium", "calculated": False, "formula": "", "generated": True},
+            {
+                "name": "Total Earned Premium",
+                "calculated": True,
+                "formula": '"Earned Premium" + "Remaining Budget Premium"',
+                "generated": True,
+            },
+        ]
+
+        with patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=rows) as read_types:
+            graph = graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
+
+        self.assertEqual(read_types.call_count, 1)
+        by_name = {node["name"]: node for node in graph["nodes"]}
+        self.assertEqual(by_name["Total Earned Premium"]["formula"], '"Earned Premium" + "Remaining Budget Premium"')
+        self.assertEqual(by_name["Earned Premium"]["formula"], "")
+        self.assertEqual(by_name["Remaining Budget Premium"]["formula"], "")
+        self.assertEqual(by_name["D 13 - Paid DFM w/ Selected LDFs"]["method_type"], "DFM")
+        self.assertEqual(
+            graph["edges"],
+            [
+                {"source": "Earned Premium", "target": "Total Earned Premium"},
+                {"source": "Remaining Budget Premium", "target": "Total Earned Premium"},
+                {"source": "Total Earned Premium", "target": "D 13 - Paid DFM w/ Selected LDFs"},
+            ],
+        )
+
+    def test_a_class_without_an_engine_dataset_reads_no_dataset_types(self) -> None:
+        self.index_rows = [_index_row("Paid"), _index_row("Paid Vector", source_kind="calculated")]
+        self.write_sidecar("Paid", dependents=("Paid Vector",))
+        self.write_sidecar("Paid Vector", precedents=("Paid",))
+
+        with patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]) as read_types:
+            graph = graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
+
+        self.assertEqual(read_types.call_count, 0)
         self.assertEqual(graph["edges"], [{"source": "Paid", "target": "Paid Vector"}])
 
     def test_blank_identifiers_are_refused(self) -> None:

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Dependency Graph now draws what a formula-built dataset is made from and marks it Generated.",
+  "details": [
+    "A dataset the app builds by a formula over other imported datasets used to sit in the diagram as a lone box labelled Imported, with nothing showing where its numbers came from.",
+    "It is now labelled Generated, with its own colour in the legend, while a dataset filled straight from one source column stays Imported.",
+    "Its inputs are joined to it by arrows, so clicking an input lights the formula and every method that reads it, and clicking one of those methods lights the formula and its inputs.",
+    "Those inputs are drawn in the default view instead of waiting for the Show all box, because something now reads them."
+  ]
+}

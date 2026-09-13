@@ -8,6 +8,12 @@ node is drawn with, and the sidecars are the edge list. Nothing is derived
 from method JSON here: a method's inputs are already written into its output
 sidecar when the method is saved, which is the same graph every dependent
 walk follows.
+
+An Engine-built dataset is the one node whose formula the index cannot carry:
+an Engine sidecar holds none by contract, and the project Dataset Types own
+it. The graph reads those types once and hydrates the engine nodes from them,
+so the window can tell a dataset the Engine filled from one source column
+apart from one it evaluated as a formula over other types.
 """
 from __future__ import annotations
 
@@ -22,6 +28,24 @@ from app_server.services import dataset_sidecar_status_service as status_service
 
 def _clean_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
+
+
+def _engine_formulas(project: str, nodes: List[Dict[str, Any]]) -> None:
+    """Fill in the formula of every Engine-built node, in one Dataset Types read.
+
+    ``_dataset_type_calculation_map`` is the one place that decides which
+    formula a dataset type shows, so the box and the Details page read the same
+    text. A generated type bound straight to a source column has no formula
+    cell and keeps an empty one here.
+    """
+
+    if not nodes:
+        return
+    from app_server.services import dataset_service
+
+    calculation = dataset_service._dataset_type_calculation_map(project)
+    for node in nodes:
+        node["formula"] = calculation.get(str(node["dataset_type"]).lower(), (False, ""))[1]
 
 
 def build_reserving_class_dependency_graph(project_name: str, reserving_class: str) -> Dict[str, Any]:
@@ -40,6 +64,7 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
     index = dataset_instance_index_service.get_index(project, rc)
     rows = index.get("files") if isinstance(index, dict) else None
     nodes: List[Dict[str, Any]] = []
+    engine_nodes: List[Dict[str, Any]] = []
     display_names: Dict[str, str] = {}
     for row in rows or []:
         name = _clean_text(row.get("name")) if isinstance(row, dict) else ""
@@ -47,7 +72,7 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
         if not key or key in display_names:
             continue
         display_names[key] = name
-        nodes.append({
+        node = {
             "name": name,
             "dataset_type": _clean_text(row.get("dataset_type")) or name,
             "source_kind": _clean_text(row.get("source_kind")),
@@ -58,7 +83,12 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
             "status": status_service.normalize_status(row.get("status")),
             "formula": _clean_text(row.get("formula")),
             "in_index": True,
-        })
+        }
+        nodes.append(node)
+        if node["source_kind"].lower() == "engine":
+            engine_nodes.append(node)
+
+    _engine_formulas(project, engine_nodes)
 
     sidecars = status_service.read_sidecars(project, rc, list(display_names.values()))
     edge_keys: Dict[tuple, Dict[str, str]] = {}

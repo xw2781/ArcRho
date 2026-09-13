@@ -65,6 +65,28 @@ const PAYLOAD = {
   ],
 };
 
+// The fake project's generated-formula chain: two Engine-built inputs, each
+// one source column, feeding a type the Engine evaluates as a formula over
+// them, which three methods read.
+const GENERATED_PAYLOAD = {
+  ok: true,
+  nodes: [
+    { name: "Earned Premium", dataset_type: "Earned Premium", source_kind: "engine", method_type: "None", formula: "", status: 0 },
+    { name: "Remaining Budget Premium", dataset_type: "Remaining Budget Premium", source_kind: "engine", method_type: "None", formula: "", status: 0 },
+    { name: "Total Earned Premium", dataset_type: "Total Earned Premium", source_kind: "engine", method_type: "None", formula: '"Earned Premium" + "Remaining Budget Premium"', status: 0 },
+    { name: "D 13 - Paid DFM w/ Selected LDFs", dataset_type: "Paid Ultimate", source_kind: "dfm", method_type: "DFM", status: 0 },
+    { name: "D 18 - BS Paid DFM", dataset_type: "BS Paid Ultimate", source_kind: "dfm", method_type: "DFM", status: 0 },
+    { name: "D 92 - Current Qtr Selected", dataset_type: "Current Qtr Selected", source_kind: "result_selection", method_type: "Result Selection", status: 0 },
+  ],
+  edges: [
+    { source: "Earned Premium", target: "Total Earned Premium" },
+    { source: "Remaining Budget Premium", target: "Total Earned Premium" },
+    { source: "Total Earned Premium", target: "D 13 - Paid DFM w/ Selected LDFs" },
+    { source: "Total Earned Premium", target: "D 18 - BS Paid DFM" },
+    { source: "Total Earned Premium", target: "D 92 - Current Qtr Selected" },
+  ],
+};
+
 test("the graph keeps one node per name and one edge per pair, dropping unknown and self edges", () => {
   const graph = buildDependencyGraph(PAYLOAD);
   assert.equal(graph.nodes.length, 7);
@@ -78,10 +100,67 @@ test("the graph keeps one node per name and one edge per pair, dropping unknown 
 test("node families come from the method type, then the source kind, and a missing node is its own family", () => {
   assert.deepEqual(dependencyNodeKind({ source_kind: "input", method_type: "None" }), { family: "dataset", label: "Dataset" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "calculated" }), { family: "calculated", label: "Calculated" });
-  // An engine-built dataset reads as where its numbers came from.
+  // An engine-built dataset reads as where its numbers came from: one source
+  // column is Imported, a formula the Engine evaluates over other types is
+  // Generated.
   assert.deepEqual(dependencyNodeKind({ source_kind: "engine" }), { family: "engine", label: "Imported" });
+  assert.deepEqual(dependencyNodeKind({ source_kind: "engine", formula: "  " }), { family: "engine", label: "Imported" });
+  assert.deepEqual(
+    dependencyNodeKind({ source_kind: "engine", formula: '"Earned Premium" + "Remaining Budget Premium"' }),
+    { family: "generated", label: "Generated" },
+  );
+  // A formula never overrides a method output or a name gone from the index.
+  assert.deepEqual(dependencyNodeKind({ source_kind: "dfm", method_type: "DFM", formula: "A + B" }), { family: "method", label: "DFM" });
+  assert.deepEqual(dependencyNodeKind({ source_kind: "engine", formula: "A + B", in_index: false }), { family: "missing", label: "Not In Index" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "dfm", method_type: "DFM" }), { family: "method", label: "DFM" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "input", in_index: false }), { family: "missing", label: "Not In Index" });
+});
+
+test("a generated formula is drawn between its inputs and the methods that read it", () => {
+  const graph = buildDependencyGraph(GENERATED_PAYLOAD);
+  const b = graph.byKey.get("total earned premium");
+  assert.deepEqual(b.kind, { family: "generated", label: "Generated" });
+  assert.deepEqual(graph.byKey.get("earned premium").kind, { family: "engine", label: "Imported" });
+  assert.deepEqual(graph.byKey.get("remaining budget premium").kind, { family: "engine", label: "Imported" });
+
+  // Both inputs now have a dependent, so the default view draws them: nothing
+  // in the class is hidden.
+  assert.deepEqual([...dependencyGraphHiddenByDefault(graph)], []);
+
+  // The left port of the formula lists what it is made from, the right port of
+  // an input lists the formula that reads it.
+  assert.deepEqual(dependencyGraphPortList(b, graph, "in"), {
+    title: "Precedents (2)",
+    empty: "",
+    entries: [
+      { key: "earned premium", name: "Earned Premium", label: "Imported", family: "engine" },
+      { key: "remaining budget premium", name: "Remaining Budget Premium", label: "Imported", family: "engine" },
+    ],
+  });
+  assert.deepEqual(dependencyGraphPortList(graph.byKey.get("earned premium"), graph, "out").entries, [
+    { key: "total earned premium", name: "Total Earned Premium", label: "Generated", family: "generated" },
+  ]);
+
+  // Selecting an input lights the formula and everything the formula feeds.
+  const reach = dependencyGraphReach(graph, "earned premium");
+  assert.deepEqual([...reach.downstream].sort(), [
+    "d 13 - paid dfm w/ selected ldfs",
+    "d 18 - bs paid dfm",
+    "d 92 - current qtr selected",
+    "total earned premium",
+  ]);
+  assert.equal(reach.upstream.size, 0);
+  assert.deepEqual([...dependencyGraphReach(graph, "d 13 - paid dfm w/ selected ldfs").upstream].sort(), [
+    "earned premium",
+    "remaining budget premium",
+    "total earned premium",
+  ]);
+
+  // A class with no generated formula type draws exactly as before.
+  const plain = buildDependencyGraph(PAYLOAD);
+  assert.deepEqual(plain.nodes.map((node) => node.kind.family), [
+    "dataset", "dataset", "calculated", "method", "method", "method", "missing",
+  ]);
 });
 
 test("layers follow the longest chain of inputs and every edge runs left to right", () => {
@@ -316,10 +395,21 @@ test("the graph page and its read are registered end to end", async () => {
   for (const id of ["dependencyGraphSearch", "dependencyGraphShowAll", "dependencyGraphZoomOut", "dependencyGraphZoomIn", "dependencyGraphFit", "dependencyGraphRefresh", "dependencyGraphCanvas", "dependencyGraphSvg", "dependencyGraphState", "dependencyGraphStatus"]) {
     assert.ok(pageHtml.includes(`id="${id}"`), id);
   }
-  // Each legend swatch spells the same label the boxes of that family show.
-  for (const sourceKind of ["input", "calculated", "engine"]) {
-    const kind = dependencyNodeKind({ source_kind: sourceKind });
+  // Each legend swatch spells the same label the boxes of that family show,
+  // the Engine's two included.
+  for (const node of [{ source_kind: "input" }, { source_kind: "calculated" }, { source_kind: "engine" }, { source_kind: "engine", formula: "A + B" }]) {
+    const kind = dependencyNodeKind(node);
     assert.ok(pageHtml.includes(`<span data-family="${kind.family}">${kind.label}</span>`), kind.label);
+  }
+  // Every family the legend spells has its own accent, shared by the node
+  // stripe, the popover row, and the swatch.
+  const familyCss = await read("../ui/project_instance/dependency_graph_window.css");
+  for (const family of ["dataset", "calculated", "engine", "generated", "method"]) {
+    assert.match(familyCss, new RegExp(`--dg-family-${family}:`), family);
+    assert.ok(
+      familyCss.includes(`.dg-node[data-family="${family}"], .dg-port-popover-row[data-family="${family}"], .pi-dependency-graph-legend [data-family="${family}"]`),
+      family,
+    );
   }
   assert.match(rawWindowSource, /const GRAPH_ENDPOINT = "\/datasets\/dependency-graph";/);
   // The drag handle captures the pointer (arcrho-ui-design L16).
