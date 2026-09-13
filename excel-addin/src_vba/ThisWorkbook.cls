@@ -13,6 +13,7 @@ Private Sub Workbook_Open()
     disableRequest = False
     disableWaitTime = False
     skipDataProcess = False
+    rebuildDatasets = False
     cancelUpdate = False
     lastRequestInfo = "N"
     errCount = 0

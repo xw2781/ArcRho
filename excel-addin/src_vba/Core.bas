@@ -21,11 +21,17 @@ Public maxWaitTime As Single
 Public errCount As Integer
 Public lastRequestInfo As String
 
+' True only while Calculate Worksheet or Calculate Workbook is running. Those
+' two buttons exist to bring a workbook up to date with the project, so every
+' dataset they reach is produced again rather than read from the copy already
+' sitting in the reserving class. Ordinary recalculation leaves it False and
+' keeps reading what is there.
+Public rebuildDatasets As Boolean
+
 Public processedCells As New Collection
 Public processedArrays As New Collection
 Public cancelUpdate As Boolean
 Public pendingUpdate As Boolean
-Public doubleRefresh As Boolean
 Public disableWatcher As Boolean
 
 Public triangle_tool_row As Long
@@ -95,11 +101,31 @@ Public Sub ClearDatasetResultCache()
     Set datasetResults = Nothing
 End Sub
 
+' Does this request ask the server to produce the dataset again rather than
+' answer from the copy already in the reserving class? Calculate Worksheet and
+' Calculate Workbook always do, and so does "always refresh". What being
+' produced again means is the server's decision, and it differs by dataset: a
+' generated one is rebuilt from the project's source table, a calculated one is
+' worked out again from its inputs, and a hand-entered one is answered exactly
+' as it stands, because there is nothing behind it to produce.
+Private Function RebuildRequested() As Boolean
+    RebuildRequested = rebuildDatasets Or removeData
+End Function
+
+' Is a dataset worth keeping for the rest of this pass? Calculate Worksheet and
+' Calculate Workbook produce each dataset once and then answer every other
+' formula asking for the same one from memory, so a sheet holding twenty
+' formulas over one triangle costs one rebuild rather than twenty. "Always
+' refresh" on its own means the opposite: every formula reads the dataset again.
+Private Function RememberDatasets() As Boolean
+    RememberDatasets = rebuildDatasets Or Not removeData
+End Function
+
 Private Sub StoreDatasetResult(ByVal requestText As String, ByRef values As Variant)
-    ' "Always refresh" means every formula reads the dataset again, so nothing is
-    ' remembered while it is on. Only a real dataset array is worth keeping; a
-    ' message such as "request time out" must be retried by the next formula.
-    If removeData Then Exit Sub
+    ' Nothing is remembered when every formula is meant to read the dataset
+    ' again. Only a real dataset array is worth keeping; a message such as
+    ' "request time out" must be retried by the next formula.
+    If Not RememberDatasets() Then Exit Sub
     If Not IsArray(values) Then Exit Sub
     If datasetResults Is Nothing Then Set datasetResults = CreateObject("Scripting.Dictionary")
     datasetResults(requestText) = values
@@ -136,7 +162,7 @@ Public Function GetDataset(funcArgs As String)
     datasetRequestCount = datasetRequestCount + 1
 
     ' --- Case 0: this pass already fetched the same dataset ---
-    If removeData Then
+    If Not RememberDatasets() Then
         ClearDatasetResultCache
     ElseIf TryDatasetResult(funcArgs, datasetValues) Then
         datasetHitCount = datasetHitCount + 1
@@ -204,7 +230,7 @@ Private Function GetDatasetFromGateway(ByVal funcArgs As String)
     Dim csvText As String
     Dim message As String
 
-    If GatewayDatasetCsv(funcArgs, removeData, csvText, message) Then
+    If GatewayDatasetCsv(funcArgs, RebuildRequested(), csvText, message) Then
         GetDatasetFromGateway = DataArrayFromText(csvText)
     Else
         Debug.Print "[error] - ArcRho Server: "; message

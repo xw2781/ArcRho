@@ -206,16 +206,17 @@ Private Function IsNonEmptyValue(ByVal v As Variant) As Boolean
     End If
 End Function
 
-' ref like:  "Sheet Name!$B$4:$C$11"
+' Re-enter one block of ArcRho formulas and calculate it, which is what sends
+' its request to the server. ref like:  "Sheet Name!$B$4:$C$11"
+'
+' What this pass already fetched is deliberately kept: a block asking for a
+' dataset an earlier block already brought back is answered from memory, so a
+' sheet holding twenty blocks over one triangle costs one request.
 Public Sub RefreshArcRhoBlock(ByVal ref As String)
     Dim parts() As String
     Dim shName As String, addr As String
     Dim ws As Worksheet
     Dim rng As Range, topCell As Range
-
-    ' The Engine is still writing datasets while this loop runs, so a block being
-    ' re-entered must read the file again rather than the pass that preceded it.
-    ClearDatasetResultCache
 
     parts = Split(ref, "!")
     If UBound(parts) <> 1 Then Exit Sub
@@ -238,7 +239,7 @@ Public Sub RefreshArcRhoBlock(ByVal ref As String)
     ' 1) Legacy CSE array: re-enter entire array
     If topCell.HasArray Then
         topCell.CurrentArray.FormulaArray = topCell.CurrentArray.FormulaArray
-    
+
     ' 2) Dynamic spill or normal single formula:
     '    re-enter only the formula cell
     Else
@@ -250,6 +251,14 @@ Public Sub RefreshArcRhoBlock(ByVal ref As String)
         End If
         On Error GoTo 0
     End If
+
+    ' Re-entering a formula calculates it straight away while the workbook is
+    ' automatic, and only marks it dirty while it is manual. Calculating the
+    ' block here covers both, so one step of the progress bar always means one
+    ' block that has actually been asked for and answered.
+    On Error Resume Next
+    rng.Calculate
+    On Error GoTo 0
 End Sub
 
 Public Function GetParamValue(ByVal fullStr As String, ByVal paramName As String) As String

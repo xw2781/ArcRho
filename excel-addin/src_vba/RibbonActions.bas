@@ -83,155 +83,100 @@ Sub CalculateWorkbook()
 End Sub
 
 Sub CalculateWorkbookWithUI()
-    Dim item As Variant
-    Dim totalDatasets As Long
-    Dim countDataset As Long
-    Dim removeDataStat As Long
     Dim currentSheet As Worksheet
-    Dim oldCalcMode As XlCalculation
-    
+
     On Error GoTo ErrorHandler
-    
+
     Set currentSheet = ActiveWorkbook.ActiveSheet
-    
-    oldCalcMode = Application.Calculation
-    Application.Calculation = xlCalculationAutomatic
-    'Application.Calculation = xlCalculationManual
-    
+
     errCount = 0
-    removeDataStat = removeData
     disable_ufLoading = True
     skipDataProcess = False
-    doubleRefresh = Fasle
-    
+    ' This button brings the workbook up to date with the project, so every
+    ' dataset it reaches is produced again rather than read as it stands.
+    rebuildDatasets = True
+
     Show_ufProgressBar
     ufProgressBar.LabelTitle.Caption = "Searching for ArcRho formulas ..."
     DoEvents
-   
-    ' Step (1) Search & Send Requests
+
+    ' Step (1) Count the ranges, touching nothing
     Call SearchArcRhoFormulas
-    
-    If processedArrays Is Nothing Then Exit Sub
-    If processedArrays.Count = 0 Then Exit Sub
-    
-    totalDatasets = processedArrays.Count
-    countDataset = 0
-    
-    If doubleRefresh Then
-        ' Step (2) Pull Datasets
-        ufProgressBar.LabelTitle.Caption = "Refreshing datasets ..."
-        ufProgressBar.LabelDetails.Caption = totalDatasets & " dataset(s) need to be refreshed"
-        removeData = False
-        disableRequest = True
-        For Each item In processedArrays
-            If cancelUpdate Then GoTo CleanExit
-            Call RefreshArcRhoBlock(CStr(item))
-            
-            countDataset = countDataset + 1
-            ' Refresh UI
-            ' ufProgressBar.LabelBody.Caption = "<" & Replace(item, "!", ">! ")
-            ufProgressBar.LabelDetails.Caption = countDataset & "/" & totalDatasets & " dataset(s) updated"
-            ufProgressBar.UpdateProgressBar countDataset / totalDatasets * 100
-            If countDataset Mod 20 = 0 Then DoEvents
-        Next item
-        
-        ufProgressBar.LabelTitle.Caption = "Calculating all formulas in this workbook, please wait ..."
-        Application.Wait Now + TimeValue("0:00:01")
-        
-    End If
-    
+
+    ' Step (2) Update them one at a time, reporting progress against that count
+    UpdateArcRhoBlocks
+
+    ' Anything that reads an ArcRho block is left dirty while the workbook is
+    ' manual, so the workbook is finished off here. The blocks are already
+    ' calculated by now, and the workbook's own setting is never touched.
+    If Not cancelUpdate Then ActiveWorkbook.Calculate
+
     Application.StatusBar = "[" & ActiveWorkbook.Name & "] - Refreshed at " & Format(Now, "hh:mm:ss")
-    
+
 CleanExit:
-    removeData = removeDataStat
-    Application.Calculation = oldCalcMode
+    ' Ordinary recalculation must not rebuild anything, so the flag is dropped
+    ' here whichever way this pass ended.
+    rebuildDatasets = False
     Unload ufProgressBar
     ufProgressBar.ClearText
     disable_ufLoading = False
     cancelUpdate = False
     disableRequest = False
     currentSheet.Activate
-    
+
     Exit Sub
-    
+
 ErrorHandler:
     Application.StatusBar = "[" & ActiveWorkbook.Name & "] - Workbook not refreshed! Updated @ " & Format(Now, "hh:mm:ss")
     Resume CleanExit
-    
+
 End Sub
 
 Sub CalculateSheet()
-    Dim item As Variant
-    Dim totalDatasets As Long
-    Dim countDataset As Long
-    Dim removeDataStat As Long
     Dim currentSheet As Worksheet
-    Dim oldCalcMode As XlCalculation
-    
+
     On Error GoTo ErrorHandler
-    
+
     Set currentSheet = ActiveWorkbook.ActiveSheet
-    
-    oldCalcMode = Application.Calculation
-    'Application.Calculation = xlCalculationManual
-    
+
     errCount = 0
-    removeDataStat = removeData
     disable_ufLoading = True
     skipDataProcess = False
-    doubleRefresh = Fasle
-    
+    ' This button brings the worksheet up to date with the project, so every
+    ' dataset it reaches is produced again rather than read as it stands.
+    rebuildDatasets = True
+
     Show_ufProgressBar
     ufProgressBar.LabelTitle.Caption = "Searching for ArcRho formulas ..."
     DoEvents
-   
-    ' Step (1) Search & Send Requests
+
+    ' Step (1) Count the ranges, touching nothing
     SearchArcRhoFormulas True
-    
-    If processedArrays Is Nothing Then Exit Sub
-    If processedArrays.Count = 0 Then Exit Sub
-    
-    totalDatasets = processedArrays.Count
-    countDataset = 0
-    
-    If doubleRefresh Then
-        ' Step (2) Pull Datasets
-        ufProgressBar.LabelTitle.Caption = "Refreshing datasets ..."
-        ufProgressBar.LabelDetails.Caption = totalDatasets & " dataset(s) need to be refreshed"
-        removeData = False
-        disableRequest = True
-        For Each item In processedArrays
-            If cancelUpdate Then GoTo CleanExit
-            Call RefreshArcRhoBlock(CStr(item))
-            
-            countDataset = countDataset + 1
-            ' Refresh UI
-            ufProgressBar.LabelBody.Caption = "<" & Replace(item, "!", ">! ")
-            ufProgressBar.LabelDetails.Caption = countDataset & "/" & totalDatasets & " dataset(s) updated"
-            ufProgressBar.UpdateProgressBar countDataset / totalDatasets * 100
-            If countDataset Mod 20 = 0 Then DoEvents
-        Next item
-        
-        ufProgressBar.LabelTitle.Caption = "Calculating all formulas in this workbook, please wait ..."
-        Application.Wait Now + TimeValue("0:00:01")
-    End If
-    
+
+    ' Step (2) Update them one at a time, reporting progress against that count
+    UpdateArcRhoBlocks
+
+    ' Anything on this sheet that reads an ArcRho block is left dirty while the
+    ' workbook is manual, so the sheet is finished off here. The blocks are
+    ' already calculated by now, and the workbook's own setting is never touched.
+    If Not cancelUpdate Then currentSheet.Calculate
+
     Application.StatusBar = "[" & currentSheet.Name & "] - Refreshed at " & Format(Now, "hh:mm:ss")
-    Application.Wait Now + TimeValue("0:00:01")
-    
+
 CleanExit:
-    removeData = removeDataStat
-    Application.Calculation = oldCalcMode
+    ' Ordinary recalculation must not rebuild anything, so the flag is dropped
+    ' here whichever way this pass ended.
+    rebuildDatasets = False
     Unload ufProgressBar
     ufProgressBar.ClearText
     disable_ufLoading = False
     cancelUpdate = False
     disableRequest = False
     Exit Sub
-    
+
 ErrorHandler:
     Resume CleanExit
-    
+
 End Sub
 
 Sub CalculateWorkbookNoUI()
@@ -239,40 +184,43 @@ Sub CalculateWorkbookNoUI()
     skipDataProcess = False
     disable_ufLoading = True
 
-    ' (1) Send Request Only, No Wait
-    disableRequest = False
-    disableWaitTime = True
-    ClearDatasetResultCache
-    Application.Calculate
-
-    ' (2) Pull Cached Datasets
-    disableWaitTime = False
+    ' The same button as CalculateWorkbookWithUI, for a user who turned the
+    ' progress window off, so it produces every dataset again in the same way.
+    ' One full calculation is enough: the server answers each request with the
+    ' figures, and Excel resolves a formula that depends on another itself.
+    rebuildDatasets = True
     ClearDatasetResultCache
     Application.CalculateFull
 
 CleanExit:
+    rebuildDatasets = False
     disableWaitTime = False
     disable_ufLoading = False
     Exit Sub
-    
+
 ErrorHandler:
     Resume CleanExit
-    
+
 End Sub
 
+' Find every block of ArcRho formulas on the sheets in scope, without touching
+' one. Nothing is re-entered and nothing is calculated here, so the search only
+' reads formulas and asks the server for nothing. It ends knowing how many
+' ranges there are, which is what the update below reports its progress against.
 Public Sub SearchArcRhoFormulas(Optional ByVal ActiveSheetOnly As Boolean = False)
 
     Dim ws As Worksheet
     Dim cell As Range
     Dim arrCell As Range
+    Dim sheetFormulas As Range
     Dim cellKey As String
     Dim arrKey As String
     Dim totalSheets As Long
     Dim countSheets As Long
+    Dim totalCells As Long
     Dim countCells As Long
-    
+
     On Error GoTo ErrorHandler
-    disableWaitTime = True
 
     ' A new pass starts here, so nothing remembered from the last one is served.
     ClearDatasetResultCache
@@ -288,69 +236,121 @@ Public Sub SearchArcRhoFormulas(Optional ByVal ActiveSheetOnly As Boolean = Fals
     End If
 
     countSheets = 1
-    countCells = 1
-    
+
     ' Loop sheets
     For Each ws In ActiveWorkbook.Worksheets
-        
+
         ' Skip non-active sheets if needed
         If ActiveSheetOnly Then
             If ws.Name <> ActiveSheet.Name Then GoTo ContinueLoop
         End If
-        
+
         If cancelUpdate Then GoTo CleanExit
         If ws.Name = "ResQ Settings" Then GoTo ContinueLoop
-        
+
         ufProgressBar.LabelBody.Caption = "Reading worksheet <" & ws.Name & ">"
         DoEvents
-        
-        On Error Resume Next
-        For Each cell In ws.UsedRange.SpecialCells(xlCellTypeFormulas)
-            On Error GoTo ErrorHandler
-            If ActiveSheetOnly Then
-                ufProgressBar.LabelDetails.Caption = "Looking at cell " & cell.Address(0, 0)
-                If countCells Mod 20 = 0 Then DoEvents
-            End If
+
+        Set sheetFormulas = FormulaCells(ws)
+        If sheetFormulas Is Nothing Then GoTo ContinueLoop
+
+        ' One sheet fills the whole bar when the search is scoped to it, so it
+        ' moves per formula read rather than jumping from nothing to finished.
+        If ActiveSheetOnly Then
+            totalCells = sheetFormulas.Count
+            countCells = 0
+        End If
+
+        For Each cell In sheetFormulas
+            If cancelUpdate Then GoTo CleanExit
             cellKey = ws.Name & "!" & cell.Address
             If Not KeyExists(processedCells, cellKey) Then
                 If InStr(1, cell.formula, "ADAS", vbTextCompare) > 0 _
                    Or InStr(1, cell.formula, "ArcRho", vbTextCompare) > 0 Then
                     If cell.HasArray Then
-                        cell.CurrentArray.FormulaArray = cell.CurrentArray.FormulaArray
                         arrKey = ws.Name & "!" & cell.CurrentArray.Address
                         processedArrays.Add arrKey, arrKey
-                        
+
                         For Each arrCell In cell.CurrentArray
                             cellKey = ws.Name & "!" & arrCell.Address
                             processedCells.Add cellKey, cellKey
                         Next arrCell
                     Else
-                        cell.Formula2 = cell.Formula2
                         processedCells.Add cellKey, cellKey
                         processedArrays.Add cellKey, cellKey
                     End If
                 End If
             End If
-            countCells = countCells + 1
+
+            If ActiveSheetOnly Then
+                countCells = countCells + 1
+                If countCells Mod 20 = 0 Or countCells = totalCells Then
+                    ufProgressBar.LabelDetails.Caption = _
+                        countCells & "/" & totalCells & " formula(s) read, " & _
+                        processedArrays.Count & " ArcRho range(s) found"
+                    ufProgressBar.UpdateProgressBar countCells / totalCells * 100
+                End If
+            End If
         Next cell
-        
-        ufProgressBar.LabelDetails.Caption = countSheets & "/" & totalSheets & " sheet(s) reviewed"
-        ufProgressBar.UpdateProgressBar countSheets / totalSheets * 100
+
+        If Not ActiveSheetOnly Then
+            ufProgressBar.LabelDetails.Caption = countSheets & "/" & totalSheets & " sheet(s) reviewed"
+            ufProgressBar.UpdateProgressBar countSheets / totalSheets * 100
+        End If
         countSheets = countSheets + 1
         DoEvents
-        
+
 ContinueLoop:
     Next ws
-    
+
 CleanExit:
     ufProgressBar.ClearText
-    cancelUpdate = False
-    disableWaitTime = False
     Exit Sub
-    
+
 ErrorHandler:
     Resume CleanExit
 
+End Sub
+
+' The formula cells of one worksheet, or Nothing when it holds none. Asking
+' Excel for them raises an error rather than answering an empty range, which is
+' the only reason this exists.
+Private Function FormulaCells(ByVal ws As Worksheet) As Range
+    On Error Resume Next
+    Set FormulaCells = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+End Function
+
+' Work through the ArcRho ranges the search found, one at a time. The count is
+' known before the first request goes out, so the window can say how many ranges
+' there are and how far along it is, and Cancel can stop between any two.
+Public Sub UpdateArcRhoBlocks()
+    Dim item As Variant
+    Dim totalBlocks As Long
+    Dim countBlocks As Long
+
+    If processedArrays Is Nothing Then Exit Sub
+
+    totalBlocks = processedArrays.Count
+    If totalBlocks = 0 Then
+        ufProgressBar.LabelTitle.Caption = "No ArcRho formulas found"
+        ufProgressBar.UpdateProgressBar 100
+        Exit Sub
+    End If
+
+    ufProgressBar.LabelTitle.Caption = "Updating " & totalBlocks & " ArcRho range(s) ..."
+    ufProgressBar.LabelDetails.Caption = "0/" & totalBlocks & " range(s) updated"
+    ufProgressBar.UpdateProgressBar 0
+
+    For Each item In processedArrays
+        If cancelUpdate Then Exit Sub
+        ufProgressBar.LabelBody.Caption = "Updating " & CStr(item)
+        RefreshArcRhoBlock CStr(item)
+
+        countBlocks = countBlocks + 1
+        ufProgressBar.LabelDetails.Caption = countBlocks & "/" & totalBlocks & " range(s) updated"
+        ufProgressBar.UpdateProgressBar countBlocks / totalBlocks * 100
+    Next item
 End Sub
 
 Function KeyExists(coll As Collection, key As String) As Boolean
