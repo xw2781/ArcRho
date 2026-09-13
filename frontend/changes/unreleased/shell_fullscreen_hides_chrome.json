@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Full screen now hides the title bar, the menu bar and the tab bar, and gives the page the whole screen.",
+  "details": [
+    "F11 still switches full screen on and off.",
+    "Moving the pointer to the top edge of the screen slides the three rows back over the page, and they slide away again once the pointer leaves.",
+    "An open menu, or a tab being dragged, keeps them in place until it is finished."
+  ]
+}

@@ -13,6 +13,7 @@ Detected `arcrho:*` message types in key JS files:
 - `arcrho:browsing-history-updated`
 - `arcrho:close-active-tab`
 - `arcrho:file-explorer-path-changed`
+- `arcrho:fullscreen-change`
 - `arcrho:hotkey`
 - `arcrho:status`
 - `arcrho:update-active-tab-title`

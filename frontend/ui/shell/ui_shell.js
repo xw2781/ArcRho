@@ -10,10 +10,11 @@ import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, de
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260821a";
 import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260903resize1";
 import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260831a";
-import { initShellMessages } from "./shell_messages.js?v=20260903resize1";
+import { initShellMessages } from "./shell_messages.js?v=20260913a";
 import { initUiAutomation } from "./ui_automation.js?v=20260904resize2";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
+import { initFullscreenChrome, setFullscreenChrome, syncFullscreenChromeFromHost } from "./fullscreen_chrome.js?v=20260913b";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";
 import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260908b";
 import { addMacroToFlightDeck, closeFlightDeck, initFlightDeck, isFlightDeckVisible, openFlightDeck, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260906a";
@@ -43,6 +44,7 @@ function wire() {
   initUiAutomation();
   initShellFileDrops();
   initHotkeys();
+  initFullscreenChrome();
   initAppLifecycle();
   initAiAssistant();
   void initMacroWindow();
@@ -159,6 +161,7 @@ registerShellApi({
   setDfmHistoryEnabled,
   setDockedActive,
   setForceRebuildEnabled,
+  setFullscreenChrome,
   setLastWorkflowPath,
   setZoomPercent,
   showAppConfirm,
@@ -199,7 +202,10 @@ async function bootShell() {
   render();
 
   if (getHostApi()) initTitlebarControls();
-  window.addEventListener("adaHostReady", () => initTitlebarControls());
+  window.addEventListener("adaHostReady", () => {
+    initTitlebarControls();
+    void syncFullscreenChromeFromHost();
+  });
   initClock();
 }
 

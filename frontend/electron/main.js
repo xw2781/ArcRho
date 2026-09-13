@@ -803,6 +803,21 @@ function closeSplash() {
 
 function wireAppWindowInput(targetWindow) {
   if (!targetWindow || targetWindow.isDestroyed()) return;
+
+  // The window is frameless, so its title bar and menu bar are page chrome the renderer draws.
+  // Only the host knows when the window enters or leaves full screen, whichever way it was asked
+  // for - the default menu's F11 accelerator, a maximize gesture, or the host API.
+  // Each event carries its own answer rather than asking the window: on Windows `isFullScreen()`
+  // still reports the state the window is leaving while these fire, which showed the chrome in
+  // full screen and hid it in a normal window - exactly the wrong way round.
+  const sendFullscreenState = (fullscreen) => {
+    if (!targetWindow || targetWindow.isDestroyed()) return;
+    const prefix = (APP_MODE === "arcode" || targetWindow === arcodeWin) ? "arcode" : "arcrho";
+    targetWindow.webContents.send(`${prefix}:fullscreen-change`, { fullscreen });
+  };
+  targetWindow.on("enter-full-screen", () => sendFullscreenState(true));
+  targetWindow.on("leave-full-screen", () => sendFullscreenState(false));
+
   targetWindow.webContents.on("before-input-event", (event, input) => {
     if (!targetWindow || targetWindow.isDestroyed()) return;
     const messagePrefix = (APP_MODE === "arcode" || targetWindow === arcodeWin) ? "arcode" : "arcrho";

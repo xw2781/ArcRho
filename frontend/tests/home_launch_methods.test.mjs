@@ -10,11 +10,15 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("shell chrome keeps its height whatever the page below it contains", async () => {
   const styles = await read("../ui/shell/shell.css");
 
-  assert.match(styles, /#customTitlebar\s*\{[^}]*flex:\s*0 0 30px/su, "the titlebar never shrinks");
+  assert.match(styles, /#customTitlebar\s*\{[^}]*flex:\s*0 0 var\(--titlebar-h\)/su, "the titlebar never shrinks");
   assert.match(styles, /\.content\s*\{[^}]*flex:\s*1 1 0/su, "the content row takes what is left, not what it holds");
-  assert.match(styles, /\.menubar\s*\{[^}]*flex:\s*0 0 25px/su);
+  assert.match(styles, /\.menubar\s*\{[^}]*flex:\s*0 0 var\(--menubar-h\)/su);
+  // The row heights are tokens now because full screen slides the pair by their sum.
+  assert.match(styles, /--titlebar-h:\s*30px/u);
+  assert.match(styles, /--menubar-h:\s*25px/u);
   assert.match(styles, /#statusBar\s*\{[^}]*flex:\s*0 0 var\(--statusbar-h\)/su);
-  assert.match(styles, /\.topbar\s*\{[^}]*min-height:\s*34px/su, "the tab strip is floored by its min-height");
+  assert.match(styles, /\.topbar\s*\{[^}]*min-height:\s*var\(--topbar-h\)/su, "the tab strip is floored by its min-height");
+  assert.match(styles, /--topbar-h:\s*34px/u);
 });
 
 test("Home drops the dataset and method launch group so methods open from Project Instance", async () => {

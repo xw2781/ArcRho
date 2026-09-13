@@ -369,6 +369,7 @@ export function initShellMessages() {
       shell.saveState?.();
       return;
     }
+    if (msg.type === "arcrho:fullscreen-change") return shell.setFullscreenChrome?.(!!msg.fullscreen);
     if (msg.type === "arcrho:zoom") return shell.adjustZoomByDelta?.(Number(msg.deltaY || 0));
     if (msg.type === "arcrho:zoom-step") {
       const delta = Number(msg.delta || 0);

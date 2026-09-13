@@ -1,7 +1,7 @@
 .menubar{
   box-sizing: border-box;
-  flex: 0 0 25px;
-  height: 25px;
+  flex: 0 0 var(--menubar-h);
+  height: var(--menubar-h);
   display:flex;
   align-items:center;
   gap: 9px;
@@ -41,8 +41,8 @@
    to shrink. A bare height leaves the titlebar shrinkable, and it lost pixels whenever the page
    below it was tall. The chrome rows are fixed furniture and must not answer to page content. */
 #customTitlebar {
-  flex: 0 0 30px;
-  height: 30px;
+  flex: 0 0 var(--titlebar-h);
+  height: var(--titlebar-h);
   background: #a5a5a559;
   border-bottom: 1px solid #cfcfcf;
   display: flex;
@@ -106,12 +106,61 @@
   stroke-linejoin: round;
 }
 
+/* Full screen: the title bar, the menu bar and the tab strip leave the layout so the page owns the
+   whole screen, and come back over the content while the pointer rests on the top edge - the
+   behavior a browser in full screen has. Every row slides by the height of all three together, so
+   the lower ones clear the edge as well. */
+body.app-fullscreen {
+  padding-top: 0;
+}
+body.app-fullscreen #customTitlebar,
+body.app-fullscreen .menubar,
+body.app-fullscreen .topbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  margin: 0;
+  z-index: 9000;
+  transform: translateY(calc(-1 * var(--shell-chrome-h)));
+  transition: transform 160ms ease;
+}
+body.app-fullscreen #customTitlebar {
+  top: 0;
+}
+body.app-fullscreen .menubar {
+  top: var(--titlebar-h);
+}
+body.app-fullscreen .topbar {
+  top: calc(var(--titlebar-h) + var(--menubar-h));
+  /* Docked, the workspace gutter holds the tab strip clear of the window edge; floating, it spans
+     the window, so it carries that gutter as padding instead. */
+  padding-left: var(--gap);
+  padding-right: var(--gap);
+  box-shadow: 0 6px 12px rgba(15,23,42,0.12);
+}
+/* Docked, the rows are translucent over the workspace gutter. Floating over a page they would
+   smear its content, so the revealed chrome takes the opaque workspace surface instead. */
+body.app-fullscreen #customTitlebar,
+body.app-fullscreen .menubar,
+body.app-fullscreen .topbar {
+  background-color: var(--bg);
+}
+body.app-fullscreen.chrome-revealed #customTitlebar,
+body.app-fullscreen.chrome-revealed .menubar,
+body.app-fullscreen.chrome-revealed .topbar {
+  transform: translateY(0);
+}
+
 :root {
   --border:#ddd;
   --bg:#f2f2f2;
   --muted:#666;
   --gap:10px;
+  --titlebar-h: 30px;
+  --menubar-h: 25px;
+  --topbar-h: 34px;
   --statusbar-h: 24px;
+  --shell-chrome-h: calc(var(--titlebar-h) + var(--menubar-h) + var(--topbar-h));
   --shell-frame-border: #aeb8ff;
   --shell-frame-border-w: 3px;
   --shell-floating-radius-win10: 6px;
@@ -422,7 +471,7 @@ input, textarea, select, option, [contenteditable="true"] {
   z-index: 20000;
 }
 #globalTooltip.show { opacity: 1; }
-.topbar { display:flex; align-items:flex-end; position: relative; gap: var(--gap); height: 34px; min-height: 34px; box-sizing: border-box; border-top:none; border-bottom:none; padding-top:0px; padding-bottom:0px; }
+.topbar { display:flex; align-items:flex-end; position: relative; gap: var(--gap); height: var(--topbar-h); min-height: var(--topbar-h); box-sizing: border-box; border-top:none; border-bottom:none; padding-top:0px; padding-bottom:0px; }
 .topbar::after {
   content: "";
   position: absolute;
@@ -435,7 +484,7 @@ input, textarea, select, option, [contenteditable="true"] {
   z-index: 0;
 }
 .brand { font-weight:700; position: relative; z-index: 1; }
-.tabs { flex: 1 1 auto; display:flex; gap:0; flex-wrap:nowrap; min-width: 0; height: 34px; overflow: hidden; position: relative; z-index: 1; align-items: flex-end; }
+.tabs { flex: 1 1 auto; display:flex; gap:0; flex-wrap:nowrap; min-width: 0; height: var(--topbar-h); overflow: hidden; position: relative; z-index: 1; align-items: flex-end; }
 .tabs.floatingDockTarget {
   box-shadow: inset 0 -2px 0 #2b6df6, inset 0 0 0 1px rgba(43,109,246,0.28);
   background: rgba(43,109,246,0.08);

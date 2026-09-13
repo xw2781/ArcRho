@@ -176,6 +176,22 @@ ipcRenderer.on("arcode:hotkey", (_event, payload) => {
   }
 });
 
+ipcRenderer.on("arcrho:fullscreen-change", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcrho:fullscreen-change", fullscreen: !!payload?.fullscreen }, "*");
+  } catch {
+    // ignore
+  }
+});
+
+ipcRenderer.on("arcode:fullscreen-change", (_event, payload) => {
+  try {
+    window.postMessage({ type: "arcode:fullscreen-change", fullscreen: !!payload?.fullscreen }, "*");
+  } catch {
+    // ignore
+  }
+});
+
 ipcRenderer.on("arcrho:zoom", (_event, payload) => {
   try {
     window.postMessage({ type: "arcrho:zoom", deltaY: payload?.deltaY }, "*");
