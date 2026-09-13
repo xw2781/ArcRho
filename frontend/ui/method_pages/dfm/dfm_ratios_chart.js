@@ -1249,10 +1249,16 @@ function renderRatioChartAverages(col) {
 function measureWidestAverageLabel(list) {
   const range = document.createRange();
   let widest = 0;
+  // Every name is measured at the weight the selected one wears, because bold
+  // text is wider: measured as drawn, the column would step out and back as
+  // the selection moved on and off the longest name. The class is on and off
+  // again inside this one call, so nothing is ever painted in that state.
+  list.classList.add("measuring");
   for (const label of list.querySelectorAll(".dfmRatioChartAverageLabel")) {
     range.selectNodeContents(label);
     widest = Math.max(widest, range.getBoundingClientRect().width);
   }
+  list.classList.remove("measuring");
   return Math.ceil(widest);
 }
 

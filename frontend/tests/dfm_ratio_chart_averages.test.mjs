@@ -275,6 +275,17 @@ test("the panel keeps ten formula rows on screen and fits the longest name", () 
   assert.match(measure, /range\.getBoundingClientRect\(\)\.width/u);
   assert.doesNotMatch(measure, /scrollWidth|offsetWidth|clientWidth/u);
 
+  // Bold text is wider, so every name is measured at the selected row's weight
+  // and the column cannot step out as the selection reaches the longest name.
+  assert.match(measure, /list\.classList\.add\("measuring"\)/u);
+  assert.match(measure, /list\.classList\.remove\("measuring"\)/u);
+  // One declaration serves both, so the measured weight cannot drift from the
+  // drawn one.
+  assert.match(
+    dfmCss,
+    /\.dfmRatioChartAverageRow\.selected \.dfmRatioChartAverageLabel,\n\.dfmRatioChartAveragesList\.measuring \.dfmRatioChartAverageLabel \{\n\s*font-weight: 700;/u,
+  );
+
   // The stylesheet owns the cap that keeps a long name off the track.
   const columns = cssRule("dfmRatioChartAverageRow,\\s*\\n\\.dfmRatioChartAveragesAxis");
   assert.match(columns, /min\(var\(--dfm-ratio-averages-label-width, 160px\), 45%\)/u);

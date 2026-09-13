@@ -1610,7 +1610,11 @@ body {
   background: var(--ar-color-accent-soft, #eaf2ff);
   cursor: default;
 }
-.dfmRatioChartAverageRow.selected .dfmRatioChartAverageLabel {
+/* The second selector is the one the name column is measured under: every
+   name wears the selected weight for that instant, so the column fits the
+   longest name whichever row is selected. */
+.dfmRatioChartAverageRow.selected .dfmRatioChartAverageLabel,
+.dfmRatioChartAveragesList.measuring .dfmRatioChartAverageLabel {
   font-weight: 700;
 }
 .dfmRatioChartAverageLabel {
