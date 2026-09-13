@@ -1,0 +1,37 @@
+/* Invisible resize handles laid over a floating window's edges and corners;
+   the window itself must be a positioning context (position: absolute or
+   fixed, or relative). See floating_window/window_resize.js. */
+.arWindowResizeHandle {
+  position: absolute;
+  z-index: 6;
+  background: transparent;
+}
+.arWindowResize-n,
+.arWindowResize-s {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.arWindowResize-n { top: 0; }
+.arWindowResize-s { bottom: 0; }
+.arWindowResize-e,
+.arWindowResize-w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.arWindowResize-w { left: 0; }
+.arWindowResize-e { right: 0; }
+.arWindowResize-nw,
+.arWindowResize-ne,
+.arWindowResize-sw,
+.arWindowResize-se {
+  width: 12px;
+  height: 12px;
+}
+.arWindowResize-nw { top: 0; left: 0; cursor: nwse-resize; }
+.arWindowResize-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.arWindowResize-ne { top: 0; right: 0; cursor: nesw-resize; }
+.arWindowResize-sw { bottom: 0; left: 0; cursor: nesw-resize; }

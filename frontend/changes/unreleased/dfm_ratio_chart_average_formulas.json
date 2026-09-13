@@ -1,0 +1,17 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM ratio chart window now lists every average formula's value for the column and lets you pick the selected formula there.",
+  "details": [
+    "A compact strip under the ratio plot places each formula's value on one shared axis so the magnitudes can be compared at a glance.",
+    "The selected formula is highlighted and its value runs across the strip as the same dashed guide the plot draws.",
+    "Clicking a formula row selects it for the column exactly as clicking its summary cell does, and the chart follows.",
+    "The chart window can be resized from any edge or corner, and both the plot and the formula list grow with it.",
+    "The gap between the plot and the formula list is a splitter: a blue line marks it when the pointer is over it, and dragging it opens the list up to show every formula at once without scrolling.",
+    "The list always keeps ten formulas on screen however short the window is made or wherever the splitter is dropped, and a shorter list keeps all of them.",
+    "The strip is ruled at round figures counted off from a ratio of 1 whenever the values come close to it, at an interval that suits the range, and with as many lines as the width of the window can label.",
+    "The formula name column is sized to the longest name rather than a fixed width, and a column whose formulas all sit just above 1 starts on the 1 line at its left edge.",
+    "The plot's x-axis labels sit just under the axis instead of leaving spare space below them."
+  ]
+}

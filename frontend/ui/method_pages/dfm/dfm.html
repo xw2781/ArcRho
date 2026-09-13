@@ -18,7 +18,8 @@
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260908b"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260909a"/>
+  <link rel="stylesheet" href="/ui/shared/components/floating_window/window_resize.css?v=20260913a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260913h"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260911a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
@@ -403,9 +404,23 @@
         <button class="dfmRatioChartIncludeAll" id="dfmRatioChartIncludeAll" type="button">Included All Ratios</button>
         <button class="dfmRatioChartClose" id="dfmRatioChartClose" aria-label="Close">×</button>
       </div>
-      <div class="dfmRatioChartCanvasWrap">
-        <canvas id="dfmRatioChartCanvas"></canvas>
-        <div class="dfmRatioChartTooltip" id="dfmRatioChartTooltip"></div>
+      <div class="dfmRatioChartPanes">
+        <div class="dfmRatioChartCanvasWrap">
+          <canvas id="dfmRatioChartCanvas"></canvas>
+          <div class="dfmRatioChartTooltip" id="dfmRatioChartTooltip"></div>
+        </div>
+        <div class="dfmRatioChartSplitter" id="dfmRatioChartSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize the ratio plot and the average formulas" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+        <div class="dfmRatioChartAverages">
+          <div class="dfmRatioChartAveragesHeader">
+            <span class="dfmRatioChartAveragesTitle">Average Formulas</span>
+          </div>
+          <div class="dfmRatioChartAveragesList" id="dfmRatioChartAveragesList"></div>
+          <div class="dfmRatioChartAveragesAxis">
+            <span></span>
+            <span class="dfmRatioChartAveragesAxisTrack" id="dfmRatioChartAveragesAxisTrack"></span>
+            <span></span>
+          </div>
+        </div>
       </div>
     </div>
   </div>

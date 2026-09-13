@@ -63,7 +63,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913i";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -262,7 +262,7 @@ export {
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913a";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913i";
 
 
 

@@ -30,12 +30,14 @@ import {
   isUserEntryConfig,
   getUserEntryValueForCol,
   scheduleRatioSummaryUpdate,
+  selectSummaryCell,
 } from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260903a";
 import {
   beginRatioHistoryAction,
   cancelRatioHistoryAction,
   commitRatioHistoryAction,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
+import { makeWindowResizable } from "/ui/shared/components/floating_window/window_resize.js?v=20260913a";
 
 let _onRatioStateMutated = () => {};
 let ratioChartProtectedExclusionKeys = new Set();
@@ -44,9 +46,36 @@ let ratioChartDragAxisRange = null;
 let ratioChartYAxisRangeByCol = new Map();
 let ratioChartAxisDragPreview = null;
 let ratioChartAxisDragStart = null;
-// Where the user last dragged the chart window, kept for as long as this DFM
-// page lives so closing the chart or picking another column reopens it there.
-let ratioChartWindowOffset = { dx: 0, dy: 0 };
+// The frame the user last dragged or resized the chart window to, kept for as
+// long as this DFM page lives so closing the chart or picking another column
+// reopens it there. Null until the first drag or resize, while the window sits
+// centered at its stylesheet size.
+let ratioChartWindowFrame = null;
+// Where the splitter under the plot was last left, as the average formula
+// panel's share of the plot-and-panel area, so the panel keeps its proportion
+// of whatever height the window is dragged to. Null until the first splitter
+// drag, while the stylesheet's own share applies.
+let ratioChartAveragesShare = null;
+const RATIO_CHART_SPLITTER_STEP = 16;
+// However short the window is made and wherever the splitter is dropped, the
+// panel keeps this many formula rows on screen - or all of them when there are
+// fewer, so a short list reserves no empty room.
+const RATIO_CHART_MIN_VISIBLE_ROWS = 10;
+// The two ratios a reader looks for: 1 develops nothing and 0 leaves nothing.
+// Either one within a quarter of the span of the values pulls the axis out to
+// take it in, and the gridlines are then counted off from 1 itself.
+const RATIO_CHART_UNITY = 1;
+const RATIO_CHART_REFERENCE_VALUES = [0, RATIO_CHART_UNITY];
+const RATIO_CHART_REFERENCE_REACH = 0.25;
+// Room one axis label needs. The span is divided into as many gridlines as fit
+// at this spacing, so a narrow window is ruled more coarsely than a wide one.
+const RATIO_CHART_AXIS_LABEL_SPACING = 72;
+// How near the end of the axis a label may sit before it is aligned to that
+// end instead of centred on its line, in percent of the span.
+const RATIO_CHART_LABEL_CLEARANCE = 5;
+// Breathing room past the longest formula name, so the column fits it rather
+// than ending exactly on its last letter.
+const RATIO_CHART_LABEL_AIR = 8;
 
 function getRatioChartColor(propertyName, fallback) {
   return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
@@ -135,6 +164,25 @@ function getSelectedSummaryConfigForCol(col) {
   const defaultRowId = rows[0]?.id || "";
   const rowId = selectedSummaryByCol.get(col) || defaultRowId;
   return rowId ? summaryRowMap.get(rowId) : null;
+}
+
+// What one average row is worth in the chart column: a User Entry row is its
+// stored figure, an average row is the value the summary table prints, and a
+// row with nothing to average has no value. The "Selected" line, the axis
+// range, and the average formula strip all read a row through this.
+function getSummaryRowValueForCol(cfg, col) {
+  if (!cfg) return null;
+  if (isUserEntryConfig(cfg)) {
+    const value = getUserEntryValueForCol(cfg, col);
+    return Number.isFinite(value) ? value : null;
+  }
+  const model = state.model;
+  if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) return null;
+  const excluded = buildExcludedSetForColumn(model, col, cfg, ratioStrikeSet);
+  const summary = computeAverageForColumn(model, col, excluded, cfg, ratioStrikeSet);
+  const isVolume = String(cfg.base || "volume").toLowerCase() === "volume";
+  const hasValue = summary.value !== null && (isVolume ? summary.sumA : summary.totalIncluded > 0);
+  return hasValue && Number.isFinite(summary.value) ? summary.value : null;
 }
 
 function resolveUserEntryToSourceConfig(cfg, col) {
@@ -653,25 +701,13 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   // Expand y-axis to include the selected summary value so it's not clipped
   const chartColForRange = getRatioChartCol();
   if (chartColForRange != null) {
-    const cfgForRange = getSelectedSummaryConfigForCol(chartColForRange);
-    if (cfgForRange) {
-      let selVal = null;
-      if (isUserEntryConfig(cfgForRange)) {
-        selVal = getUserEntryValueForCol(cfgForRange, chartColForRange);
-      } else {
-        const model2 = state.model;
-        if (model2 && Array.isArray(model2.values) && Array.isArray(model2.mask)) {
-          const exc = buildExcludedSetForColumn(model2, chartColForRange, cfgForRange, ratioStrikeSet);
-          const sum = computeAverageForColumn(model2, chartColForRange, exc, cfgForRange, ratioStrikeSet);
-          const isVol = String(cfgForRange.base || "volume").toLowerCase() === "volume";
-          const hasVal = sum.value !== null && (isVol ? sum.sumA : sum.totalIncluded > 0);
-          selVal = hasVal ? sum.value : null;
-        }
-      }
-      if (selVal != null && Number.isFinite(selVal)) {
-        yMin = Math.min(yMin, selVal);
-        yMax = Math.max(yMax, selVal);
-      }
+    const selVal = getSummaryRowValueForCol(
+      getSelectedSummaryConfigForCol(chartColForRange),
+      chartColForRange,
+    );
+    if (selVal != null) {
+      yMin = Math.min(yMin, selVal);
+      yMax = Math.max(yMax, selVal);
     }
   }
   if (yMin === yMax) {
@@ -730,11 +766,23 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   const maxLabelLen = labels.reduce((m, v) => Math.max(m, String(v ?? "").length), 0);
   const denseLabels = labels.length > 8 || maxLabelLen > 4;
   const rotate90 = labels.length > 15;
+  const labelFont = denseLabels ? "10px Arial" : "11px Arial";
+  const labelFontHeight = denseLabels ? 10 : 11;
+  ctx.font = labelFont;
+  const maxLabelWidth = labels.reduce((m, v) => Math.max(m, ctx.measureText(String(v ?? "")).width), 0);
+  // The label band below the axis is exactly what the labels need: a label
+  // hangs from just under the axis, upright when there is room, at 45 degrees
+  // when the labels are dense, and straight down when there are many.
+  const labelGap = 6;
+  const labelBand = rotate90
+    ? maxLabelWidth
+    : denseLabels
+      ? (maxLabelWidth + labelFontHeight) * Math.SQRT1_2
+      : labelFontHeight;
   const labelPad = (denseLabels || rotate90) ? Math.min(48, Math.max(16, Math.ceil(maxLabelLen * 3))) : 0;
   const padL = 44 + labelPad;
   const padR = 12 + (denseLabels ? 8 : 0);
-  const extraBottomPad = 16;
-  const padB = 40 + labelPad + extraBottomPad;
+  const padB = labelGap + labelBand + 6;
   const x0 = padL;
   const y0 = padT;
   const x1 = W - padR;
@@ -784,9 +832,16 @@ function renderRatioColumnChart(canvas, labels, values, status) {
   }
 
   ctx.fillStyle = getRatioChartColor("--ar-chart-dfm-text", "#374151");
-  ctx.font = denseLabels ? "10px Arial" : "11px Arial";
-  ctx.textAlign = rotate90 ? "center" : (denseLabels ? "right" : "center");
-  const labelY = H - extraBottomPad - (denseLabels ? 8 : 6);
+  ctx.font = labelFont;
+  ctx.textAlign = (rotate90 || denseLabels) ? "right" : "center";
+  // Right-aligned rotated text ends at its anchor, so the anchor is the top of
+  // the label and the text hangs below it; a 45-degree label's glyphs rise
+  // above the anchor by their height's projection.
+  const labelY = rotate90
+    ? y1 + labelGap
+    : denseLabels
+      ? y1 + labelGap + labelFontHeight * Math.SQRT1_2
+      : y1 + labelGap + labelFontHeight - 2;
   for (let i = 0; i < labels.length; i++) {
     let x = getX(i);
     ctx.strokeStyle = getRatioChartColor("--ar-chart-dfm-grid", "#eef2f7");
@@ -797,7 +852,8 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     const label = String(labels[i] ?? "");
     if (rotate90) {
       ctx.save();
-      ctx.translate(x, labelY);
+      // Vertical glyphs stand to the left of their baseline; centre them on the tick.
+      ctx.translate(x + labelFontHeight * 0.35, labelY);
       ctx.rotate(-Math.PI / 2);
       ctx.fillText(label, 0, 0);
       ctx.restore();
@@ -1012,45 +1068,234 @@ function renderRatioColumnChart(canvas, labels, values, status) {
     if (dashedIcon) selValEl.appendChild(dashedIcon);
   }
   if (chartCol != null) {
-    const cfg = getSelectedSummaryConfigForCol(chartCol);
-    if (cfg) {
-      const model = state.model;
-      if (model && Array.isArray(model.values) && Array.isArray(model.mask)) {
-        let selectedValue = null;
-        if (isUserEntryConfig(cfg)) {
-          selectedValue = getUserEntryValueForCol(cfg, chartCol);
-        } else {
-          const excluded = buildExcludedSetForColumn(model, chartCol, cfg, ratioStrikeSet);
-          const summary = computeAverageForColumn(model, chartCol, excluded, cfg, ratioStrikeSet);
-          const isVolume = String(cfg.base || "volume").toLowerCase() === "volume";
-          const hasValue = summary.value !== null && (isVolume ? summary.sumA : summary.totalIncluded > 0);
-          selectedValue = hasValue ? summary.value : null;
-        }
-        if (selectedValue != null && Number.isFinite(selectedValue)) {
-          const t = (selectedValue - yMin) / (yMax - yMin);
-          const rawY = y1 - t * (y1 - y0);
-          const selectedY = Math.max(y0, Math.min(y1, rawY));
-          scale.selectedY = selectedY;
-          ctx.save();
-          ctx.strokeStyle = "#16a34a";
-          ctx.lineWidth = 1.4;
-          ctx.setLineDash([6, 4]);
-          ctx.beginPath();
-          ctx.moveTo(x0, selectedY);
-          ctx.lineTo(x1, selectedY);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.restore();
-          // Update HTML legend selected value
-          if (selValEl) {
-            const dashedIcon = selValEl.querySelector(".dfmLegendDashedLine");
-            selValEl.textContent = "";
-            if (dashedIcon) selValEl.appendChild(dashedIcon);
-            selValEl.appendChild(document.createTextNode(` Selected (${formatRatio(selectedValue, getDfmDecimalPlaces())})`));
-          }
-        }
+    const selectedValue = getSummaryRowValueForCol(getSelectedSummaryConfigForCol(chartCol), chartCol);
+    if (selectedValue != null) {
+      const t = (selectedValue - yMin) / (yMax - yMin);
+      const rawY = y1 - t * (y1 - y0);
+      const selectedY = Math.max(y0, Math.min(y1, rawY));
+      scale.selectedY = selectedY;
+      ctx.save();
+      ctx.strokeStyle = "#16a34a";
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x0, selectedY);
+      ctx.lineTo(x1, selectedY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      // Update HTML legend selected value
+      if (selValEl) {
+        const dashedIcon = selValEl.querySelector(".dfmLegendDashedLine");
+        selValEl.textContent = "";
+        if (dashedIcon) selValEl.appendChild(dashedIcon);
+        selValEl.appendChild(document.createTextNode(` Selected (${formatRatio(selectedValue, getDfmDecimalPlaces())})`));
       }
     }
+  }
+}
+
+// =============================================================================
+// Average formula strip
+// =============================================================================
+// Every average row's value for the chart column on one shared axis, so the
+// magnitudes read against each other and against the selected row's guide.
+export function buildRatioChartAverageRows(col) {
+  const rows = buildSummaryRows();
+  const selectedId = selectedSummaryByCol.get(col) || rows[0]?.id || "";
+  return rows.map((cfg) => ({
+    rowId: String(cfg.id || ""),
+    label: String(cfg.label || cfg.id || ""),
+    value: getSummaryRowValueForCol(cfg, col),
+    selected: String(cfg.id || "") === selectedId,
+  }));
+}
+
+// The axis spans the values with a little air at both ends; a lone value, or
+// values that all agree, still get a span so the dot has somewhere to sit.
+// Nothing develops at a ratio of 1 and nothing is left at 0, so an end within
+// reach of the reference the values stop at snaps onto it exactly: the strip
+// then begins, or finishes, on that line rather than a hair away from it.
+export function getRatioChartAverageAxis(values) {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return null;
+  const lowest = Math.min(...finite);
+  const highest = Math.max(...finite);
+  let min = lowest;
+  let max = highest;
+  const pad = max > min ? (max - min) * 0.08 : Math.max(Math.abs(min) * 0.01, 1e-6);
+  min -= pad;
+  max += pad;
+  const reach = (max - min) * RATIO_CHART_REFERENCE_REACH;
+  // The references the values never pass: the highest one they all sit on or
+  // above, and the lowest one they all sit on or below.
+  const floorValue = RATIO_CHART_REFERENCE_VALUES.filter((value) => value <= lowest).pop();
+  const ceilValue = RATIO_CHART_REFERENCE_VALUES.find((value) => value >= highest);
+  if (floorValue != null && Math.abs(min - floorValue) <= reach) min = floorValue;
+  if (ceilValue != null && Math.abs(max - ceilValue) <= reach) max = ceilValue;
+  const position = (value) => ((value - min) / (max - min)) * 100;
+  return { min, max, position };
+}
+
+// A round interval - 1, 2 or 5 at whatever scale the span calls for - so every
+// gridline lands on a figure a reader would have chosen: hundredths across a
+// tenth of development, whole units across a span of ten.
+export function niceAxisStep(raw) {
+  if (!(raw > 0)) return 0;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const normalized = raw / magnitude;
+  const rounded = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return rounded * magnitude;
+}
+
+// The gridlines, counted off from 1 when the span holds it and from a round
+// figure near the middle when it does not, and spaced widely enough that every
+// one of them can carry a label at the width the window currently has.
+export function buildRatioChartAxisTicks(axis, trackWidth) {
+  const span = axis ? axis.max - axis.min : 0;
+  if (!(span > 0)) return { step: 0, decimals: 0, ticks: [] };
+  const width = trackWidth > 0 ? trackWidth : RATIO_CHART_AXIS_LABEL_SPACING * 4;
+  // The narrowest interval whose lines still stand a label apart, rounded up to
+  // a round figure: the wider the window, the more lines it carries.
+  const step = niceAxisStep((span * RATIO_CHART_AXIS_LABEL_SPACING) / width);
+  if (!(step > 0)) return { step: 0, decimals: 0, ticks: [] };
+  const decimals = Math.max(0, Math.ceil(-Math.log10(step)));
+  const middle = axis.min + span / 2;
+  const anchor = RATIO_CHART_UNITY >= axis.min && RATIO_CHART_UNITY <= axis.max
+    ? RATIO_CHART_UNITY
+    : Math.round(middle / step) * step;
+  const first = anchor + Math.ceil((axis.min - anchor) / step) * step;
+  const ticks = [];
+  for (let value = first; value <= axis.max + step * 1e-9; value += step) {
+    // Counting up in floating point drifts, and a label reads 1.0500000000001
+    // as readily as it reads 1.05, so each figure is put back on its own step
+    // away from the anchor - not on a multiple of the step, which would shift
+    // the whole run off the figure it was counted from.
+    const steps = Math.round((value - anchor) / step);
+    const rounded = Number((anchor + steps * step).toFixed(10));
+    ticks.push({ value: rounded, position: axis.position(rounded) });
+  }
+  return { step, decimals, ticks };
+}
+
+function renderRatioChartAverages(col) {
+  const list = document.getElementById("dfmRatioChartAveragesList");
+  const axisTrack = document.getElementById("dfmRatioChartAveragesAxisTrack");
+  if (!list || !axisTrack) return;
+  const rows = buildRatioChartAverageRows(col);
+  const axis = getRatioChartAverageAxis(rows.map((row) => row.value));
+  const decimals = getDfmDecimalPlaces();
+  const selectedValue = rows.find((row) => row.selected)?.value;
+  const guideLeft = axis && Number.isFinite(selectedValue) ? `${axis.position(selectedValue)}%` : null;
+  // The axis strip is as wide as every row's track, so it can be measured for
+  // all of them before a single row is built.
+  const grid = buildRatioChartAxisTicks(axis, axisTrack.getBoundingClientRect().width);
+
+  list.replaceChildren(...rows.map((row) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dfmRatioChartAverageRow";
+    button.classList.toggle("selected", row.selected);
+    button.dataset.rowId = row.rowId;
+    button.setAttribute("aria-pressed", row.selected ? "true" : "false");
+    const label = document.createElement("span");
+    label.className = "dfmRatioChartAverageLabel";
+    label.textContent = row.label;
+    const track = document.createElement("span");
+    track.className = "dfmRatioChartAverageTrack";
+    for (const tick of grid.ticks) {
+      const line = document.createElement("span");
+      line.className = "dfmRatioChartAverageGridLine";
+      line.style.left = `${tick.position}%`;
+      track.appendChild(line);
+    }
+    if (guideLeft != null) {
+      const guide = document.createElement("span");
+      guide.className = "dfmRatioChartAverageGuide";
+      guide.style.left = guideLeft;
+      track.appendChild(guide);
+    }
+    if (axis && Number.isFinite(row.value)) {
+      const dot = document.createElement("span");
+      dot.className = "dfmRatioChartAverageDot";
+      dot.style.left = `${axis.position(row.value)}%`;
+      track.appendChild(dot);
+    }
+    const value = document.createElement("span");
+    value.className = "dfmRatioChartAverageValue";
+    value.textContent = Number.isFinite(row.value) ? formatRatio(row.value, decimals) : "";
+    button.append(label, track, value);
+    return button;
+  }));
+
+  axisTrack.replaceChildren(...grid.ticks.map((tick) => {
+    const el = document.createElement("span");
+    el.className = "dfmRatioChartAveragesAxisTick";
+    el.classList.toggle("unity", tick.value === RATIO_CHART_UNITY);
+    el.classList.toggle("atStart", tick.position < RATIO_CHART_LABEL_CLEARANCE);
+    el.classList.toggle("atEnd", tick.position > 100 - RATIO_CHART_LABEL_CLEARANCE);
+    el.style.left = `${tick.position}%`;
+    el.textContent = formatRatio(tick.value, grid.decimals);
+    return el;
+  }));
+
+  settleRatioChartAveragesLayout(list, rows.length);
+}
+
+// How much room the longest formula name asks for. The name is measured, not
+// the box it sits in: a box wider than its text reports its own width, which
+// would hold the column at whatever width it already had and grow it by the
+// air below on every render.
+function measureWidestAverageLabel(list) {
+  const range = document.createRange();
+  let widest = 0;
+  for (const label of list.querySelectorAll(".dfmRatioChartAverageLabel")) {
+    range.selectNodeContents(label);
+    widest = Math.max(widest, range.getBoundingClientRect().width);
+  }
+  return Math.ceil(widest);
+}
+
+// What the panel measures off the rows it has just drawn: the height ten of
+// them need, and the width the longest formula name needs. Both are given back
+// to the stylesheet, and a change to either is drawn again, because the plot
+// above and the gridlines across are sized from the room they leave.
+function settleRatioChartAveragesLayout(list, rowCount) {
+  const card = list.closest(".dfmModalCard");
+  const panel = list.closest(".dfmRatioChartAverages");
+  const row = list.firstElementChild;
+  if (!card || !panel || !row) return;
+  const rowHeight = row.getBoundingClientRect().height;
+  const chrome = panel.getBoundingClientRect().height - list.clientHeight;
+  if (rowHeight <= 0 || chrome < 0) return;
+  const visibleRows = Math.min(rowCount, RATIO_CHART_MIN_VISIBLE_ROWS);
+  const floor = `${Math.ceil(visibleRows * rowHeight + chrome)}px`;
+  const labelWidth = `${measureWidestAverageLabel(list) + RATIO_CHART_LABEL_AIR}px`;
+  const settled = card.style.getPropertyValue("--dfm-ratio-averages-min") === floor
+    && card.style.getPropertyValue("--dfm-ratio-averages-label-width") === labelWidth;
+  if (settled) return;
+  card.style.setProperty("--dfm-ratio-averages-min", floor);
+  card.style.setProperty("--dfm-ratio-averages-label-width", labelWidth);
+  scheduleRatioChartRender();
+}
+
+function selectAverageRowFromChart(rowId) {
+  const col = getRatioChartCol();
+  if (col == null || !rowId) return;
+  const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+  // The same path a click on the summary cell takes, so the table, the
+  // selected row, undo history, and the dirty flag all follow.
+  if (selectSummaryCell(summaryTable, rowId, col)) scheduleRatioChartRender();
+}
+
+function updateRatioChartHeaderText(col) {
+  const titleEl = document.getElementById("dfmRatioChartTitle");
+  const metaEl = document.getElementById("dfmRatioChartMeta");
+  if (titleEl) titleEl.textContent = `Ratios - ${getRatioColumnLabel(col)}`;
+  if (metaEl) {
+    const cfg = getSelectedSummaryConfigForCol(col);
+    const formulaLabel = cfg?.label || cfg?.id || "Selected";
+    metaEl.textContent = `Selected: ${formulaLabel} - ${getOriginLabelTextForRatio()}`;
   }
 }
 
@@ -1071,32 +1316,82 @@ function renderRatioChartNow() {
   reconcileProtectedExclusionsForChartColumn(col);
   const { labels, values, status } = buildRatioColumnSeries(col);
   renderRatioColumnChart(canvas, labels, values, status);
+  renderRatioChartAverages(col);
+  updateRatioChartHeaderText(col);
 }
 
-function applyRatioChartWindowOffset(card) {
+function applyRatioChartWindowFrame(card) {
   if (!card) return;
-  const { dx, dy } = ratioChartWindowOffset;
-  card.style.transform = (dx || dy) ? `translate(${dx}px,${dy}px)` : "";
+  const frame = ratioChartWindowFrame;
+  card.classList.toggle("dfmRatioChartPlaced", !!frame);
+  card.style.left = frame ? `${frame.left}px` : "";
+  card.style.top = frame ? `${frame.top}px` : "";
+  card.style.width = frame ? `${frame.width}px` : "";
+  card.style.height = frame ? `${frame.height}px` : "";
+}
+
+// =============================================================================
+// Plot and average formula panel splitter
+// =============================================================================
+function cssPixels(value) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getRatioChartSplitParts(card) {
+  const panes = card?.querySelector(".dfmRatioChartPanes");
+  const plot = card?.querySelector(".dfmRatioChartCanvasWrap");
+  const averages = card?.querySelector(".dfmRatioChartAverages");
+  const splitter = card?.querySelector(".dfmRatioChartSplitter");
+  if (!panes || !plot || !averages || !splitter) return null;
+  return { panes, plot, averages, splitter };
+}
+
+function applyRatioChartAveragesShare(card) {
+  if (!card) return;
+  if (ratioChartAveragesShare == null) card.style.removeProperty("--dfm-ratio-averages-share");
+  else card.style.setProperty("--dfm-ratio-averages-share", `${(ratioChartAveragesShare * 100).toFixed(3)}%`);
+}
+
+// The panel takes the height asked for, bounded by the rows it must keep on
+// screen and by the height the plot asks for, both read back from the
+// stylesheet, and is remembered as a share so a later window resize keeps the
+// split rather than the pixels.
+function setRatioChartAveragesHeight(card, parts, height) {
+  const { panes, averages, splitter } = parts;
+  const span = panes.getBoundingClientRect().height;
+  if (span <= 0) return;
+  const minHeight = cssPixels(getComputedStyle(averages).minHeight);
+  const plotMin = cssPixels(getComputedStyle(card).getPropertyValue("--dfm-ratio-plot-min"));
+  const maxHeight = span - plotMin - splitter.offsetHeight;
+  const bounded = Math.max(minHeight, Math.min(height, Math.max(minHeight, maxHeight)));
+  ratioChartAveragesShare = bounded / span;
+  splitter.setAttribute("aria-valuenow", String(Math.round(ratioChartAveragesShare * 100)));
+  applyRatioChartAveragesShare(card);
+  scheduleRatioChartRender();
+}
+
+// The first drag or resize takes the window out of the centered layout at
+// exactly the place and size it has on screen, so nothing jumps.
+function captureRatioChartWindowFrame(card) {
+  if (ratioChartWindowFrame) return;
+  const rect = card.getBoundingClientRect();
+  ratioChartWindowFrame = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  applyRatioChartWindowFrame(card);
 }
 
 // Pull the remembered window back if the DFM page shrank since the last drag,
 // so the header always stays reachable.
 function restoreRatioChartWindowPosition(card) {
   if (!card) return;
-  applyRatioChartWindowOffset(card);
-  const rect = card.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  const margin = 40;
-  let { dx, dy } = ratioChartWindowOffset;
-  const maxX = window.innerWidth - margin;
-  const maxY = window.innerHeight - margin;
-  if (rect.left > maxX) dx -= rect.left - maxX;
-  if (rect.right < margin) dx += margin - rect.right;
-  if (rect.top > maxY) dy -= rect.top - maxY;
-  if (rect.top < 0) dy -= rect.top;
-  if (dx === ratioChartWindowOffset.dx && dy === ratioChartWindowOffset.dy) return;
-  ratioChartWindowOffset = { dx, dy };
-  applyRatioChartWindowOffset(card);
+  if (ratioChartWindowFrame) {
+    const margin = 40;
+    const frame = { ...ratioChartWindowFrame };
+    frame.left = Math.max(margin - frame.width, Math.min(frame.left, window.innerWidth - margin));
+    frame.top = Math.max(0, Math.min(frame.top, window.innerHeight - margin));
+    ratioChartWindowFrame = frame;
+  }
+  applyRatioChartWindowFrame(card);
 }
 
 export function showRatioColumnChart(col) {
@@ -1110,15 +1405,7 @@ export function showRatioColumnChart(col) {
   clearRatioChartHover();
   const modal = getRatioChartModalEl();
   if (!modal) return;
-  const titleEl = document.getElementById("dfmRatioChartTitle");
-  const metaEl = document.getElementById("dfmRatioChartMeta");
-  const cfg = getSelectedSummaryConfigForCol(col);
-  if (titleEl) titleEl.textContent = `Ratios - ${getRatioColumnLabel(col)}`;
-  if (metaEl) {
-    const rowLabel = getOriginLabelTextForRatio();
-    const formulaLabel = cfg?.label || cfg?.id || "Selected";
-    metaEl.textContent = `Selected: ${formulaLabel} - ${rowLabel}`;
-  }
+  updateRatioChartHeaderText(col);
   modal.classList.add("open");
   restoreRatioChartWindowPosition(modal.querySelector(".dfmModalCard"));
   scheduleRatioChartRender();
@@ -1146,6 +1433,11 @@ export function wireRatioChartModal() {
     if (chartCol == null) return;
     includeAllRatiosForChartColumn(chartCol);
   });
+  document.getElementById("dfmRatioChartAveragesList")?.addEventListener("click", (e) => {
+    const row = e.target.closest(".dfmRatioChartAverageRow");
+    if (!row || row.classList.contains("selected")) return;
+    selectAverageRowFromChart(row.dataset.rowId);
+  });
 
   /* draggable window via header */
   const header = modal.querySelector(".dfmRatioChartHeader");
@@ -1155,12 +1447,13 @@ export function wireRatioChartModal() {
     let sx = 0, sy = 0;
     const onMove = (ev) => {
       if (ev.pointerId !== dragPointerId) return;
-      ratioChartWindowOffset = {
-        dx: ratioChartWindowOffset.dx + (ev.clientX - sx),
-        dy: ratioChartWindowOffset.dy + (ev.clientY - sy),
+      ratioChartWindowFrame = {
+        ...ratioChartWindowFrame,
+        left: ratioChartWindowFrame.left + (ev.clientX - sx),
+        top: ratioChartWindowFrame.top + (ev.clientY - sy),
       };
       sx = ev.clientX; sy = ev.clientY;
-      applyRatioChartWindowOffset(card);
+      applyRatioChartWindowFrame(card);
     };
     const stopDrag = (ev) => {
       if (dragPointerId == null) return;
@@ -1178,11 +1471,61 @@ export function wireRatioChartModal() {
       e.preventDefault();
       dragPointerId = e.pointerId;
       sx = e.clientX; sy = e.clientY;
+      captureRatioChartWindowFrame(card);
       try { header.setPointerCapture(e.pointerId); } catch { /* capture unsupported */ }
       header.addEventListener("pointermove", onMove);
       header.addEventListener("pointerup", stopDrag);
       header.addEventListener("pointercancel", stopDrag);
       header.addEventListener("lostpointercapture", stopDrag);
+    });
+  }
+  if (card) {
+    makeWindowResizable(card, {
+      onFrame: (frame) => {
+        ratioChartWindowFrame = frame;
+        applyRatioChartWindowFrame(card);
+        scheduleRatioChartRender();
+      },
+    });
+  }
+
+  /* the splitter that hands height between the plot and the formula panel */
+  const parts = getRatioChartSplitParts(card);
+  if (parts) {
+    const { averages, splitter } = parts;
+    let splitPointerId = null;
+    const onSplitMove = (ev) => {
+      if (ev.pointerId !== splitPointerId) return;
+      const bottom = averages.getBoundingClientRect().bottom;
+      setRatioChartAveragesHeight(card, parts, bottom - ev.clientY - splitter.offsetHeight / 2);
+    };
+    const stopSplit = (ev) => {
+      if (splitPointerId == null) return;
+      if (ev && ev.pointerId != null && ev.pointerId !== splitPointerId) return;
+      try { splitter.releasePointerCapture(splitPointerId); } catch { /* already released */ }
+      splitPointerId = null;
+      splitter.classList.remove("dragging");
+      splitter.removeEventListener("pointermove", onSplitMove);
+      splitter.removeEventListener("pointerup", stopSplit);
+      splitter.removeEventListener("pointercancel", stopSplit);
+      splitter.removeEventListener("lostpointercapture", stopSplit);
+    };
+    splitter.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || splitPointerId != null) return;
+      e.preventDefault();
+      splitPointerId = e.pointerId;
+      splitter.classList.add("dragging");
+      try { splitter.setPointerCapture(e.pointerId); } catch { /* capture unsupported */ }
+      splitter.addEventListener("pointermove", onSplitMove);
+      splitter.addEventListener("pointerup", stopSplit);
+      splitter.addEventListener("pointercancel", stopSplit);
+      splitter.addEventListener("lostpointercapture", stopSplit);
+    });
+    splitter.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const step = e.key === "ArrowUp" ? RATIO_CHART_SPLITTER_STEP : -RATIO_CHART_SPLITTER_STEP;
+      setRatioChartAveragesHeight(card, parts, averages.getBoundingClientRect().height + step);
     });
   }
   const canvas = getRatioChartCanvas();

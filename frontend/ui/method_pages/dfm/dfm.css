@@ -1320,11 +1320,33 @@ body {
 .dfmRatioChartModal .dfmModalBackdrop { background: transparent; }
 .dfmRatioChartModal .dfmModalCard {
   pointer-events: auto;
+  display: flex;
+  flex-direction: column;
   width: min(900px, 92vw);
+  height: min(700px, 88vh);
   min-width: 520px;
+  min-height: 440px;
   padding: 14px 18px 18px;
+  box-sizing: border-box;
+  /* Share of the plot/averages area the average formula panel takes. The
+     splitter overwrites it on the card, so the panel keeps its share of the
+     window at every size the window is dragged to. */
+  --dfm-ratio-averages-share: 40%;
+  /* The panel never shrinks below this, and the strip rewrites it to the
+     height of the rows it must keep on screen. */
+  --dfm-ratio-averages-min: 96px;
+  /* How much the plot asks for. The splitter never takes it below this; only
+     a window too short for both minimums does. */
+  --dfm-ratio-plot-min: 140px;
+  --dfm-ratio-splitter-height: 6px;
+}
+/* Once dragged or resized the window keeps a pixel frame of its own instead
+   of the centered layout; the resize handles read the minimums above. */
+.dfmRatioChartModal .dfmModalCard.dfmRatioChartPlaced {
+  position: absolute;
 }
 .dfmRatioChartHeader {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1432,13 +1454,59 @@ body {
 .dfmRatioChartClose:hover {
   background: #eef2f7;
 }
+  /* The plot and the average formula panel split the space under the header;
+     the splitter between them moves the boundary and the window resize moves
+     both, because each keeps its share. */
+  .dfmRatioChartPanes {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* The gap between the two frames is the whole handle: empty until the
+     pointer is over it, when one blue line the width of the window says where
+     the boundary will move. */
+  .dfmRatioChartSplitter {
+    flex: 0 0 auto;
+    position: relative;
+    height: var(--dfm-ratio-splitter-height, 6px);
+    cursor: row-resize;
+    touch-action: none;
+  }
+  .dfmRatioChartSplitter::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    border-radius: 1px;
+    transform: translateY(-50%);
+    background: transparent;
+  }
+  .dfmRatioChartSplitter:hover::before,
+  .dfmRatioChartSplitter.dragging::before {
+    background: var(--ar-color-accent, #2b6df6);
+  }
+  .dfmRatioChartSplitter:focus-visible {
+    outline: 1px solid var(--ar-color-accent, #2b6df6);
+    outline-offset: -1px;
+  }
+  /* The plot gives way when the window is too short to hold both its own
+     preferred minimum and the rows the panel must keep showing, so the two
+     can never add up to more than the panes and spill out of the window. */
   .dfmRatioChartCanvasWrap {
-    height: 420px;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
     padding: 8px;
     background: #ffffff;
     position: relative;
+    /* Both panes measure border to border, so the splitter's arithmetic and
+       the panel's max-height below hold their own frame and cannot overflow. */
+    box-sizing: border-box;
   }
   #dfmRatioChartCanvas {
     width: 100%;
@@ -1467,6 +1535,157 @@ body {
     font-size: 11px;
     color: #d1d5db;
   }
+/* Average formula strip: one dot per average row on a shared axis, the
+   selected row's value carried across every row as the same dashed green
+   guide the chart above draws. */
+.dfmRatioChartAverages {
+  /* Its share of the panes, never so tall that the plot loses the height it
+     asks for, and never shorter than the rows it must keep on screen - that
+     floor wins over the cap when the window cannot satisfy both. */
+  flex: 0 0 var(--dfm-ratio-averages-share, 40%);
+  min-height: var(--dfm-ratio-averages-min, 96px);
+  max-height: calc(100% - var(--dfm-ratio-plot-min, 140px) - var(--dfm-ratio-splitter-height, 6px));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 6px 8px 4px;
+  background: var(--ar-chart-background, #ffffff);
+  color: var(--ar-color-text, #1f2937);
+  font: 11px/16px Arial, "Segoe UI", sans-serif;
+}
+.dfmRatioChartAveragesHeader {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.dfmRatioChartAveragesTitle {
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #4b5563);
+}
+.dfmRatioChartAveragesList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.dfmRatioChartAverageRow,
+.dfmRatioChartAveragesAxis {
+  display: grid;
+  /* The name column is measured from the longest formula name on screen; the
+     cap here keeps a long one from eating the track it labels. */
+  grid-template-columns:
+    min(var(--dfm-ratio-averages-label-width, 160px), 45%)
+    minmax(0, 1fr)
+    72px;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+.dfmRatioChartAverageRow {
+  height: 20px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+.dfmRatioChartAverageRow:hover {
+  background: var(--ar-color-surface-hover, #f4f7fa);
+}
+.dfmRatioChartAverageRow:focus-visible {
+  outline: 1px solid var(--ar-color-accent, #2b6df6);
+  outline-offset: -1px;
+}
+.dfmRatioChartAverageRow.selected {
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  cursor: default;
+}
+.dfmRatioChartAverageRow.selected .dfmRatioChartAverageLabel {
+  font-weight: 700;
+}
+.dfmRatioChartAverageLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dfmRatioChartAverageTrack {
+  position: relative;
+  height: 100%;
+  border-left: 1px solid var(--ar-chart-dfm-grid, #eef2f7);
+  border-right: 1px solid var(--ar-chart-dfm-grid, #eef2f7);
+}
+/* One line per labelled figure on the axis below, all of them alike, so a
+   dot's place can be read off the strip without following it down. */
+.dfmRatioChartAverageGridLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--ar-chart-dfm-grid, #eef2f7);
+}
+.dfmRatioChartAverageGuide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed #16a34a;
+}
+.dfmRatioChartAverageDot {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ar-chart-dfm-point-border, #94a3b8);
+  background: var(--ar-chart-dfm-selection-fill, #ffffff);
+  box-shadow: 0 0 0 2px var(--ar-chart-background, #ffffff);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+.dfmRatioChartAverageRow.selected .dfmRatioChartAverageDot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #16a34a;
+  background: #2563eb;
+}
+.dfmRatioChartAverageValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dfmRatioChartAveragesAxis {
+  flex: 0 0 auto;
+  height: 16px;
+  font-size: 10px;
+  color: var(--ar-color-text-muted, #6b7280);
+}
+.dfmRatioChartAveragesAxisTrack {
+  position: relative;
+  height: 100%;
+}
+.dfmRatioChartAveragesAxisTick {
+  position: absolute;
+  top: 0;
+  line-height: 16px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+/* The ticks are written in no particular order, so each one is aligned by
+   where it sits rather than by its turn among its siblings. */
+.dfmRatioChartAveragesAxisTick.atStart { transform: none; }
+.dfmRatioChartAveragesAxisTick.atEnd { transform: translateX(-100%); }
+/* The gridlines are all alike; a ratio of 1 is called out in its label alone. */
+.dfmRatioChartAveragesAxisTick.unity {
+  color: var(--ar-color-text, #1f2937);
+  font-weight: 700;
+}
 #ratioWrap .ratioSummaryTable tr {
   transition: transform 160ms ease;
   will-change: transform;
