@@ -26,7 +26,6 @@ Routes:
 - `app_server/services/dfm_rpc_bridge_service.py` - Path resolution, request-file writes, wait/compare/apply/update-remote behavior.
 - `ui/method_pages/dfm/dfm_rpc_bridge_client.js` - Frontend route calls and sync flow.
 - `ui/method_pages/dfm/dfm_rpc_bridge_dialog.js` - Floating comparison/status UI.
-- `ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js` - DFM tab-bar Sync button.
 <!-- MANUAL:END -->
 
 ## External Interfaces

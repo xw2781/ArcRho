@@ -73,7 +73,6 @@ import {
   buildDfmMethodPayload,
 } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260910a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260907a";
-import { wireDfmRpcBridgeTabBar } from "/ui/method_pages/dfm/dfm_rpc_bridge_tabbar.js?v=20260907a";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260907a";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
@@ -621,7 +620,6 @@ export function initDfmRatios() {
     syncMethodNameFromInputs();
     syncOutputTypeFromProject();
   }
-  wireDfmRpcBridgeTabBar();
   if (!persistedDfmBootstrap) {
     setTimeout(() => {
       syncOutputTypeFromProject();

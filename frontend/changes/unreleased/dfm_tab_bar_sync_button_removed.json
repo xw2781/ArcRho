@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The sync icon has been removed from the DFM tab bar.",
+  "details": [
+    "The tab bar now ends with the tabs themselves, and nothing else about a DFM changes."
+  ]
+}
