@@ -1,7 +1,7 @@
 # Generated formula dependencies and scoped source refresh
 
-Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 6 of 7 done, a one-off script now repairs the links of the projects that already exist (2026-09-12). Only the deploy and the runs on the server are left.
-Last updated: 2026-09-12
+Status: Broken into 7 session-sized steps on 2026-09-11, no decisions open; 6 of 7 done, a one-off script now repairs the links of the projects that already exist (2026-09-12). The Bridge, the Engine and the Gateway were deployed on 2026-09-13; only the repair runs and the checks on the Server PC are left.
+Last updated: 2026-09-13
 
 ## Progress
 
@@ -15,7 +15,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | Importing source data for one dataset type also rebuilds the formula datasets that use it | [x] | 2026-09-12 | Importing source data for chosen dataset types now rebuilds the datasets built from them by formula, and the formulas built on those, in every reserving class the import covers, then refreshes the methods that read them; saving Data Processing Rules does the same. |
 | 5 | The Dependency Graph draws the formula links and marks a generated formula | [x] | 2026-09-12 | The Dependency Graph now marks a dataset built by a formula as Generated, in its own colour, and draws arrows from the datasets it is made from, so clicking one of those inputs lights the formula and every method that reads it; those inputs are drawn straight away instead of waiting for the Show all box. |
 | 6 | A one-off script fixes the links of the few existing projects | [x] | 2026-09-12 | Nothing changes on its own, but there is now a one-off repair that can be run over a project that already exists so its formula-built datasets list what they are made from and what reads them, without touching anything else in the file and without marking any method for review. |
-| 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | | |
+| 7 | Released to the server, the existing projects fixed, and the fake project checked | [ ] | 2026-09-13 | In progress: the change is live on the server; the repair of the projects that already exist and the checks in the app still have to be done at the server machine. |
 
 Overall: 6 of 7 steps done.
 
@@ -215,12 +215,16 @@ Steps 1 and 2 come first and in order. Steps 3, 4, 5, and 6 are independent of o
 
 **Do.**
 
-- [ ] Check the build listener heartbeat names its own clone, then run `python server-components/deploy.py` with no arguments; expect the Bridge, the Engine, and the Gateway to be stale.
-- [ ] Confirm the deployed canonical copies carry the step 2 runtime change and the step 4 expansion.
+- [x] Check the build listener heartbeat names its own clone, then run `python server-components/deploy.py` with no arguments; expect the Bridge, the Engine, and the Gateway to be stale.
+- [x] Confirm the deployed canonical copies carry the step 2 runtime change and the step 4 expansion.
 - [ ] On the Server PC, run the step 6 script against `NJ_Annual_Prod_202605_Fake` without `--apply`, read the report, then with `--apply`; record both counts in this plan.
 - [ ] Hand the user the report-only command for the other projects; those `--apply` runs are theirs, and the counts they report go into this plan too.
 - [ ] On the fake project: open Details on Earned Premium and Total Earned Premium; open the Dependency Graph on the default class and press Refresh; run Import Data scoped to Earned Premium only, then confirm Total Earned Premium's cache and sidecar timestamps moved and `D 13` refreshed.
 - [ ] Record what was observed, and move the plan to `completed/` with its README row, as [README.md](README.md) describes.
+
+**Deploy, 2026-09-13.** The build listener's newest heartbeat named its own clone `E:\XWSpace\Repos\ArcRho-buildbot`. `deploy.py --stale` reported the Bridge, the Engine and the Gateway stale, as expected, and also the Credential Installer, which earlier committed work had made stale and which was left alone. `python server-components/deploy.py bridge engine gateway` built and deployed all three at 06:00-06:01 UTC. Verified afterwards: the Engine's and the Gateway's `arcrho_canonical` copies of `arcrho_runtime_service.py` carry the step 2 call, their `arcrho_source_refresh_contract.py` carries the step 4 `dataset_types_expanded` field, the Gateway's `dataset_type_contract.py` carries the step 1 graph helper, and the Bridge's bundled `resq_migration/catalog.py` is byte-identical to the working tree.
+
+The remaining boxes need the Server PC: the repair script walks a project's classes over local disk, and the Details, Dependency Graph and scoped-import checks are done in the app.
 
 **Tests.** None new; this step observes the live system.
 
