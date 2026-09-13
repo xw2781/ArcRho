@@ -1,4 +1,13 @@
-"""Canonical first-run enrollment for the hosted-save HTTP pilot."""
+"""Canonical first-run enrollment for the ArcRho Gateway credential.
+
+Two callers install a credential for the logged-in Windows user: the desktop
+app, as its app server starts, and the small frozen helper the Excel add-in
+runs when it finds no credential on the PC. Both call :func:`enroll_once`, so
+the "enroll once" policy — an existing local file is authoritative, the shared
+registry's URL is the only URL, that URL is probed before anything is written,
+and a failure before enrollment leaves no file — is written here and nowhere
+else.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +16,11 @@ import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
+from urllib.request import ProxyHandler, Request, build_opener
 
 from arcrho_hosted_save_http_contract import (
+    CAPABILITIES_PATH,
     HostedSaveHttpContractError,
     default_gateway_config,
     generate_secret,
@@ -24,6 +35,9 @@ from .io import write_json_atomic
 
 LOCK_TIMEOUT_SECONDS = 10.0
 LOCK_RETRY_SECONDS = 0.05
+PROBE_TIMEOUT_SECONDS = 2.0
+# A workstation proxy must not be consulted for the server's own address.
+_DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
 
 
 def _read_object(path: Path, *, missing: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -146,3 +160,60 @@ def provision_gateway_user(
         }
         write_json_atomic(local_path, client)
     return server_path, local_path
+
+
+def probe_gateway_url(client_url: str) -> dict[str, Any]:
+    """Ask the Gateway for its capabilities, so a dead address writes no file."""
+
+    request = Request(
+        f"{client_url}{CAPABILITIES_PATH}",
+        method="GET",
+        headers={"Accept": "application/json"},
+    )
+    with _DIRECT_HTTP_OPENER.open(request, timeout=PROBE_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise HostedSaveHttpContractError("Gateway capabilities must be an object.")
+    return payload
+
+
+def enroll_once(
+    *,
+    server_root: str | os.PathLike[str],
+    client_output: str | os.PathLike[str],
+    user: str,
+    probe: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    """Install this user's credential unless the PC already carries one.
+
+    An existing local file is authoritative, including an explicit
+    ``enabled: false`` opt-out, which is a deliberate choice rather than a
+    missing credential. The shared registry owns the URL; a caller never
+    supplies one. Every failure leaves the local file absent, so the next
+    launch simply tries again.
+
+    ``probe`` is how the caller reaches the Gateway. The app server passes its
+    own, so an unreachable Gateway becomes the HTTP status that transport
+    already answers with; every other caller takes :func:`probe_gateway_url`.
+    """
+
+    local_path = Path(client_output).expanduser()
+    if local_path.is_file():
+        return {"status": "existing", "path": str(local_path)}
+
+    reach = probe_gateway_url if probe is None else probe
+    try:
+        gateway = load_server_gateway_config(server_root)
+        client_url = str(gateway.get("client_url") or "").strip()
+        if not client_url:
+            return {"status": "not_configured"}
+        reach(client_url)
+        _, installed_path = provision_gateway_user(
+            server_root=server_root,
+            user=user,
+            client_output=local_path,
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure must leave no credential
+        return {"status": "unavailable", "reason": str(exc)}
+
+    return {"status": "enrolled", "path": str(installed_path), "url": client_url}

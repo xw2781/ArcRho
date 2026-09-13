@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import socket
 import sys
 import winreg
 from pathlib import Path
@@ -19,10 +18,7 @@ for path in (API_SOURCE,):
 
 from arcrho_api.config import config_dir, get_server_root  # noqa: E402
 from arcrho_api.hosted_save_enrollment import provision_gateway_user  # noqa: E402
-from arcrho_hosted_save_http_contract import (  # noqa: E402
-    CLIENT_CONFIG_FILE_NAME,
-    default_gateway_config,
-)
+from arcrho_hosted_save_http_contract import CLIENT_CONFIG_FILE_NAME  # noqa: E402
 
 
 # The literal value the pilot wrote, under the component's old name. This is
@@ -34,7 +30,7 @@ STARTUP_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def configure(
-    *, server_root: Path, user: str, url: str, client_output: Path
+    *, server_root: Path, user: str, url: str | None, client_output: Path
 ) -> tuple[Path, Path]:
     return provision_gateway_user(
         server_root=server_root,
@@ -68,6 +64,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--server-root")
     parser.add_argument("--user", default=os.environ.get("USERNAME", ""))
+    # Left out, the shared registry's own client URL is used. Never fall back
+    # to this machine's name: run from a Client PC that would register the
+    # client as the server and lock every other user out.
     parser.add_argument("--url")
     parser.add_argument("--client-output")
     return parser
@@ -80,7 +79,6 @@ def main() -> int:
         if args.server_root
         else get_server_root(required=True)
     )
-    url = args.url or f"http://{socket.getfqdn()}:{default_gateway_config()['port']}"
     client_output = (
         Path(args.client_output).expanduser()
         if args.client_output
@@ -89,7 +87,7 @@ def main() -> int:
     server_path, local_path = configure(
         server_root=root,
         user=args.user,
-        url=url,
+        url=args.url,
         client_output=client_output,
     )
     print(f"Gateway server configuration updated: {server_path}")

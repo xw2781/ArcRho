@@ -506,5 +506,31 @@ class ServerContractTests(unittest.TestCase):
             self.assertIn("ensure_python_310_venv", source, role)
 
 
+class CredentialHelperRoleTests(unittest.TestCase):
+    """The helper a client runs to give its own PC a Gateway credential.
+
+    It is deployed from the repository like the Gateway, so it is not part of
+    the offline installer's payload; and nothing supervises it, so it must own
+    no instance role or the Orchestrator would look for a heartbeat it never
+    writes.
+    """
+
+    ROLE = "credential"
+
+    def test_it_is_deployed_but_not_installed(self):
+        self.assertIn(self.ROLE, utils.DEPLOYED_COMPONENT_ROLES)
+        self.assertNotIn(self.ROLE, utils.SERVER_COMPONENT_ROLES)
+        self.assertNotIn(self.ROLE, {item.role for item in SERVER_COMPONENTS})
+
+    def test_it_owns_no_instance_role(self):
+        import arcrho_build_components
+
+        component = arcrho_build_components.component_by_key(self.ROLE)
+        self.assertEqual(component.instance_roles, ())
+        self.assertEqual(
+            component.deploy_exe.name, f"{utils.component_app_name(self.ROLE)}.exe"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

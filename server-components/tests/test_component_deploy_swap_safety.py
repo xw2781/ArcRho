@@ -38,8 +38,10 @@ from utils import DEPLOYED_COMPONENT_ROLES
 
 
 # Roles whose live process is not the component itself, so a stop is not
-# available. Each must instead recover from the failed rename.
-IN_PLACE_FALLBACK_ROLES = frozenset({"launcher"})
+# available. Each must instead recover from the failed rename. The Launcher is
+# pinned by whichever app inherited its folder; the Credential helper is a
+# client's own short-lived run, started on demand and supervised by nothing.
+IN_PLACE_FALLBACK_ROLES = frozenset({"launcher", "credential"})
 
 
 def _build_script(role: str) -> Path:

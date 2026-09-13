@@ -43,6 +43,10 @@ COMPONENTS = {
         "dirs": ("arcrho_gateway",),
         "apps": ("ArcRho Gateway",),
     },
+    "credential": {
+        "dirs": ("arcrho_credential",),
+        "apps": ("ArcRho Credential",),
+    },
 }
 
 COMPONENT_ALIASES = {
@@ -62,6 +66,7 @@ COMPONENT_ALIASES = {
     "bridge_worker": "bridge_worker",
     "rpc_bridge_worker": "bridge_worker",
     "gateway": "gateway",
+    "credential": "credential",
 }
 
 SERVER_COMPONENT_ROLES = (
@@ -73,10 +78,13 @@ SERVER_COMPONENT_ROLES = (
 )
 
 # Every role that owns an app folder under ``<workspace>/apps``. The offline
-# installer ships SERVER_COMPONENT_ROLES; Gateway is deployed straight from the
-# repository, so it belongs to the deployed set without being part of the
-# installed payload.
-DEPLOYED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "gateway")
+# installer ships SERVER_COMPONENT_ROLES; the Gateway and the Credential helper
+# are deployed straight from the repository, so they belong to the deployed set
+# without being part of the installed payload. The Credential helper is run on
+# demand by a client — the Excel add-in starts it when the PC has no Gateway
+# credential — so, like the Launcher, it is never supervised and owns no
+# instance role.
+DEPLOYED_COMPONENT_ROLES = (*SERVER_COMPONENT_ROLES, "gateway", "credential")
 
 
 def _configured_root() -> Path | None:

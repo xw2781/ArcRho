@@ -147,11 +147,15 @@ def _role_bundled_roots(role: str) -> tuple[Path, ...]:
         return BUNDLED_SOURCE_ROOTS
     if role in ("engine", "gateway"):
         return _ENGINE_BUNDLED_ROOTS
+    if role == "credential":
+        # It freezes the canonical enrollment, so an edit there leaves the
+        # deployed helper stale even though its own folder is untouched.
+        return (REPOSITORY_ROOT / "python-api" / "src",)
     return ()
 
 
 def _build_component(role: str) -> Component:
-    if role == "launcher":
+    if role in ("launcher", "credential"):
         instance_roles: tuple[str, ...] = ()
     elif role == "bridge":
         instance_roles = ("arcrho_bridge", "arcrho_bridge_worker")

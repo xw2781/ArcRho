@@ -19,6 +19,10 @@ Private Sub Workbook_Open()
     
     Set processedCells = New Collection
     Set processedArrays = New Collection
+
+    ' A PC that has never been given access to the ArcRho Server gives itself
+    ' access here, once, before any formula asks for figures.
+    EnsureGatewayCredential
     
     ' StartPendingWatcher
     

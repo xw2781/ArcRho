@@ -65,6 +65,9 @@ Private Const HEADER_USER As String = "X-ArcRho-User"
 Private Const HEADER_TIMESTAMP As String = "X-ArcRho-Timestamp"
 Private Const HEADER_SIGNATURE As String = "X-ArcRho-Signature"
 Private Const GATEWAY_CONFIG_FILE As String = "ArcRho\arcrho_gateway.json"
+' The helper on the ArcRho Server that gives this PC its own credential. The
+' share is what proves who is asking, so the work happens there and not here.
+Private Const CREDENTIAL_HELPER As String = "apps\ArcRho Credential\ArcRho Credential.exe"
 
 Private gatewayConfigRead As Boolean
 Private gatewayEnabled As Boolean
@@ -72,6 +75,7 @@ Private gatewayUrl As String
 Private gatewayUser As String
 Private gatewaySecret As String
 Private gatewayRequest As Object
+Private credentialInstallTried As Boolean
 Private gatewayCapabilities As Object
 Private gatewayServesCsv As Boolean
 Private gatewayServesCsvRead As Boolean
@@ -496,6 +500,55 @@ Private Sub EnsureGatewayConfig()
     gatewayUser = Trim$(CStr(credential("user")))
     gatewaySecret = Trim$(CStr(credential("secret")))
     gatewayEnabled = (Len(gatewayUrl) > 0 And Len(gatewayUser) > 0 And Len(gatewaySecret) > 0)
+End Sub
+
+' Give this PC its own access to the ArcRho Server when it has none. Called as
+' the add-in loads and never from a worksheet function, so a formula can only
+' ever find the answer already there.
+'
+' It is tried once per Excel session: a PC away from the office should pay one
+' short failure at startup, not one per launch, and certainly not one per
+' formula. A file that is already here is the answer whatever it says, because
+' a credential turned off is a deliberate choice and not a missing one.
+Public Sub EnsureGatewayCredential()
+    Dim helperPath As String
+    Dim shell As Object
+
+    If credentialInstallTried Then Exit Sub
+    credentialInstallTried = True
+
+    On Error GoTo CleanExit
+    If Len(Dir$(Environ$("APPDATA") & "\" & GATEWAY_CONFIG_FILE)) > 0 Then Exit Sub
+
+    ' The first look at the share. When it cannot be reached this fails here,
+    ' before anything is shown or started, and the session simply goes on.
+    helperPath = ProductPath(CREDENTIAL_HELPER)
+    If Len(Dir$(helperPath)) = 0 Then Exit Sub
+
+    ufLoading.UpdateText "Setting this PC up to read ArcRho data ..."
+    ufLoading.Show vbModeless
+    DoEvents
+
+    Set shell = CreateObject("WScript.Shell")
+    shell.Run """" & helperPath & """ """ & ProductRootPath() & """", 0, True
+
+    ' Whatever the helper did, this session has not looked at the credential
+    ' yet, so let the first formula read what is there now.
+    ClearGatewayConfigCache
+
+CleanExit:
+    On Error Resume Next
+    Unload ufLoading
+    ufLoading.Reset
+End Sub
+
+' Forget this session's answer about the credential.
+Public Sub ClearGatewayConfigCache()
+    gatewayConfigRead = False
+    gatewayEnabled = False
+    gatewayUrl = ""
+    gatewayUser = ""
+    gatewaySecret = ""
 End Sub
 
 ' One request object for the session, so a formula does not rebuild the
