@@ -1,5 +1,11 @@
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
+import {
+  STATUS_CURRENT,
+  STATUS_REVIEW_NEEDED,
+  normalizeReviewStatus,
+  statusNeedsReview,
+} from "/ui/shared/dataset/review_status.js";
 import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
 import {
   BERQUIST_SHERMAN_VARIANTS,
@@ -912,19 +918,14 @@ function getMethodType(row) {
   return cachedDatasetFilter.methodTypesByName.get(normalizeLookupKey(getDatasetName(row))) || "None";
 }
 
-function normalizeDatasetStatus(value) {
-  const status = Number(value);
-  return status === 2 ? 2 : 0;
-}
-
 function getDatasetStatusLabel(status) {
-  return normalizeDatasetStatus(status) === 2 ? "Needs review" : "Updated";
+  return statusNeedsReview(status) ? "Needs review" : "Updated";
 }
 
 function getDatasetStatus(record, instanceName = "") {
   const name = instanceName || record?.datasetName || getDatasetName(record?.row);
   const meta = record?.meta || getCachedDatasetMetadataByName(name) || getCachedDatasetMetadata(record?.row);
-  return normalizeDatasetStatus(meta?.status ?? record?.instance?.status ?? record?.status);
+  return normalizeReviewStatus(meta?.status ?? record?.instance?.status ?? record?.status);
 }
 
 function getCachedDatasetMetadata(row) {
@@ -1168,6 +1169,14 @@ function getBerquistShermanRecordVariant(record) {
 
 function isBerquistShermanDatasetRecord(record) {
   return !!getBerquistShermanRecordVariant(record);
+}
+
+function isMethodDatasetRecord(record) {
+  // Every method type the index can report, without naming them one by one:
+  // a row a method wrote carries something other than "None" here, and only
+  // such a row has a review flag to set.
+  const methodType = normalizeLookupKey(getDatasetRecordValue(record, "methodType"));
+  return !!methodType && methodType !== "none";
 }
 
 function isDfmVectorDatasetRecord(record) {
@@ -1810,7 +1819,7 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
 
 function getDatasetStatusIconSvg(status) {
   // The shared glyphs, so the Excel Link Manager's Status column reads the same.
-  return reviewStatusIconSvg(normalizeDatasetStatus(status) === 2);
+  return reviewStatusIconSvg(statusNeedsReview(status));
 }
 
 function getTemporaryDatasetStatusIconSvg(isIndexed) {
@@ -1840,9 +1849,9 @@ function appendDatasetStatusCell(td, item) {
   const status = getDatasetStatus(item);
   const label = getDatasetStatusLabel(status);
   const wrap = document.createElement("span");
-  wrap.className = `pi-status-cell ${status === 2 ? "warning" : "updated"}`;
-  wrap.title = status === 2
-    ? "Needs review because an input dependency was updated after this method output."
+  wrap.className = `pi-status-cell ${statusNeedsReview(status) ? "warning" : "updated"}`;
+  wrap.title = statusNeedsReview(status)
+    ? "Needs review because an input dependency was updated after this method output, or because it was marked for review."
     : "Dataset is updated.";
   wrap.setAttribute("aria-label", label);
   wrap.innerHTML = getDatasetStatusIconSvg(status);
@@ -2347,6 +2356,20 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
       ? ""
       : "Berquist Sherman methods can be added only to annual triangles with Method Type None.";
   }
+  // Only a method output has a review flag, so a selection that holds none
+  // shows neither item. Marking for review is offered only when every method
+  // row in the selection is already up to date; a selection that mixes the
+  // two states -- or is entirely flagged -- offers clearing the flag instead,
+  // so one click lands the whole selection on the same status.
+  const reviewRecords = temporaryView || emptyContext
+    ? []
+    : getDatasetRowActionRecords().filter(isMethodDatasetRecord);
+  const offerMarkForReview = reviewRecords.length > 0
+    && reviewRecords.every((record) => getDatasetStatus(record) === STATUS_CURRENT);
+  const markForReviewItem = menu.querySelector("[data-row-action='mark-for-review']");
+  if (markForReviewItem) markForReviewItem.hidden = !offerMarkForReview;
+  const setReviewedItem = menu.querySelector("[data-row-action='set-reviewed']");
+  if (setReviewedItem) setReviewedItem.hidden = offerMarkForReview || !reviewRecords.length;
   const selectedCount = emptyContext ? 0 : getSelectedDatasetRecords().length;
   const deleteItem = menu.querySelector("[data-row-action='delete']");
   if (deleteItem) {
@@ -2862,6 +2885,64 @@ async function deleteSelectedDatasetRows(records) {
   }
 }
 
+async function setDatasetRowsReviewStatus(records, needsReview) {
+  // A row no method wrote has no review flag; the menu already hides the
+  // items for such a selection, and this keeps a mixed selection acting only
+  // on the method outputs inside it.
+  const names = (records || [])
+    .filter(isMethodDatasetRecord)
+    .map((record) => toText(record?.datasetName))
+    .filter(Boolean);
+  if (!projectName || !state.selectedPath || !names.length) return;
+  const label = names.length === 1 ? names[0] : `${names.length} objects`;
+  const title = needsReview ? "Marking for review" : "Setting reviewed";
+  setStatus(`${needsReview ? "Marking" : "Clearing"} the review flag for ${label}...`);
+  beginPageLoading("review-status", {
+    title,
+    message: `Updating the review status of ${label}...`,
+  });
+  try {
+    const resp = await fetch("/datasets/review-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_name: projectName,
+        reserving_class: state.selectedPath,
+        dataset_names: names,
+        status: needsReview ? STATUS_REVIEW_NEEDED : STATUS_CURRENT,
+      }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok || payload?.ok === false) {
+      const detail = payload?.detail;
+      throw new Error(
+        (typeof detail === "string" ? detail : "") || payload?.message || `Review status failed (${resp.status})`
+      );
+    }
+    // The sidecar writes changed the reserving-class folder, so the index the
+    // reload asks for is rebuilt; the suppression window keeps the poll from
+    // offering a Refresh Table prompt for the write the user just made.
+    state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
+    await loadCachedDatasetFilterForSelectedPath();
+    state.datasetIndexWatch.pending = false;
+    syncCachedDatasetToolbar();
+    renderDatasetTable();
+    const updated = Array.isArray(payload?.updated) ? payload.updated.length : 0;
+    const noun = updated === 1 ? "object" : "objects";
+    setStatus(
+      updated
+        ? (needsReview
+          ? `Marked ${updated} ${noun} for review.`
+          : `Set ${updated} ${noun} to reviewed.`)
+        : "No review status changes were needed."
+    );
+  } catch (err) {
+    setStatus(toText(err?.message) || "Failed to update the review status.", true);
+  } finally {
+    finishPageLoading("review-status");
+  }
+}
+
 function applyDatasetRowContextAction(action) {
   const normalized = toText(action);
   const records = getDatasetRowActionRecords();
@@ -2902,6 +2983,10 @@ function applyDatasetRowContextAction(action) {
     addBerquistShermanForDataset(viewRecord, "sr");
   } else if (normalized === "add-berquist-sherman-cra") {
     addBerquistShermanForDataset(viewRecord, "cra");
+  } else if (normalized === "mark-for-review") {
+    void setDatasetRowsReviewStatus(records, true);
+  } else if (normalized === "set-reviewed") {
+    void setDatasetRowsReviewStatus(records, false);
   } else if (normalized === "delete") {
     void deleteSelectedDatasetRows(records);
   }
@@ -3517,6 +3602,7 @@ async function loadDatasets() {
     isCapeCodVectorDatasetRecord,
     isDatasetColumnFilterActive,
     isDfmDatasetRecord,
+    isMethodDatasetRecord,
     loadDatasetTablePreferences,
     loadDatasets,
     measureDatasetTableText,
@@ -3544,6 +3630,7 @@ async function loadDatasets() {
     selectDatasetRecordAtIndex,
     setDatasetGroupByKey,
     setDatasetRecordSelected,
+    setDatasetRowsReviewStatus,
     setDatasetTableColumnWidth,
     setEmptyTable,
     setSkeletonTable,

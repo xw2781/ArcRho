@@ -2861,6 +2861,79 @@ def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: st
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _save_dataset_notes_impl(project_name, reserving_class, dataset_name, notes)
 
+
+def _set_dataset_review_status_impl(
+    project_name: str,
+    reserving_class: str,
+    dataset_names: List[str],
+    status: Any,
+) -> Dict[str, Any]:
+    project = str(project_name if project_name is not None else "").strip()
+    rc = str(reserving_class if reserving_class is not None else "").strip()
+    if not project or not rc:
+        raise HTTPException(400, "project_name and reserving_class are required.")
+    target = dataset_sidecar_status_service.normalize_status(status)
+    updated: List[str] = []
+    unchanged: List[str] = []
+    skipped: List[str] = []
+    for raw_name in dataset_names or []:
+        name = str(raw_name if raw_name is not None else "").strip()
+        if not name:
+            continue
+        path = _get_dataset_sidecar_path(project, rc, name)
+        with _dataset_sidecar_write_lock(path):
+            payload = _read_dataset_sidecar(path)
+            method_type = dataset_sidecar_status_service.normalize_method_type(
+                payload.get("method_type"),
+                payload.get("source_kind"),
+            )
+            # The review flag belongs to a method output; a plain dataset has
+            # nothing to sign off, and the canonical status rule keeps it at 0.
+            if not payload or method_type == dataset_sidecar_status_service.METHOD_TYPE_NONE:
+                skipped.append(name)
+                continue
+            if dataset_sidecar_status_service.normalize_status(payload.get("status")) == target:
+                unchanged.append(name)
+                continue
+            payload["method_type"] = method_type
+            payload["status"] = target
+            payload["updated_at"] = _now_utc_iso()
+            payload["modified_by"] = _current_user_name()
+            _write_dataset_sidecar_payload(path, payload)
+            updated.append(name)
+    return {
+        "ok": True,
+        "project_name": project,
+        "reserving_class": rc,
+        "status": target,
+        "updated": updated,
+        "unchanged": unchanged,
+        "skipped": skipped,
+    }
+
+
+def set_dataset_review_status(
+    project_name: str,
+    reserving_class: str,
+    dataset_names: List[str],
+    status: Any = dataset_sidecar_status_service.STATUS_REVIEW_NEEDED,
+) -> Dict[str, Any]:
+    """Set the review flag of method-output sidecars, stamping who and when.
+
+    This is a sign-off on objects whose values nobody touched, so it writes
+    only ``status``, ``updated_at`` and ``modified_by`` and propagates
+    nothing, exactly as a notes edit does.
+    """
+
+    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+        return _set_dataset_review_status_impl(
+            project_name,
+            reserving_class,
+            dataset_names,
+            status,
+        )
+
+
 def _patch_dataset_impl(
     ds_id: str, items: list, file_mtime: float | None = None
 ) -> Dict[str, Any] | None:

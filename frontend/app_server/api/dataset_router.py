@@ -11,6 +11,7 @@ from app_server.schemas.dataset import (
     DatasetInternalLinksResolveRequest,
     DatasetNotesSaveRequest,
     DatasetNumberFormatsSaveRequest,
+    DatasetReviewStatusRequest,
     DatasetSidecarLoadRequest,
     DatasetSidecarSaveRequest,
     EmptyDatasetCacheCreateRequest,
@@ -98,6 +99,27 @@ def delete_cached_datasets(req: CachedDatasetDeleteRequest) -> Dict[str, Any]:
             req.project_name,
             req.reserving_class,
             req.dataset_names,
+        ),
+    )
+
+
+@router.post("/datasets/review-status")
+def set_dataset_review_status(req: DatasetReviewStatusRequest) -> Dict[str, Any]:
+    # Hosted for the same reason as the delete above: one sidecar read and one
+    # sidecar write per selected object, each its own round trip off-server.
+    return workspace_mutation_client.run_workspace_mutation(
+        "dataset_review_status_set",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "dataset_names": list(req.dataset_names or []),
+            "status": req.status,
+        },
+        local=lambda: dataset_service.set_dataset_review_status(
+            req.project_name,
+            req.reserving_class,
+            req.dataset_names,
+            status=req.status,
         ),
     )
 

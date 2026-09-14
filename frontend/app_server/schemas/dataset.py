@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from arcrho_api.dataset_index_contract import STATUS_REVIEW_NEEDED
+
 
 class PatchItem(BaseModel):
     r: int = Field(..., ge=0)
@@ -212,3 +214,10 @@ class CachedDatasetDeleteRequest(BaseModel):
     project_name: str
     reserving_class: str
     dataset_names: List[str] = Field(default_factory=list)
+
+
+class DatasetReviewStatusRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    dataset_names: List[str] = Field(default_factory=list)
+    status: int = STATUS_REVIEW_NEEDED

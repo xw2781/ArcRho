@@ -14,12 +14,25 @@ No new browser-facing route. This existing route selects the transport per reque
 | Route | Mutation kind | Service |
 | --- | --- | --- |
 | `POST /datasets/cached/delete` | `cached_dataset_delete` | `dataset_service.delete_cached_datasets` |
+| `POST /datasets/review-status` | `dataset_review_status_set` | `dataset_service.set_dataset_review_status` |
 | `POST /dfm/rpc-bridge/sync` | `dfm_rpc_bridge_sync` | `dfm_rpc_bridge_service.hosted_send_sync_request` |
 | `POST /dfm/rpc-bridge/keep-local` | `dfm_rpc_bridge_keep_local` | `dfm_rpc_bridge_service.hosted_keep_local` |
 | `POST /dfm/rpc-bridge/cleanup` | `dfm_rpc_bridge_cleanup` | `dfm_rpc_bridge_service.hosted_cleanup_tmp` |
 | `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
 | (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
 | (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
+
+The review-status set is the Project Instance `Mark For Review` / `Set
+Reviewed` action. It rewrites one sidecar per selected method output, which
+from a Client PC is a read and a write per object over the share, so hosting it
+puts the whole selection on local disk. It is a human sign-off on values nobody
+touched: it writes `status`, `updated_at` and `modified_by` and nothing else,
+marks no dependent, and enqueues no propagation walk, exactly as a notes edit
+does. It refuses nothing and raises nothing for an object it cannot act on --
+a dataset no method wrote, or a name with no sidecar -- and reports it under
+`skipped` instead. It is idempotent because an object already carrying the
+requested flag is reported under `unchanged` rather than rewritten, so a repeat
+leaves the same status, timestamp and user the first run wrote.
 
 The ResQ sync-queue publish is the request file the Sync and Export Reserving
 Class with ResQ macros hand to a ResQ-connected Bridge worker. The payload and

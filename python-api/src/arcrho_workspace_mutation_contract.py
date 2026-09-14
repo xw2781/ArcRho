@@ -117,6 +117,24 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "dataset_names"),
         list_args=("dataset_names",),
     ),
+    # Setting the review flag of method outputs rewrites one sidecar per
+    # selected object, so from a Client PC it is a read and a write per object
+    # over the share; hosted, it is local disk. It changes no values and
+    # propagates nothing, which is why it is a mutation rather than a save.
+    #
+    # Idempotent because an object already carrying the requested flag is
+    # reported unchanged rather than rewritten, so a repeat leaves the same
+    # status, timestamp and user the first run wrote. ``status`` is optional
+    # because the required check reads an integer 0 as absent; a request that
+    # omits it marks for review, which is the direction that can never
+    # silently clear someone's sign-off.
+    "dataset_review_status_set": WorkspaceMutationKind(
+        "dataset_service",
+        "set_dataset_review_status",
+        ("project_name", "reserving_class", "dataset_names"),
+        ("status",),
+        list_args=("dataset_names",),
+    ),
     # Submitting a source-table refresh publishes two small files into the
     # Engine's queue. It is idempotent because the client owns the request id:
     # an id that already has a published status is returned as-is rather than
