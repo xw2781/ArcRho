@@ -18,7 +18,7 @@ index is a summary of those lines, not a second source of truth.
 | [hosted_save_http_transport.md](hosted_save_http_transport.md) | Implemented for every hosted-save kind; TLS, traffic limits, and retiring the SMB path remain. |
 | [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) | Phase 1 reads and Phase 2 engine calculations implemented; the bounded-server foundation, SSE, and small writes remain. |
 | [local_runtime_log_retention_plan.md](local_runtime_log_retention_plan.md) | Audit complete (2026-08-09); remediation not started. |
-| [ui_automation_command_ownership.md](ui_automation_command_ownership.md) | Diagnosed 2026-09-13 after a ResQ export failed with two ArcRho apps sharing one backend and a macro's review-table question answered by the wrong app; broken into 3 session-sized steps covering the owner that travels with a command, the window that hands back work it cannot own, and the two-app check with the deploy; estimated at 125 minutes of agent time; no decisions open, none started. |
+| [multiple_app_instances.md](multiple_app_instances.md) | Diagnosed 2026-09-13 after a ResQ export failed with two ArcRho apps on one PC, one of which had killed the other's app server and taken its port; widened the same day from the macro fix alone to full support for two windows side by side, and broken into 7 session-sized steps covering coexisting app servers, the owner that travels with a macro command, the window that hands back work it cannot own, a server whose life follows its windows, an address book that lists every running app, the measurement of what a second window can remember, and the two-app check with the deploy; estimated at 325 minutes of agent time; no decisions open, none started. |
 
 ## Completed
 
