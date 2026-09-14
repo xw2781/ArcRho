@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Calculate Workbook no longer replaces a method's result with a data processing configuration error, and a dataset name spelled with a doubled space now finds the dataset.",
+  "details": [
+    "A Result Selection output such as 'C 92 - Current Qtr Selected' has no source formula behind it, so a forced rebuild asked the data engine for something it could not build and the engine's error text was written over the stored figures; every ordinary read afterwards showed the error too.",
+    "A method's published result is now read as it stands whenever a workbook is recalculated or refreshed, the same way a hand-entered dataset already was, and the data engine is never asked for it.",
+    "ResQ spells some dataset type names with a doubled space that ArcRho and the add-in do not; a workbook using either spelling now reaches the same dataset, on the server and in the data engine's dataset type table."
+  ]
+}

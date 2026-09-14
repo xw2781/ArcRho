@@ -114,9 +114,18 @@ def _cache_text_matches(left: Any, right: Any) -> bool:
 
 
 def _cache_payload_name_matches(payload: Dict[str, Any], expected_name: str) -> bool:
+    """Does the record name the dataset the request asked for?
+
+    Names are compared the way the dataset file is found: outer space dropped,
+    a run of spaces inside the name read as one, case ignored. A ResQ type name
+    can carry a doubled space that ArcRho's own spelling of the same dataset
+    does not, and a workbook written against either spelling has to reach the
+    same stored record.
+    """
+
     if not expected_name:
         return False
-    return _cache_text_matches(payload.get("dataset_name"), expected_name)
+    return _canon_dataset_name(payload.get("dataset_name")) == _canon_dataset_name(expected_name)
 
 
 def _safe_read_json(path: str) -> Dict[str, Any]:
@@ -792,24 +801,53 @@ def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]
     return _triangle_sidecar_payload(data_path, pairs, local_only=False)
 
 
-def _is_hand_entered_dataset(data_path: str, pairs: list) -> bool:
-    """Were this dataset's figures typed in rather than produced from a source?
+# The stored kinds a dataset read can produce again on request. An Engine-built
+# dataset is regenerated from the project's source table and an app-calculated
+# one is worked out again from its inputs. Every other record -- a hand-entered
+# dataset, a method's result -- has nothing behind it that a dataset read could
+# redo, so it is only ever served as it stands.
+_REBUILDABLE_SOURCE_KINDS = frozenset({"engine", "calculated"})
+
+
+def _stored_source_kind(data_path: str, pairs: list) -> str:
+    """The source kind of the record this request names, or "" when there is none.
 
     The dataset record's own source kind settles it, whatever shape or format
     the request asked for and whether or not the stored copy still matches the
-    project's processing settings. A hand-entered dataset has no source to be
-    rebuilt from -- its stored figures are the only copy there is -- so a
-    caller asking for a rebuild must never clear them.
+    project's processing settings.
     """
 
     payload = _safe_read_json(_dataset_sidecar_path(data_path, pairs))
     if not isinstance(payload, dict) or not payload:
-        return False
+        return ""
     if not _cache_payload_name_matches(payload, _request_dataset_name(pairs)):
-        return False
+        return ""
     if not _cache_text_matches(payload.get("reserving_class"), _pair_value(pairs, "Path")):
-        return False
-    return _clean_cache_text(payload.get("source_kind")).lower() == "input"
+        return ""
+    return _clean_cache_text(payload.get("source_kind")).lower()
+
+
+def _is_read_only_source_kind(source_kind: str) -> bool:
+    """Is a dataset of this stored kind one that can only be read, never produced again here?
+
+    A hand-entered dataset has no source to be rebuilt from, and a method's
+    result is produced by that method, not by a dataset read. For either the
+    stored figures are the only copy there is, so a caller asking for a rebuild
+    must never clear them, and the Engine -- which builds only from the source
+    table -- must never be asked for them: it would answer with an error and
+    write that error over the stored figures.
+    """
+
+    return bool(source_kind) and source_kind not in _REBUILDABLE_SOURCE_KINDS
+
+
+def _published_result_message(pairs: list) -> str:
+    """Why a method's result could not be served: only what the method published is ever read."""
+
+    return (
+        f"'{_request_dataset_name(pairs)}' is a method result and is read only as "
+        "published, and no published copy answers this request."
+    )
 
 
 def _is_stale_input_variant(data_path: str, pairs: list) -> bool:
@@ -2465,7 +2503,9 @@ def _run_temporary_arcrho_tri(
     session_id = _normalize_temporary_session_id(temporary_session_id)
     temporary_data_path = temporary_dataset_path(data_path, pairs)
     get_processing_hash = _processing_hash_getter(pairs)
-    force_refresh = force_refresh and not _is_hand_entered_dataset(data_path, pairs)
+    stored_kind = _stored_source_kind(data_path, pairs)
+    read_only_kind = _is_read_only_source_kind(stored_kind)
+    force_refresh = force_refresh and not read_only_kind
 
     local_result = resolve_local_triangle_cache(
         data_path,
@@ -2521,8 +2561,11 @@ def _run_temporary_arcrho_tri(
 
     manual_source_found = bool(local_result.get("manual_source_found"))
     generated_source_found = bool(local_result.get("generated_source_found"))
-    if (local_only and not generated_source_found) or manual_source_found:
+    served_as_stored = manual_source_found or read_only_kind
+    if (local_only and not generated_source_found) or served_as_stored:
         message = str(local_result.get("message") or "Input triangle cache is not available.")
+        if read_only_kind and stored_kind != "input":
+            message = _published_result_message(pairs)
         return {
             "ok": False,
             "status": local_result.get("status") or "local_cache_unavailable",
@@ -2630,10 +2673,13 @@ def run_arcrho_tri(
     cache_cleared = False
     get_processing_hash = _processing_hash_getter(pairs)
     # A rebuild is something only a dataset with a source behind it can be
-    # asked for. A hand-entered one is served from what was typed in, however
-    # the caller asked, so "always refresh" is dropped here rather than
-    # refused: the figures are what they are and there is nothing to redo.
-    force_refresh = force_refresh and not _is_hand_entered_dataset(data_path, pairs)
+    # asked for. A hand-entered one is served from what was typed in and a
+    # method's result from what the method published, however the caller
+    # asked, so "always refresh" is dropped here rather than refused: the
+    # figures are what they are and there is nothing to redo.
+    stored_kind = _stored_source_kind(data_path, pairs)
+    read_only_kind = _is_read_only_source_kind(stored_kind)
+    force_refresh = force_refresh and not read_only_kind
 
     local_result = resolve_local_triangle_cache(
         data_path,
@@ -2685,8 +2731,11 @@ def run_arcrho_tri(
         return calculated_result
     manual_source_found = bool(local_result.get("manual_source_found"))
     generated_source_found = bool(local_result.get("generated_source_found"))
-    if (local_only and not generated_source_found) or manual_source_found:
+    served_as_stored = manual_source_found or read_only_kind
+    if (local_only and not generated_source_found) or served_as_stored:
         message = str(local_result.get("message") or "Input triangle cache is not available.")
+        if read_only_kind and stored_kind != "input":
+            message = _published_result_message(pairs)
         return {
             "ok": False,
             "status": local_result.get("status") or "local_cache_unavailable",

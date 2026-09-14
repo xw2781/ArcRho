@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import re
 import numpy as np
 import calendar
 import threading
@@ -322,6 +323,42 @@ def _json_table_to_df(json_obj):
     if isinstance(json_obj, dict) and "columns" in json_obj and "rows" in json_obj:
         return pd.DataFrame(json_obj.get("rows", []), columns=json_obj.get("columns", [])).fillna('')
     return pd.DataFrame(json_obj).fillna('')
+
+
+# Mirror of arcrho_api.dataset_type_contract.dataset_type_key. The engine ships
+# as its own frozen bundle and cannot import that package, so the key is
+# duplicated here and frontend/tests/test_engine_dataset_type_lookup.py fails
+# if the mirror ever drifts from the canonical owner.
+_DATASET_TYPE_SPACE_RE = re.compile(r"\s+")
+
+
+def dataset_type_key(name):
+    """One comparison key for a type name: quotes and outer space dropped, inner runs of space collapsed, case ignored."""
+    text = str(name if name is not None else "").strip().strip('"').strip("'").strip()
+    return _DATASET_TYPE_SPACE_RE.sub(" ", text).casefold()
+
+
+def _dataset_type_row(df_info, dataset_name):
+    """The dataset-type row a request names, or None when the project has no such type.
+
+    A request spells the type the way a workbook or a ResQ export wrote it,
+    and that can differ from the project's own spelling by a doubled space or
+    by case alone -- ResQ type names carry doubled spaces that ArcRho's do
+    not. The exact spelling wins when the table holds it; otherwise the first
+    row with the same key is the type.
+    """
+    if 'Name' not in df_info.columns:
+        return None
+    exact = df_info.loc[df_info['Name'] == dataset_name]
+    if not exact.empty:
+        return exact.iloc[0]
+    wanted = dataset_type_key(dataset_name)
+    if not wanted:
+        return None
+    matches = df_info.loc[df_info['Name'].map(dataset_type_key) == wanted]
+    if matches.empty:
+        return None
+    return matches.iloc[0]
 
 
 def _source_table_df_from_json(json_obj):
@@ -662,15 +699,14 @@ def _get_dataset_info(arg):
 
     # Set user defined name (ResQ) to actual SQL table col names
     df_info = PROJECT_CONFIG[project_name]['Dataset Types']
-    
-    if dataset_name in df_info['Name'].values:
-        source = df_info.loc[df_info['Name'] == dataset_name, 'Source'].iloc[0]
-    else:
+
+    type_row = _dataset_type_row(df_info, dataset_name)
+    if type_row is None:
         raise DataProcessingConfigurationError(
             f"Dataset type [{dataset_name}] is not defined for project [{project_name}]."
         )
-    
-    output_data_format = df_info.loc[df_info['Name'] == dataset_name, 'Data Format'].iloc[0]
+    source = type_row['Source']
+    output_data_format = type_row['Data Format']
 
     # find all required table and column names
     df_info = PROJECT_CONFIG[project_name]['Source Table']

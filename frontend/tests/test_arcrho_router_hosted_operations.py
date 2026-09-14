@@ -260,6 +260,65 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertTrue(answer["cache_cleared"])
         self.assertEqual(answer["csv_text"], rebuilt)
 
+    def test_always_refresh_serves_a_method_result_as_published(self) -> None:
+        # A Result Selection published this dataset. A dataset read cannot
+        # produce it again, and the Engine, asked to, would answer with an
+        # error and write that error over the published figures.
+        self._write_csv(self.ENGINE_TEXT)
+        self._write_sidecar(source_kind="result_selection")
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("A method result has nothing the Engine could rebuild it from.")
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
+            answer = self._answer(force_refresh=True)
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_exact")
+        self.assertFalse(answer["need_request"])
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+        self.assertEqual(self._read_csv(), self.ENGINE_TEXT)
+
+    def test_a_method_result_without_its_figures_is_not_asked_of_the_engine(self) -> None:
+        self._write_sidecar(source_kind="result_selection")
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("A method result has nothing the Engine could rebuild it from.")
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
+            answer = self._answer()
+
+        self.assertFalse(answer["ok"])
+        self.assertFalse(answer["need_request"])
+        self.assertNotIn("csv_text", answer)
+        self.assertIn("is a method result", answer["message"])
+        self.assertIn(self.dataset_name, answer["message"])
+        self.assertFalse(self.csv_path.exists())
+
+    def test_a_name_spelled_with_a_doubled_space_reaches_the_stored_dataset(self) -> None:
+        # ResQ spells some type names with a doubled space and production
+        # workbooks still ask with those names; the stored record answers
+        # whichever spacing the request used.
+        self._write_csv(self.ENGINE_TEXT)
+        self._write_sidecar()
+        doubled = self.dataset_name.replace(" ", "  ")
+        pairs = [
+            (key, doubled if key in {"DatasetName", "InstanceName"} else value)
+            for key, value in self._pairs()
+        ]
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("The stored dataset answers a differently spaced spelling of its name.")
+
+        with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
+            answer = engine_calculation_service.execute_hosted_engine_calculation(
+                pairs, 15.0, OUTPUT_VARIANT_CANONICAL, OPERATION_DATASET_CSV, {}
+            )
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_exact")
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
+
     def test_the_text_is_the_file_the_run_wrote(self) -> None:
         def fake_engine(pairs, data_path, timeout_sec, **kwargs):
             with open(data_path, "w", encoding="utf-8", newline="") as handle:
