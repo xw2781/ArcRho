@@ -1,10 +1,12 @@
 import {
   applyDecimalPlacesToDatasetNumberFormat,
   clampDatasetDecimalPlaces,
+  DATASET_NUMBER_FORMAT_PRESETS,
   getDatasetNumberFormatDecimalPlaces,
   normalizeDatasetNumberFormat,
 } from "/ui/shared/dataset/dataset_number_format.js";
-import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
+import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260914a";
+import { openNumberFormatDialog } from "/ui/shared/components/pickers/number_format_dialog.js?v=20260914a";
 
 function wireChartPanelResize(redrawChartSafely) {
   const panel = document.getElementById("chartPanel");
@@ -216,6 +218,7 @@ export function wireDatasetInputController(deps) {
     const places = clampDatasetDecimalPlaces(dec.value);
     dec.value = String(places);
     numberFormatSelect.value = applyDecimalPlacesToDatasetNumberFormat(numberFormatSelect.value, places);
+    numberFormatSelect.title = numberFormatSelect.value;
   }
 
   function syncDecimalPlacesFromNumberFormat() {
@@ -233,19 +236,58 @@ export function wireDatasetInputController(deps) {
     dec.focus();
   }
 
-  const numberFormatField = wireNumberFormatField({
+  function applyNumberFormat(pattern) {
+    if (!numberFormatSelect) return;
+    numberFormatSelect.value = normalizeDatasetNumberFormat(pattern);
+    numberFormatSelect.title = numberFormatSelect.value;
+    syncDecimalPlacesFromNumberFormat();
+    refreshNumberDisplaySettings();
+  }
+
+  // The list carries the canonical presets, plus whatever pattern is in force
+  // when the dialog wrote one the presets do not hold, so a chosen format can
+  // be picked again without reopening the dialog.
+  function numberFormatPresets() {
+    const current = normalizeDatasetNumberFormat(numberFormatSelect?.value);
+    return DATASET_NUMBER_FORMAT_PRESETS.includes(current)
+      ? DATASET_NUMBER_FORMAT_PRESETS
+      : [...DATASET_NUMBER_FORMAT_PRESETS, current];
+  }
+
+  // The pattern box only opens the list: everything Excel offers, and any code
+  // of the user's own, comes from the Custom dialog instead of free typing.
+  wireNumberFormatField({
     input: numberFormatSelect,
     field: numberFormatWrap,
     toggle: numberFormatDropdownBtn,
     menu: numberFormatDropdown,
-    onApply: (preset) => {
-      if (!numberFormatSelect) return;
-      numberFormatSelect.value = preset;
-      syncDecimalPlacesFromNumberFormat();
-      refreshNumberDisplaySettings();
+    readOnly: true,
+    getPresets: numberFormatPresets,
+    onApply: applyNumberFormat,
+    onCustom: () => {
+      openNumberFormatDialog({
+        host: document.getElementById("dsDataPage"),
+        value: numberFormatSelect?.value,
+        sampleValue: firstDatasetGridValue(),
+        onApply: applyNumberFormat,
+      });
     },
   });
-  const closeNumberFormatDropdown = () => numberFormatField?.close();
+
+  // The dialog previews the pattern on a real number from the open dataset, so
+  // a format is judged on the magnitudes it will actually have to show.
+  function firstDatasetGridValue() {
+    const values = state?.model?.values;
+    if (!Array.isArray(values)) return null;
+    for (const row of values) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row) {
+        const n = typeof cell === "number" ? cell : Number(cell);
+        if (Number.isFinite(n) && n !== 0) return n;
+      }
+    }
+    return null;
+  }
 
   if (dec && numberFormatSelect) {
     dec.addEventListener("change", () => {
@@ -266,16 +308,6 @@ export function wireDatasetInputController(deps) {
     stepDecimalPlaces(-1);
   });
 
-  if (numberFormatSelect) {
-    numberFormatSelect.addEventListener("change", () => {
-      syncDecimalPlacesFromNumberFormat();
-      refreshNumberDisplaySettings();
-      closeNumberFormatDropdown();
-    });
-    numberFormatSelect.addEventListener("input", () => {
-      refreshNumberDisplaySettings();
-    });
-  }
   syncNumberFormatFromDecimalPlaces();
 
   // Chart mode toggle

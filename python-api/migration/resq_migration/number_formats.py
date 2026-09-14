@@ -97,15 +97,58 @@ def number_format_entry(number_format: object, decimal_places: object = None) ->
 
 
 def apply_decimal_places_to_number_format(value: object, decimal_places: int) -> str:
+    """Rewrite the fraction of every section of an Excel-style pattern.
+
+    Mirrors ``applyDecimalPlacesToDatasetNumberFormat`` in
+    ``frontend/ui/shared/dataset/dataset_number_format.js``; the two must keep
+    producing the same text, so a pattern such as ``#,##0;(#,##0)`` cannot end
+    up with its two halves disagreeing on one side and not the other.
+    """
     pattern = _normalize_number_format(value)
-    numeric = _numeric_pattern(pattern)
-    integer_pattern = numeric.split(".", 1)[0] or "0"
-    index = pattern.find(numeric)
-    prefix = pattern[:index] if index >= 0 else ""
-    suffix = pattern[index + len(numeric):] if index >= 0 else ""
     places = max(0, min(6, int(decimal_places)))
+    rebuilt = ";".join(
+        _apply_decimal_places_to_section(section, places)
+        for section in _split_sections(pattern)
+    )
+    return _normalize_number_format(rebuilt)
+
+
+def _apply_decimal_places_to_section(section: str, places: int) -> str:
+    match = re.search(r"[0#,]+(?:\.[0#?]+)?", section)
+    if not match:
+        return section
+    numeric = match.group(0)
+    integer_pattern = numeric.split(".", 1)[0] or "0"
     rebuilt = f"{integer_pattern}.{'0' * places}" if places > 0 else integer_pattern
-    return _normalize_number_format(f"{prefix}{rebuilt}{suffix}")
+    return f"{section[: match.start()]}{rebuilt}{section[match.end():]}"
+
+
+def _split_sections(pattern: str) -> list[str]:
+    """Split on ``;``, skipping escapes, quoted text and bracketed blocks."""
+    sections: list[str] = []
+    current = ""
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\":
+            current += pattern[index : index + 2]
+            index += 2
+            continue
+        if char in '"[':
+            closer = '"' if char == '"' else "]"
+            end = pattern.find(closer, index + 1)
+            stop = len(pattern) - 1 if end < 0 else end
+            current += pattern[index : stop + 1]
+            index = stop + 1
+            continue
+        if char == ";":
+            sections.append(current)
+            current = ""
+        else:
+            current += char
+        index += 1
+    sections.append(current)
+    return sections
 
 
 def number_format_decimal_places(value: object) -> int:

@@ -565,6 +565,8 @@ body {
   overflow: hidden;
 }
 #dsDataPage {
+  /* The Number Format dialog floats inside this tab, so the tab is its frame. */
+  position: relative;
   padding: 3px;
   display: flex;
   flex-direction: column;

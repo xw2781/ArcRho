@@ -1,0 +1,314 @@
+/* Number Format dialog: a small window that floats inside the tab that opened
+   it, over a backdrop that makes the rest of that tab inert. Colours come from
+   the shared theme tokens, so the window follows Light, Dark and High Contrast
+   without a per-theme rule of its own. */
+.arFormatDialogLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+}
+
+.arFormatDialogLayer[hidden] {
+  display: none;
+}
+
+.arFormatDialogBackdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--ar-color-overlay, rgba(15, 23, 42, 0.18));
+}
+
+.arFormatDialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  width: 468px;
+  max-width: calc(100% - 16px);
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 6px;
+  background: var(--ar-color-surface, #fff);
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  color: var(--ar-color-text, #1f2937);
+  font: 13px var(--app-font, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+  transform: translate(-50%, -50%);
+}
+
+.arFormatDialogHeader {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  border-radius: 5px 5px 0 0;
+  cursor: move;
+  user-select: none;
+}
+
+.arFormatDialogTitle {
+  font-weight: 700;
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.arFormatDialogClose {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.arFormatDialogClose:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.arFormatDialogClose svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.arFormatDialogBody {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 10px;
+  padding: 10px;
+}
+
+.arFormatDialogPaneLabel {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.arFormatDialogCategoryList {
+  height: 218px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+}
+
+.arFormatDialogCategory {
+  padding: 5px 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.arFormatDialogCategory:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.arFormatDialogCategory.selected {
+  background: var(--ar-color-surface-selected, #dbeafe);
+  font-weight: 700;
+}
+
+.arFormatDialogOptionPane {
+  min-width: 0;
+}
+
+.arFormatDialogSample {
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  font-weight: 700;
+  line-height: 26px;
+  text-align: right;
+  white-space: pre;
+}
+
+.arFormatDialogOptions {
+  display: flex;
+  height: 182px;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* The label column is sized from the longest label the dialog can show, so
+   "Negative Numbers : " cannot wrap onto a second line. */
+.arFormatDialogRow {
+  display: grid;
+  grid-template-columns: 122px 1fr;
+  align-items: center;
+  gap: 1px;
+}
+
+.arFormatDialogRowStacked {
+  align-items: start;
+}
+
+.arFormatDialogRowLabel {
+  text-align: right;
+  color: var(--ar-color-text, #1f2937);
+}
+
+.arFormatDialogRowField {
+  min-width: 0;
+}
+
+.arFormatDialogCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.arFormatDialogSelect {
+  height: 28px;
+  width: 92px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.arFormatDialogNegativeList,
+.arFormatDialogCodeList {
+  height: 92px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+}
+
+/* Custom shows only the Type box above it, so its list takes the rest. */
+.arFormatDialogCodeList {
+  height: 144px;
+}
+
+.arFormatDialogNegative,
+.arFormatDialogCodeOption {
+  padding: 3px 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.arFormatDialogNegative {
+  text-align: right;
+}
+
+.arFormatDialogNegative:hover,
+.arFormatDialogCodeOption:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.arFormatDialogNegative.selected {
+  background: var(--ar-color-surface-selected, #dbeafe);
+}
+
+.arFormatDialogCodeInput {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.arFormatDialogCodeInput:focus {
+  outline: none;
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.arFormatDialogNote {
+  margin: 0;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.arFormatDialogFooter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--ar-color-border, #d8dde3);
+  background: var(--ar-color-surface-muted, #eef2f6);
+  border-radius: 0 0 5px 5px;
+}
+
+.arFormatDialogCodeLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.arFormatDialogCode {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ar-color-text-muted, #64748b);
+  font-family: Consolas, "Courier New", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arFormatDialogActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.arFormatDialogBtn {
+  height: 28px;
+  min-width: 72px;
+  padding: 0 12px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-surface, #fff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.arFormatDialogBtn:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.arFormatDialogBtnPrimary {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  background: var(--ar-color-surface-selected, #dbeafe);
+  color: var(--ar-color-accent, #2b6df6);
+  font-weight: 700;
+}
+
+.arFormatDialogBtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}

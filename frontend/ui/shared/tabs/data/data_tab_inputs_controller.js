@@ -72,6 +72,9 @@ export function registerDataTabInputsController(runtime) {
     const input = document.getElementById("numberFormatSelect");
     if (!input) return;
     input.value = normalizeDatasetNumberFormat(value);
+    // A pattern from the Custom dialog is longer than the box, so the full one
+    // stays reachable on hover.
+    input.title = input.value;
   }
 
   function getDatasetDecimalPlacesValue() {

@@ -5,6 +5,7 @@ import { $ } from "/ui/shared/tabs/data/data_tab_dom.js";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
   clampDatasetDecimalPlaces,
+  datasetNumberValueColor,
   formatDatasetNumberValue,
   normalizeDatasetNumberFormat,
 } from "/ui/shared/dataset/dataset_number_format.js";
@@ -263,6 +264,14 @@ export function formatCellValue(v) {
 
   // default: 0,000
   return fmt0.format(n);
+}
+
+// A pattern section may name a colour, the way `[Red]` does for negatives, so a
+// cell takes its text and its colour from the same format.
+function paintCellValue(td, value) {
+  td.textContent = value == null ? "" : formatCellValue(value);
+  const pattern = getNumberFormatPattern();
+  td.style.color = value == null || !pattern ? "" : datasetNumberValueColor(value, pattern);
 }
 
 export function formatDatasetChartValue(value) {
@@ -526,7 +535,7 @@ export function renderTable() {
           td.appendChild(input);
         } else {
           const displayNullAsZero = isEditable && v == null;
-          td.textContent = formatCellValue(displayNullAsZero ? 0 : v);
+          paintCellValue(td, displayNullAsZero ? 0 : v);
           td.classList.toggle("dsNullValue", displayNullAsZero);
         }
       }
@@ -540,7 +549,7 @@ export function renderTable() {
       const td = document.createElement("td");
       td.classList.add("totalCell");
       const sum = sumDatasetGridRow(vals, mask, r, devs.length);
-      td.textContent = sum == null ? "" : formatCellValue(sum);
+      paintCellValue(td, sum);
       configureSelectableDatasetCell(td, r, totalColumnIndex, {
         copyValue: sum,
         readOnly: true,
@@ -569,7 +578,7 @@ export function renderTable() {
     for (let c = 0; c < devs.length; c++) {
       const td = document.createElement("td");
       const sum = sumDatasetGridColumn(vals, mask, c, origins.length);
-      td.textContent = sum == null ? "" : formatCellValue(sum);
+      paintCellValue(td, sum);
       td.classList.add("totalCell");
       configureSelectableDatasetCell(td, totalRowIndex, c, {
         copyValue: sum,

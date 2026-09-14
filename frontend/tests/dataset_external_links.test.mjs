@@ -949,7 +949,7 @@ test("the grid shows a blank linked value as a muted zero rather than an empty c
     "utf8",
   );
   assert.match(gridView, /const displayNullAsZero = isEditable && v == null;/u);
-  assert.match(gridView, /td\.textContent = formatCellValue\(displayNullAsZero \? 0 : v\);/u);
+  assert.match(gridView, /paintCellValue\(td, displayNullAsZero \? 0 : v\);/u);
   assert.match(dataTabCss, /#tableWrap td\.dsNullValue[\s\S]*?color:\s*#7a858f/u);
 });
 

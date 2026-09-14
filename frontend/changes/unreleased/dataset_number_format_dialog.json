@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Data tab picks a number format from a list or an Excel-style Format Cells window instead of a typed pattern.",
+  "details": [
+    "The Number Format box no longer accepts typing: clicking it opens the list, which now ends with a Custom option.",
+    "Custom opens a small window inside the Data tab with General, Number, Currency, Accounting, Percentage, Scientific, and Custom categories, a live sample taken from the open dataset, and a box for a format code of your own.",
+    "Formats are written and read as Excel writes them, including bracketed negatives, red negatives, currency and accounting layouts, thousands scaling, and scientific notation."
+  ]
+}

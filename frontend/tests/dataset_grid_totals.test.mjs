@@ -92,7 +92,7 @@ test("the grid applies the total policy using its configured host", () => {
 test("editable null cells display a formatted muted zero without changing their value", () => {
   assert.match(
     gridViewSource,
-    /displayNullAsZero\s*=\s*isEditable\s*&&\s*v\s*==\s*null[\s\S]*?formatCellValue\(displayNullAsZero\s*\?\s*0\s*:\s*v\)/u,
+    /displayNullAsZero\s*=\s*isEditable\s*&&\s*v\s*==\s*null[\s\S]*?paintCellValue\(td,\s*displayNullAsZero\s*\?\s*0\s*:\s*v\)/u,
   );
   assert.match(gridViewSource, /classList\.toggle\("dsNullValue",\s*displayNullAsZero\)/u);
   assert.match(

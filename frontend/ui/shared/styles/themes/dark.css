@@ -34,6 +34,17 @@
   --ar-shadow-floating: 0 8px 20px rgba(0, 0, 0, 0.34);
   --ar-shadow-dialog: 0 18px 42px rgba(0, 0, 0, 0.52);
 
+  /* Number-format colours, lifted so a red negative stays legible on the dark
+     canvas while still reading as the colour the pattern named. */
+  --ar-number-format-black: #e6e6e6;
+  --ar-number-format-blue: #7aa2ff;
+  --ar-number-format-cyan: #4dd0e1;
+  --ar-number-format-green: #6bd08a;
+  --ar-number-format-magenta: #e58ae8;
+  --ar-number-format-red: #ff7b8a;
+  --ar-number-format-white: #ffffff;
+  --ar-number-format-yellow: #e5c07b;
+
   /* Frameless Home buttons: translucent so one value works on every card and panel surface. */
   --ar-home-ghost-hover: rgba(255, 255, 255, 0.09);
   --ar-home-ghost-active: rgba(255, 255, 255, 0.14);

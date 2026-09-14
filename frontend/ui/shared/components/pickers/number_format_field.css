@@ -18,6 +18,13 @@
   padding-right: 24px;
 }
 
+/* A field that does not take typed patterns is a button in everything but
+   markup, so it carries the pointer and does not offer a text selection. */
+.arNumberFormatFieldReadOnly > input {
+  cursor: pointer;
+  user-select: none;
+}
+
 .arNumberFormatToggle {
   position: absolute;
   top: 1px;
@@ -60,13 +67,32 @@
   transform: translateY(-50%) rotate(180deg);
 }
 
+/* An Excel pattern is far wider than the field that holds it, so the list grows
+   to the right of the field's left edge rather than folding a pattern onto a
+   second line. It never scrolls sideways: a long pattern is cut with an
+   ellipsis inside its own row. */
 .arNumberFormatMenu {
   top: calc(100% + 4px);
-  max-height: 160px;
+  right: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: 280px;
+  max-height: 200px;
+  overflow-x: hidden;
   z-index: 70;
 }
 
 .arNumberFormatOption {
+  box-sizing: border-box;
+  overflow: hidden;
   padding-left: 10px;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The last row opens the dialog rather than applying a pattern, so a rule
+   separates it from the patterns above it. */
+.arNumberFormatCustomOption {
+  border-top: 1px solid var(--ar-color-border, #d8dde3);
 }

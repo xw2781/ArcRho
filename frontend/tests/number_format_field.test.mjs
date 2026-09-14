@@ -69,24 +69,31 @@ function fakeDocument() {
   };
 }
 
-function mount({ presets = ["0,000", "0.0%"] } = {}) {
+function mount({ presets = ["0,000", "0.0%"], readOnly = false, withCustom = false } = {}) {
   const input = fakeElement("input");
   const field = fakeElement();
   const toggle = fakeElement("button");
   const menu = fakeElement();
   field.children.push(input, toggle, menu);
   const applied = [];
+  const customCalls = [];
   const documentRef = fakeDocument();
   const api = wireNumberFormatField({
     input,
     field,
     toggle,
     menu,
+    readOnly,
     getPresets: () => presets,
     onApply: (preset) => applied.push(preset),
+    onCustom: withCustom ? () => customCalls.push(true) : undefined,
     documentRef,
   });
-  return { api, input, field, toggle, menu, applied, documentRef };
+  return { api, input, field, toggle, menu, applied, customCalls, documentRef };
+}
+
+function clickOption(menu, option) {
+  menu.dispatch("click", { target: { closest: (selector) => (selector === ".arNumberFormatOption" ? option : null) } });
 }
 
 test("the caret renders the presets and marks the active one", () => {
@@ -122,10 +129,44 @@ test("choosing a preset closes the menu and hands the value to the host", () => 
   api.open();
   const option = menu.children[1];
 
-  menu.dispatch("click", { target: { closest: (selector) => (selector === ".arNumberFormatOption" ? option : null) } });
+  clickOption(menu, option);
 
   assert.deepEqual(applied, ["0.0%"]);
   assert.equal(api.isOpen(), false);
+});
+
+test("the Custom row is offered only to a host that wants it, and applies no pattern of its own", () => {
+  const plain = mount();
+  plain.api.open();
+  assert.equal(plain.menu.children.length, 2);
+
+  const { api, menu, applied, customCalls } = mount({ withCustom: true });
+  api.open();
+  const custom = menu.children[2];
+  assert.equal(menu.children.length, 3);
+  assert.equal(custom.textContent, "Custom...");
+  assert.match(custom.className, /arNumberFormatCustomOption/u);
+
+  clickOption(menu, custom);
+
+  assert.deepEqual(customCalls, [true]);
+  assert.deepEqual(applied, []);
+  assert.equal(api.isOpen(), false);
+});
+
+test("a read-only field takes no typed pattern and opens its list from the box itself", () => {
+  const { api, input, field } = mount({ readOnly: true });
+
+  assert.equal(input.readOnly, true);
+  assert.equal(field.classList.contains("arNumberFormatFieldReadOnly"), true);
+
+  input.dispatch("mousedown");
+  assert.equal(api.isOpen(), true);
+  input.dispatch("mousedown");
+  assert.equal(api.isOpen(), false);
+
+  input.dispatch("keydown", { key: "ArrowDown" });
+  assert.equal(api.isOpen(), true);
 });
 
 test("an outside pointer press or Escape dismisses the menu", () => {
