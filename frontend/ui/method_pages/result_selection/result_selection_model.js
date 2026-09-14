@@ -83,7 +83,7 @@
           return false;
         }
         auditLogView.render(payload.audit_log);
-        state.needsReview = Number(payload.status) === 2;
+        setNeedsReview(statusNeedsReview(payload.status));
         if (options.auditOnly === true) return true;
         setNotesText(String(payload.notes ?? ""));
         const originLength = validOriginLength(payload.origin_length, 0);
@@ -299,7 +299,7 @@
           auditLogView.render(payload?.sidecar?.audit_log);
           state.methodRevision = String(payload.method_revision || "");
           recordPersistedMethodDependencies(payload.method || method);
-          state.needsReview = false;
+          setNeedsReview(false);
           state.pendingPropagationJobId = String(payload?.propagation?.job_id || "").trim();
           markClean();
           rsWatch.ensure({

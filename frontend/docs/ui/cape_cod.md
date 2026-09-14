@@ -5,7 +5,7 @@ Cape Cod method page replicating the ResQ Generalised Cape Cod method: an ultima
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.cape_cod.entry_points -->
-- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260830a`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
+- `ui/method_pages/cape_cod/cape_cod.html`: external scripts `/ui/method_pages/cape_cod/cape_cod_main.js?v=20260913a`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/dataset/cache/load`
@@ -34,6 +34,7 @@ Detected `arcrho:*` message types in key JS files:
 - `Ctrl+PageUp` and `Ctrl+PageDown` cycle through Cape Cod tabs with wraparound through the shared tabbed-page runtime, including when the shell or Project Instance host still owns keyboard focus.
 - Loads a saved method through `/cape-cod/load`, which reads only `methods/CC@<Name>.json` and the output sidecar; the response also carries the derived as-if `ultimates_triangle` for the Ultimates tab.
 - Saves through `/cape-cod/save`, which publishes `methods/CC@<Name>.json`, the native `datasets/<Name>@<OriginLength>.csv`, supported coarser CSV variants, and the output sidecar as one server-owned transaction with the sidecar written last.
+- Save is available whenever the method has unsaved changes, and it stays available on a clean page whose output carries the Needs Review flag, because re-saving the method unchanged is what clears that flag; `updateTabbedPageSaveControls` in `ui/shared/tabbed_page/tabbed_page.js` owns that rule for every method page, and the flag itself comes from the output sidecar `status` the last load or save returned, read through `ui/shared/dataset/review_status.js`. Cancel remains clickable throughout.
 - A Cape Cod save runs behind the shared saving animation described in [`dataset.md`](dataset.md), titled `Saving Cape Cod`, so the page cannot be edited while the save settles. `saveCapeCod` wraps the save in it, so the Save bar and the shell save message are both covered; the card then streams the dependent walk's live updates and the spinner is dismissed before the post-save review warning and before the Engine-unavailable message box. Neither explicit save entry point closes the window: after a clean walk (`propagationClean`) they show the saved-dependents notice and leave the method open, and a failed or stalled walk shows no notice.
 - The output sidecar keeps `source_kind: "cape_cod"`, `method_type: "Cape Cod"`, Notes, Audit, status, and dependency graph fields.
 - Uses Project Instance `arcrho:dataset-dirty`, `arcrho:dataset-save`, `arcrho:dependency-source-preview`, `arcrho:dependency-source-cleared`, `arcrho:project-instance-refresh-datasets`, `arcrho:project-instance-open-dependent-dataset`, and `arcrho:cc-tab-changed` messages.

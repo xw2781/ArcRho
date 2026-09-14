@@ -39,11 +39,14 @@ export function applyTabbedPageSaveBar(saveBar) {
  * Applies the common Save/Cancel button state for tabbed pages.
  * Cancel remains available while clean so users can click it without first
  * making a change, but true blocking states such as an in-flight save still win.
+ * Save also stays available while clean when the object carries the Needs
+ * Review flag, because re-saving it unchanged is how that flag is cleared.
  *
  * @param {Object} options
  * @param {HTMLButtonElement|null|undefined} options.saveButton
  * @param {HTMLButtonElement|null|undefined} options.cancelButton
  * @param {boolean} [options.dirty=false]
+ * @param {boolean} [options.needsReview=false]
  * @param {boolean} [options.saving=false]
  * @param {boolean} [options.saveBlocked=false]
  * @param {boolean} [options.cancelBlocked=false]
@@ -52,15 +55,17 @@ export function updateTabbedPageSaveControls({
   saveButton,
   cancelButton,
   dirty = false,
+  needsReview = false,
   saving = false,
   saveBlocked = false,
   cancelBlocked = false,
 } = {}) {
   const isDirty = !!dirty;
   const isSaving = !!saving;
+  const savable = isDirty || !!needsReview;
   if (saveButton) {
     saveButton.classList.add("tabbedPageSaveButton");
-    saveButton.disabled = isSaving || !!saveBlocked || !isDirty;
+    saveButton.disabled = isSaving || !!saveBlocked || !savable;
     saveButton.classList.toggle("is-clean", !isDirty);
   }
   if (cancelButton) {

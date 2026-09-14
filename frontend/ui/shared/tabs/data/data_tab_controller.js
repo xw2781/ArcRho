@@ -33,7 +33,7 @@ import {
 import {
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260714a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";

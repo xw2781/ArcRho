@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { statusNeedsReview } from "../ui/shared/dataset/review_status.js";
+
 
 test("save preparation aborts when an upstream preview arrives during its async work", async () => {
   const source = await readFile(
@@ -130,6 +132,8 @@ test("a dependency update queued during save survives the save response", async 
       notesController: { markClean() {} },
       clearResultSelectionDependencyPreview: () => {},
       postDirty: () => {},
+      statusNeedsReview,
+      setNeedsReview: (value) => { state.needsReview = !!value; },
       reapplyActiveDependencyPreviews: () => { previewReapplyCount += 1; },
       schedulePersistedValuesRefresh: () => { scheduleCount += 1; },
       resumePersistedValuesRefresh: () => { resumeCount += 1; },

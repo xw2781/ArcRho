@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "method pages",
+  "audience": "user",
+  "summary": "Save stays clickable on a method window whose object still needs review.",
+  "details": [
+    "DFM, Result Selection, Bornhuetter Ferguson, Cape Cod, and Berquist Sherman windows kept Save greyed out when nothing had been edited, so clearing a Needs Review flag was only possible with Ctrl+S.",
+    "Cancel is unchanged, and Save still greys out on a clean object that is already up to date."
+  ]
+}

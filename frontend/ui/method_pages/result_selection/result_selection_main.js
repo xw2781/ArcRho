@@ -5,6 +5,7 @@ import {
   getDatasetOriginLabelText,
   validateDatasetOriginLabels,
 } from "/ui/shared/dataset/dataset_origin_labels.js";
+import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { sanitizeDataFolderPart, sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
 import {
@@ -12,7 +13,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260911b";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
@@ -250,6 +251,7 @@ const ctx = {
   getDatasetOriginLabelText,
   validateDatasetOriginLabels,
   openDatasetNamePicker,
+  statusNeedsReview,
   sanitizeDataFolderPart,
   sanitizeFileNamePart,
   applyTabbedPageSaveBar,

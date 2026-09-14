@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createArcRhoBusyOverlay } from "../ui/shared/components/progress_popup/progress_popup.js";
+import { statusNeedsReview } from "../ui/shared/dataset/review_status.js";
 
 const frontendRoot = new URL("../", import.meta.url);
 
@@ -422,6 +423,8 @@ test("a Result Selection save shows the spinner and clears it before the review 
       notesController: { markClean() {} },
       clearResultSelectionDependencyPreview: () => {},
       postDirty: () => {},
+      statusNeedsReview,
+      setNeedsReview: (value) => { state.needsReview = !!value; },
       reapplyActiveDependencyPreviews: () => {},
       schedulePersistedValuesRefresh: () => {},
       resumePersistedValuesRefresh: () => {},

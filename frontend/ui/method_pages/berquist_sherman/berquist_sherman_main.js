@@ -1,5 +1,6 @@
 import { ensureDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
+import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import { sanitizeFileNamePart } from "/ui/shared/utils/filename.js";
 import {
@@ -7,7 +8,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260911b";
 import { syncDetailsLabelWidth, syncDetailsSections } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
 import { createDetailsDependenciesController } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";
@@ -18,7 +19,7 @@ import {
   normalizeSidecarAuditEntries,
 } from "/ui/shared/tabs/audit_log/sidecar_audit_entries.js?v=20260714c";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
-import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260817a";
+import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260914a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
@@ -237,6 +238,7 @@ const state = {
   // Excel references the workbook refused on the last check or refresh, keyed
   // by user cell, so the cell stays red across re-renders until it is fixed.
   excelLinkErrors: new Map(),
+  needsReview: false,
 };
 
 let cleanSnapshot = "";
@@ -388,15 +390,29 @@ function postStatus(message, tone = "") {
   } catch {}
 }
 
+function syncSaveControls() {
+  updateTabbedPageSaveControls({
+    saveButton: els.saveBtn,
+    cancelButton: els.cancelBtn,
+    dirty: isDirty,
+    needsReview: state.needsReview,
+  });
+}
+
+// The Needs Review flag decides whether Save stays available while the window
+// is clean, so a change to it has to reach the save bar.
+function setNeedsReview(value) {
+  const next = !!value;
+  if (state.needsReview === next) return;
+  state.needsReview = next;
+  syncSaveControls();
+}
+
 function postDirty(dirty, force = false) {
   const next = !!dirty;
   if (!force && next === isDirty) return;
   isDirty = next;
-  updateTabbedPageSaveControls({
-    saveButton: els.saveBtn,
-    cancelButton: els.cancelBtn,
-    dirty: next,
-  });
+  syncSaveControls();
   try {
     window.parent?.postMessage({ type: "arcrho:dataset-dirty", inst, dirty: next }, "*");
   } catch {}
@@ -2669,6 +2685,7 @@ function getDetailsDependencies() {
 // One place applies a loaded sidecar, whether it arrived with the page open or
 // from a later Audit-tab refresh.
 function applySidecarPayload(sidecar) {
+  setNeedsReview(statusNeedsReview(sidecar?.status));
   state.sidecarOriginLabels = Array.isArray(sidecar?.origin_labels)
     ? sidecar.origin_labels.map(String)
     : [];

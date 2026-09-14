@@ -2,7 +2,7 @@ import { shell } from "./shell_context.js?v=20260510a";
 import {
   TABBED_PAGE_NEXT_MESSAGE,
   TABBED_PAGE_PREVIOUS_MESSAGE,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 
 let lastKeyCombo = "";
 let lastKeyTime = 0;

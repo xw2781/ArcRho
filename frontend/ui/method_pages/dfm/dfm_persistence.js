@@ -24,6 +24,7 @@ import {
   getCurrentDfmTab,
   buildSummaryRows,
   markDfmClean,
+  setDfmNeedsReview,
   runDfmProgrammatic,
   isRatiosTabVisible,
   isResultsTabVisible,
@@ -42,6 +43,7 @@ import {
   computeAverageForColumn,
   buildExcludedSetForColumn,
 } from "/ui/method_pages/dfm/dfm_state.js";
+import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
@@ -1345,9 +1347,8 @@ async function loadRatioSelectionIfExistsOnce(reason) {
     recordCleanDfmMethodPayload(method);
     markDfmClean({ force: true });
     emitDfmInstancePresence("found");
-    const sidecarStatus = response?.sidecar?.status;
-    const reviewNeeded = Number(sidecarStatus) === 2
-      || /review/i.test(String(sidecarStatus || response?.sidecar?.status_label || ""));
+    const reviewNeeded = statusNeedsReview(response?.sidecar?.status);
+    setDfmNeedsReview(reviewNeeded);
     warmDfmDatasetReferenceCache(method);
     postDfmStatus(
       reviewNeeded ? "DFM loaded with Review Needed status." : "Ready",
@@ -1757,6 +1758,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     void refreshDfmDetailsDependencies(currentDfmOutputDataset);
     recordCleanDfmMethodPayload(canonicalMethod);
     markMethodSaved();
+    setDfmNeedsReview(statusNeedsReview(response?.sidecar?.status));
     markDfmClean({ force: true });
     emitDfmInstancePresence("found");
     requestProjectInstanceDatasetTableRefresh();

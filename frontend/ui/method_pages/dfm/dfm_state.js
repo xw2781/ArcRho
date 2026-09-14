@@ -103,6 +103,23 @@ export function setRatioColAllActive(v) { ratioColAllActive = v; }
 
 export function getDfmIsDirty() { return dfmIsDirty; }
 
+// The Needs Review flag of the method's output, as the last load or save read
+// it. Save stays available while the window is clean whenever it is set, so a
+// change here has to reach the save bar; it travels on its own event rather
+// than the dirty one, which also drives the dependency preview.
+let dfmNeedsReview = false;
+export function getDfmNeedsReview() { return dfmNeedsReview; }
+export function setDfmNeedsReview(value) {
+  const next = !!value;
+  if (dfmNeedsReview === next) return;
+  dfmNeedsReview = next;
+  try {
+    window.dispatchEvent(new CustomEvent("arcrho:dfm-review-state", { detail: { needsReview: next } }));
+  } catch {
+    // ignore
+  }
+}
+
 // A save that enqueued an Engine dependent-propagation job records the job id
 // here so the dependency-source "cleared" message carries it; Project Instance
 // then keeps downstream live previews until the job's terminal status.

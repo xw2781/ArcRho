@@ -9,7 +9,7 @@ import {
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
 import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
@@ -23,6 +23,7 @@ import {
   setCurrentDfmTab,
   getCurrentDfmTab,
   getDfmIsDirty,
+  getDfmNeedsReview,
   markDfmDirty,
   notifyDfmEditState,
   consumePendingDfmPropagationJobId,
@@ -71,7 +72,7 @@ import {
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
   buildDfmMethodPayload,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260910a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260913a";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260907a";
 import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260907a";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
@@ -267,6 +268,7 @@ function updateDfmSaveUi() {
     saveButton: saveBtn,
     cancelButton: cancelBtn,
     dirty,
+    needsReview: getDfmNeedsReview(),
     saving: dfmSaveInFlight,
   });
 }
@@ -410,6 +412,7 @@ function wireDfmSaveControls() {
     void cancelCurrentDfmChangesFromBar();
   });
   window.addEventListener("arcrho:dfm-dirty-state", updateDfmSaveUi);
+  window.addEventListener("arcrho:dfm-review-state", updateDfmSaveUi);
   window.addEventListener("arcrho:dfm-dirty-state", (event) => {
     if (event?.detail?.dirty) scheduleDfmDependencyPreview();
     else clearDfmDependencyPreview("clean");

@@ -11,7 +11,7 @@ import {
 import {
   TABBED_PAGE_NEXT_MESSAGE,
   TABBED_PAGE_PREVIOUS_MESSAGE,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 
 export function installProjectInstanceMessages(ctx) {
   const { api, els, projectName, state } = ctx;

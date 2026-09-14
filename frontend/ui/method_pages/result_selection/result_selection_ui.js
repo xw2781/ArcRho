@@ -102,16 +102,30 @@
         } catch {}
       }
 
+      function syncSaveControls() {
+        updateTabbedPageSaveControls({
+          saveButton: els.saveBtn,
+          cancelButton: els.cancelBtn,
+          dirty: isDirty,
+          needsReview: !!state.needsReview,
+        });
+        if (state.loadBlocked && els.saveBtn) els.saveBtn.disabled = true;
+      }
+
+      // The Needs Review flag decides whether Save stays available while the
+      // window is clean, so a change to it has to reach the save bar.
+      function setNeedsReview(value) {
+        const next = !!value;
+        if (state.needsReview === next) return;
+        state.needsReview = next;
+        syncSaveControls();
+      }
+
       function postDirty(dirty, force = false) {
         const next = !!dirty;
         if (!force && isDirty === next) return;
         isDirty = next;
-        updateTabbedPageSaveControls({
-          saveButton: els.saveBtn,
-          cancelButton: els.cancelBtn,
-          dirty: next,
-        });
-        if (state.loadBlocked && els.saveBtn) els.saveBtn.disabled = true;
+        syncSaveControls();
         try {
           window.parent?.postMessage({ type: "arcrho:dataset-dirty", inst, dirty: next }, "*");
         } catch {}
@@ -403,7 +417,7 @@
             getActiveRatioBasisName(),
           );
           state.methodRevision = String(result.method_revision || "");
-          state.needsReview = Number(result.sidecar?.status) === 2;
+          setNeedsReview(statusNeedsReview(result.sidecar?.status));
           renderMethodGrid();
         }
         reapplyActiveDependencyPreviews();
@@ -1588,6 +1602,7 @@
         getHostApi,
         postStatus,
         postDirty,
+        setNeedsReview,
         markDirty,
         sourceMessageNames,
         sourceMessageMatchesContext,

@@ -3,13 +3,14 @@ import {
   formatDatasetOriginLabel,
   validateDatasetOriginLabels,
 } from "/ui/shared/dataset/dataset_origin_labels.js";
+import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import {
   applyTabbedPageSaveBar,
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
-} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260816a";
+} from "/ui/shared/tabbed_page/tabbed_page.js?v=20260913a";
 import { wireTabPopoutWindows } from "/ui/shared/tabbed_page/tab_popout_window.js?v=20260722a";
 import { mountNotesTab } from "/ui/shared/tabs/notes/notes_tab.js?v=20260911b";
 import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layout.js?v=20260820b";
@@ -127,6 +128,7 @@ const state = {
   methodHighlight: null,
   methodHighlightDragging: false,
   trendFactorEditSession: null,
+  needsReview: false,
 };
 
 let cleanSnapshot = "";
@@ -378,15 +380,29 @@ function postStatus(message, tone = "") {
   } catch {}
 }
 
+function syncSaveControls() {
+  updateTabbedPageSaveControls({
+    saveButton: els.saveBtn,
+    cancelButton: els.cancelBtn,
+    dirty: isDirty,
+    needsReview: state.needsReview,
+  });
+}
+
+// The Needs Review flag decides whether Save stays available while the window
+// is clean, so a change to it has to reach the save bar.
+function setNeedsReview(value) {
+  const next = !!value;
+  if (state.needsReview === next) return;
+  state.needsReview = next;
+  syncSaveControls();
+}
+
 function postDirty(dirty, force = false) {
   const next = !!dirty;
   if (!force && isDirty === next) return;
   isDirty = next;
-  updateTabbedPageSaveControls({
-    saveButton: els.saveBtn,
-    cancelButton: els.cancelBtn,
-    dirty: next,
-  });
+  syncSaveControls();
   try {
     window.parent?.postMessage({ type: "arcrho:dataset-dirty", inst, dirty: next }, "*");
   } catch {}
@@ -1432,10 +1448,12 @@ function applyOutputSidecar(sidecar, options = {}) {
   const payload = sidecar && typeof sidecar === "object" ? sidecar : {};
   if (payload.exists === false) {
     state.sidecarOriginLabels = [];
+    setNeedsReview(false);
     if (!options.preserveNotes) setNotesText("");
     auditLogView.clear();
     return false;
   }
+  setNeedsReview(statusNeedsReview(payload.status));
   state.sidecarOriginLabels = Array.isArray(payload.origin_labels)
     ? payload.origin_labels.map(String)
     : [];
