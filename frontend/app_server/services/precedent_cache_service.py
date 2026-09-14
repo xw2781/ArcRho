@@ -54,11 +54,18 @@ def sidecar_csv_path(project_name: str, reserving_class: str, sidecar: Mapping[s
     return os.path.join(config.get_project_dataset_cache_dir(project_name, reserving_class), csv_file)
 
 
-def _rollup_arguments(
+def rollup_arguments(
     sidecar: Mapping[str, Any],
     origin_length: Any,
     development_length: Any = None,
 ) -> dict:
+    """How *sidecar*'s own CSV aggregates to the coarser lengths asked for.
+
+    The one place the shape of a roll-up is decided, so a caller that keeps
+    the recipe to rebuild the view later records the same rule the reason and
+    the rows are worked out from.
+    """
+
     stored_origin, stored_development = stored_lengths(sidecar)
     if is_vector_format(sidecar.get("data_format")):
         # A vector holds one column, so only its rows are aggregated: a plain
@@ -95,7 +102,7 @@ def rollup_reason(
 
     if _clean(sidecar.get("source_kind")).lower() != "input":
         return "only a hand-entered dataset is rolled up in memory"
-    arguments = _rollup_arguments(sidecar, origin_length, development_length)
+    arguments = rollup_arguments(sidecar, origin_length, development_length)
     return triangle_rollup.rollup_reason(
         arguments["source_origin_length"],
         arguments["source_development_length"],
@@ -123,7 +130,7 @@ def rollup_rows(
     return triangle_rollup.rollup_triangle(
         rows,
         valuation_months=dataset_service.valuation_months(project_name),
-        **_rollup_arguments(sidecar, origin_length, development_length),
+        **rollup_arguments(sidecar, origin_length, development_length),
     )
 
 

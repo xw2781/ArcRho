@@ -17,13 +17,21 @@ if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
 from app_server import config
-from app_server.services import arcrho_runtime_service, dataset_service
+from app_server.services import (
+    arcrho_runtime_service,
+    dataset_service,
+    engine_calculation_service,
+)
 
 # The text a worksheet formula receives for the yearly view of the monthly
 # triangle these tests store. Written out rather than compared against a file,
 # because no coarser view is ever written to disk: this is the one place the
 # spelling of those numbers is pinned.
 EXPECTED_VIEW_CSV_TEXT = "7800.0,22200.0\r\n7800.0,\r\n"
+
+# The same, for the yearly view of the monthly vector: twelve months added up
+# into one figure per year.
+EXPECTED_VECTOR_VIEW_CSV_TEXT = "7800.0\r\n22200.0\r\n"
 
 
 class ManualDatasetRollupViewTests(unittest.TestCase):
@@ -196,6 +204,144 @@ class ManualDatasetRollupViewTests(unittest.TestCase):
 
         self.assertEqual(float(first.splitlines()[0].split(",")[0]), 7800.0)
         self.assertEqual(float(second.splitlines()[0].split(",")[0]), 15600.0)
+
+
+class ManualVectorRollupViewTests(unittest.TestCase):
+    """A hand-entered vector read at a coarser period than it is stored at.
+
+    There is nothing behind such a vector to produce it again, so a yearly
+    reading of a monthly one has to be added up from the figures that were
+    typed in. Asking the data engine for it instead is what put a
+    configuration error into a worksheet cell.
+    """
+
+    project_name = "Example Project"
+    reserving_class = "Example Reserving Class"
+    dataset_name = "Prior Selected"
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        root = Path(self.temp_dir.name)
+        self.cache_dir = root / "data" / self.reserving_class / config.DATASET_CACHE_DIR
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.sidecar_dir = self.cache_dir.parent / config.DATASET_SIDECAR_DIR
+        self.sidecar_dir.mkdir(parents=True, exist_ok=True)
+        settings_path = root / "general_settings.json"
+        settings_path.write_text(
+            '{"origin_start_date":"202301","origin_end_date":"202412","development_end_date":"202412"}',
+            encoding="utf-8",
+        )
+        self._settings_patch = patch.object(
+            config, "get_general_settings_path", return_value=str(settings_path)
+        )
+        self._settings_patch.start()
+        self.addCleanup(self._settings_patch.stop)
+
+        self.stored_csv = self.cache_dir / f"{self.dataset_name}@1.csv"
+        self.view_csv = self.cache_dir / f"{self.dataset_name}@12.csv"
+        self.add_in_view_dir = self.cache_dir / config.TEMPORARY_VIEW_DATASET_CACHE_DIR
+        self._write_stored_rows(100.0)
+
+        sidecar = {
+            "dataset_name": self.dataset_name,
+            "dataset_type": self.dataset_name,
+            "reserving_class": self.reserving_class,
+            "project_name": self.project_name,
+            "source_kind": "input",
+            "data_format": "Vector",
+            "csv_file": self.stored_csv.name,
+            "period_length": 12,
+            "stored_period_length": 1,
+        }
+        (self.sidecar_dir / f"{self.dataset_name}.json").write_text(
+            json.dumps(sidecar, indent=2), encoding="utf-8"
+        )
+
+    def tearDown(self) -> None:
+        config.DATASETS.clear()
+        config.DATASET_ROLLUPS.clear()
+        self.temp_dir.cleanup()
+
+    def _write_stored_rows(self, scale: float) -> None:
+        """Twenty-four monthly figures, the nth of them scale x n."""
+        lines = [f"{scale * (row + 1):.1f}" for row in range(24)]
+        self.stored_csv.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _pairs(self) -> list:
+        return [
+            ("Function", "ArcRhoVec"),
+            ("Path", self.reserving_class),
+            ("DatasetName", self.dataset_name),
+            ("ProjectName", self.project_name),
+            ("Cumulative", "True"),
+            ("Transposed", "False"),
+            ("OriginLength", "12"),
+            ("DevelopmentLength", "12"),
+        ]
+
+    def _hosted_answer(self) -> dict:
+        def refuse(*args, **kwargs):
+            self.fail("the data engine was asked to produce a hand-entered vector")
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(
+                    config,
+                    "get_project_dataset_cache_dir",
+                    return_value=str(self.cache_dir),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    config,
+                    "get_project_temporary_view_dataset_cache_dir",
+                    return_value=str(self.add_in_view_dir),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    engine_calculation_service, "run_engine_calculation", refuse
+                )
+            )
+            return arcrho_runtime_service.run_arcrho_dataset_csv(
+                self._pairs(), timeout_sec=15.0
+            )
+
+    def test_the_yearly_reading_adds_the_stored_months_up(self) -> None:
+        answer = self._hosted_answer()
+
+        self.assertTrue(answer["ok"])
+        self.assertEqual(answer["local_cache_status"], "cache_derived")
+        self.assertTrue(answer["derived"]["in_memory"])
+        self.assertEqual(answer["csv_text"], EXPECTED_VECTOR_VIEW_CSV_TEXT)
+
+    def test_nothing_is_written_beside_the_stored_figures(self) -> None:
+        self._hosted_answer()
+
+        self.assertFalse(
+            self.view_csv.exists(),
+            "a coarser copy of a hand-entered vector was written beside it",
+        )
+        self.assertFalse(
+            self.add_in_view_dir.exists(),
+            "a coarser copy was written into the reserving class's view cache",
+        )
+
+    def test_a_leftover_coarser_copy_is_never_served(self) -> None:
+        self.view_csv.write_text("1\n2\n", encoding="utf-8")
+
+        answer = self._hosted_answer()
+
+        self.assertEqual(answer["csv_text"], EXPECTED_VECTOR_VIEW_CSV_TEXT)
+        self.assertEqual(self.view_csv.read_text(encoding="utf-8"), "1\n2\n")
+
+    def test_the_reading_follows_the_edited_figures(self) -> None:
+        first = self._hosted_answer()["csv_text"]
+        self._write_stored_rows(200.0)
+        second = self._hosted_answer()["csv_text"]
+
+        self.assertEqual(float(first.splitlines()[0]), 7800.0)
+        self.assertEqual(float(second.splitlines()[0]), 15600.0)
 
 
 if __name__ == "__main__":

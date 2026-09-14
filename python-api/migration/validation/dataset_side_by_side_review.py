@@ -209,7 +209,7 @@ def _read_arcrho_datasets(
             ):
                 # A vector holds one column, so only its rows are aggregated: a
                 # plain block sum, the calendar form of the roll-up. This mirrors
-                # precedent_cache_service._rollup_arguments's vector branch --
+                # precedent_cache_service.rollup_arguments's vector branch --
                 # rolling a vector up by its (period, period) display shape like
                 # a triangle would ask for a square block instead of one column.
                 if kind == VECTOR_KIND:

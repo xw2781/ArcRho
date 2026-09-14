@@ -24,7 +24,11 @@ from arcrho_api.field_mapping_contract import (
     DATE_ROLE_DEVELOPMENT,
     DATE_ROLE_ORIGIN,
 )
-from arcrho_api.sidecar_core_contract import stored_length_fields
+from arcrho_api.sidecar_core_contract import (
+    is_vector_format,
+    stored_length_fields,
+    stored_lengths,
+)
 from arcrho_api.timestamps import utc_now_text, format_persisted_timestamp
 from arcrho_api.triangle_rollup import rollup_reason, rollup_triangle
 from arcrho_engine_calculation_contract import (
@@ -769,10 +773,19 @@ def _triangle_sidecar_payload(
         verify_content=verify_content,
     ):
         return {}
-    data_format = _clean_cache_text(payload.get("data_format") or "Triangle").lower()
-    if data_format and data_format != "triangle":
+    if is_vector_format(payload.get("data_format") or "Triangle") != _request_is_vector(pairs):
         return {}
     return payload
+
+
+def _request_is_vector(pairs: list) -> bool:
+    """Did the formula ask for a vector rather than a triangle?
+
+    The two shapes are stored side by side under the same dataset name, so a
+    request is only ever answered by the record of the shape it asked for.
+    """
+
+    return _pair_value(pairs, "Function").strip().lower() == "arcrhovec"
 
 
 def _manual_input_sidecar_payload(data_path: str, pairs: list) -> Dict[str, Any]:
@@ -845,6 +858,34 @@ def _parse_cache_variant(filename: str) -> Dict[str, Any]:
     }
 
 
+def _vector_cache_candidates(payload: Dict[str, Any], data_path: str) -> list[Dict[str, Any]]:
+    """The one CSV a coarser view of a vector can be built from.
+
+    A vector keeps a single period, so there is no family of variant files to
+    search through the way a triangle has: the record names the only copy of
+    the figures, and anything else beside it is a view an older release wrote
+    down. The lengths come from the record rather than the file name, because
+    a vector's name carries only the one period.
+    """
+
+    csv_file = os.path.basename(_clean_cache_text(payload.get("csv_file")))
+    if not csv_file:
+        return []
+    path = os.path.join(os.path.dirname(data_path), csv_file)
+    if not os.path.isfile(path):
+        return []
+    stored_origin, stored_development = stored_lengths(payload)
+    return [{
+        "origin_length": stored_origin,
+        "development_length": stored_development,
+        "cumulative": True,
+        "calendar": True,
+        "vector": True,
+        "path": path,
+        "payload": payload,
+    }]
+
+
 def _local_cache_candidates(
     data_path: str,
     pairs: list,
@@ -870,9 +911,11 @@ def _local_cache_candidates(
     if not payload:
         return []
     dataset_dir = os.path.dirname(data_path)
-    expected_base = sanitize_dataset_file_name(_request_dataset_name(pairs))
     if not os.path.isdir(dataset_dir):
         return []
+    if is_vector_format(payload.get("data_format")):
+        return _vector_cache_candidates(payload, data_path)
+    expected_base = sanitize_dataset_file_name(_request_dataset_name(pairs))
     out: list[Dict[str, Any]] = []
     seen_paths: set[str] = set()
 
@@ -913,9 +956,40 @@ def _local_cache_candidates(
     return out
 
 
+def _rollup_arguments_for_candidate(candidate: Dict[str, Any], pairs: list) -> Dict[str, Any]:
+    """The shape one candidate file aggregates to for this request.
+
+    A vector is rolled up by the resolver every method already shares, so a
+    worksheet formula and a method reading the same hand-entered vector build
+    the same view: one column of block sums rather than the square block a
+    triangle's two lengths would ask for.
+    """
+
+    target_origin = _pair_int_value(pairs, "OriginLength", 12)
+    if candidate.get("vector"):
+        from app_server.services import precedent_cache_service
+
+        return precedent_cache_service.rollup_arguments(candidate["payload"], target_origin)
+    return {
+        "source_origin_length": int(candidate.get("origin_length") or 0),
+        "source_development_length": int(candidate.get("development_length") or 0),
+        "target_origin_length": target_origin,
+        "target_development_length": _pair_int_value(pairs, "DevelopmentLength", 12),
+        "cumulative": _pair_bool_value(pairs, "Cumulative", True),
+        "calendar": _pair_bool_value(pairs, "Calendar", False),
+    }
+
+
 def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> tuple[bool, str]:
     if candidate.get("path") == target_path:
         return False, "exact target already handled"
+    if candidate.get("vector"):
+        from app_server.services import precedent_cache_service
+
+        reason = precedent_cache_service.rollup_reason(
+            candidate["payload"], _pair_int_value(pairs, "OriginLength", 12)
+        )
+        return (not reason), reason
     target_origin = _pair_int_value(pairs, "OriginLength", 12)
     target_dev = _pair_int_value(pairs, "DevelopmentLength", 12)
     source_origin = int(candidate.get("origin_length") or 0)
@@ -931,12 +1005,11 @@ def _can_derive_cache(candidate: Dict[str, Any], pairs: list, target_path: str) 
 
 def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: str) -> Dict[str, Any]:
     source_path = str(candidate["path"])
-    source_origin = int(candidate["origin_length"])
-    source_dev = int(candidate["development_length"])
-    target_origin = _pair_int_value(pairs, "OriginLength", 12)
-    target_dev = _pair_int_value(pairs, "DevelopmentLength", 12)
-    origin_factor = target_origin // source_origin
-    dev_factor = target_dev // source_dev
+    arguments = _rollup_arguments_for_candidate(candidate, pairs)
+    source_origin = int(arguments["source_origin_length"])
+    source_dev = int(arguments["source_development_length"])
+    target_origin = int(arguments["target_origin_length"])
+    target_dev = int(arguments["target_development_length"])
     from app_server.services import dataset_service
 
     # The view is valued on the project's Development End Date, like every
@@ -946,14 +1019,7 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
         source_path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip"
     )
     values = rollup_triangle(
-        df.to_numpy().tolist(),
-        source_origin_length=source_origin,
-        source_development_length=source_dev,
-        target_origin_length=target_origin,
-        target_development_length=target_dev,
-        valuation_months=valuation,
-        cumulative=_pair_bool_value(pairs, "Cumulative", True),
-        calendar=_pair_bool_value(pairs, "Calendar", False),
+        df.to_numpy().tolist(), valuation_months=valuation, **arguments
     )
     target_rows = len(values)
     target_cols = len(values[0])
@@ -961,8 +1027,8 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
         "source_path": source_path,
         "source_origin_length": source_origin,
         "source_development_length": source_dev,
-        "origin_factor": origin_factor,
-        "development_factor": dev_factor,
+        "origin_factor": target_origin // source_origin,
+        "development_factor": target_dev // source_dev,
         "target_rows": target_rows,
         "target_cols": target_cols,
     }
@@ -975,16 +1041,7 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
         # the stored CSV on every read.
         dataset_service.register_rollup_handle(
             _arcrho_dataset_id(target_path, pairs),
-            {
-                "source_path": source_path,
-                "source_origin_length": source_origin,
-                "source_development_length": source_dev,
-                "target_origin_length": target_origin,
-                "target_development_length": target_dev,
-                "valuation_months": valuation,
-                "cumulative": _pair_bool_value(pairs, "Cumulative", True),
-                "calendar": _pair_bool_value(pairs, "Calendar", False),
-            },
+            {"source_path": source_path, "valuation_months": valuation, **arguments},
         )
         derived["in_memory"] = True
         return derived
@@ -1248,7 +1305,7 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
     sidecar_path = _dataset_sidecar_path(data_path, pairs)
     project_name = _pair_value(pairs, "ProjectName")
     reserving_class = _pair_value(pairs, "Path")
-    is_vector = _pair_value(pairs, "Function").strip().lower() == "arcrhovec"
+    is_vector = _request_is_vector(pairs)
     data_format = "Vector" if is_vector else "Triangle"
     user_name = user_identity_service.get_current_display_name() or getpass.getuser()
     updated_at = utc_now_text()

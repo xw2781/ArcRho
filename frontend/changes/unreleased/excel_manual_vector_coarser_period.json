@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "A hand-entered vector read in Excel at a coarser period now comes back as figures instead of a configuration error.",
+  "details": [
+    "Reading a monthly hand-entered vector a year at a time asked the data engine to build it, which it cannot do for figures that were typed in, so the cell showed a data processing configuration error instead of the numbers.",
+    "The yearly reading is now added up from the stored figures the same way a method already reads the same vector, and nothing is written beside them.",
+    "The same blindness meant a hand-entered vector was not recognised as hand-entered at all, so a read could clear the only copy of its figures before failing."
+  ]
+}
