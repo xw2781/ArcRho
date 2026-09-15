@@ -32,16 +32,14 @@ DEV_LABELS = ["12-24", "24-36", "36-48", "48-60"]
 
 
 class FakeDfm:
-    def __init__(self, formulas, notes="", reserving_class="RC", output_category="", name=""):
+    def __init__(self, formulas, notes=""):
         self.ratios_tab = {
             "average_formulas": formulas,
             "ratio_triangle": {"development_labels": DEV_LABELS},
         }
         self._notes = notes
         self.project_name = "Project"
-        self.reserving_class = reserving_class
-        self.details = {"output_category": output_category}
-        self.name = name
+        self.reserving_class = "RC"
         self.decimal_places = 4
 
     @property
@@ -98,26 +96,13 @@ def make_resolver(values_by_name):
     return resolver
 
 
-def single_column_dfm(
-    formula,
-    user_value,
-    base_label="Simple - 2",
-    base_value=3.0414,
-    reserving_class="RC",
-    output_category="",
-    name="",
-):
-    return FakeDfm(
-        {
-            "label": [base_label, "User Entry"],
-            "selected": [[0], [1]],
-            "values": [[base_value], [user_value]],
-            "inputs": [[""], [formula]],
-        },
-        reserving_class=reserving_class,
-        output_category=output_category,
-        name=name,
-    )
+def single_column_dfm(formula, user_value, base_label="Simple - 2", base_value=3.0414):
+    return FakeDfm({
+        "label": [base_label, "User Entry"],
+        "selected": [[0], [1]],
+        "values": [[base_value], [user_value]],
+        "inputs": [[""], [formula]],
+    })
 
 
 def generate(dfm, resolver):
@@ -257,41 +242,6 @@ class NoteGenerationTests(unittest.TestCase):
         note = generate(dfm, resolver)["note_blocks"][0]
         self.assertIn("Apply growth adjustment of 1+0.26% = 1.0026;", note)
         self.assertNotIn("counts", note)
-
-    def test_growth_and_size_of_loss_special_case(self):
-        dfm = single_column_dfm(
-            '= "Simple - 2" * [Growth Adjustment--Paid][-1]',
-            3.0493,
-            reserving_class=MACRO.GROWTH_AND_SIZE_OF_LOSS_RESERVING_CLASS,
-            output_category="F Net Loss",
-            name="F 01 - Incurred Development",
-        )
-        resolver = make_resolver({"Growth Adjustment--Paid": (1.0026, "2026")})
-        note = generate(dfm, resolver)["note_blocks"][0]
-        self.assertIn(
-            "Apply growth and size of loss adjustment of 1+0.26% = 1.0026;", note
-        )
-
-    def test_growth_and_size_of_loss_special_case_requires_class_category_and_name(self):
-        base_kwargs = dict(
-            reserving_class=MACRO.GROWTH_AND_SIZE_OF_LOSS_RESERVING_CLASS,
-            output_category="F Net Loss",
-            name="F 01 - Incurred Development",
-        )
-        resolver = make_resolver({"Growth Adjustment--Paid": (1.0026, "2026")})
-        for override in (
-            {"reserving_class": "RC"},
-            {"output_category": "C Claim Counts"},
-            {"name": "F 02 - Paid Development"},
-        ):
-            with self.subTest(override=override):
-                kwargs = {**base_kwargs, **override}
-                dfm = single_column_dfm(
-                    '= "Simple - 2" * [Growth Adjustment--Paid][-1]', 3.0493, **kwargs
-                )
-                note = generate(dfm, resolver)["note_blocks"][0]
-                self.assertIn("Apply growth adjustment of 1+0.26% = 1.0026;", note)
-                self.assertNotIn("size of loss", note)
 
     def test_negative_adjustment_percent(self):
         dfm = single_column_dfm('= "Simple - 2" * [Growth Adjustment][-1]', 3.0058)

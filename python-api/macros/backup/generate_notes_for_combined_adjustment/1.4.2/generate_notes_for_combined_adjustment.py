@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.5.0
-# Release Note: Removed the growth and size-of-loss special case; every growth vector's line now simply reads "Apply growth adjustment of ...".
+# Version: 1.4.2
+# Release Note: The combined growth and size-of-loss adjustment special case also requires "Incurred" in the DFM's own name.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -45,6 +45,12 @@ MACRO_TITLE = "Generate Notes for Combined Adjustment"
 NO_ADJUSTMENT_NOTE = "No combined adjustments were needed for this method."
 
 _GROWTH_ADJUSTMENT_DATASET_KEYS = {name.lower() for name in GROWTH_ADJUSTMENT_DATASETS.values()}
+
+# This one reserving class runs its growth vector as a combined growth and
+# size-of-loss adjustment, but only for its net-loss, incurred DFM methods.
+GROWTH_AND_SIZE_OF_LOSS_RESERVING_CLASS = "PRNJ - PA\\PA\\NJ\\Direct Group\\BIR51+UMBIR51"
+GROWTH_AND_SIZE_OF_LOSS_CATEGORY = "f net loss"
+GROWTH_AND_SIZE_OF_LOSS_NAME_TOKEN = "incurred"
 
 # A displayed percent below this threshold rounds to 0.00%, so the factor is
 # treated as 1 and its adjustment line is omitted from the notes.
@@ -483,15 +489,34 @@ def _base_value(entry: dict[str, Any], base_label: str) -> float | None:
     return None
 
 
-def _note_adjustment_description(dataset_name: str) -> str:
+def _is_growth_and_size_of_loss_dfm(dfm: Any) -> bool:
+    reserving_class = _clean_text(getattr(dfm, "reserving_class", ""))
+    category = _clean_text((getattr(dfm, "details", None) or {}).get("output_category")).lower()
+    name = _clean_text(getattr(dfm, "name", "")).lower()
+    return (
+        reserving_class == GROWTH_AND_SIZE_OF_LOSS_RESERVING_CLASS
+        and category == GROWTH_AND_SIZE_OF_LOSS_CATEGORY
+        and GROWTH_AND_SIZE_OF_LOSS_NAME_TOKEN in name
+    )
+
+
+def _note_adjustment_description(dataset_name: str, *, growth_and_size_of_loss: bool) -> str:
     """How the notes name an adjustment dataset, collapsing a growth vector's
-    basis (counts, incurred, paid) since a reader does not need it."""
+    basis (counts, incurred, paid) since a reader does not need it, and
+    naming it as a combined growth and size-of-loss adjustment for the one
+    reserving class and DFM category that runs it that way."""
     if _clean_text(dataset_name).lower() in _GROWTH_ADJUSTMENT_DATASET_KEYS:
-        return "growth adjustment"
-    return adjustment_description(dataset_name)
+        description = "growth adjustment"
+    else:
+        description = adjustment_description(dataset_name)
+    if growth_and_size_of_loss and description == "growth adjustment":
+        return "growth and size of loss adjustment"
+    return description
 
 
-def _factor_lines(factors: list[dict[str, Any]]) -> tuple[list[str], list[str], bool]:
+def _factor_lines(
+    factors: list[dict[str, Any]], *, growth_and_size_of_loss: bool
+) -> tuple[list[str], list[str], bool]:
     """Build the "Apply ..." note lines and multiplier texts for non-unity factors."""
     lines: list[str] = []
     multipliers: list[str] = []
@@ -502,7 +527,10 @@ def _factor_lines(factors: list[dict[str, Any]]) -> tuple[list[str], list[str], 
             continue
         multiplier = _format_note_multiplier(effective)
         if factor["kind"] == "reference":
-            description = _note_adjustment_description(factor["reference"]["dataset_name"])
+            description = _note_adjustment_description(
+                factor["reference"]["dataset_name"],
+                growth_and_size_of_loss=growth_and_size_of_loss,
+            )
         else:
             description = "other adjustment"
         if factor["op"] == "/":
@@ -526,7 +554,9 @@ def _column_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> str
         if factor["op"] == "/" and not factor["resolved_value"]:
             return _fallback_note(dfm, entry, parsed)
 
-    lines, multipliers, meaningful = _factor_lines(factors)
+    lines, multipliers, meaningful = _factor_lines(
+        factors, growth_and_size_of_loss=_is_growth_and_size_of_loss_dfm(dfm)
+    )
     if not meaningful:
         return None
 
