@@ -11,4 +11,6 @@ Every method service reads source CSVs this way: dfm_service (the DFM input snap
 
 **Why:** "full double precision" was claimed for DFM inputs, and the BS precision check on 2026-09-03 found the parser was the only remaining place a digit is lost; it is shared by every method page, so DFM and BS are consistent with each other.
 
-**How to apply:** if a ratio ever needs to match ResQ beyond about 1e-12 relative, add `float_precision="round_trip"` to those reads in one shared helper rather than per service. Below that threshold it is invisible at four decimals and not worth a change. See [[mixed-origin-length-precedents]] for the other precedent-refresh limits.
+**Since 2026-09-15 that shared helper exists:** `app_server.helpers.read_dataset_csv` owns every dataset-cache read and already passes `float_precision="round_trip"`, so a parser change is one line — see [[blank-csv-row-is-an-empty-origin]].
+
+**How to apply:** change the parser in that helper, never per service. Below that threshold it is invisible at four decimals and not worth a change. See [[mixed-origin-length-precedents]] for the other precedent-refresh limits.

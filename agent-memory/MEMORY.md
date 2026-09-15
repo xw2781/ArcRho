@@ -68,6 +68,7 @@
 - [Unreviewed-dataset import fix](unreviewed-dataset-import-fix.md) — 2026-09-01: the import carries calculated and engine datasets the review hides (catalog._is_unreviewed_dataset) and compares Engine-built datasets with ResQ at two decimals
 - [BS CRA export of Avg. Selections](bs-cra-export-avg-selections.md) — 2026-09-02: Export macro v2.8.0 writes both Avg. Selections grids via SetUser/SetSelected AvgInflation and AvgCaseReserves
 - [pandas read_csv is not round-trip](pandas-read-csv-not-round-trip.md) — the default float parser caps at 17 digit characters; every method service reads CSVs this way; float_precision="round_trip" is exact
+- [Blank CSV row is an empty origin](blank-csv-row-is-an-empty-origin.md) — pandas drops the blank line a writer emits for a missing origin, which caused "returned 39 values; expected 40"; all dataset reads go through helpers.read_dataset_csv
 - [Method precision: observed, not projected](method-precision-observed-not-projected.md) — since 2026-09-08 methods store/calculate at the observed precision (canonical_input_number); only a formatter or ROUND rounds
 - [Worktree baselines mask new failures](worktree-baseline-masks-new-failures.md) — a fresh worktree over-reports failures and hides regressions; stash in the same tree instead
 - [ResQ DFM Curves COM API](resq-dfm-curves-com-api.md) — the Ratios-tab tail is CustomAverages(i).TailFactor, CurveValues(col,0) is a tail, selection is SelectedTailFactor; fit rules pinned by dfm_curves_resq_c12.json
