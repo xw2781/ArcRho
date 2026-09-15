@@ -66,6 +66,10 @@ FREE_FIT_C_LIMIT = -0.5
 # second is left out of the fit until the user includes it explicitly.
 DEFAULT_EXCLUDE_ABOVE = 2.0
 DEFAULT_EXCLUDE_BELOW = 1.00001
+# A factor this close to 1 carries no excess a log regression can use: the gap
+# is floating-point dust left by an arithmetic result, not a development. Its
+# log is tens of units away from every real point and would bend the fit alone.
+UNIT_FACTOR_TOLERANCE = 1e-12
 
 FIT_UNFITTED = "unfitted"
 FIT_OK = "ok"
@@ -295,8 +299,9 @@ def _log_points(kind: str, points: Sequence[tuple[int, float]], c: float = 0.0) 
     xs: list[float] = []
     ys: list[float] = []
     for t, value in points:
-        if value <= 1.0:
-            # Log regression cannot take the log of a non-positive excess.
+        if value <= 1.0 + UNIT_FACTOR_TOLERANCE:
+            # Log regression cannot take the log of a non-positive excess, and
+            # an excess that is only floating-point dust is no excess at all.
             continue
         if kind == "exponential_decay":
             xs.append(float(t))
@@ -321,10 +326,18 @@ def _fit_kind(kind: str, points: Sequence[tuple[int, float]], c: float = 0.0) ->
     if regression is None:
         return None
     intercept, slope, r_squared = regression
-    if kind == "power":
-        a, b = math.exp(math.exp(intercept)), math.exp(slope)
-    else:
-        a, b = math.exp(intercept), slope
+    try:
+        if kind == "power":
+            a, b = math.exp(math.exp(intercept)), math.exp(slope)
+        else:
+            a, b = math.exp(intercept), slope
+    except OverflowError:
+        # Points that barely separate can land an intercept whose exponential
+        # is past the float range. That curve has no fit; it must not take the
+        # whole method down with it.
+        return None
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return None
     return {"a": a, "b": b, "c": c if kind == "inverse_power" else 0.0, "r_squared": r_squared}
 
 

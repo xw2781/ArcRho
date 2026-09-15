@@ -34,7 +34,7 @@ import {
   FIT_UNFITTED,
   DEFAULT_USER_COLUMN_LABEL,
   MAX_FUTURE_DEVELOPMENT_PERIODS,
-} from "/ui/method_pages/dfm/dfm_curve_fit.js?v=20260903a";
+} from "/ui/method_pages/dfm/dfm_curve_fit.js?v=20260914a";
 import {
   renderResultsTable,
   invalidatePersistedResultsDerivations,

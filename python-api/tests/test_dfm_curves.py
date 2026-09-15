@@ -139,6 +139,19 @@ class ResqCurveFitParityTests(unittest.TestCase):
         self.assertTrue(curves_tab_is_default({}, [2.5, 1.2]))
         self.assertFalse(curves_tab_is_default({"future_development_periods": 3}, [2.5, 1.2]))
 
+    def test_a_factor_one_step_above_1_is_dust_and_stays_out_of_the_fit(self) -> None:
+        # A selected factor of 1 + one float step reached the fit as a point
+        # tens of log units below every real one, which bent the Power curve
+        # until its double exponential ran past the float range.
+        selection = [2.484089, 1.326552, 1.184707, 1.028533, 1.0000000000000002]
+        included = [1, 1, 1, 1, 1]
+        fits = fit_curves(selection, included)
+        clean = fit_curves(selection[:-1], included[:-1])
+        for kind in CURVE_KINDS:
+            self.assertEqual(fits[kind]["result"], FIT_OK, msg=kind)
+            for key in ("a", "b", "c", "r_squared"):
+                self.assertAlmostEqual(fits[kind][key], clean[kind][key], places=9, msg=f"{kind}.{key}")
+
 
 def _payload(curves_tab: dict | None = None) -> dict:
     payload = {

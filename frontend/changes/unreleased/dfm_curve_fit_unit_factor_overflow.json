@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM whose selected factors include one sitting a hair above 1 no longer fails to preview or save. That hair is floating-point dust left by an arithmetic result, and the Curves tab now leaves such a factor out of its fits the way it already leaves out a factor of exactly 1.",
+  "details": [
+    "The Power curve was the one that gave way: the dust point pulled its regression far enough that the fitted parameter ran past the largest number the app can hold, and the whole method calculation stopped with a server error.",
+    "A curve that still cannot be fitted for any other reason is now reported as unfitted instead of failing the method."
+  ]
+}

@@ -16,7 +16,7 @@ import {
 import {
   curvesTable,
   normalizeCurvesTab,
-} from "/ui/method_pages/dfm/dfm_curve_fit.js?v=20260903a";
+} from "/ui/method_pages/dfm/dfm_curve_fit.js?v=20260914a";
 
 // =============================================================================
 // Dynamic Calc Import

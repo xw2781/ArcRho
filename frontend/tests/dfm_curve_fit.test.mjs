@@ -104,3 +104,14 @@ test("defaults exclude factors outside ResQ's thresholds and stored flags win", 
   assert.deepEqual(defaultCurvesTab(4, [2.5, 1.2, 1, 1.00001]).included, [0, 1, 0, 1]);
   assert.deepEqual(normalizeCurvesTab({ included: [1, 0] }, 4, [2.5, 1.2, 1, 1.00001]).included, [1, 0, 0, 1]);
 });
+
+test("a factor one float step above 1 is dust and stays out of the fit", () => {
+  const selection = [2.484089, 1.326552, 1.184707, 1.028533, 1.0000000000000002];
+  const included = [1, 1, 1, 1, 1];
+  const fits = fitCurves(selection, included);
+  const clean = fitCurves(selection.slice(0, -1), included.slice(0, -1));
+  for (const kind of CURVE_KINDS) {
+    assert.equal(fits[kind].result, FIT_OK, kind);
+    for (const key of ["a", "b", "c", "r_squared"]) close(fits[kind][key], clean[kind][key], 9, `${kind}.${key}`);
+  }
+});

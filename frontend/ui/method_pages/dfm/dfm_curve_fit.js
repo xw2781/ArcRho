@@ -39,6 +39,9 @@ const FREE_FIT_C_UPPER = 10;
 const FREE_FIT_C_LIMIT = -0.5;
 export const DEFAULT_EXCLUDE_ABOVE = 2;
 export const DEFAULT_EXCLUDE_BELOW = 1.00001;
+// A factor this close to 1 carries no excess a log regression can use: the gap
+// is floating-point dust left by an arithmetic result, not a development.
+export const UNIT_FACTOR_TOLERANCE = 1e-12;
 export const FIT_UNFITTED = "unfitted";
 export const FIT_OK = "ok";
 export const FIT_LIMIT = "limit";
@@ -175,7 +178,8 @@ function logPoints(kind, points, c = 0) {
   const xs = [];
   const ys = [];
   for (const [t, value] of points) {
-    if (value <= 1) continue;
+    // An excess that is only floating-point dust is no excess at all.
+    if (value <= 1 + UNIT_FACTOR_TOLERANCE) continue;
     if (kind === "exponential_decay") {
       xs.push(t);
       ys.push(Math.log(value - 1));
@@ -199,10 +203,12 @@ function fitKind(kind, points, c = 0) {
   const regression = linearRegression(xs, ys);
   if (!regression) return null;
   const { intercept, slope, rSquared } = regression;
-  if (kind === "power") {
-    return { a: Math.exp(Math.exp(intercept)), b: Math.exp(slope), c: 0, r_squared: rSquared };
-  }
-  return { a: Math.exp(intercept), b: slope, c: kind === "inverse_power" ? c : 0, r_squared: rSquared };
+  // Points that barely separate can land an intercept whose exponential is
+  // past the float range; that curve has no fit rather than an infinite one.
+  const fit = kind === "power"
+    ? { a: Math.exp(Math.exp(intercept)), b: Math.exp(slope), c: 0, r_squared: rSquared }
+    : { a: Math.exp(intercept), b: slope, c: kind === "inverse_power" ? c : 0, r_squared: rSquared };
+  return Number.isFinite(fit.a) && Number.isFinite(fit.b) ? fit : null;
 }
 
 function inversePowerRSquared(points, c) {
