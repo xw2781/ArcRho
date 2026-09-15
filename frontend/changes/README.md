@@ -28,6 +28,6 @@ Example:
 
 Release flow:
 1. Fragments are validated with `python build/release/release_notes.py check`.
-2. A successful packaged release runs `python build/release/release_notes.py release <version>`.
-3. Release notes are written to `docs/releases/<version>.md`.
+2. Before packaging, the build runs `python build/release/release_notes.py stage-notes <version>`, which writes `docs/releases/<version>.md` and leaves the fragments unreleased. The app reads its Release History from the notes packaged inside it, so a version's notes have to exist before its installer is built.
+3. A successful packaged release runs `python build/release/release_notes.py release <version>`, which keeps the notes the build packaged.
 4. Consumed fragments are moved into `changes/archive/<version>/`.

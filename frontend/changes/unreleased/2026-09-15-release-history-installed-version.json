@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "about",
+  "audience": "user",
+  "summary": "The Release History window now lists the version you are running.",
+  "details": [
+    "The list used to stop one version short, because each version's notes were written only after its installer had been packaged.",
+    "Every build now writes its own notes before packaging them, so the newest entry is the installed version."
+  ]
+}

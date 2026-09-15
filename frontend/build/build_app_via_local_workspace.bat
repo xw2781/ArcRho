@@ -395,7 +395,21 @@ if errorlevel 1 (
 echo Python app server built successfully!
 echo.
 
-echo Step 4: Building Electron app with electron-builder...
+echo Step 4: Writing release notes for this version...
+echo ----------------------------------------
+REM The app reads its Release History from the notes packaged inside it, so this
+REM version's notes must exist before the packaging step below picks up docs\releases.
+REM The fragments stay unreleased until Step 6 archives them.
+"%PYTHON_EXE%" build\release\release_notes.py stage-notes "%APP_VERSION%"
+if errorlevel 1 (
+    echo ERROR: Failed to write release notes for version %APP_VERSION%.
+    echo.
+    call :pause_if_interactive
+    exit /b 1
+)
+echo.
+
+echo Step 5: Building Electron app with electron-builder...
 echo ----------------------------------------
 if not exist "python_dist\%PYTHON_SERVER_DIR%\%PYTHON_SERVER_EXE%" (
     echo ERROR: Missing app-server bundle: python_dist\%PYTHON_SERVER_DIR%\%PYTHON_SERVER_EXE%
@@ -436,13 +450,13 @@ if not exist "dist\%INSTALLER_PREFIX%-Setup-*.exe" (
 if defined ARCRHO_RELEASE_BUILD_ONLY goto record_pending_release
 
 echo.
-echo Step 5: Generating release notes...
+echo Step 6: Archiving the release note fragments...
 echo ----------------------------------------
 set "RELEASE_NOTE_PATH_FILE=build\release_note_path_%APP_VERSION%.txt"
 if exist "%RELEASE_NOTE_PATH_FILE%" del /q "%RELEASE_NOTE_PATH_FILE%" >nul 2>nul
 "%PYTHON_EXE%" build\release\release_notes.py release "%APP_VERSION%" --path-file "%RELEASE_NOTE_PATH_FILE%"
 if errorlevel 1 (
-    echo ERROR: Failed to generate release notes for version %APP_VERSION%.
+    echo ERROR: Failed to archive the release note fragments for version %APP_VERSION%.
     echo.
     call :pause_if_interactive
     exit /b 1
@@ -457,10 +471,10 @@ if not defined RELEASE_NOTE_PATH (
     call :pause_if_interactive
     exit /b 1
 )
-echo Release notes generated: %RELEASE_NOTE_PATH%
+echo Release notes: %RELEASE_NOTE_PATH%
 echo.
 
-echo Step 6: Publishing GitHub Release...
+echo Step 7: Publishing GitHub Release...
 echo ----------------------------------------
 powershell -NoProfile -ExecutionPolicy Bypass -File "build\release\publish_github_release.ps1" -InstallerPath "dist\%INSTALLER_PREFIX%-Setup-%APP_VERSION%.exe" -ReleaseNotesPath "%RELEASE_NOTE_PATH%" -ProductName "%PRODUCT_NAME%"
 if errorlevel 1 (
@@ -477,7 +491,7 @@ goto after_release_publication
 
 :record_pending_release
 echo.
-echo Step 5: Recording pending local release...
+echo Step 6: Recording pending local release...
 echo ----------------------------------------
 call :capture_pending_release
 if errorlevel 1 (
@@ -493,7 +507,7 @@ echo.
 
 if defined ARCRHO_RELEASE_BUILD_ONLY goto after_python_api_publication
 if "%PUBLISH_PYTHON_API%"=="1" (
-    echo Step 7: Publishing Python API package...
+    echo Step 8: Publishing Python API package...
     echo ----------------------------------------
     call :publish_python_api_package
     if errorlevel 1 (
@@ -504,13 +518,13 @@ if "%PUBLISH_PYTHON_API%"=="1" (
     echo Python API package published: %PYTHON_API_PACKAGE_DIR%
     echo.
 ) else (
-    echo Step 7: Shared Python API package publication is not part of the %PRODUCT_NAME% build.
+    echo Step 8: Shared Python API package publication is not part of the %PRODUCT_NAME% build.
     echo.
 )
 
 :after_python_api_publication
 
-echo Step 8: Cleaning Python build artifacts...
+echo Step 9: Cleaning Python build artifacts...
 echo ----------------------------------------
 if exist "python_dist" (
     rmdir /s /q "python_dist"

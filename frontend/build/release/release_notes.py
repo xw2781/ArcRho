@@ -220,20 +220,37 @@ def cmd_check() -> int:
     return 0
 
 
-def release_fragments(version: str, fragments: list[Fragment]) -> Path:
-    """Write the release notes for one version and archive the fragments it consumed.
+def write_release_notes(version: str, fragments: list[Fragment]) -> Path:
+    """Write one version's release notes without consuming its fragments.
 
-    Callers pass the fragment list explicitly so a release can consume the exact set
-    that was built, rather than whatever happens to be unreleased at the time.
+    The build calls this before it packages the app, because the Release History
+    window reads only the notes bundled inside the installer. Written afterwards,
+    a version's own notes would never reach the build that shipped it.
     """
     parse_version(version)
-    released_on = date.today().isoformat()
+    ensure_dirs()
 
     release_path = RELEASES_DIR / f"{version}.md"
     release_path.write_text(
-        render_release_notes(version, released_on, fragments),
+        render_release_notes(version, date.today().isoformat(), fragments),
         encoding="utf-8",
     )
+    return release_path
+
+
+def release_fragments(version: str, fragments: list[Fragment]) -> Path:
+    """Archive the fragments one version consumed, writing its notes if nothing has.
+
+    Callers pass the fragment list explicitly so a release can consume the exact set
+    that was built, rather than whatever happens to be unreleased at the time. Notes
+    the build already wrote are kept, so the file here is the one the installer
+    carries rather than a second rendering of it.
+    """
+    parse_version(version)
+
+    release_path = RELEASES_DIR / f"{version}.md"
+    if not release_path.is_file():
+        write_release_notes(version, fragments)
 
     archive_fragments(version, fragments)
 
@@ -247,6 +264,12 @@ def release_fragments(version: str, fragments: list[Fragment]) -> Path:
         encoding="utf-8",
     )
     return release_path
+
+
+def cmd_stage_notes(version: str) -> int:
+    release_path = write_release_notes(version, load_unreleased_fragments())
+    print(str(release_path.relative_to(REPO_ROOT).as_posix()))
+    return 0
 
 
 def cmd_release(version: str, path_file: str | None = None) -> int:
@@ -266,6 +289,11 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("check", help="Validate unreleased changelog fragments.")
+    stage_parser = subparsers.add_parser(
+        "stage-notes",
+        help="Write a version's release notes so the build can bundle them.",
+    )
+    stage_parser.add_argument("version", help="Release version in semantic format.")
     release_parser = subparsers.add_parser(
         "release",
         help="Generate release notes for a version and archive unreleased fragments.",
@@ -280,6 +308,8 @@ def main() -> int:
 
     if args.command == "check":
         return cmd_check()
+    if args.command == "stage-notes":
+        return cmd_stage_notes(args.version)
     if args.command == "release":
         return cmd_release(args.version, args.path_file)
     raise ValueError(f"Unsupported command: {args.command}")

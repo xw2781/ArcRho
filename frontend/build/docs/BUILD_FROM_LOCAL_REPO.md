@@ -29,10 +29,14 @@ installer SHA-256, release-fragment names and hashes, and the ArcRho Python API 
 restores `package.json`, `package-lock.json`, the About dialog, and the splash page to their
 exact pre-build contents.
 
+The one file it leaves behind is `docs\releases\<version>.md`. Every build writes that before
+packaging, because the app reads its Release History from the notes bundled inside it, and notes
+written after packaging would miss the build that shipped them. It stays uncommitted until the
+release is published, and the publish keeps it rather than rendering it again.
+
 The pending-release record lives under `%USERPROFILE%\Documents\ArcRho Local Build\pending_releases`
 by default, outside the working tree. Build-only mode does not create a GitHub Release,
-publish the shared Python API wheel, archive release fragments, write committed release notes,
-or commit release bookkeeping.
+publish the shared Python API wheel, archive release fragments, or commit release bookkeeping.
 
 The later publish action rechecks the installer and fragment hashes. It creates the GitHub
 Release, publishes the matching Python API wheel for ArcRho, then delegates source updates to
