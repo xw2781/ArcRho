@@ -6,7 +6,7 @@ DFM Ratios Summary Excel Integration
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
 import {
@@ -15,7 +15,7 @@ import {
   dfmExcelInvalidTargetKey,
   dfmTargetDestinationLabel,
   setDfmExcelInvalidTargets,
-} from "/ui/method_pages/dfm/ratios_summary/summary_excel_validation.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_excel_validation.js?v=20260914b";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
   resolveDfmDatasetReferencesInFormulas,

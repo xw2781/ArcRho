@@ -31,6 +31,7 @@ import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
   moveActiveSelectableTableSelection,
+  scrollSpreadsheetCellIntoView,
   wireSelectableTable,
 } from "/ui/shared/components/spreadsheet/table_selection.js?v=20260726a";
 import { wirePercentDevelopedCurveMenu } from "/ui/method_pages/dfm/dfm_percent_developed_curve_window.js?v=20260722a";
@@ -45,6 +46,8 @@ import {
   wireSummarySelection,
   initDefaultSummarySelection,
   applySummarySelection,
+  clearSummaryActiveCell,
+  selectSummaryCell,
   recalculateUserEntryDependencies,
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
@@ -55,7 +58,7 @@ import {
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
   applyUserEntryReferenceHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260903a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -63,7 +66,7 @@ import {
   showRatioColumnChart,
   resetRatioChartThresholds,
   setRatioChartCallbacks,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913j";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260914b";
 import {
   applyDfmCellNoteMarkers,
   hasDfmCellNote,
@@ -255,14 +258,14 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260903a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
   scheduleRatioChartRender,
   showRatioColumnChart,
   resetRatioChartThresholds,
-} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260913j";
+} from "/ui/method_pages/dfm/dfm_ratios_chart.js?v=20260914b";
 
 
 
@@ -279,6 +282,72 @@ let ratioContextCell = null;
 
 function isRatioEditMode() {
   return document.getElementById("ratioWrap")?.dataset?.interactionMode === "edit";
+}
+
+// =============================================================================
+// Ratio Triangle Active Cell
+// The Edit-mode counterpart of the average-formula table's dashed active cell:
+// one ratio cell carries the marker, the arrow keys move it, and Enter acts on
+// it. The two tables share a single marker, so taking it here clears the
+// summary's and vice versa; the state below is what a re-render restores.
+// =============================================================================
+let ratioActiveCellState = { r: -1, c: -1 };
+
+function getRatioActiveCell() {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap) return null;
+  const { r, c } = ratioActiveCellState;
+  if (!Number.isInteger(r) || r < 0 || !Number.isInteger(c) || c < 0) return null;
+  return wrap.querySelector(`table.ratioMainTable td.ratioCell[data-r="${r}"][data-col="${c}"]`);
+}
+
+function paintRatioActiveCell() {
+  const wrap = document.getElementById("ratioWrap");
+  if (!wrap) return;
+  wrap.querySelectorAll("table.ratioMainTable td.ratioActiveCell")
+    .forEach((el) => el.classList.remove("ratioActiveCell"));
+  getRatioActiveCell()?.classList.add("ratioActiveCell");
+}
+
+/** Drop the triangle's marker, without disturbing the summary table's. */
+function clearRatioActiveCell() {
+  ratioActiveCellState = { r: -1, c: -1 };
+  paintRatioActiveCell();
+}
+
+/**
+ * Give one ratio cell the marker. The average-formula table hands its own over
+ * rather than showing a second dashed cell, so only one of the two tables is
+ * ever the one the arrow keys and Enter answer to.
+ */
+function setRatioActiveCell(cell) {
+  const r = Number(cell?.dataset?.r);
+  const c = Number(cell?.dataset?.col);
+  if (!Number.isInteger(r) || r < 0 || !Number.isInteger(c) || c < 0) return;
+  clearSummaryActiveCell();
+  if (ratioActiveCellState.r === r && ratioActiveCellState.c === c && cell.classList.contains("ratioActiveCell")) {
+    return;
+  }
+  ratioActiveCellState = { r, c };
+  paintRatioActiveCell();
+}
+
+function moveRatioActiveCell(rowDelta, colDelta) {
+  const wrap = document.getElementById("ratioWrap");
+  const current = getRatioActiveCell();
+  if (!wrap || !current) return false;
+  const rows = Array.from(wrap.querySelectorAll("table.ratioMainTable tbody tr"));
+  const rowIndex = rows.indexOf(current.closest("tr"));
+  if (rowIndex < 0) return false;
+  const colCount = rows[rowIndex].querySelectorAll("td.ratioCell").length;
+  if (!colCount) return false;
+  const nextRowIndex = Math.max(0, Math.min(rows.length - 1, rowIndex + rowDelta));
+  const nextCol = Math.max(0, Math.min(colCount - 1, ratioActiveCellState.c + colDelta));
+  const nextCell = rows[nextRowIndex]?.querySelector(`td.ratioCell[data-col="${nextCol}"]`);
+  if (!nextCell) return false;
+  setRatioActiveCell(nextCell);
+  scrollSpreadsheetCellIntoView(nextCell, document.getElementById("ratioWrapHost"));
+  return true;
 }
 
 function isRatioDataVisible() {
@@ -315,9 +384,38 @@ function toggleRatioInteractionMode() {
   return true;
 }
 
+/**
+ * Enter acts on the one cell Edit mode marks with the dashed border: a ratio
+ * cell is included or excluded, and an average-formula cell becomes the
+ * selected formula for its development column, exactly as clicking it does.
+ */
+function applyActiveRatioCellAction(wrap) {
+  const ratioCell = getRatioActiveCell();
+  if (ratioCell) {
+    // A cell with no ratio to exclude answers nothing, so the press is left to
+    // whatever else the page makes of it.
+    beginRatioHistoryAction("ratio-active-enter");
+    const excluded = toggleRatioCellExclusion(ratioCell);
+    commitRatioHistoryAction("ratio-active-enter");
+    return excluded;
+  }
+  const summaryTable = wrap.querySelector("table.ratioSummaryTable");
+  const summaryCell = summaryTable?.querySelector("td.summaryCell.summaryActiveCell");
+  if (!summaryCell) return false;
+  const rowId = String(summaryCell.dataset.r || "");
+  const col = Number(summaryCell.dataset.col);
+  if (!rowId || !Number.isFinite(col) || col < 0) return false;
+  // Re-selecting what is already selected is not an edit, so it leaves the
+  // method clean rather than writing an undo step that changes nothing.
+  if (selectedSummaryByCol.get(col) === rowId) return true;
+  return selectSummaryCell(summaryTable, rowId, col);
+}
+
 function applyHighlightedRatioRangeAction() {
   const wrap = document.getElementById("ratioWrap");
-  if (!wrap || wrap.dataset.interactionMode !== "select") return false;
+  if (!wrap) return false;
+  if (isRatioEditMode()) return applyActiveRatioCellAction(wrap);
+  if (wrap.dataset.interactionMode !== "select") return false;
 
   const summaryTable = wrap.querySelector("table.ratioSummaryTable");
   const highlightedSummaryCells = summaryTable
@@ -358,13 +456,8 @@ function applyHighlightedRatioRangeAction() {
   ));
   if (!highlightedRatioCells.length) return false;
   beginRatioHistoryAction("ratio-highlight-enter");
-  highlightedRatioCells.forEach((cell) => {
-    const key = `${cell.dataset.r},${cell.dataset.c}`;
-    const excluded = ratioStrikeSet.has(key);
-    if (excluded) ratioStrikeSet.delete(key);
-    else ratioStrikeSet.add(key);
-    cell.classList.toggle("strike", !excluded);
-  });
+  // One refresh covers the whole range, so each cell only flips its own strike.
+  highlightedRatioCells.forEach((cell) => toggleRatioCellExclusion(cell, { defer: true }));
   scheduleRatioSummaryUpdate();
   onRatioStateMutated();
   commitRatioHistoryAction("ratio-highlight-enter");
@@ -461,6 +554,25 @@ function wireRatioInteractions() {
     if (key !== "e" && key !== "s") return;
     event.preventDefault();
     applyRatioInteractionMode(key === "e" ? "edit" : "select");
+  });
+  // Edit-mode arrows walk the ratio triangle's marker the way they already walk
+  // the average-formula table's; whichever table holds the marker answers, so
+  // the two handlers never move two cells at once.
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    const ratiosPage = document.getElementById("dfmRatiosPage");
+    if (!ratiosPage || ratiosPage.style.display === "none") return;
+    if (!isRatioEditMode() || !getRatioActiveCell()) return;
+    if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    const movement = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    }[String(event.key || "")];
+    if (!movement) return;
+    event.preventDefault();
+    moveRatioActiveCell(movement[0], movement[1]);
   });
   applyRatioInteractionMode(loadRatioInteractionMode(), { persist: false });
 }
@@ -804,6 +916,7 @@ setSummaryTableCallbacks({
   renderRatioTable,
   onRatioStateMutated,
   toggleRatioInteractionMode,
+  clearRatioActiveCell,
 });
 setRatioChartCallbacks({ onRatioStateMutated });
 
@@ -1176,12 +1289,44 @@ export function renderRatioTable() {
   applyRatioColHighlight();
   applyDfmCellNoteMarkers(wrap);
   wireSummarySelection(summaryTable, selectedTable);
+  // The marker the arrow keys move belongs to the state, not to the discarded
+  // cell, so a re-render draws it again on the cell it named.
+  paintRatioActiveCell();
   applyPendingExternalChangeHighlights();
 }
 
 // =============================================================================
 // Strike Toggle + Column Selection Wiring
 // =============================================================================
+const isRatioDataRow = (rowId) => /^\d+$/.test(String(rowId || ""));
+
+/**
+ * Include or exclude one ratio cell. Every gesture that strikes a single cell —
+ * the Edit-mode click, the drag across a run of cells, Enter on the active
+ * cell, and each cell of a highlighted range — comes through here, so one rule
+ * decides which cells can be struck. `defer` leaves the summary refresh to a
+ * caller striking a whole range in one pass.
+ */
+function toggleRatioCellExclusion(cell, { defer = false } = {}) {
+  if (!cell || cell.classList.contains("na") || cell.classList.contains("ratioPlaceholder")) return false;
+  const r = cell.dataset.r;
+  const c = cell.dataset.c;
+  if (r == null || c == null || !isRatioDataRow(r)) return false;
+  const key = `${r},${c}`;
+  if (ratioStrikeSet.has(key)) {
+    ratioStrikeSet.delete(key);
+    cell.classList.remove("strike");
+  } else {
+    ratioStrikeSet.add(key);
+    cell.classList.add("strike");
+  }
+  if (!defer) {
+    scheduleRatioSummaryUpdate();
+    onRatioStateMutated();
+  }
+  return true;
+}
+
 export function wireRatioStrikeToggle() {
   const wrap = document.getElementById("ratioWrap");
   wireRatioInteractions();
@@ -1189,7 +1334,7 @@ export function wireRatioStrikeToggle() {
   wrap.dataset.strikeWired = "1";
   let dragActive = false;
   const dragVisits = createRatioDragVisitTracker();
-  const isDataRow = (rowId) => /^\d+$/.test(String(rowId || ""));
+  const isDataRow = isRatioDataRow;
 
   const finishRatioCellDrag = () => {
     if (dragActive) {
@@ -1230,25 +1375,6 @@ export function wireRatioStrikeToggle() {
     commitRatioHistoryAction("ratio-row-click");
   };
 
-  const toggleStrike = (cell) => {
-    if (!cell || cell.classList.contains("na") || cell.classList.contains("ratioPlaceholder")) return;
-    const r = cell.dataset.r;
-    const c = cell.dataset.c;
-    if (r == null || c == null) return;
-    if (!isDataRow(r)) return;
-    if (r === "sum") return;
-    const key = `${r},${c}`;
-    if (ratioStrikeSet.has(key)) {
-      ratioStrikeSet.delete(key);
-      cell.classList.remove("strike");
-    } else {
-      ratioStrikeSet.add(key);
-      cell.classList.add("strike");
-    }
-    scheduleRatioSummaryUpdate();
-    onRatioStateMutated();
-  };
-
   wrap.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
@@ -1257,14 +1383,16 @@ export function wireRatioStrikeToggle() {
     if (!cell) return;
     ratioTableHighlight?.selectCell?.(cell, false);
     finishRatioCellDrag();
+    // The pressed cell takes the marker even where there is no ratio to strike,
+    // so the arrow keys carry on from wherever the pointer left off.
+    if (cell.closest("table.ratioMainTable")) setRatioActiveCell(cell);
     if (cell.classList.contains("na") || cell.classList.contains("ratioPlaceholder")) return;
     if (!isDataRow(cell.dataset.r)) return;
-    if (cell.dataset.r === "sum") return;
     e.preventDefault();
     dragActive = true;
     beginRatioHistoryAction("ratio-cell-click");
     const key = `${cell.dataset.r},${cell.dataset.c}`;
-    if (dragVisits.visit(key)) toggleStrike(cell);
+    if (dragVisits.visit(key)) toggleRatioCellExclusion(cell);
   });
 
   wrap.addEventListener("mousemove", (e) => {
@@ -1276,10 +1404,10 @@ export function wireRatioStrikeToggle() {
     const cell = e.target?.closest?.("td.ratioCell");
     if (!cell) return;
     if (!isDataRow(cell.dataset.r)) return;
-    if (cell.dataset.r === "sum") return;
     const key = `${cell.dataset.r},${cell.dataset.c}`;
     if (!dragVisits.visit(key)) return;
-    toggleStrike(cell);
+    if (cell.closest("table.ratioMainTable")) setRatioActiveCell(cell);
+    toggleRatioCellExclusion(cell);
   });
 
   window.addEventListener("mouseup", finishRatioCellDrag);

@@ -37,7 +37,10 @@ test("a new ratio drag gesture can visit the same cells again", () => {
 
 test("the Ratios edit-mode drag uses the single-visit tracker", () => {
   assert.match(ratiosTabSource, /const dragVisits = createRatioDragVisitTracker\(\)/u);
-  assert.match(ratiosTabSource, /if \(!dragVisits\.visit\(key\)\) return;\s+toggleStrike\(cell\)/u);
+  assert.match(
+    ratiosTabSource,
+    /if \(!dragVisits\.visit\(key\)\) return;[\s\S]{0,160}?toggleRatioCellExclusion\(cell\)/u,
+  );
   assert.match(ratiosTabSource, /dragVisits\.reset\(\)/u);
 });
 

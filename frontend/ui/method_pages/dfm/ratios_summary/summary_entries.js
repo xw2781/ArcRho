@@ -6,7 +6,7 @@ DFM Ratios Summary User Entries
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import {
   resolveDfmDatasetReferencesInFormulaDetailed,
@@ -294,6 +294,9 @@ function pasteFormulaIntoSummaryFormulaBar(summaryTable, startCell, rawText) {
   if (!rowId || !Number.isFinite(col) || col < 0) return false;
   if (!isUserEntryConfig(summaryRowMap.get(rowId))) return false;
 
+  // Editing asks for the bar outright, so it lifts a bar the user pressed away
+  // — the pasted formula, and any refusal, are only readable there.
+  summaryRuntime.summaryFormulaBarSuppressedKey = "";
   updateSummaryFormulaBarForCell(startCell);
   const { bar, input } = getSummaryFormulaBarParts();
   if (!bar || !input || input.disabled || input.readOnly) return false;
@@ -482,9 +485,10 @@ function updateSummaryFormulaBarForCell(cell) {
     return;
   }
 
-  // A target the user toggled off stays off until they pick a different one.
+  // A bar the user pressed away stays away over every cell, until they press
+  // once more the cell they have landed on or start editing one.
   const targetKey = summaryFormulaBarTargetKey(targetCell);
-  if (summaryRuntime.summaryFormulaBarSuppressedKey === targetKey) {
+  if (summaryRuntime.summaryFormulaBarSuppressedKey) {
     hideSummaryFormulaBar({ keepHoverTarget: true });
     return;
   }

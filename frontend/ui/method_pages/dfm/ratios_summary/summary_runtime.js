@@ -61,6 +61,7 @@ export const summaryRuntime = {
   _renderRatioTable: noop,
   _onRatioStateMutated: noop,
   _toggleRatioInteractionMode: noop,
+  _clearRatioActiveCell: noop,
   summaryContextCellForNote: null,
   formulaBarResizeObserver: null,
   formulaBarScrollHost: null,

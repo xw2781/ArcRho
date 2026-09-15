@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Clicking the DFM Ratios formula bar away now keeps it away while you move between User Entry cells.",
+  "details": [
+    "Clicking a highlighted User Entry cell hides the formula bar, and it stays hidden as you click other User Entry cells.",
+    "Clicking a cell you have already landed on a second time brings the formula bar back.",
+    "Select mode and Edit mode behave the same, and starting a formula with = or pasting one still opens the bar."
+  ]
+}

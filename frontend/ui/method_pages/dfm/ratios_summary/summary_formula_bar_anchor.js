@@ -9,7 +9,7 @@ hides it.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import {
   computeFormulaBarLayout,
   FORMULA_BAR_FRAME_INSET_PX,
@@ -43,27 +43,47 @@ function summaryFormulaBarTargetKey(cell) {
 }
 
 /**
- * Pressing a User Entry cell toggles its formula bar. This runs on the capture
- * phase of mousedown, before either interaction mode has selected the cell —
- * selecting it shows the bar on its own, so reading the bar's state any later
- * would see this very press's result and the first press would read as "hide
- * what is showing".
+ * Pressing a User Entry cell toggles its formula bar, and pressing the bar away
+ * puts the whole table into the bar-hidden state rather than silencing that one
+ * cell: the bar stays away as the user moves across the other cells, and comes
+ * back only when they press again the cell they have already landed on. The
+ * hidden state is held in summaryFormulaBarSuppressedKey, which doubles as the
+ * target of the last press — the one cell whose next press re-opens the bar —
+ * and is empty whenever the bar is free to show itself.
+ *
+ * This runs on the capture phase of mousedown, before either interaction mode
+ * has selected the cell — selecting it shows the bar on its own, so reading the
+ * bar's state any later would see this very press's result and the first press
+ * would read as "hide what is showing". Both modes press through here, so Select
+ * and Edit behave the same.
  */
 function toggleSummaryFormulaBarForCell(summaryTable, cell) {
   if (!summaryTable || !cell) return;
-  if (!isUserEntryConfig(summaryRuntime.summaryRowMap.get(String(cell.dataset.r || "")))) return;
   // Never fight an edit in progress.
   if (isSummaryFormulaEditSessionActive(summaryTable)) return;
   const input = document.getElementById("dfmSummaryFormulaBarInput");
   if (input && (isSummaryFormulaBarInputEditing(input) || isSummaryFormulaCommitPending(input))) return;
   const key = summaryFormulaBarTargetKey(cell);
   if (!key) return;
+  const hiddenOnKey = String(summaryRuntime.summaryFormulaBarSuppressedKey || "");
+  if (!isUserEntryConfig(summaryRuntime.summaryRowMap.get(String(cell.dataset.r || "")))) {
+    // A row with no formula bar of its own still takes the highlight, so the
+    // cell a second press would re-open is no longer the one in hand.
+    if (hiddenOnKey) summaryRuntime.summaryFormulaBarSuppressedKey = key;
+    return;
+  }
+  if (hiddenOnKey) {
+    // Landing on another cell keeps the bar away and hands it that cell as the
+    // one to press again; pressing the cell already landed on brings it back.
+    summaryRuntime.summaryFormulaBarSuppressedKey = hiddenOnKey === key ? "" : key;
+    if (hiddenOnKey === key) updateSummaryFormulaBarForCell(cell);
+    return;
+  }
   if (String(summaryRuntime.summaryFormulaBarVisibleKey || "") === key) {
     summaryRuntime.summaryFormulaBarSuppressedKey = key;
     hideSummaryFormulaBar();
     return;
   }
-  summaryRuntime.summaryFormulaBarSuppressedKey = "";
   updateSummaryFormulaBarForCell(cell);
 }
 

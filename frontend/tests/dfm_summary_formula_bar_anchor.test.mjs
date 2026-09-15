@@ -380,7 +380,8 @@ function trackFormulaBarVisibility() {
   const hidden = [];
   runtime.updateSummaryFormulaBarForCell = (target) => {
     shown.push(target);
-    if (runtime.summaryFormulaBarSuppressedKey === anchor.summaryFormulaBarTargetKey(target)) return;
+    // A bar pressed away stays away over every cell, not just the pressed one.
+    if (runtime.summaryFormulaBarSuppressedKey) return;
     runtime.summaryFormulaBarVisibleKey = anchor.summaryFormulaBarTargetKey(target);
   };
   runtime.hideSummaryFormulaBar = () => {
@@ -430,21 +431,49 @@ test("Edit mode re-selecting the cell mid-toggle cannot resurrect the bar", () =
   resetRuntimeHoverState();
 });
 
-test("pressing a different cell shows the bar rather than toggling it off", () => {
+test("a bar pressed away stays away until a cell is pressed a second time", () => {
   resetRuntimeHoverState();
   const summaryTable = { contains: () => true };
-  const shown = [];
-  let hides = 0;
-  runtime.updateSummaryFormulaBarForCell = (target) => shown.push(target);
-  runtime.hideSummaryFormulaBar = () => { hides += 1; };
-  runtime.summaryFormulaBarSuppressedKey = "cell:r1,3";
-  runtime.summaryFormulaBarVisibleKey = "";
-
+  const { shown, hidden } = trackFormulaBarVisibility();
+  const first = buildUserEntryCell("r1", 3);
   const other = buildUserEntryCell("r1", 5);
+
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, first);
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, first);
+  assert.deepEqual(hidden, ["cell:r1,3"]);
+  assert.equal(shown.length, 1);
+
+  // Landing on another User Entry cell leaves the bar away.
   anchor.toggleSummaryFormulaBarForCell(summaryTable, other);
-  assert.deepEqual(shown, [other]);
-  assert.equal(hides, 0);
-  assert.equal(runtime.summaryFormulaBarSuppressedKey, "", "moving on clears the toggled-off target");
+  assert.equal(shown.length, 1, "moving on does not bring the bar back");
+  assert.equal(runtime.summaryFormulaBarVisibleKey, "");
+  assert.equal(runtime.summaryFormulaBarSuppressedKey, "cell:r1,5", "that cell now owns the next press");
+
+  // Pressing the cell already landed on brings it back.
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, other);
+  assert.deepEqual(shown, [first, other]);
+  assert.equal(runtime.summaryFormulaBarSuppressedKey, "");
+  assert.equal(runtime.summaryFormulaBarVisibleKey, "cell:r1,5");
+  resetRuntimeHoverState();
+});
+
+test("a press on a row without a formula bar moves the cell that reopens it", () => {
+  resetRuntimeHoverState();
+  const summaryTable = { contains: () => true };
+  const { shown } = trackFormulaBarVisibility();
+  const cell = buildUserEntryCell("r1", 3);
+
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, cell);
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, cell);
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, buildUserEntryCell("ratio", 3));
+  assert.equal(runtime.summaryFormulaBarSuppressedKey, "cell:ratio,3");
+
+  // The User Entry cell no longer holds the highlight, so it takes two presses.
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, cell);
+  assert.equal(shown.length, 1, "the first press back only re-arms the cell");
+  anchor.toggleSummaryFormulaBarForCell(summaryTable, cell);
+  assert.equal(shown.length, 2);
+  assert.equal(runtime.summaryFormulaBarVisibleKey, "cell:r1,3");
   resetRuntimeHoverState();
 });
 

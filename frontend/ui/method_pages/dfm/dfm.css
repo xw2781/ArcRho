@@ -725,6 +725,13 @@ body {
 #ratioWrap[data-interaction-mode="select"] td.dfmTableHighlightEdgeLeft {
   --dfm-table-highlight-left: #107c41;
 }
+/* A User Entry average is the one row a reader types into, so it carries the
+   same pale blue a Result Selection weight cell does. Declared before the
+   selected-average green at equal specificity, so selecting the row paints over
+   the blue rather than sitting under it. */
+#ratioWrap td.summaryCell.userEntryEditable {
+  background: #dff8f8;
+}
 #ratioWrap td.summaryCell.ratioSelectedCell,
 #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableHighlight,
 #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive {
@@ -1074,6 +1081,16 @@ body {
   cursor: url("/ui/method_pages/dfm/dfm_handwriting_cursor.svg?v=20260712b") 2 2, default;
 }
 #ratioWrap td.summaryCell.summaryActiveCell {
+  position: relative;
+  outline: 1px dashed #1f2937;
+  outline-offset: -2px;
+  z-index: 2;
+}
+/* The ratio triangle's Edit-mode marker. Written the same way as the
+   average-formula table's above, since one cell of the two tables carries it,
+   and placed after the rules that clear the shared highlight's outline on a
+   ratio cell, which it has to outrank at equal specificity. */
+#ratioWrap table.ratioMainTable td.ratioCell.ratioActiveCell {
   position: relative;
   outline: 1px dashed #1f2937;
   outline-offset: -2px;

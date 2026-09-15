@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "In the DFM Ratios tab, Edit mode now has a keyboard: arrow keys walk a dashed cell through the ratio triangle as well as the average formula table, and Enter acts on it.",
+  "details": [
+    "The ratio triangle now shows the same dashed cell the average formula table has; clicking a cell in either table moves it there, and only one cell is ever marked.",
+    "Enter on a marked ratio cell excludes it, or includes it again, exactly as clicking it does.",
+    "Enter on a marked average formula cell selects that formula for its development column, with the usual green fill.",
+    "Both are single undo steps, and Enter on a formula already selected for its column leaves the method untouched."
+  ]
+}

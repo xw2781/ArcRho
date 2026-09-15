@@ -1,0 +1,9 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "In the DFM Ratios tab, a User Entry row now carries the same pale blue fill the weight column uses in a Result Selection method, so the cells you can type into stand out at a glance.",
+  "details": [
+    "Selecting one of those cells for its development column still paints it the usual green, which now covers the blue rather than sitting under it."
+  ]
+}

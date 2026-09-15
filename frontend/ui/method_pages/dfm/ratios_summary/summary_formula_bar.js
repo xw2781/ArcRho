@@ -18,7 +18,7 @@ import {
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 
 const {
   state, calcRatio, roundRatio, formatRatio, computeAverageForColumn,

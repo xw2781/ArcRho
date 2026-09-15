@@ -41,7 +41,7 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260913c";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260914b";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
@@ -50,14 +50,14 @@ import {
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260910a";
 import { getDfmNotesSelection, wireNotesInput, refreshDfmNotesView } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260911b";
 import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260907a";
-import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260901a";
+import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";
 import {
   syncMethodNameFromInputs,
   syncOutputTypeFromProject,
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260907a";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260914b";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -72,9 +72,9 @@ import {
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
   buildDfmMethodPayload,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260913a";
-import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260907a";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260907a";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260914b";
+import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260914b";
+import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260914b";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
   clearRatioHistoryTempSession,

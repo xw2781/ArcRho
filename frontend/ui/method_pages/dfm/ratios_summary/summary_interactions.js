@@ -6,7 +6,7 @@ DFM Ratios Summary Table Interactions
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
 
 const {
@@ -351,6 +351,7 @@ export function selectSummaryCell(summaryTable, rowId, col) {
     .forEach((el) => el.classList.remove("summaryActiveCell"));
   cell.classList.add("summaryActiveCell");
   summaryRuntime.summaryActiveCellState = { rowId: rowKey, col: colIndex };
+  summaryRuntime._clearRatioActiveCell();
   applyExcelRangeHighlights(summaryTable);
   applyUserEntryReferenceHighlights(summaryTable);
   ensureSelectedRowValues(summaryTable, selectedTable);
@@ -358,6 +359,26 @@ export function selectSummaryCell(summaryTable, rowId, col) {
   summaryRuntime._onRatioStateMutated();
   commitRatioHistoryAction("summary-cell-click");
   return true;
+}
+
+/**
+ * Give up the dashed active cell, for when the ratio triangle takes it. The
+ * state goes with the marker: a re-render restores the active cell from it, so
+ * a state left behind would take the marker back on the next render. The
+ * formula bar belongs to that cell too, and follows it out.
+ */
+export function clearSummaryActiveCell() {
+  // Called on every cell a ratio drag crosses, so a table that never held the
+  // marker is answered before any of the repainting below.
+  if (!String(summaryRuntime.summaryActiveCellState.rowId || "")) return;
+  summaryRuntime.summaryActiveCellState = { rowId: "", col: -1 };
+  const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+  if (!summaryTable) return;
+  summaryTable.querySelectorAll("td.summaryCell.summaryActiveCell")
+    .forEach((el) => el.classList.remove("summaryActiveCell"));
+  applyExcelRangeHighlights(summaryTable);
+  applyUserEntryReferenceHighlights(summaryTable);
+  updateSummaryFormulaBarForCell(null);
 }
 
 export function initDefaultSummarySelection(summaryTable) {
@@ -603,6 +624,8 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     cell.classList.add("summaryActiveCell");
     summaryRuntime.summaryCopyHighlight?.selectCell?.(cell, false);
     summaryRuntime.summaryActiveCellState = { rowId, col };
+    // One dashed cell across both tables, so the triangle gives its marker up.
+    summaryRuntime._clearRatioActiveCell();
     pasteArmed = true;
     if (syncSelection) selectCell(cell);
     applyExcelRangeHighlights(summaryTable);
@@ -765,6 +788,10 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       const cfg = summaryRowMap.get(rowId);
       if (!cfg || !isUserEntryConfig(cfg)) return;
       e.preventDefault();
+      // Starting a formula asks for the bar outright, so it lifts a bar the
+      // user pressed away and brings it back over the cell being typed into.
+      summaryRuntime.summaryFormulaBarSuppressedKey = "";
+      updateSummaryFormulaBarForCell(cell);
       const barEl = document.getElementById("dfmSummaryFormulaBar");
       const barInput = barEl?.querySelector("#dfmSummaryFormulaBarInput");
       if (
@@ -832,6 +859,7 @@ registerSummaryFunctions({
   ensureSelectedRowValues,
   applySummarySelection,
   selectSummaryCell,
+  clearSummaryActiveCell,
   initDefaultSummarySelection,
   wireSummarySelection,
 });

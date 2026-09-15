@@ -56,6 +56,7 @@ const dfmSummaryExports = [
   "buildRatioSelectionPattern",
   "cancelDfmExcelFreshnessCheck",
   "checkDfmExcelLinkFreshness",
+  "clearSummaryActiveCell",
   "clearSummaryTableHighlight",
   "getDfmExternalLinkRecords",
   "getUserEntryValueForCol",

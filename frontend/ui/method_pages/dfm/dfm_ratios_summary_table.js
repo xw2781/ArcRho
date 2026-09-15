@@ -7,14 +7,14 @@ Compatibility facade and render scheduler for the modular summary table.
 import {
   registerSummaryFunctions,
   summaryRuntime,
-} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260819a";
-import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260909a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260910a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260819a";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260819a";
-import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260830b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260910a";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260910a";
+} from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260914b";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -50,6 +50,7 @@ export function setSummaryTableCallbacks({
   renderRatioTable,
   onRatioStateMutated,
   toggleRatioInteractionMode,
+  clearRatioActiveCell,
 } = {}) {
   if (typeof renderRatioTable === "function") summaryRuntime._renderRatioTable = renderRatioTable;
   if (typeof onRatioStateMutated === "function") {
@@ -57,6 +58,11 @@ export function setSummaryTableCallbacks({
   }
   if (typeof toggleRatioInteractionMode === "function") {
     summaryRuntime._toggleRatioInteractionMode = toggleRatioInteractionMode;
+  }
+  // The ratio triangle and this table share one dashed active cell, so taking
+  // it here has to drop the triangle's.
+  if (typeof clearRatioActiveCell === "function") {
+    summaryRuntime._clearRatioActiveCell = clearRatioActiveCell;
   }
 }
 
@@ -75,7 +81,7 @@ export function resetSummaryFormulaEditState() {
   summaryRuntime.summaryFormulaBarHoverKey = "";
   summaryRuntime.summaryFormulaBarVisibleKey = "";
   // summaryFormulaBarSuppressedKey deliberately survives: a re-render is not the
-  // user changing their mind about a bar they toggled off, and Edit mode
+  // user changing their mind about a bar they pressed away, and Edit mode
   // re-renders on the same click that toggles.
   summaryRuntime.summaryFormulaBarState = {
     mode: "display",
@@ -227,6 +233,7 @@ export const recalculateUserEntryDependencies = delegate("recalculateUserEntryDe
 export const wireSummaryContextMenu = delegate("wireSummaryContextMenu");
 export const applySummarySelection = delegate("applySummarySelection");
 export const selectSummaryCell = delegate("selectSummaryCell");
+export const clearSummaryActiveCell = delegate("clearSummaryActiveCell");
 export const initDefaultSummarySelection = delegate("initDefaultSummarySelection");
 export const wireSummarySelection = delegate("wireSummarySelection");
 
