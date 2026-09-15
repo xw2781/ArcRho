@@ -604,16 +604,31 @@ async function loadRatioBasisColumnForContext(ctx) {
   if (ctx.dataFormat !== "triangle" && ctx.dataFormat !== "vector") {
     throw new Error(`Ratio Basis supports Triangle/Vector only (selected: ${ctx.dataFormat || "unknown"}).`);
   }
-  const payload = {
-    Path: ctx.reservingClass,
-    TriangleName: ctx.datasetName,
-    ProjectName: ctx.projectName,
-    Cumulative: ctx.cumulative,
-    OriginLength: ctx.originLen,
-    DevelopmentLength: ctx.devLen,
-  };
+  // A vector basis is asked for as a vector: the triangle route stores the
+  // figures under a triangle file name and restamps the dataset's own record
+  // with this method's shape. The Ratio Basis only reads that dataset, so it
+  // also leaves the record alone whichever shape it asked for.
+  const vector = ctx.dataFormat === "vector";
+  const payload = vector
+    ? {
+      Path: ctx.reservingClass,
+      VectorName: ctx.datasetName,
+      ProjectName: ctx.projectName,
+      Cumulative: ctx.cumulative,
+      PeriodLength: ctx.originLen,
+      WriteSidecar: false,
+    }
+    : {
+      Path: ctx.reservingClass,
+      TriangleName: ctx.datasetName,
+      ProjectName: ctx.projectName,
+      Cumulative: ctx.cumulative,
+      OriginLength: ctx.originLen,
+      DevelopmentLength: ctx.devLen,
+      WriteSidecar: false,
+    };
 
-  const arcrhoResp = await fetch("/arcrho/tri", {
+  const arcrhoResp = await fetch(vector ? "/arcrho/vec" : "/arcrho/tri", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

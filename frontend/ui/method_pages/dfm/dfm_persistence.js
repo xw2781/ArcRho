@@ -84,7 +84,7 @@ import {
   getResultsUltimateRatioDecimalPlacesSelection,
   setResultsRatioBasisSelection,
   setResultsUltimateRatioDecimalPlacesSelection,
-} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260910a";
+} from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
 import { getDfmNotesSaveFields, getDfmNotesText, setDfmNotesText } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260911b";
 import {
   applyDfmCurvesTabPayload,
