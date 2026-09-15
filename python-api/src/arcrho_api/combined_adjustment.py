@@ -16,6 +16,14 @@ The ResQ import reads those notes back, because ResQ keeps only the number the
 formula produced, and rebuilds the formula from them. Whatever one producer
 writes the others must read, so the dataset names, the formula shape and the
 note lines are defined here once.
+
+The notes macro drops a growth vector's basis (counts, incurred, paid) from
+the line it writes -- "Apply growth adjustment of 1+4.26% = 1.0426;" -- since
+a reader does not need it. ``adjustment_description`` itself still names the
+basis, so older notes that already spell it out keep reading back into the
+matching vector; a newly written growth line no longer disambiguates which
+vector it named and so reads back as an unrecognized term, the same as a note
+naming any other dataset outside ``ADJUSTMENT_DATASETS``.
 """
 
 from __future__ import annotations
