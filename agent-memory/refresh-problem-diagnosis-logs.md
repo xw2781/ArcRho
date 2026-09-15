@@ -16,7 +16,7 @@ When a Data Processing Rules save or a source-table refresh ends with "N problem
 
 The live project is usually one the agent may not open (`NJ_Annual_Prod_2026 Q3-Aug` on 2026-09-06); `NJ_Annual_Prod_202605_Fake` carries the same `HPPREF\HO+DF\NJ\Legacy\HOL` class with the same method graph, so read sidecars there.
 
-Still failing in that project's walks after the 2026-09-06 fix, all pre-existing: BF "new_ultimate does not match the embedded source snapshots" (F 40/F 41/D 41 and variants), Cape Cod "precedent 'Total Earned Exposure' uses 1-month origins; expected 12" (F 53/D 53), "F 63 ...: Ambiguous dependency: P 06 ..." in the NY and Penn+CT BI Total / MP+PIP classes, and "Source 'C 41 - BF Reported ex CWOP' returned 39 values; expected 40" in Penn+CT BI Total. See [[mixed-origin-length-precedents]] and [[result-selection-unchanged-dependent-block]].
+Still failing in that project's walks after the 2026-09-06 fix, all pre-existing: BF "new_ultimate does not match the embedded source snapshots" (F 40/F 41/D 41 and variants), Cape Cod "precedent 'Total Earned Exposure' uses 1-month origins; expected 12" (F 53/D 53), "F 63 ...: Ambiguous dependency: P 06 ..." in the NY and Penn+CT BI Total / MP+PIP classes (fixed 2026-09-15, see [[vector-sibling-views-ambiguous-dependency]]), and "Source 'C 41 - BF Reported ex CWOP' returned 39 values; expected 40" in Penn+CT BI Total. See [[mixed-origin-length-precedents]] and [[result-selection-unchanged-dependent-block]].
 
 **Why:** the user asked "check the issue" from the one-line status; without the logs the investigation starts from the wrong method.
 
