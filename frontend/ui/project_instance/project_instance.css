@@ -118,7 +118,7 @@ body.resizing-left-panel .pi-table-wrap {
   cursor: e-resize;
 }
 .pi-toolbar-path {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   width: fit-content;
   max-width: min(46%, 680px);
   min-width: 0;
@@ -400,7 +400,7 @@ body.resizing-left-panel .pi-table-wrap {
   border-radius: 999px;
   background: #fff;
   color: #4f5b6f;
-  display: inline-flex;
+  display: none;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -409,6 +409,9 @@ body.resizing-left-panel .pi-table-wrap {
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.pi-hidden-tabs-wrap.overflow .pi-hidden-tabs-button {
+  display: inline-flex;
 }
 .pi-hidden-tabs-button:hover,
 .pi-hidden-tabs-wrap.open .pi-hidden-tabs-button {

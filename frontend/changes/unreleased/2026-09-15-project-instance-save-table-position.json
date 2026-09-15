@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Keep highlighted dataset rows and table scroll position after saving, including when save refreshes overlap."
+}

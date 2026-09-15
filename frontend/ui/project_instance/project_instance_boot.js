@@ -8,7 +8,7 @@ import {
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260911b";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
-import { createProjectInstanceContext } from "./project_instance_context.js?v=20260909a";
+import { createProjectInstanceContext } from "./project_instance_context.js?v=20260915a";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
 import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260914a";
@@ -19,7 +19,7 @@ import { installProjectInstanceDatasetTable } from "./project_instance_dataset_t
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260911a";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260909a";
-import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260805a";
+import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260915b";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260828f";
 import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260829a";
 import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";

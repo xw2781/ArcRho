@@ -76,9 +76,16 @@ function createHarness() {
     setStatus: () => {},
     toText: (value) => String(value ?? "").trim(),
   };
+  const els = {
+    datasetTableWrap: {
+      scrollLeft: 120, scrollTop: 840,
+      scrollWidth: 2000, scrollHeight: 3000,
+      clientWidth: 500, clientHeight: 500,
+    },
+  };
   installProjectInstanceDatasetCache({
     api,
-    els: {},
+    els,
     projectName: "PI index watch test",
     state,
   });
@@ -94,6 +101,7 @@ function createHarness() {
   };
   const harness = {
     api,
+    els,
     nextPolledSignature: "",
     signatureReads,
     state,
@@ -118,6 +126,52 @@ function createHarness() {
   };
   return harness;
 }
+
+test("overlapping save refreshes retain selection and both scroll offsets", async () => {
+  const harness = createHarness();
+  const { api, state, els } = harness;
+  const originalSelection = { selectedNames: ["Paid Loss", "Reported Loss"], anchorName: "Paid Loss" };
+  let selection = originalSelection;
+  const reads = [];
+  state.cachedDatasetFilter.loadedPath = state.selectedPath;
+  state.datasetIndexWatch.selectedPath = state.selectedPath;
+  api.captureDatasetTableSelection = () => selection;
+  api.restoreDatasetTableSelection = (saved) => { selection = saved; };
+  api.renderDatasetTable = () => {
+    // The real loading render prunes highlighted rows and collapses the table.
+    if (state.cachedDatasetFilter.loading) {
+      selection = {};
+      els.datasetTableWrap.scrollTop = 0;
+      els.datasetTableWrap.scrollLeft = 0;
+    }
+  };
+  globalThis.fetch = () => new Promise((resolve) => reads.push(resolve));
+  const finishRead = (index) => reads[index]({
+    ok: true,
+    json: async () => ({ files: [{ name: "Paid Loss" }], index_signature: "2000:64" }),
+  });
+  try {
+    const first = api.refreshCachedDatasetTableFromDisk();
+    const second = api.refreshCachedDatasetTableFromDisk();
+    assert.equal(reads.length, 1);
+    finishRead(0);
+    await Promise.all([first, second]);
+    assert.deepEqual(selection, originalSelection);
+    assert.equal(els.datasetTableWrap.scrollTop, 840);
+    assert.equal(els.datasetTableWrap.scrollLeft, 120);
+
+    // A different reserving class must not inherit the old table position.
+    state.selectedPath = "Direct Group/OTHER";
+    const nextPath = api.loadCachedDatasetFilterForSelectedPath();
+    await Promise.resolve();
+    finishRead(1);
+    await nextPath;
+    assert.deepEqual(selection, {});
+    assert.equal(els.datasetTableWrap.scrollTop, 0);
+  } finally {
+    await harness.restore();
+  }
+});
 
 test("the snapshot payload's signature baselines the watch without a client stat", async () => {
   const harness = createHarness();

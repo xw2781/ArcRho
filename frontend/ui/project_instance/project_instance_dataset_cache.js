@@ -508,8 +508,19 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
   api.notifyDependencyGraphWindows?.(normalizedPath);
 }
 
+let pendingDatasetTableState = null;
+
 async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   const path = normalizePath(state.selectedPath);
+  const samePath = path && path.toLowerCase() === normalizePath(cachedDatasetFilter.loadedPath).toLowerCase();
+  // Overlapping save notifications must share the state from before the
+  // loading table cleared the selection and collapsed the scroll area.
+  pendingDatasetTableState = samePath
+    ? pendingDatasetTableState || {
+      selection: captureDatasetTableSelection(),
+      scroll: captureDatasetTableScroll(),
+    }
+    : null;
   const seq = cachedDatasetFilter.requestSeq + 1;
   cachedDatasetFilter.requestSeq = seq;
   cachedDatasetFilter.error = "";
@@ -564,6 +575,12 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
     cachedDatasetFilter.loading = false;
     syncCachedDatasetToolbar();
     renderDatasetTable();
+    const tableState = pendingDatasetTableState;
+    pendingDatasetTableState = null;
+    if (tableState && path.toLowerCase() === normalizePath(state.selectedPath).toLowerCase()) {
+      restoreDatasetTableSelection(tableState.selection);
+      restoreDatasetTableScroll(tableState.scroll);
+    }
   }
 }
 
@@ -580,16 +597,12 @@ async function refreshCachedDatasetTableFromDisk() {
     setStatus("Select a reserving-class path before refreshing the dataset table.", true);
     return false;
   }
-  const scrollState = captureDatasetTableScroll();
-  const selectionState = captureDatasetTableSelection();
   closeDatasetTableFilterPopover();
   datasetIndexWatch.suppressUntil = Date.now() + DATASET_INDEX_SETTLE_SUPPRESS_MS;
   setStatus(isTemporaryDatasetView()
     ? "Refreshing dataset index status..."
     : "Refreshing dataset table...");
   await loadCachedDatasetFilterForSelectedPath({ userInitiated: true });
-  restoreDatasetTableSelection(selectionState);
-  restoreDatasetTableScroll(scrollState);
   if (!cachedDatasetFilter.error) {
     datasetIndexWatch.pending = false;
     syncDatasetIndexUpdatePrompt();

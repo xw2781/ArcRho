@@ -1,6 +1,6 @@
 export function installProjectInstanceHiddenTabs(ctx) {
   const { api, els, projectName, state } = ctx;
-  const { DATASET_WINDOW_DOCK_ANIMATION_MS, DATASET_WINDOW_RESTORE_ANIMATION_MS, HIDDEN_TABS_HOVER_CLOSE_MS } = ctx.constants;
+  const { DATASET_WINDOW_DOCK_ANIMATION_MS, DATASET_WINDOW_RESTORE_ANIMATION_MS, HIDDEN_TABS_HOVER_CLOSE_MS, HIDDEN_TABS_OVERFLOW_COUNT } = ctx.constants;
   const { hiddenWindows, datasetWindows } = state;
   const applyWindowRect = (...args) => api.applyWindowRect(...args);
   const closeDatasetWindow = (...args) => api.closeDatasetWindow(...args);
@@ -79,6 +79,13 @@ function syncHiddenTabsVisibility(count) {
   if (!count) setHiddenTabsMenuOpen(false, { pinned: false });
 }
 
+function syncHiddenTabsOverflow(count) {
+  if (!els.hiddenTabsWrap) return;
+  const overflowing = count >= HIDDEN_TABS_OVERFLOW_COUNT;
+  els.hiddenTabsWrap.classList.toggle("overflow", overflowing);
+  if (!overflowing) setHiddenTabsMenuOpen(false, { pinned: false });
+}
+
 function updateHiddenTabsArea() {
   const count = hiddenWindows.size;
   hideMinimizedTabTooltip();
@@ -120,6 +127,7 @@ function updateHiddenTabsArea() {
       els.hiddenTabsList.appendChild(tab);
     }
   }
+  syncHiddenTabsOverflow(count);
   if (!els.hiddenTabsMenu) return;
   els.hiddenTabsMenu.innerHTML = "";
   if (!count) return;

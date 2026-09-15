@@ -152,6 +152,7 @@ export function createProjectInstanceContext(deps = {}) {
     DATASET_WINDOW_EDGE_VISIBLE_WIDTH: 80,
     DATASET_WINDOW_TITLEBAR_HEIGHT: 30,
     HIDDEN_TABS_HOVER_CLOSE_MS: 1000,
+    HIDDEN_TABS_OVERFLOW_COUNT: 4,
   };
   const state = {
     selectedPath: "",
