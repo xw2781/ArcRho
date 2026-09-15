@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Limit ratio and selected formula pattern copy/apply to highlighted columns, defaulting to all columns when none are highlighted."
+}

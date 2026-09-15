@@ -8,6 +8,7 @@ import {
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
+import { copySelectedFormulaPatterns, applySelectedFormulaPatterns } from "/ui/method_pages/dfm/ratios_summary/summary_patterns.js";
 
 const {
   state, calcRatio, formatRatio, computeAverageForColumn,
@@ -102,6 +103,8 @@ export function wireSummaryContextMenu(summaryTable) {
       const customBtn = menu.querySelector('[data-action="custom-average"]');
       const modeBtn = menu.querySelector('[data-action="toggle-summary-ratio-mode"]');
       const noteBtn = menu.querySelector('[data-action="add-summary-cell-note"]');
+      const applyPatternsBtn = menu.querySelector('[data-action="apply-selected-formula-patterns"]');
+      if (applyPatternsBtn) applyPatternsBtn.disabled = !isRatioEditMode();
       const hasNote = !!(noteCell && hasDfmCellNote(noteCell));
       menu.querySelectorAll("[data-label-only], .dfmCtxSep[data-label-only]").forEach((item) => {
         item.style.display = onLabelCell ? "" : "none";
@@ -137,6 +140,14 @@ export function wireSummaryContextMenu(summaryTable) {
       }
       if (action === "copy-summary-value") {
         await summaryRuntime.summaryCopyHighlight?.copySelection?.();
+        return;
+      }
+      if (action === "copy-selected-formula-patterns") {
+        copySelectedFormulaPatterns();
+        return;
+      }
+      if (action === "apply-selected-formula-patterns") {
+        applySelectedFormulaPatterns();
         return;
       }
       if (action === "add-summary-cell-note") {

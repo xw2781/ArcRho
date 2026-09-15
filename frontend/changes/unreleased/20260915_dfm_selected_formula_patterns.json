@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Copy and apply green selected formula patterns between DFM summary tables over their overlapping range."
+}

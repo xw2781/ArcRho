@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Allow ratio patterns to be applied across different triangle shapes, ignoring unmatched cells with a concise status-bar warning."
+}

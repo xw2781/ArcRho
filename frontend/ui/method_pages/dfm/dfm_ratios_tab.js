@@ -79,6 +79,7 @@ import {
   commitRatioHistoryAction,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
 import { createRatioDragVisitTracker } from "/ui/method_pages/dfm/dfm_ratio_drag_tracker.js";
+import { filterPatternColumns, isPatternColumnActive } from "/ui/method_pages/dfm/dfm_pattern_columns.js";
 
 // =============================================================================
 // Ratio Column Resizing
@@ -695,19 +696,11 @@ function copyRatioPatterns() {
     showRatioActionError("No ratio patterns to copy.");
     return;
   }
-  localStorage.setItem("dfmRatioPatterns", JSON.stringify(pattern));
+  localStorage.setItem("dfmRatioPatterns", JSON.stringify(filterPatternColumns(pattern)));
 }
 
-function getCompactRatioPatternShape(pattern) {
-  if (!Array.isArray(pattern)) return null;
-  let cols = 0;
-  const rowLengths = [];
-  for (const row of pattern) {
-    if (!Array.isArray(row)) return null;
-    cols = Math.max(cols, row.length);
-    rowLengths.push(row.length);
-  }
-  return { rows: pattern.length, cols, rowLengths };
+function showRatioPatternWarning(text) {
+  window.parent.postMessage({ type: "arcrho:status", text, tone: "warn" }, "*");
 }
 
 function applyRatioPatternsFromClipboard() {
@@ -715,69 +708,53 @@ function applyRatioPatternsFromClipboard() {
   clearRatioActionError();
   const stored = localStorage.getItem("dfmRatioPatterns");
   if (!stored) {
-    showRatioActionError("You haven't copied any ratio patterns.");
+    showRatioPatternWarning("You haven't copied any ratio patterns.");
     return;
   }
   let pattern;
   try {
     pattern = JSON.parse(stored);
   } catch {
-    showRatioActionError("Invalid stored ratio patterns.");
+    showRatioPatternWarning("Invalid stored ratio patterns.");
     return;
   }
   if (!Array.isArray(pattern) || !pattern.length) {
-    showRatioActionError("You haven't copied any ratio patterns.");
+    showRatioPatternWarning("You haven't copied any ratio patterns.");
     return;
   }
   const model = state.model;
   if (!model || !Array.isArray(model.values) || !Array.isArray(model.mask)) {
-    showRatioActionError("No ratio triangle data available.");
+    showRatioPatternWarning("No ratio triangle data available.");
     return;
   }
-  const origins = model.origin_labels || [];
-  const devs = getEffectiveDevLabelsForModel(model);
-  const expectedRows = origins.length;
-  const expectedShape = getCompactRatioPatternShape(buildRatioSelectionPattern());
-  const storedShape = getCompactRatioPatternShape(pattern);
-  if (!storedShape || !expectedShape) {
-    showRatioActionError("Invalid stored ratio patterns.");
-    return;
-  }
-  const sameCompactShape =
-    storedShape.rows === expectedRows &&
-    storedShape.rows === expectedShape.rows &&
-    storedShape.cols === expectedShape.cols &&
-    storedShape.rowLengths.every((len, idx) => len === expectedShape.rowLengths[idx]);
-  if (!sameCompactShape) {
-    showRatioActionError(
-      `Invalid triangle size. Stored pattern is ${storedShape.rows}x${storedShape.cols}, but current compact triangle is ${expectedShape.rows}x${expectedShape.cols}.`
-    );
-    return;
-  }
+  const currentPattern = buildRatioSelectionPattern();
+  let hasIgnoredRange = pattern.length !== currentPattern.length;
   beginRatioHistoryAction("apply-ratio-patterns");
-  const activeCols = getActiveRatioCols(model);
-  const ratioColCount = Math.max(0, devs.length - 1);
-  if (activeCols.length > 0) {
-    const colSet = new Set(activeCols);
-    for (let r = 0; r < expectedRows; r++) {
-      const row = Array.isArray(pattern[r]) ? pattern[r] : [];
-      for (const c of colSet) {
-        if (c >= ratioColCount) continue;
-        const key = `${r},${c}`;
-        if (row[c] === 1) {
-          ratioStrikeSet.add(key);
-        } else {
-          ratioStrikeSet.delete(key);
-        }
+  for (let r = 0; r < currentPattern.length; r++) {
+    const row = Array.isArray(pattern[r]) ? pattern[r] : [];
+    const targetRow = currentPattern[r];
+    if (row.length !== targetRow.length) hasIgnoredRange = true;
+    for (let c = 0; c < Math.min(row.length, targetRow.length); c++) {
+      if (row[c] === null || !isPatternColumnActive(c)) continue;
+      if ((row[c] !== 0 && row[c] !== 1) || targetRow[c] === 2) {
+        if (row[c] !== targetRow[c]) hasIgnoredRange = true;
+        continue;
+      }
+      const key = `${r},${c}`;
+      if (row[c] === 1) {
+        ratioStrikeSet.add(key);
+      } else {
+        ratioStrikeSet.delete(key);
       }
     }
-  } else {
-    applyRatioSelectionPattern(pattern);
   }
   renderRatioTable();
   scheduleRatioSummaryUpdate();
   onRatioStateMutated();
   commitRatioHistoryAction("apply-ratio-patterns");
+  if (hasIgnoredRange) {
+    showRatioPatternWarning("Ratio patterns applied; unmatched cells ignored.");
+  }
 }
 
 // =============================================================================
