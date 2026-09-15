@@ -1316,19 +1316,41 @@ class SyncSessionExportTests(unittest.TestCase):
         self.assertEqual(rows[0]["id"], rows[0]["key"])
         self.assertIs(rows[1]["arcrho"]["kind"], sync_session.KIND_BF)
 
-    def test_a_save_only_method_is_saved_by_its_resq_code(self):
+    def test_a_save_only_method_carries_its_notes_and_is_saved_by_its_resq_code(self):
         exporter = _push_exporter()
         for kind, code in ((sync_session.KIND_BF, 2), (sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8)):
             with self.subTest(kind=kind):
                 exporter.save_method.reset_mock()
-                row = {"kind": kind, "name": f"{kind} method", "arcrho": _export_item(f"{kind} method", kind=kind)}
+                item = _export_item(
+                    f"{kind} method",
+                    kind=kind,
+                    method_name=f"{kind} in ResQ",
+                    notes="Reviewed.",
+                )
+                row = {"kind": kind, "name": f"{kind} method", "arcrho": item}
 
                 outcome, message = sync_session._push_row_to_resq(exporter, row)
 
                 self.assertEqual((outcome, message), ("saved", "Written to ResQ."))
-                exporter.save_method.assert_called_once_with(code, f"{kind} method")
+                exporter.save_method.assert_called_once_with(
+                    code,
+                    f"{kind} method",
+                    {"name": f"{kind} in ResQ", "payload": {}, "notes": "Reviewed."},
+                )
         exporter.export_bfs.assert_not_called()
         exporter.export_ccs.assert_not_called()
+
+    def test_a_save_only_method_without_a_readable_sidecar_carries_no_notes(self):
+        exporter = _push_exporter()
+        row = {
+            "kind": sync_session.KIND_BF,
+            "name": "BF Ult",
+            "arcrho": _export_item("BF Ult", kind=sync_session.KIND_BF, method_name="BF Ult"),
+        }
+
+        sync_session._push_row_to_resq(exporter, row)
+
+        exporter.save_method.assert_called_once_with(2, "BF Ult", {"name": "BF Ult", "payload": {}})
 
     def test_a_bs_cra_method_goes_through_the_writer_despite_the_sync_block_reason(self):
         exporter = _push_exporter()
@@ -1396,7 +1418,7 @@ class SyncSessionExportTests(unittest.TestCase):
             ("skipped", "ResQ dataset is calculated; ResQ recomputes its values"),
         )
 
-        def fail(_code, _name):
+        def fail(_code, _name, _entry):
             exporter.counts["errors"] += 1
             exporter.error_details.append({"message": "locked by the template"})
 
@@ -1475,7 +1497,7 @@ class SyncSessionExportTests(unittest.TestCase):
             [(item["name"], item["outcome"]) for item in result["results"]],
             [("Paid Loss", "exported"), ("Paid LDF", "exported"), ("BF Ult", "saved"), ("Selected Ult", "exported")],
         )
-        exporter.save_method.assert_called_once_with(2, "BF Ult")
+        exporter.save_method.assert_called_once_with(2, "BF Ult", {"name": "BF Ult", "payload": {}})
         writes = [event for event in events if event.get("event") == "write"]
         self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
         self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")

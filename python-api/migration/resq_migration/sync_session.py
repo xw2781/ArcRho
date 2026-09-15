@@ -81,9 +81,10 @@ KIND_BOOTSTRAP = "Bootstrap"
 
 _METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS, KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}
 _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
-# Methods the export phase saves in ResQ without writing a field: ResQ
-# recalculates each from the datasets and DFMs exported before it and
-# re-stamps it. Keyed by the ResQ method-type code the exporter looks it up by.
+# Methods the export phase writes Notes for and then saves in ResQ without
+# writing another field: ResQ recalculates each from the datasets and DFMs
+# exported before it and re-stamps it. Keyed by the ResQ method-type code the
+# exporter looks it up by.
 _SAVE_ONLY_METHOD_CODES = {KIND_BF: 2, KIND_CC: 3, KIND_BS_SR: 8}
 # Methods only the export phase pushes: the save-only kinds, and B&S Case
 # Reserve Adequacy, whose Avg. Selections the exporter writes. The sync's
@@ -1048,17 +1049,22 @@ def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
     """Write one export row and say what became of it: exported, saved, skipped, or failed.
 
     Input datasets, DFMs, Result Selections, and B&S Case Reserve Adequacy
-    methods go through the exporter's writers, Notes included; every other
-    supported method is only saved, so ResQ recalculates it from the inputs
-    written before it. There is no preflight and no read-back: an export is a
-    push, not a reconciliation.
+    methods go through the exporter's writers; every other supported method
+    has its Notes written and is then saved, so ResQ recalculates it from the
+    inputs written before it. Notes reach ResQ for every kind either way.
+    There is no preflight and no read-back: an export is a push, not a
+    reconciliation.
     """
 
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
     kind = str(row.get("kind") or KIND_DATASET)
     before = _exporter_snapshot(exporter)
     if kind in _SAVE_ONLY_METHOD_CODES:
-        exporter.save_method(_SAVE_ONLY_METHOD_CODES[kind], str(row.get("name") or ""))
+        exporter.save_method(
+            _SAVE_ONLY_METHOD_CODES[kind],
+            str(row.get("name") or ""),
+            _writer_entry(item, row),
+        )
         outcome, message = _export_result_delta(exporter, before, "methods_saved")
         return (EXPORT_OUTCOME_SAVED if outcome == OUTCOME_WRITTEN else outcome), message
     if kind == KIND_BS_CRA:
@@ -2830,9 +2836,10 @@ def export_reserving_class(
 
     Every input dataset with a CSV cache is written with its Notes, every DFM
     and Result Selection has its selections and Notes written, and every
-    Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method is saved so
-    ResQ recalculates it from those writes. Calculated and engine datasets are
-    left out, as is Bootstrap.
+    Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method has its Notes
+    written and is then saved so ResQ recalculates it from those writes.
+    Notes reach ResQ for every exported kind. Calculated and engine datasets
+    are left out, as is Bootstrap.
 
     ``selected_names`` narrows that to the rows a person ticked in the review
     table; without it the whole class is pushed. A selection is remembered for

@@ -14,7 +14,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, PropertyMock, patch
 
 
 _PYTHON_API_ROOT = Path(__file__).resolve().parents[1]
@@ -710,7 +710,8 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
 
 
 class ExportMacroSaveOnlyTests(unittest.TestCase):
-    """BF, Cape Cod, and Berquist Sherman methods are saved in ResQ, never rewritten."""
+    """BF, Cape Cod, and Berquist Sherman methods carry their Notes and are then
+    saved in ResQ; no other field of theirs is rewritten."""
 
     def setUp(self):
         self.module = _load_macro()
@@ -722,17 +723,80 @@ class ExportMacroSaveOnlyTests(unittest.TestCase):
         exporter.reserving_class = types.SimpleNamespace(BFMethods=lambda: "bfs", CapeCodMethods=lambda: "ccs")
         return exporter
 
-    def test_an_existing_bf_is_saved_without_a_field_written(self):
+    def test_an_existing_bf_is_saved_without_a_field_other_than_notes_written(self):
         exporter = self._exporter()
         bf = Mock()
+        bf.Notes = ""
         exporter._find_method_by_output = Mock(return_value=bf)
 
         exporter.save_method(self.module.RESQ_METHOD_TYPE_BF, "D 41 - BF Incurred")
 
         exporter._find_method_by_output.assert_called_once_with("bfs", "D 41 - BF Incurred")
         bf.Save.assert_called_once_with()
+        self.assertEqual(bf.Notes, "")
         self.assertEqual(exporter.counts["methods_saved"], 1)
         self.assertEqual(exporter.counts["bfs_written"], 0)
+
+    def test_the_notes_of_a_saved_method_reach_resq_with_windows_line_breaks(self):
+        exporter = self._exporter()
+        bf = Mock()
+        bf.Notes = "Stale."
+        exporter._find_method_by_output = Mock(return_value=bf)
+
+        exporter.save_method(
+            self.module.RESQ_METHOD_TYPE_BF,
+            "D 41 - BF Incurred",
+            {"name": "D 41 - BF Incurred", "payload": {}, "notes": "Reviewed.\nSigned off."},
+        )
+
+        self.assertEqual(bf.Notes, "Reviewed.\r\nSigned off.")
+        bf.Save.assert_called_once_with()
+        self.assertEqual(exporter.counts["methods_saved"], 1)
+
+    def test_a_berquist_sherman_settlement_rate_method_carries_its_notes(self):
+        bs = Mock()
+        bs.Notes = ""
+        exporter = self._exporter(_find_berquist_sherman_for_triangle=Mock(return_value=("sr", bs)))
+
+        exporter.save_method(
+            self.module.RESQ_METHOD_TYPE_BS_SR,
+            "Gross Loss--Paid - B&S Settlement Rate Adjustment",
+            {"name": "Gross Loss--Paid - B&S Settlement Rate Adjustment", "payload": {}, "notes": "Adjusted."},
+        )
+
+        self.assertEqual(bs.Notes, "Adjusted.")
+        bs.Save.assert_called_once_with()
+        self.assertEqual(exporter.counts["methods_saved"], 1)
+
+    def test_an_entry_without_notes_leaves_the_resq_notes_alone(self):
+        exporter = self._exporter()
+        bf = Mock()
+        bf.Notes = "Written in ResQ."
+        exporter._find_method_by_output = Mock(return_value=bf)
+
+        exporter.save_method(
+            self.module.RESQ_METHOD_TYPE_BF, "D 41 - BF Incurred", {"name": "D 41 - BF Incurred", "payload": {}}
+        )
+
+        self.assertEqual(bf.Notes, "Written in ResQ.")
+        self.assertEqual(exporter.counts["methods_saved"], 1)
+
+    def test_a_notes_write_resq_refuses_is_recorded_as_an_error(self):
+        exporter = self._exporter()
+        bf = Mock()
+        type(bf).Notes = PropertyMock(side_effect=RuntimeError("the method is read only"))
+        exporter._find_method_by_output = Mock(return_value=bf)
+
+        exporter.save_method(
+            self.module.RESQ_METHOD_TYPE_BF,
+            "D 41 - BF Incurred",
+            {"name": "D 41 - BF Incurred", "payload": {}, "notes": "Reviewed."},
+        )
+
+        self.assertEqual(exporter.counts["errors"], 1)
+        self.assertEqual(exporter.error_details[-1]["message"], "the method is read only")
+        self.assertEqual(exporter.counts["methods_saved"], 0)
+        bf.Save.assert_not_called()
 
     def test_a_cape_cod_method_is_looked_up_in_its_own_collection(self):
         exporter = self._exporter()

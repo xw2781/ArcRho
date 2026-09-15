@@ -62,12 +62,20 @@ every item below is written, each after the items it reads:
   the `User Value` row as the numbers the page evaluated, with a formula's
   text kept beside them, so a formula-backed cell reaches ResQ as its plain
   value. The method is then saved.
-- **Bornhuetter Ferguson, Cape Cod, and B&S Settlement Rate methods** — saved
-  only. The exporter finds the ResQ method by its ArcRho output name and calls
+- **Bornhuetter Ferguson, Cape Cod, and B&S Settlement Rate methods** — Notes
+  and a save. The exporter finds the ResQ method by its ArcRho output name,
+  writes the Notes of that output sidecar into the ResQ `Notes`, and calls
   `Save()`, so ResQ recalculates it from the datasets and DFMs written before
-  it and re-stamps it. No field is carried across: ArcRho's own settings for
-  these methods are not pushed, and a method ResQ does not hold is reported
-  as skipped rather than created.
+  it and re-stamps it. No other field is carried across: ArcRho's own
+  settings for these methods are not pushed, and a method ResQ does not hold
+  is reported as skipped rather than created.
+
+Notes therefore reach ResQ for every kind the export pushes, and always from
+the same place — the `notes` of the item's own sidecar, which for a method is
+its output sidecar. `\n` line breaks become `\r\n`, because ResQ renders a
+`\n`-only value as one line. A sidecar that could not be read carries no
+`notes` field at all, and the ResQ Notes are then left untouched rather than
+cleared; an empty value that was read does clear them.
 
 Left out, and not shown in the results:
 

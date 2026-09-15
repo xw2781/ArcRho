@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.13.0
-# Release Note: Notes now reach ResQ for every method type the export pushes: a Bornhuetter Ferguson, Cape Cod or B&S Settlement Rate method has its Notes written before it is saved, where before only its save was sent.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections, the Notes of every dataset and method, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
+# Version: 2.12.0
+# Release Note: Every User Entry row of a ResQ DFM is written, not only the first: the import now numbers the repeats "User Entry 2", "User Entry 3" in ResQ order, and the export writes each one's factors and tail to its own ResQ row.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections and Notes, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # Icon: upload
 # </arcrho-macro>
@@ -67,8 +67,7 @@ _SIDECAR_METHOD_TYPE_CODES = {
     "result selection": RESQ_METHOD_TYPE_RESULT_SELECTION,
 }
 
-# Methods the export phase writes Notes for and then saves, without touching
-# any other field, by the ResQ code the session names them with.
+# Methods the export phase only saves, by the ResQ code the session names them with.
 _SAVE_ONLY_METHOD_LABELS = {
     RESQ_METHOD_TYPE_BF: "BF",
     RESQ_METHOD_TYPE_CAPE_COD: "CC",
@@ -1057,13 +1056,12 @@ class ResQReservingClassExporter:
             return found[1] if found else None
         raise ValueError(f"ResQ method type {method_code} is not a save-only kind")
 
-    def save_method(self, method_code, name, entry=None):
-        """Write a ResQ method's Notes and save it, without writing any other field.
+    def save_method(self, method_code, name):
+        """Save a ResQ method without writing any field.
 
         The export pushes a method's inputs first, so the save makes ResQ
-        recalculate the method from them and re-stamp it; apart from Notes,
-        which every exported kind carries, ArcRho's own settings for the
-        method are not carried across.
+        recalculate the method from them and re-stamp it; ArcRho's own
+        settings for the method are not carried across.
         """
 
         label = _SAVE_ONLY_METHOD_LABELS[method_code]
@@ -1073,13 +1071,12 @@ class ResQReservingClassExporter:
             self._record_skip(label, name, "missing_in_resq", "method not found in ResQ")
             return
         try:
-            notes = self._sync_notes(target, entry or {})
             target.Save()
         except Exception as exc:
             self._record_error(label, name, exc)
             return
         self.counts["methods_saved"] += 1
-        self._emit(f"Saved {label}: {name} (notes {notes})", status="success")
+        self._emit(f"Saved {label}: {name}", status="success")
 
     # ----- Berquist Sherman Case Reserve Adequacy ---------------------------------
 

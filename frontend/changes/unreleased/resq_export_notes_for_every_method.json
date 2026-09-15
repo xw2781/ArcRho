@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "resq",
+  "audience": "user",
+  "summary": "Exporting a reserving class to ResQ now carries the notes of every method, not only some of them.",
+  "details": [
+    "Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate methods were previously saved in ResQ without their notes; their notes are now written first.",
+    "Notes still come from the same place for every item, and blank lines are kept the way ResQ shows them."
+  ]
+}

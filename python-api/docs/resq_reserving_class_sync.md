@@ -189,8 +189,9 @@ them.
   block the action before mutation.
 - Berquist-Sherman Settlement Rate and Case Reserve Adequacy can import from
   ResQ into ArcRho only. ArcRho-to-ResQ creation/write-back is not supported
-  here; the Export macro saves a Settlement Rate method and writes a Case
-  Reserve Adequacy method's `Avg. Selections` (see the export page).
+  here; the Export macro writes a Settlement Rate method's Notes and saves it,
+  and writes a Case Reserve Adequacy method's `Avg. Selections` and Notes (see
+  the export page).
 - Bootstrap synchronization is not supported.
 
 Unsupported actions are displayed but disabled. Duplicate normalized names are
