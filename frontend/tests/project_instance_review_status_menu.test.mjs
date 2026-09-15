@@ -92,7 +92,10 @@ function createHarness(records) {
     datasetIndexWatch: { pending: false, suppressUntil: 0 },
     lastDatasetSelectionStatusCount: 0,
   };
-  const els = { datasetRowContextMenu: menu };
+  const els = {
+    datasetRowContextMenu: menu,
+    datasetTableWrap: { scrollLeft: 0, scrollTop: 0 },
+  };
   const calls = { statuses: [], requests: [], reloads: 0 };
   const api = {
     beginPageLoading: () => {},
@@ -112,8 +115,23 @@ function createHarness(records) {
     syncCachedDatasetToolbar: () => {},
     toText: (value) => String(value ?? "").trim(),
     applyCachedDatasetSnapshot: () => {},
+    captureDatasetTableScroll: () => ({
+      left: els.datasetTableWrap.scrollLeft,
+      top: els.datasetTableWrap.scrollTop,
+    }),
+    restoreDatasetTableScroll: (scrollState) => {
+      els.datasetTableWrap.scrollLeft = Number(scrollState?.left) || 0;
+      els.datasetTableWrap.scrollTop = Number(scrollState?.top) || 0;
+    },
+    // The real reload empties the rows and re-renders them, which drops the
+    // highlight and sends the wrapper back to the top; the stub reproduces
+    // exactly that so the restore has something to put back.
     loadCachedDatasetFilterForSelectedPath: async () => {
       calls.reloads += 1;
+      els.datasetTableWrap.scrollTop = 0;
+      state.datasetTableSelection.selectedKeys.clear();
+      state.datasetTableSelection.anchorKey = "";
+      state.datasetTableSelection.activeKey = "";
     },
   };
   installProjectInstanceDatasetTable({
@@ -134,7 +152,7 @@ function createHarness(records) {
     loadProjectUserPreferences: async () => ({}),
     scheduleProjectUserPreferencesSave: () => {},
   });
-  return { api, calls, menu, state };
+  return { api, calls, els, menu, state };
 }
 
 /** One visible row, its Method Type and Status read the way the index reports them. */
@@ -234,6 +252,33 @@ test("the request carries only the method rows and the table reloads after it", 
   assert.equal(calls.reloads, 1, "the table re-reads the index the writes made stale");
   assert.equal(state.datasetIndexWatch.pending, false, "no Refresh Table prompt for our own write");
   assert.match(calls.statuses.at(-1), /Marked 1 object for review\./u);
+});
+
+test("the picked rows stay highlighted and the table stays where it was", async () => {
+  const records = [
+    makeRecord(0, "Selected Ultimate", "Result Selection", 0),
+    makeRecord(1, "G 41 - BF Paid", "Bornhuetter Ferguson", 0),
+  ];
+  const { api, els, state } = createHarness(records);
+  state.datasetTableSelection.selectedKeys = new Set(["row-1"]);
+  state.datasetTableSelection.anchorKey = "row-1";
+  state.datasetTableSelection.activeKey = "row-1";
+  els.datasetTableWrap.scrollTop = 940;
+  els.datasetTableWrap.scrollLeft = 120;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, updated: ["G 41 - BF Paid"] }),
+  });
+  try {
+    await api.setDatasetRowsReviewStatus([records[1]], true);
+  } finally {
+    delete globalThis.fetch;
+  }
+  assert.deepEqual(Array.from(state.datasetTableSelection.selectedKeys), ["row-1"]);
+  assert.equal(state.datasetTableSelection.activeKey, "row-1");
+  assert.equal(els.datasetTableWrap.scrollTop, 940, "the reader keeps their place in the class");
+  assert.equal(els.datasetTableWrap.scrollLeft, 120);
 });
 
 test("setting reviewed sends the current status code", async () => {

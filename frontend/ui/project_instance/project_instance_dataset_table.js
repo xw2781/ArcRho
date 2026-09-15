@@ -29,6 +29,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const DATASET_TABLE_PREFERENCES_LOAD_TIMEOUT_MS = 5000;
   const applyCachedDatasetSnapshot = (...args) => api.applyCachedDatasetSnapshot(...args);
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
+  const captureDatasetTableScroll = (...args) => api.captureDatasetTableScroll(...args);
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
@@ -46,6 +47,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
+  const restoreDatasetTableScroll = (...args) => api.restoreDatasetTableScroll(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const shouldUseCachedDatasetFilter = (...args) => api.shouldUseCachedDatasetFilter(...args);
   const syncCachedDatasetToolbar = (...args) => api.syncCachedDatasetToolbar(...args);
@@ -2896,6 +2898,12 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
   if (!projectName || !state.selectedPath || !names.length) return;
   const label = names.length === 1 ? names[0] : `${names.length} objects`;
   const title = needsReview ? "Marking for review" : "Setting reviewed";
+  // The reload below rebuilds every row, so the rows the user picked and the
+  // place they had scrolled to are remembered here and put back afterwards;
+  // signing an object off must not send the reader back to the top of a long
+  // class.
+  const scrollState = captureDatasetTableScroll();
+  const selectionState = captureDatasetTableSelection();
   setStatus(`${needsReview ? "Marking" : "Clearing"} the review flag for ${label}...`);
   beginPageLoading("review-status", {
     title,
@@ -2927,6 +2935,8 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
     state.datasetIndexWatch.pending = false;
     syncCachedDatasetToolbar();
     renderDatasetTable();
+    restoreDatasetTableSelection(selectionState);
+    restoreDatasetTableScroll(scrollState);
     const updated = Array.isArray(payload?.updated) ? payload.updated.length : 0;
     const noun = updated === 1 ? "object" : "objects";
     setStatus(

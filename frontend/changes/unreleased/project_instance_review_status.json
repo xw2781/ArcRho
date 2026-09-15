@@ -6,6 +6,7 @@
   "details": [
     "Right-clicking a row now offers Mark For Review or Set Reviewed, whichever the current status allows, and applies it to every selected row at once.",
     "Rows that are not method results are left alone, and a selection holding both statuses is offered Set Reviewed so one click settles it.",
-    "Setting the status records who changed it and when, and changes nothing else: no values move and nothing downstream is refreshed."
+    "Setting the status records who changed it and when, and changes nothing else: no values move and nothing downstream is refreshed.",
+    "The rows you picked stay highlighted afterwards and the table stays where you were reading, instead of redrawing back at the top of the class."
   ]
 }

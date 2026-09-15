@@ -580,10 +580,7 @@ async function refreshCachedDatasetTableFromDisk() {
     setStatus("Select a reserving-class path before refreshing the dataset table.", true);
     return false;
   }
-  const scrollState = {
-    left: Number(els.datasetTableWrap?.scrollLeft) || 0,
-    top: Number(els.datasetTableWrap?.scrollTop) || 0,
-  };
+  const scrollState = captureDatasetTableScroll();
   const selectionState = captureDatasetTableSelection();
   closeDatasetTableFilterPopover();
   datasetIndexWatch.suppressUntil = Date.now() + DATASET_INDEX_SETTLE_SUPPRESS_MS;
@@ -658,6 +655,13 @@ async function toggleDatasetViewMode() {
     : enterTemporaryDatasetView();
 }
 
+function captureDatasetTableScroll() {
+  return {
+    left: Number(els.datasetTableWrap?.scrollLeft) || 0,
+    top: Number(els.datasetTableWrap?.scrollTop) || 0,
+  };
+}
+
 function restoreDatasetTableScroll(scrollState) {
   const wrap = els.datasetTableWrap;
   if (!wrap || !scrollState) return;
@@ -701,6 +705,7 @@ function initCachedDatasetToolbar() {
 
   Object.assign(api, {
     applyCachedDatasetSnapshot,
+    captureDatasetTableScroll,
     checkDatasetIndexSignature,
     fetchCachedDatasetSnapshot,
     formatCachedTimestamp,
@@ -714,6 +719,7 @@ function initCachedDatasetToolbar() {
     mergeCachedDatasetMetadata,
     normalizeCachedDatasetSnapshot,
     refreshCachedDatasetTableFromDisk,
+    restoreDatasetTableScroll,
     startDatasetIndexWatchForSnapshot,
     shouldUseCachedDatasetFilter,
     stopDatasetIndexWatch,
