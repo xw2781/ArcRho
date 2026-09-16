@@ -1,6 +1,6 @@
 # Ordered single-pass dependent walk
 
-Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, none started.
+Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 1 of 5 done — the ordered closure landed 2026-09-16 as a pure module that names everything a save reaches and sorts it after its precedents.
 Last updated: 2026-09-16
 
 ## Progress
@@ -9,13 +9,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | The walk works out, up front, everything a save reaches and the order to refresh it in | [ ] | | |
+| 1 | The walk works out, up front, everything a save reaches and the order to refresh it in | [x] | 2026-09-16 | Nothing to see yet: the app can now list everything one save affects and put it in the order it has to be redone in. |
 | 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [ ] | | |
 | 3 | A save refreshes each downstream object exactly once, in that order | [ ] | | |
 | 4 | The saving popup and the server log describe the new walk | [ ] | | |
 | 5 | Released to the server and timed on the save that started this | [ ] | | |
 
-Overall: 0 of 5 steps done.
+Overall: 1 of 5 steps done.
 
 ## How agents work this plan
 
@@ -81,6 +81,8 @@ Files: new `frontend/app_server/services/dependent_walk_service.py` (closure and
 - Tests on synthetic sidecar folders: a chain, a diamond, the traced shape above (assert `D 91` sorts after `D 18`, `D 18` after the B&S adjustment, the adjustment after `C 92`), a link cycle, a root with no dependents, and a missing sidecar on a non-root node (an error, as today).
 
 Done when: the function is pure, the tests pass, and no existing test changed.
+
+Landed 2026-09-16 as `dependent_walk_service.ordered_closure(project, class, roots, *, sidecar_snapshot=None, dataset_type_rows=None)`, which returns a `WalkClosure` of `WalkNode(key, name, kind, method_type, precedents, is_root)` in dependency order; `closure.refresh_order` drops the saved roots, and a node's `precedents` are closure keys, so the pass intersects them with what it has already refreshed to get `changed_precedents` (that intersection is also what makes a broken cycle use only what is final).
 
 ### Step 2 — one refresher per object kind
 
