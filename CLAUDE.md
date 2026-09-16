@@ -1,6 +1,16 @@
 # CLAUDE.md
 
-Read [AGENT_GUIDELINES.md](AGENT_GUIDELINES.md) before starting any task in this repository. It holds the instructions shared by every agent working here. The section below applies to Claude only.
+Read [AGENT_GUIDELINES.md](AGENT_GUIDELINES.md) before starting any task in this repository. It holds the instructions shared by every agent working here. The sections below apply to Claude only.
+
+## Subagent Model (MUST)
+
+Every subagent launched from this repository — through the Agent tool, a workflow, or a skill that spawns one — runs on Opus or Sonnet, chosen by how hard the work is. Pass the choice explicitly with the `model` parameter rather than letting a default decide.
+
+- **Opus** for hard work: designing or changing behaviour across components, diagnosing a failure whose cause is unknown, reasoning about the persisted JSON contracts or the dependent walk, reviewing a change for correctness, or any step of a plan that writes real code.
+- **Sonnet** for straightforward work: finding where something lives, reading files and reporting what they say, gathering log lines or test output, renaming or repeating a mechanical edit across many files, and other tasks with a clear procedure and little judgement.
+- **Never Fable** unless the user has asked for it in this conversation. It is not the fallback for a small task; a small task gets Sonnet. If a skill, a workflow script, or an agent definition names Fable, stop and ask the user before running it.
+
+When a task sits between the two, take Opus and say so in one short line.
 
 ## Final Response
 
