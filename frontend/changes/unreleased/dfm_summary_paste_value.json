@@ -1,0 +1,7 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added Paste Value to User Entry cells in the DFM Ratios summary menu and renamed Copy Value.",
+  "details": ["Paste Value uses the existing numeric grid paste validation and is available in Edit mode."]
+}

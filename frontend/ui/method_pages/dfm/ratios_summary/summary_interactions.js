@@ -103,6 +103,11 @@ export function wireSummaryContextMenu(summaryTable) {
       const customBtn = menu.querySelector('[data-action="custom-average"]');
       const modeBtn = menu.querySelector('[data-action="toggle-summary-ratio-mode"]');
       const noteBtn = menu.querySelector('[data-action="add-summary-cell-note"]');
+      const pasteBtn = menu.querySelector('[data-action="paste-summary-value"]');
+      if (pasteBtn) {
+        pasteBtn.hidden = !noteCell || !isUserEntryConfig(cfg);
+        pasteBtn.disabled = !isRatioEditMode();
+      }
       const applyPatternsBtn = menu.querySelector('[data-action="apply-selected-formula-patterns"]');
       if (applyPatternsBtn) applyPatternsBtn.disabled = !isRatioEditMode();
       const hasNote = !!(noteCell && hasDfmCellNote(noteCell));
@@ -140,6 +145,21 @@ export function wireSummaryContextMenu(summaryTable) {
       }
       if (action === "copy-summary-value") {
         await summaryRuntime.summaryCopyHighlight?.copySelection?.();
+        return;
+      }
+      if (action === "paste-summary-value") {
+        const cell = summaryRuntime.summaryContextCellForNote;
+        if (!isRatioEditMode() || !cell || !isUserEntryConfig(summaryRowMap.get(String(cell.dataset.r || "")))) return;
+        const table = cell.closest("table.ratioSummaryTable");
+        const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
+        try {
+          const text = await navigator.clipboard.readText();
+          if (!document.body.contains(cell) || !isRatioEditMode()) return;
+          pasteUserEntryClipboardGrid(table, selectedTable, cell, text);
+          table.focus({ preventScroll: true });
+        } catch (error) {
+          summaryRuntime.showSummaryFormulaBarValidationError(`Paste failed: ${String(error?.message || error)}`);
+        }
         return;
       }
       if (action === "copy-selected-formula-patterns") {
