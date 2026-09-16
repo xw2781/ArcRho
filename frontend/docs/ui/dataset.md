@@ -92,6 +92,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
+- Shared Notes sizing (`ui/shared/tabs/notes/notes_tab.js`) applies to Dataset Viewer, DFM, Bornhuetter Ferguson, Cape Cod, Result Selection, and Berquist Sherman. The local-user `localStorage` key `arcrho.notes.panel-size` remembers dimensions set by the resize grip. Mounting, hiding, showing, or constraining a tab to a narrower host never rewrites that preference; a pending save retains the dragged dimensions even if the tab becomes hidden. `notes_tab.css` owns the 480px minimum width, capped by the available host width, and wider saved panels expand again when space becomes available. Panel sizing does not change note content or dirty state.
 - Uses in-page mutable state for active dataset and selection.
 - Reads and caches valid value lists via `ui/shared/services/valid_value_lists.js` for:
   - project names from the project index

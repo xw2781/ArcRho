@@ -226,6 +226,7 @@ test("DSV and every method page consume the shared Notes and Details surfaces", 
     ]),
     Promise.all([source("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js")]),
     Promise.all([source("ui/method_pages/cape_cod/cape_cod_main.js")]),
+    Promise.all([source("ui/method_pages/berquist_sherman/berquist_sherman_main.js")]),
     Promise.all([source("ui/method_pages/result_selection/result_selection_main.js")]),
   ]);
 

@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "notes",
+  "audience": "user",
+  "summary": "Notes panels reliably remember their last resized dimensions and have a wider minimum width across Dataset Viewer and method pages.",
+  "details": [
+    "Opening or hiding a tab and resizing its window no longer overwrite the preferred notes size.",
+    "The minimum notes width is now 480 pixels, capped by the available window width."
+  ]
+}

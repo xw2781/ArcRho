@@ -142,7 +142,7 @@
   align-self: flex-start;
   width: min(100%, 960px);
   max-width: 100%;
-  min-width: min(260px, 100%);
+  min-width: min(480px, 100%);
   min-height: 260px;
   height: 360px;
   resize: both;

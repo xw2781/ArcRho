@@ -521,6 +521,7 @@ export function mountNotesTab({
   let flushTimer = null;
   let panelSizeSaveTimer = null;
   let resizeObserver = null;
+  let panelSizeStyle = { width: "", height: "" };
   // Where the mouse went down on the rendered view; a release without a drag
   // enters editing, a drag leaves the rendered text selected for copying.
   let decorPress = null;
@@ -555,13 +556,17 @@ export function mountNotesTab({
     if (destroyed) return;
     const { width, height } = inputWrap.style;
     if (!width && !height) return;
+    // Restoring, hiding, or constraining a tab can resize its rendered box
+    // without the user dragging it. Only changed inline dimensions are a drag.
+    if (width === panelSizeStyle.width && height === panelSizeStyle.height) return;
+    panelSizeStyle = { width, height };
     clearPanelSizeSaveTimer();
     panelSizeSaveTimer = windowObject.setTimeout(() => {
       panelSizeSaveTimer = null;
       if (destroyed) return;
       writeStoredNotesPanelSize(windowObject, {
-        width: Math.round(inputWrap.offsetWidth || 0),
-        height: Math.round(inputWrap.offsetHeight || 0),
+        width: Math.round(Number.parseFloat(width) || 0),
+        height: Math.round(Number.parseFloat(height) || 0),
       });
     }, NOTES_PANEL_SIZE_SAVE_DELAY_MS);
   };
@@ -572,6 +577,7 @@ export function mountNotesTab({
     // `max-width: 100%` keeps a panel wider than its host from overflowing.
     if (stored.width) inputWrap.style.width = String(stored.width) + "px";
     if (stored.height) inputWrap.style.height = String(stored.height) + "px";
+    panelSizeStyle = { width: inputWrap.style.width, height: inputWrap.style.height };
   };
 
   const setPlainTextMode = (enabled) => {
