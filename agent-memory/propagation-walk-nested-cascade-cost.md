@@ -1,6 +1,6 @@
 ---
 name: propagation-walk-nested-cascade-cost
-description: "Why a full-chain save took 11 s — 26 objects rewritten 54 times because method waves re-enter recalculate_dependents per method; the D 91 subtree ran three times; audit_log event_dates give the exact sequence (2026-09-16, Q3-Aug COL)"
+description: "Why a full-chain save took 11 s in the nested-wave walk (26 objects rewritten 54 times, D 91 subtree three times) and that the ordered single pass fixed it on 2026-09-16 (20 of 20 once, 2.2 s); audit_log event_dates give the exact sequence"
 metadata: 
   node_type: memory
   type: project
@@ -27,6 +27,5 @@ Diagnosis of "saving C 42a takes 11-12 s" after the full-chain commit (849b20f9)
 - Neither `hosted_saves.log` nor `gateway.log` names the project; COL exists in four projects — ask.
 
 **How to apply:** for a per-object trace, list sidecar `audit_log` `event_date`s inside the save's window with a
-`py -3.10` script — that shows repeats, which mtimes cannot. The remaining fix is one dependency-ordered pass over
-the closure so each object is refreshed once (~26 x 0.2 s here instead of 54). Related: [[dfm-save-propagation-profile]],
+`py -3.10` script — that shows repeats, which mtimes cannot. The dependency-ordered single pass landed 2026-09-16 (docs/plans/completed/ordered_dependent_walk.md, commits c38fd1ce..25260536, deployed to Engine, Bridge and Gateway): a D 42 save in the same class refreshed 20 of 20 reachable objects once each in 2.2 s. Nested per-method cascades no longer exist; if a repeat shows up again, the pass in dependent_walk_service.py is the only place to look. Related: [[dfm-save-propagation-profile]],
 [[agent-share-listing-blocked-use-python]].
