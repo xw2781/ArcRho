@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Added basic Excel-style functions to the compact Data formula bar.",
+  "details": [
+    "Supports IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, ROUND, comparisons, and nested numeric formulas.",
+    "Plain numbers can be entered without an equals sign, and constant-only formulas remain formulas after saving."
+  ]
+}

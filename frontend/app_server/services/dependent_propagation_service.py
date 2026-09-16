@@ -39,18 +39,21 @@ from arcrho_dependent_propagation_contract import (
     require_live_engine,
     validate_dependent_propagation_status,
     validate_request_id,
+    validate_project_name,
+    validate_reserving_class_path,
     write_dependent_propagation_status,
     write_json_atomic,
 )
 from arcrho_project_duplication_contract import path_is_link_or_reparse
 
 from app_server import config
-from app_server.services import user_identity_service
+from app_server.services import propagation_gateway_client, user_identity_service
 
 
 _PROTOCOL_PATH_VALIDATION_CACHE_SECONDS = 30.0
 _protocol_path_validation_cache: Dict[str, float] = {}
 _protocol_path_validation_cache_lock = threading.Lock()
+_submission_lock = threading.Lock()
 
 
 def _elapsed_ms(started_ns: int) -> float:
@@ -218,10 +221,34 @@ RESERVING_CLASS_BUSY_MESSAGE = (
 def require_engine_available() -> None:
     """Refuse a save before anything is written when no live Engine exists."""
 
+    if not propagation_gateway_client.is_server_process():
+        propagation_gateway_client.read("propagation_preflight", {"scope": "engine"})
+        return
     try:
         require_live_engine(_workspace_server_root())
     except EngineUnavailableError as error:
         raise HTTPException(503, ENGINE_UNAVAILABLE_MESSAGE) from error
+
+
+def check_propagation_preflight(
+    scope: str, project_name: str = "", reserving_class: str = "",
+) -> Dict[str, Any]:
+    try:
+        if scope in {"class", "project"}:
+            project_name = validate_project_name(project_name)
+        if scope == "class":
+            reserving_class = validate_reserving_class_path(reserving_class)
+    except DependentPropagationContractError as error:
+        raise HTTPException(400, str(error)) from error
+    if scope == "engine":
+        require_engine_available()
+    elif scope == "class":
+        require_reserving_class_writable(project_name, reserving_class)
+    elif scope == "project":
+        require_project_scope_writable(project_name)
+    else:
+        raise HTTPException(400, "Unknown propagation preflight scope.")
+    return {"ok": True}
 
 
 # One orchestrated operation (the Excel workbook retarget) runs several
@@ -342,6 +369,11 @@ def require_reserving_class_writable(
     network-drive path checks.
     """
 
+    if not propagation_gateway_client.is_server_process():
+        propagation_gateway_client.read("propagation_preflight", {
+            "scope": "class", "project_name": project_name, "reserving_class": reserving_class,
+        })
+        return Path(config.get_root_path())
     server_root = _workspace_server_root(
         timings=timings,
         timing_prefix="preflight_workspace",
@@ -400,6 +432,11 @@ def require_project_scope_writable(project_name: str) -> Path:
     validated workspace root so the caller can reuse it.
     """
 
+    if not propagation_gateway_client.is_server_process():
+        propagation_gateway_client.read("propagation_preflight", {
+            "scope": "project", "project_name": project_name,
+        })
+        return Path(config.get_root_path())
     server_root = _workspace_server_root()
     try:
         require_live_engine(server_root)
@@ -440,6 +477,10 @@ def get_reserving_class_busy(
     is being rewritten.
     """
 
+    if not propagation_gateway_client.is_server_process():
+        return propagation_gateway_client.read("propagation_busy", {
+            "project_name": project_name, "reserving_class": reserving_class,
+        })
     try:
         hold = find_reserving_class_propagation_hold(
             _workspace_server_root(), project_name, reserving_class
@@ -462,6 +503,13 @@ def submit_dependent_propagation_job(
 ) -> Dict[str, Any]:
     """Publish one queued propagation request and return its job identity."""
 
+    if not propagation_gateway_client.is_server_process():
+        return propagation_gateway_client.submit({
+            "project_name": project_name,
+            "reserving_class": reserving_class,
+            "changed_roots": list(changed_roots),
+            "request_id": request_id if request_id is not None else uuid.uuid4().hex,
+        })
     server_root = _workspace_server_root()
     try:
         require_live_engine(server_root)
@@ -482,6 +530,19 @@ def submit_dependent_propagation_job(
     except DependentPropagationContractError as error:
         raise HTTPException(400, str(error)) from error
 
+    normalized_request_id = request["RequestId"]
+    with _submission_lock:
+        try:
+            existing = get_dependent_propagation_status(normalized_request_id)
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+        else:
+            return {"ok": True, "job_id": normalized_request_id, "status": existing["status"]}
+        return _publish_propagation_request(server_root, request)
+
+
+def _publish_propagation_request(server_root: Path, request: Mapping[str, Any]) -> Dict[str, Any]:
     normalized_request_id = request["RequestId"]
     request_path = dependent_propagation_request_path(
         server_root, normalized_request_id
@@ -806,33 +867,8 @@ def enqueue_marked_save_propagation(
     dataset_name: str,
     dataset_type: str = "",
 ) -> Dict[str, Any]:
-    """Mark the first dependent method tier, then enqueue the Engine walk.
+    """Enqueue the full walk; successful publications decide their review status."""
 
-    Only the nearest reachable methods are marked here (a handful of SMB
-    round trips from a Client PC); the Engine job marks the full reachable
-    closure as its first claimed step, where the walk runs on local disk. If
-    the job is never claimed, the first method tier stays visibly flagged
-    and the next save or refresh re-enqueues the walk that restores the
-    deeper tiers.
-
-    Inside an Engine-hosted save the marking is skipped entirely: the walk runs
-    synchronously and finalizes every status itself. Whether to run inline is
-    decided once, by `enqueue_save_propagation`; this function only declines to
-    pay for marking that the inline walk would immediately redo.
-    """
-
-    if not _inline_engine_propagation.get():
-        try:
-            from app_server.services import dataset_sidecar_status_service
-
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project_name,
-                reserving_class,
-                [dataset_name, dataset_type],
-                direct_only=True,
-            )
-        except Exception as exc:
-            return {"ok": False, "status": "error", "message": str(exc)}
     return enqueue_save_propagation(
         project_name,
         reserving_class,
@@ -847,6 +883,8 @@ def unchanged_propagation() -> Dict[str, Any]:
 
 
 def get_dependent_propagation_status(request_id: str) -> Dict[str, Any]:
+    if not propagation_gateway_client.is_server_process():
+        return propagation_gateway_client.read("propagation_status", {"request_id": request_id})
     try:
         normalized_request_id = validate_request_id(request_id)
     except DependentPropagationContractError as error:

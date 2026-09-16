@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Simplified the Data menu with muted shortcut hints and added a persistent, full-width formula panel for manual input datasets.",
+  "details": [
+    "The formula panel has square corners and the same light grey border as the data table.",
+    "The Data toolbar has a small top inset and no horizontal padding to align with the formula panel, plus a small left inset for Cumulative."
+  ]
+}

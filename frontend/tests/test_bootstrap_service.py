@@ -527,7 +527,7 @@ class BootstrapServiceTests(unittest.TestCase):
                 origin_labels=self.origin_labels,
             )
 
-    def test_an_unchanged_dfm_snapshot_skips_the_simulation(self) -> None:
+    def test_an_unchanged_dfm_snapshot_recalculates_the_simulation(self) -> None:
         self.save()
         sidecar = json.loads(
             (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
@@ -544,8 +544,8 @@ class BootstrapServiceTests(unittest.TestCase):
             snapshot_cache={},
         )
 
-        self.assertTrue(result["skipped"])
-        self.assertEqual(result["reason"], "dfm_snapshot_unchanged")
+        self.assertTrue(result["updated"])
+        self.assertTrue(result["method"]["method_metadata"]["data_refreshed"])
 
     def test_an_unrelated_changed_dataset_is_a_stale_reverse_edge(self) -> None:
         self.save()

@@ -54,6 +54,7 @@ from app_server.services import (
     client_save_latency_log_service,
     dependent_propagation_service,
     hosted_save_http_client,
+    propagation_gateway_client,
     user_identity_service,
 )
 
@@ -662,13 +663,8 @@ def run_hosted_save_plan(
 def get_hosted_save_progress(request_id: str) -> Dict[str, Any]:
     """Report one in-flight hosted save's live status for the UI poller.
 
-    The page generated the save's request id itself, so it can ask while its
-    save call is still running. The Gateway answers from the status file on
-    the server host's local disk; without a Gateway the same file is read
-    over SMB, where the client-side cache may serve a view a few seconds
-    stale — the poll then simply narrates a little behind. Every failure
-    degrades to ``{"status": "unknown"}``: a progress poll must never break
-    the save it describes.
+    Clients use Gateway only. An unavailable progress endpoint returns
+    unknown without inspecting the share or interrupting the save.
     """
 
     try:
@@ -676,6 +672,14 @@ def get_hosted_save_progress(request_id: str) -> Dict[str, Any]:
     except Exception as error:
         raise HTTPException(400, "A valid save request id is required.") from error
 
+    if propagation_gateway_client.is_server_process():
+        try:
+            status = read_save_job_status(
+                dependent_propagation_service._workspace_server_root(), normalized_id,
+            )
+        except Exception:
+            status = None
+        return _progress_payload(status)
     gateway_config: Mapping[str, Any] = {"enabled": False}
     try:
         gateway_config = config.load_gateway_config()
@@ -686,19 +690,11 @@ def get_hosted_save_progress(request_id: str) -> Dict[str, Any]:
             gateway_config, normalized_id
         )
         if isinstance(answer, Mapping):
-            return {
-                "status": str(answer.get("status") or "unknown"),
-                "progress": answer.get("progress")
-                if isinstance(answer.get("progress"), Mapping)
-                else None,
-                "message": str(answer.get("message") or "") or None,
-            }
+            return _progress_payload(answer)
+    return _progress_payload(None)
 
-    try:
-        server_root = dependent_propagation_service._workspace_server_root()
-        status = read_save_job_status(server_root, normalized_id)
-    except Exception:
-        status = None
+
+def _progress_payload(status: Mapping[str, Any] | None) -> Dict[str, Any]:
     if not isinstance(status, Mapping):
         return {"status": "unknown", "progress": None, "message": None}
     progress = status.get("progress")

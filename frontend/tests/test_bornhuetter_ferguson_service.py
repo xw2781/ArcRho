@@ -42,6 +42,9 @@ from app_server.services import (
 )
 
 
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
+
+
 class BornhuetterFergusonServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
@@ -57,6 +60,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(
                 bornhuetter_ferguson_service.config,
                 "get_general_settings_path",
@@ -363,7 +367,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["latest_values"], current["method_tab"]["latest_values"])
         self.assertEqual(saved["method_tab"]["prior_datasets"][0]["weights"], [0.5, 1])
 
-    def test_no_op_save_submits_no_engine_propagation_job(self) -> None:
+    def test_no_op_save_submits_engine_propagation_job(self) -> None:
         method = self.write_method_pair()
 
         with (
@@ -390,8 +394,8 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
 
         self.assertEqual(result["sidecar"]["status"], 0)
         self.assertTrue(result["propagation_ok"])
-        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
-        enqueue.assert_not_called()
+        self.assertEqual(result["propagation"], enqueue.return_value)
+        enqueue.assert_called_once()
 
     def test_review_needed_save_uses_embedded_snapshots_before_restoring_current(self) -> None:
         method = self.write_method_pair(status=2)
@@ -714,7 +718,7 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         )
         self.assertEqual(
             result["review_status_updates"],
-            [{"dataset_name": "BF Method", "status": 2}],
+            [],
         )
         self.assertEqual(
             (self.datasets / "BF Method@12.csv").read_text(encoding="utf-8").splitlines(),

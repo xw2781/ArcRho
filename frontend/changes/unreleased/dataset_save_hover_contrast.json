@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Keep the Dataset Viewer Save button label readable when hovering over an unchanged dataset."
+}

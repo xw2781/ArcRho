@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Propagation now refreshes downstream Result Selection methods when an upstream output needs review."
+}

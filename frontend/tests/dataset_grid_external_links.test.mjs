@@ -126,6 +126,7 @@ function setup({
   model,
   isReadOnly,
   gridShown = true,
+  formulaPanel = null,
 } = {}) {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -151,6 +152,7 @@ function setup({
     getElementById(id) {
       if (id === "transposedChk") return { checked: false };
       if (id === "tableWrap") return tableWrap;
+      if (id === "datasetFormulaPanel") return formulaPanel;
       return null;
     },
     querySelector() { return null; },
@@ -242,21 +244,6 @@ test("starting a DSV cell edit invalidates an in-flight Excel refresh", () => {
     context.config.onCellFocus(0, 0);
 
     assert.equal(context.calls.externalRequestCancellations, 1);
-  } finally {
-    context.cleanup();
-  }
-});
-
-test("the grid context menu toggles the persisted subtotal setting", async () => {
-  const context = setup();
-  try {
-    await context.config.onContextAction("toggle_subtotal");
-
-    assert.equal(context.state.showSubtotal, false);
-    assert.deepEqual(context.state.selRanges, []);
-    assert.equal(context.state.activeCell, null);
-    assert.equal(context.calls.renders, 1);
-    assert.equal(context.calls.settingsRefreshes, 1);
   } finally {
     context.cleanup();
   }
@@ -506,6 +493,42 @@ test("linked cells attach the reusable hover editor and commit edits at the link
     assert.equal(context.calls.renders, 1);
     assert.equal(context.calls.updates, 1);
     assert.deepEqual(context.calls.postedMessages, []);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("manual formula panel tracks selection, edits values, and rejects invalid input", async () => {
+  const panel = { hidden: true, isConnected: true };
+  const context = setup({ formulaPanel: panel });
+  try {
+    context.config.onCellFocus(0, 0);
+    assert.equal(panel.hidden, false);
+    const opened = context.formulaHover.openCalls.at(-1);
+    assert.equal(opened.cell, panel);
+    assert.equal(opened.context.formula, "5");
+    const invalid = await context.formulaHoverOptions.onCommit({ formula: "wrong", context: opened.context });
+    assert.equal(invalid.ok, false);
+    assert.equal(context.state.model.values[0][0], 5);
+    const result = await context.formulaHoverOptions.onCommit({ formula: "25", context: opened.context });
+    assert.equal(result.ok, true);
+    assert.equal(context.state.model.values[0][0], 25);
+    assert.equal(context.state.dirty.get("0,0"), 25);
+    context.state.activeCell = null;
+    context.config.onTableRendered();
+    assert.equal(context.formulaHover.openCalls.at(-1).context.readOnly, true);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("generated datasets do not show the manual formula panel", () => {
+  const panel = { hidden: true, isConnected: true };
+  const context = setup({ formulaPanel: panel, isReadOnly: () => true });
+  try {
+    context.config.onTableRendered();
+    assert.equal(panel.hidden, true);
+    assert.equal(context.formulaHover.openCalls.length, 0);
   } finally {
     context.cleanup();
   }

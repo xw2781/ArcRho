@@ -71,15 +71,11 @@ test("Dataset Viewer hides the total row for ratio formulas", () => {
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid * 0.80", showSubtotal: true }), true);
 });
 
-test("Dataset Viewer exposes a standard Show/Hide subtotal context-menu command", () => {
-  assert.doesNotMatch(datasetViewerSource, /id="showSubtotalChk"/u);
-  assert.match(datasetViewerSource, /class="ctx-item" data-action="toggle_subtotal">Show\/Hide subtotal<\/button>/u);
-  assert.doesNotMatch(datasetViewerSource, /ctx-item-toggle|ctx-item-check|role="menuitemcheckbox"|aria-checked=/u);
-  assert.doesNotMatch(gridViewSource, /subtotalButton|aria-checked/u);
+test("Dataset Viewer offers only the three clipboard actions with shortcut hints", () => {
+  const menu = datasetViewerSource.slice(datasetViewerSource.indexOf('<div id="ctxMenu"'));
+  assert.deepEqual([...menu.matchAll(/data-action="([^"]+)"/gu)].map((match) => match[1]), ["copy_value", "paste", "copy_all"]);
+  assert.deepEqual([...menu.matchAll(/class="ctx-shortcut">([^<]+)</gu)].map((match) => match[1]), ["Ctrl+C", "Ctrl+V", "Ctrl+A"]);
   assert.match(persistenceSource, /show_subtotal:\s*state\.showSubtotal\s*!==\s*false/u);
-  assert.match(persistenceSource, /typeof source\.show_subtotal === "boolean" \? source\.show_subtotal : true/u);
-  assert.match(persistenceSource, /state\.showSubtotal = normalized\.show_subtotal/u);
-  assert.match(gridInteractionsSource, /action === "toggle_subtotal"[\s\S]*?state\.showSubtotal = state\.showSubtotal === false/u);
 });
 
 test("the grid applies the total policy using its configured host", () => {

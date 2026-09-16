@@ -37,6 +37,9 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             / config.DATASET_CACHE_DIR
         )
         self.cache_dir.mkdir(parents=True)
+        sidecar_patch = patch.object(config, "get_project_dataset_sidecar_dir", return_value=str(self.cache_dir.parent / "sidecars"))
+        sidecar_patch.start()
+        self.addCleanup(sidecar_patch.stop)
         self.pairs = [
             ("Function", "ArcRhoTri"),
             ("Path", "Example RC"),
@@ -134,7 +137,6 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             "Example RC",
             "Calculated A",
             dataset_type_rows=rows,
-            mark_dependents_review=False,
         )
         self.assertEqual(result["skipped"][1]["reason"], "upstream_calculation_failed")
         refresh_rs.assert_called_once_with(
@@ -142,9 +144,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             "Example RC",
             ["Source", "Source"],
             rebuild_index=False,
-            allow_status_current=True,
             blocked_precedent_names=["Calculated A", "Calculated B"],
-            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 
@@ -198,9 +198,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             "Example RC",
             ["Source", "Source", "Healthy"],
             rebuild_index=False,
-            allow_status_current=True,
             blocked_precedent_names=["Broken", "Broken Child"],
-            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 
@@ -527,7 +525,46 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
         self.assertEqual(recalculate.call_count, 1)
         materialize.assert_called_once()
 
-    def test_dfm_outputs_that_held_are_handed_to_result_selection_as_unchanged(self) -> None:
+    def test_late_link_refresh_continues_into_methods_in_the_same_walk(self) -> None:
+        def refresh_links(_project, _reserving, roots, visited, report):
+            if "Method" in roots and "linked" not in visited:
+                visited.add("linked")
+                report["refreshed"].append("Linked")
+                return ["Linked"]
+            return []
+
+        def refresh_dfm(_project, _reserving, roots, **_options):
+            return {
+                "ok": True,
+                "updated": [{"dataset_name": "Method" if "Root" in roots else "Tail", "output_changed": False}],
+                "errors": [],
+            }
+
+        with (
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
+            patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
+            patch.object(calculated_dataset_service, "_refresh_link_driven_dependents", side_effect=refresh_links),
+            patch.object(dataset_sidecar_status_service, "refresh_method_statuses_for_dependents", return_value=[]),
+            patch("app_server.services.dfm_service.refresh_dependents", side_effect=refresh_dfm) as methods,
+            patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
+        ):
+            result = calculated_dataset_service.recalculate_dependents(
+                "Example Project", "Example RC", "Root",
+                include_result_selection=False,
+                include_berquist_sherman=False,
+                include_bornhuetter_ferguson=False,
+                include_cape_cod=False,
+                include_bootstrap=False,
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(methods.call_count, 2)
+        self.assertIn("Linked", methods.call_args_list[1].args[2])
+        self.assertEqual([entry["dataset_name"] for entry in result["dfm_updates"]["updated"]], ["Method", "Tail"])
+        self.assertEqual(result["link_updates"]["refreshed"], ["Linked"])
+        self.assertIsNone(calculated_dataset_service._link_refresh_visited.get())
+
+    def test_dfm_outputs_that_held_are_handed_to_result_selection_for_refresh(self) -> None:
         rows = [{"name": "Source", "calculated": False, "generated": False, "formula": ""}]
         dfm_wave = {
             "ok": True,
@@ -571,16 +608,9 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
         refresh_rs.assert_called_once_with(
             "Example Project",
             "Example RC",
-            ["Source", "Source", "C 32 - Reported DFM", "C 32 - Reported DFM"],
+            ["Source", "Source", "C 12 - CWP DFM", "C 12 - CWP DFM", "C 32 - Reported DFM", "C 32 - Reported DFM"],
             rebuild_index=False,
-            allow_status_current=True,
             blocked_precedent_names=[],
-            unchanged_precedent_names=[
-                "C 12 - CWP DFM",
-                "C 12 - CWP DFM",
-                "C 42 - Reported ex CWOP DFM",
-                "F 13 - Paid DFM",
-            ],
             finalize_method_review_status=False,
         )
 

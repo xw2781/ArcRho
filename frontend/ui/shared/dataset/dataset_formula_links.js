@@ -56,7 +56,7 @@ function linksSnapshot(links) {
 
 function canonicalFormula(value) {
   const parsed = parseDatasetFormula(value);
-  return parsed.ok && parsed.references.length ? parsed.canonical : "";
+  return parsed.ok ? parsed.canonical : "";
 }
 
 export function normalizeDatasetFormulaLinks(value) {

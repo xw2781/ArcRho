@@ -410,8 +410,6 @@ def refresh_dataset_links(
 
     result["refreshed"] = True
     result["changed"] = changed
-    if not changed:
-        return result
 
     import pandas as pd
 

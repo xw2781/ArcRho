@@ -288,6 +288,8 @@ function setup(options = {}) {
     },
   };
   const documentRef = new FakeDocument(windowRef);
+  const dock = options.docked ? documentRef.createElement("section") : null;
+  if (dock) documentRef.body.appendChild(dock);
   const anchor = documentRef.createElement("td");
   anchor._rect = { left: 40, top: 100, right: 140, bottom: 128, width: 100, height: 28 };
   documentRef.body.appendChild(anchor);
@@ -299,6 +301,7 @@ function setup(options = {}) {
   const closes = [];
   const controller = formulaHover.createFormulaHoverEditor({
     documentRef,
+    getDockElement: () => dock,
     windowRef,
     hideDelayMs: options.hideDelayMs ?? 5,
     onDismiss: (context) => dismisses.push(context),
@@ -312,7 +315,7 @@ function setup(options = {}) {
       return options.commitResult || { ok: true };
     },
   });
-  return { anchor, closes, commits, controller, dismisses, documentRef, drafts, editStarts, statuses, windowRef };
+  return { anchor, closes, commits, controller, dismisses, dock, documentRef, drafts, editStarts, statuses, windowRef };
 }
 
 /** Open the editor and give the bar a real size, which the fake DOM will not. */
@@ -334,7 +337,7 @@ test("the linked-cell editor wears the shared formula bar and adds only its own 
   assert.ok(source.includes("/ui/shared/components/formula_hover/formula_hover.css?v="));
   assert.ok(source.includes('root.className = "arFormulaBar arFormulaHover"'));
   // Nothing visual is redefined here: the shared bar owns border, shadow, and type.
-  assert.doesNotMatch(styles, /box-shadow|border-radius|font:\s*12px/u);
+  assert.doesNotMatch(styles, /border-radius|font:\s*12px/u);
   assert.match(styles, /position:\s*fixed/u);
 });
 
@@ -728,4 +731,50 @@ test("the bar offers a way into the workbook, and drops it for anything else", (
   // Neither is the notice a coarser view shows in place of a formula.
   context.controller.open(context.anchor, { note: "Set the origin length back to 1 to view this link." }, {});
   assert.equal(button.hidden, true);
+});
+
+test("a docked formula editor stays in its panel through dismissal, commit, and resize", async () => {
+  const context = setup({ docked: true });
+  try {
+    const root = openSizedBar(context, { formula: "12", allowEmpty: true });
+    assert.equal(root.parentElement, context.dock);
+    assert.equal(root.classList.contains("isDocked"), true);
+    context.controller.hide();
+    assert.equal(root.classList.contains("isOpen"), true);
+    context.controller.open(context.anchor, { formula: "12", allowEmpty: true }, { focus: true });
+    const input = byClass(context.documentRef, "arFormulaBarInput");
+    input.value = "25";
+    await context.controller.commit();
+    assert.equal(context.commits.at(-1).formula, "25");
+    assert.equal(root.classList.contains("isOpen"), true);
+    context.windowRef.innerWidth = 360;
+    context.controller.reposition();
+    assert.equal(root.style.width, "", "CSS sizes the panel to its container");
+    assert.equal(context.controller.open(context.anchor, { formula: "", allowEmpty: true, readOnly: true }), true);
+    assert.equal(input.readOnly, true);
+  } finally {
+    context.controller.destroy();
+  }
+});
+
+test("docked editor displays plain numbers and supports keyboard apply and cancel", async () => {
+  const context = setup({ docked: true });
+  try {
+    openSizedBar(context, { formula: "25", allowEmpty: true });
+    assert.equal(byClass(context.documentRef, "arFormulaBarDisplay").textContent, "25");
+    context.controller.open(context.anchor, { formula: "25", allowEmpty: true }, { focus: true });
+    const input = byClass(context.documentRef, "arFormulaBarInput");
+    input.value = "42";
+    input.dispatch("keydown", { key: "Enter" });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(context.commits.at(-1).formula, "42");
+    context.controller.open(context.anchor, { formula: "25", allowEmpty: true }, { focus: true });
+    input.value = "99";
+    input.dispatch("keydown", { key: "Escape" });
+    assert.equal(input.value, "25");
+    assert.equal(context.commits.length, 1);
+  } finally {
+    context.controller.destroy();
+  }
 });

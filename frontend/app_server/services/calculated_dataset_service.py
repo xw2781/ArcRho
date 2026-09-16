@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import contextvars
 import getpass
 import hashlib
 import json
@@ -1622,7 +1623,6 @@ def _recalculate_dataset_impl(
     component_paths: Dict[str, str] | None = None,
     component_method_sources: Dict[str, Dict[str, str]] | None = None,
     dataset_type_rows: List[Dict[str, Any]] | None = None,
-    mark_dependents_review: bool = True,
     target_settings: Mapping[str, Any] | None = None,
     dataset_scan: _DatasetCacheScan | None = None,
 ) -> Dict[str, Any]:
@@ -1779,15 +1779,7 @@ def _recalculate_dataset_impl(
         formula=row["formula"],
         dependencies=_dependency_fingerprints(precedents),
     )
-    status_updates = (
-        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-            project_name,
-            reserving_class,
-            [row["name"]],
-        )
-        if mark_dependents_review
-        else []
-    )
+    status_updates = []
     config.DATASETS["arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]] = csv_path
 
     return {
@@ -1811,7 +1803,6 @@ def recalculate_dataset(
     component_paths: Dict[str, str] | None = None,
     component_method_sources: Dict[str, Dict[str, str]] | None = None,
     dataset_type_rows: List[Dict[str, Any]] | None = None,
-    mark_dependents_review: bool = True,
 ) -> Dict[str, Any]:
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         all_rows = _dataset_type_rows(project_name) if dataset_type_rows is None else dataset_type_rows
@@ -1828,7 +1819,6 @@ def recalculate_dataset(
                 component_paths=component_paths,
                 component_method_sources=component_method_sources,
                 dataset_type_rows=all_rows,
-                mark_dependents_review=mark_dependents_review,
             )
         dataset_scan = (
             _scan_dataset_cache_folder(project_name, reserving_class)
@@ -1849,7 +1839,6 @@ def recalculate_dataset(
             component_paths=component_paths,
             component_method_sources=component_method_sources,
             dataset_type_rows=all_rows,
-            mark_dependents_review=mark_dependents_review,
             target_settings=cache_settings[0],
             dataset_scan=dataset_scan,
         )
@@ -1892,6 +1881,10 @@ def recalculate_dataset(
         return result
 
 
+_link_refresh_visited = contextvars.ContextVar("link_refresh_visited", default=None)
+_link_refresh_forwarded = contextvars.ContextVar("link_refresh_forwarded", default=None)
+
+
 def _refresh_link_driven_dependents(
     project_name: str,
     reserving_class: str,
@@ -1908,7 +1901,7 @@ def _refresh_link_driven_dependents(
     walk already rewrote or visited, which is the cycle guard: a dataset is
     refreshed at most once per walk, so a link that points back upstream (a
     candidate ultimate reading the Result Selection it feeds, say) converges
-    instead of looping. Returns the datasets whose values changed; failures
+    instead of looping. Returns every successfully refreshed dataset; failures
     and Excel keep-stale warnings accumulate into ``link_updates``.
     """
 
@@ -1969,41 +1962,11 @@ def _refresh_link_driven_dependents(
                     "errors": [str(item) for item in result.get("errors") or []],
                 })
                 continue
-            if result.get("changed"):
+            if result.get("refreshed"):
                 fresh.append(name)
                 link_updates["refreshed"].append(name)
                 queue.append(name)
     return fresh
-
-
-def _dfm_unchanged_names(dfm_updates: Mapping[str, Any] | None) -> List[str]:
-    """Name every DFM output the DFM wave visited whose published values held.
-
-    A DFM recomputed to the same publication -- its ratio basis moved, say,
-    which only redraws the Ratios tab -- one only status-refreshed, or one
-    skipped because none of its real inputs changed is current as it stands.
-    The Result Selection wave has to hear that: it walks from the same roots,
-    reaches such a DFM as their dependent, and would otherwise block it as a
-    precedent still waiting for an explicit refresh, refusing every Result
-    Selection that loads it.
-    """
-    names: List[str] = []
-    if not isinstance(dfm_updates, Mapping):
-        return names
-    for item in dfm_updates.get("updated", []):
-        if isinstance(item, Mapping) and not item.get("output_changed"):
-            names.extend(
-                _clean_text(value)
-                for value in (item.get("dataset_name"), item.get("dataset_type"))
-                if _clean_text(value)
-            )
-    for field in ("status_refreshed", "skipped"):
-        names.extend(
-            _clean_text(item.get("dataset_name"))
-            for item in dfm_updates.get(field, [])
-            if isinstance(item, Mapping) and _clean_text(item.get("dataset_name"))
-        )
-    return names
 
 
 def _recalculate_dependents_impl(
@@ -2062,7 +2025,6 @@ def _recalculate_dependents_impl(
             dfm_output_names = [
                 _clean_text(value)
                 for item in dfm_updates.get("updated", [])
-                if item.get("output_changed")
                 for value in (item.get("dataset_name"), item.get("dataset_type"))
                 if _clean_text(value)
             ]
@@ -2090,9 +2052,10 @@ def _recalculate_dependents_impl(
         "warnings": [],
         "errors": [],
     }
-    visited_link_keys: Set[str] = {
-        _canon_dataset_name(name) for name in changed if _canon_dataset_name(name)
-    }
+    visited_link_keys = _link_refresh_visited.get()
+    if visited_link_keys is None:
+        visited_link_keys = set()
+    visited_link_keys.update(_canon_dataset_name(name) for name in changed if _canon_dataset_name(name))
     _notify("linked_datasets", 0, 0, "Refreshing link-driven datasets")
     changed.extend(
         _refresh_link_driven_dependents(
@@ -2156,7 +2119,6 @@ def _recalculate_dependents_impl(
                     reserving_class,
                     row["name"],
                     dataset_type_rows=dataset_type_rows,
-                    mark_dependents_review=False,
                 )
             except Exception as exc:
                 result = {
@@ -2202,7 +2164,6 @@ def _recalculate_dependents_impl(
             next_output_roots = [
                 _clean_text(value)
                 for item in next_dfm.get("updated", [])
-                if item.get("output_changed")
                 for value in (item.get("dataset_name"), item.get("dataset_type"))
                 if _clean_text(value)
             ]
@@ -2284,13 +2245,11 @@ def _recalculate_dependents_impl(
                 reserving_class,
                 fresh_names,
                 rebuild_index=False,
-                allow_status_current=True,
                 blocked_precedent_names=[
                     *failed_dfm_names,
                     *failed_dataset_names,
                     *link_updates["failed"],
                 ],
-                unchanged_precedent_names=_dfm_unchanged_names(dfm_updates),
                 finalize_method_review_status=False,
             )
         except Exception as err:
@@ -2680,11 +2639,6 @@ def _recalculate_dependents_impl(
                 "updated": [],
             }
 
-    # The late link pass covers links that read method outputs — a candidate
-    # ultimate computed from the Result Selection's published indicated, say.
-    # Methods reading what it refreshed cannot be re-walked inside this walk
-    # (the cycle guard is what makes such loops converge), so they are marked
-    # review-needed instead and the next explicit save picks them up.
     late_link_roots: List[str] = []
     for updates in (
         dfm_updates,
@@ -2713,21 +2667,68 @@ def _recalculate_dependents_impl(
         visited_link_keys,
         link_updates,
     )
-    if late_link_fresh or link_updates["failed"]:
+    forwarded_links = _link_refresh_forwarded.get()
+    if forwarded_links is None:
+        forwarded_links = set()
+    pending_link_roots = [
+        name for name in link_updates["refreshed"]
+        if _canon_dataset_name(name) not in forwarded_links
+    ]
+    forwarded_links.update(_canon_dataset_name(name) for name in pending_link_roots)
+    if pending_link_roots:
+        nested = recalculate_dependents(
+            project_name,
+            reserving_class,
+            pending_link_roots[0],
+            additional_roots=[(name, "") for name in pending_link_roots[1:]],
+            include_dfm=include_dfm,
+            include_result_selection=include_result_selection,
+            include_berquist_sherman=include_berquist_sherman,
+            include_bornhuetter_ferguson=include_bornhuetter_ferguson,
+            include_cape_cod=include_cape_cod,
+            include_bootstrap=include_bootstrap,
+            finalize_method_review_status=False,
+            rebuild_index=False,
+            progress_callback=progress_callback,
+        )
+        results.extend(nested.get("steps", []))
+        for report, field in (
+            (dfm_updates, "dfm_updates"),
+            (result_selection_updates, "result_selection_updates"),
+            (berquist_sherman_updates, "berquist_sherman_updates"),
+            (bornhuetter_ferguson_updates, "bornhuetter_ferguson_updates"),
+            (cape_cod_updates, "cape_cod_updates"),
+            (bootstrap_updates, "bootstrap_updates"),
+        ):
+            if report is not None and nested.get(field):
+                report["ok"] = bool(report.get("ok")) and bool(nested[field].get("ok"))
+                for bucket in ("updated", "status_refreshed", "skipped", "errors"):
+                    report.setdefault(bucket, []).extend(nested[field].get(bucket, []))
+        for field in link_updates:
+            link_updates[field].extend((nested.get("link_updates") or {}).get(field, []))
+    if link_updates["failed"]:
         dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
             project_name,
             reserving_class,
-            [*late_link_fresh, *link_updates["failed"]],
+            link_updates["failed"],
         )
 
     index_error = ""
     if finalize_method_review_status:
-        _notify("finalize", 0, 0, "Finalizing review statuses")
-        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-            project_name,
-            reserving_class,
-            changed_root_names,
-        )
+        _notify("finalize", 0, 0, "Review statuses finalized during publication")
+        for report in (
+            dfm_updates, result_selection_updates, berquist_sherman_updates,
+            bornhuetter_ferguson_updates, cape_cod_updates, bootstrap_updates,
+        ):
+            if report and not report.get("ok", True):
+                failed_roots = [
+                    error["dataset_name"]
+                    for error in report.get("errors", [])
+                    if error.get("dataset_name")
+                ]
+                dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+                    project_name, reserving_class, failed_roots or changed_root_names,
+                )
 
     if rebuild_index:
         _notify("index", 0, 0, "Rebuilding the dataset index")
@@ -2854,23 +2855,38 @@ def recalculate_dependents(
     additional_roots: Sequence[Tuple[str, str]] | None = None,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> Dict[str, Any]:
-    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
-        return _recalculate_dependents_impl(
-            project_name,
-            reserving_class,
-            changed_dataset_name,
-            changed_dataset_type_name,
-            include_dfm=include_dfm,
-            include_result_selection=include_result_selection,
-            include_berquist_sherman=include_berquist_sherman,
-            include_bornhuetter_ferguson=include_bornhuetter_ferguson,
-            include_cape_cod=include_cape_cod,
-            include_bootstrap=include_bootstrap,
-            finalize_method_review_status=finalize_method_review_status,
-            rebuild_index=rebuild_index,
-            additional_roots=additional_roots,
-            progress_callback=progress_callback,
+    token = _link_refresh_visited.set(set()) if _link_refresh_visited.get() is None else None
+    forwarded_token = _link_refresh_forwarded.set(set()) if _link_refresh_forwarded.get() is None else None
+    try:
+        with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
+            return _recalculate_dependents_impl(
+                project_name,
+                reserving_class,
+                changed_dataset_name,
+                changed_dataset_type_name,
+                include_dfm=include_dfm,
+                include_result_selection=include_result_selection,
+                include_berquist_sherman=include_berquist_sherman,
+                include_bornhuetter_ferguson=include_bornhuetter_ferguson,
+                include_cape_cod=include_cape_cod,
+                include_bootstrap=include_bootstrap,
+                finalize_method_review_status=finalize_method_review_status,
+                rebuild_index=rebuild_index,
+                additional_roots=additional_roots,
+                progress_callback=progress_callback,
+            )
+    except Exception:
+        roots = [changed_dataset_name, changed_dataset_type_name]
+        roots.extend(name for pair in additional_roots or [] for name in pair)
+        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
+            project_name, reserving_class, roots,
         )
+        raise
+    finally:
+        if token is not None:
+            _link_refresh_visited.reset(token)
+        if forwarded_token is not None:
+            _link_refresh_forwarded.reset(forwarded_token)
 
 
 def preview_dependents(
@@ -3313,14 +3329,6 @@ def apply_planned_dataset_types_change(
             steps.append(
                 {**first, "status": "updated" if first.get("ok") else "skipped"}
             )
-        try:
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project_name,
-                reserving_class,
-                dataset_types,
-            )
-        except Exception as exc:
-            errors.append(f"{reserving_class} review marking: {exc}")
         propagation = dependent_propagation_service.enqueue_save_propagation(
             project_name,
             reserving_class,

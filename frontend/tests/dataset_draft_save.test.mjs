@@ -40,6 +40,7 @@ persistenceSource = persistenceSource
   .replace(/"\/ui\/shared\/components\/progress_popup\/save_progress\.js[^"]*"/, JSON.stringify(saveProgressUrl))
   .replace(/"\/ui\/shared\/services\/dependent_propagation_job\.js[^"]*"/, JSON.stringify(propagationJobUrl));
 const { registerDataTabPersistenceController } = await import(dataUrl(persistenceSource));
+const { registerDataTabPreferencesController } = await import(await inlineModule("../ui/shared/tabs/data/data_tab_preferences_controller.js"));
 
 const PROJECT = "NJ_Annual_Prod_202605_Fake";
 const RESERVING_CLASS = "PRNJ - PA\\PA\\All States\\Direct Group\\COL";
@@ -84,7 +85,7 @@ function installFakeDom(overrides = {}) {
     querySelector: () => null,
     querySelectorAll: () => [],
   };
-  globalThis.window = { parent: { postMessage() {} }, confirm: () => false };
+  globalThis.window = { parent: { postMessage() {} }, confirm: () => false, setTimeout: () => 0, clearTimeout() {} };
   return elements;
 }
 
@@ -148,7 +149,7 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
     getDatasetTypeFormulaByName: () => "",
     validateDatasetOriginLabels: () => ({ ok: true, labels: ["2020", "2021"] }),
     refreshDatasetInstanceNameConflict: async () => false,
-    loadDatasetSidecar: async () => ({ ok: true, data: { exists: false } }),
+    loadDatasetSidecar: async () => ({ ok: true, data: { exists: !isProjectInstanceDraft, source_kind: "input", data_format: "Triangle" } }),
     saveDatasetSidecar: async (payload) => {
       sidecarSaves.push(payload);
       return { ok: true, data: { source_kind: "input", data_format: "Triangle", ds_id: "arcrhotri_test" } };
@@ -186,7 +187,10 @@ function lastSaveControls(runtime) {
 
 function saveEnabled(runtime) {
   const controls = lastSaveControls(runtime);
-  return !!controls && controls.dirty === true && controls.saveBlocked !== true && controls.saving !== true;
+  return !!controls
+    && (controls.dirty === true || controls.allowCleanSave === true)
+    && controls.saveBlocked !== true
+    && controls.saving !== true;
 }
 
 function draftModel() {
@@ -240,7 +244,7 @@ test("saving an untouched draft writes the placeholder grid and reports success 
   assert.ok(statuses.includes("Dataset settings saved."));
 
   assert.equal(runtime.isUnsavedProjectInstanceDraft(), false, "the saved draft name clears the pending save");
-  assert.equal(saveEnabled(runtime), false, "Save returns to disabled after the draft is created");
+  assert.equal(saveEnabled(runtime), true, "A saved input remains save-eligible for downstream refresh");
 });
 
 test("renaming a saved draft makes it save-eligible again", async () => {
@@ -253,17 +257,65 @@ test("renaming a saved draft makes it save-eligible again", async () => {
   assert.equal(runtime.isUnsavedProjectInstanceDraft(), true);
 });
 
-test("a non-draft dataset with no changes still skips the sidecar save", async () => {
+test("a clean persisted dataset save reaches the sidecar endpoint", async () => {
   installFakeDom();
   const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
   await runtime.syncSidecarForCurrentDataset();
 
   assert.equal(runtime.isUnsavedProjectInstanceDraft(), false);
-  assert.equal(saveEnabled(runtime), false);
+  assert.equal(saveEnabled(runtime), true);
   const result = await runtime.saveDatasetChanges();
   assert.equal(result.ok, true);
-  assert.equal(runtime.sidecarSaves.length, 0);
+  assert.equal(runtime.sidecarSaves.length, 1);
 });
+
+test("a project formula blocks grid editing and every viewer save path even for an input sidecar", async () => {
+  installFakeDom();
+  const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
+  await runtime.syncSidecarForCurrentDataset();
+  runtime.currentDatasetSidecarSourceKind = "input";
+  runtime.getDatasetTypeFormulaByName = (name) => name === DATASET_TYPE ? '"Premium" * "Loss Ratio"' : "";
+  const preferencesRuntime = {
+    isDerivedDatasetViewer: runtime.isDerivedDatasetViewer,
+    DERIVED_DATASET_READ_ONLY_MESSAGE: runtime.DERIVED_DATASET_READ_ONLY_MESSAGE,
+    datasetOriginDisplayIsCoarserThanStored: () => false,
+  };
+  registerDataTabPreferencesController(preferencesRuntime);
+  runtime.updateDatasetSaveUi();
+
+  assert.equal(preferencesRuntime.isDatasetReadOnly(), true);
+  assert.match(preferencesRuntime.getDatasetReadOnlyMessage(), /Only manual\/input datasets/);
+  assert.equal(saveEnabled(runtime), false);
+  for (const save of [runtime.saveDatasetChanges, runtime.saveDatasetSidecarForCurrentContext, runtime.saveNotesForPayload]) {
+    const result = await save();
+    assert.equal(result.ok, false);
+    assert.match(result.error, /Only manual\/input datasets/);
+  }
+  assert.equal(runtime.sidecarSaves.length, 0);
+
+  runtime.getDatasetTypeFormulaByName = () => "";
+  runtime.updateDatasetSaveUi();
+  assert.equal(preferencesRuntime.isDatasetReadOnly(), false);
+  assert.equal(saveEnabled(runtime), true);
+});
+
+for (const sourceKind of ["calculated", "engine", "dfm", "result_selection", "bornhuetter_ferguson", "cape_cod", ""]) {
+  test(`${sourceKind} datasets without a formula cannot save through the viewer`, async () => {
+    installFakeDom();
+    const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
+    await runtime.syncSidecarForCurrentDataset();
+    runtime.currentDatasetSidecarSourceKind = sourceKind;
+    runtime.updateDatasetSaveUi();
+    assert.equal(saveEnabled(runtime), false);
+    assert.equal(runtime.isDerivedDatasetViewer(), true);
+    for (const save of [runtime.saveDatasetChanges, runtime.saveDatasetSidecarForCurrentContext, runtime.saveNotesForPayload]) {
+      const result = await save();
+      assert.equal(result.ok, false);
+      assert.match(result.error, /Only manual\/input datasets/);
+    }
+    assert.equal(runtime.sidecarSaves.length, 0);
+  });
+}
 
 test("a non-draft refresh marker saves the durable grid even when values are unchanged", async () => {
   installFakeDom();

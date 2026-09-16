@@ -35,6 +35,23 @@
   color: #0d6efd;
 }
 
+.ctx-item:has(.ctx-shortcut) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ctx-item[hidden] {
+  display: none;
+}
+
+.ctx-shortcut {
+  color: currentColor;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
 .ctx-sep {
   height: 1px;
   margin: 4px 0;

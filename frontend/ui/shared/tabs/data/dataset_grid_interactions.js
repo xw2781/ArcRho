@@ -31,7 +31,6 @@ export function wireDatasetGridInteractions(deps) {
     }),
     setStatus = () => {},
     notifyDatasetUpdated = () => {},
-    refreshDatasetSettingsDirty = () => {},
     commitExternalReference = async () => ({ handled: false, ok: false }),
     commitInternalReference = async () => ({ handled: false, ok: false }),
     commitFormulaReference = async () => ({ handled: false, ok: false }),
@@ -87,6 +86,8 @@ export function wireDatasetGridInteractions(deps) {
   }
 
   const formulaHover = createFormulaHoverEditor({
+    getDockElement: getFormulaPanel,
+    onDockRefresh: syncFormulaPanel,
     onCommit: commitHoveredExternalFormula,
     onDismiss: () => document.getElementById("keySink")?.focus?.({ preventScroll: true }),
     onEditStart: cancelExternalReference,
@@ -119,6 +120,8 @@ export function wireDatasetGridInteractions(deps) {
     onAfterWrite: () => {
       resetRangeFillSession();
       applyReferencePickDecoration();
+      if (getFormulaPanel()) formulaHover.hide?.();
+      syncFormulaPanel();
     },
     cellSelector: "td[data-r][data-c]",
     rowHeaderSelector: "th.rowhdr[data-r]",
@@ -154,6 +157,7 @@ export function wireDatasetGridInteractions(deps) {
       syncReferencePickSession(rawValue);
       const nextValue = setDisplayCellValue(displayR, displayC, rawValue, { silentInvalid: true });
       syncInputCellDisplay(td, input, nextValue);
+      syncFormulaPanel();
     },
     onCellPaste: (displayR, displayC, event) => {
       const data = event.clipboardData?.getData("text/plain") || "";
@@ -218,7 +222,6 @@ export function wireDatasetGridInteractions(deps) {
     },
     onCellContextMenu: (displayR, displayC) => prepareContextSelection(displayR, displayC),
     canPasteSelection: () => hasEditableSelectionTarget(),
-    canClearData: () => !isReadOnly() && !!getDisplayDatasetModel(),
     onContextAction: (action) => handleGridContextAction(action),
     onTableRendered: () => {
       formulaHover.hide?.();
@@ -249,6 +252,32 @@ export function wireDatasetGridInteractions(deps) {
   });
   wireArrowKeyNavigation();
   wireRectSelectionAndCopy();
+
+  function getFormulaPanel() {
+    const panel = document.getElementById("datasetFormulaPanel");
+    if (!panel) return null;
+    const manual = state.model?.source_kind === "input" || (!!state.model && !isReadOnly());
+    panel.hidden = !manual;
+    return manual ? panel : null;
+  }
+
+  function syncFormulaPanel(focus = false) {
+    const panel = getFormulaPanel();
+    if (!panel || formulaHover.isEditing?.()) return;
+    const cell = state.activeCell;
+    const info = cell ? getExternalLinkCellInfo(cell.r, cell.c) : null;
+    const value = cell ? getDisplayDatasetModel()?.values?.[cell.r]?.[cell.c] : "";
+    formulaHover.open(panel, {
+      ...info,
+      formula: info?.reference || String(value ?? ""),
+      allowEmpty: true,
+      anchorDisplayRow: info?.anchorDisplayRow ?? cell?.r,
+      anchorDisplayColumn: info?.anchorDisplayColumn ?? cell?.c,
+      valueDisplayRow: cell?.r,
+      valueDisplayColumn: cell?.c,
+      readOnly: !cell || !canEditDisplayCell(cell.r, cell.c, { silent: true }),
+    }, { key: cell ? `${cell.r},${cell.c}` : "empty", focus });
+  }
 
   function sameExternalFormulaRange(left, right) {
     return !!(
@@ -509,6 +538,18 @@ export function wireDatasetGridInteractions(deps) {
     }
 
     cancelExternalReference();
+    if (!isExternalReferenceDraft(formula)) {
+      if (!parseEditableCellValue(formula).ok) return { ok: false, error: "Enter a number or formula." };
+      const row = context.valueDisplayRow ?? displayRow;
+      const column = context.valueDisplayColumn ?? displayColumn;
+      if (!canEditDisplayCell(row, column)) return { ok: false, error: readOnlyMessage() };
+      setDisplayCellValue(row, column, formula, { hardCodeLinks: true });
+      renderTable();
+      notifyDatasetUpdated();
+      applySelectionFromState();
+      setStatus("Cell updated.");
+      return { ok: true };
+    }
     const result = await commitReferenceDraft({
       displayRow,
       displayColumn,
@@ -650,17 +691,6 @@ export function wireDatasetGridInteractions(deps) {
 
   function zeroSelectedCells() {
     return fillSelectedCells(0, describeZeroed);
-  }
-
-  // `Clear data` on the context menu: every cell the grid shows goes to 0,
-  // which is what lets the length controls open up again on a hand-entered
-  // dataset.
-  function clearAllCells() {
-    const model = getDisplayDatasetModel();
-    const rows = model?.origin_labels?.length || 0;
-    const cols = model?.dev_labels?.length || 0;
-    const ranges = rows && cols ? [normalizeRange(0, 0, rows - 1, cols - 1)] : [];
-    return fillCells(ranges, 0, describeZeroed);
   }
 
   function selectionSignature() {
@@ -880,6 +910,7 @@ export function wireDatasetGridInteractions(deps) {
   function applySelectionFromState() {
     spreadsheetTable.applyDom();
     applyReferencePickDecoration();
+    syncFormulaPanel();
   }
 
   /**
@@ -977,24 +1008,20 @@ export function wireDatasetGridInteractions(deps) {
 
   async function handleGridContextAction(action) {
     if (action === "paste") return pasteSelectionFromClipboard();
-    if (action === "clear_data") return clearAllCells();
-    if (action === "toggle_subtotal") {
-      state.showSubtotal = state.showSubtotal === false;
-      state.activeCell = null;
-      state.selRanges = [];
-      renderTable();
-      refreshDatasetSettingsDirty();
-      return true;
-    }
-    if (action === "remove_highlights") {
-      clearGridSelection();
-      return true;
-    }
+    if (action === "copy_all") return copyAllToClipboard();
     return false;
   }
 
   async function copyActiveRangeToClipboard() {
     return spreadsheetTable.copy();
+  }
+
+  async function copyAllToClipboard() {
+    if (!getDisplayDatasetModel()) return false;
+    const { maxRow, maxCol } = getDatasetGridSelectionLayout();
+    if (maxRow < 0 || maxCol < 0) return false;
+    spreadsheetTable.setRange({ r: 0, c: 0 }, { r: maxRow, c: maxCol });
+    return copyActiveRangeToClipboard();
   }
 
   function wireRectSelectionAndCopy() {
@@ -1106,18 +1133,20 @@ export function wireDatasetGridInteractions(deps) {
       });
     });
 
-    // Ctrl+C copy
+    // Clipboard shortcuts for the active grid.
     document.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target) || !gridIsShown()) return;
 
       const isCopy = (e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey);
-      if (!isCopy) return;
+      const isCopyAll = (e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey);
+      if (!isCopy && !isCopyAll) return;
 
-      if (!state.selRanges || !state.selRanges.length) return;
+      if (!isCopyAll && !state.selRanges?.length) return;
       if (window.__arcRhoCopyActiveGridSelection !== copyActiveRangeToClipboard) return;
 
       e.preventDefault();
-      copyActiveRangeToClipboard();
+      if (isCopyAll) copyAllToClipboard();
+      else copyActiveRangeToClipboard();
     });
 
     document.addEventListener("keydown", (e) => {
@@ -1131,6 +1160,11 @@ export function wireDatasetGridInteractions(deps) {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       if (e.key === "F2") {
+        if (getFormulaPanel()) {
+          e.preventDefault();
+          syncFormulaPanel(true);
+          return;
+        }
         const cell = getPrimaryEditCell();
         if (!cell) return;
         const info = getExternalLinkCellInfo(cell.r, cell.c);

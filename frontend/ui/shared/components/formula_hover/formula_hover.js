@@ -93,7 +93,7 @@ function normalizedFormulaContext(rawContext) {
   const note = String(rawContext.note ?? "").trim();
   if (note) return { ...rawContext, note, formula: "", readOnly: true };
   const formula = String(rawContext.formula ?? rawContext.reference ?? "").trim();
-  if (!formula) return null;
+  if (!formula && !rawContext.allowEmpty) return null;
   return { ...rawContext, formula };
 }
 
@@ -105,6 +105,10 @@ function normalizedFormulaContext(rawContext) {
 function renderFormulaDisplay(displayEl, rawText) {
   if (!displayEl) return;
   displayEl.textContent = "";
+  if (!String(rawText || "").trim().startsWith("=")) {
+    displayEl.textContent = String(rawText ?? "");
+    return;
+  }
   const tokens = tokenizeFormula(rawText);
   if (!tokens.length) return;
   for (const token of tokens) {
@@ -137,6 +141,7 @@ function renderFormulaDisplay(displayEl, rawText) {
 
 export function createFormulaHoverEditor(options = {}) {
   const documentRef = options.documentRef || document;
+  const getDockElement = options.getDockElement || (() => null);
   const windowRef = options.windowRef || documentRef?.defaultView || window;
   const onCommit = typeof options.onCommit === "function"
     ? options.onCommit
@@ -191,6 +196,7 @@ export function createFormulaHoverEditor(options = {}) {
   });
 
   function handleDocumentMouseDown(event) {
+    if (getDockElement()) return;
     if (!root?.classList?.contains("isOpen") || commitPending) return;
     if (root.contains?.(event.target) || activeAnchor?.contains?.(event.target)) return;
     pinnedKey = "";
@@ -240,6 +246,7 @@ export function createFormulaHoverEditor(options = {}) {
     input.style.display = "none";
     input.setAttribute("aria-label", "External Excel formula");
     input.setAttribute("aria-describedby", errorId);
+    input.placeholder = "Enter a number or =formula";
 
     display = documentRef.createElement("div");
     display.className = "arFormulaBarDisplay";
@@ -260,6 +267,9 @@ export function createFormulaHoverEditor(options = {}) {
     root.appendChild(errorMessage);
     documentRef.body.appendChild(root);
 
+    formulaMark.addEventListener("pointerdown", (event) => {
+      if (getDockElement()) event.stopImmediatePropagation();
+    });
     dragController.wireHandle(formulaMark, () => activeKey);
 
     root.addEventListener("mouseenter", () => {
@@ -283,10 +293,15 @@ export function createFormulaHoverEditor(options = {}) {
       setEditing(true);
       onEditStart(activeContext);
     });
-    input.addEventListener("blur", () => {
+    input.addEventListener("blur", (event) => {
       // Clicking cells in another Dataset window takes focus out of this one.
       // That is part of writing the formula, so the edit is left standing.
       if (shouldStayOpenUnfocused()) return;
+      if (getDockElement() && activeContext && !commitPending) {
+        input.value = activeContext.formula;
+        clearError();
+        onClosed(activeContext);
+      }
       setEditing(false);
       scheduleHide();
     });
@@ -326,6 +341,7 @@ export function createFormulaHoverEditor(options = {}) {
   /** Swap between the rendered formula and the editable input, then re-measure. */
   function setEditing(editing) {
     if (!input || !display) return;
+    editing = !!editing && !activeContext?.readOnly;
     syncExcelLink();
     // A note is never typed into, so the bar stays on its rendered side and
     // shows the sentence as prose rather than as formula tokens.
@@ -401,6 +417,7 @@ export function createFormulaHoverEditor(options = {}) {
 
   function reposition() {
     if (!root?.classList?.contains("isOpen")) return;
+    if (getDockElement()) return;
     // A hand-placed bar still sizes itself to what it shows; only where it sits
     // is the user's, so swapping between the input and the rendered display
     // still fits.
@@ -456,6 +473,13 @@ export function createFormulaHoverEditor(options = {}) {
     const context = normalizedFormulaContext(rawContext);
     if (!anchor?.isConnected || !context || commitPending) return false;
     if (!ensureEditor()) return false;
+    const dock = getDockElement();
+    root.classList.toggle("isDocked", !!dock);
+    const parent = dock || documentRef.body;
+    if (root.parentElement !== parent) parent.appendChild(root);
+    if (dock) {
+      for (const property of ["left", "top", "width", "minWidth", "maxWidth"]) root.style[property] = "";
+    }
     clearHideTimer();
     clearError();
     activeAnchor = anchor;
@@ -469,7 +493,8 @@ export function createFormulaHoverEditor(options = {}) {
     input.readOnly = !!context.readOnly;
     input.setAttribute("aria-readonly", context.readOnly ? "true" : "false");
     root.classList.toggle("isNote", !!context.note);
-    root.setAttribute("aria-label", context.note ? "Linked cell notice" : "External Excel formula");
+    root.setAttribute("aria-label", context.note ? "Linked cell notice" : "Cell formula or value");
+    input.setAttribute("aria-label", "Cell formula or value");
     root.classList.add("isOpen");
     root.setAttribute("aria-hidden", "false");
     setEditing(!!openOptions.focus && !context.readOnly);
@@ -486,6 +511,17 @@ export function createFormulaHoverEditor(options = {}) {
 
   function hide() {
     if (!root || commitPending) return false;
+    if (getDockElement()) {
+      const restoreFocus = documentRef.activeElement === input;
+      clearHideTimer();
+      clearError();
+      if (input && activeContext) input.value = activeContext.formula;
+      setEditing(false);
+      onClosed(activeContext);
+      options.onDockRefresh?.();
+      if (restoreFocus) onDismiss(activeContext);
+      return true;
+    }
     const wasOpen = root.classList.contains("isOpen");
     const dismissedContext = activeContext;
     const shouldRestoreFocus = documentRef.activeElement === input;
@@ -513,6 +549,7 @@ export function createFormulaHoverEditor(options = {}) {
 
   function scheduleHide() {
     clearHideTimer();
+    if (getDockElement()) return;
     if (commitPending || shouldStayOpenUnfocused()) return;
     // A pinned editor stays put until it is clicked away or dismissed.
     if (pinnedKey && pinnedKey === activeKey) return;
@@ -544,7 +581,7 @@ export function createFormulaHoverEditor(options = {}) {
   async function commit() {
     if (!activeContext || !input || commitPending || activeContext.readOnly) return false;
     const formula = String(input.value || "").trim();
-    if (!formula) {
+    if (!formula && !activeContext.allowEmpty) {
       showError("Enter an Excel formula or cell reference.");
       input.focus?.({ preventScroll: true });
       return false;
@@ -554,7 +591,7 @@ export function createFormulaHoverEditor(options = {}) {
     const sequence = ++commitSequence;
     clearError();
     setBusy(true);
-    onStatus("Loading linked values from Excel...");
+    onStatus(getDockElement() ? "Applying cell edit..." : "Loading linked values from Excel...");
     let result;
     try {
       result = await onCommit({ formula, context });
@@ -582,6 +619,7 @@ export function createFormulaHoverEditor(options = {}) {
   }
 
   function attach(anchor, rawContext, attachOptions = {}) {
+    if (getDockElement()) return false;
     const context = normalizedFormulaContext(rawContext);
     if (!anchor || !context) return false;
     anchor.setAttribute?.(

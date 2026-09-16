@@ -1,0 +1,7 @@
+{
+  "type": "improvement",
+  "scope": "propagation",
+  "audience": "user",
+  "summary": "Route downstream refresh submission, progress, and busy checks through Gateway instead of client network-drive access.",
+  "details": ["Repeated submissions keep their existing job status without requeueing.", "Unavailable Gateway checks fail clearly without falling back to network-drive polling."]
+}

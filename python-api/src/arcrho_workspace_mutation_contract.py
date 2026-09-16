@@ -106,6 +106,10 @@ def clamp_rpc_bridge_wait(timeout_sec: Any) -> float:
 # through this table; a request naming anything else, or passing an argument
 # not listed here, is rejected before any import happens.
 WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
+    "propagation_submit": WorkspaceMutationKind(
+        "dependent_propagation_service", "submit_dependent_propagation_job",
+        ("project_name", "reserving_class", "changed_roots", "request_id"),
+    ),
     # Deleting a cached dataset removes its files and rebuilds the reserving
     # class index. It is idempotent because a file that is already gone is
     # skipped rather than failed, and the rebuild derives the index from

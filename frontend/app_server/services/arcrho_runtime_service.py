@@ -1397,11 +1397,6 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
 
         _append_dataset_audit_entry(payload, "Update", event_date=updated_at, user_name=user_name)
         dataset_sidecar_status_service.write_sidecar(sidecar_path, payload)
-        dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-            project_name,
-            reserving_class,
-            [instance_name, dataset_type],
-        )
         return
     created = utc_now_text()
     try:
@@ -1442,11 +1437,6 @@ def _write_dataset_sidecar_impl(data_path: str, pairs: list) -> None:
         dataset_type,
     )
     dataset_sidecar_status_service.write_sidecar(sidecar_path, payload)
-    dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-        project_name,
-        reserving_class,
-        [instance_name, dataset_type],
-    )
 
 
 def _write_dataset_sidecar(data_path: str, pairs: list) -> None:

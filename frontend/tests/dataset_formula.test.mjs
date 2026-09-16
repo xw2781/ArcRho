@@ -52,7 +52,6 @@ test("arithmetic over references is a formula with canonical text", () => {
 test("drafts that fit none of the three kinds are refused with a reason", () => {
   const cases = [
     ["", /Enter an Excel link/u],
-    ["=2*3", /at least one dataset or Excel reference/u],
     ["=[C 82][1:7] *", /ends before its last operand/u],
     ["=[C 82]", /missing its coordinates/u],
     ["=[C 82][1:7] $ 2", /Unexpected "\$"/u],
@@ -96,4 +95,42 @@ test("evaluation follows Excel array rules", () => {
   const division = evaluate("=[A][1] / [E][1:2]");
   assert.equal(division.ok, false);
   assert.match(division.error, /divides by zero/u);
+});
+
+test("basic functions accept constants, nested functions, comparisons, and blank results", () => {
+  const cases = [
+    ["=SUM(1, 2, 3)", [[6]]], ["=MIN(3, -1, 8)", [[-1]]],
+    ["=MAX(3, -1, 8)", [[8]]], ["=MEDIAN(9, 1, 3, 5)", [[4]]],
+    ["=AVERAGE(0, 4, 8)", [[4]]], ["=COUNT(0, 4, 8)", [[3]]],
+    ["=ABS(-12)", [[12]]], ["=ROUND(-1.25, 1)", [[-1.3]]],
+    ["=IF(2 >= 1, SUM(3, 4), 1/0)", [[7]]],
+    ["=IF(FALSE, 1/0, 8)", [[8]]], ["=IF(1<>1, 7)", [[0]]],
+    ["=IFERROR(1/0, 9)", [[9]]], ["=IFERROR(5, 1/0)", [[5]]],
+    ['=IFERROR(1/0, "")', [[null]]], ["=2*3", [[6]]],
+  ];
+  for (const [text, values] of cases) {
+    const parsed = formula.classifyDatasetFormula(text);
+    assert.equal(parsed.kind, "formula", text);
+    const evaluated = formula.evaluateDatasetFormula(parsed.tree, () => null);
+    assert.equal(evaluated.ok, true, evaluated.error);
+    assert.deepEqual(evaluated.values, values, text);
+  }
+  assert.equal(formula.parseDatasetFormula("=iferror(sum(1,2)/0, 3)").canonical, "=IFERROR(SUM(1, 2) / 0, 3)");
+});
+
+test("IF and IFERROR handle array errors per cell and aggregates skip blanks", () => {
+  const lookup = () => matrix([[null], [0], [2], [4]]);
+  const evaluate = (text) => formula.evaluateDatasetFormula(formula.parseDatasetFormula(text).tree, lookup);
+  assert.deepEqual(evaluate("=IFERROR(8 / [A][1:4], -1)").values, [[-1], [-1], [4], [2]]);
+  assert.deepEqual(evaluate("=IF([A][1:4] = 0, 0, 8 / [A][1:4])").values, [[0], [0], [4], [2]]);
+  assert.deepEqual(evaluate("=AVERAGE([A][1:4])").values, [[2]]);
+  assert.deepEqual(evaluate("=MEDIAN([A][1:4])").values, [[2]]);
+  assert.deepEqual(evaluate("=COUNT([A][1:4])").values, [[3]]);
+  assert.equal(evaluate("=8 / [A][1:4]").ok, false);
+});
+
+test("invalid function names and argument counts never reach evaluation", () => {
+  for (const text of ["=MISSING(1)", "=IF(1)", "=IFERROR(1)", "=SUM()", "=ABS(1,2)", "=ROUND(1)", "=SUM(1,)"]) {
+    assert.equal(formula.parseDatasetFormula(text).ok, false, text);
+  }
 });

@@ -46,7 +46,7 @@ INTERNAL_REFERENCE_SYNTAX_HINT = (
 DATASET_FORMULA_SYNTAX_HINT = (
     "Enter an Excel link such as ='C:\\Folder\\[Book.xlsx]Sheet1'!A1:C3, a dataset "
     "link such as =[Dataset][1:6], or a formula that combines them with + - * / ^, "
-    "for example =[Dataset][1:6] * 1.05."
+    "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, and ROUND."
 )
 
 _EXCEL_TOKEN_RE = re.compile(
@@ -54,7 +54,8 @@ _EXCEL_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 _NUMBER_TOKEN_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
-_BINARY_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2, "^": 3}
+_BINARY_PRECEDENCE = {"=": 1, "<>": 1, "<": 1, ">": 1, "<=": 1, ">=": 1, "+": 2, "-": 2, "*": 3, "/": 3, "^": 4}
+FORMULA_FUNCTION_ARITY = {"IF": [2, 3], "IFERROR": [2, 2], "SUM": [1, 255], "MAX": [1, 255], "MIN": [1, 255], "MEDIAN": [1, 255], "AVERAGE": [1, 255], "COUNT": [1, 255], "ABS": [1, 1], "ROUND": [2, 2]}
 
 
 # ── Internal dataset references ────────────────────────────────────────────────
@@ -259,6 +260,25 @@ def tokenize_dataset_formula(raw_text: Any) -> List[Dict[str, Any]]:
             tokens.append({"type": "number", "text": number.group(0)})
             cursor = number.end()
             continue
+        identifier = re.match(r"[A-Za-z_][A-Za-z_0-9]*", text[cursor:])
+        if identifier:
+            name = identifier.group(0).upper()
+            tokens.append({"type": "number" if name in ("TRUE", "FALSE") else "function", "text": name})
+            cursor += len(identifier.group(0))
+            continue
+        if text[cursor:cursor + 2] == '""':
+            tokens.append({"type": "blank", "text": '""'})
+            cursor += 2
+            continue
+        if character == ",":
+            tokens.append({"type": "comma", "text": character})
+            cursor += 1
+            continue
+        comparison = re.match(r"<=|>=|<>|=|<|>", text[cursor:])
+        if comparison:
+            tokens.append({"type": "operator", "text": comparison.group(0)})
+            cursor += len(comparison.group(0))
+            continue
         if character in "+-*/^":
             tokens.append({"type": "operator", "text": character})
             cursor += 1
@@ -322,7 +342,32 @@ def parse_dataset_formula_tree(tokens: List[Dict[str, Any]]) -> Dict[str, Any]:
             fail("The formula ends before its last operand.")
         if token["type"] == "number":
             position += 1
-            return {"kind": "number", "value": float(token["text"])}
+            return {"kind": "number", "value": (1.0 if token["text"] == "TRUE" else 0.0) if token["text"] in ("TRUE", "FALSE") else float(token["text"])}
+        if token["type"] == "blank":
+            position += 1
+            return {"kind": "number", "value": None}
+        if token["type"] == "function":
+            name = token["text"]
+            limits = FORMULA_FUNCTION_ARITY.get(name)
+            if limits is None:
+                fail(f'Unknown function "{name}".')
+            position += 1
+            if not peek() or peek()["text"] != "(":
+                fail(f"Expected ( after {name}.")
+            position += 1
+            args = []
+            if not peek() or peek()["text"] != ")":
+                while True:
+                    args.append(parse_binary(1))
+                    if not peek() or peek()["type"] != "comma":
+                        break
+                    position += 1
+            if not peek() or peek()["text"] != ")":
+                fail("The function is missing a closing parenthesis.")
+            position += 1
+            if not limits[0] <= len(args) <= limits[1]:
+                fail(f"Wrong number of arguments for {name}.")
+            return {"kind": "function", "name": name, "args": args}
         if token["type"] == "reference":
             position += 1
             return {"kind": "reference", "token": token}
@@ -350,6 +395,8 @@ def format_dataset_formula(tokens: List[Dict[str, Any]]) -> str:
             out = f"{out}{token['text']}" if token.get("unary") else f"{out.rstrip()} {token['text']} "
         elif token["type"] == "paren":
             out = f"{out}(" if token["text"] == "(" else f"{out.rstrip()})"
+        elif token["type"] == "comma":
+            out = f"{out.rstrip()}, "
         elif token["type"] == "reference":
             out += token["canonical"]
         else:
@@ -362,10 +409,6 @@ def canonical_dataset_formula(raw_text: Any) -> str:
 
     tokens = tokenize_dataset_formula(raw_text)
     parse_dataset_formula_tree(tokens)
-    if not any(token["type"] == "reference" for token in tokens):
-        raise DatasetLinkError(
-            "A formula needs at least one dataset or Excel reference. " + DATASET_FORMULA_SYNTAX_HINT,
-        )
     return format_dataset_formula(tokens)
 
 
@@ -451,73 +494,126 @@ def formula_has_excel_reference(raw_text: Any) -> bool:
 Matrix = Dict[str, Any]
 
 
-def scalar_matrix(value: float) -> Matrix:
+def scalar_matrix(value: Any) -> Matrix:
     return {"rows": 1, "cols": 1, "values": [[value]]}
 
 
-def _cell_at(matrix: Matrix, row: int, col: int) -> float:
-    value = matrix["values"][0 if matrix["rows"] == 1 else row][0 if matrix["cols"] == 1 else col]
-    # Excel arithmetic reads a blank cell as zero.
-    if value is None or value == "":
-        return 0.0
-    return float(value)
+def _cell_at(matrix: Matrix, row: int, col: int) -> Any:
+    return matrix["values"][0 if matrix["rows"] == 1 else row][0 if matrix["cols"] == 1 else col]
 
 
-def _combine(left: Matrix, right: Matrix, operator: str) -> Matrix:
-    rows = left["rows"] if left["rows"] == right["rows"] else (
-        right["rows"] if left["rows"] == 1 else (left["rows"] if right["rows"] == 1 else -1)
-    )
-    cols = left["cols"] if left["cols"] == right["cols"] else (
-        right["cols"] if left["cols"] == 1 else (left["cols"] if right["cols"] == 1 else -1)
-    )
-    if rows < 0 or cols < 0:
-        raise DatasetLinkError(
-            f"Array sizes do not match ({left['rows']}x{left['cols']} and {right['rows']}x{right['cols']}).",
-        )
-    values: List[List[float]] = []
+def _numeric(value: Any) -> float:
+    if isinstance(value, DatasetLinkError):
+        raise value
+    try:
+        result = 0.0 if value is None or value == "" else float(value)
+    except (TypeError, ValueError):
+        raise DatasetLinkError("The formula produced a value that is not a finite number.")
+    if not math.isfinite(result):
+        raise DatasetLinkError("The formula produced a value that is not a finite number.")
+    return result
+
+
+def _map_matrices(matrices: List[Matrix], calculate: Callable[..., Any]) -> Matrix:
+    rows, cols = 1, 1
+    for matrix in matrices:
+        if (rows != matrix["rows"] and rows != 1 and matrix["rows"] != 1) or (
+            cols != matrix["cols"] and cols != 1 and matrix["cols"] != 1
+        ):
+            raise DatasetLinkError(f"Array sizes do not match ({rows}x{cols} and {matrix['rows']}x{matrix['cols']}).")
+        rows, cols = max(rows, matrix["rows"]), max(cols, matrix["cols"])
+    values = []
     for row in range(rows):
-        line: List[float] = []
+        line = []
         for col in range(cols):
-            a = _cell_at(left, row, col)
-            b = _cell_at(right, row, col)
-            if operator == "+":
-                result = a + b
-            elif operator == "-":
-                result = a - b
-            elif operator == "*":
-                result = a * b
-            elif operator == "/":
-                if b == 0:
-                    raise DatasetLinkError("The formula divides by zero.")
-                result = a / b
-            else:
-                result = a ** b
-            if not math.isfinite(result):
-                raise DatasetLinkError("The formula produced a value that is not a finite number.")
-            line.append(result)
+            try:
+                value = calculate(*(_cell_at(matrix, row, col) for matrix in matrices))
+            except (DatasetLinkError, ArithmeticError, ValueError) as err:
+                value = err if isinstance(err, DatasetLinkError) else DatasetLinkError("The formula produced a value that is not a finite number.")
+            line.append(value)
         values.append(line)
     return {"rows": rows, "cols": cols, "values": values}
 
 
-def evaluate_dataset_formula(
-    tree: Mapping[str, Any],
-    lookup: Callable[[Mapping[str, Any]], Matrix | None],
-) -> Matrix:
-    """Evaluate a parsed tree. ``lookup(token)`` returns a reference's matrix."""
+def _combine(left: Matrix, right: Matrix, operator: str) -> Matrix:
+    def calculate(raw_a: Any, raw_b: Any) -> float:
+        a, b = _numeric(raw_a), _numeric(raw_b)
+        if operator == "+": result = a + b
+        elif operator == "-": result = a - b
+        elif operator == "*": result = a * b
+        elif operator == "/":
+            if b == 0: raise DatasetLinkError("The formula divides by zero.")
+            result = a / b
+        elif operator == "=": result = float(a == b)
+        elif operator == "<>": result = float(a != b)
+        elif operator == "<": result = float(a < b)
+        elif operator == ">": result = float(a > b)
+        elif operator == "<=": result = float(a <= b)
+        elif operator == ">=": result = float(a >= b)
+        else: result = a ** b
+        return _numeric(result)
+    return _map_matrices([left, right], calculate)
+
+
+def evaluate_dataset_formula(tree: Mapping[str, Any], lookup: Callable[[Mapping[str, Any]], Matrix | None]) -> Matrix:
+    """Evaluate numeric formulas with per-cell errors for IF/IFERROR selection."""
+    def call(node: Mapping[str, Any]) -> Matrix:
+        args, name = node["args"], node["name"]
+        if name == "IFERROR":
+            value = visit(args[0])
+            if not any(isinstance(cell, DatasetLinkError) for row in value["values"] for cell in row):
+                return value
+            return _map_matrices([value, visit(args[1])], lambda cell, fallback: fallback if isinstance(cell, DatasetLinkError) else cell)
+        if name == "IF":
+            condition = visit(args[0])
+            cells = [cell for row in condition["values"] for cell in row]
+            def choose(yes: bool) -> Matrix:
+                return visit(args[1]) if yes else (visit(args[2]) if len(args) > 2 else scalar_matrix(0))
+            if all(not isinstance(cell, DatasetLinkError) and _numeric(cell) != 0 for cell in cells):
+                return _map_matrices([condition, choose(True)], lambda _test, value: value)
+            if all(not isinstance(cell, DatasetLinkError) and _numeric(cell) == 0 for cell in cells):
+                return _map_matrices([condition, choose(False)], lambda _test, value: value)
+            return _map_matrices([condition, choose(True), choose(False)], lambda test, yes, no: yes if _numeric(test) else no)
+        matrices = [visit(arg) for arg in args]
+        if name == "ABS":
+            return _map_matrices(matrices, lambda value: abs(_numeric(value)))
+        if name == "ROUND":
+            def rounded(value: Any, digits: Any) -> float:
+                number = _numeric(value)
+                factor = 10.0 ** math.trunc(_numeric(digits))
+                return _numeric(math.copysign(math.floor(abs(number) * factor + 0.5), number) / factor)
+            return _map_matrices(matrices, rounded)
+        numbers = [_numeric(value) for matrix in matrices for row in matrix["values"] for value in row if value is not None and value != ""]
+        if name == "COUNT": return scalar_matrix(len(numbers))
+        if not numbers and name in ("AVERAGE", "MEDIAN"):
+            raise DatasetLinkError(f"{name} needs at least one numeric value.")
+        if name == "SUM": return scalar_matrix(_numeric(sum(numbers)))
+        if name == "AVERAGE": return scalar_matrix(_numeric(sum(numbers) / len(numbers)))
+        if name == "MIN": return scalar_matrix(min(numbers) if numbers else 0)
+        if name == "MAX": return scalar_matrix(max(numbers) if numbers else 0)
+        numbers.sort()
+        middle = len(numbers) // 2
+        return scalar_matrix(_numeric(numbers[middle] if len(numbers) % 2 else (numbers[middle - 1] + numbers[middle]) / 2))
 
     def visit(node: Mapping[str, Any]) -> Matrix:
-        if node["kind"] == "number":
-            return scalar_matrix(node["value"])
-        if node["kind"] == "reference":
-            matrix = lookup(node["token"])
-            if not matrix or not matrix.get("rows", 0) > 0 or not matrix.get("cols", 0) > 0:
-                raise DatasetLinkError(f"{node['token']['text']} has no values to calculate with.")
-            return matrix
-        if node["kind"] == "unary":
-            return _combine(scalar_matrix(0.0), visit(node["operand"]), "-")
-        return _combine(visit(node["left"]), visit(node["right"]), node["operator"])
+        try:
+            if node["kind"] == "number": return scalar_matrix(node["value"])
+            if node["kind"] == "function": return call(node)
+            if node["kind"] == "reference":
+                matrix = lookup(node["token"])
+                if not matrix or not matrix.get("rows", 0) > 0 or not matrix.get("cols", 0) > 0:
+                    raise DatasetLinkError(f"{node['token']['text']} has no values to calculate with.")
+                return matrix
+            if node["kind"] == "unary": return _combine(scalar_matrix(0), visit(node["operand"]), "-")
+            return _combine(visit(node["left"]), visit(node["right"]), node["operator"])
+        except DatasetLinkError as err:
+            return scalar_matrix(err)
 
-    return visit(tree)
+    result = visit(tree)
+    for row in result["values"]:
+        for value in row:
+            if value is not None: _numeric(value)
+    return result
 
 
 # ── Target-cell blocks (the on-disk shape of a link's cells) ───────────────────

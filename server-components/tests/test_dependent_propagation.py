@@ -73,7 +73,7 @@ class DependentPropagationEngineTests(unittest.TestCase):
     REQUEST_ID = "0123456789abcdef0123456789abcdef"
 
     def setUp(self) -> None:
-        logs_tmp = TESTS_DIR / "logs" / "tmp"
+        logs_tmp = REPO_ROOT / "test"
         logs_tmp.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=str(logs_tmp))
         self.root = Path(self.temp.name)
@@ -135,10 +135,7 @@ class DependentPropagationEngineTests(unittest.TestCase):
         generic = dependent_propagation._summarize_walk_failure({"skipped": []})
         self.assertIn("One or more dependent updates failed.", generic)
 
-    def test_claimed_walk_marks_the_full_closure_before_running(self) -> None:
-        # The save only marked the first dependent method tier; the Engine
-        # re-marks the whole reachable closure (all merged roots included)
-        # before the walk so statuses are honest for the entire cascade.
+    def test_claimed_walk_preserves_review_status_before_running(self) -> None:
         calls: list[tuple] = []
 
         def record_marking(*args, **kwargs):
@@ -168,18 +165,12 @@ class DependentPropagationEngineTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"])
-        self.assertEqual([kind for kind, *_ in calls], ["mark", "walk"])
-        mark_args, mark_kwargs = calls[0][1], calls[0][2]
-        self.assertEqual(mark_args[0], "Demo")
-        self.assertEqual(mark_args[1], "HPPREF\\HOL")
-        self.assertEqual(
-            mark_args[2], ["Paid", "Paid Loss", "Extra", "Extra Type"]
-        )
-        # Full closure: the Engine must not pass the save-side direct_only.
-        self.assertNotIn("direct_only", mark_kwargs)
-        self.assertEqual(progress[0]["label"], "Marking dependents for review")
+        self.assertEqual([kind for kind, *_ in calls], ["walk"])
+        walk_args, walk_kwargs = calls[0][1], calls[0][2]
+        self.assertEqual(walk_args, ("Demo", "HPPREF\\HOL", "Paid", "Paid Loss"))
+        self.assertEqual(walk_kwargs["additional_roots"], [("Extra", "Extra Type")])
 
-    def test_a_marking_failure_never_aborts_the_walk(self) -> None:
+    def test_successful_walk_does_not_call_the_failure_marker(self) -> None:
         def failing_marking(*_args, **_kwargs):
             raise OSError("sidecar folder unavailable")
 
@@ -246,8 +237,7 @@ class DependentPropagationEngineTests(unittest.TestCase):
         how long the stage that just ended took.
         """
 
-        # start, ->marking, ->dfm, ->result_selection, final, total
-        clock = iter([0.0, 0.0, 1.0, 16.0, 16.5, 17.0])
+        clock = iter([0.0, 1.0, 16.0, 16.5, 17.0])
 
         def walk(*args, **kwargs):
             progress = kwargs["progress_callback"]

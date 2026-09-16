@@ -8,18 +8,21 @@ const referenceSource = await readFile(
   "utf8",
 );
 const spreadsheetStubUrl = dataUrl(`
-  export function createSpreadsheetTableController() {
+  export function createSpreadsheetTableController(options) {
     return {
-      applyDom() {}, clear() {}, copy() {}, move() { return false; },
+      applyDom() {}, clear() {}, copy() { globalThis.__arTestCopiedRanges = options.readSelection().ranges; }, move() { return false; },
       prepareContextCell() {}, selectCell() {}, selectColumn() {}, selectRow() {},
-      selection() { return { ranges: [] }; }, setRange() {},
+      selection() { return { ranges: [] }; },
+      setRange(anchorCell, activeCell) {
+        options.writeSelection({ anchorCell, activeCell, ranges: [{ r0: anchorCell.r, c0: anchorCell.c, r1: activeCell.r, c1: activeCell.c }] });
+      },
     };
   }
   export function getTopLeftRangeCell(ranges) { return ranges?.[0] ? { r: ranges[0].r0, c: ranges[0].c0 } : null; }
   export function normalizeRange(r0, c0, r1, c1) { return { r0, c0, r1, c1 }; }
 `);
 const viewStubUrl = dataUrl(`
-  export function getDatasetGridSelectionLayout() { return { maxRow: 0, maxCol: 0 }; }
+  export function getDatasetGridSelectionLayout() { return { maxRow: 2, maxCol: 1 }; }
   export function getDisplayDatasetModel() { return globalThis.__arTestDisplayModel; }
   export function setDatasetGridEditConfig(config) { globalThis.__arTestGridEditConfig = config; }
 `);
@@ -146,6 +149,7 @@ function setup({ isReadOnly } = {}) {
   return {
     state,
     calls,
+    listeners,
     type,
     cleanup() {
       globalThis.window = previousWindow;
@@ -153,6 +157,7 @@ function setup({ isReadOnly } = {}) {
       globalThis.requestAnimationFrame = previousAnimationFrame;
       delete globalThis.__arTestDisplayModel;
       delete globalThis.__arTestGridEditConfig;
+      delete globalThis.__arTestCopiedRanges;
     },
   };
 }
@@ -240,28 +245,31 @@ test("a read-only dataset refuses a typed range fill and says so in the window",
   }
 });
 
-test("Clear data sets every cell the grid shows to 0, whatever is selected", async () => {
-  const context = setup();
-  try {
-    context.state.selRanges = [{ r0: 0, c0: 0, r1: 0, c1: 0 }];
-    const config = globalThis.__arTestGridEditConfig;
-    assert.equal(config.canClearData(), true);
-
-    await config.onContextAction("clear_data");
-
-    // The masked cell is not part of the grid, so it is left alone.
-    assert.deepEqual(context.state.model.values, [[0, 0], [0, 4]]);
-    assert.equal(context.state.dirty.size, 3);
-    assert.equal(context.calls.statuses.at(-1), "Set 3 cells to 0.");
-  } finally {
-    context.cleanup();
+test("Paste is available only when selected cells can be edited", () => {
+  for (const readOnly of [false, true]) {
+    const context = setup({ isReadOnly: () => readOnly });
+    try {
+      assert.equal(globalThis.__arTestGridEditConfig.canPasteSelection(), !readOnly);
+      context.state.selRanges = [{ r0: 1, c0: 1, r1: 1, c1: 1 }];
+      assert.equal(globalThis.__arTestGridEditConfig.canPasteSelection(), false);
+    } finally {
+      context.cleanup();
+    }
   }
 });
 
-test("a read-only dataset offers no Clear data", () => {
-  const context = setup({ isReadOnly: () => true });
+test("Copy All and Ctrl+A copy the entire display including the Total row", async () => {
+  const context = setup();
   try {
-    assert.equal(globalThis.__arTestGridEditConfig.canClearData(), false);
+    context.state.selRanges = [{ r0: 0, c0: 0, r1: 0, c1: 0 }];
+    await globalThis.__arTestGridEditConfig.onContextAction("copy_all");
+    assert.deepEqual(globalThis.__arTestCopiedRanges, [{ r0: 0, c0: 0, r1: 2, c1: 1 }]);
+    delete globalThis.__arTestCopiedRanges;
+    context.state.selRanges = [];
+    const event = { key: "a", ctrlKey: true, preventDefault() { this.prevented = true; } };
+    for (const listener of context.listeners.get("keydown")) listener(event);
+    assert.equal(event.prevented, true);
+    assert.deepEqual(globalThis.__arTestCopiedRanges, [{ r0: 0, c0: 0, r1: 2, c1: 1 }]);
   } finally {
     context.cleanup();
   }

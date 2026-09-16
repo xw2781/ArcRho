@@ -2,8 +2,8 @@
 ===============================================================================
 Dataset Formula
 One grammar for everything a Dataset grid cell accepts after "=": a standalone
-Excel link, a standalone ArcRho dataset link, or an arithmetic formula whose
-operands are any mix of the two plus numbers:
+Excel link, a standalone ArcRho dataset link, or a formula with arithmetic,
+comparisons, functions, and any mix of references and numbers:
 
     ='C:\Folder\[Book.xlsx]Sheet1'!A1:A7
     =[C 82 - Prior Qtr Selected][1:7]
@@ -17,8 +17,8 @@ cell, with a one-row or one-column matrix stretched across the other's shape.
 `classifyDatasetFormula` decides which of the three kinds a draft is, so the
 grid routes a standalone link to its own controller (whose per-cell mapping and
 retargeting must survive) and everything else to the formula-link controller.
-`app_server/services/dataset_formula_link_service.py` mirrors the tokenizer and
-the canonical text so a saved formula round-trips byte for byte.
+`arcrho_api/dataset_link_contract.py` owns the grammar metadata and server
+evaluator; generated metadata and cross-runtime tests keep this adapter aligned.
 ===============================================================================
 */
 import {
@@ -34,11 +34,15 @@ import {
 export const DATASET_FORMULA_SYNTAX_HINT =
   "Enter an Excel link such as ='C:\\Folder\\[Book.xlsx]Sheet1'!A1:C3, a dataset "
   + "link such as =[Dataset][1:6], or a formula that combines them with + - * / ^, "
-  + "for example =[Dataset][1:6] * 1.05.";
+  + "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, and ROUND.";
 
 const EXCEL_TOKEN_RE = /'((?:[^']|'')*)'!\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?/iy;
 const NUMBER_TOKEN_RE = /(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y;
-const BINARY_PRECEDENCE = { "+": 1, "-": 1, "*": 2, "/": 2, "^": 3 };
+// BEGIN GENERATED FORMULA METADATA
+// Owner: arcrho_api.dataset_link_contract; generate_dataset_formula_metadata.py --write.
+const BINARY_PRECEDENCE = {"=": 1, "<>": 1, "<": 1, ">": 1, "<=": 1, ">=": 1, "+": 2, "-": 2, "*": 3, "/": 3, "^": 4};
+export const FORMULA_FUNCTION_ARITY = {"IF": [2, 3], "IFERROR": [2, 2], "SUM": [1, 255], "MAX": [1, 255], "MIN": [1, 255], "MEDIAN": [1, 255], "AVERAGE": [1, 255], "COUNT": [1, 255], "ABS": [1, 1], "ROUND": [2, 2]};
+// END GENERATED FORMULA METADATA
 
 function invalid(error) {
   return { ok: false, error };
@@ -123,6 +127,31 @@ export function tokenizeDatasetFormula(rawText) {
       cursor = NUMBER_TOKEN_RE.lastIndex;
       continue;
     }
+    const identifier = /^[A-Za-z_][A-Za-z_0-9]*/.exec(text.slice(cursor));
+    if (identifier) {
+      const name = identifier[0].toUpperCase();
+      tokens.push(name === "TRUE" || name === "FALSE"
+        ? { type: "number", text: name, value: name === "TRUE" ? 1 : 0 }
+        : { type: "function", text: name });
+      cursor += identifier[0].length;
+      continue;
+    }
+    if (text.slice(cursor, cursor + 2) === '""') {
+      tokens.push({ type: "blank", text: '""' });
+      cursor += 2;
+      continue;
+    }
+    if (character === ",") {
+      tokens.push({ type: "comma", text: character });
+      cursor += 1;
+      continue;
+    }
+    const comparison = /^(<=|>=|<>|=|<|>)/.exec(text.slice(cursor));
+    if (comparison) {
+      tokens.push({ type: "operator", text: comparison[0] });
+      cursor += comparison[0].length;
+      continue;
+    }
     if ("+-*/^".includes(character)) {
       tokens.push({ type: "operator", text: character });
       cursor += 1;
@@ -183,6 +212,29 @@ function parseExpression(tokens) {
       position += 1;
       return { kind: "number", value: token.value };
     }
+    if (token.type === "blank") {
+      position += 1;
+      return { kind: "number", value: null };
+    }
+    if (token.type === "function") {
+      const limits = FORMULA_FUNCTION_ARITY[token.text];
+      if (!limits) fail(`Unknown function "${token.text}".`);
+      position += 1;
+      if (peek()?.text !== "(") fail(`Expected ( after ${token.text}.`);
+      position += 1;
+      const args = [];
+      if (peek()?.text !== ")") {
+        for (;;) {
+          args.push(parseBinary(1));
+          if (peek()?.type !== "comma") break;
+          position += 1;
+        }
+      }
+      if (peek()?.text !== ")") fail("The function is missing a closing parenthesis.");
+      position += 1;
+      if (args.length < limits[0] || args.length > limits[1]) fail(`Wrong number of arguments for ${token.text}.`);
+      return { kind: "function", name: token.text, args };
+    }
     if (token.type === "reference") {
       position += 1;
       return { kind: "reference", token };
@@ -239,6 +291,8 @@ export function formatDatasetFormula(tokens) {
       else out = `${out.trimEnd()} ${token.text} `;
     } else if (token.type === "paren") {
       out = token.text === "(" ? `${out}(` : `${out.trimEnd()})`;
+    } else if (token.type === "comma") {
+      out = `${out.trimEnd()}, `;
     } else if (token.type === "reference") {
       out += token.canonical;
     } else {
@@ -250,7 +304,7 @@ export function formatDatasetFormula(tokens) {
 
 /**
  * Which of the three kinds a draft is: `excel` or `internal` for one standalone
- * link, `formula` for an expression holding at least one reference, or
+ * link, `formula` for a supported expression, or
  * `invalid` with the message to show.
  */
 export function classifyDatasetFormula(rawText) {
@@ -260,12 +314,6 @@ export function classifyDatasetFormula(rawText) {
   if (parseInternalDatasetReference(text).ok) return { kind: "internal", reference: text };
   const parsed = parseDatasetFormula(text);
   if (!parsed.ok) return { kind: "invalid", error: parsed.error };
-  if (!parsed.references.length) {
-    return {
-      kind: "invalid",
-      error: `A formula needs at least one dataset or Excel reference. ${DATASET_FORMULA_SYNTAX_HINT}`,
-    };
-  }
   return { kind: "formula", ...parsed };
 }
 
@@ -274,59 +322,119 @@ function scalarMatrix(value) {
 }
 
 function cellAt(matrix, row, col) {
-  const value = matrix.values[matrix.rows === 1 ? 0 : row][matrix.cols === 1 ? 0 : col];
-  // Excel arithmetic reads a blank cell as zero.
-  return value === null || value === undefined || value === "" ? 0 : Number(value);
+  return matrix.values[matrix.rows === 1 ? 0 : row][matrix.cols === 1 ? 0 : col];
 }
 
-function combine(left, right, operator) {
-  const rows = left.rows === right.rows ? left.rows : (left.rows === 1 ? right.rows : (right.rows === 1 ? left.rows : -1));
-  const cols = left.cols === right.cols ? left.cols : (left.cols === 1 ? right.cols : (right.cols === 1 ? left.cols : -1));
-  if (rows < 0 || cols < 0) {
-    throw new Error(`Array sizes do not match (${left.rows}x${left.cols} and ${right.rows}x${right.cols}).`);
-  }
-  const values = [];
-  for (let row = 0; row < rows; row += 1) {
-    const line = [];
-    for (let col = 0; col < cols; col += 1) {
-      const a = cellAt(left, row, col);
-      const b = cellAt(right, row, col);
-      let result;
-      if (operator === "+") result = a + b;
-      else if (operator === "-") result = a - b;
-      else if (operator === "*") result = a * b;
-      else if (operator === "/") {
-        if (b === 0) throw new Error("The formula divides by zero.");
-        result = a / b;
-      } else result = a ** b;
-      if (!Number.isFinite(result)) throw new Error("The formula produced a value that is not a finite number.");
-      line.push(result);
+function numeric(value) {
+  if (value instanceof Error) throw value;
+  const number = value == null || value === "" ? 0 : Number(value);
+  if (!Number.isFinite(number)) throw new Error("The formula produced a value that is not a finite number.");
+  return number;
+}
+
+function mapMatrices(matrices, calculate) {
+  let rows = 1;
+  let cols = 1;
+  for (const matrix of matrices) {
+    if ((rows !== matrix.rows && rows !== 1 && matrix.rows !== 1)
+      || (cols !== matrix.cols && cols !== 1 && matrix.cols !== 1)) {
+      throw new Error(`Array sizes do not match (${rows}x${cols} and ${matrix.rows}x${matrix.cols}).`);
     }
-    values.push(line);
+    rows = Math.max(rows, matrix.rows);
+    cols = Math.max(cols, matrix.cols);
   }
+  const values = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => {
+    try {
+      return calculate(...matrices.map((matrix) => cellAt(matrix, r, c)));
+    } catch (error) {
+      return error;
+    }
+  }));
   return { rows, cols, values };
 }
 
-/**
- * Evaluate a parsed tree. `lookup(token)` returns the matrix
- * `{rows, cols, values}` a reference token stands for. Returns
- * `{ok: true, rows, cols, values}` or `{ok: false, error}`.
- */
+function combine(left, right, operator) {
+  return mapMatrices([left, right], (rawA, rawB) => {
+    const a = numeric(rawA);
+    const b = numeric(rawB);
+    let result;
+    if (operator === "+") result = a + b;
+    else if (operator === "-") result = a - b;
+    else if (operator === "*") result = a * b;
+    else if (operator === "/") {
+      if (b === 0) throw new Error("The formula divides by zero.");
+      result = a / b;
+    } else if (operator === "=") result = Number(a === b);
+    else if (operator === "<>") result = Number(a !== b);
+    else if (operator === "<") result = Number(a < b);
+    else if (operator === ">") result = Number(a > b);
+    else if (operator === "<=") result = Number(a <= b);
+    else if (operator === ">=") result = Number(a >= b);
+    else result = a ** b;
+    return numeric(result);
+  });
+}
+
+/** Evaluate numeric formulas with per-cell errors, so IF/IFERROR can select safe results. */
 export function evaluateDatasetFormula(tree, lookup) {
-  function visit(node) {
-    if (node.kind === "number") return scalarMatrix(node.value);
-    if (node.kind === "reference") {
-      const matrix = lookup(node.token);
-      if (!matrix || !(matrix.rows > 0) || !(matrix.cols > 0)) {
-        throw new Error(`${node.token.text} has no values to calculate with.`);
-      }
-      return matrix;
+  function call(node) {
+    const args = node.args;
+    if (node.name === "IFERROR") {
+      const value = visit(args[0]);
+      if (!value.values.some((row) => row.some((cell) => cell instanceof Error))) return value;
+      return mapMatrices([value, visit(args[1])], (cell, fallback) => cell instanceof Error ? fallback : cell);
     }
-    if (node.kind === "unary") return combine(scalarMatrix(0), visit(node.operand), "-");
-    return combine(visit(node.left), visit(node.right), node.operator);
+    if (node.name === "IF") {
+      const condition = visit(args[0]);
+      const cells = condition.values.flat();
+      const choose = (yes) => yes ? visit(args[1]) : (args[2] ? visit(args[2]) : scalarMatrix(0));
+      if (cells.every((cell) => !(cell instanceof Error) && numeric(cell) !== 0)) {
+        return mapMatrices([condition, choose(true)], (_test, value) => value);
+      }
+      if (cells.every((cell) => !(cell instanceof Error) && numeric(cell) === 0)) {
+        return mapMatrices([condition, choose(false)], (_test, value) => value);
+      }
+      return mapMatrices([condition, choose(true), choose(false)], (test, yes, no) => numeric(test) ? yes : no);
+    }
+    const matrices = args.map(visit);
+    if (node.name === "ABS") return mapMatrices(matrices, (value) => Math.abs(numeric(value)));
+    if (node.name === "ROUND") return mapMatrices(matrices, (value, digits) => {
+      const number = numeric(value);
+      const factor = 10 ** Math.trunc(numeric(digits));
+      return numeric(Math.sign(number) * Math.floor(Math.abs(number) * factor + 0.5) / factor);
+    });
+    const numbers = matrices.flatMap((matrix) => matrix.values.flat())
+      .filter((value) => value != null && value !== "").map(numeric);
+    if (node.name === "COUNT") return scalarMatrix(numbers.length);
+    if (!numbers.length && ["AVERAGE", "MEDIAN"].includes(node.name)) throw new Error(`${node.name} needs at least one numeric value.`);
+    const sum = numbers.reduce((total, number) => total + number, 0);
+    if (node.name === "SUM") return scalarMatrix(numeric(sum));
+    if (node.name === "AVERAGE") return scalarMatrix(numeric(sum / numbers.length));
+    if (node.name === "MIN") return scalarMatrix(numbers.length ? numbers.reduce((a, b) => Math.min(a, b)) : 0);
+    if (node.name === "MAX") return scalarMatrix(numbers.length ? numbers.reduce((a, b) => Math.max(a, b)) : 0);
+    numbers.sort((a, b) => a - b);
+    const middle = Math.floor(numbers.length / 2);
+    return scalarMatrix(numeric(numbers.length % 2 ? numbers[middle] : (numbers[middle - 1] + numbers[middle]) / 2));
+  }
+  function visit(node) {
+    try {
+      if (node.kind === "number") return scalarMatrix(node.value);
+      if (node.kind === "function") return call(node);
+      if (node.kind === "reference") {
+        const matrix = lookup(node.token);
+        if (!matrix || !(matrix.rows > 0) || !(matrix.cols > 0)) throw new Error(`${node.token.text} has no values to calculate with.`);
+        return matrix;
+      }
+      if (node.kind === "unary") return combine(scalarMatrix(0), visit(node.operand), "-");
+      return combine(visit(node.left), visit(node.right), node.operator);
+    } catch (error) {
+      return scalarMatrix(error);
+    }
   }
   try {
-    return { ok: true, ...visit(tree) };
+    const result = visit(tree);
+    for (const row of result.values) for (const value of row) if (value != null) numeric(value);
+    return { ok: true, ...result };
   } catch (error) {
     return invalid(String(error?.message || error));
   }

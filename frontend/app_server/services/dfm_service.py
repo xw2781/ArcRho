@@ -969,6 +969,10 @@ def _publish(
         files = {method_path: _method_json_text(payload)}
         if write_outputs:
             files.update(_output_files(project_name, reserving_class, payload))
+        if automatic:
+            from app_server.services.method_review_service import refreshed_status
+
+            sidecar["status"] = refreshed_status(existing_sidecar, files)
         files[sidecar_path] = _json_text(sidecar)
         changed_paths = _commit_text_files(files, last_paths=[sidecar_path])
     except Exception:
@@ -1195,14 +1199,9 @@ def save_dfm_method(
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
     output_type = _clean(_details(refreshed).get("output_type")) or output_dataset
-    if publication_changed:
-        response["propagation"] = _enqueue_propagation_job(
-            project, reserving, output_dataset, output_type
-        )
-    else:
-        # A save whose publication revision is unchanged cannot alter any
-        # dependent, so no Engine job is submitted.
-        response["propagation"] = dependent_propagation_service.unchanged_propagation()
+    response["propagation"] = _enqueue_propagation_job(
+        project, reserving, output_dataset, output_type
+    )
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     return response
@@ -1316,34 +1315,24 @@ def _refresh_one(
     )
     before_revisions = _revision_response(method)
     after_revisions = _revision_response(refreshed)
-    if before_revisions["derived_revision"] == after_revisions["derived_revision"]:
-        # No persisted derived value changed. Preserve the prior refresh stamp
-        # so the method file remains byte-identical and only a Review Needed
-        # sidecar status needs restoration.
-        refreshed["method_metadata"]["data_refreshed"] = method["method_metadata"]["data_refreshed"]
     output_changed = (
         before_revisions["publication_revision"]
         != after_revisions["publication_revision"]
     )
-    before_text = _method_json_text(method)
-    after_text = _method_json_text(refreshed)
     sidecar, changed_paths = _publish(
         project_name,
         reserving_class,
         refreshed,
         sidecar,
         notes=None,
-        # A rewritten method is a modification of its output dataset even when
-        # the published values held: the sidecar's Last Modified and Audit Log
-        # move with the file.
-        changed=output_changed or before_text != after_text,
+        changed=True,
         automatic=True,
-        write_outputs=output_changed,
+        write_outputs=True,
     )
     return {
         "ok": True,
         "dataset_name": output_dataset,
-        "updated": before_text != after_text,
+        "updated": True,
         "output_changed": output_changed,
         "status_refreshed": (
             previous_status == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
@@ -1484,8 +1473,7 @@ def refresh_dependents(
                         "dataset_type": _clean(refreshed_sidecar.get("dataset_type")) or output_dataset,
                         "output_changed": bool(result.get("output_changed")),
                     })
-                    if result.get("output_changed") or result.get("status_refreshed"):
-                        queue.append(output_dataset)
+                    queue.append(output_dataset)
                 elif result.get("status_refreshed"):
                     status_refreshed.append({"dataset_name": output_dataset})
                     queue.append(output_dataset)
@@ -1494,15 +1482,7 @@ def refresh_dependents(
                         "dataset_name": output_dataset,
                         "reason": result.get("reason") or "not_updated",
                     })
-        review_status_updates = (
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project,
-                reserving,
-                changed,
-            )
-            if finalize_method_review_status
-            else []
-        )
+        review_status_updates = []
     return {
         "ok": not errors,
         "project_name": project,

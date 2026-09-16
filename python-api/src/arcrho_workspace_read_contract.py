@@ -68,6 +68,18 @@ class WorkspaceReadKind:
 # table; a request naming anything else, or passing an argument not listed
 # here, is rejected before any import happens.
 WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
+    "propagation_preflight": WorkspaceReadKind(
+        "dependent_propagation_service", "check_propagation_preflight",
+        ("scope",), ("project_name", "reserving_class"),
+    ),
+    "propagation_busy": WorkspaceReadKind(
+        "dependent_propagation_service", "get_reserving_class_busy",
+        ("project_name", "reserving_class"),
+    ),
+    "propagation_status": WorkspaceReadKind(
+        "dependent_propagation_service", "get_dependent_propagation_status",
+        ("request_id",),
+    ),
     "dataset_index": WorkspaceReadKind(
         "dataset_service",
         "list_cached_dataset_names",

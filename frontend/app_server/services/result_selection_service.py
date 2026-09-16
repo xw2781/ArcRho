@@ -1040,7 +1040,6 @@ def _persist_refreshed_method(
     payload: Dict[str, Any],
     sidecar: Dict[str, Any],
     *,
-    allow_status_current: bool,
     precedent_names: List[str] | None = None,
 ) -> Dict[str, Any]:
     name = payload["details_tab"]["name"]
@@ -1060,17 +1059,6 @@ def _persist_refreshed_method(
         updated_sidecar["updated_at"] = timestamp
         user_name = _current_user_name()
         updated_sidecar["modified_by"] = user_name
-        updated_sidecar["status"] = (
-            dataset_sidecar_status_service.compute_status(
-                project_name,
-                reserving_class,
-                name,
-                updated_sidecar,
-                sidecar_path,
-            )
-            if allow_status_current
-            else dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
-        )
         from app_server.services.dataset_service import _append_dataset_audit_entry
 
         _append_dataset_audit_entry(
@@ -1079,46 +1067,16 @@ def _persist_refreshed_method(
             event_date=timestamp,
             user_name=user_name,
         )
+        from app_server.services.method_review_service import refreshed_status
+
         files = {
             method_path: _json_text(payload),
             **_output_files(project_name, reserving_class, payload),
-            sidecar_path: _json_text(updated_sidecar),
         }
+        updated_sidecar["status"] = refreshed_status(latest_sidecar, files)
+        files[sidecar_path] = _json_text(updated_sidecar)
         _commit_text_files(files, last_paths=[sidecar_path])
     return updated_sidecar
-
-
-def _mark_refreshed_sidecar_current(
-    project_name: str,
-    reserving_class: str,
-    output_name: str,
-    sidecar: Dict[str, Any],
-    *,
-    allow_status_current: bool,
-) -> Tuple[Dict[str, Any], bool]:
-    if not allow_status_current:
-        return sidecar, False
-    sidecar_path = _sidecar_path(project_name, reserving_class, output_name)
-    with dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
-        latest_sidecar = _read_json(sidecar_path) or sidecar
-        updated_sidecar = dict(latest_sidecar)
-        timestamp = _now()
-        user_name = _current_user_name()
-        updated_sidecar["updated_at"] = timestamp
-        updated_sidecar["modified_by"] = user_name
-        updated_sidecar["status"] = dataset_sidecar_status_service.compute_status(
-            project_name,
-            reserving_class,
-            output_name,
-            updated_sidecar,
-            sidecar_path,
-        )
-        before = dataset_sidecar_status_service.normalize_status(latest_sidecar.get("status"))
-        after = dataset_sidecar_status_service.normalize_status(updated_sidecar.get("status"))
-        if before == after:
-            return latest_sidecar, False
-        _commit_text_files({sidecar_path: _json_text(updated_sidecar)})
-    return updated_sidecar, after == dataset_sidecar_status_service.STATUS_CURRENT
 
 
 def _mark_output_review_needed(
@@ -1147,7 +1105,6 @@ def _refresh_one_method(
     changed_sidecars: Dict[str, Dict[str, Any]],
     dependency_value_cache: Dict[Tuple[str, int, bool], List[Any]],
     *,
-    allow_status_current: bool,
     blocked_precedent_keys: set[str],
     sidecar_snapshot: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -1203,7 +1160,6 @@ def _refresh_one_method(
         # human review demand survives while the walk stays healthy. Only a
         # precedent whose refresh actually failed (``blocked_precedents``
         # above) still stops the recompute.
-    changed = False
     matched_input = False
 
     def values_for(name: str, exact: bool) -> List[Any]:
@@ -1240,17 +1196,13 @@ def _refresh_one_method(
             "origin_length": precedent_cache_service.source_period(source_sidecar) or source.get("origin_length"),
         }
         for field, value in metadata.items():
-            if value != source.get(field):
-                source[field] = value
-                changed = True
+            source[field] = value
         values = values_for(source["name"], False)
         if len(values) != row_count:
             raise RuntimeError(
                 f"Source '{source['name']}' returned {len(values)} values; expected {row_count}."
             )
-        if values != source.get("values"):
-            source["values"] = values
-            changed = True
+        source["values"] = values
     for basis in method.get("ratio_basis_values", []):
         if _key(basis.get("name")) not in changed_by_key:
             continue
@@ -1260,27 +1212,9 @@ def _refresh_one_method(
             raise RuntimeError(
                 f"Ratio Basis '{basis['name']}' returned {len(values)} values; expected {row_count}."
             )
-        if values != basis.get("values"):
-            basis["values"] = values
-            changed = True
-    if not changed:
-        if not matched_input:
-            return {"ok": False, "dataset_name": output_name, "reason": "stale_reverse_dependency_edge"}
-        updated_sidecar, status_refreshed = _mark_refreshed_sidecar_current(
-            project_name,
-            reserving_class,
-            output_name,
-            output_sidecar,
-            allow_status_current=allow_status_current,
-        )
-        return {
-            "ok": True,
-            "dataset_name": output_name,
-            "skipped": True,
-            "reason": "input_values_unchanged",
-            "status_refreshed": status_refreshed,
-            "sidecar": updated_sidecar,
-        }
+        basis["values"] = values
+    if not matched_input:
+        return {"ok": False, "dataset_name": output_name, "reason": "stale_reverse_dependency_edge"}
     previous_output = list(method.get("selected_ultimate") or [])
     _recalculate_method(payload)
     updated_sidecar = _persist_refreshed_method(
@@ -1288,7 +1222,6 @@ def _refresh_one_method(
         reserving_class,
         payload,
         output_sidecar,
-        allow_status_current=allow_status_current,
     )
     return {
         "ok": True,
@@ -1305,9 +1238,7 @@ def refresh_dependents(
     changed_dataset_names: Iterable[Any],
     *,
     rebuild_index: bool = True,
-    allow_status_current: bool = True,
     blocked_precedent_names: Iterable[Any] = (),
-    unchanged_precedent_names: Iterable[Any] = (),
     finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
     project = _clean(project_name)
@@ -1326,16 +1257,6 @@ def refresh_dependents(
     errors = []
     downstream_fresh_names: List[str] = []
     downstream_blocked_names: List[str] = []
-    # Outputs whose values did not move: a status-only refresh, a recompute
-    # that came out the same, or a DFM the wave before this one already
-    # visited to the same publication (``unchanged_precedent_names``). Such
-    # an output, or a DFM or calculated dependent reached only through them,
-    # is still current as it stands, so it is skipped without being marked a
-    # failed precedent.
-    unchanged_source_keys: set[str] = {
-        _key(item) for item in unchanged_precedent_names
-        if _key(item)
-    }
     index_error = ""
     dependency_value_cache: Dict[Tuple[str, int, bool], List[Any]] = {}
     sidecar_snapshot: Dict[str, Dict[str, Any]] = {}
@@ -1417,26 +1338,6 @@ def refresh_dependents(
                 )
                 if method_type != dataset_sidecar_status_service.METHOD_TYPE_RESULT_SELECTION:
                     dependent_key = _key(dependent_name)
-                    if dependent_key not in fresh_precedent_keys and (
-                        dependent_key in unchanged_source_keys
-                        or all(
-                            _key(source_name) in unchanged_source_keys
-                            for source_name in dependent_sources[dependent_name]
-                        )
-                    ):
-                        # This output kept its values -- the DFM wave already
-                        # recomputed it from the same roots to the same
-                        # publication -- or every source that led here did, so
-                        # this DFM or calculated output needs no recompute and
-                        # is not blocked: blocking it would refuse every
-                        # Result Selection further down that also loads it
-                        # with "Precedent refresh failed" over a refresh
-                        # nothing needed.
-                        skipped.append({
-                            "dataset_name": dependent_name,
-                            "reason": "non_result_selection_dependent_inputs_unchanged",
-                        })
-                        continue
                     if dependent_key not in fresh_precedent_keys:
                         blocked_precedent_keys.add(dependent_key)
                     skipped.append({
@@ -1452,7 +1353,6 @@ def refresh_dependents(
                         sidecar,
                         dependent_sources[dependent_name],
                         dependency_value_cache,
-                        allow_status_current=allow_status_current,
                         blocked_precedent_keys=blocked_precedent_keys,
                         sidecar_snapshot=sidecar_snapshot,
                     )
@@ -1499,21 +1399,6 @@ def refresh_dependents(
                     for cache_key in list(dependency_value_cache):
                         if cache_key[0] == dependent_key:
                             dependency_value_cache.pop(cache_key, None)
-                    output_is_current = dataset_sidecar_status_service.normalize_status(
-                        (result.get("sidecar") or {}).get("status")
-                    ) == dataset_sidecar_status_service.STATUS_CURRENT
-                    if not output_is_current:
-                        continue
-                    if not result.get("output_changed"):
-                        unchanged_source_keys.add(dependent_key)
-                        queue.append(dependent_name)
-                        continue
-                    unchanged_source_keys.discard(dependent_key)
-                    status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                        project, reserving, [dependent_name]
-                    )
-                    for status_update in status_updates:
-                        sidecar_snapshot.pop(_key(status_update.get("dataset_name")), None)
                     queue.append(dependent_name)
                     try:
                         from app_server.services import calculated_dataset_service
@@ -1558,6 +1443,7 @@ def refresh_dependents(
                         nested_fresh_names = _unique_names([
                             *calculated_names,
                             *nested_dfm_names,
+                            *(calculated.get("link_updates") or {}).get("refreshed", []),
                         ])
                         nested_failed_names = _unique_names([
                             *failed_calculated_names,
@@ -1578,19 +1464,6 @@ def refresh_dependents(
                             for cache_key in list(dependency_value_cache):
                                 if cache_key[0] == calculated_key:
                                     dependency_value_cache.pop(cache_key, None)
-                        # A nested DFM output that was only status-refreshed
-                        # kept its values; the rest of the fresh names moved.
-                        nested_changed_keys = {
-                            _key(item.get("dataset_name") or item.get("dataset_type"))
-                            for item in nested_dfm.get("updated", [])
-                            if isinstance(item, dict) and item.get("output_changed", True)
-                        }
-                        nested_changed_keys.update(_key(name) for name in calculated_names)
-                        for nested_name in nested_fresh_names:
-                            if _key(nested_name) in nested_changed_keys:
-                                unchanged_source_keys.discard(_key(nested_name))
-                            else:
-                                unchanged_source_keys.add(_key(nested_name))
                         queue.extend(nested_fresh_names)
                         if not calculated.get("ok", True):
                             failed_steps = calculated.get("skipped") or []
@@ -1612,21 +1485,12 @@ def refresh_dependents(
                 else:
                     if result.get("status_refreshed"):
                         status_refreshed.append({"dataset_name": dependent_name})
-                        unchanged_source_keys.add(dependent_key)
                         queue.append(dependent_name)
                     skipped.append({
                         "dataset_name": dependent_name,
                         "reason": result.get("reason") or "not_updated",
                     })
-        review_status_updates = (
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project,
-                reserving,
-                changed_names,
-            )
-            if finalize_method_review_status
-            else []
-        )
+        review_status_updates = []
         if (updated or status_refreshed or review_status_updates) and rebuild_index:
             try:
                 from app_server.services import dataset_instance_index_service

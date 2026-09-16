@@ -61,7 +61,7 @@ class CanonicalTextTests(unittest.TestCase):
                 self.assertEqual(canonical_dataset_formula(raw), expected)
 
     def test_rejects_text_outside_the_grammar(self):
-        for raw in ("=1 + 1", "=[a][1] %", "=[a]", "=([a][1]"):
+        for raw in ("=UNKNOWN(1)", "=[a][1] %", "=[a]", "=([a][1]"):
             with self.subTest(raw=raw):
                 with self.assertRaises(DatasetLinkError):
                     canonical_dataset_formula(raw)

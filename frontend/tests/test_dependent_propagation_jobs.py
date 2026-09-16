@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,8 @@ from fastapi import HTTPException, status
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 SERVER_COMPONENTS_SRC = REPOSITORY_ROOT / "server-components" / "src"
 PYTHON_API_SRC = REPOSITORY_ROOT / "python-api" / "src"
 for path in (FRONTEND_ROOT, SERVER_COMPONENTS_SRC, PYTHON_API_SRC):
@@ -44,7 +47,7 @@ class DependentPropagationJobTests(unittest.TestCase):
     REQUEST_ID = "abcdef0123456789abcdef0123456789"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         (self.root / "projects").mkdir()
         self.instances_dir = self.root / "runtime" / "instances" / "arcrho_engine"
@@ -57,8 +60,14 @@ class DependentPropagationJobTests(unittest.TestCase):
             },
         )
         self.path_patch.start()
+        self.server_patch = patch.object(
+            dependent_propagation_service.propagation_gateway_client,
+            "is_server_process", return_value=True,
+        )
+        self.server_patch.start()
 
     def tearDown(self) -> None:
+        self.server_patch.stop()
         self.path_patch.stop()
         self.temp_dir.cleanup()
 
@@ -105,6 +114,44 @@ class DependentPropagationJobTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             dependent_propagation_service.require_engine_available()
         self.assertEqual(raised.exception.status_code, 503)
+
+    def test_repeated_submission_preserves_existing_status_and_does_not_requeue(self) -> None:
+        self._write_heartbeat()
+        self._submit()
+        request_path = dependent_propagation_request_path(self.root, self.REQUEST_ID)
+        status_path = dependent_propagation_status_path(self.root, self.REQUEST_ID)
+        original_request = request_path.read_bytes()
+        original_status = status_path.read_bytes()
+        self.assertEqual(self._submit()["status"], "queued")
+        self.assertEqual(request_path.read_bytes(), original_request)
+        self.assertEqual(status_path.read_bytes(), original_status)
+        request_path.unlink()
+        for state in ("processing", "success", "error"):
+            with self.subTest(state=state):
+                write_dependent_propagation_status(
+                    self.root, self.REQUEST_ID, state,
+                    progress={"stage": state, "completed": 0, "total": 1, "label": state},
+                )
+                original_status = status_path.read_bytes()
+                self.assertEqual(self._submit()["status"], state)
+                self.assertEqual(status_path.read_bytes(), original_status)
+                self.assertFalse(request_path.exists())
+
+    def test_concurrent_retries_publish_only_once(self) -> None:
+        self._write_heartbeat()
+        publish = dependent_propagation_service._publish_propagation_request
+        with patch.object(
+            dependent_propagation_service, "_publish_propagation_request", wraps=publish,
+        ) as published, ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(
+                lambda unused: dependent_propagation_service.submit_dependent_propagation_job(
+                    "Demo Project", "Class", [{"dataset_name": "Paid"}],
+                    request_id=self.REQUEST_ID,
+                ),
+                range(4),
+            ))
+        published.assert_called_once()
+        self.assertTrue(all(result["status"] == "queued" for result in results))
 
     def test_stale_heartbeat_does_not_count_as_a_live_engine(self) -> None:
         heartbeat = self._write_heartbeat()
@@ -369,9 +416,7 @@ class DependentPropagationJobTests(unittest.TestCase):
         self.assertEqual(payload["status"], "error")
         self.assertEqual(payload["message"], ENGINE_UNAVAILABLE_MESSAGE)
 
-    def test_marked_save_propagation_marks_only_the_first_method_tier(self) -> None:
-        # The save-side marking must stay cheap on a Client PC: the deep
-        # closure is the Engine job's first claimed step, on local disk.
+    def test_save_propagation_preserves_review_status_until_recalculation(self) -> None:
         with (
             patch(
                 "app_server.services.dataset_sidecar_status_service."
@@ -391,12 +436,7 @@ class DependentPropagationJobTests(unittest.TestCase):
                 "Selected Ultimate",
             )
         self.assertEqual(payload["status"], "queued")
-        marker.assert_called_once_with(
-            "Demo Project",
-            "HPPREF\\HO+DF\\NJ",
-            ["Paid Output", "Selected Ultimate"],
-            direct_only=True,
-        )
+        marker.assert_not_called()
 
     def test_no_op_save_payload_shape(self) -> None:
         self.assertEqual(
@@ -566,7 +606,7 @@ class EngineWalkParityTests(unittest.TestCase):
     REQUEST_ID = "feed0123456789abcdef0123456789ab"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.base = Path(self.temp_dir.name)
         self._previous_env = os.environ.get("ARCRHO_RUNTIME_SERVER_ROOT")
 

@@ -244,6 +244,7 @@ export function mountDatasetViewer(container) {
 
     <!-- Triangle -->
     <div class="panel" id="triPanel">
+      <div id="datasetFormulaPanel" hidden aria-label="Dataset Formula"></div>
       <div id="tableWrapHost">
         <div id="tableWrap"></div>
       </div>
@@ -315,13 +316,9 @@ export function mountDatasetViewer(container) {
 
   <div id="ctxMenu" class="ctx-menu" role="menu" style="display:none;">
     <div class="ctx-menu-inner">
-      <button class="ctx-item" data-action="copy_value">Copy values</button>
-      <button class="ctx-item" data-action="paste">Paste</button>
-      <button class="ctx-item" data-action="clear_data">Clear data</button>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item" data-action="toggle_subtotal">Show/Hide subtotal</button>
-      <div class="ctx-sep"></div>
-      <button class="ctx-item" data-action="export_data">Export data</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="copy_value"><span>Copy</span><span class="ctx-shortcut">Ctrl+C</span></button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="paste"><span>Paste</span><span class="ctx-shortcut">Ctrl+V</span></button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="copy_all"><span>Copy All</span><span class="ctx-shortcut">Ctrl+A</span></button>
     </div>
   </div>
 

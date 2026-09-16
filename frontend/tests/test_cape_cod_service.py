@@ -479,7 +479,7 @@ class CapeCodServiceTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 409)
         self.assertIn("already owned by 'Another Method'", str(raised.exception.detail))
 
-    def test_no_op_save_submits_no_engine_propagation_job(self) -> None:
+    def test_no_op_save_submits_engine_propagation_job(self) -> None:
         method = self.write_method_pair()
 
         with (
@@ -501,8 +501,8 @@ class CapeCodServiceTests(unittest.TestCase):
 
         self.assertEqual(result["sidecar"]["status"], 0)
         self.assertTrue(result["propagation_ok"])
-        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
-        enqueue.assert_not_called()
+        self.assertEqual(result["propagation"], enqueue.return_value)
+        enqueue.assert_called_once()
 
     def test_review_needed_save_uses_embedded_snapshots_and_reports_precedents(self) -> None:
         method = self.write_method_pair(status=2)
@@ -671,7 +671,7 @@ class CapeCodServiceTests(unittest.TestCase):
         )
         self.assertEqual(
             result["review_status_updates"],
-            [{"dataset_name": "CC Method", "status": 2}],
+            [],
         )
         self.assertEqual(
             (self.datasets / "CC Method@12.csv").read_text(encoding="utf-8").splitlines(),

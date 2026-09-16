@@ -671,6 +671,16 @@ export function registerDataTabPersistenceController(runtime) {
     } catch {}
   }
 
+  const DERIVED_DATASET_READ_ONLY_MESSAGE = "Only manual/input datasets can be edited or saved here. Update this dataset through its inputs, definition, or method instead.";
+
+  function isDerivedDatasetViewer() {
+    const sourceKind = String(runtime.currentDatasetSidecarSourceKind || state.model?.source_kind || "").trim().toLowerCase();
+    return !isDfmDataTabHost()
+      && (isReadOnlyDatasetViewer
+        || (sourceKind ? sourceKind !== "input" : !isProjectInstanceDraft)
+        || !!getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""));
+  }
+
   function updateDatasetSaveUi() {
     const bar = document.getElementById("datasetSaveBar");
     const saveBtn = document.getElementById("datasetSaveBtn");
@@ -679,13 +689,16 @@ export function registerDataTabPersistenceController(runtime) {
     const clearBtn = document.getElementById("clearCacheReloadBtn");
     const hasContext = hasDatasetSidecarContext(sidecarContextPayload) || hasNotesContext(notesContextPayload);
     const dirty = hasPendingDatasetSaveWork();
+    const allowCleanSave = !isDfmDataTabHost()
+      && hasDatasetSidecarContext(sidecarContextPayload);
     if (bar) bar.hidden = !hasContext || isTemporaryDatasetView;
     updateTabbedPageSaveControls({
       saveButton: saveBtn,
       cancelButton: cancelBtn,
       dirty,
+      allowCleanSave,
       saving: runtime.datasetSaveInFlight,
-      saveBlocked: isTemporaryDatasetView || runtime.datasetInstanceNameConflict || !hasContext || isDraftGridUnavailable(),
+      saveBlocked: isTemporaryDatasetView || isDerivedDatasetViewer() || runtime.datasetInstanceNameConflict || !hasContext || isDraftGridUnavailable(),
       cancelBlocked: isTemporaryDatasetView || !hasContext,
     });
     for (const button of [runBtn, clearBtn]) {
@@ -1073,6 +1086,7 @@ export function registerDataTabPersistenceController(runtime) {
     renderDatasetPrecedents(runtime.currentDatasetPrecedents);
     renderDatasetDependents(data.exists ? data.dependents : []);
     runtime.isSidecarReadOnlyDataset = !!data.exists && sourceKindIsReadOnly(runtime.currentDatasetSidecarSourceKind);
+    updateNotesSaveUi();
     const patchSaveBtn = document.getElementById("saveBtn");
     if (patchSaveBtn && !isReadOnlyDatasetViewer) {
       patchSaveBtn.disabled = runtime.isSidecarReadOnlyDataset;
@@ -1112,6 +1126,9 @@ export function registerDataTabPersistenceController(runtime) {
   const datasetSaveProgress = createArcRhoSaveProgress({ subject: "Dataset", noun: "dataset" });
 
   async function saveDatasetSidecarForCurrentContext(progress = null) {
+    if (isDerivedDatasetViewer()) {
+      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view does not save permanent dataset sidecars." };
     }
@@ -1224,6 +1241,9 @@ export function registerDataTabPersistenceController(runtime) {
     };
   }
   async function saveDatasetChanges(options = {}) {
+    if (isDerivedDatasetViewer()) {
+      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view is read-only and cannot save permanent dataset changes." };
     }
@@ -1237,13 +1257,18 @@ export function registerDataTabPersistenceController(runtime) {
     updateDatasetSaveUi();
     void getDataTabLinksController()?.refresh?.();
     let saveStatus = buildDatasetSaveStatus();
-    // A save with nothing dirty writes nothing and enqueues no walk, so it
-    // counts as clean for the close-on-save decision.
     let propagationClean = true;
     let refreshedDatasets = [];
     let linkWarnings = [];
     try {
-      if (datasetSettingsDirty || hasManualInputGridChanges() || linkControllerNames.some((name) => runtime[name].isDirty()) || notesDirty || isUnsavedProjectInstanceDraft()) {
+      if (
+        datasetSettingsDirty
+        || hasManualInputGridChanges()
+        || linkControllerNames.some((name) => runtime[name].isDirty())
+        || notesDirty
+        || isUnsavedProjectInstanceDraft()
+        || (!isDfmDataTabHost() && hasDatasetSidecarContext(sidecarContextPayload))
+      ) {
         const sidecarResult = await saveDatasetSidecarForCurrentContext(progress);
         if (!sidecarResult.ok) return sidecarResult;
         saveStatus = buildDatasetSaveStatus(sidecarResult.data);
@@ -1426,9 +1451,21 @@ export function registerDataTabPersistenceController(runtime) {
   function updateNotesSaveUi() {
     const { saveState } = getNotesEditorElements();
     const hasContext = !!notesContextKey && hasNotesContext(notesContextPayload);
+    const readOnly = isTemporaryDatasetView || isDerivedDatasetViewer();
+    const { input, styleControls } = datasetNotesController?.elements || {};
+    if (input) input.readOnly = readOnly;
+    for (const control of Object.values(styleControls || {})) {
+      if (control) control.disabled = readOnly;
+    }
 
     if (!saveState) return;
     saveState.classList.remove("is-dirty", "is-clean", "is-hidden");
+    if (isDerivedDatasetViewer()) {
+      saveState.textContent = "Read-only dataset";
+      saveState.classList.add("is-clean");
+      updateDatasetSaveUi();
+      return;
+    }
     if (isTemporaryDatasetView) {
       saveState.textContent = "Read-only in temporary view";
       saveState.classList.add("is-clean");
@@ -1461,6 +1498,9 @@ export function registerDataTabPersistenceController(runtime) {
   }
 
   async function saveNotesForPayload(payload, options = {}) {
+    if (isDerivedDatasetViewer()) {
+      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view is read-only and cannot save notes." };
     }
@@ -1597,6 +1637,8 @@ export function registerDataTabPersistenceController(runtime) {
 
 
   Object.assign(runtime, {
+    isDerivedDatasetViewer,
+    DERIVED_DATASET_READ_ONLY_MESSAGE,
     wireDataTabPersistenceLifecycle,
     buildDatasetSidecarContextPayload, hasDatasetSidecarContext,
     buildDatasetSidecarContextKey, getCurrentDatasetSettings,

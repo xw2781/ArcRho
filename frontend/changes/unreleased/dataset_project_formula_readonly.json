@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Allow user saves only for manual/input datasets; calculated, engine-generated, and method outputs remain read-only in the Dataset Viewer."
+}

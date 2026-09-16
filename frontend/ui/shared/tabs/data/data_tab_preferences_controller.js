@@ -368,6 +368,7 @@ export function registerDataTabPreferencesController(runtime) {
 
   function isDatasetReadOnly() {
     return isTemporaryDatasetView
+      || runtime.isDerivedDatasetViewer()
       || isReadOnlyDatasetViewer
       || runtime.isSidecarReadOnlyDataset
       || runtime.datasetSaveInFlight
@@ -380,6 +381,7 @@ export function registerDataTabPreferencesController(runtime) {
   // Every refusal the grid, the Links tab and the patch save report comes from
   // here, so the reason a reader sees always matches the rule that stopped them.
   function getDatasetReadOnlyMessage() {
+    if (runtime.isDerivedDatasetViewer()) return runtime.DERIVED_DATASET_READ_ONLY_MESSAGE;
     const coarseOnly = !isTemporaryDatasetView
       && !isReadOnlyDatasetViewer
       && !runtime.isSidecarReadOnlyDataset

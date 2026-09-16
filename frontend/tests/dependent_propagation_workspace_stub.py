@@ -18,7 +18,8 @@ from unittest import mock
 
 from app_server.services import dependent_propagation_service
 
-_TESTS_DIR = Path(__file__).resolve().parent
+_TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
+_TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def _fake_submit(project_name, reserving_class, changed_roots, *, request_id=None):
@@ -38,7 +39,7 @@ class IsolatedPropagationWorkspace:
     """
 
     def start(self) -> "IsolatedPropagationWorkspace":
-        self._temp = tempfile.TemporaryDirectory(dir=str(_TESTS_DIR))
+        self._temp = tempfile.TemporaryDirectory(dir=_TEST_TEMP_ROOT)
         root = Path(self._temp.name)
         instances = root / "runtime" / "instances" / "arcrho_engine"
         instances.mkdir(parents=True)
@@ -46,6 +47,10 @@ class IsolatedPropagationWorkspace:
             '{"Server": "test"}\n', encoding="utf-8"
         )
         self._patches = [
+            mock.patch.object(
+                dependent_propagation_service.propagation_gateway_client,
+                "is_server_process", return_value=True,
+            ),
             mock.patch.object(
                 dependent_propagation_service.config,
                 "load_workspace_paths",

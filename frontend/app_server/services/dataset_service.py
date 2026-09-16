@@ -1410,7 +1410,6 @@ def _create_empty_cached_dataset_impl(
     except OSError as err:
         raise HTTPException(500, f"Failed to create empty dataset cache: {str(err)}")
 
-    dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [instance])
     calculated_updates = dependent_propagation_service.enqueue_save_propagation(
         p,
         rc,
@@ -2695,7 +2694,7 @@ def _save_dataset_sidecar_impl(
         rc,
         payload.get("precedents"),
     ) if method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE else []
-    status_updates = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(p, rc, [ds])
+    status_updates = []
 
     calculated_updates = dependent_propagation_service.enqueue_save_propagation(
         p,
@@ -3001,15 +3000,6 @@ def _patch_dataset_impl(
     else:
         atomic_write_csv(df, path)
     st2 = os.stat(path)
-    if sidecar_payload:
-        try:
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                str(sidecar_payload.get("project_name") or ""),
-                str(sidecar_payload.get("reserving_class") or ""),
-                [sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type")],
-            )
-        except Exception:
-            pass
     calculated_updates: Dict[str, Any] | None = None
     if sidecar_payload:
         project_value = str(sidecar_payload.get("project_name") or "").strip()

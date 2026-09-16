@@ -519,10 +519,6 @@ test("only the Dataset window shows a Stored at value beside each length", () =>
 // keep that shape until they are saved.
 
 test("a cleared dataset is reshaped in place and keeps the lengths its new values take", () => {
-  // The menu command that empties the grid, shown only while it is editable.
-  assert.match(datasetViewerViewSource, /data-action="clear_data">Clear data</u);
-  assert.match(gridInteractionsSource, /canClearData: \(\) => !isReadOnly\(\) && !!getDisplayDatasetModel\(\),/u);
-  assert.match(gridInteractionsSource, /if \(action === "clear_data"\) return clearAllCells\(\);/u);
   // A length change on an all-zero dataset rebuilds the grid empty rather than
   // running it, since the run would read the file's old values back.
   assert.match(dataControlsSource, /return typeof refreshClearedDatasetModel === "function" && await refreshClearedDatasetModel\(\);/u);
@@ -730,7 +726,7 @@ test("a length change is a display setting the save keeps, not a value edit", ()
   assert.match(persistenceControllerSource, /left\.origin_length === right\.origin_length/u);
   assert.match(
     persistenceControllerSource,
-    /saveBlocked: isTemporaryDatasetView \|\| runtime\.datasetInstanceNameConflict \|\| !hasContext \|\| isDraftGridUnavailable\(\)/u,
+    /saveBlocked: isTemporaryDatasetView \|\| isDerivedDatasetViewer\(\) \|\| runtime\.datasetInstanceNameConflict \|\| !hasContext \|\| isDraftGridUnavailable\(\)/u,
   );
   // Going back down to the stored period is always allowed, so an edit is
   // never one save away from being locked out: the floor is the stored pair.

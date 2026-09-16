@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dependent propagation",
+  "audience": "user",
+  "summary": "Keep reviewed methods green when full downstream recalculation leaves their meaningful content unchanged.",
+  "details": [
+    "Every downstream object still recalculates and updates its timestamp, user, and audit metadata.",
+    "Changed method content or cached values require review; existing review alerts remain until an explicit save."
+  ]
+}

@@ -605,13 +605,7 @@ def _refresh_one(
     sidecar_cache: Dict[str, Dict[str, Any]],
     method_payload: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    """Recompute one B&S output from its sources and republish what moved.
-
-    The output CSV, the sidecar's Last Modified and Audit Log, and the method's
-    ``last_modified`` stamp change together, and only when the numbers did;
-    an unchanged output only has its review status restored to Current, which
-    the walk's finalize step re-marks as it does for every other method.
-    """
+    """Recompute and republish one B&S output with refreshed metadata."""
 
     method_type = dataset_sidecar_status_service.normalize_method_type(
         sidecar.get("method_type"), sidecar.get("source_kind")
@@ -692,25 +686,27 @@ def _refresh_one(
     updated_sidecar["status"] = dataset_sidecar_status_service.STATUS_CURRENT
     updated_method: Dict[str, Any] = method
     files: Dict[str, str] = {}
-    if output_changed:
-        now = utc_now_text()
-        user = user_identity_service.get_current_display_name() or getpass.getuser()
-        updated_sidecar["csv_file"] = csv_file
-        updated_sidecar["updated_at"] = now
-        updated_sidecar["modified_by"] = user
-        updated_sidecar["audit_log"] = append_audit_entry(
-            sidecar.get("audit_log"),
-            event_date=now,
-            action=AUDIT_ACTION_AUTO_REFRESH,
-            user=user,
-        )
-        updated_method = deepcopy(method)
-        metadata = updated_method.get("method_metadata")
-        metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
-        metadata["last_modified"] = now
-        updated_method["method_metadata"] = metadata
-        files[csv_path] = csv_text
-        files[method_path] = persisted_json_text(updated_method)
+    now = utc_now_text()
+    user = user_identity_service.get_current_display_name() or getpass.getuser()
+    updated_sidecar["csv_file"] = csv_file
+    updated_sidecar["updated_at"] = now
+    updated_sidecar["modified_by"] = user
+    updated_sidecar["audit_log"] = append_audit_entry(
+        sidecar.get("audit_log"),
+        event_date=now,
+        action=AUDIT_ACTION_AUTO_REFRESH,
+        user=user,
+    )
+    updated_method = deepcopy(method)
+    metadata = updated_method.get("method_metadata")
+    metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+    metadata["last_modified"] = now
+    updated_method["method_metadata"] = metadata
+    files[csv_path] = csv_text
+    files[method_path] = persisted_json_text(updated_method)
+    from app_server.services.method_review_service import refreshed_status
+
+    updated_sidecar["status"] = refreshed_status(sidecar, files)
     # The sidecar goes last so a failure on the way leaves the old publication
     # whole; an unchanged file is not rewritten.
     files[sidecar_path] = persisted_json_text(finalize_sidecar(updated_sidecar))
@@ -719,12 +715,9 @@ def _refresh_one(
         "ok": True,
         "dataset_name": output_dataset,
         "dataset_type": _clean(sidecar.get("dataset_type")) or output_dataset,
-        "updated": output_changed,
+        "updated": True,
         "output_changed": output_changed,
-        "status_refreshed": (
-            dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
-            == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
-        ),
+        "status_refreshed": False,
         "method": updated_method,
         "sidecar": updated_sidecar,
         "changed_paths": changed_paths,
@@ -920,16 +913,7 @@ def refresh_dependents(
                             "status_refreshed" if result.get("status_refreshed") else "not_updated"
                         ),
                     })
-                if not result.get("output_changed") and not result.get("status_refreshed"):
-                    continue
                 blocked_keys.discard(_key(dependent_name))
-                touched = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                    project,
-                    reserving,
-                    [dependent_name],
-                )
-                for item in touched:
-                    sidecar_cache.pop(_key(item.get("dataset_name")), None)
                 queue.append(dependent_name)
                 try:
                     cascade = _refresh_downstream_domains(
@@ -964,15 +948,7 @@ def refresh_dependents(
                         "dataset_name": dependent_name,
                         "reason": f"Downstream refresh failed after B&S publication: {exc}",
                     })
-        review_status_updates = (
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project,
-                reserving,
-                changed_names,
-            )
-            if finalize_method_review_status
-            else []
-        )
+        review_status_updates = []
         if (updated or status_refreshed or review_status_updates) and rebuild_index:
             try:
                 from app_server.services import dataset_instance_index_service

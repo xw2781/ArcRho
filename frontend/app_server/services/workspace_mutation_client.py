@@ -59,12 +59,14 @@ def run_workspace_mutation(
     kwargs: Mapping[str, Any],
     *,
     local: Callable[[], Dict[str, Any]],
+    gateway_required: bool = False,
 ) -> Dict[str, Any]:
     """Serve one registered mutation over the gateway when possible, else locally.
 
     ``local`` runs the canonical service function in this process. It is used
     only when the gateway is unavailable, disabled, or has not advertised the
     kind — never after a request the server may already have acted on.
+    Gateway-required operations refuse instead of falling back on Client PCs.
     """
 
     started_ns = time.perf_counter_ns()
@@ -118,9 +120,13 @@ def run_workspace_mutation(
                     mutation_kind=mutation_kind,
                     kwargs=kwargs,
                     user_name=str(gateway_config["user"]),
-                    user_display_name=user_identity_service.get_current_identity()["display_name"],
+                    user_display_name=(
+                        "" if gateway_required else user_identity_service.get_current_identity()["display_name"]
+                    ),
                 )
-            except WorkspaceMutationContractError:
+            except WorkspaceMutationContractError as error:
+                if gateway_required:
+                    raise HTTPException(400, str(error)) from error
                 # Nothing was sent, so the canonical service still owns this
                 # request's answer: running it locally reports the same refusal
                 # a Client PC without a gateway would have seen, rather than
@@ -160,6 +166,8 @@ def run_workspace_mutation(
                     payload, server_root, workspace_read_client._client_workspace_root()
                 )
                 return _finish(payload)
+        if gateway_required and context["reason"] != "server_process":
+            raise HTTPException(503, "ArcRho Gateway is required for this operation and is unavailable or needs updating.")
         return _finish(local())
     except HTTPException as error:
         http_status = int(error.status_code)

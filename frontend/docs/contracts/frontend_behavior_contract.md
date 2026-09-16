@@ -24,6 +24,14 @@ This contract applies when changing shell/tab orchestration, iframe pages, keybo
 
     The reserving-class row is read-only on every Details tab and has no picker: the host fixes the segment. A picker field opens its list only from its own button; clicking or tabbing into the text box places a caret, and typing or `ArrowDown` may still filter or open a combobox list.
 
+Dataset Viewer editing and save eligibility allows only manual/input datasets and new manual drafts. Non-input or unresolved source kinds, an explicit read-only viewer, or a nonempty project Dataset Type formula block viewer save commands, including clean saves and keyboard saves. Derived outputs still refresh through propagation and owning method saves.
+
+An eligible Dataset Viewer or method Save remains available while clean and triggers full downstream recalculation. Dirty state continues to govern unsaved-change prompts, not propagation eligibility.
+
+Dataset Viewer Data exposes Copy, eligible manual/input Paste, and Copy All with muted shortcut hints. Ctrl/Cmd+A selects and copies the displayed grid when the grid owns keyboard focus. Manual/input datasets keep the cell formula editor in a separate full-width panel above the table; the existing editing and read-only rules still apply.
+
+The manual Data formula panel provides a compact formula field with Enter to apply and Escape to cancel edits. Plain numeric edits remain values, while `=` expressions use the canonical dataset-cell formula grammar and retain their formula links on save.
+
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.

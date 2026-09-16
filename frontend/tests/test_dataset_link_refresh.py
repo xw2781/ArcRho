@@ -171,8 +171,8 @@ class LinkDrivenWalkTests(unittest.TestCase):
             },
         }
         results = {
-            "Linked A": {"ok": True, "refreshed": True, "changed": True, "warnings": []},
-            "Linked B": {"ok": True, "refreshed": True, "changed": True, "warnings": []},
+            "Linked A": {"ok": True, "refreshed": True, "changed": False, "warnings": []},
+            "Linked B": {"ok": True, "refreshed": True, "changed": False, "warnings": []},
         }
 
         fresh, link_updates, calls = self._walk(sidecars, results, ["Root"])
@@ -243,7 +243,7 @@ class LinkDrivenWalkTests(unittest.TestCase):
 
         fresh, link_updates, _calls = self._walk(sidecars, results, ["Root"])
 
-        self.assertEqual(fresh, [])
+        self.assertEqual(fresh, ["Warned"])
         self.assertEqual(link_updates["failed"], ["Broken"])
         self.assertEqual(
             link_updates["errors"],
@@ -382,7 +382,9 @@ class RefreshDatasetLinksTests(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertEqual(len(result["warnings"]), 1)
         self.assertIn("keep their last values", result["warnings"][0]["reason"])
-        self.assertNotIn("values", written)
+        self.assertEqual(written["values"], [[111.0], [222.0]])
+        self.assertTrue(written["payload"]["updated_at"])
+        self.assertTrue(written["payload"]["modified_by"])
 
     def test_a_missing_arcrho_source_fails_the_refresh(self) -> None:
         target = _vector(

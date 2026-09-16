@@ -101,7 +101,7 @@ test("normalizes formula links, deduplicates, and enforces one owner per target 
   const normalized = formulaLinks.normalizeDatasetFormulaLinks([
     { formula: " [ C 82 - Prior Qtr Selected ][ 1 : 2 ]*2 ", target_cells: LINK.target_cells },
     LINK,
-    { formula: "=2 * 3", target_cells: [{ row: 5, column: 0, result_row: 0, result_column: 0 }] },
+    { formula: "=UNKNOWN(2)", target_cells: [{ row: 5, column: 0, result_row: 0, result_column: 0 }] },
     { formula: "=[C 84][1] +", target_cells: [{ row: 6, column: 0, result_row: 0, result_column: 0 }] },
     { formula: "=[C 84][1] + 1", target_cells: [{ row: 0, column: 0, result_row: 0, result_column: 0 }] },
     { formula: "=[C 84][1] + 1", target_cells: [{ row: 7, column: 0, result_row: -1, result_column: 0 }] },
@@ -304,4 +304,21 @@ test("a calculated range wears the formula colour on its perimeter", () => {
     /:root\[data-arcrho-theme="dark"\] \{[^}]*--ar-spreadsheet-formula-link-border: #b08cff;/u,
   );
   assert.match(spreadsheetCss, /td\.arFormulaLinkErrorCell \{/u);
+});
+
+test("a constant-only function formula persists and refreshes without source reads", async () => {
+  const { state, controller, resolveCalls, excelCalls } = controllerWith();
+  const result = await controller.commitReference({ displayRow: 0, displayColumn: 0, reference: "=SUM(2, 3)" });
+  assert.equal(result.ok, true);
+  assert.equal(state.model.values[0][0], 5);
+  const saved = controller.serialize();
+  assert.equal(saved[0].formula, "=SUM(2, 3)");
+  assert.deepEqual(formulaLinks.normalizeDatasetFormulaLinks(saved), saved);
+  state.model.values[0][0] = 0;
+  controller.load(saved);
+  const refreshed = await controller.refreshAll();
+  assert.equal(refreshed.failedCount, 0);
+  assert.equal(state.model.values[0][0], 5);
+  assert.deepEqual(resolveCalls, []);
+  assert.deepEqual(excelCalls, []);
 });

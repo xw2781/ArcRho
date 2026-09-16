@@ -14,6 +14,8 @@ from fastapi import HTTPException
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 PYTHON_API_SRC = REPOSITORY_ROOT / "python-api" / "src"
 for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(path) not in sys.path:
@@ -39,7 +41,13 @@ class EngineHostedSaveClientTests(unittest.TestCase):
     """The client half: submit, poll, and map the Engine's outcome."""
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        server_patch = patch.object(
+            dependent_propagation_service.propagation_gateway_client,
+            "is_server_process", return_value=True,
+        )
+        server_patch.start()
+        self.addCleanup(server_patch.stop)
         self.root = Path(self.temp_dir.name)
         (self.root / "projects").mkdir()
         self.instances_dir = self.root / "runtime" / "instances" / "arcrho_engine"
@@ -671,7 +679,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
 
 class ClientSaveLatencyLogTests(unittest.TestCase):
     def test_a_log_write_failure_is_best_effort(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             blocked_parent = Path(temp_dir) / "not-a-folder"
             blocked_parent.write_text("occupied", encoding="utf-8")
             with patch.object(
@@ -685,7 +693,7 @@ class ClientSaveLatencyLogTests(unittest.TestCase):
         self.assertFalse(written)
 
     def test_log_rotates_locally_and_each_line_is_valid_json(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir:
             log_path = Path(temp_dir) / "logs" / "client_save_latency.jsonl"
             with (
                 patch.object(
@@ -868,9 +876,7 @@ class InlineEnginePropagationTests(unittest.TestCase):
         self.assertEqual(payload["status"], "queued")
         self.assertEqual(payload["job_id"], "abc")
 
-    def test_the_marked_variant_skips_marking_only_when_inline(self) -> None:
-        # The inline decision lives in enqueue_save_propagation; this function
-        # only declines to pay for marking the inline walk would redo.
+    def test_enqueue_preserves_review_until_recalculation_inline_or_queued(self) -> None:
         with (
             patch(
                 "app_server.services.dataset_sidecar_status_service"
@@ -895,7 +901,7 @@ class InlineEnginePropagationTests(unittest.TestCase):
                 dependent_propagation_service.enqueue_marked_save_propagation(
                     "Demo Project", "HPPREF\\HO+DF\\NJ", "Paid Output"
                 )
-            marking.assert_called_once()
+            marking.assert_not_called()
 
     def test_a_failed_inline_walk_reports_in_the_payload_not_an_error(self) -> None:
         with patch(

@@ -31,7 +31,6 @@ from arcrho_api.bootstrap_contract import (
     method_revisions,
     normalize_bootstrap_method,
     recalculate_bootstrap_method,
-    snapshot_revision,
 )
 from arcrho_api.dfm_contract import DFM_JSON_FORMAT
 from arcrho_api.io import persisted_json_text
@@ -757,6 +756,10 @@ def _publish(
         files = {_method_path(project_name, reserving_class, method_name): _json_text(payload)}
         if write_outputs:
             files.update(_output_files(project_name, reserving_class, payload))
+        if automatic:
+            from app_server.services.method_review_service import refreshed_status
+
+            sidecar["status"] = refreshed_status(existing_sidecar, files)
         files[sidecar_path] = _json_text(sidecar)
         changed_paths = _commit_text_files(files, last_paths=[sidecar_path])
     except Exception:
@@ -1023,15 +1026,12 @@ def save_bootstrap_method(
         graph_precedents,
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
-    if publication_changed:
-        response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
-            project,
-            reserving,
-            output_dataset,
-            _clean(_details(refreshed).get("output_type")) or output_dataset,
-        )
-    else:
-        response["propagation"] = dependent_propagation_service.unchanged_propagation()
+    response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
+        project,
+        reserving,
+        output_dataset,
+        _clean(_details(refreshed).get("output_type")) or output_dataset,
+    )
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     response["index_ok"] = bool(response["propagation"].get("index_ok", True))
@@ -1139,28 +1139,6 @@ def _refresh_one(
             "skipped": True,
             "reason": "stale_reverse_dependency_edge",
         }
-    if roles == {"dfm"}:
-        # A 10,000-simulation run costs about 1.4 s under the reserving-class
-        # lock, so a DFM save that left the observed triangle and the selected
-        # ratios untouched must not trigger one.
-        snapshots = _source_snapshots(
-            project_name,
-            reserving_class,
-            method,
-            roles,
-            allow_review_needed=True,
-            sidecar_cache=sidecar_cache,
-            snapshot_cache=snapshot_cache,
-            dfm_cache=dfm_cache,
-        )
-        incoming = snapshots.get("dfm") or {}
-        if snapshot_revision(incoming) == _clean(_details(method).get("dfm_source_revision")):
-            return {
-                "ok": True,
-                "dataset_name": output_dataset,
-                "skipped": True,
-                "reason": "dfm_snapshot_unchanged",
-            }
     refreshed = _recalculate_with_sources(
         project_name,
         reserving_class,
@@ -1174,35 +1152,26 @@ def _refresh_one(
     )
     before_revisions = _revision_response(method)
     after_revisions = _revision_response(refreshed)
-    if before_revisions["derived_revision"] == after_revisions["derived_revision"]:
-        # Preserve method bytes when a source save did not change the embedded
-        # snapshot; only a Review Needed sidecar may need restoration.
-        refreshed["method_metadata"]["data_refreshed"] = method["method_metadata"]["data_refreshed"]
     output_changed = (
         before_revisions["publication_revision"]
         != after_revisions["publication_revision"]
     )
-    before_text = _json_text(method)
-    after_text = _json_text(refreshed)
     updated_sidecar, changed_paths = _publish(
         project_name,
         reserving_class,
         refreshed,
         sidecar,
         notes=None,
-        # A rewritten method is a modification of its output dataset even when
-        # the published values held: the sidecar's Last Modified and Audit Log
-        # move with the file.
-        changed=output_changed or before_text != after_text,
+        changed=True,
         automatic=True,
-        write_outputs=output_changed,
+        write_outputs=True,
         dfm_cache=dfm_cache,
     )
     return {
         "ok": True,
         "dataset_name": output_dataset,
         "dataset_type": _clean(_details(refreshed).get("output_type")) or output_dataset,
-        "updated": before_text != after_text,
+        "updated": True,
         "output_changed": output_changed,
         "status_refreshed": (
             dataset_sidecar_status_service.normalize_status(sidecar.get("status"))
@@ -1358,19 +1327,12 @@ def refresh_bootstrap_method(
         "output_changed": bool(result.get("output_changed")),
         "status_refreshed": bool(result.get("status_refreshed")),
     })
-    if response["output_changed"] or response["status_refreshed"]:
-        response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
-            project,
-            reserving,
-            output_name,
-            _clean(result.get("dataset_type")) or output_name,
-        )
-    else:
-        response["propagation"] = {
-            "ok": True,
-            "skipped": True,
-            "reason": "publication_unchanged",
-        }
+    response["propagation"] = dependent_propagation_service.enqueue_marked_save_propagation(
+        project,
+        reserving,
+        output_name,
+        _clean(result.get("dataset_type")) or output_name,
+    )
     response["propagation_ok"] = bool(response["propagation"].get("ok"))
     response["calculated_updates"] = response["propagation"]
     response["index_ok"] = bool(response["propagation"].get("index_ok", True))
@@ -1525,16 +1487,7 @@ def refresh_dependents(
                             "status_refreshed" if result.get("status_refreshed") else "not_updated"
                         ),
                     })
-                if not result.get("output_changed") and not result.get("status_refreshed"):
-                    continue
                 blocked_keys.discard(_key(dependent_name))
-                touched = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                    project,
-                    reserving,
-                    [dependent_name],
-                )
-                for item in touched:
-                    sidecar_cache.pop(_key(item.get("dataset_name")), None)
                 queue.append(dependent_name)
                 try:
                     cascade = _refresh_downstream_domains(
@@ -1568,15 +1521,7 @@ def refresh_dependents(
                         "dataset_name": dependent_name,
                         "reason": f"Downstream refresh failed after Bootstrap publication: {exc}",
                     })
-        review_status_updates = (
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                project,
-                reserving,
-                changed_names,
-            )
-            if finalize_method_review_status
-            else []
-        )
+        review_status_updates = []
         if (updated or status_refreshed or review_status_updates) and rebuild_index:
             try:
                 from app_server.services import dataset_instance_index_service

@@ -6,6 +6,7 @@ locally over the mapped drive otherwise. Reads are pure functions of the
 workspace, so — unlike hosted saves — an uncertain HTTP outcome may safely
 fall back to the local path; the transport actually used is recorded in the
 client read-latency log so the two can be compared like for like.
+Gateway-required operations disable that fallback on Client PCs.
 
 A gateway response carries the workspace root the read ran against. Any
 machine-local path in the payload (index folder paths, the cached CSV path,
@@ -40,6 +41,7 @@ from arcrho_workspace_read_contract import (
     WORKSPACE_READ_PATH,
     WORKSPACE_READ_TIMEOUT_SECONDS,
     WORKSPACE_ROOT_HEADER,
+    WorkspaceReadContractError,
     build_workspace_read_request,
 )
 
@@ -278,6 +280,7 @@ def run_workspace_read(
     *,
     local: Callable[[], Dict[str, Any]],
     finalize: Callable[[Dict[str, Any]], Dict[str, Any]] | None = None,
+    gateway_required: bool = False,
 ) -> Dict[str, Any]:
     """Serve one registered read over the gateway when possible, else locally.
 
@@ -333,7 +336,9 @@ def run_workspace_read(
                 read_kind=read_kind,
                 kwargs=kwargs,
                 user_name=str(gateway_config["user"]),
-                user_display_name=user_identity_service.get_current_identity()["display_name"],
+                user_display_name=(
+                    "" if gateway_required else user_identity_service.get_current_identity()["display_name"]
+                ),
             )
             remote_started_ns = time.perf_counter_ns()
             try:
@@ -345,13 +350,13 @@ def run_workspace_read(
                 )
             except GatewayTransportFailure as failure:
                 remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                if failure.timed_out:
+                if failure.timed_out or gateway_required:
                     context["transport"] = TRANSPORT_HTTP
                     context["reason"] = failure.reason
                     raise HTTPException(
-                        504,
-                        "The ArcRho Server took too long to answer this read. "
-                        "Try again in a moment.",
+                        504 if failure.timed_out else 503,
+                        "The ArcRho Server took too long to answer this read. Try again in a moment."
+                        if failure.timed_out else "ArcRho Gateway could not answer this request.",
                     ) from failure
                 context["reason"] = failure.reason
             except HTTPException:
@@ -365,7 +370,12 @@ def run_workspace_read(
                 if finalize is not None:
                     payload = finalize(payload)
                 return _finish(payload)
+        if gateway_required and context["reason"] != "server_process":
+            raise HTTPException(503, "ArcRho Gateway is required for this operation and is unavailable or needs updating.")
         return _finish(local())
+    except WorkspaceReadContractError as error:
+        http_status = 400
+        raise HTTPException(400, str(error)) from error
     except HTTPException as error:
         http_status = int(error.status_code)
         raise

@@ -10,6 +10,8 @@ from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 PYTHON_API_SRC = REPO_ROOT / "python-api" / "src"
 for path in (FRONTEND_ROOT, PYTHON_API_SRC):
@@ -43,7 +45,7 @@ def _csv(rows: list[list[float | None]], width: int) -> str:
 
 class BerquistShermanRefreshTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT / "tests"))
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         root = Path(self.temp.name)
         self.methods = root / "methods"
         self.datasets = root / "datasets"
@@ -217,7 +219,7 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         csv_text = (self.datasets / f"{OUTPUT}@12@12@cum@dev.csv").read_text(encoding="utf-8")
         self.assertEqual(csv_text, berquist_sherman_output_csv_text(self.expected_output([20, 20, 40]), 3))
         sidecar = self.read_json(self.sidecars / f"{OUTPUT}.json")
-        self.assertEqual(sidecar["status"], 0)
+        self.assertEqual(sidecar["status"], 2)
         self.assertEqual(sidecar["modified_by"], "Engine Walker")
         self.assertNotEqual(sidecar["updated_at"], "2026-01-01T00:00:00.000Z")
         self.assertEqual(sidecar["audit_log"][-1]["action"], AUDIT_ACTION_AUTO_REFRESH)
@@ -229,7 +231,7 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         # The stored selections are the page's; the refresh does not rewrite them.
         self.assertEqual(method["method_tab"], self.method_payload()["method_tab"])
 
-    def test_an_unchanged_output_only_restores_the_review_status(self) -> None:
+    def test_an_unchanged_output_refreshes_metadata_and_cascades(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 20])
         csv_path = self.datasets / f"{OUTPUT}@12@12@cum@dev.csv"
         before_csv = csv_path.read_text(encoding="utf-8")
@@ -239,16 +241,15 @@ class BerquistShermanRefreshTests(unittest.TestCase):
             )
 
         self.assertTrue(report["ok"], report)
-        self.assertEqual(report["updated"], [])
-        self.assertEqual(report["status_refreshed"], [{"dataset_name": OUTPUT}])
+        self.assertEqual(report["updated"][0]["dataset_name"], OUTPUT)
+        self.assertEqual(report["status_refreshed"], [])
         self.assertEqual(csv_path.read_text(encoding="utf-8"), before_csv)
         sidecar = self.read_json(self.sidecars / f"{OUTPUT}.json")
-        self.assertEqual(sidecar["status"], 0)
-        self.assertEqual(sidecar["updated_at"], "2026-01-01T00:00:00.000Z")
-        self.assertEqual(len(sidecar["audit_log"]), 1)
+        self.assertEqual(sidecar["status"], 2)
+        self.assertNotEqual(sidecar["updated_at"], "2026-01-01T00:00:00.000Z")
+        self.assertEqual(len(sidecar["audit_log"]), 2)
         method = self.read_json(self.methods / f"BSSR@{OUTPUT}.json")
-        self.assertEqual(method["method_metadata"]["last_modified"], "2026-01-01T00:00:00.000Z")
-        # A restored status still tells the downstream domains the source is fresh.
+        self.assertEqual(method["method_metadata"]["last_modified"], sidecar["updated_at"])
         cascade.assert_called_once()
 
     def test_a_source_the_refresh_cannot_read_marks_the_output_for_review(self) -> None:

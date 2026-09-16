@@ -25,13 +25,17 @@ function saveBar() {
 test("Save stays available on a clean page whose object needs review", () => {
   const clean = saveBar();
   updateTabbedPageSaveControls({ ...clean, dirty: false, needsReview: false });
-  assert.equal(clean.saveButton.disabled, true, "a clean up-to-date object has nothing to save");
+  assert.equal(clean.saveButton.disabled, false, "a clean object can force downstream refresh");
 
   const review = saveBar();
   updateTabbedPageSaveControls({ ...review, dirty: false, needsReview: true });
   assert.equal(review.saveButton.disabled, false, "re-saving unchanged is how the flag is cleared");
   assert.equal(review.saveButton.classes.has("is-clean"), true, "an unedited page keeps the neutral style");
   assert.equal(review.cancelButton.disabled, false);
+
+  const refresh = saveBar();
+  updateTabbedPageSaveControls({ ...refresh, dirty: false, allowCleanSave: true });
+  assert.equal(refresh.saveButton.disabled, false, "an explicit refresh save is available while clean");
 
   const dirty = saveBar();
   updateTabbedPageSaveControls({ ...dirty, dirty: true, needsReview: false });

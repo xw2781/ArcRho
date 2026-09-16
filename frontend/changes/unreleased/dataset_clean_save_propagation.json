@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving an unchanged dataset now refreshes its downstream datasets."
+}

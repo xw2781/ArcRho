@@ -46,7 +46,7 @@ class FormulaCanonicalTextTests(unittest.TestCase):
     def test_rejects_formulas_outside_the_grammar(self) -> None:
         invalid = (
             "",
-            "=2 * 3",
+            "=UNKNOWN(2)",
             "=[C 82][1:7] *",
             "=[C 82]",
             "=[C 82][1:7] $ 2",
@@ -107,7 +107,7 @@ class FormulaLinkNormalizationTests(unittest.TestCase):
     def test_invalid_direct_service_input_raises_http_400(self) -> None:
         invalid_values = (
             "not-a-list",
-            [{"formula": "=2 * 3", "target_cells": TARGETS}],
+            [{"formula": "=UNKNOWN(2)", "target_cells": TARGETS}],
             [{"formula": FORMULA, "target_cells": []}],
             [{"formula": FORMULA, "target_cells": [{"row": True, "column": 0, "result_row": 0, "result_column": 0}]}],
             [{"formula": FORMULA, "target_cells": [{"row": 0, "column": 0, "result_row": 0}]}],
@@ -158,6 +158,7 @@ class FormulaLinkSidecarTests(unittest.TestCase):
             written["payload"] = copy.deepcopy(payload)
 
         with (
+            patch.object(dataset_service.dependent_propagation_service, "require_reserving_class_writable"),
             patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
             patch.object(dataset_service, "_read_dataset_sidecar", return_value=copy.deepcopy(self.existing)),
             patch.object(dataset_service, "_write_dataset_sidecar_payload", side_effect=capture_write),
@@ -218,6 +219,15 @@ class FormulaLinkSidecarTests(unittest.TestCase):
 
         self.assertEqual(payload["formula_links"], expected)
         self.assertEqual(result["formula_links"], expected)
+
+    def test_save_preserves_constant_function_formulas_and_their_targets(self) -> None:
+        targets = [{"row": 0, "column": 0, "result_row": 0, "result_column": 0}]
+        links = [{"formula": "=iferror(sum(2,3)/0,7)", "target_cells": targets}]
+        expected = [{"formula": "=IFERROR(SUM(2, 3) / 0, 7)", "target_cells": targets}]
+        result, payload = self._save(links)
+        self.assertEqual(payload["formula_links"], expected)
+        self.assertEqual(result["formula_links"], expected)
+        self.assertEqual(dataset_service._normalize_dataset_formula_links(payload["formula_links"], strict=True), expected)
 
     def test_save_rejects_a_cell_owned_by_two_kinds_of_link(self) -> None:
         with self.assertRaises(HTTPException) as raised:

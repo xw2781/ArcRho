@@ -168,8 +168,6 @@ function showCtxMenu(anchorEl, clientX, clientY) {
   if (!menu) return;
   const pasteButton = menu.querySelector('[data-action="paste"]');
   if (pasteButton) pasteButton.hidden = !gridEditConfig?.canPasteSelection?.();
-  const clearButton = menu.querySelector('[data-action="clear_data"]');
-  if (clearButton) clearButton.hidden = !gridEditConfig?.canClearData?.();
   openContextMenu(menu, {
     anchorEl,
     clientX,
@@ -419,6 +417,7 @@ export function renderTable() {
     // The grid has nothing to paint yet. Which of "still arriving", "nothing
     // selected", and "load failed" that means is owned by the placeholder.
     renderDatasetGridPlaceholder(wrap);
+    gridEditConfig?.onTableRendered?.();
     return;
   }
 

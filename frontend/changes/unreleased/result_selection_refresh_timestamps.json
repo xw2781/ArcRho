@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Downstream Result Selection outputs now record their refresh time even when values are unchanged."
+}

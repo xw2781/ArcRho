@@ -10,6 +10,8 @@ from unittest import mock
 from fastapi import HTTPException
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 PYTHON_API_SRC = FRONTEND_ROOT.parent / "python-api" / "src"
 for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(path) not in sys.path:
@@ -28,7 +30,7 @@ from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 class ResultSelectionServiceTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         self.methods = self.root / "methods"
         self.datasets = self.root / "datasets"
@@ -344,8 +346,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             mock.patch.object(calculated_dataset_service, "apply_sidecar_graph_fields"),
             mock.patch.object(
                 result_selection_service.dataset_sidecar_status_service,
-                "refresh_method_statuses_for_dependents",
-                side_effect=OSError("status write failed"),
+                "review_needed_precedent_names",
+                side_effect=OSError("precedent read failed"),
             ),
         ):
             with self.assertRaises(OSError):
@@ -399,7 +401,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(sidecar["status"], 2)
         self.assertEqual(
             result["review_status_updates"],
-            [{"dataset_name": "Selection", "status": 2}],
+            [],
         )
 
     def test_a_refresh_records_itself_without_moving_the_user_save_stamp(self) -> None:
@@ -434,6 +436,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.write_selection()
         first_sidecar_path = self.sidecars / "Selection.json"
         first_sidecar = json.loads(first_sidecar_path.read_text(encoding="utf-8"))
+        first_sidecar["status"] = 2
         first_sidecar["dependents"] = ["Selection Two"]
         self.write_json(first_sidecar_path, first_sidecar)
 
@@ -538,6 +541,41 @@ class ResultSelectionServiceTests(unittest.TestCase):
             (self.sidecars / "Selection Two.json").read_text(encoding="utf-8")
         )
         self.assertEqual(downstream_sidecar["status"], 2)
+
+        for name in ("Selection", "Selection Two"):
+            path = self.sidecars / f"{name}.json"
+            reviewed = json.loads(path.read_text(encoding="utf-8"))
+            reviewed["status"] = 0
+            self.write_json(path, reviewed)
+        downstream_method["method_tab"]["selected_ultimate"] = [1, 2]
+        self.write_json(self.methods / "RS@Selection Two.json", downstream_method)
+        with (
+            mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
+            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
+            mock.patch.object(
+                calculated_dataset_service, "sidecar_graph_fields",
+                return_value={"precedents": [], "dependents": []},
+            ),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+            dataset_service.dependent_propagation_service.inline_engine_propagation(),
+        ):
+            repeated = dataset_service.save_dataset_sidecar(
+                "Project", "Class", "Paid", dataset_type="Paid", instance_name="Paid",
+                source_kind="input", data_format="Vector", origin_length=12,
+                development_length=12, origin_labels=["2025", "2026"],
+                values=[[30], [40]],
+            )
+        self.assertTrue(repeated["propagation_ok"], repeated)
+        first = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
+        second = json.loads((self.sidecars / "Selection Two.json").read_text(encoding="utf-8"))
+        self.assertEqual(first["status"], 0)
+        self.assertEqual(second["status"], 2)
+        self.assertGreater(first["updated_at"], sidecar["updated_at"])
+        self.assertGreater(second["updated_at"], first["updated_at"])
+        self.assertTrue(first["modified_by"])
+        self.assertTrue(second["modified_by"])
+        repaired = json.loads((self.methods / "RS@Selection Two.json").read_text(encoding="utf-8"))
+        self.assertEqual(repaired["method_tab"]["selected_ultimate"], [30, 99])
 
     def test_source_update_uses_matching_aggregate_period_instead_of_native_rows(self) -> None:
         self.write_selection()
@@ -924,11 +962,9 @@ class ResultSelectionServiceTests(unittest.TestCase):
             _changed_sidecars: dict,
             _cache: dict,
             *,
-            allow_status_current: bool,
             blocked_precedent_keys: set[str],
             sidecar_snapshot: dict[str, dict],
         ) -> dict:
-            self.assertTrue(allow_status_current)
             self.assertTrue(sidecar_snapshot)
             if output_name == "Broken":
                 return {"ok": False, "dataset_name": output_name, "reason": "refresh failed"}
@@ -1028,7 +1064,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(read_counts["paid"], 1)
         self.assertEqual(read_counts["selection"], 1)
-        self.assertEqual(read_counts["selection two"], 2)
+        self.assertEqual(read_counts["selection two"], 1)
         saved = json.loads((self.methods / "RS@Selection Two.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [30.0, 99])
 
@@ -1056,17 +1092,23 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [10.0, 99])
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "10.0\n99\n")
 
-    def test_unchanged_upstream_values_keep_review_alert_without_rewriting_method(self) -> None:
+    def test_unchanged_upstream_values_recalculate_and_rewrite_the_whole_chain(self) -> None:
         self.write_selection()
         self.write_source("Paid", [10, 20])
+        with (
+            mock.patch.object(calculated_dataset_service, "recalculate_dependents", return_value={"ok": True}),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
         downstream = self.method_payload()
         downstream["details_tab"]["name"] = "Selection Two"
         downstream["method_tab"]["loaded_datasets"][0]["name"] = "Selection"
         downstream["method_tab"]["loaded_datasets"][0]["dataset_type"] = "Selected Ultimate"
         downstream["method_tab"]["loaded_datasets"][0]["method_type"] = "Result Selection"
         downstream["method_tab"]["loaded_datasets"][0]["source_kind"] = "result_selection"
-        downstream["method_tab"]["loaded_datasets"][0]["values"] = [10, 99]
-        downstream["method_tab"]["calculated_ultimate"] = [10, 99]
+        downstream["method_tab"]["loaded_datasets"][0]["values"] = [1, 2]
+        downstream["method_tab"]["calculated_ultimate"] = [1, 2]
+        downstream["method_tab"]["selected_ultimate"] = [1, 99]
         self.write_json(self.methods / "RS@Selection Two.json", downstream)
         self.write_json(self.sidecars / "Selection Two.json", {
             "dataset_name": "Selection Two",
@@ -1087,6 +1129,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         (self.datasets / "Selection Two@12.csv").write_text("10\n99\n", encoding="utf-8")
         selection_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
         selection_sidecar["dependents"] = ["Selection Two"]
+        selection_sidecar["status"] = 0
         self.write_json(self.sidecars / "Selection.json", selection_sidecar)
         method_path = self.methods / "RS@Selection.json"
         method_before = method_path.read_bytes()
@@ -1105,17 +1148,23 @@ class ResultSelectionServiceTests(unittest.TestCase):
             result = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
 
         self.assertTrue(result["ok"], result)
-        self.assertEqual(result["updated"], [])
+        self.assertEqual(result["status_refreshed"], [])
         self.assertEqual(
-            result["status_refreshed"],
+            result["updated"],
             [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
         )
-        self.assertEqual(method_path.read_bytes(), method_before)
-        self.assertEqual(downstream_method_path.read_bytes(), downstream_method_before)
+        self.assertNotEqual(method_path.read_bytes(), method_before)
+        self.assertNotEqual(downstream_method_path.read_bytes(), downstream_method_before)
         saved_sidecar = json.loads((self.sidecars / "Selection.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved_sidecar["status"], 2)
+        self.assertEqual(saved_sidecar["status"], 0)
+        self.assertTrue(saved_sidecar["updated_at"])
         downstream_sidecar = json.loads((self.sidecars / "Selection Two.json").read_text(encoding="utf-8"))
         self.assertEqual(downstream_sidecar["status"], 2)
+        self.assertGreater(downstream_sidecar["updated_at"], saved_sidecar["updated_at"])
+        self.assertTrue(downstream_sidecar["modified_by"])
+        refreshed_method = json.loads(downstream_method_path.read_text(encoding="utf-8"))
+        self.assertEqual(refreshed_method["method_tab"]["loaded_datasets"][0]["values"], [10, 99])
+        self.assertEqual(refreshed_method["method_tab"]["selected_ultimate"], [10, 99])
         rebuild_index.assert_called_once_with("Project", "Class")
 
     def test_unchanged_output_does_not_block_its_non_rs_dependents_for_a_later_fan_in(self) -> None:
@@ -1185,7 +1234,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         with (
             mock.patch(
                 "app_server.services.calculated_dataset_service.recalculate_dependents",
-                return_value={"updated": []},
+                side_effect=[{"ok": True, "updated": [{"dataset_type_name": "Calc A"}]}, {"ok": True, "updated": []}],
             ) as recalculate_dependents,
             mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
         ):
@@ -1193,16 +1242,15 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertTrue(result["ok"], result)
-        self.assertEqual(result["updated"], [])
+        self.assertEqual(result["status_refreshed"], [])
         self.assertEqual(
-            result["status_refreshed"],
+            result["updated"],
             [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
         )
         skipped_by_name = {item["dataset_name"]: item["reason"] for item in result["skipped"]}
-        self.assertEqual(skipped_by_name["Calc A"], "non_result_selection_dependent_inputs_unchanged")
-        # Nothing changed in value, so no calculated cascade ran for the skip.
-        recalculate_dependents.assert_not_called()
-        self.assertEqual(downstream_method_path.read_bytes(), downstream_method_before)
+        self.assertEqual(skipped_by_name["Calc A"], "non_result_selection_dependent_requires_explicit_refresh")
+        self.assertEqual(recalculate_dependents.call_count, 2)
+        self.assertNotEqual(downstream_method_path.read_bytes(), downstream_method_before)
 
     def test_dfm_visited_to_the_same_publication_is_not_a_failed_precedent(self) -> None:
         # Mirrors the live HOL walk after a data-processing-rules save: the
@@ -1259,8 +1307,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             result = result_selection_service.refresh_dependents(
                 "Project",
                 "Class",
-                ["Paid"],
-                unchanged_precedent_names=["CWP DFM"],
+                ["Paid", "CWP DFM"],
             )
 
         # Without the DFM wave's word the walk still blocks the DFM it cannot
@@ -1275,7 +1322,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(result["updated"], [{"dataset_name": "Selection"}], result)
         self.assertEqual(
             result["skipped"],
-            [{"dataset_name": "CWP DFM", "reason": "non_result_selection_dependent_inputs_unchanged"}],
+            [{"dataset_name": "CWP DFM", "reason": "non_result_selection_dependent_requires_explicit_refresh"}],
         )
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["calculated_ultimate"], [7.5, 13.0])
@@ -1394,9 +1441,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             "Class",
             ["Paid Instance", "Paid Type"],
             rebuild_index=False,
-            allow_status_current=True,
             blocked_precedent_names=[],
-            unchanged_precedent_names=[],
             finalize_method_review_status=False,
         )
 

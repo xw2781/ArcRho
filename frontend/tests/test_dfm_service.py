@@ -29,6 +29,7 @@ from arcrho_api.dfm_contract import (
     recalculate_dfm_method,
 )
 from app_server.services import calculated_dataset_service, dataset_sidecar_status_service, dfm_service
+from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
 
 class DfmServiceTests(unittest.TestCase):
@@ -48,6 +49,7 @@ class DfmServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.patchers = [
+            IsolatedPropagationWorkspace(),
             mock.patch.object(dfm_service.config, "get_project_method_data_dir", return_value=str(self.methods)),
             mock.patch.object(dfm_service.config, "get_project_dataset_cache_dir", return_value=str(self.datasets)),
             mock.patch.object(dfm_service.config, "get_general_settings_path", return_value=str(settings)),
@@ -478,10 +480,8 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"])
-        # An owned-only rebase leaves the publication revision unchanged, so a
-        # no-op save submits no Engine propagation job.
-        enqueue.assert_not_called()
-        self.assertEqual(result["propagation"], {"ok": True, "status": "unchanged"})
+        enqueue.assert_called_once()
+        self.assertEqual(result["propagation"], enqueue.return_value)
         self.assertTrue(result["propagation_ok"])
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(
@@ -1030,7 +1030,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertNotEqual(sidecar["updated_at"], "2026-01-01T00:00:00Z")
         self.assertEqual([entry["action"] for entry in sidecar["audit_log"]], ["Auto Refresh"])
 
-    def test_basis_only_refresh_updates_method_without_rewriting_ultimate_csv(self) -> None:
+    def test_basis_only_refresh_republishes_the_same_ultimate_values(self) -> None:
         method = self.write_method_pair(status=0)
         sidecar_path = self.sidecars / "Development Output.json"
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
@@ -1049,7 +1049,10 @@ class DfmServiceTests(unittest.TestCase):
         result = dfm_service.refresh_dependents("Project", "Class", ["Premium"])
 
         self.assertTrue(result["ok"], result)
-        self.assertEqual(output_path.read_bytes(), before_output)
+        self.assertEqual(
+            [float(value) for value in output_path.read_text().splitlines()],
+            [float(value) for value in before_output.decode().splitlines()],
+        )
         saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["results_tab"]["ratio_basis_values"], [2000, 2200])
         self.assertEqual(saved["results_tab"]["ultimate_vector"], method["results_tab"]["ultimate_vector"])
@@ -1063,7 +1066,7 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(sidecar["audit_log"][-1]["action"], "Auto Refresh")
         self.assertEqual(
             result["review_status_updates"],
-            [{"dataset_name": "Development Output", "status": 2}],
+            [],
         )
         self.assertEqual(result["errors"], [])
         self.assertEqual(
@@ -1075,7 +1078,7 @@ class DfmServiceTests(unittest.TestCase):
             }],
         )
 
-    def test_refresh_that_changes_nothing_keeps_last_modified_and_audit(self) -> None:
+    def test_refresh_that_changes_nothing_updates_last_modified_and_audit(self) -> None:
         self.write_method_pair()
         self.write_source(
             "Paid",
@@ -1093,10 +1096,11 @@ class DfmServiceTests(unittest.TestCase):
             second = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
 
         self.assertTrue(second["ok"], second)
-        self.assertEqual(second["updated"], [])
+        self.assertEqual(second["updated"][0]["dataset_name"], "Development Output")
         unchanged = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        self.assertEqual(unchanged["updated_at"], stamped["updated_at"])
-        self.assertEqual(unchanged["audit_log"], stamped["audit_log"])
+        self.assertEqual(unchanged["updated_at"], "2030-01-01T00:00:00.000Z")
+        self.assertNotEqual(unchanged["audit_log"], stamped["audit_log"])
+        self.assertEqual(unchanged["audit_log"][-1]["action"], "Auto Refresh")
 
     def test_input_refresh_with_unchanged_origins_does_not_read_ratio_basis(self) -> None:
         self.write_method_pair()

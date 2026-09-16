@@ -381,32 +381,6 @@ def execute_dependent_propagation(
     # so the display name resolves here against the workspace username index,
     # which is local disk for this process.
     with user_identity_service.acting_identity(normalized["UserName"]):
-        # The save only marked the first dependent method tier (the deep
-        # closure would cost a Client PC one SMB round trip per node); re-mark
-        # the full reachable closure here on local disk before the walk so
-        # statuses are honest for the whole cascade while it runs. A marking
-        # failure never aborts the walk — the walk finalizes every status itself.
-        on_tier("marking", 0, 0, "Marking dependents for review")
-        try:
-            from app_server.services import dataset_sidecar_status_service
-
-            dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                normalized["ProjectName"],
-                normalized["Path"],
-                [
-                    name
-                    for root in roots
-                    for name in (root.get("dataset_name"), root.get("dataset_type"))
-                    if str(name or "").strip()
-                ],
-            )
-        except Exception as exc:
-            _log(
-                server_root,
-                f"{request_id} closure marking failed: {_redact_machine_paths(exc)}",
-                exc=exc,
-            )
-
         result = calculated_dataset_service.recalculate_dependents(
             normalized["ProjectName"],
             normalized["Path"],

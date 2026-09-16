@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dependent propagation",
+  "audience": "user",
+  "summary": "Every eligible dataset or method Save recalculates the full downstream chain, updating review flags, timestamps, and user metadata even when values are unchanged."
+}

@@ -58,3 +58,17 @@ shows under the formula.
 .arFormulaHoverError[hidden] {
   display: none;
 }
+
+.arFormulaHover.isDocked {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-shadow: none;
+}
+
+.arFormulaHover.isDocked .arFormulaBarFxIcon {
+  cursor: default;
+}
