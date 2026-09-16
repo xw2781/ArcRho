@@ -101,7 +101,7 @@ way, because the add-in already remembers it.
 The share is therefore as fast as the server for a warm workbook of hand-entered
 datasets in one reserving class, which is not what the plan's own measurement
 predicted; see the open decision in
-[docs/plans/excel_addin_gateway_transport.md](../../docs/plans/excel_addin_gateway_transport.md).
+[docs/plans/completed/excel_addin_gateway_transport.md](../../docs/plans/completed/excel_addin_gateway_transport.md).
 The server's advantage that this run does show is the coarser view, which it
 builds in memory in about 90 ms and which the share path cannot serve at all
 here.
