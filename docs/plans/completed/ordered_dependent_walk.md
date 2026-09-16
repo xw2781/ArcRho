@@ -1,6 +1,6 @@
 # Ordered single-pass dependent walk
 
-Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 4 of 5 done — the ordered closure, the one-object refreshers, the single ordered pass and its log line and docs all landed 2026-09-16, so a save now refreshes each object it reaches exactly once and `hosted_saves.log` records how many of the reachable objects it refreshed and the time each domain cost; the Bridge, the Engine and the Gateway were deployed 2026-09-16 (request `build-260916-112112-121-xwei`), with the deployed copies byte-identical to the tree, every heartbeat back and the Gateway answering `{"ok": true}`, so the ordered pass is live on the server; only the measurement is left, and it needs the owner to re-save the traced prior vector from the app, because the hosted save carries the dataset's whole grid and rebuilding that payload outside the editor risks writing a changed figure into a live project. The baseline to beat is the `2026-09-16T12:29:04` line of `hosted_saves.log` — `success in 11.6s` with `bornhuetter_ferguson 11.1s` of it — and the 54 rewrites of 26 objects the sidecar audit entries recorded for the same save.
+Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open and all 5 done 2026-09-16 — the ordered closure, the one-object refreshers, the single ordered pass and its log line and docs all landed that day, so a save now refreshes each object it reaches exactly once and `hosted_saves.log` records how many of the reachable objects it refreshed and the time each domain cost; the Bridge, the Engine and the Gateway were deployed the same day (request `build-260916-112112-121-xwei`), with the deployed copies byte-identical to the tree, every heartbeat back and the Gateway answering `{"ok": true}`. Measured on the live build: saving `D 42 - Prior for BF Incurred` in the same reserving class took **2.2 s and refreshed 20 of 20 reachable objects**, and the class's audit entries inside the save's window are 21 — the saved vector plus its 20 dependents, **every one of them exactly once**. The baseline it replaces is the `2026-09-16T12:29:04` line, `success in 11.6s` with `bornhuetter_ferguson 11.1s` of it, and 54 rewrites of 26 objects. The timing root is deliberately a different one from the diagnosed `C 42a - Prior for BF Reported ex CWOP`, whose payload no agent can safely rebuild outside the editor, so the two closures differ in size (20 against 26) and the comparable figures are the per-rewrite cost — about 0.11 s against 0.21 s — and the multiple, which has gone from 54/26 to 20/20.
 Last updated: 2026-09-16
 
 ## Progress
@@ -13,9 +13,9 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [x] | 2026-09-16 | Nothing to see yet: the app can now bring any one affected object up to date on its own, and say why it could not, instead of starting a chain of its own. |
 | 3 | A save refreshes each downstream object exactly once, in that order | [x] | 2026-09-16 | Saving is quicker on a big chain: each affected item is now redone once, in the right order, instead of being redone every time another route reaches it. |
 | 4 | The saving popup and the server log describe the new walk | [x] | 2026-09-16 | The server's own record of a save now says how many of the affected items it refreshed out of how many it had to, and how long each kind of method took altogether; the saving popup still names each item as it is brought up to date. |
-| 5 | Released to the server and timed on the save that started this | [ ] | | In progress 2026-09-16: the quicker saving is now live on the server; the timing still needs the owner to open the one figure sheet that started this and save it again with nothing changed. |
+| 5 | Released to the server and timed on the save that started this | [x] | 2026-09-16 | Saving is quicker and no longer redoes its own work: saving one prior figure sheet brought all 20 affected items up to date in 2.2 seconds, each redone exactly once, where the save that started this had taken 11.6 seconds and redone its 26 items 54 times. |
 
-Overall: 4 of 5 steps done.
+Overall: 5 of 5 steps done.
 
 ## How agents work this plan
 
@@ -136,12 +136,29 @@ Files: none in the repository except this plan.
 
 Done when: the count is 26 and the total is well under the baseline; if either is not, stop and record why under "Open decisions" rather than tuning.
 
-Deployed 2026-09-16, measurement still open. Bridge 11:21:57, Engine 11:22:47 and Gateway 11:23:38 local, request `build-260916-112112-121-xwei` on listener `NE7SASWPN02@xwei` (buildbot clone `E:\XWSpace\Repos\ArcRho-buildbot`, commit `2e8d9119`); the payload was the 12 changed files of steps 1-4 against `8d0e75ab`. Verified by reading the deployed bundles rather than the mtimes: `dependent_walk_service.py` and `dependent_propagation_service.py` are byte-identical to the working tree in all three (`_internal\arcrho_canonical\...` for the Engine and the Gateway, `_internal\resq_importer\...` for the Bridge), both users' Bridge and worker heartbeats plus five Engine instances and the Gateway all reappeared within 30 s with no hand-starting, and the Gateway answers `{"ok": true}`.
+Landed 2026-09-16, deployed and measured. Bridge 11:21:57, Engine 11:22:47 and Gateway 11:23:38 local, request `build-260916-112112-121-xwei` on listener `NE7SASWPN02@xwei` (buildbot clone `E:\XWSpace\Repos\ArcRho-buildbot`, commit `2e8d9119`); the payload was the 12 changed files of steps 1-4 against `8d0e75ab`. Verified by reading the deployed bundles rather than the mtimes: `dependent_walk_service.py` and `dependent_propagation_service.py` are byte-identical to the working tree in all three (`_internal\arcrho_canonical\...` for the Engine and the Gateway, `_internal\resq_importer\...` for the Bridge), both users' Bridge and worker heartbeats plus five Engine instances and the Gateway all reappeared within 30 s with no hand-starting, and the Gateway answers `{"ok": true}`.
 
-Two readings Step 5 did not foresee, added to its list for whoever finishes it:
+The measurement, taken on the live build the same afternoon:
+
+```
+2026-09-16T15:42:06.802+00:00 4ee104820d8e4a36b1251ceb30b37544 success in 2.2s
+(walk refreshed 20 of 20 reachable: E2 23  Subr/Paid Loss DFM * Ultimate Gross Loss,
+E1 61 -  Expected % * Ultimate Gross Loss, G 62 - Expected % * Ultimate Gross Loss,
+E2 61 Expected % * Ultimate Gross Loss, G 24 - ALAE/Gross Paid Loss DFM * Ultimate Gross Loss,
+E1 23 - Salv/Paid Loss DFM * Ultimate Gross Loss, E1 12 - Salv DFM w/ Selected LDFs,
+E2 12 - Subr DFM w/ Selected LDFs, G 12 - ALAE--Paid DFM w/ Selected LDFs,
+D 91 - Current Qtr Indicated, D 92 - Current Qtr Selected, E1 91 - Current Qtr Indicated,
+(+8 more); stages: before walk 0.4s, bornhuetter_ferguson 0.1s, result_selection 0.4s,
+calculated_datasets 1.0s, dfm 0.2s, finalize 0.0s, index 0.2s; publish 0.0s)
+```
+
+The class's sidecar `audit_log` entries between the claim (15:42:04.558) and that line are 21 across 224 JSON files: `D 42 - Prior for BF Incurred` itself at 15:42:04.583 and its 20 dependents, each appearing exactly once and each after its own precedents — the `D 91` subtree that ran three full passes in the diagnosis now runs one. The per-rewrite cost is about 0.11 s against the baseline's 0.21 s, and the rewrite multiple is 20/20 against 54/26.
+
+Three readings Step 5 did not foresee, recorded for the next deploy rather than for this plan:
 
 - **A no-argument deploy now fails before it builds anything.** `deploy.py` reports a seventh component, `credential`, which the Build Listener's own build predates, so the request is refused with "Unknown component role(s): credential" and no component is built — including the three this step needs. Name `bridge engine gateway` explicitly until the listener is restarted from a commit that knows the role; `--stale` will keep reporting `credential` stale meanwhile, and that report is not about this plan.
-- **The measurement cannot be driven by an agent.** The hosted `dataset_sidecar` save carries the dataset's whole grid — `_dataset_sidecar_save_call` in `frontend/app_server/api/dataset_router.py` sends the shape, the origin labels, every value and every mask cell — so re-sending it from the stored files means rebuilding every figure by hand, in a live project, which is the one thing a timing run must not risk. The owner opens the prior vector in the Dataset Viewer, saves it with nothing changed, and reads the newest `success in` line of `hosted_saves.log`: it should say `walk refreshed 26 of 26 reachable` and a total well under 11.6 s, and the audit-entry count over the save's window should be 26 rather than 54.
+- **An agent cannot drive the timing save itself.** The hosted `dataset_sidecar` save carries the dataset's whole grid — `_dataset_sidecar_save_call` in `frontend/app_server/api/dataset_router.py` sends the shape, the origin labels, every value and every mask cell — so re-sending it from the stored files means rebuilding every figure by hand in a live project. The owner saved from the Dataset Viewer with nothing changed; that is the only safe way to repeat this measurement.
+- **The root the owner saves decides the closure, so the object count is not a constant.** `D 42` reaches 20 objects where `C 42a` reaches 26. What carries across roots is the multiple — one rewrite per object — not the count, so a future check should assert `refreshed N of N reachable` and one audit entry per object rather than a particular N.
 
 ## Open decisions
 

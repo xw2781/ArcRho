@@ -1,7 +1,7 @@
 """The one ordered pass a save makes over everything it reaches.
 
 The shapes here are the production save that started the ordered-walk plan
-(``docs/plans/ordered_dependent_walk.md``): 26 objects downstream of one
+(``docs/plans/completed/ordered_dependent_walk.md``): 26 objects downstream of one
 Bornhuetter-Ferguson prior vector, which the old wave orchestration rewrote 54
 times because three different triggers reached ``D 91`` and its 13
 descendants. Every case builds a synthetic sidecar folder and traces the
