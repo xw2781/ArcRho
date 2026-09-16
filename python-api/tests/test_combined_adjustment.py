@@ -35,10 +35,21 @@ class FormulaTests(unittest.TestCase):
 
     def test_how_a_note_describes_a_dataset(self):
         self.assertEqual(shared.adjustment_description("Accounting Cutoff"), "accounting cutoff")
-        self.assertEqual(shared.adjustment_description("Growth Adjustment--Counts"), "growth adjustment--counts")
+        self.assertEqual(
+            shared.adjustment_description("Growth Adjustment--Counts"), "growth adjustment (counts)"
+        )
         self.assertEqual(shared.adjustment_description("C 01 - Growth Adjustment"), "growth adjustment")
         self.assertEqual(shared.adjustment_description("Selected LDF"), "selected ldf adjustment")
         self.assertEqual(shared.adjustment_description(""), "other adjustment")
+
+    def test_the_older_spelling_of_a_growth_basis(self):
+        self.assertEqual(
+            shared.legacy_adjustment_description("Growth Adjustment--Counts"),
+            "growth adjustment--counts",
+        )
+        self.assertEqual(
+            shared.legacy_adjustment_description("Accounting Cutoff"), "accounting cutoff"
+        )
 
 
 class NoteReadingTests(unittest.TestCase):

@@ -249,14 +249,32 @@ class NoteGenerationTests(unittest.TestCase):
         self.assertIn("Apply other adjustment of 1+5% = 1.05;", note)
         self.assertIn(f"= {value:.4f}", note)
 
-    def test_growth_vector_basis_is_dropped_from_the_note(self):
-        dfm = single_column_dfm(
-            '= "Simple - 2" * [Growth Adjustment--Counts][-1]', 3.0493
-        )
-        resolver = make_resolver({"Growth Adjustment--Counts": (1.0026, "2026")})
-        note = generate(dfm, resolver)["note_blocks"][0]
-        self.assertIn("Apply growth adjustment of 1+0.26% = 1.0026;", note)
-        self.assertNotIn("counts", note)
+    def test_growth_vector_basis_is_named_in_brackets(self):
+        for basis in ("Counts", "Incurred", "Paid"):
+            with self.subTest(basis=basis):
+                dataset = f"Growth Adjustment--{basis}"
+                dfm = single_column_dfm(f'= "Simple - 2" * [{dataset}][-1]', 3.0493)
+                resolver = make_resolver({dataset: (1.0026, "2026")})
+                note = generate(dfm, resolver)["note_blocks"][0]
+                self.assertIn(
+                    f"Apply growth adjustment ({basis.lower()}) of 1+0.26% = 1.0026;", note
+                )
+
+    def test_the_basis_is_bracketed_against_an_older_shared_name(self):
+        """An installed app carries its own copy of the shared adjustment names,
+        and an older one spells a growth basis out after a double dash. The
+        macro must still write the basis in brackets."""
+        dataset = "Growth Adjustment--Counts"
+        dfm = single_column_dfm(f'= "Simple - 2" * [{dataset}][-1]', 3.0493)
+        resolver = make_resolver({dataset: (1.0026, "2026")})
+        original = MACRO.adjustment_description
+        MACRO.adjustment_description = lambda name: MACRO._clean_text(name).lower()
+        try:
+            note = generate(dfm, resolver)["note_blocks"][0]
+        finally:
+            MACRO.adjustment_description = original
+        self.assertIn("Apply growth adjustment (counts) of 1+0.26% = 1.0026;", note)
+        self.assertNotIn("--", note)
 
     def test_growth_and_bi_limit_special_case(self):
         dfm = single_column_dfm(
@@ -269,7 +287,7 @@ class NoteGenerationTests(unittest.TestCase):
         resolver = make_resolver({"Growth Adjustment--Paid": (1.0026, "2026")})
         note = generate(dfm, resolver)["note_blocks"][0]
         self.assertIn(
-            "Apply growth and BI limit adjustment of 1+0.26% = 1.0026;", note
+            "Apply growth and BI limit adjustment (paid) of 1+0.26% = 1.0026;", note
         )
 
     def test_growth_and_bi_limit_special_case_requires_class_category_and_name(self):
@@ -290,7 +308,7 @@ class NoteGenerationTests(unittest.TestCase):
                     '= "Simple - 2" * [Growth Adjustment--Paid][-1]', 3.0493, **kwargs
                 )
                 note = generate(dfm, resolver)["note_blocks"][0]
-                self.assertIn("Apply growth adjustment of 1+0.26% = 1.0026;", note)
+                self.assertIn("Apply growth adjustment (paid) of 1+0.26% = 1.0026;", note)
                 self.assertNotIn("BI limit", note)
 
     def test_negative_adjustment_percent(self):

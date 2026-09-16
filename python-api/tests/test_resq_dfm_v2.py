@@ -729,6 +729,12 @@ class RecreateAdjustmentFormulaTests(unittest.TestCase):
         self.assertEqual(inputs[0], ["", "", "", ""])
         self.assertEqual(inputs[1], ["", "", "", ""])
 
+    def test_a_growth_basis_written_in_brackets_reads_the_same(self) -> None:
+        notes = self.NOTES.replace("growth adjustment--counts", "growth adjustment (counts)")
+        count, inputs = self._recreate(notes=notes)
+        self.assertEqual(count, 2)
+        self.assertEqual(inputs[2], [self.FIRST_FORMULA, self.SECOND_FORMULA, "", ""])
+
     def test_a_column_selecting_another_row_is_left_alone(self) -> None:
         count, inputs = self._recreate(selected=[[0, 0, 0, 0], [1, 0, 1, 0], [0, 1, 0, 0]])
         self.assertEqual(count, 1)

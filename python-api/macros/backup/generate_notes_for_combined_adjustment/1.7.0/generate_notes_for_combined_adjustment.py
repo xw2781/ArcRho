@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.7.1
-# Release Note: The macro now brackets a growth vector's basis itself, so "Apply growth adjustment (counts) of ..." is written whatever version of the shared adjustment names the app carries.
+# Version: 1.7.0
+# Release Note: Growth adjustment note lines now name their basis in brackets, as in "Apply growth adjustment (counts) of 1+4.26% = 1.0426;".
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -50,11 +50,6 @@ GROWTH_AND_BI_LIMIT_CATEGORY = "f net loss"
 GROWTH_AND_BI_LIMIT_NAME_TOKEN = "incurred"
 _GROWTH_DESCRIPTION = "growth adjustment"
 _GROWTH_AND_BI_LIMIT_DESCRIPTION = "growth and BI limit adjustment"
-# "Growth Adjustment--Counts" carries its basis after a double dash. The notes
-# put that basis in brackets, and the macro does it here rather than leaning on
-# the shared adjustment names, whose older copies spell the basis out after the
-# dash and ship inside an installed app until the next build.
-_DATASET_BASIS_RE = re.compile(r"\s*--\s*(.+)$")
 
 # A displayed percent below this threshold rounds to 0.00%, so the factor is
 # treated as 1 and its adjustment line is omitted from the notes.
@@ -509,18 +504,10 @@ def _note_adjustment_description(dataset_name: str, *, growth_and_bi_limit: bool
     basis (counts, incurred, paid) in brackets after the adjustment, and
     naming it as a combined growth and BI limit adjustment for the one
     reserving class and DFM category that runs it that way."""
-    name = _clean_text(dataset_name)
-    basis = ""
-    found = _DATASET_BASIS_RE.search(name)
-    if found:
-        basis = _clean_text(found.group(1)).lower()
-        name = name[: found.start()]
-    description = adjustment_description(name)
+    description = adjustment_description(dataset_name)
     if growth_and_bi_limit and description.startswith(_GROWTH_DESCRIPTION):
-        description = description.replace(
-            _GROWTH_DESCRIPTION, _GROWTH_AND_BI_LIMIT_DESCRIPTION, 1
-        )
-    return f"{description} ({basis})" if basis else description
+        return description.replace(_GROWTH_DESCRIPTION, _GROWTH_AND_BI_LIMIT_DESCRIPTION, 1)
+    return description
 
 
 def _factor_lines(

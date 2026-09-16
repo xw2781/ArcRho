@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.7.1
-# Release Note: The macro now brackets a growth vector's basis itself, so "Apply growth adjustment (counts) of ..." is written whatever version of the shared adjustment names the app carries.
+# Version: 1.6.0
+# Release Note: Restored the combined-adjustment special case for the BIR51+UMBIR51 reserving class's net-loss, incurred methods, now naming it a growth and BI limit adjustment.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -29,6 +29,7 @@ from arcrho_api.combined_adjustment import (
     APPLY_LINE_PREFIX,
     BASE_FACTOR_DECIMALS,
     BASE_FACTOR_LINE_PREFIX,
+    GROWTH_ADJUSTMENT_DATASETS,
     NOTE_BULLET_CHARS,
     NOTE_HEADER_PREFIX,
     SELECTED_LDF_LINE_PREFIX,
@@ -43,18 +44,13 @@ from arcrho_api.dfm_contract import round_half_up
 MACRO_TITLE = "Generate Notes for Combined Adjustment"
 NO_ADJUSTMENT_NOTE = "No combined adjustments were needed for this method."
 
+_GROWTH_ADJUSTMENT_DATASET_KEYS = {name.lower() for name in GROWTH_ADJUSTMENT_DATASETS.values()}
+
 # This one reserving class runs its growth vector as a combined growth and
 # BI limit adjustment, but only for its net-loss, incurred DFM methods.
 GROWTH_AND_BI_LIMIT_RESERVING_CLASS = "PRNJ - PA\\PA\\NJ\\Direct Group\\BIR51+UMBIR51"
 GROWTH_AND_BI_LIMIT_CATEGORY = "f net loss"
 GROWTH_AND_BI_LIMIT_NAME_TOKEN = "incurred"
-_GROWTH_DESCRIPTION = "growth adjustment"
-_GROWTH_AND_BI_LIMIT_DESCRIPTION = "growth and BI limit adjustment"
-# "Growth Adjustment--Counts" carries its basis after a double dash. The notes
-# put that basis in brackets, and the macro does it here rather than leaning on
-# the shared adjustment names, whose older copies spell the basis out after the
-# dash and ship inside an installed app until the next build.
-_DATASET_BASIS_RE = re.compile(r"\s*--\s*(.+)$")
 
 # A displayed percent below this threshold rounds to 0.00%, so the factor is
 # treated as 1 and its adjustment line is omitted from the notes.
@@ -505,22 +501,17 @@ def _is_growth_and_bi_limit_dfm(dfm: Any) -> bool:
 
 
 def _note_adjustment_description(dataset_name: str, *, growth_and_bi_limit: bool) -> str:
-    """How the notes name an adjustment dataset, keeping a growth vector's
-    basis (counts, incurred, paid) in brackets after the adjustment, and
+    """How the notes name an adjustment dataset, collapsing a growth vector's
+    basis (counts, incurred, paid) since a reader does not need it, and
     naming it as a combined growth and BI limit adjustment for the one
     reserving class and DFM category that runs it that way."""
-    name = _clean_text(dataset_name)
-    basis = ""
-    found = _DATASET_BASIS_RE.search(name)
-    if found:
-        basis = _clean_text(found.group(1)).lower()
-        name = name[: found.start()]
-    description = adjustment_description(name)
-    if growth_and_bi_limit and description.startswith(_GROWTH_DESCRIPTION):
-        description = description.replace(
-            _GROWTH_DESCRIPTION, _GROWTH_AND_BI_LIMIT_DESCRIPTION, 1
-        )
-    return f"{description} ({basis})" if basis else description
+    if _clean_text(dataset_name).lower() in _GROWTH_ADJUSTMENT_DATASET_KEYS:
+        description = "growth adjustment"
+    else:
+        description = adjustment_description(dataset_name)
+    if growth_and_bi_limit and description == "growth adjustment":
+        return "growth and BI limit adjustment"
+    return description
 
 
 def _factor_lines(

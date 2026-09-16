@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "Combined adjustment notes now say which growth basis a line used, as in \"Apply growth adjustment (counts) of 1+4.26% = 1.0426;\".",
+  "details": [
+    "Counts, incurred and paid each get their own bracket after the adjustment name.",
+    "The BIR51+UMBIR51 special case reads \"Apply growth and BI limit adjustment (incurred) of ...\".",
+    "The macro writes the new wording on its own, so it works without waiting for an app build.",
+    "A ResQ import reads the new wording back into the matching growth vector after the next app build, and still reads the older notes."
+  ]
+}

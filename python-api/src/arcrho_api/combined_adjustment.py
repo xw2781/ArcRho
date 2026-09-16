@@ -8,7 +8,7 @@ explain it::
 
     For development period 12-24:
       - Apply accounting cutoff of 1+1.17% = 1.0117;
-      - Apply growth adjustment--counts of 1+4.26% = 1.0426;
+      - Apply growth adjustment (counts) of 1+4.26% = 1.0426;
       - Selected average factor: "Simple - 2" (2.8539)
       - Selected LDF after adjustments: 2.8539 * 1.0117 * 1.0426 = 3.0102
 
@@ -17,13 +17,13 @@ formula produced, and rebuilds the formula from them. Whatever one producer
 writes the others must read, so the dataset names, the formula shape and the
 note lines are defined here once.
 
-The notes macro drops a growth vector's basis (counts, incurred, paid) from
-the line it writes -- "Apply growth adjustment of 1+4.26% = 1.0426;" -- since
-a reader does not need it. ``adjustment_description`` itself still names the
-basis, so older notes that already spell it out keep reading back into the
-matching vector; a newly written growth line no longer disambiguates which
-vector it named and so reads back as an unrecognized term, the same as a note
-naming any other dataset outside ``ADJUSTMENT_DATASETS``.
+A growth vector's basis (counts, incurred, paid) is named in brackets after
+the adjustment, as in "Apply growth adjustment (counts) of 1+4.26% = 1.0426;",
+so a note says which of the class's three growth vectors it used and reads
+back into that vector. Notes written in the older ``growth adjustment--counts``
+spelling are still read; a note that names no basis at all does not say which
+vector it meant and so reads back as an unrecognized term, the same as a note
+naming any dataset outside ``ADJUSTMENT_DATASETS``.
 """
 
 from __future__ import annotations
@@ -62,15 +62,38 @@ def clean_text(value: Any) -> str:
     return " ".join(str(value if value is not None else "").split()).strip()
 
 
-def adjustment_description(dataset_name: str) -> str:
-    """How a note names an adjustment dataset: ``Growth Adjustment--Counts``
-    reads as ``growth adjustment--counts`` and ``C 01 - Foo`` as ``foo adjustment``."""
-    text = clean_text(dataset_name)
-    text = re.sub(r"^[A-Za-z]{1,3}\s*\d+\s*[-–]\s*", "", text)
-    description = text.lower()
+_DATASET_PREFIX_RE = re.compile(r"^[A-Za-z]{1,3}\s*\d+\s*[-–]\s*")
+# ``Growth Adjustment--Counts`` carries its basis after a double dash.
+_DATASET_BASIS_RE = re.compile(r"\s*--\s*(.+)$")
+
+
+def _describe(text: str) -> str:
+    description = clean_text(text).lower()
     if description and "adjustment" not in description and "cutoff" not in description:
         description += " adjustment"
-    return description or "other adjustment"
+    return description
+
+
+def adjustment_description(dataset_name: str) -> str:
+    """How a note names an adjustment dataset: ``Growth Adjustment--Counts``
+    reads as ``growth adjustment (counts)`` and ``C 01 - Foo`` as ``foo adjustment``."""
+    text = _DATASET_PREFIX_RE.sub("", clean_text(dataset_name))
+    basis = ""
+    found = _DATASET_BASIS_RE.search(text)
+    if found:
+        basis = clean_text(found.group(1)).lower()
+        text = text[: found.start()]
+    description = _describe(text)
+    if not description:
+        return "other adjustment"
+    return f"{description} ({basis})" if basis else description
+
+
+def legacy_adjustment_description(dataset_name: str) -> str:
+    """The pre-bracket spelling, ``growth adjustment--counts``, kept so notes
+    written before the basis moved into brackets still read back."""
+    text = _DATASET_PREFIX_RE.sub("", clean_text(dataset_name))
+    return _describe(text) or "other adjustment"
 
 
 def note_header(period: str) -> str:
@@ -119,7 +142,11 @@ def parse_adjustment_notes(notes: str) -> dict[str, dict[str, Any]]:
     cannot be rebuilt faithfully. ``value`` is the selected LDF the block ends
     on, ``None`` when the block does not state one.
     """
-    by_description = {adjustment_description(name): name for name in ADJUSTMENT_DATASETS}
+    by_description = {
+        description: name
+        for name in ADJUSTMENT_DATASETS
+        for description in (legacy_adjustment_description(name), adjustment_description(name))
+    }
     blocks: dict[str, dict[str, Any]] = {}
     block: dict[str, Any] | None = None
     for raw_line in str(notes or "").splitlines():
