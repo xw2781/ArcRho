@@ -45,9 +45,9 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1789,7 +1789,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
       method: canonicalMethod,
       sidecar: response?.sidecar,
       propagationClean: propagationOutcome !== null,
-      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+      refreshedDatasets: propagationOutcome?.review_flagged_datasets || [],
       linkWarnings: propagationOutcome?.link_warnings || [],
     };
   } catch (error) {

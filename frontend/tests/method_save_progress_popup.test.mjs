@@ -469,12 +469,14 @@ test("the saved-dependents notice only appears when a dependent was refreshed", 
   assert.equal(globalThis.__arcrhoNoticeDialogs.length, 1);
   const notice = globalThis.__arcrhoNoticeDialogs[0];
   assert.equal(notice.title, "Saved");
-  assert.equal(notice.message, "2 dependent datasets were updated:");
+  // The list names only the dependents whose values changed (OK -> Needs
+  // Review); dependents rewritten without a meaningful change are not shown.
+  assert.equal(notice.message, "2 dependent datasets changed and need review:");
   // The names are links, one per row, instead of one comma-joined sentence.
   assert.deepEqual(notice.links.map((link) => link.label), ["Paid Loss", "Reported Loss"]);
-  // A save that touched one dependent still reads as a sentence.
+  // A save that flagged one dependent still reads as a sentence.
   await showSavedDependentsNotice(["Paid Loss"], { documentRef: {} });
-  assert.equal(globalThis.__arcrhoNoticeDialogs.at(-1).message, "1 dependent dataset was updated:");
+  assert.equal(globalThis.__arcrhoNoticeDialogs.at(-1).message, "1 dependent dataset changed and needs review:");
   delete globalThis.__arcrhoNoticeDialogs;
 });
 
@@ -513,7 +515,7 @@ test("every method and dataset window saves behind the shared save progress", as
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260831a/u,
+      /save_progress\.js\?v=20260916b/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.

@@ -21,7 +21,7 @@ import {
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260914a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
@@ -2870,7 +2870,7 @@ async function runBerquistShermanSave(progress) {
     path: text(sidecar?.method_path),
     csvPath: text(sidecar?.output_csv_path),
     propagationClean: propagationOutcome !== null,
-    refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+    refreshedDatasets: propagationOutcome?.review_flagged_datasets || [],
     linkWarnings: propagationOutcome?.link_warnings || [],
   };
 }

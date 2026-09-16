@@ -346,7 +346,7 @@
           return {
             ...payload,
             propagationClean: propagationOutcome !== null,
-            refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+            refreshedDatasets: propagationOutcome?.review_flagged_datasets || [],
             linkWarnings: propagationOutcome?.link_warnings || [],
           };
         } finally {

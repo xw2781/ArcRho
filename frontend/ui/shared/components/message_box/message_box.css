@@ -82,6 +82,10 @@
   white-space: pre-line;
 }
 
+/* Scrolls under the shared framed scrollbar (`ar-framed-scroll`, loaded with
+   this sheet) so every host page shows the same tray. `overscroll-behavior`
+   keeps a wheel that reaches the list's end from scrolling the page behind
+   the box, which the overlay otherwise blocks. */
 .pageMessageBoxLinks {
   display: grid;
   max-height: 180px;
@@ -89,6 +93,7 @@
   margin: 10px 0 0;
   padding: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 

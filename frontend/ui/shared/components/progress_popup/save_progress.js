@@ -24,7 +24,7 @@ strand the overlay by adding a new early return.
 */
 
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 
 /**
@@ -180,14 +180,16 @@ export const inertArcRhoSaveProgress = {
 };
 
 /**
- * Shows the post-save notice naming the dependent datasets the Engine
- * refreshed during the save. Explicit Save commands await this so the user
- * sees exactly which dataset instances were rewritten. A save that refreshed
- * nothing has nothing to report, so it resolves without raising a dialog
- * rather than interrupting the user to say that no dependent needed an update.
+ * Shows the post-save notice naming the dependent method outputs whose values
+ * the save changed - the ones the Engine walk turned from OK to Needs Review.
+ * Dependents the walk rewrote without a meaningful change stay green and are
+ * not listed, so the user reads only what now needs their attention. Explicit
+ * Save commands await this. A save that changed nothing downstream has nothing
+ * to report, so it resolves without raising a dialog rather than interrupting
+ * the user to say so.
  *
- * The notice does not time out: the list of refreshed datasets is the only
- * record the user gets of what the save rewrote, so it waits for them to read
+ * The notice does not time out: the list is the only record the user gets of
+ * what the save changed, so it waits for them to read
  * it. Any normal dismissal closes it - OK, the close button, Esc, or a click
  * anywhere in the window outside the box - which the message box already
  * provides, so the notice only has to decline the auto-close timer.
@@ -208,7 +210,7 @@ export const inertArcRhoSaveProgress = {
  * blocks the save or the rest of the chain; the notice is the record of it.
  *
  * @param {string[]} refreshedDatasets - Names from the save response's
- *   `propagation.refreshed_datasets`.
+ *   `propagation.review_flagged_datasets`.
  * @param {Object} [options]
  * @param {Array<{dataset_name: string, reason: string}>} [options.linkWarnings]
  *   - Entries from the save response's `propagation.link_warnings`.
@@ -232,8 +234,8 @@ export async function showSavedDependentsNotice(refreshedDatasets, { linkWarning
   const messageParts = [];
   if (names.length) {
     messageParts.push(names.length === 1
-      ? "1 dependent dataset was updated:"
-      : `${names.length} dependent datasets were updated:`);
+      ? "1 dependent dataset changed and needs review:"
+      : `${names.length} dependent datasets changed and need review:`);
   }
   if (warnings.length) {
     messageParts.push(warnings.length === 1

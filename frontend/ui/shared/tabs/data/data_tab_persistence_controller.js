@@ -4,8 +4,8 @@ import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagatio
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260830a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
@@ -1236,7 +1236,7 @@ export function registerDataTabPersistenceController(runtime) {
       ok: true,
       data: resp.data,
       propagationClean: propagationOutcome !== null,
-      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+      refreshedDatasets: propagationOutcome?.review_flagged_datasets || [],
       linkWarnings: propagationOutcome?.link_warnings || [],
     };
   }

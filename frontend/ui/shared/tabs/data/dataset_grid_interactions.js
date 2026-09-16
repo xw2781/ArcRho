@@ -16,7 +16,7 @@ import {
   isInternalReferencePickDraft,
 } from "/ui/shared/dataset/dataset_internal_reference.js?v=20260830a";
 import { classifyDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260830a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 
 export function wireDatasetGridInteractions(deps) {
   const {

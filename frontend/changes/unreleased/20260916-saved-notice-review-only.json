@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Saved notice now lists only the dependent methods whose values changed and need review, not every dependent the save rewrote.",
+  "details": [
+    "A dependent that was recalculated but kept the same values stays green and is left out of the list.",
+    "Dependents changed deeper down the chain, such as a Result Selection refreshed after a BF method, are listed too."
+  ]
+}

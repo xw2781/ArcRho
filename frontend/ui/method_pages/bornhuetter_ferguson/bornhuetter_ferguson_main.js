@@ -24,8 +24,8 @@ import {
 import { createBornhuetterFergusonChart } from "/ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_chart.js?v=20260722a";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260831a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260831a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1646,7 +1646,7 @@ async function runBornhuetterFergusonSave(progress) {
     return {
       ...result,
       propagationClean: propagationOutcome !== null,
-      refreshedDatasets: propagationOutcome?.refreshed_datasets || [],
+      refreshedDatasets: propagationOutcome?.review_flagged_datasets || [],
       linkWarnings: propagationOutcome?.link_warnings || [],
     };
   } finally {

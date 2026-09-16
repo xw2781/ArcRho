@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Saved notice that lists updated dependent datasets now looks the same on every page and scrolls with the mouse wheel.",
+  "details": [
+    "The list uses the app's framed scrollbar instead of whichever scrollbar the host page happened to show.",
+    "Wheel scrolling over the list moves the list; the page behind the notice still stays put."
+  ]
+}

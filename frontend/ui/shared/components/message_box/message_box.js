@@ -1,13 +1,25 @@
 const STYLE_ID = "pageMessageBoxStyles";
+// The link list scrolls under the app's framed scrollbar. Without this sheet
+// the list would wear whichever scrollbar the host page happens to paint -
+// the plain thumb on pages that load `shared/styles/scrollbars.css`, the
+// browser's own on pages that do not - so the same notice looked different
+// from one window to the next.
+const FRAMED_SCROLL_STYLE_ID = "pageMessageBoxFramedScrollStyles";
 let messageSequence = 0;
 
 function ensureStyles(doc) {
-  if (doc.getElementById(STYLE_ID)) return;
-  const link = doc.createElement("link");
-  link.id = STYLE_ID;
-  link.rel = "stylesheet";
-  link.href = "/ui/shared/components/message_box/message_box.css?v=20260831a";
-  doc.head.appendChild(link);
+  const sheets = [
+    [STYLE_ID, "/ui/shared/components/message_box/message_box.css?v=20260916a"],
+    [FRAMED_SCROLL_STYLE_ID, "/ui/shared/styles/framed_scrollbars.css?v=20260824a"],
+  ];
+  for (const [id, href] of sheets) {
+    if (doc.getElementById(id)) continue;
+    const link = doc.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = href;
+    doc.head.appendChild(link);
+  }
 }
 
 /**
@@ -53,7 +65,7 @@ export function showPageMessageBox({
       </button>
       <div class="pageMessageBoxTitle" id="${id}Title"></div>
       <div class="pageMessageBoxMessage" id="${id}Message"></div>
-      <ul class="pageMessageBoxLinks" aria-label="Related datasets"></ul>
+      <ul class="pageMessageBoxLinks ar-framed-scroll" aria-label="Related datasets"></ul>
       <div class="pageMessageBoxActions">
         <button class="pageMessageBoxButton" type="button">OK</button>
       </div>
@@ -178,7 +190,13 @@ export function showPageMessageBox({
     if (Number(autoCloseMs) > 0) {
       setTimeout(() => finish(), Number(autoCloseMs));
     }
-    overlay.addEventListener("wheel", (event) => event.preventDefault(), { passive: false });
+    // The overlay swallows the wheel so the host page cannot scroll behind the
+    // box, except over the link list, which scrolls itself; its
+    // `overscroll-behavior: contain` stops a wheel at the list's end from
+    // chaining to the page.
+    overlay.addEventListener("wheel", (event) => {
+      if (!event.target.closest?.(".pageMessageBoxLinks")) event.preventDefault();
+    }, { passive: false });
     doc.addEventListener("keydown", handleKeydown, true);
     requestAnimationFrame(() => {
       const initial = okButton.isConnected ? okButton : focusableElements()[0];
