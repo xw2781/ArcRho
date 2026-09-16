@@ -55,6 +55,30 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_a_walk_reads_the_existing_dataset_names_once(self) -> None:
+        """Nested walks reuse the outermost walk's snapshot instead of re-reading the index."""
+        index = {"files": [{"name": "Paid", "dataset_type": "Paid"}, {"name": "Ultimate"}]}
+        with patch.object(
+            calculated_dataset_service.dataset_instance_index_service, "get_index", return_value=index
+        ) as get_index:
+            # Outside a walk every call asks the index, as before.
+            calculated_dataset_service._existing_dataset_keys("Project", "Example RC")
+            calculated_dataset_service._existing_dataset_keys("Project", "Example RC")
+            self.assertEqual(get_index.call_count, 2)
+
+            def fake_walk(*_args, **_kwargs):
+                keys = calculated_dataset_service._existing_dataset_keys("Project", "Example RC")
+                calculated_dataset_service._existing_dataset_keys("project", "example rc")
+                self.assertEqual(keys, {"paid", "ultimate"})
+                return {"ok": True}
+
+            with patch.object(calculated_dataset_service, "_recalculate_dependents_impl", fake_walk):
+                calculated_dataset_service.recalculate_dependents("Project", "Example RC", "Paid")
+            self.assertEqual(get_index.call_count, 3)
+            # The snapshot ends with the walk.
+            calculated_dataset_service._existing_dataset_keys("Project", "Example RC")
+            self.assertEqual(get_index.call_count, 4)
+
     def test_dependency_errors_include_structured_missing_names(self) -> None:
         row = {
             "name": "Calculated Output",

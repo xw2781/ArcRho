@@ -784,11 +784,20 @@ def _run_inline_save_propagation(
             "status": "completed",
             "message": str(exc),
             "refreshed_datasets": [],
+            "review_flagged_datasets": [],
         }
+    # ``refreshed_datasets`` names everything the walk's top-level waves
+    # rewrote (the hosted-save log's record); ``review_flagged_datasets`` is
+    # the shorter list the saving window shows: the method outputs whose
+    # values changed, i.e. went from OK to Needs Review, nested cascades
+    # included.
     payload: Dict[str, Any] = {
         "ok": bool(result.get("ok")),
         "status": "completed",
         "refreshed_datasets": _collect_refreshed_dataset_names(result),
+        "review_flagged_datasets": [
+            str(name).strip() for name in result.get("review_flagged") or [] if str(name or "").strip()
+        ],
     }
     link_warnings = _collect_link_warnings(result)
     if link_warnings:

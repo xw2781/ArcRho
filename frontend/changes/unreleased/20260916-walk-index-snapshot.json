@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving is faster: the dependent refresh no longer rebuilds the reserving class index after every method it recalculates.",
+  "details": [
+    "The walk reads the list of existing datasets once and reuses it for every nested step; the index is still rebuilt once at the end."
+  ]
+}

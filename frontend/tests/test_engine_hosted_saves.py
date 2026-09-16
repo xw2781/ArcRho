@@ -797,6 +797,8 @@ class InlineEnginePropagationTests(unittest.TestCase):
                 "ok": True,
                 "updated": [{"dataset_name": "C 91 - Current Qtr Indicated"}],
             },
+            # Only C 91 changed meaningfully; C 22 was rewritten but stays OK.
+            "review_flagged": ["C 91 - Current Qtr Indicated"],
         }
         with patch(
             "app_server.services.calculated_dataset_service.recalculate_dependents",
@@ -820,6 +822,8 @@ class InlineEnginePropagationTests(unittest.TestCase):
                 "C 91 - Current Qtr Indicated",
             ],
         )
+        # The saving window lists only the outputs that changed and need review.
+        self.assertEqual(payload["review_flagged_datasets"], ["C 91 - Current Qtr Indicated"])
 
     def test_every_save_path_runs_the_walk_inline_not_only_the_marked_one(self) -> None:
         """The dataset-sidecar save must not queue a job inside a hosted save.

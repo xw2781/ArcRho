@@ -15,7 +15,8 @@ for root in (REPO_ROOT / "frontend", REPO_ROOT / "python-api" / "src"):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-from app_server.services.method_review_service import refreshed_status
+from app_server.services import calculated_dataset_service
+from app_server.services.method_review_service import refreshed_status, review_flag_collector
 import test_dfm_service
 import test_bornhuetter_ferguson_service
 import test_cape_cod_service
@@ -51,6 +52,32 @@ class MethodReviewTests(unittest.TestCase):
             ):
                 with self.subTest(files=changed_files):
                     self.assertEqual(refreshed_status({"status": 0}, changed_files), 2)
+
+    def test_walk_collects_only_the_outputs_that_turn_from_ok_to_needs_review(self):
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as folder:
+            csv_path = str(Path(folder) / "output@12.csv")
+            Path(csv_path).write_text("10\n", encoding="utf-8")
+            same = {csv_path: "10.0\n"}
+            changed = {csv_path: "11\n"}
+            # Without a walk the comparison records nothing and still answers.
+            self.assertEqual(refreshed_status({"status": 0, "dataset_name": "Loose"}, changed), 2)
+            with review_flag_collector() as flagged:
+                self.assertEqual(refreshed_status({"status": 0, "dataset_name": "Green Same"}, same), 0)
+                self.assertEqual(refreshed_status({"status": 2, "dataset_name": "Already Yellow"}, changed), 2)
+                self.assertEqual(refreshed_status({"status": 0, "dataset_name": "C 91"}, changed), 2)
+                # A nested walk shares the outer list, and a repeat is one entry.
+                with review_flag_collector() as nested:
+                    self.assertIs(nested, flagged)
+                    refreshed_status({"status": 0, "dataset_name": "c 91"}, changed)
+                    refreshed_status({"status": 0, "dataset_name": "D 92"}, changed)
+                self.assertEqual(flagged, ["C 91", "D 92"])
+            # The walk wrapper hands the collected names back on its result.
+            def fake_walk(*_args, **_kwargs):
+                refreshed_status({"status": 0, "dataset_name": "E1 92"}, changed)
+                return {"ok": True}
+            with mock.patch.object(calculated_dataset_service, "_recalculate_dependents_impl", fake_walk):
+                result = calculated_dataset_service.recalculate_dependents("Project", "Class", "Paid")
+            self.assertEqual(result["review_flagged"], ["E1 92"])
 
     def test_all_method_publishers_preserve_green_and_existing_yellow(self):
         cases = (

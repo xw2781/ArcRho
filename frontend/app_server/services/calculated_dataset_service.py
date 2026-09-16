@@ -1495,7 +1495,23 @@ def _target_dependency_map(project_name: str, rows: List[Dict[str, Any]] | None 
     return out
 
 
+# One dependent walk reads the class's existing dataset names once. Every
+# nested walk a method wave opens asks the same question, and answering it
+# through ``get_index`` after the walk's own writes have moved the folder
+# signature rebuilds the whole index each time. A walk only rewrites instances
+# that already exist, so the set cannot change while it runs; the outermost
+# ``recalculate_dependents`` opens the snapshot and the final index rebuild
+# still runs after the walk.
+_existing_dataset_keys_snapshot: contextvars.ContextVar[Dict[Tuple[str, str], Set[str]] | None] = (
+    contextvars.ContextVar("existing_dataset_keys_snapshot", default=None)
+)
+
+
 def _existing_dataset_keys(project_name: str, reserving_class: str) -> Set[str]:
+    snapshot = _existing_dataset_keys_snapshot.get()
+    snapshot_key = (_clean_text(project_name).casefold(), _clean_text(reserving_class).casefold())
+    if snapshot is not None and snapshot_key in snapshot:
+        return snapshot[snapshot_key]
     index = dataset_instance_index_service.get_index(project_name, reserving_class, refresh=False)
     keys: Set[str] = set()
     for item in index.get("files", []) if isinstance(index.get("files"), list) else []:
@@ -1503,6 +1519,8 @@ def _existing_dataset_keys(project_name: str, reserving_class: str) -> Set[str]:
             key = _canon_dataset_name(value)
             if key:
                 keys.add(key)
+    if snapshot is not None:
+        snapshot[snapshot_key] = keys
     return keys
 
 
@@ -2855,11 +2873,19 @@ def recalculate_dependents(
     additional_roots: Sequence[Tuple[str, str]] | None = None,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> Dict[str, Any]:
+    from app_server.services.method_review_service import review_flag_collector
+
     token = _link_refresh_visited.set(set()) if _link_refresh_visited.get() is None else None
     forwarded_token = _link_refresh_forwarded.set(set()) if _link_refresh_forwarded.get() is None else None
+    keys_token = (
+        _existing_dataset_keys_snapshot.set({}) if _existing_dataset_keys_snapshot.get() is None else None
+    )
     try:
-        with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
-            return _recalculate_dependents_impl(
+        with (
+            review_flag_collector() as review_flagged,
+            dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class),
+        ):
+            result = _recalculate_dependents_impl(
                 project_name,
                 reserving_class,
                 changed_dataset_name,
@@ -2875,6 +2901,10 @@ def recalculate_dependents(
                 additional_roots=additional_roots,
                 progress_callback=progress_callback,
             )
+            # The outputs this walk (nested cascades included) turned from OK
+            # to Needs Review: what the user is shown after a save.
+            result["review_flagged"] = list(review_flagged)
+            return result
     except Exception:
         roots = [changed_dataset_name, changed_dataset_type_name]
         roots.extend(name for pair in additional_roots or [] for name in pair)
@@ -2887,6 +2917,8 @@ def recalculate_dependents(
             _link_refresh_visited.reset(token)
         if forwarded_token is not None:
             _link_refresh_forwarded.reset(forwarded_token)
+        if keys_token is not None:
+            _existing_dataset_keys_snapshot.reset(keys_token)
 
 
 def preview_dependents(
