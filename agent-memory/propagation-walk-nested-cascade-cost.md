@@ -1,31 +1,32 @@
 ---
 name: propagation-walk-nested-cascade-cost
-description: "Why a full-chain save takes 4-12 s — every method refresh runs its own nested recalculate_dependents, each nested walk rebuilds the class index, and the popup/log name only top-level waves (2026-09-16 diagnosis)"
+description: "Why a full-chain save took 11 s — 26 objects rewritten 54 times because method waves re-enter recalculate_dependents per method; the D 91 subtree ran three times; audit_log event_dates give the exact sequence (2026-09-16, Q3-Aug COL)"
 metadata: 
   node_type: memory
   type: project
   originSessionId: c285c750-0eae-4979-9d1d-2bdc8582e924
-  modified: 2026-09-16T12:56:47.516Z
+  modified: 2026-09-16T13:06:02.622Z
 ---
 
-Diagnosis of "saving C 42a takes 11-12 s" after the full-chain commit (849b20f9), 2026-09-16.
+Diagnosis of "saving C 42a takes 11-12 s" after the full-chain commit (849b20f9), traced 2026-09-16 on
+`NJ_Annual_Prod_2026 Q3-Aug` / COL (the user granted that project's metadata for the session).
 
-- `hosted_saves.log` gives the split per save (`stages: ... bornhuetter_ferguson 11.4s ...`); the stage marks are
-  top-level only, because nested walks get no progress callback, so a wave's figure includes everything it cascaded.
-- Every domain's `refresh_dependents` (RS, BF, CC, BS, Bootstrap) calls `calculated_dataset_service.recalculate_dependents`
-  again **per refreshed method** (`_refresh_downstream_domains`), and RS does the same per RS method; each nested walk
-  runs dfm/linked/calculated/RS/BS stages, and the RS wave starts with `_assert_acyclic_dependency_subgraph` over the
-  whole downstream closure. Objects downstream of two refreshed methods are recalculated once per path.
-- Each nested walk calls `_existing_downstream_keys` -> `get_index(refresh=False)`; the walk's own writes move the
-  folder signature, so that read rebuilds the whole class index every time (the same ~0.2 s the final `index` stage shows).
-- Measured on the fake COL class (file mtimes, 11:40Z D 42 save): BF + 5 RS methods rewritten in 1.4 s, ~0.2 s per
-  method including its nested walk. The popup said "1 dependent dataset was updated" — `_collect_refreshed_dataset_names`
-  reads only the top-level `*_updates.updated` buckets, so nested rewrites are invisible there and in the log's
-  `walk refreshed N` line.
-- Neither `hosted_saves.log` nor `gateway.log` names the project; a class name alone (COL) matched four projects.
+- `hosted_saves.log` gives the wave split per save (`bornhuetter_ferguson 11.4s`); wave marks are top-level only, so a
+  wave's figure includes every cascade it nested.
+- Every domain's `refresh_dependents` re-enters `calculated_dataset_service.recalculate_dependents` **per refreshed
+  method** (`_refresh_downstream_domains`), RS per RS method too. In that save 26 objects were rewritten 54 times at
+  ~0.2 s each: the D 91 Result Selection and its 13 descendants (6 calculated, D 92, 6 RS) ran three full passes, each
+  ~3 s — triggered by C 92's nested B&S cascade, by D 31 in the RS loop, and by the B&S wave of C 41's cascade after
+  D 18 changed. Only the last pass carried final inputs. The B&S method itself costs ~0.2 s, not the 6.7 s gap the
+  file mtimes suggest (mtimes keep only the last write).
+- Each nested walk called `get_index(refresh=False)`; the walk's own writes move the folder signature, so that read
+  rebuilt the whole index every time. Fixed 2026-09-16: `_existing_dataset_keys_snapshot` (context-local, opened by the
+  outermost `recalculate_dependents`) answers nested walks from one read. Deployed to Engine + Bridge.
+- The Saved notice and the log's `walk refreshed N` name only top-level buckets; since 2026-09-16 the notice shows
+  `review_flagged_datasets` (OK -> Needs Review flips recorded in `method_review_service.refreshed_status`).
+- Neither `hosted_saves.log` nor `gateway.log` names the project; COL exists in four projects — ask.
 
-**How to apply:** for a per-object trace, list the class folder's sidecars/methods/datasets by mtime with a Python
-script (a metadata read the fake project allows). Speed-ups that keep the behaviour: a walk-scoped snapshot of existing
-dataset names instead of `get_index` per nested walk; batching a wave's cascades per frontier; ultimately one
-topologically ordered pass over the closure so each node is refreshed once. Related: [[dfm-save-propagation-profile]],
+**How to apply:** for a per-object trace, list sidecar `audit_log` `event_date`s inside the save's window with a
+`py -3.10` script — that shows repeats, which mtimes cannot. The remaining fix is one dependency-ordered pass over
+the closure so each object is refreshed once (~26 x 0.2 s here instead of 54). Related: [[dfm-save-propagation-profile]],
 [[agent-share-listing-blocked-use-python]].
