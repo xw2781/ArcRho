@@ -2,6 +2,38 @@
 
 `python-api/macros` is the source of truth for ArcRho macros maintained by agents.
 
+## A macro must stand on its own
+
+A macro runs inside the installed ArcRho app and imports `arcrho_api` from the
+copy the app was built with, not from this checkout. Publishing a macro to the
+shared library therefore ships the macro file and nothing else: a user picks up
+a new macro version straight away, but they keep the `arcrho_api` their app was
+built with until the app itself is rebuilt and reinstalled.
+
+So a macro must not depend on a change made in `python-api/src/arcrho_api` in
+the same turn. Concretely:
+
+- **Own the behaviour the macro is responsible for.** Wording the macro writes,
+  formatting it applies, and rules only that macro follows belong in the macro
+  file, even when a similar helper exists in `arcrho_api`.
+- **Treat `arcrho_api` as an older library.** Call it for things that have been
+  stable for a while. Never call a function you have just changed, and never
+  rely on a keyword argument, constant, or return shape you have just added.
+- **When a shared contract really must change** — a format two components have
+  to agree on, such as the combined-adjustment note lines both the notes macro
+  writes and the ResQ import reads — change `arcrho_api` for the reading side,
+  and still have the macro produce the new output on its own. Say in the pull
+  request that the reading side is live only after the next app build.
+- **Test it both ways.** Prove the macro writes what it should when the shared
+  helper behaves the old way, as
+  `test_generate_notes_for_combined_adjustment.py` does by swapping
+  `adjustment_description` for the older implementation.
+
+Symptom to recognise: a macro is published and deployed at its new version, the
+tests pass in this checkout, and the app still produces the old result. That is
+almost always a macro leaning on a shared helper the installed app has an older
+copy of.
+
 ## Macro metadata and versions
 
 Every active macro Python file directly in this folder must include these fields in
