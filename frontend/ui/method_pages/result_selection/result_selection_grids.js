@@ -886,8 +886,11 @@
 
       function reserveAt(rowIndex, ultimateValue = selectedUltimateAt(rowIndex)) {
         const ultimate = numberOrNull(ultimateValue);
+        if (ultimate === null) return null;
         const latestDeveloped = latestDevelopedAt(rowIndex);
-        return ultimate !== null && latestDeveloped !== null ? ultimate - latestDeveloped : null;
+        // An origin period with nothing developed yet has paid or reported
+        // nothing, so the whole selected ultimate is still outstanding.
+        return latestDeveloped === null ? ultimate : ultimate - latestDeveloped;
       }
 
       function effectiveWeightAt(sourceIndex, rowIndex) {
