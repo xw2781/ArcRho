@@ -786,15 +786,18 @@ def _run_inline_save_propagation(
             "refreshed_datasets": [],
             "review_flagged_datasets": [],
         }
-    # ``refreshed_datasets`` names everything the walk's top-level waves
-    # rewrote (the hosted-save log's record); ``review_flagged_datasets`` is
-    # the shorter list the saving window shows: the method outputs whose
-    # values changed, i.e. went from OK to Needs Review, nested cascades
-    # included.
+    # ``refreshed_datasets`` names everything the one ordered pass rewrote
+    # (the hosted-save log's record) and ``reachable_dataset_count`` is how
+    # many objects that pass set out to refresh, so the log can say
+    # "refreshed 26 of 26 reachable" and a walk stopped on a failed branch
+    # reads as one. ``review_flagged_datasets`` is the shorter list the saving
+    # window shows: the method outputs whose values changed, i.e. went from OK
+    # to Needs Review.
     payload: Dict[str, Any] = {
         "ok": bool(result.get("ok")),
         "status": "completed",
         "refreshed_datasets": _collect_refreshed_dataset_names(result),
+        "reachable_dataset_count": int(result.get("reachable_count") or 0),
         "review_flagged_datasets": [
             str(name).strip() for name in result.get("review_flagged") or [] if str(name or "").strip()
         ],

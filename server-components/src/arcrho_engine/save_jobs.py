@@ -140,7 +140,15 @@ def _inline_walk_summary(response: Any) -> str:
         listed = ", ".join(names[:_INLINE_WALK_LOG_NAME_LIMIT])
         if len(names) > _INLINE_WALK_LOG_NAME_LIMIT:
             listed += f", (+{len(names) - _INLINE_WALK_LOG_NAME_LIMIT} more)"
-        refreshed = f"walk refreshed {len(names)}" + (f": {listed}" if listed else "")
+        # The walk orders everything the save reaches up front and refreshes
+        # each object once, so it knows how many it set out to do: reporting
+        # both numbers is what separates a short chain from a chain that
+        # stopped on a failed branch.
+        reachable = payload.get("reachable_dataset_count")
+        counted = f"{len(names)}"
+        if isinstance(reachable, int) and not isinstance(reachable, bool) and reachable >= len(names):
+            counted = f"{len(names)} of {reachable} reachable"
+        refreshed = f"walk refreshed {counted}" + (f": {listed}" if listed else "")
         if payload.get("ok") is False:
             reason = _redact_machine_paths(str(payload.get("message") or "")) or "see status"
             return f"{refreshed}; walk FAILED: {reason}"
@@ -152,12 +160,18 @@ def _inline_walk_summary(response: Any) -> str:
 def _walk_stage_timing(
     marks: Sequence[tuple[str, float]], started_at: float, finished_at: float
 ) -> str:
-    """Render the inline walk's stage transitions as one line of durations.
+    """Render the inline walk's time per domain as one line of durations.
 
-    ``marks`` holds the first progress call of each stage in order, as
-    ``(stage, monotonic)``. A stage lasts until the next stage's first call;
-    the last one runs to ``finished_at``, so it also carries the save's
+    ``marks`` holds the first progress call of each run of one stage, in
+    order, as ``(stage, monotonic)``. A run lasts until the next run's first
+    call; the last one runs to ``finished_at``, so it also carries the save's
     return path. The time before the first mark is the save's own commit.
+
+    The walk refreshes each object once in dependency order, so a domain is
+    entered and left as often as the order interleaves it with the others. Its
+    runs are summed into one figure, keeping the line one entry per domain in
+    the order the domains were first entered: a domain that costs 3 s over
+    eleven objects reads as one 3 s entry rather than eleven fragments.
 
     The queued-walk diary times every stage transition, and that is what
     localizes a stall; without this line a slow hosted save reports one total
@@ -166,10 +180,12 @@ def _walk_stage_timing(
 
     if not marks:
         return ""
-    parts = [f"before walk {max(0.0, marks[0][1] - started_at):.1f}s"]
+    totals: dict[str, float] = {}
     for index, (stage, at) in enumerate(marks):
         end = marks[index + 1][1] if index + 1 < len(marks) else finished_at
-        parts.append(f"{stage} {max(0.0, end - at):.1f}s")
+        totals[stage] = totals.get(stage, 0.0) + max(0.0, end - at)
+    parts = [f"before walk {max(0.0, marks[0][1] - started_at):.1f}s"]
+    parts.extend(f"{stage} {seconds:.1f}s" for stage, seconds in totals.items())
     return "stages: " + ", ".join(parts)
 
 
@@ -416,9 +432,11 @@ def process_hosted_save_request(
             client polls these over the Gateway to show which dependent is
             being refreshed while the save request is still in flight.
 
-            Each stage's first call is also kept as a timing mark ahead of
-            the throttle, so a short stage still marks where the next one
-            began.
+            The first call of each run of one stage is also kept as a timing
+            mark ahead of the throttle, so a short run still marks where the
+            next one began. The ordered walk returns to a domain whenever the
+            dependency order does, and each return opens a new run; the log
+            line sums a domain's runs.
             """
 
             try:

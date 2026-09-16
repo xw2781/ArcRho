@@ -1,6 +1,6 @@
 # Ordered single-pass dependent walk
 
-Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 3 of 5 done — the ordered closure and the one-object refreshers landed 2026-09-16, and the single ordered pass replaced the waves the same day, so a save now refreshes each object it reaches exactly once; the popup wording, the log line and the deploy are what is left.
+Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 4 of 5 done — the ordered closure, the one-object refreshers, the single ordered pass and its log line and docs all landed 2026-09-16, so a save now refreshes each object it reaches exactly once and `hosted_saves.log` records how many of the reachable objects it refreshed and the time each domain cost; only the deploy and the measurement on the traced save are left.
 Last updated: 2026-09-16
 
 ## Progress
@@ -12,10 +12,10 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | The walk works out, up front, everything a save reaches and the order to refresh it in | [x] | 2026-09-16 | Nothing to see yet: the app can now list everything one save affects and put it in the order it has to be redone in. |
 | 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [x] | 2026-09-16 | Nothing to see yet: the app can now bring any one affected object up to date on its own, and say why it could not, instead of starting a chain of its own. |
 | 3 | A save refreshes each downstream object exactly once, in that order | [x] | 2026-09-16 | Saving is quicker on a big chain: each affected item is now redone once, in the right order, instead of being redone every time another route reaches it. |
-| 4 | The saving popup and the server log describe the new walk | [ ] | | |
+| 4 | The saving popup and the server log describe the new walk | [x] | 2026-09-16 | The server's own record of a save now says how many of the affected items it refreshed out of how many it had to, and how long each kind of method took altogether; the saving popup still names each item as it is brought up to date. |
 | 5 | Released to the server and timed on the save that started this | [ ] | | |
 
-Overall: 3 of 5 steps done.
+Overall: 4 of 5 steps done.
 
 ## How agents work this plan
 
@@ -115,13 +115,17 @@ Tests: `frontend/tests/test_dependent_walk_pass.py` replays the traced shape —
 
 ### Step 4 — popup, log and docs
 
-Files: `server-components/src/arcrho_engine/save_jobs.py` (`_walk_stage_timing`, `_inline_walk_summary`) and `server-components/tests/test_save_jobs.py`; `frontend/docs/app_server/domains/dependent_propagation.md`; `frontend/docs/contracts/business_logic_contract.md` (rules 10, 12 and 15 describe wave order — say "dependency order" and name this plan); `frontend/docs/ui/dataset.md`; a release fragment under `frontend/changes/unreleased/`.
+Files: `server-components/src/arcrho_engine/save_jobs.py` (`_walk_stage_timing`, `_inline_walk_summary`) and `server-components/tests/test_save_jobs.py`; `dependent_walk_service.py` and `dependent_propagation_service.py` for the reachable count the log line needs (found while doing the step), with `frontend/tests/test_dependent_walk_pass.py` and `test_engine_hosted_saves.py`; `frontend/docs/app_server/domains/dependent_propagation.md`; `frontend/docs/contracts/business_logic_contract.md` (rules 10, 12 and 15 describe wave order — say "dependency order" and name this plan); `frontend/docs/ui/dataset.md`; a release fragment under `frontend/changes/unreleased/`.
 
 - The stage-timing line in `hosted_saves.log` keeps its shape; a domain's time is now the sum of its objects' refreshes, and the line gains the object count (`walk refreshed 26 of 26 reachable`).
 - The popup's progress text keeps naming the object being refreshed.
 - `python tools/docs_index_builder.py --write` and `--check` from `frontend/`.
 
 Done when: the Engine tests pass, docs check passes, the fragment validates.
+
+Landed 2026-09-16. `_walk_stage_timing` now sums a domain's runs instead of timing one transition: dependency order returns to a domain whenever the order does, so the line stays one entry per domain, in the order the domains were first entered, and a domain that costs 3 s over eleven objects reads as one 3 s entry. `_inline_walk_summary` reads a new `propagation.reachable_dataset_count` beside the names it already lists and writes `walk refreshed 26 of 26 reachable: …`, so a walk stopped on a failed branch reads as `refreshed 12 of 26 reachable` rather than as a save with almost no dependents. The count comes from one added report key, `reachable_count` — the objects the pass set out to refresh, which is also the progress callback's `total` — and every existing key is untouched; `dependent_propagation_service` carries it into the save payload, which is the one file Step 4 did not list and the only place the number could cross from the walk to the Engine.
+
+The popup needed no change: the pass already reports one progress call per object with the object's name as the label, which is what `save_progress.liveUpdate` renders and counts, and only Result Selection's save streams those rows today. Docs updated: the `dependent_propagation` domain doc (the pass and its walk-scoped cache, per-object progress, the new log line), business-logic contract rules 10, 12 and 15 (dependency order, one pass, this plan named, no more nested cascades or per-walk link visited set), `frontend/docs/ui/dataset.md`, and a release fragment. Tests: `test_save_jobs` gained the summed-domain timing case, the "of N reachable" count and a stopped-branch case; `test_dependent_walk_pass` asserts `reachable_count` stays the whole chain when a branch fails and drops a crossed kind; `test_engine_hosted_saves` pins the payload field. The three failures in the Engine suite (`test_project_duplication` x2, `test_bridge_import_request_protocol`) are pre-existing at HEAD.
 
 ### Step 5 — deploy and measure
 

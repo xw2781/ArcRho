@@ -146,11 +146,14 @@ class HostedSaveJobTests(unittest.TestCase):
 
         def fake_save(*args, **kwargs):
             report = progress_hooks[-1]
-            for stage in ("marking", "dfm", "dfm", "index"):
+            # The ordered walk returns to a domain whenever the dependency
+            # order does, so dfm is entered twice here.
+            for stage in ("marking", "dfm", "dfm", "calculated_datasets", "dfm", "index"):
                 report(stage, 0, 0, stage)
             return {
                 "ok": True,
                 "propagation": {"status": "completed", "ok": True,
+                                "reachable_dataset_count": 1,
                                 "refreshed_datasets": ["C 30 - Ultimate"]},
             }
 
@@ -169,10 +172,16 @@ class HostedSaveJobTests(unittest.TestCase):
             encoding="utf-8"
         )
         success_line = next(line for line in log_text.splitlines() if " success in " in line)
-        self.assertIn("walk refreshed 1: C 30 - Ultimate; stages: before walk ", success_line)
-        self.assertEqual(
-            success_line.count(", dfm "), 1, "a stage's repeated progress calls are one mark"
+        self.assertIn(
+            "walk refreshed 1 of 1 reachable: C 30 - Ultimate; stages: before walk ",
+            success_line,
         )
+        self.assertEqual(
+            success_line.count(", dfm "),
+            1,
+            "a domain's runs are summed into one entry, however often the order returns to it",
+        )
+        self.assertIn(", calculated_datasets ", success_line)
         self.assertIn(", index ", success_line)
         self.assertIn("; publish ", success_line)
 
@@ -532,16 +541,31 @@ class InlineWalkSummaryTests(unittest.TestCase):
     def test_method_save_names_what_the_walk_refreshed(self) -> None:
         summary = save_jobs._inline_walk_summary({
             "propagation": {"ok": True, "status": "completed",
+                            "reachable_dataset_count": 2,
                             "refreshed_datasets": ["C 30 - Ultimate", "C 31 - IBNR"]},
         })
-        self.assertEqual(summary, "walk refreshed 2: C 30 - Ultimate, C 31 - IBNR")
+        self.assertEqual(
+            summary, "walk refreshed 2 of 2 reachable: C 30 - Ultimate, C 31 - IBNR"
+        )
+
+    def test_a_stopped_branch_shows_how_much_of_the_chain_was_reached(self) -> None:
+        # The walk orders the whole chain up front, so it knows the 26 it set
+        # out to do; without both numbers a walk that stopped on a failed
+        # branch reads like a save with almost no dependents.
+        summary = save_jobs._inline_walk_summary({
+            "propagation": {"ok": True, "status": "completed",
+                            "reachable_dataset_count": 26,
+                            "refreshed_datasets": ["C 30 - Ultimate"]},
+        })
+        self.assertEqual(summary, "walk refreshed 1 of 26 reachable: C 30 - Ultimate")
 
     def test_dataset_sidecar_save_reports_its_nested_payload(self) -> None:
         summary = save_jobs._inline_walk_summary({
             "data": {"calculated_updates": {"ok": True, "status": "completed",
+                                            "reachable_dataset_count": 1,
                                             "refreshed_datasets": ["C 30 - Ultimate"]}},
         })
-        self.assertEqual(summary, "walk refreshed 1: C 30 - Ultimate")
+        self.assertEqual(summary, "walk refreshed 1 of 1 reachable: C 30 - Ultimate")
 
     def test_dataset_sidecar_save_reports_its_top_level_payload(self) -> None:
         # ``dataset_service.save_dataset_sidecar`` returns ``calculated_updates``
@@ -552,13 +576,14 @@ class InlineWalkSummaryTests(unittest.TestCase):
             "dataset_name": "Net Loss--Incurred Adjusted*",
             "calculated_updates": {
                 "ok": False, "status": "completed",
+                "reachable_dataset_count": 3,
                 "refreshed_datasets": ["F 23 C - Adjusted Incurred DFM"],
                 "message": "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed",
             },
         })
         self.assertEqual(
             summary,
-            "walk refreshed 1: F 23 C - Adjusted Incurred DFM; walk FAILED: "
+            "walk refreshed 1 of 3 reachable: F 23 C - Adjusted Incurred DFM; walk FAILED: "
             "Method refresh failure(s): F 41 A - BF Incurred: Prior vector refresh failed",
         )
 
@@ -604,6 +629,21 @@ class InlineWalkTimingTests(unittest.TestCase):
         self.assertEqual(
             save_jobs._walk_stage_timing(marks, started_at=10.0, finished_at=12.0),
             "stages: before walk 0.5s, marking 0.0s, dfm 1.2s, index 0.3s",
+        )
+
+    def test_a_domain_the_order_returns_to_reports_the_sum_of_its_objects(self) -> None:
+        # Dependency order interleaves the domains, so dfm is entered twice
+        # here; one entry per domain keeps the line readable on a 26-object
+        # walk, and the figure is still the domain's whole cost.
+        marks = [
+            ("dfm", 10.0),
+            ("calculated_datasets", 11.0),
+            ("dfm", 11.5),
+            ("index", 13.0),
+        ]
+        self.assertEqual(
+            save_jobs._walk_stage_timing(marks, started_at=10.0, finished_at=13.5),
+            "stages: before walk 0.0s, dfm 2.5s, calculated_datasets 0.5s, index 0.5s",
         )
 
     def test_a_save_without_a_walk_reports_no_stages(self) -> None:

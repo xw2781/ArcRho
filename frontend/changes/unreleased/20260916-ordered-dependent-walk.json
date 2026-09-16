@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Saving is faster on a long chain: each affected item is now redone once, in the order it depends on, instead of once for every route that reaches it.",
+  "details": [
+    "The save works out everything it affects up front, then refreshes it in that order, so an item several methods read is no longer rebuilt several times.",
+    "The saving popup still names each item as it is refreshed, and the server log now records how many of the affected items were refreshed and how long each kind of method took."
+  ]
+}

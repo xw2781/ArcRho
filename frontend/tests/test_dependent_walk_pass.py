@@ -406,6 +406,7 @@ class DependentWalkPassTests(unittest.TestCase):
             "bootstrap_updates",
             "link_updates",
             "review_flagged",
+            "reachable_count",
             "index_ok",
             "index_error",
         ):
@@ -418,6 +419,32 @@ class DependentWalkPassTests(unittest.TestCase):
         self.assertEqual(
             [item["dataset_type_name"] for item in result["updated"]], ["C 50 - Paid Ratio"]
         )
+
+    def test_the_report_counts_what_the_walk_set_out_to_refresh(self) -> None:
+        """The hosted-save log reads this beside the names it rewrote."""
+
+        self.write_graph(TRACED_GRAPH)
+        self.trace_refreshers()
+
+        self.assertEqual(self.walk()["reachable_count"], 26)
+
+        # The count is the whole chain the save reaches, not what survived it,
+        # so a walk stopped on a failed branch still says how big it was.
+        self.calls.clear()
+        self.failures = {"D 18 - BS Paid DFM"}
+        stopped = self.walk()
+        self.assertEqual(stopped["reachable_count"], 26)
+        self.assertEqual(len(self.refreshed_names()), 12)
+
+    def test_a_crossed_kind_is_not_counted_as_reachable(self) -> None:
+        """Only what the pass was asked to refresh is counted."""
+
+        self.write_graph(TRACED_GRAPH)
+        self.trace_refreshers()
+
+        result = self.walk(include_cape_cod=False)
+
+        self.assertEqual(result["reachable_count"], 25)
 
     def test_the_progress_callback_names_every_object_and_its_domain(self) -> None:
         self.write_graph(TRACED_GRAPH)

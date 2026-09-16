@@ -520,6 +520,11 @@ def run_pass(
             failed_names.append(name)
 
     index_error = ""
+    # How many objects this pass set out to refresh. The hosted-save log reads
+    # it beside the names it actually rewrote, so a walk that stopped on a
+    # failed branch says so ("refreshed 12 of 26 reachable") instead of
+    # reporting a small number that looks like a small chain.
+    reachable = 0
     with dataset_sidecar_status_service.reserving_class_io_lock(project, reserving):
         closure = ordered_closure(
             project,
@@ -532,6 +537,7 @@ def run_pass(
         kind_by_key = {node.key: node.kind for node in closure.nodes}
         order = [node for node in closure.refresh_order if node.kind in active_kinds]
         total = len(order)
+        reachable = total
         for completed, node in enumerate(order):
             notify(_STAGE_BY_KIND[node.kind], completed, total, node.name)
             if node.kind == KIND_CALCULATED:
@@ -617,6 +623,7 @@ def run_pass(
         "updated": [item for item in steps if item.get("ok")],
         "skipped": [item for item in steps if not item.get("ok")],
         "link_updates": link_updates,
+        "reachable_count": reachable,
         "index_ok": not index_error,
         "index_error": index_error,
     }
