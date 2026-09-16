@@ -97,7 +97,14 @@ class DependentPropagationEngineTests(unittest.TestCase):
     def test_walk_failure_summary_names_dataset_and_method_failures(self) -> None:
         message = dependent_propagation._summarize_walk_failure(
             {
-                "skipped": [{"dataset_name": "C 61 Reported - CWOP"}],
+                "skipped": [
+                    {"dataset_name": "C 61 Reported - CWOP"},
+                    {
+                        "dataset_type_name": "F 63 - Expected Net Loss % * Earned Premium",
+                        "reason": "dependency_error",
+                        "errors": ["Ambiguous dependency: P 06 Net Loss"],
+                    },
+                ],
                 "result_selection_updates": {
                     "ok": False,
                     "errors": [
@@ -111,6 +118,13 @@ class DependentPropagationEngineTests(unittest.TestCase):
             }
         )
         self.assertIn("C 61 Reported - CWOP", message)
+        # A skip states its own cause, so the reader is not left with a name
+        # and no reason to act on.
+        self.assertIn(
+            "F 63 - Expected Net Loss % * Earned Premium: "
+            "Ambiguous dependency: P 06 Net Loss",
+            message,
+        )
         self.assertIn(
             "C 91 - Current Qtr Indicated: Required precedent needs review: "
             "C 41 - BF Reported ex CWOP",

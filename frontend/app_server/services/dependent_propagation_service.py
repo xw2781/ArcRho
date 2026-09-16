@@ -32,6 +32,7 @@ from arcrho_dependent_propagation_contract import (
     build_dependent_propagation_request,
     dependent_propagation_request_path,
     dependent_propagation_status_path,
+    describe_failed_dependents,
     find_any_reserving_class_propagation_hold,
     find_project_scope_propagation_hold,
     find_reserving_class_propagation_hold,
@@ -742,14 +743,7 @@ def _run_inline_save_propagation(
 def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
     """Name what actually failed in a finished-but-unhealthy walk."""
 
-    failed = sorted(
-        {
-            str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
-            for item in result.get("skipped") or []
-            if isinstance(item, Mapping)
-        }
-        - {""}
-    )
+    failed = describe_failed_dependents(result)
     method_failures: List[str] = []
     for bucket in (
         "dfm_updates",
@@ -785,7 +779,7 @@ def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
                 link_failures.append(text)
     parts: List[str] = []
     if failed:
-        parts.append("Dependent update(s) did not refresh: " + ", ".join(failed))
+        parts.append("Dependent update(s) did not refresh: " + "; ".join(failed))
     if link_failures:
         parts.append(
             "Linked dataset refresh failure(s): " + "; ".join(sorted(set(link_failures)))

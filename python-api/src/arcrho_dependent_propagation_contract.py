@@ -536,6 +536,32 @@ def write_dependent_propagation_status(
     return write_json_atomic(path, payload)
 
 
+def describe_failed_dependents(result: Mapping[str, Any]) -> list[str]:
+    """Name each dependent a finished walk declined, and say why.
+
+    The walk records the cause of every skip beside the name, and a summary
+    that prints only the name leaves the reader with "it did not refresh" and
+    nothing to act on. Both the inline save summary and the Engine's durable
+    status render the same list from here.
+    """
+
+    described: dict[str, str] = {}
+    for item in result.get("skipped") or []:
+        if not isinstance(item, Mapping):
+            continue
+        name = str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
+        if not name:
+            continue
+        detail = "; ".join(
+            str(error).strip() for error in item.get("errors") or [] if str(error).strip()
+        ) or str(item.get("reason") or "").strip()
+        text = f"{name}: {detail}" if detail else name
+        # A dependent reached twice keeps whichever pass explained itself.
+        if len(text) > len(described.get(name, "")):
+            described[name] = text
+    return sorted(described.values())
+
+
 # ---------------------------------------------------------------------------
 # Reserving-class lease
 # ---------------------------------------------------------------------------

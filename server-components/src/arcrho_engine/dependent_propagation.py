@@ -32,6 +32,7 @@ from arcrho_dependent_propagation_contract import (
     dependent_propagation_request_path,
     dependent_propagation_requests_directory,
     dependent_propagation_status_path,
+    describe_failed_dependents,
     release_reserving_class_lease,
     reserving_class_identity,
     start_reserving_class_lease_heartbeat,
@@ -441,11 +442,7 @@ _METHOD_UPDATE_BUCKETS = (
 
 
 def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
-    failed = [
-        str(item.get("dataset_type_name") or item.get("dataset_name") or "").strip()
-        for item in result.get("skipped", [])
-    ]
-    failed = [name for name in failed if name]
+    failed = describe_failed_dependents(result)
     method_failures: list[str] = []
     for bucket in _METHOD_UPDATE_BUCKETS:
         updates = result.get(bucket)
@@ -464,7 +461,7 @@ def _summarize_walk_failure(result: Mapping[str, Any]) -> str:
     parts = []
     if failed:
         parts.append(
-            "Dependent update(s) did not refresh: " + ", ".join(sorted(failed))
+            "Dependent update(s) did not refresh: " + "; ".join(failed)
         )
     if method_failures:
         parts.append(
