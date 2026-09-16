@@ -1569,6 +1569,12 @@
   color: var(--ar-color-text);
 }
 
+/* A note (nothing selected to edit) reads as a quiet notice, not an editable
+   field, so it keeps the panel's own muted tone instead of the input's dark fill. */
+:root[data-arcrho-theme="dark"] .arFormulaBar.isNote {
+  background-color: var(--ar-color-surface-muted);
+}
+
 :root[data-arcrho-theme="dark"] :is(.dfmSelectMenu, .dfmCtxMenu, .dfmCellNoteBox, .dfmModalCard) {
   background-color: var(--ar-color-surface-raised);
   box-shadow: var(--ar-shadow-floating);
@@ -1782,7 +1788,7 @@
   --bs-scrollbar-thumb-active: var(--ar-color-scrollbar-thumb-active);
 }
 
-:root[data-arcrho-theme="dark"] :is(.rsChartHeader, .rsChartBody, .rsChartPlot) {
+:root[data-arcrho-theme="dark"] :is(.rsChartBody, .rsChartPlot) {
   border-color: var(--ar-color-border);
   background-color: var(--ar-color-surface-muted);
 }

@@ -2310,6 +2310,31 @@ def scatter_view_into_store(
     )
 
 
+def _save_is_reformat_only(
+    source_kind: str,
+    app_calculated: bool,
+    csv_path: str,
+    csv_file: str,
+) -> bool:
+    """Whether this save changed only how an existing dataset is shown.
+
+    A dataset whose figures are produced elsewhere -- an Engine output, a
+    formula result, a method's output -- has a Data tab that can change its
+    display lengths, its cumulative and development/calendar mode, its number
+    format and its notes, and nothing else: the grid and the link tabs are
+    read-only there. Such a save writes no CSV and publishes none, so nothing
+    a dependent reads has moved and the walk has nothing to do.
+
+    A hand-entered dataset is deliberately the opposite case. Saving one that
+    nobody changed is how a user forces its dependents to recalculate, so it
+    propagates whether or not anything moved.
+    """
+
+    if csv_path or csv_file:
+        return False
+    return app_calculated or str(source_kind or "").strip().casefold() != "input"
+
+
 def _save_dataset_sidecar_impl(
     project_name: str,
     reserving_class: str,
@@ -2497,8 +2522,9 @@ def _save_dataset_sidecar_impl(
         csv_file_value = f"{csv_stem}.csv"
         csv_path = os.path.join(_dataset_cache_dir(p, rc), csv_file_value)
 
-    action_value = "Update" if existing else "Insert"
-    updated_at = _now_utc_iso()
+    reformat_only = _save_is_reformat_only(source_kind_value, app_calculated, csv_path, csv_file)
+    notes_value = str(notes if notes is not None else existing.get("notes") or "")
+    preserve_modification = bool(existing) and reformat_only and notes_value == str(existing.get("notes") or "")
     payload = {
         **existing,
         "dataset_name": ds,
@@ -2514,10 +2540,8 @@ def _save_dataset_sidecar_impl(
         "csv_file": csv_file_value,
         "calculated": True if app_calculated or method_calculated else (False if values is not None else existing.get("calculated")),
         "method_type": method_type_value,
-        "notes": str(notes if notes is not None else existing.get("notes") or ""),
+        "notes": notes_value,
         "created": created,
-        "modified_by": user_name,
-        "updated_at": updated_at,
     }
     if is_vector:
         payload["period_length"] = display_origin_months
@@ -2562,7 +2586,13 @@ def _save_dataset_sidecar_impl(
         _normalize_dataset_internal_links(payload.get("internal_links")),
         _normalize_dataset_formula_links(payload.get("formula_links")),
     )
-    _append_dataset_audit_entry(payload, action_value, event_date=updated_at, user_name=user_name)
+    if not preserve_modification:
+        payload["modified_by"] = user_name
+        payload["updated_at"] = _now_utc_iso()
+        _append_dataset_audit_entry(
+            payload, "Update" if existing else "Insert",
+            event_date=payload["updated_at"], user_name=user_name,
+        )
     payload.pop("instance_name", None)
     payload.pop("dataset_type_name", None)
     from app_server.services import calculated_dataset_service
@@ -2696,10 +2726,14 @@ def _save_dataset_sidecar_impl(
     ) if method_type_value != dataset_sidecar_status_service.METHOD_TYPE_NONE else []
     status_updates = []
 
-    calculated_updates = dependent_propagation_service.enqueue_save_propagation(
-        p,
-        rc,
-        [dependent_propagation_service.changed_root(ds, dataset_type_value)],
+    calculated_updates = (
+        dependent_propagation_service.unchanged_propagation()
+        if reformat_only
+        else dependent_propagation_service.enqueue_save_propagation(
+            p,
+            rc,
+            [dependent_propagation_service.changed_root(ds, dataset_type_value)],
+        )
     )
     index_error = ""
     try:
@@ -2815,6 +2849,7 @@ def save_propagation_roots(
     *,
     dataset_type: str = "",
     csv_file: str = "",
+    values: List[List[Any]] | None = None,
     **_ignored: Any,
 ) -> List[Tuple[str, str]]:
     """Return the changed roots ``save_dataset_sidecar`` would propagate from.
@@ -2822,12 +2857,24 @@ def save_propagation_roots(
     The two-step save plans the dependent closure before anything is written,
     so this mirrors ``_save_dataset_sidecar_impl``'s root exactly, including
     its fallback to the existing sidecar's ``dataset_type`` and then to the
-    instance name.
+    instance name, and its silence when the save only reformats a dataset
+    whose figures are produced elsewhere.
     """
 
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     existing = _read_dataset_sidecar(_get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file))
-    return [(ds, str(dataset_type or existing.get("dataset_type") or ds))]
+    dataset_type_value = str(dataset_type or existing.get("dataset_type") or ds)
+    app_calculated, _formula = _is_app_calculated_dataset_type(p, dataset_type_value)
+    # ``csv_path`` stands for a file this save would write, which is exactly
+    # the case where it carries values.
+    if _save_is_reformat_only(
+        str(existing.get("source_kind") or ""),
+        app_calculated,
+        "written" if values is not None else "",
+        csv_file,
+    ):
+        return []
+    return [(ds, dataset_type_value)]
 
 
 def _save_dataset_notes_impl(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:

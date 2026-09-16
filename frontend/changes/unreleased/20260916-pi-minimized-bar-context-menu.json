@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Right-clicking the minimized-window bar in Project Instance opens a menu that restores, minimizes, or closes every nested window at once.",
+  "details": [
+    "Restore windows brings every minimized window back to where it was.",
+    "Minimize all sends every open window down to the bar.",
+    "Close all windows closes the windows with nothing unsaved and leaves any window with unsaved changes open, reporting how many stayed.",
+    "An action that has nothing to act on is shown greyed out rather than hidden."
+  ]
+}

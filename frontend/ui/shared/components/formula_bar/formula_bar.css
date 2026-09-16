@@ -57,7 +57,8 @@ lives here.
    to hold it on one line. */
 .arFormulaBar.isNote .arFormulaBarDisplay {
   font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
-  color: #4b5563;
+  font-style: italic;
+  color: #9ca3af;
   cursor: default;
   height: auto;
   white-space: normal;

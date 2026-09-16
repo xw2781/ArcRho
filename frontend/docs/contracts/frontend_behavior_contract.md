@@ -24,9 +24,9 @@ This contract applies when changing shell/tab orchestration, iframe pages, keybo
 
     The reserving-class row is read-only on every Details tab and has no picker: the host fixes the segment. A picker field opens its list only from its own button; clicking or tabbing into the text box places a caret, and typing or `ArrowDown` may still filter or open a combobox list.
 
-Dataset Viewer editing and save eligibility allows only manual/input datasets and new manual drafts. Non-input or unresolved source kinds, an explicit read-only viewer, or a nonempty project Dataset Type formula block viewer save commands, including clean saves and keyboard saves. Derived outputs still refresh through propagation and owning method saves.
+Dataset Viewer value editing allows only manual/input datasets and new manual drafts. Non-input or unresolved source kinds and a nonempty project Dataset Type formula keep the grid and links read-only while allowing display settings and notes to save. The shared Data tab owns source-based editing eligibility; Project Instance and Result Selection must not translate a derived source kind into the window-wide `readonly=1` flag. Explicit read-only and temporary windows block all save commands, including clean saves and keyboard saves. Derived values still refresh through propagation and owning method saves.
 
-An eligible Dataset Viewer or method Save remains available while clean and triggers full downstream recalculation. Dirty state continues to govern unsaved-change prompts, not propagation eligibility.
+An eligible manual/input Dataset Viewer or method Save remains available while clean and triggers full downstream recalculation. Derived-dataset display saves skip propagation. Dirty state continues to govern unsaved-change prompts, not propagation eligibility.
 
 Dataset Viewer Data exposes Copy, eligible manual/input Paste, and Copy All with muted shortcut hints. Ctrl/Cmd+A selects and copies the displayed grid when the grid owns keyboard focus. Manual/input datasets keep the cell formula editor in a separate full-width panel above the table; the existing editing and read-only rules still apply.
 

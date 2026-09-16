@@ -89,7 +89,7 @@ function installFakeDom(overrides = {}) {
   return elements;
 }
 
-function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSaves = [] } = {}) {
+function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSaves = [], isReadOnlyDatasetViewer = false } = {}) {
   const state = {
     dirty: new Map(),
     model,
@@ -103,7 +103,7 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
     config: {},
     instanceId: "test-inst",
     isProjectInstanceDraft,
-    isReadOnlyDatasetViewer: false,
+    isReadOnlyDatasetViewer,
     isTemporaryDatasetView: false,
     savedProjectInstanceDraftName: "",
     currentDatasetSidecarSourceKind: "",
@@ -269,7 +269,7 @@ test("a clean persisted dataset save reaches the sidecar endpoint", async () => 
   assert.equal(runtime.sidecarSaves.length, 1);
 });
 
-test("a project formula blocks grid editing and every viewer save path even for an input sidecar", async () => {
+test("a project formula blocks grid editing but still lets the display and notes be saved", async () => {
   installFakeDom();
   const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
   await runtime.syncSidecarForCurrentDataset();
@@ -277,21 +277,21 @@ test("a project formula blocks grid editing and every viewer save path even for 
   runtime.getDatasetTypeFormulaByName = (name) => name === DATASET_TYPE ? '"Premium" * "Loss Ratio"' : "";
   const preferencesRuntime = {
     isDerivedDatasetViewer: runtime.isDerivedDatasetViewer,
+    isReadOnlyDatasetWindow: runtime.isReadOnlyDatasetWindow,
     DERIVED_DATASET_READ_ONLY_MESSAGE: runtime.DERIVED_DATASET_READ_ONLY_MESSAGE,
+    READ_ONLY_DATASET_WINDOW_MESSAGE: runtime.READ_ONLY_DATASET_WINDOW_MESSAGE,
     datasetOriginDisplayIsCoarserThanStored: () => false,
   };
   registerDataTabPreferencesController(preferencesRuntime);
   runtime.updateDatasetSaveUi();
 
   assert.equal(preferencesRuntime.isDatasetReadOnly(), true);
-  assert.match(preferencesRuntime.getDatasetReadOnlyMessage(), /Only manual\/input datasets/);
-  assert.equal(saveEnabled(runtime), false);
-  for (const save of [runtime.saveDatasetChanges, runtime.saveDatasetSidecarForCurrentContext, runtime.saveNotesForPayload]) {
-    const result = await save();
-    assert.equal(result.ok, false);
-    assert.match(result.error, /Only manual\/input datasets/);
-  }
-  assert.equal(runtime.sidecarSaves.length, 0);
+  assert.match(preferencesRuntime.getDatasetReadOnlyMessage(), /values come from its inputs/);
+  assert.equal(saveEnabled(runtime), true);
+  const result = await runtime.saveDatasetChanges();
+  assert.equal(result.ok, true);
+  assert.equal(runtime.sidecarSaves.length, 1);
+  assert.equal(runtime.sidecarSaves[0].values, undefined);
 
   runtime.getDatasetTypeFormulaByName = () => "";
   runtime.updateDatasetSaveUi();
@@ -300,22 +300,56 @@ test("a project formula blocks grid editing and every viewer save path even for 
 });
 
 for (const sourceKind of ["calculated", "engine", "dfm", "result_selection", "bornhuetter_ferguson", "cape_cod", ""]) {
-  test(`${sourceKind} datasets without a formula cannot save through the viewer`, async () => {
+  test(`${sourceKind} datasets save the way they are shown and nothing else`, async () => {
     installFakeDom();
     const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
     await runtime.syncSidecarForCurrentDataset();
     runtime.currentDatasetSidecarSourceKind = sourceKind;
     runtime.updateDatasetSaveUi();
-    assert.equal(saveEnabled(runtime), false);
+    assert.equal(saveEnabled(runtime), true);
     assert.equal(runtime.isDerivedDatasetViewer(), true);
-    for (const save of [runtime.saveDatasetChanges, runtime.saveDatasetSidecarForCurrentContext, runtime.saveNotesForPayload]) {
-      const result = await save();
-      assert.equal(result.ok, false);
-      assert.match(result.error, /Only manual\/input datasets/);
-    }
-    assert.equal(runtime.sidecarSaves.length, 0);
+
+    const result = await runtime.saveDatasetChanges();
+    assert.equal(result.ok, true);
+    assert.equal(runtime.sidecarSaves.length, 1);
+    const payload = runtime.sidecarSaves[0];
+    // The figures, the period the file is held at and the link inventory are
+    // the dataset's own; a save from here never carries them, which is what
+    // lets the server tell a reformat from a real change.
+    assert.equal(payload.values, undefined);
+    assert.equal(payload.mask, undefined);
+    assert.equal(payload.origin_labels, undefined);
+    assert.equal(payload.external_links, undefined);
+    assert.equal(payload.internal_links, undefined);
+    assert.equal(payload.formula_links, undefined);
+    assert.equal(payload.stored_development_length, null);
+    assert.equal(payload.stored_values_cleared, undefined);
+    // And the display settings it does own travel with it.
+    assert.equal(payload.origin_length, 12);
+    assert.equal(payload.number_format, "0,000");
+    assert.equal(typeof payload.notes, "string");
   });
 }
+
+test("a window opened read-only saves nothing at all", async () => {
+  installFakeDom();
+  const runtime = createRuntime({
+    isProjectInstanceDraft: false,
+    model: draftModel(),
+    isReadOnlyDatasetViewer: true,
+  });
+  await runtime.syncSidecarForCurrentDataset();
+  runtime.currentDatasetSidecarSourceKind = "engine";
+  runtime.updateDatasetSaveUi();
+
+  assert.equal(saveEnabled(runtime), false);
+  for (const save of [runtime.saveDatasetChanges, runtime.saveDatasetSidecarForCurrentContext, runtime.saveNotesForPayload]) {
+    const result = await save();
+    assert.equal(result.ok, false);
+    assert.match(result.error, /open read-only/);
+  }
+  assert.equal(runtime.sidecarSaves.length, 0);
+});
 
 test("a non-draft refresh marker saves the durable grid even when values are unchanged", async () => {
   installFakeDom();

@@ -9,9 +9,9 @@
   <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a"/>
   <link rel="stylesheet" href="/ui/project_instance/project_instance_preferences.css?v=20260824g"/>
   <link rel="stylesheet" href="/ui/shared/styles/pi_table.css?v=20260819a"/>
-  <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260915b"/>
+  <link rel="stylesheet" href="/ui/project_instance/project_instance.css?v=20260916b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
-    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260911a"/>
+    <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a"/>
     <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
 </head>
 <body>
@@ -29,6 +29,11 @@
           <span class="pi-hidden-tabs-caret" aria-hidden="true"></span>
         </button>
         <div class="pi-hidden-tabs-menu" id="hiddenTabsMenu" role="menu"></div>
+      </div>
+      <div class="pi-table-context-menu pi-hidden-tabs-context-menu" id="hiddenTabsContextMenu" role="menu" aria-hidden="true">
+        <button class="pi-context-menu-item" type="button" role="menuitem" data-hidden-tabs-action="restore-all">Restore windows</button>
+        <button class="pi-context-menu-item" type="button" role="menuitem" data-hidden-tabs-action="minimize-all">Minimize all</button>
+        <button class="pi-context-menu-item" type="button" role="menuitem" data-hidden-tabs-action="close-all">Close all windows</button>
       </div>
     </div>
     <div class="pi-layout">
@@ -293,6 +298,6 @@
       </section>
     </div>
   </div>
-  <script type="module" src="/ui/project_instance/project_instance.js?v=20260914a"></script>
+  <script type="module" src="/ui/project_instance/project_instance.js?v=20260916b"></script>
 </body>
 </html>

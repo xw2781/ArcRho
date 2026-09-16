@@ -33,7 +33,7 @@ const testableSource = tableSource
       "const BERQUIST_SHERMAN_VARIANTS = [];",
       "const berquistShermanDisplayLabel = () => \"\";",
       "const getBerquistShermanContract = () => null;",
-      "const normalizeBerquistShermanVariant = (value) => value;",
+      "const normalizeBerquistShermanVariant = () => \"\";",
       "",
     ].join("\n"),
   );
@@ -49,7 +49,7 @@ function createHarness(records) {
     datasetDeleteConfirmResolve: null,
     datasetTablePreferenceWidthKeys: new Set(),
     datasetTableView: { filters: new Map(), collapsedGroups: new Set(), groupBy: [] },
-    cachedDatasetFilter: { loading: false, names: new Set(), instanceRows: [] },
+    cachedDatasetFilter: { loading: false, names: new Set(), instanceRows: [], metadataByName: new Map() },
     datasetTableSelection: { selectedKeys: new Set(), anchorKey: "", activeKey: "" },
     datasetIndexWatch: { pending: false, suppressUntil: 0 },
     lastDatasetSelectionStatusCount: 0,
@@ -98,6 +98,43 @@ function createHarness(records) {
 function makeRecords(names) {
   return names.map((name, rowIndex) => ({ rowIndex, datasetName: name, values: { name } }));
 }
+
+for (const sourceKind of ["engine", "calculated", "input", "dfm", ""]) {
+  test(`${sourceKind || "unresolved"} dataset opens without a window-wide save block`, () => {
+    const { api } = createHarness([]);
+    const opened = [];
+    api.openDatasetWindow = (name, options) => opened.push({ name, options });
+    const record = api.buildDatasetRecord(["Dataset Type"], 0, {
+      name: "Dataset",
+      dataset_type: "Dataset Type",
+      source_kind: sourceKind,
+    });
+
+    api.openDatasetRecord(record);
+
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].name, "Dataset");
+    assert.equal(!!opened[0].options.readOnly, false);
+    assert.equal(opened[0].options.temporaryViewSessionId, "");
+  });
+}
+
+test("temporary dataset opens with the window-wide save block", () => {
+  const { api, state } = createHarness([]);
+  const opened = [];
+  api.isTemporaryDatasetView = () => true;
+  api.openDatasetWindow = (name, options) => opened.push({ name, options });
+  state.temporaryDatasetSessionId = "temporary-session";
+
+  api.openDatasetRecord(api.buildDatasetRecord(["Dataset"], 0, {
+    name: "Dataset",
+    source_kind: "engine",
+  }));
+
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].options.readOnly, true);
+  assert.equal(opened[0].options.temporaryViewSessionId, "temporary-session");
+});
 
 test("shift-click keeps the anchor but makes the clicked row the Enter target", () => {
   const records = makeRecords(["Alpha", "Beta", "Gamma", "Delta"]);

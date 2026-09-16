@@ -397,6 +397,107 @@ async function restoreAllHiddenWindows() {
   }
 }
 
+function getVisibleDatasetWindows() {
+  const frames = [];
+  for (const frame of datasetWindows.values()) {
+    if (frame?.isConnected && frame.dataset.hidden !== "1") frames.push(frame);
+  }
+  return frames;
+}
+
+async function minimizeAllDatasetWindows() {
+  const frames = getVisibleDatasetWindows();
+  if (!frames.length) return;
+  await Promise.all(frames.map((frame) => hideDatasetWindow(frame, getFrameRect(frame))));
+  setStatus(`Minimized ${frames.length} ${frames.length === 1 ? "window" : "windows"}`);
+}
+
+function closeAllCleanDatasetWindows() {
+  const frames = Array.from(datasetWindows.values()).filter((frame) => frame?.isConnected);
+  const dirtyCount = frames.reduce((total, frame) => total + (frame.dataset.dirty === "1" ? 1 : 0), 0);
+  let closed = 0;
+  for (const frame of frames) {
+    if (frame.dataset.dirty === "1") continue;
+    if (closeDatasetWindow(frame, { status: false })) closed += 1;
+  }
+  if (!closed && !dirtyCount) return;
+  const closedText = `Closed ${closed} ${closed === 1 ? "window" : "windows"}`;
+  setStatus(dirtyCount ? `${closedText}; ${dirtyCount} with unsaved changes stayed open.` : closedText);
+}
+
+function closeHiddenTabsContextMenu() {
+  const menu = els.hiddenTabsContextMenu;
+  if (!menu) return;
+  menu.classList.remove("open");
+  menu.setAttribute("aria-hidden", "true");
+}
+
+function syncHiddenTabsContextMenuItems() {
+  const menu = els.hiddenTabsContextMenu;
+  if (!menu) return;
+  const visibleCount = getVisibleDatasetWindows().length;
+  const cleanCount = Array.from(datasetWindows.values()).filter((frame) => frame?.isConnected && frame.dataset.dirty !== "1").length;
+  const enabled = {
+    "restore-all": hiddenWindows.size > 0,
+    "minimize-all": visibleCount > 0,
+    "close-all": cleanCount > 0,
+  };
+  for (const item of menu.querySelectorAll("[data-hidden-tabs-action]")) {
+    item.disabled = !enabled[item.dataset.hiddenTabsAction];
+  }
+}
+
+function openHiddenTabsContextMenu(clientX, clientY) {
+  const menu = els.hiddenTabsContextMenu;
+  if (!menu) return;
+  setHiddenTabsMenuOpen(false, { pinned: false });
+  hideMinimizedTabTooltip();
+  syncHiddenTabsContextMenuItems();
+  menu.classList.add("open");
+  menu.setAttribute("aria-hidden", "false");
+  const margin = 8;
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(margin, Math.min(Number(clientX) || margin, window.innerWidth - rect.width - margin));
+  const top = Math.max(margin, Math.min(Number(clientY) || margin, window.innerHeight - rect.height - margin));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
+function initHiddenTabsContextMenu() {
+  const menu = els.hiddenTabsContextMenu;
+  if (!menu || !els.hiddenTabsWrap || menu.dataset.wired === "1") return;
+  menu.dataset.wired = "1";
+  els.hiddenTabsWrap.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openHiddenTabsContextMenu(event.clientX, event.clientY);
+  });
+  menu.addEventListener("click", (event) => {
+    const item = event.target?.closest?.("[data-hidden-tabs-action]");
+    if (!item || item.disabled) return;
+    closeHiddenTabsContextMenu();
+    const action = item.dataset.hiddenTabsAction;
+    if (action === "restore-all") {
+      void restoreAllHiddenWindows();
+    } else if (action === "minimize-all") {
+      void minimizeAllDatasetWindows();
+    } else if (action === "close-all") {
+      closeAllCleanDatasetWindows();
+    }
+  });
+  document.addEventListener("mousedown", (event) => {
+    if (menu.contains(event.target)) return;
+    closeHiddenTabsContextMenu();
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !menu.classList.contains("open")) return;
+    event.preventDefault();
+    closeHiddenTabsContextMenu();
+  }, true);
+  window.addEventListener("resize", closeHiddenTabsContextMenu, true);
+  window.addEventListener("scroll", closeHiddenTabsContextMenu, true);
+}
+
 async function activateDatasetWindow(frame) {
   if (!frame?.isConnected) return false;
   if (frame.dataset.hidden === "1" || frame.style.display === "none") {
@@ -412,6 +513,7 @@ async function activateDatasetWindow(frame) {
 
 
 function initHiddenTabsArea() {
+  initHiddenTabsContextMenu();
   if (!els.hiddenTabsButton || els.hiddenTabsButton.dataset.wired === "1") return;
   els.hiddenTabsButton.dataset.wired = "1";
   updateHiddenTabsArea();
@@ -446,15 +548,21 @@ function initHiddenTabsArea() {
     animateWindowFromDock,
     animateWindowToDock,
     clearHiddenTabsHoverCloseTimer,
+    closeAllCleanDatasetWindows,
     closeAllHiddenWindows,
+    closeHiddenTabsContextMenu,
     closeHiddenWindow,
     ensureMinimizedTabTooltip,
     getFrameTransformToRect,
     getHiddenDockTargetRect,
     getMinimizedTabElement,
+    getVisibleDatasetWindows,
     hideDatasetWindow,
     hideMinimizedTabTooltip,
     initHiddenTabsArea,
+    initHiddenTabsContextMenu,
+    minimizeAllDatasetWindows,
+    openHiddenTabsContextMenu,
     positionMinimizedTabTooltip,
     restoreAllHiddenWindows,
     restoreHiddenWindow,

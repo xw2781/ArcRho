@@ -67,3 +67,18 @@ test("Result Selection exposes Chart immediately after Method with a right-side 
   assert.match(chartSource, /renderChartLegend\(\{/u);
   assert.match(sharedLegendSource, /item\.addEventListener\("contextmenu"/u);
 });
+
+test("Result Selection chart drops its header and zooms to a dragged rectangle", async () => {
+  const [html, css, chartSource] = await Promise.all([
+    readFile(new URL("ui/method_pages/result_selection/result_selection.html", frontendRoot), "utf8"),
+    readFile(new URL("ui/method_pages/result_selection/result_selection.css", frontendRoot), "utf8"),
+    readFile(new URL("ui/method_pages/result_selection/result_selection_chart.js", frontendRoot), "utf8"),
+  ]);
+  assert.doesNotMatch(html, /rsChartHeader|rsChartTitle|rsChartSubtitle/u);
+  assert.doesNotMatch(css, /\.rsChartHeader|\.rsChartTitle|\.rsChartSubtitle/u);
+  assert.match(html, /id="rsChartZoomBox"/u);
+  assert.match(css, /\.rsChartZoomBox \{/u);
+  assert.match(chartSource, /canvas\.addEventListener\("pointerdown", startZoomDrag\)/u);
+  assert.match(chartSource, /canvas\.setPointerCapture\(event\.pointerId\)/u);
+  assert.match(chartSource, /canvas\.addEventListener\("dblclick", resetZoom\)/u);
+});

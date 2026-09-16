@@ -42,7 +42,6 @@
             category: text(item?.dataset_category || item?.category || typeInfo.category),
             methodType: text(item?.method_type),
             sourceKind,
-            readOnly: !!sourceKind && norm(sourceKind) !== "input",
             path: text(item?.path),
           });
         }

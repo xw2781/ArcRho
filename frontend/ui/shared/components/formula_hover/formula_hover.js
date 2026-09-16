@@ -23,7 +23,7 @@ import { tokenizeFormula } from "/ui/shared/components/formula_bar/formula_text.
 
 const FORMULA_HOVER_STYLE_ID = "arcrho-formula-hover-style";
 const FORMULA_HOVER_STYLESHEETS = [
-  "/ui/shared/components/formula_bar/formula_bar.css?v=20260908b",
+  "/ui/shared/components/formula_bar/formula_bar.css?v=20260916a",
   "/ui/shared/components/formula_hover/formula_hover.css?v=20260907a",
 ];
 const DEFAULT_HIDE_DELAY_MS = 140;

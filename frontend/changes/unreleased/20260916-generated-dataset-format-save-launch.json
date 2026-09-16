@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Fixed number-format saves being rejected when generated datasets are opened from Project Instance or Result Selection.",
+  "details": [
+    "Generated dataset values remain protected while display settings and notes can be saved.",
+    "Display-only saves preserve the modified timestamp, user name, and audit history.",
+    "Temporary and explicitly read-only windows still block saves."
+  ]
+}

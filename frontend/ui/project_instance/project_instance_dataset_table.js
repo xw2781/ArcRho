@@ -903,11 +903,6 @@ function normalizeDatasetSourceKind(value) {
   return toText(value).toLowerCase();
 }
 
-function isReadOnlyDatasetSourceKind(value) {
-  const sourceKind = normalizeDatasetSourceKind(value);
-  return !!sourceKind && sourceKind !== "input";
-}
-
 function getDatasetGenerated(row) {
   return parseDatasetGeneratedFlag(row?.[5]);
 }
@@ -1123,7 +1118,6 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
   }
   const datasetName = values.name || instanceName || getDatasetName(typeRow);
   const sourceKind = instance ? toText(instance?.source_kind) : "";
-  const readOnly = instance ? isReadOnlyDatasetSourceKind(sourceKind) : false;
   const generated = instance ? normalizeDatasetSourceKind(sourceKind) === "engine" : getDatasetGenerated(typeRow);
   const meta = getCachedDatasetMetadataByName(datasetName);
   const temporary = isTemporaryViewActive();
@@ -1134,7 +1128,6 @@ function buildDatasetRecord(row, rowIndex, instance = null) {
     datasetName,
     datasetTypeName,
     sourceKind,
-    readOnly,
     generated,
     values,
     meta,
@@ -1278,7 +1271,8 @@ function openDatasetRecordAsDataset(record) {
     datasetTypeName: getDatasetRecordValue(record, "datasetTypeName"),
     dataFormat: getDatasetRecordValue(record, "dataFormat"),
     methodType: getDatasetRecordValue(record, "methodType"),
-    readOnly: temporaryView || !!record.readOnly,
+    // The viewer owns source-based grid protection; only temporary views block all saves.
+    readOnly: temporaryView,
     temporaryViewSessionId: temporaryView ? toText(state.temporaryDatasetSessionId) : "",
   });
 }

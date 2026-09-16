@@ -865,7 +865,6 @@
               datasetName: name,
               datasetTypeName: text(record?.datasetTypeName || record?.datasetType || name),
               methodType: text(record?.methodType),
-              readOnly: !!record?.readOnly,
             },
           }, "*");
         } catch (err) {

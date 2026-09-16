@@ -381,6 +381,7 @@ export function registerDataTabPreferencesController(runtime) {
   // Every refusal the grid, the Links tab and the patch save report comes from
   // here, so the reason a reader sees always matches the rule that stopped them.
   function getDatasetReadOnlyMessage() {
+    if (runtime.isReadOnlyDatasetWindow()) return runtime.READ_ONLY_DATASET_WINDOW_MESSAGE;
     if (runtime.isDerivedDatasetViewer()) return runtime.DERIVED_DATASET_READ_ONLY_MESSAGE;
     const coarseOnly = !isTemporaryDatasetView
       && !isReadOnlyDatasetViewer

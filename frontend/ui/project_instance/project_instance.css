@@ -281,6 +281,11 @@ body.resizing-left-panel .pi-table-wrap {
   flex: 1 1 auto;
   max-width: none;
   display: flex;
+  /* The toolbar centres its children, so with no minimized tab and the hidden-
+     tabs button suppressed this wrap would collapse to zero height and its
+     right-click menu would be unreachable. Stretching it keeps the empty
+     stretch of toolbar a hit target without moving anything inside it. */
+  align-self: stretch;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -1482,6 +1487,9 @@ body.resizing-left-panel .pi-table-wrap {
 }
 .pi-path-context-menu {
   min-width: 112px;
+}
+.pi-hidden-tabs-context-menu {
+  min-width: 176px;
 }
 .pi-path-context-menu .pi-context-menu-item:focus-visible {
   background: #eef4ff;

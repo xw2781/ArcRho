@@ -726,7 +726,7 @@ test("a length change is a display setting the save keeps, not a value edit", ()
   assert.match(persistenceControllerSource, /left\.origin_length === right\.origin_length/u);
   assert.match(
     persistenceControllerSource,
-    /saveBlocked: isTemporaryDatasetView \|\| isDerivedDatasetViewer\(\) \|\| runtime\.datasetInstanceNameConflict \|\| !hasContext \|\| isDraftGridUnavailable\(\)/u,
+    /saveBlocked: isTemporaryDatasetView \|\| isReadOnlyDatasetWindow\(\) \|\| runtime\.datasetInstanceNameConflict \|\| !hasContext \|\| isDraftGridUnavailable\(\)/u,
   );
   // Going back down to the stored period is always allowed, so an edit is
   // never one save away from being locked out: the floor is the stored pair.

@@ -63,6 +63,7 @@ export function createProjectInstanceContext(deps = {}) {
     hiddenTabsButton: document.getElementById("hiddenTabsButton"),
     hiddenTabsLabel: document.getElementById("hiddenTabsLabel"),
     hiddenTabsMenu: document.getElementById("hiddenTabsMenu"),
+    hiddenTabsContextMenu: document.getElementById("hiddenTabsContextMenu"),
     datasetRefreshBtn: document.getElementById("datasetRefreshBtn"),
     piPrefsBtn: document.getElementById("piPrefsBtn"),
     piPrefsOverlay: document.getElementById("piPrefsOverlay"),

@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "The Data tab's formula bar now shows \"Select a cell to edit the formula\" instead of an empty box when no cell is selected.",
+  "details": [
+    "The hint is shown in a lighter, italic style so it reads as a notice rather than editable content, and in dark mode the bar keeps its normal panel tone instead of the darker input fill."
+  ]
+}

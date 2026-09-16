@@ -1,0 +1,7 @@
+{
+  "type": "improvement",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "The Result Selection Chart tab now zooms to a dragged rectangle and restores the full view on a double-click.",
+  "details": ["Removed the Chart tab header so the plot and its legend use the whole panel."]
+}

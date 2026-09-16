@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A dataset produced by the Engine, a formula, or a method can now have the way it is shown changed and saved, even though its values still cannot be edited.",
+  "details": [
+    "Origin Length, Development Length, Cumulative, Development/Calendar, Transposed, the subtotal row, Number Format, Decimal Places, and Notes all save on these datasets.",
+    "Such a save touches nothing but the dataset's settings file and refreshes no dependent object, so it finishes immediately.",
+    "The status line no longer shows the note about writing values into the stored period on a dataset whose cells cannot be typed into."
+  ]
+}

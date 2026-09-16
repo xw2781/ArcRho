@@ -26,7 +26,7 @@ import {
   invalidatePersistedResultsDerivations,
   renderResultsTable,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260910a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260916a";
 import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {

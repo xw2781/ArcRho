@@ -19,6 +19,12 @@ const CHART_COLORS = [
   "#475569",
 ];
 
+const MIN_ZOOM_DRAG = 6;
+// Keep the first and last points clear of the axes, and let a point sitting on a
+// zoom-window edge paint whole instead of being sliced by the clip.
+const SERIES_INSET = 7;
+const SERIES_BLEED = 5;
+
 function getChartColor(propertyName, fallback) {
   return window.ArcRhoColorTheme?.getCssColor?.(propertyName, fallback) || fallback;
 }
@@ -100,6 +106,14 @@ function chartRange(series) {
   return { min, max, ticks };
 }
 
+function zoomedRange(valueMin, valueMax) {
+  const step = niceStep(valueMax - valueMin);
+  const ticks = [];
+  for (let value = Math.ceil(valueMin / step) * step; value <= valueMax + step * 0.001; value += step) ticks.push(value);
+  if (!ticks.length) ticks.push(valueMin, valueMax);
+  return { min: valueMin, max: valueMax, ticks };
+}
+
 function numberFormatter(decimalPlaces) {
   const decimals = Math.max(0, Math.min(8, Number.parseInt(String(decimalPlaces ?? 1), 10) || 0));
   return new Intl.NumberFormat(undefined, {
@@ -124,13 +138,16 @@ function setCanvasSize(canvas) {
   return { context, width, height };
 }
 
-export function createResultSelectionChart({ canvas, legendList, legendCount, emptyState, tooltip } = {}) {
+export function createResultSelectionChart({ canvas, legendList, legendCount, emptyState, tooltip, zoomBox } = {}) {
   if (!canvas) return null;
 
   let data = { originLabels: [], series: [], decimalPlaces: 1 };
   let points = [];
   let animationFrame = null;
   let legendSignature = "";
+  let plotArea = null;
+  let zoomWindow = null;
+  let drag = null;
   const hiddenSeriesIds = new Set();
   const resizeObserver = typeof ResizeObserver === "function"
     ? new ResizeObserver(() => scheduleRender())
@@ -181,11 +198,24 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
     points = [];
 
     const series = visibleSeries();
-    const range = chartRange(series);
     const labels = Array.isArray(data.originLabels) ? data.originLabels.map(String) : [];
     const rowCount = Math.max(labels.length, ...series.map((entry) => entry.values.length), 0);
+    const lastRowIndex = Math.max(0, rowCount - 1);
+    let indexMin = 0;
+    let indexMax = lastRowIndex;
+    let range = chartRange(series);
+    if (zoomWindow && range) {
+      const low = Math.min(Math.max(0, zoomWindow.indexMin), lastRowIndex);
+      const high = Math.min(Math.max(0, zoomWindow.indexMax), lastRowIndex);
+      if (high - low >= 1e-6) {
+        indexMin = low;
+        indexMax = high;
+      }
+      range = zoomedRange(zoomWindow.valueMin, zoomWindow.valueMax);
+    }
     const hasChartSpace = width >= 240 && height >= 180;
     const isEmpty = !series.length || !range || rowCount === 0 || !hasChartSpace;
+    plotArea = null;
     if (emptyState) {
       emptyState.hidden = !isEmpty;
       emptyState.textContent = !hasChartSpace
@@ -199,17 +229,20 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
       "aria-label",
       isEmpty
         ? "Result Selection dataset vector chart. No visible values are available."
-        : `Result Selection dataset vector chart with ${rowCount} origin periods and ${series.length} visible columns.`,
+        : `Result Selection dataset vector chart with ${rowCount} origin periods and ${series.length} visible columns.${zoomWindow ? " Zoomed in; double-click to restore the full view." : ""}`,
     );
     if (isEmpty) return;
 
+    const firstLabelIndex = Math.max(0, Math.ceil(indexMin - 1e-9));
+    const lastLabelIndex = Math.min(lastRowIndex, Math.floor(indexMax + 1e-9));
+    const labelCount = Math.max(1, lastLabelIndex - firstLabelIndex + 1);
     const format = numberFormatter(data.decimalPlaces);
     context.font = '11px Arial, "Segoe UI", sans-serif';
     const widestTick = Math.max(...range.ticks.map((tick) => context.measureText(format.format(tick)).width));
-    const rotateLabels = rowCount > 10 || labels.some((label) => label.length > 8);
+    const rotateLabels = labelCount > 10 || labels.some((label) => label.length > 8);
     const padding = {
       top: 14,
-      right: 18,
+      right: 18 + SERIES_INSET,
       bottom: rotateLabels ? 72 : 38,
       left: Math.max(58, Math.ceil(widestTick) + 16),
     };
@@ -217,9 +250,12 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
     const x1 = width - padding.right;
     const y0 = padding.top;
     const y1 = height - padding.bottom;
-    const xSpan = Math.max(1, rowCount - 1);
-    const xFor = (index) => rowCount === 1 ? (x0 + x1) / 2 : x0 + (index / xSpan) * (x1 - x0);
+    const xStart = x0 + SERIES_INSET;
+    const xEnd = x1 - SERIES_INSET;
+    const xSpan = indexMax - indexMin;
+    const xFor = (index) => xSpan <= 0 ? (xStart + xEnd) / 2 : xStart + ((index - indexMin) / xSpan) * (xEnd - xStart);
     const yFor = (value) => y1 - ((value - range.min) / (range.max - range.min)) * (y1 - y0);
+    plotArea = { x0, x1, y0, y1, xStart, xEnd, indexMin, indexMax, valueMin: range.min, valueMax: range.max };
 
     context.lineWidth = 1;
     context.textBaseline = "middle";
@@ -243,11 +279,11 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
     context.stroke();
 
     const maxLabels = Math.max(2, Math.floor((x1 - x0) / (rotateLabels ? 44 : 70)));
-    const labelEvery = Math.max(1, Math.ceil(rowCount / maxLabels));
+    const labelEvery = Math.max(1, Math.ceil(labelCount / maxLabels));
     context.fillStyle = getChartColor("--ar-chart-text", "#4b5563");
     context.textBaseline = "top";
-    for (let index = 0; index < rowCount; index += 1) {
-      if (index % labelEvery !== 0 && index !== rowCount - 1) continue;
+    for (let index = firstLabelIndex; index <= lastLabelIndex; index += 1) {
+      if ((index - firstLabelIndex) % labelEvery !== 0 && index !== lastLabelIndex) continue;
       const label = labels[index] || String(index + 1);
       const x = xFor(index);
       context.save();
@@ -263,6 +299,10 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
       context.restore();
     }
 
+    context.save();
+    context.beginPath();
+    context.rect(x0 - SERIES_BLEED, y0 - SERIES_BLEED, x1 - x0 + SERIES_BLEED * 2, y1 - y0 + SERIES_BLEED * 2);
+    context.clip();
     for (const entry of series) {
       context.strokeStyle = entry.color;
       context.lineWidth = entry.emphasized ? 2.4 : 1.8;
@@ -296,9 +336,12 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
         context.arc(x, y, entry.emphasized ? 3.2 : 2.7, 0, Math.PI * 2);
         context.fill();
         context.stroke();
-        points.push({ x, y, value, origin: labels[index] || String(index + 1), series: entry });
+        if (x >= x0 - SERIES_BLEED && x <= x1 + SERIES_BLEED && y >= y0 - SERIES_BLEED && y <= y1 + SERIES_BLEED) {
+          points.push({ x, y, value, origin: labels[index] || String(index + 1), series: entry });
+        }
       }
     }
+    context.restore();
   }
 
   function scheduleRender() {
@@ -335,7 +378,88 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
     tooltip.hidden = false;
   }
 
-  canvas.addEventListener("pointermove", showTooltip);
+  function canvasPoint(event) {
+    const bounds = canvas.getBoundingClientRect();
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  }
+
+  function drawZoomBox() {
+    if (!zoomBox || !drag) return;
+    zoomBox.style.left = `${canvas.offsetLeft + Math.min(drag.startX, drag.x)}px`;
+    zoomBox.style.top = `${canvas.offsetTop + Math.min(drag.startY, drag.y)}px`;
+    zoomBox.style.width = `${Math.abs(drag.x - drag.startX)}px`;
+    zoomBox.style.height = `${Math.abs(drag.y - drag.startY)}px`;
+    zoomBox.hidden = false;
+  }
+
+  function endZoomDrag() {
+    if (!drag) return;
+    if (canvas.hasPointerCapture?.(drag.pointerId)) canvas.releasePointerCapture(drag.pointerId);
+    drag = null;
+    if (zoomBox) zoomBox.hidden = true;
+  }
+
+  function startZoomDrag(event) {
+    if (event.button !== 0 || !plotArea) return;
+    const point = canvasPoint(event);
+    const inside = point.x >= plotArea.x0 && point.x <= plotArea.x1
+      && point.y >= plotArea.y0 && point.y <= plotArea.y1;
+    if (!inside) return;
+    drag = { pointerId: event.pointerId, startX: point.x, startY: point.y, x: point.x, y: point.y };
+    canvas.setPointerCapture(event.pointerId);
+    hideTooltip();
+    drawZoomBox();
+    event.preventDefault();
+  }
+
+  function moveZoomDrag(event) {
+    if (!drag || event.pointerId !== drag.pointerId) {
+      showTooltip(event);
+      return;
+    }
+    if (!plotArea) {
+      endZoomDrag();
+      return;
+    }
+    const point = canvasPoint(event);
+    drag.x = Math.min(Math.max(point.x, plotArea.x0), plotArea.x1);
+    drag.y = Math.min(Math.max(point.y, plotArea.y0), plotArea.y1);
+    drawZoomBox();
+  }
+
+  function applyZoomDrag(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const left = Math.min(drag.startX, drag.x);
+    const right = Math.max(drag.startX, drag.x);
+    const top = Math.min(drag.startY, drag.y);
+    const bottom = Math.max(drag.startY, drag.y);
+    const area = plotArea;
+    endZoomDrag();
+    if (!area || right - left < MIN_ZOOM_DRAG || bottom - top < MIN_ZOOM_DRAG) return;
+    const indexSpan = area.indexMax - area.indexMin;
+    const indexAt = (x) => area.indexMin + ((x - area.xStart) / (area.xEnd - area.xStart)) * indexSpan;
+    const valueAt = (y) => area.valueMax - ((y - area.y0) / (area.y1 - area.y0)) * (area.valueMax - area.valueMin);
+    zoomWindow = {
+      indexMin: indexAt(left),
+      indexMax: indexAt(right),
+      valueMin: valueAt(bottom),
+      valueMax: valueAt(top),
+    };
+    scheduleRender();
+  }
+
+  function resetZoom() {
+    if (!zoomWindow) return;
+    zoomWindow = null;
+    hideTooltip();
+    scheduleRender();
+  }
+
+  canvas.addEventListener("pointerdown", startZoomDrag);
+  canvas.addEventListener("pointermove", moveZoomDrag);
+  canvas.addEventListener("pointerup", applyZoomDrag);
+  canvas.addEventListener("pointercancel", endZoomDrag);
+  canvas.addEventListener("dblclick", resetZoom);
   canvas.addEventListener("pointerleave", hideTooltip);
   window.addEventListener("arcrho:color-theme-changed", scheduleRender);
 
@@ -353,7 +477,12 @@ export function createResultSelectionChart({ canvas, legendList, legendCount, em
     refresh: scheduleRender,
     destroy() {
       resizeObserver?.disconnect();
-      canvas.removeEventListener("pointermove", showTooltip);
+      endZoomDrag();
+      canvas.removeEventListener("pointerdown", startZoomDrag);
+      canvas.removeEventListener("pointermove", moveZoomDrag);
+      canvas.removeEventListener("pointerup", applyZoomDrag);
+      canvas.removeEventListener("pointercancel", endZoomDrag);
+      canvas.removeEventListener("dblclick", resetZoom);
       canvas.removeEventListener("pointerleave", hideTooltip);
       window.removeEventListener("arcrho:color-theme-changed", scheduleRender);
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);

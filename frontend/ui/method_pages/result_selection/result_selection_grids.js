@@ -1710,7 +1710,6 @@
               // A source produced by a method opens on that method's own page;
               // one without a method falls back to the plain dataset window.
               openMethod: !!sourceMethodType,
-              readOnly: !!record?.readOnly,
             },
           }, "*");
         } catch (err) {

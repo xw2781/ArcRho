@@ -7,7 +7,7 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260910a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260916a";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260908b";
 import {
@@ -265,18 +265,25 @@ export function wireDatasetGridInteractions(deps) {
     const panel = getFormulaPanel();
     if (!panel || formulaHover.isEditing?.()) return;
     const cell = state.activeCell;
-    const info = cell ? getExternalLinkCellInfo(cell.r, cell.c) : null;
-    const value = cell ? getDisplayDatasetModel()?.values?.[cell.r]?.[cell.c] : "";
+    if (!cell) {
+      formulaHover.open(panel, {
+        note: "Select a cell to edit the formula",
+        readOnly: true,
+      }, { key: "empty", focus });
+      return;
+    }
+    const info = getExternalLinkCellInfo(cell.r, cell.c);
+    const value = getDisplayDatasetModel()?.values?.[cell.r]?.[cell.c];
     formulaHover.open(panel, {
       ...info,
       formula: info?.reference || String(value ?? ""),
       allowEmpty: true,
-      anchorDisplayRow: info?.anchorDisplayRow ?? cell?.r,
-      anchorDisplayColumn: info?.anchorDisplayColumn ?? cell?.c,
-      valueDisplayRow: cell?.r,
-      valueDisplayColumn: cell?.c,
-      readOnly: !cell || !canEditDisplayCell(cell.r, cell.c, { silent: true }),
-    }, { key: cell ? `${cell.r},${cell.c}` : "empty", focus });
+      anchorDisplayRow: info?.anchorDisplayRow ?? cell.r,
+      anchorDisplayColumn: info?.anchorDisplayColumn ?? cell.c,
+      valueDisplayRow: cell.r,
+      valueDisplayColumn: cell.c,
+      readOnly: !canEditDisplayCell(cell.r, cell.c, { silent: true }),
+    }, { key: `${cell.r},${cell.c}`, focus });
   }
 
   function sameExternalFormulaRange(left, right) {

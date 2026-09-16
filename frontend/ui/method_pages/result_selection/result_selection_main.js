@@ -40,7 +40,7 @@ import {
 import {
   buildResultSelectionChartSeries,
   createResultSelectionChart,
-} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260724a";
+} from "/ui/method_pages/result_selection/result_selection_chart.js?v=20260916b";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import {
   resultSelectionUpdateContexts,
@@ -199,6 +199,7 @@ const els = {
   chartLegendCount: document.getElementById("rsChartLegendCount"),
   chartEmpty: document.getElementById("rsChartEmpty"),
   chartTooltip: document.getElementById("rsChartTooltip"),
+  chartZoomBox: document.getElementById("rsChartZoomBox"),
   resultsGrid: document.getElementById("rsResultsGrid"),
   auditLogMount: document.getElementById("rsAuditLogMount"),
   saveBar: document.querySelector(".rsSaveBar"),
@@ -340,6 +341,7 @@ const rsChart = createResultSelectionChart({
   legendCount: els.chartLegendCount,
   emptyState: els.chartEmpty,
   tooltip: els.chartTooltip,
+  zoomBox: els.chartZoomBox,
 });
 
 ctx.renderResultSelectionChart = function renderResultSelectionChart() {

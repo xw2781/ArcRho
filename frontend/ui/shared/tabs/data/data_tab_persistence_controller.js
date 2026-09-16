@@ -521,7 +521,11 @@ export function registerDataTabPersistenceController(runtime) {
 
   // Editing a coarse development view rewrites the whole stored triangle, so
   // the status line says so in one sentence for as long as that view is up.
+  // It is a sentence about what typing a value here would do, so a dataset
+  // whose figures are produced elsewhere never shows it: nothing can be typed
+  // into that grid, and a save from it writes no value at all.
   function datasetCoarseDevelopmentNote() {
+    if (isDerivedDatasetViewer()) return "";
     if (!datasetDevelopmentDisplayIsCoarserThanStored()) return "";
     const stored = getStoredLengthControlPair();
     return `Saving here writes each value into the stored period (Development ${stored.development_length}) at its own column age and clears the stored periods between.`;
@@ -671,14 +675,25 @@ export function registerDataTabPersistenceController(runtime) {
     } catch {}
   }
 
-  const DERIVED_DATASET_READ_ONLY_MESSAGE = "Only manual/input datasets can be edited or saved here. Update this dataset through its inputs, definition, or method instead.";
+  const DERIVED_DATASET_READ_ONLY_MESSAGE = "This dataset's values come from its inputs, definition, or method, so they cannot be edited here. The way it is shown and its notes can still be changed and saved.";
 
+  const READ_ONLY_DATASET_WINDOW_MESSAGE = "This dataset is open read-only, so nothing can be saved from this window.";
+
+  // Whether the figures on screen are produced elsewhere. That settles who may
+  // type into the grid and into the link tabs, and nothing else: the dataset
+  // still owns the way it is shown, so this is no longer the question Save
+  // asks.
   function isDerivedDatasetViewer() {
     const sourceKind = String(runtime.currentDatasetSidecarSourceKind || state.model?.source_kind || "").trim().toLowerCase();
     return !isDfmDataTabHost()
       && (isReadOnlyDatasetViewer
         || (sourceKind ? sourceKind !== "input" : !isProjectInstanceDraft)
         || !!getDatasetTypeFormulaByName(document.getElementById("triInput")?.value || ""));
+  }
+
+  // A window opened read-only writes nothing at all, whoever owns the figures.
+  function isReadOnlyDatasetWindow() {
+    return !isDfmDataTabHost() && isReadOnlyDatasetViewer;
   }
 
   function updateDatasetSaveUi() {
@@ -698,7 +713,7 @@ export function registerDataTabPersistenceController(runtime) {
       dirty,
       allowCleanSave,
       saving: runtime.datasetSaveInFlight,
-      saveBlocked: isTemporaryDatasetView || isDerivedDatasetViewer() || runtime.datasetInstanceNameConflict || !hasContext || isDraftGridUnavailable(),
+      saveBlocked: isTemporaryDatasetView || isReadOnlyDatasetWindow() || runtime.datasetInstanceNameConflict || !hasContext || isDraftGridUnavailable(),
       cancelBlocked: isTemporaryDatasetView || !hasContext,
     });
     for (const button of [runBtn, clearBtn]) {
@@ -1126,8 +1141,8 @@ export function registerDataTabPersistenceController(runtime) {
   const datasetSaveProgress = createArcRhoSaveProgress({ subject: "Dataset", noun: "dataset" });
 
   async function saveDatasetSidecarForCurrentContext(progress = null) {
-    if (isDerivedDatasetViewer()) {
-      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    if (isReadOnlyDatasetWindow()) {
+      return { ok: false, error: READ_ONLY_DATASET_WINDOW_MESSAGE };
     }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view does not save permanent dataset sidecars." };
@@ -1241,8 +1256,8 @@ export function registerDataTabPersistenceController(runtime) {
     };
   }
   async function saveDatasetChanges(options = {}) {
-    if (isDerivedDatasetViewer()) {
-      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    if (isReadOnlyDatasetWindow()) {
+      return { ok: false, error: READ_ONLY_DATASET_WINDOW_MESSAGE };
     }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view is read-only and cannot save permanent dataset changes." };
@@ -1451,7 +1466,7 @@ export function registerDataTabPersistenceController(runtime) {
   function updateNotesSaveUi() {
     const { saveState } = getNotesEditorElements();
     const hasContext = !!notesContextKey && hasNotesContext(notesContextPayload);
-    const readOnly = isTemporaryDatasetView || isDerivedDatasetViewer();
+    const readOnly = isTemporaryDatasetView || isReadOnlyDatasetWindow();
     const { input, styleControls } = datasetNotesController?.elements || {};
     if (input) input.readOnly = readOnly;
     for (const control of Object.values(styleControls || {})) {
@@ -1460,7 +1475,7 @@ export function registerDataTabPersistenceController(runtime) {
 
     if (!saveState) return;
     saveState.classList.remove("is-dirty", "is-clean", "is-hidden");
-    if (isDerivedDatasetViewer()) {
+    if (isReadOnlyDatasetWindow()) {
       saveState.textContent = "Read-only dataset";
       saveState.classList.add("is-clean");
       updateDatasetSaveUi();
@@ -1498,8 +1513,8 @@ export function registerDataTabPersistenceController(runtime) {
   }
 
   async function saveNotesForPayload(payload, options = {}) {
-    if (isDerivedDatasetViewer()) {
-      return { ok: false, error: DERIVED_DATASET_READ_ONLY_MESSAGE };
+    if (isReadOnlyDatasetWindow()) {
+      return { ok: false, error: READ_ONLY_DATASET_WINDOW_MESSAGE };
     }
     if (isTemporaryDatasetView) {
       return { ok: false, error: "Temporary view is read-only and cannot save notes." };
@@ -1638,7 +1653,9 @@ export function registerDataTabPersistenceController(runtime) {
 
   Object.assign(runtime, {
     isDerivedDatasetViewer,
+    isReadOnlyDatasetWindow,
     DERIVED_DATASET_READ_ONLY_MESSAGE,
+    READ_ONLY_DATASET_WINDOW_MESSAGE,
     wireDataTabPersistenceLifecycle,
     buildDatasetSidecarContextPayload, hasDatasetSidecarContext,
     buildDatasetSidecarContextKey, getCurrentDatasetSettings,
