@@ -566,11 +566,6 @@ class CapeCodServiceTests(unittest.TestCase):
                 "_read_source_snapshot_from_sidecar",
                 side_effect=recording,
             ),
-            mock.patch.object(
-                cape_cod_service,
-                "_refresh_downstream_domains",
-                return_value={"ok": True, "updated": []},
-            ),
         ):
             result = cape_cod_service.refresh_dependents(
                 "Project", "Class", ["Exposure"], rebuild_index=False
@@ -591,20 +586,14 @@ class CapeCodServiceTests(unittest.TestCase):
         self.write_method_pair(status=2)
         self.write_all_sources()
 
-        with mock.patch.object(
-            cape_cod_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            result = cape_cod_service.refresh_cape_cod_method(
-                "Project",
-                "Class",
-                "CC Method",
-            )
+        result = cape_cod_service.refresh_cape_cod_method(
+            "Project",
+            "Class",
+            "CC Method",
+        )
 
         self.assertFalse(result["output_changed"])
         self.assertFalse(result["status_refreshed"])
-        cascade.assert_not_called()
         sidecar = json.loads((self.sidecars / "CC Method.json").read_text(encoding="utf-8"))
         self.assertEqual(
             sidecar["status"],
@@ -642,14 +631,9 @@ class CapeCodServiceTests(unittest.TestCase):
         self.assertEqual(original_overrides, [1.5, None])
         self.write_all_sources(paid_csv="100,175\n200,\n")
         old_revision = self.output_sidecar(method)["publication_revision"]
-        with mock.patch.object(
-            cape_cod_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ):
-            result = cape_cod_service.refresh_dependents(
-                "Project", "Class", ["Paid"], rebuild_index=False
-            )
+        result = cape_cod_service.refresh_dependents(
+            "Project", "Class", ["Paid"], rebuild_index=False
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["updated"][0]["dataset_name"], "CC Method")
@@ -725,9 +709,12 @@ class CapeCodServiceTests(unittest.TestCase):
                 "Project", "Class", ["Paid"], rebuild_index=False
             )
 
+        # The ordered pass reports each output in the order the closure
+        # reached it, which for two independent outputs is the order their
+        # precedent lists them in.
         self.assertEqual(
             [item["dataset_name"] for item in result["updated"]],
-            ["CC A", "CC Z"],
+            ["CC Z", "CC A"],
         )
 
     def test_staged_publish_rolls_back_and_replaces_sidecar_last(self) -> None:
@@ -769,118 +756,6 @@ class CapeCodServiceTests(unittest.TestCase):
         sidecar_index = targets.index(str(sidecar_path))
         self.assertGreater(sidecar_index, targets.index(str(method_path)))
         self.assertGreater(sidecar_index, targets.index(str(csv_path)))
-
-    def test_cc_nested_cascade_names_include_bf_rs_and_calculated_outputs(self) -> None:
-        fresh, failed = cape_cod_service._cascade_names({
-            "ok": False,
-            "updated": [{"dataset_type_name": "Calculated Direct"}],
-            "result_selection_updates": {
-                "updated": [{"dataset_name": "RS Output"}],
-                "downstream_fresh_names": ["Calculated After RS"],
-                "downstream_blocked_names": ["Failed After RS"],
-            },
-            "bornhuetter_ferguson_updates": {
-                "updated": [{"dataset_name": "BF Output"}],
-                "status_refreshed": [{"dataset_name": "BF Restored"}],
-                "errors": [{"dataset_name": "BF Failed"}],
-            },
-        })
-
-        self.assertCountEqual(
-            fresh,
-            ["Calculated Direct", "RS Output", "Calculated After RS", "BF Output", "BF Restored"],
-        )
-        self.assertCountEqual(failed, ["Failed After RS", "BF Failed"])
-
-    def test_cape_cod_downstream_cascade_excludes_its_own_and_later_waves(self) -> None:
-        # Each wave's nested cascade suppresses itself and every wave that runs
-        # after it; the outer cascade feeds those later waves from this wave's
-        # fresh names instead, so nothing is refreshed twice.
-        with mock.patch.object(
-            calculated_dataset_service,
-            "recalculate_dependents",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            cape_cod_service._refresh_downstream_domains(
-                "Project", "Class", "CC Method", "CC Ultimate"
-            )
-
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            "CC Method",
-            "CC Ultimate",
-            include_cape_cod=False,
-            include_bootstrap=False,
-            finalize_method_review_status=True,
-            rebuild_index=False,
-        )
-
-    def test_bf_downstream_cascade_excludes_cape_cod_and_bootstrap_waves(self) -> None:
-        with mock.patch.object(
-            calculated_dataset_service,
-            "recalculate_dependents",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            bornhuetter_ferguson_service._refresh_downstream_domains(
-                "Project", "Class", "BF Method", "BF Ultimate"
-            )
-
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            "BF Method",
-            "BF Ultimate",
-            include_bornhuetter_ferguson=False,
-            include_cape_cod=False,
-            include_bootstrap=False,
-            finalize_method_review_status=True,
-            rebuild_index=False,
-        )
-
-    def test_outer_cascade_passes_bf_outputs_to_cape_cod_wave(self) -> None:
-        with (
-            mock.patch(
-                "app_server.services.dfm_service.refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ),
-            mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
-            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
-            mock.patch(
-                "app_server.services.result_selection_service.refresh_dependents",
-                return_value={"ok": True, "updated": [], "status_refreshed": [], "errors": []},
-            ),
-            mock.patch.object(
-                bornhuetter_ferguson_service,
-                "refresh_dependents",
-                return_value={
-                    "ok": True,
-                    "updated": [{"dataset_name": "BF Output"}],
-                    "status_refreshed": [{"dataset_name": "BF Restored"}],
-                    "errors": [{"dataset_name": "BF Failed"}],
-                },
-            ),
-            mock.patch.object(
-                cape_cod_service,
-                "refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ) as refresh_cc,
-            mock.patch.object(
-                calculated_dataset_service.dataset_instance_index_service,
-                "rebuild_index",
-            ),
-        ):
-            result = calculated_dataset_service.recalculate_dependents(
-                "Project", "Class", "Paid", "Paid"
-            )
-
-        self.assertIn("cape_cod_updates", result)
-        roots = refresh_cc.call_args.args[2]
-        blocked = refresh_cc.call_args.kwargs["blocked_precedent_names"]
-        self.assertIn("BF Output", roots)
-        self.assertIn("BF Restored", roots)
-        self.assertIn("BF Failed", roots)
-        self.assertIn("BF Failed", blocked)
 
     def test_aggregated_output_variants_are_published_alongside_native_csv(self) -> None:
         method = recalculate_cape_cod_method(
@@ -1119,32 +994,25 @@ class CapeCodServiceTests(unittest.TestCase):
             self.write_all_sources()
 
         fixture()
-        with mock.patch.object(
-            cape_cod_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ):
-            walk = cape_cod_service.refresh_dependents(
-                "Project", "Class", ["Exposure"], rebuild_index=False
-            )
+        walk = cape_cod_service.refresh_dependents(
+            "Project", "Class", ["Exposure"], rebuild_index=False
+        )
 
         self.assertTrue(walk["ok"], walk)
         expected = published()
 
         wipe()
         fixture()
-        with mock.patch.object(cape_cod_service, "_refresh_downstream_domains") as cascade:
-            result = cape_cod_service.refresh_output(
-                "Project",
-                "Class",
-                "CC Method",
-                changed_precedents=["Exposure"],
-                caches={},
-            )
+        result = cape_cod_service.refresh_output(
+            "Project",
+            "Class",
+            "CC Method",
+            changed_precedents=["Exposure"],
+            caches={},
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertTrue(result["updated"])
-        cascade.assert_not_called()
         self.assertEqual(published(), expected)
 
         # A failure comes back as a reason rather than an exception, and the

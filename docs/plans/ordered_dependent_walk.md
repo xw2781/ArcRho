@@ -1,6 +1,6 @@
 # Ordered single-pass dependent walk
 
-Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 2 of 5 done — the ordered closure landed 2026-09-16 as a pure module that names everything a save reaches and sorts it after its precedents, and each of the eight object kinds now has a one-object refresher beside it.
+Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 3 of 5 done — the ordered closure and the one-object refreshers landed 2026-09-16, and the single ordered pass replaced the waves the same day, so a save now refreshes each object it reaches exactly once; the popup wording, the log line and the deploy are what is left.
 Last updated: 2026-09-16
 
 ## Progress
@@ -11,11 +11,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | The walk works out, up front, everything a save reaches and the order to refresh it in | [x] | 2026-09-16 | Nothing to see yet: the app can now list everything one save affects and put it in the order it has to be redone in. |
 | 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [x] | 2026-09-16 | Nothing to see yet: the app can now bring any one affected object up to date on its own, and say why it could not, instead of starting a chain of its own. |
-| 3 | A save refreshes each downstream object exactly once, in that order | [ ] | | |
+| 3 | A save refreshes each downstream object exactly once, in that order | [x] | 2026-09-16 | Saving is quicker on a big chain: each affected item is now redone once, in the right order, instead of being redone every time another route reaches it. |
 | 4 | The saving popup and the server log describe the new walk | [ ] | | |
 | 5 | Released to the server and timed on the save that started this | [ ] | | |
 
-Overall: 2 of 5 steps done.
+Overall: 3 of 5 steps done.
 
 ## How agents work this plan
 
@@ -98,7 +98,7 @@ Landed 2026-09-16 as `refresh_output(project_name, reserving_class, dataset_name
 
 ### Step 3 — the pass
 
-Files: `dependent_walk_service.py`, `calculated_dataset_service.py` (`_recalculate_dependents_impl` replaced; `recalculate_dependents`, `preview_dependents`, `cascade_failure_reasons` kept), the six method services (`refresh_dependents` delegating, `_refresh_downstream_domains` deleted), `frontend/tests/test_calculated_dataset_runtime.py`, `test_method_review_service.py`, `test_engine_hosted_saves.py`, the six domain test files.
+Files: `dependent_walk_service.py`, `calculated_dataset_service.py` (`_recalculate_dependents_impl` replaced; `recalculate_dependents`, `preview_dependents`, `cascade_failure_reasons` kept), the six method services (`refresh_dependents` delegating, `_refresh_downstream_domains` deleted), `frontend/tests/test_calculated_dataset_runtime.py`, `test_method_review_service.py`, `test_engine_hosted_saves.py`, the six domain test files, and — found while doing the step — new `frontend/tests/test_dependent_walk_pass.py`, `test_dataset_link_refresh.py` (its link-wave cases move into the pass's file) and `test_dataset_method_calculated_sidecar.py` (the generated-formula walk cases).
 
 - Implement the pass as designed, filling the existing result buckets.
 - Delete the per-method nested cascade from every domain and the wave orchestration from `_recalculate_dependents_impl`; the link visited set and the review-flag collector move into the pass.
@@ -106,6 +106,12 @@ Files: `dependent_walk_service.py`, `calculated_dataset_service.py` (`_recalcula
 - Add a replay test with the traced shape that counts refresher calls per object and asserts exactly one each, in order, and that a failure in `D 18` blocks the 14 objects below it and nothing else.
 
 Done when: the full `frontend/tests` Python suite is at its baseline (see the agent memory for the known failures), the replay test passes, and `grep -rn _refresh_downstream_domains frontend/app_server` finds nothing.
+
+Landed 2026-09-16 as `dependent_walk_service.run_pass(project, class, roots, *, kinds=..., blocked_precedent_names=(), finalize_method_review_status=True, rebuild_index=True, progress_callback=None)`. It orders the closure once, hands every node to its domain's `refresh_output` with the precedents it has already refreshed, and fills the same result buckets, so the walk report, `cascade_failure_reasons`, `preview_dependents` and the save response are unchanged. `calculated_dataset_service._recalculate_dependents_impl` is now that one call, and the `include_*` flags became the set of kinds the pass refreshes — a kind left out is crossed, so the walk still reaches what lies below it. Each domain's `refresh_dependents` keeps its signature and returns its own bucket from the same pass; `_refresh_downstream_domains`, `_cascade_names`, `_refresh_link_driven_dependents`, the per-domain visit caps and the link visited/forwarded context variables are gone, because one traversal cannot revisit anything.
+
+Two readings the step did not foresee. A dataset named in a `dependents` list but no longer on disk stopped the whole pass, because step 1 made a missing sidecar an error; `ordered_closure` grew `skip_missing_sidecars`, which the pass sets, so a stale edge is crossed in silence exactly as the domain waves crossed it, while the strict default stays for anyone ordering a closure on its own. And a walk-level cache cannot be shared with the domains' own caches, so an object's sidecar is read once by the closure and once by the domain that republishes it — the second read is needed anyway once a precedent has been rewritten.
+
+Tests: `frontend/tests/test_dependent_walk_pass.py` replays the traced shape — 26 objects downstream of the saved vector, one refresher call each, every object after its precedents, and a failure in `D 18` blocking the 14 objects below it and nothing else — plus the link cycle, the link bookkeeping, the crossed kinds and the report shape. The wave-mechanics tests in the six domain suites were re-pinned or dropped into that file; every outcome test passed unchanged.
 
 ### Step 4 — popup, log and docs
 

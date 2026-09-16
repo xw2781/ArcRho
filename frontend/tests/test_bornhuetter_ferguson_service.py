@@ -465,11 +465,6 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 "_read_source_snapshot_from_sidecar",
                 side_effect=recording,
             ),
-            mock.patch.object(
-                bornhuetter_ferguson_service,
-                "_refresh_downstream_domains",
-                return_value={"ok": True, "updated": []},
-            ),
         ):
             result = bornhuetter_ferguson_service.refresh_dependents(
                 "Project", "Class", ["Prior"], rebuild_index=False
@@ -524,11 +519,6 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 bornhuetter_ferguson_service,
                 "_read_source_snapshot_from_sidecar",
                 side_effect=recording,
-            ),
-            mock.patch.object(
-                bornhuetter_ferguson_service,
-                "_refresh_downstream_domains",
-                return_value={"ok": True, "updated": []},
             ),
         ):
             result = bornhuetter_ferguson_service.refresh_dependents(
@@ -641,20 +631,14 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         self.write_method_pair(status=2)
         self.write_all_sources()
 
-        with mock.patch.object(
-            bornhuetter_ferguson_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            result = bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method(
-                "Project",
-                "Class",
-                "BF Method",
-            )
+        result = bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method(
+            "Project",
+            "Class",
+            "BF Method",
+        )
 
         self.assertFalse(result["output_changed"])
         self.assertFalse(result["status_refreshed"])
-        cascade.assert_not_called()
         sidecar = json.loads((self.sidecars / "BF Method.json").read_text(encoding="utf-8"))
         self.assertEqual(
             sidecar["status"],
@@ -689,14 +673,9 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         original_weights = copy.deepcopy(method["method_tab"]["prior_datasets"][0]["weights"])
         self.write_all_sources(paid_csv="100,175\n200,\n")
         old_revision = self.output_sidecar(method)["publication_revision"]
-        with mock.patch.object(
-            bornhuetter_ferguson_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ):
-            result = bornhuetter_ferguson_service.refresh_dependents(
-                "Project", "Class", ["Paid"], rebuild_index=False
-            )
+        result = bornhuetter_ferguson_service.refresh_dependents(
+            "Project", "Class", ["Paid"], rebuild_index=False
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["updated"][0]["dataset_name"], "BF Method")
@@ -773,9 +752,12 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
                 "Project", "Class", ["Paid"], rebuild_index=False
             )
 
+        # The ordered pass reports each output in the order the closure
+        # reached it, which for two independent outputs is the order their
+        # precedent lists them in.
         self.assertEqual(
             [item["dataset_name"] for item in result["updated"]],
-            ["BF A", "BF Z"],
+            ["BF Z", "BF A"],
         )
 
     def test_staged_publish_rolls_back_and_replaces_sidecar_last(self) -> None:
@@ -818,123 +800,6 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
         self.assertGreater(sidecar_index, targets.index(str(method_path)))
         self.assertGreater(sidecar_index, targets.index(str(csv_path)))
 
-    def test_bf_nested_cascade_names_include_rs_calculated_and_dfm_outputs(self) -> None:
-        fresh, failed = bornhuetter_ferguson_service._cascade_names({
-            "ok": False,
-            "updated": [{"dataset_type_name": "Calculated Direct"}],
-            "result_selection_updates": {
-                "updated": [{"dataset_name": "RS Output"}],
-                "downstream_fresh_names": ["Calculated After RS", "DFM After RS"],
-                "downstream_blocked_names": ["Failed After RS"],
-            },
-        })
-
-        self.assertCountEqual(
-            fresh,
-            ["Calculated Direct", "RS Output", "Calculated After RS", "DFM After RS"],
-        )
-        self.assertEqual(failed, ["Failed After RS"])
-
-    def test_outer_cascade_passes_rs_nested_outputs_to_bf_wave(self) -> None:
-        with (
-            mock.patch(
-                "app_server.services.dfm_service.refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ),
-            mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
-            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
-            mock.patch(
-                "app_server.services.result_selection_service.refresh_dependents",
-                return_value={
-                    "ok": True,
-                    "updated": [{"dataset_name": "RS Output"}],
-                    "status_refreshed": [],
-                    "errors": [],
-                    "downstream_fresh_names": ["Calculated After RS", "DFM After RS"],
-                    "downstream_blocked_names": ["Failed After RS"],
-                },
-            ),
-            mock.patch.object(
-                bornhuetter_ferguson_service,
-                "refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ) as refresh_bf,
-            mock.patch.object(
-                calculated_dataset_service.dataset_instance_index_service,
-                "rebuild_index",
-            ),
-        ):
-            result = calculated_dataset_service.recalculate_dependents(
-                "Project", "Class", "Paid", "Paid"
-            )
-
-        self.assertTrue(result["ok"], result)
-        roots = refresh_bf.call_args.args[2]
-        blocked = refresh_bf.call_args.kwargs["blocked_precedent_names"]
-        self.assertIn("RS Output", roots)
-        self.assertIn("Calculated After RS", roots)
-        self.assertIn("DFM After RS", roots)
-        self.assertIn("Failed After RS", blocked)
-
-    def test_rs_report_exposes_nested_calculated_and_dfm_outputs_for_bf(self) -> None:
-        self.write_json(self.sidecars / "Paid.json", {
-            "dataset_name": "Paid",
-            "dependents": [{"dataset_name": "RS Output"}],
-        })
-        rs_sidecar = {
-            "dataset_name": "RS Output",
-            "dataset_type": "Selected Ultimate",
-            "method_name": "RS Method",
-            "method_type": "Result Selection",
-            "source_kind": "result_selection",
-            "status": 0,
-            "dependents": [],
-        }
-        self.write_json(self.sidecars / "RS Output.json", rs_sidecar)
-        nested = {
-            "ok": True,
-            "updated": [{"dataset_type_name": "Calculated After RS"}],
-            "skipped": [],
-            "dfm_updates": {
-                "ok": True,
-                "updated": [{"dataset_name": "DFM After RS"}],
-                "status_refreshed": [],
-                "errors": [],
-            },
-        }
-        with (
-            mock.patch.object(result_selection_service, "_assert_acyclic_dependency_subgraph"),
-            mock.patch.object(
-                result_selection_service,
-                "_refresh_one_method",
-                return_value={
-                    "ok": True,
-                    "dataset_name": "RS Output",
-                    "updated": True,
-                    "output_changed": True,
-                    "sidecar": rs_sidecar,
-                },
-            ),
-            mock.patch.object(
-                dataset_sidecar_status_service,
-                "refresh_method_statuses_for_dependents",
-                return_value=[],
-            ),
-            mock.patch.object(
-                calculated_dataset_service,
-                "recalculate_dependents",
-                return_value=nested,
-            ),
-        ):
-            result = result_selection_service.refresh_dependents(
-                "Project", "Class", ["Paid"], rebuild_index=False
-            )
-
-        self.assertCountEqual(
-            result["downstream_fresh_names"],
-            ["Calculated After RS", "DFM After RS"],
-        )
-
     def test_refresh_output_matches_the_walk_and_reports_a_failure(self) -> None:
         """One method refreshed on its own publishes what the whole walk does."""
 
@@ -966,32 +831,25 @@ class BornhuetterFergusonServiceTests(unittest.TestCase):
             self.write_all_sources()
 
         fixture()
-        with mock.patch.object(
-            bornhuetter_ferguson_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ):
-            walk = bornhuetter_ferguson_service.refresh_dependents(
-                "Project", "Class", ["Prior"], rebuild_index=False
-            )
+        walk = bornhuetter_ferguson_service.refresh_dependents(
+            "Project", "Class", ["Prior"], rebuild_index=False
+        )
 
         self.assertTrue(walk["ok"], walk)
         expected = published()
 
         wipe()
         fixture()
-        with mock.patch.object(bornhuetter_ferguson_service, "_refresh_downstream_domains") as cascade:
-            result = bornhuetter_ferguson_service.refresh_output(
-                "Project",
-                "Class",
-                "BF Method",
-                changed_precedents=["Prior"],
-                caches={},
-            )
+        result = bornhuetter_ferguson_service.refresh_output(
+            "Project",
+            "Class",
+            "BF Method",
+            changed_precedents=["Prior"],
+            caches={},
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertTrue(result["updated"])
-        cascade.assert_not_called()
         self.assertEqual(published(), expected)
 
         # A failure comes back as a reason rather than an exception, and the

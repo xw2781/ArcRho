@@ -1399,147 +1399,22 @@ def refresh_dependents(
     blocked_precedent_names: Iterable[Any] = (),
     finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
-    """Refresh affected DFM methods transitively, without cascading other domains."""
+    """Refresh what these datasets reach and report the DFM part of it.
 
-    project = _clean(project_name)
-    reserving = _clean(reserving_class)
-    changed = []
-    seen = set()
-    for item in changed_dataset_names:
-        name = _clean(item)
-        normalized = _key(name)
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            changed.append(name)
-    blocked_keys = {_key(item) for item in blocked_precedent_names if _key(item)}
-    updated: List[Dict[str, Any]] = []
-    status_refreshed: List[Dict[str, Any]] = []
-    skipped: List[Dict[str, Any]] = []
-    errors: List[Dict[str, Any]] = []
-    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] = {}
-    sidecar_cache: Dict[str, Dict[str, Any]] = {}
-    processed_source_keys = set()
-    queue = list(changed)
-    with _lock(project, reserving):
-        while queue:
-            frontier = []
-            for raw_name in queue:
-                name = _clean(raw_name)
-                normalized = _key(name)
-                if not normalized or normalized in processed_source_keys:
-                    continue
-                processed_source_keys.add(normalized)
-                frontier.append(name)
-            queue = []
-            if not frontier:
-                break
-            source_futures = {
-                name: _READ_EXECUTOR.submit(_read_json, _sidecar_path(project, reserving, name))
-                for name in frontier
-                if _key(name) not in sidecar_cache
-            }
-            for name, future in source_futures.items():
-                sidecar_cache[_key(name)] = future.result()
-            dependent_sources: Dict[str, List[str]] = {}
-            for source_name in frontier:
-                source_sidecar = sidecar_cache.get(_key(source_name)) or {}
-                for dependent in dataset_sidecar_status_service.entry_names(source_sidecar.get("dependents")):
-                    dependent_sources.setdefault(dependent, []).append(source_name)
-            dependent_futures = {
-                name: _READ_EXECUTOR.submit(_read_json, _sidecar_path(project, reserving, name))
-                for name in dependent_sources
-                if _key(name) not in sidecar_cache
-            }
-            for name, future in dependent_futures.items():
-                sidecar_cache[_key(name)] = future.result()
-            method_futures = {}
-            for output_dataset in dependent_sources:
-                sidecar = sidecar_cache.get(_key(output_dataset)) or {}
-                if dataset_sidecar_status_service.normalize_method_type(
-                    sidecar.get("method_type"), sidecar.get("source_kind")
-                ) != dataset_sidecar_status_service.METHOD_TYPE_DFM:
-                    continue
-                method_name = _clean(sidecar.get("method_name")) or output_dataset
-                method_futures[output_dataset] = _READ_EXECUTOR.submit(
-                    _read_json,
-                    _method_path(project, reserving, method_name),
-                )
-            prefetched_methods = {
-                name: future.result() for name, future in method_futures.items()
-            }
-            for output_dataset in sorted(dependent_sources, key=lambda value: (_key(value), value)):
-                sidecar = sidecar_cache.get(_key(output_dataset)) or {}
-                if dataset_sidecar_status_service.normalize_method_type(
-                    sidecar.get("method_type"), sidecar.get("source_kind")
-                ) != dataset_sidecar_status_service.METHOD_TYPE_DFM:
-                    continue
-                changed_sources = dependent_sources[output_dataset]
-                blocked = [name for name in changed_sources if _key(name) in blocked_keys]
-                dataset_type = _clean(sidecar.get("dataset_type")) or output_dataset
-                if blocked:
-                    _mark_review_needed(project, reserving, output_dataset)
-                    blocked_keys.update({_key(output_dataset), _key(dataset_type)})
-                    sidecar_cache.pop(_key(output_dataset), None)
-                    queue.append(output_dataset)
-                    errors.append({
-                        "dataset_name": output_dataset,
-                        "dataset_type": dataset_type,
-                        "reason": "Precedent refresh failed: " + ", ".join(blocked),
-                    })
-                    continue
-                try:
-                    output_sidecar_path = _sidecar_path(project, reserving, output_dataset)
-                    with dataset_sidecar_status_service.sidecar_write_lock(output_sidecar_path):
-                        latest_sidecar = _read_json(output_sidecar_path) or sidecar
-                        result = _refresh_one(
-                            project,
-                            reserving,
-                            output_dataset,
-                            latest_sidecar,
-                            changed_sources,
-                            snapshot_cache,
-                            method_payload=prefetched_methods.get(output_dataset),
-                        )
-                except Exception as exc:
-                    _mark_review_needed(project, reserving, output_dataset)
-                    blocked_keys.update({_key(output_dataset), _key(dataset_type)})
-                    sidecar_cache.pop(_key(output_dataset), None)
-                    queue.append(output_dataset)
-                    errors.append({
-                        "dataset_name": output_dataset,
-                        "dataset_type": dataset_type,
-                        "reason": str(exc),
-                    })
-                    continue
-                refreshed_sidecar = result.get("sidecar") or sidecar
-                sidecar_cache[_key(output_dataset)] = refreshed_sidecar
-                if result.get("updated"):
-                    updated.append({
-                        "dataset_name": output_dataset,
-                        "dataset_type": _clean(refreshed_sidecar.get("dataset_type")) or output_dataset,
-                        "output_changed": bool(result.get("output_changed")),
-                    })
-                    queue.append(output_dataset)
-                elif result.get("status_refreshed"):
-                    status_refreshed.append({"dataset_name": output_dataset})
-                    queue.append(output_dataset)
-                else:
-                    skipped.append({
-                        "dataset_name": output_dataset,
-                        "reason": result.get("reason") or "not_updated",
-                    })
-        review_status_updates = []
-    return {
-        "ok": not errors,
-        "project_name": project,
-        "reserving_class": reserving,
-        "changed_dataset_names": changed,
-        "updated": updated,
-        "status_refreshed": status_refreshed,
-        "skipped": skipped,
-        "errors": errors,
-        "review_status_updates": review_status_updates,
-    }
+    One ordered pass in :mod:`dependent_walk_service` does the work, so a DFM
+    several of the changed datasets reach is republished once instead of once
+    per path. The report is this domain's own: what was republished, what
+    declined, and why.
+    """
+
+    return dependent_walk_service.run_pass(
+        project_name,
+        reserving_class,
+        list(changed_dataset_names),
+        blocked_precedent_names=blocked_precedent_names,
+        finalize_method_review_status=finalize_method_review_status,
+        rebuild_index=False,
+    )["dfm_updates"]
 
 
 def record_rpc_sync_last_modified(

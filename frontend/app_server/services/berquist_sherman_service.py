@@ -41,7 +41,6 @@ from __future__ import annotations
 import getpass
 import json
 import os
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -87,10 +86,6 @@ from app_server.services import (
 )
 
 
-# A dependent may be revisited when a nested cascade republishes one of its
-# sources; past this many visits the refresh reports non-convergence instead.
-MAX_REFRESH_VISITS_PER_DATASET = 4
-
 # The source roles' labels as the page names them in its own messages.
 _ROLE_LABELS = {
     "paid_claims": "Paid Claims",
@@ -99,9 +94,6 @@ _ROLE_LABELS = {
     "incurred_claims": "Incurred Claims",
     "reported_claim_numbers": "Reported Claim Counts",
 }
-
-_REFRESH_LOCKS: Dict[str, threading.RLock] = {}
-_REFRESH_LOCKS_GUARD = threading.Lock()
 
 
 # The method JSON and the sidecar are independent files, so the two reads
@@ -435,15 +427,6 @@ def _unique_names(values: Iterable[Any]) -> List[str]:
     return names
 
 
-def _refresh_lock(project_name: str, reserving_class: str) -> threading.RLock:
-    key = f"{_key(project_name)}\x1f{_key(reserving_class)}"
-    with _REFRESH_LOCKS_GUARD:
-        lock = _REFRESH_LOCKS.get(key)
-        if lock is None:
-            lock = _REFRESH_LOCKS[key] = threading.RLock()
-        return lock
-
-
 def _sidecar_path(project_name: str, reserving_class: str, dataset_name: str) -> str:
     return dataset_sidecar_status_service.sidecar_path(project_name, reserving_class, dataset_name)
 
@@ -725,72 +708,6 @@ def _refresh_one(
     }
 
 
-def _cascade_names(report: Mapping[str, Any]) -> Tuple[List[str], List[str]]:
-    """Name what a nested downstream walk refreshed and what it could not."""
-
-    fresh: List[str] = []
-    failed: List[str] = []
-    fresh.extend(
-        _clean(item.get("dataset_type_name"))
-        for item in report.get("updated", [])
-        if isinstance(item, Mapping) and _clean(item.get("dataset_type_name"))
-    )
-    failed.extend(
-        _clean(item.get("dataset_type_name"))
-        for item in report.get("skipped", [])
-        if isinstance(item, Mapping) and _clean(item.get("dataset_type_name"))
-    )
-    for field in ("dfm_updates", "result_selection_updates"):
-        domain = report.get(field) if isinstance(report.get(field), Mapping) else {}
-        for result_field in ("updated", "status_refreshed"):
-            fresh.extend(
-                _clean(item.get("dataset_name") or item.get("dataset_type"))
-                for item in domain.get(result_field, [])
-                if isinstance(item, Mapping)
-                and _clean(item.get("dataset_name") or item.get("dataset_type"))
-            )
-        failed.extend(
-            _clean(item.get("dataset_name") or item.get("dataset_type"))
-            for item in domain.get("errors", [])
-            if isinstance(item, Mapping)
-            and _clean(item.get("dataset_name") or item.get("dataset_type"))
-        )
-        if field == "result_selection_updates":
-            fresh.extend(_clean(name) for name in domain.get("downstream_fresh_names", []) if _clean(name))
-            failed.extend(
-                _clean(name) for name in domain.get("downstream_blocked_names", []) if _clean(name)
-            )
-    return _unique_names(fresh), _unique_names(failed)
-
-
-def _refresh_downstream_domains(
-    project_name: str,
-    reserving_class: str,
-    output_name: str,
-    output_type: str,
-    *,
-    finalize_method_review_status: bool = True,
-) -> Dict[str, Any]:
-    """Feed a republished B&S triangle through the DFM, calculated, and Result
-    Selection domains; the BF, CC, and Bootstrap waves run later in the outer
-    walk with this wave's fresh names as their roots."""
-
-    from app_server.services import calculated_dataset_service
-
-    return calculated_dataset_service.recalculate_dependents(
-        project_name,
-        reserving_class,
-        output_name,
-        output_type,
-        include_berquist_sherman=False,
-        include_bornhuetter_ferguson=False,
-        include_cape_cod=False,
-        include_bootstrap=False,
-        finalize_method_review_status=finalize_method_review_status,
-        rebuild_index=False,
-    )
-
-
 def refresh_output(
     project_name: str,
     reserving_class: str,
@@ -849,184 +766,20 @@ def refresh_dependents(
     blocked_precedent_names: Iterable[Any] = (),
     finalize_method_review_status: bool = True,
 ) -> Dict[str, Any]:
-    """Refresh every B&S output whose source is among *changed_dataset_names*.
+    """Refresh what these datasets reach and report the Berquist-Sherman part of it.
 
-    Mirrors the BF/CC/Bootstrap refresh waves: follow the reverse edges the
-    changed sources carry, recompute each B&S dependent from disk, and feed a
-    republished triangle through the downstream domains so a DFM built on it
-    moves in the same walk. ``downstream_fresh_names`` and
-    ``downstream_blocked_names`` report what those nested walks touched so the
-    later waves can take them as roots.
+    One ordered pass in :mod:`dependent_walk_service` does the work: every
+    object the changed datasets reach is refreshed after its own precedents,
+    once, whichever domain owns it. The report is this domain's own — what was
+    republished, what declined, and why — while ``downstream_fresh_names`` and ``downstream_blocked_names`` name the
+    objects of other kinds the same pass refreshed and blocked.
     """
 
-    project = _clean(project_name)
-    reserving = _clean(reserving_class)
-    changed_names = _unique_names(changed_dataset_names)
-    queue = list(changed_names)
-    blocked_keys = {_key(name) for name in blocked_precedent_names if _key(name)}
-    sidecar_cache: Dict[str, Dict[str, Any]] = {}
-    visit_counts: Dict[str, int] = {}
-    updated: List[Dict[str, Any]] = []
-    status_refreshed: List[Dict[str, Any]] = []
-    skipped: List[Dict[str, Any]] = []
-    errors: List[Dict[str, Any]] = []
-    downstream_fresh_names: List[str] = []
-    downstream_blocked_names: List[str] = []
-    index_error = ""
-    with _refresh_lock(project, reserving):
-        while queue:
-            frontier = _unique_names(queue)
-            queue = []
-            allowed_frontier: List[str] = []
-            for name in frontier:
-                normalized = _key(name)
-                visit_counts[normalized] = visit_counts.get(normalized, 0) + 1
-                if visit_counts[normalized] > MAX_REFRESH_VISITS_PER_DATASET:
-                    errors.append({
-                        "dataset_name": name,
-                        "reason": "B&S dependency refresh did not converge.",
-                    })
-                    continue
-                allowed_frontier.append(name)
-            if not allowed_frontier:
-                continue
-            source_sidecars = _read_sidecars(project, reserving, allowed_frontier, sidecar_cache)
-            dependent_sources: Dict[str, Dict[str, Dict[str, Any]]] = {}
-            for source_name in allowed_frontier:
-                source_sidecar = source_sidecars.get(source_name) or {}
-                for dependent_name in dataset_sidecar_status_service.entry_names(
-                    source_sidecar.get("dependents")
-                ):
-                    dependent_sources.setdefault(dependent_name, {})[source_name] = source_sidecar
-            if not dependent_sources:
-                continue
-            dependent_sidecars = _read_sidecars(project, reserving, dependent_sources, sidecar_cache)
-            for dependent_name in sorted(dependent_sources, key=lambda item: (_key(item), item)):
-                sidecar = dependent_sidecars.get(dependent_name) or {}
-                if not sidecar:
-                    errors.append({
-                        "dataset_name": dependent_name,
-                        "reason": "dependency_sidecar_missing",
-                    })
-                    blocked_keys.add(_key(dependent_name))
-                    continue
-                method_type = dataset_sidecar_status_service.normalize_method_type(
-                    sidecar.get("method_type"), sidecar.get("source_kind")
-                )
-                if method_type not in BERQUIST_SHERMAN_METHOD_TYPES:
-                    skipped.append({
-                        "dataset_name": dependent_name,
-                        "reason": "non_bs_dependent_handled_by_central_cascade",
-                    })
-                    continue
-                try:
-                    with dataset_sidecar_status_service.sidecar_write_lock(
-                        _sidecar_path(project, reserving, dependent_name)
-                    ):
-                        result = _refresh_one(
-                            project,
-                            reserving,
-                            dependent_name,
-                            sidecar,
-                            dependent_sources[dependent_name],
-                            blocked_precedent_keys=blocked_keys,
-                            sidecar_cache=sidecar_cache,
-                        )
-                except Exception as exc:
-                    blocked_keys.add(_key(dependent_name))
-                    review_sidecar = _mark_review_needed(project, reserving, dependent_name)
-                    if review_sidecar:
-                        sidecar_cache[_key(dependent_name)] = review_sidecar
-                    touched = dataset_sidecar_status_service.refresh_method_statuses_for_dependents(
-                        project,
-                        reserving,
-                        [dependent_name],
-                    )
-                    for item in touched:
-                        sidecar_cache.pop(_key(item.get("dataset_name")), None)
-                    errors.append({"dataset_name": dependent_name, "reason": str(exc)})
-                    queue.append(dependent_name)
-                    continue
-                sidecar_cache[_key(dependent_name)] = result.get("sidecar") or sidecar
-                if result.get("updated"):
-                    updated.append({
-                        "dataset_name": dependent_name,
-                        "dataset_type": result.get("dataset_type") or dependent_name,
-                        "output_changed": bool(result.get("output_changed")),
-                    })
-                if result.get("status_refreshed"):
-                    status_refreshed.append({"dataset_name": dependent_name})
-                if not result.get("updated"):
-                    skipped.append({
-                        "dataset_name": dependent_name,
-                        "reason": result.get("reason") or (
-                            "status_refreshed" if result.get("status_refreshed") else "not_updated"
-                        ),
-                    })
-                blocked_keys.discard(_key(dependent_name))
-                queue.append(dependent_name)
-                try:
-                    cascade = _refresh_downstream_domains(
-                        project,
-                        reserving,
-                        dependent_name,
-                        _clean(result.get("dataset_type")) or dependent_name,
-                        finalize_method_review_status=False,
-                    )
-                    fresh_names, failed_names = _cascade_names(cascade)
-                    downstream_fresh_names.extend(fresh_names)
-                    downstream_blocked_names.extend(failed_names)
-                    queue.extend(fresh_names)
-                    queue.extend(failed_names)
-                    blocked_keys.difference_update(_key(name) for name in fresh_names)
-                    blocked_keys.update(_key(name) for name in failed_names)
-                    for name in [*fresh_names, *failed_names]:
-                        sidecar_cache.pop(_key(name), None)
-                    if not cascade.get("ok", True):
-                        from app_server.services import calculated_dataset_service
-
-                        reasons = calculated_dataset_service.cascade_failure_reasons(cascade)
-                        errors.append({
-                            "dataset_name": dependent_name,
-                            "reason": "Downstream refresh failed after B&S publication"
-                            + (": " + "; ".join(reasons) if reasons else "."),
-                            "cascade": cascade,
-                        })
-                except Exception as exc:
-                    sidecar_cache.clear()
-                    errors.append({
-                        "dataset_name": dependent_name,
-                        "reason": f"Downstream refresh failed after B&S publication: {exc}",
-                    })
-        review_status_updates = []
-        if (updated or status_refreshed or review_status_updates) and rebuild_index:
-            try:
-                from app_server.services import dataset_instance_index_service
-
-                dataset_instance_index_service.rebuild_index(project, reserving)
-            except Exception as exc:
-                index_error = str(exc)
-
-    def unique_updates(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        by_key: Dict[str, Dict[str, Any]] = {}
-        for item in items:
-            name = _clean(item.get("dataset_name"))
-            if name:
-                by_key.setdefault(_key(name), item)
-        return [by_key[key] for key in sorted(by_key)]
-
-    return {
-        "ok": not errors,
-        "project_name": project,
-        "reserving_class": reserving,
-        "changed_dataset_names": changed_names,
-        "updated": unique_updates(updated),
-        "status_refreshed": unique_updates(status_refreshed),
-        "skipped": skipped,
-        "errors": errors,
-        "downstream_fresh_names": _unique_names(downstream_fresh_names),
-        "downstream_blocked_names": _unique_names(downstream_blocked_names),
-        "review_status_updates": review_status_updates,
-        "index_ok": not index_error,
-        "index_error": index_error,
-    }
+    return dependent_walk_service.run_pass(
+        project_name,
+        reserving_class,
+        list(changed_dataset_names),
+        blocked_precedent_names=blocked_precedent_names,
+        finalize_method_review_status=finalize_method_review_status,
+        rebuild_index=rebuild_index,
+    )["berquist_sherman_updates"]

@@ -446,10 +446,6 @@ class BootstrapServiceTests(unittest.TestCase):
 
         self._write_target([value * 1.5 for value in self._target_values()])
         with mock.patch.object(
-            bootstrap_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": []},
-        ), mock.patch.object(
             bootstrap_service, "_lock", return_value=mock.MagicMock()
         ):
             refreshed = bootstrap_service.refresh_bootstrap_method(
@@ -566,132 +562,6 @@ class BootstrapServiceTests(unittest.TestCase):
 
         self.assertEqual(result["reason"], "stale_reverse_dependency_edge")
 
-    def test_bootstrap_downstream_cascade_excludes_only_its_own_wave(self) -> None:
-        with mock.patch.object(
-            calculated_dataset_service,
-            "recalculate_dependents",
-            return_value={"ok": True, "updated": []},
-        ) as cascade:
-            bootstrap_service._refresh_downstream_domains(
-                "Project", "Class", BOOTSTRAP_NAME, "F 00 - Ultimate Net Loss"
-            )
-
-        cascade.assert_called_once_with(
-            "Project",
-            "Class",
-            BOOTSTRAP_NAME,
-            "F 00 - Ultimate Net Loss",
-            include_bootstrap=False,
-            finalize_method_review_status=True,
-            rebuild_index=False,
-        )
-
-    def test_cascade_names_cover_every_earlier_domain(self) -> None:
-        report = {
-            "updated": [{"dataset_type_name": "Calculated Direct"}],
-            "skipped": [{"dataset_type_name": "Calculated Failed"}],
-            "dfm_updates": {"updated": [{"dataset_name": "DFM Output"}], "errors": []},
-            "result_selection_updates": {
-                "updated": [{"dataset_name": "RS Output"}],
-                "errors": [{"dataset_name": "RS Failed"}],
-                "downstream_fresh_names": ["RS Downstream"],
-                "downstream_blocked_names": ["RS Blocked"],
-            },
-            "bornhuetter_ferguson_updates": {
-                "status_refreshed": [{"dataset_name": "BF Restored"}],
-                "errors": [{"dataset_name": "BF Failed"}],
-            },
-            "cape_cod_updates": {
-                "updated": [{"dataset_name": "CC Output"}],
-                "errors": [{"dataset_name": "CC Failed"}],
-            },
-        }
-
-        fresh, failed = bootstrap_service._cascade_names(report)
-
-        self.assertCountEqual(
-            fresh,
-            [
-                "Calculated Direct",
-                "DFM Output",
-                "RS Output",
-                "RS Downstream",
-                "BF Restored",
-                "CC Output",
-            ],
-        )
-        self.assertCountEqual(
-            failed, ["Calculated Failed", "RS Failed", "RS Blocked", "BF Failed", "CC Failed"]
-        )
-
-    def test_outer_cascade_feeds_every_earlier_wave_into_the_bootstrap_wave(self) -> None:
-        from app_server.services import (
-            bornhuetter_ferguson_service,
-            cape_cod_service,
-            dfm_service,
-            result_selection_service,
-        )
-
-        waves = {
-            dfm_service: {
-                "ok": True,
-                # output_changed is False on purpose: a DFM edit that leaves the
-                # published ultimate untouched still changes the triangle and
-                # ratios a Bootstrap embeds, so it must reach the wave anyway.
-                "updated": [{"dataset_name": "DFM Output", "output_changed": False}],
-                "status_refreshed": [],
-                "errors": [],
-            },
-            result_selection_service: {
-                "ok": True,
-                "updated": [{"dataset_name": "RS Output"}],
-                "status_refreshed": [],
-                "errors": [],
-            },
-            bornhuetter_ferguson_service: {
-                "ok": True,
-                "updated": [{"dataset_name": "BF Output"}],
-                "status_refreshed": [],
-                "errors": [],
-            },
-            cape_cod_service: {
-                "ok": True,
-                "updated": [{"dataset_name": "CC Output"}],
-                "status_refreshed": [],
-                "errors": [],
-            },
-        }
-        with mock.patch.object(
-            calculated_dataset_service.dataset_instance_index_service,
-            "rebuild_index",
-            return_value=None,
-        ), mock.patch.object(
-            calculated_dataset_service.dataset_sidecar_status_service,
-            "refresh_method_statuses_for_dependents",
-            return_value=[],
-        ), mock.patch.object(
-            bootstrap_service, "refresh_dependents", return_value={"ok": True, "updated": []}
-        ) as wave:
-            with mock.patch.multiple(
-                dfm_service, refresh_dependents=mock.Mock(return_value=waves[dfm_service])
-            ), mock.patch.multiple(
-                result_selection_service,
-                refresh_dependents=mock.Mock(return_value=waves[result_selection_service]),
-            ), mock.patch.multiple(
-                bornhuetter_ferguson_service,
-                refresh_dependents=mock.Mock(return_value=waves[bornhuetter_ferguson_service]),
-            ), mock.patch.multiple(
-                cape_cod_service, refresh_dependents=mock.Mock(return_value=waves[cape_cod_service])
-            ):
-                report = calculated_dataset_service.recalculate_dependents(
-                    "Project", "Class", "Root Dataset", "Root Type"
-                )
-
-        self.assertIsNotNone(report["bootstrap_updates"])
-        roots = wave.call_args.args[2]
-        for name in ("Root Dataset", "Root Type", "DFM Output", "RS Output", "BF Output", "CC Output"):
-            self.assertIn(name, roots)
-
     def test_a_dfm_publishing_under_its_own_name_still_resolves(self) -> None:
         (self.sidecars / f"{DFM_OUTPUT_DATASET}.json").unlink()
         self._write_dfm(output_dataset=DFM_METHOD_NAME)
@@ -774,18 +644,16 @@ class BootstrapServiceTests(unittest.TestCase):
 
         wipe()
         fixture()
-        with mock.patch.object(bootstrap_service, "_refresh_downstream_domains") as cascade:
-            result = bootstrap_service.refresh_output(
-                "Project",
-                "Class",
-                BOOTSTRAP_NAME,
-                changed_precedents=[TARGET_NAME],
-                caches={},
-            )
+        result = bootstrap_service.refresh_output(
+            "Project",
+            "Class",
+            BOOTSTRAP_NAME,
+            changed_precedents=[TARGET_NAME],
+            caches={},
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertTrue(result["updated"])
-        cascade.assert_not_called()
         self.assertEqual(published(), expected)
 
         # A failure comes back as a reason rather than an exception, and the

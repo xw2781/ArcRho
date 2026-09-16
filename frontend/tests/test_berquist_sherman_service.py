@@ -198,23 +198,18 @@ class BerquistShermanRefreshTests(unittest.TestCase):
 
     def test_a_moved_ultimate_vector_rewrites_the_output_csv_sidecar_and_method(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
-        with mock.patch.object(
-            berquist_sherman_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": [{"dataset_type_name": "Calc After BS"}], "skipped": []},
-        ) as cascade:
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertTrue(report["ok"], report)
         self.assertEqual(
             report["updated"],
             [{"dataset_name": OUTPUT, "dataset_type": "Gross Loss - ad hoc", "output_changed": True}],
         )
-        self.assertEqual(report["downstream_fresh_names"], ["Calc After BS"])
-        cascade.assert_called_once()
-        self.assertEqual(cascade.call_args.args[2], OUTPUT)
+        # Nothing depends on the output here, so the ordered pass has nothing
+        # else to refresh around it.
+        self.assertEqual(report["downstream_fresh_names"], [])
 
         csv_text = (self.datasets / f"{OUTPUT}@12@12@cum@dev.csv").read_text(encoding="utf-8")
         self.assertEqual(csv_text, berquist_sherman_output_csv_text(self.expected_output([20, 20, 40]), 3))
@@ -231,14 +226,13 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         # The stored selections are the page's; the refresh does not rewrite them.
         self.assertEqual(method["method_tab"], self.method_payload()["method_tab"])
 
-    def test_an_unchanged_output_refreshes_metadata_and_cascades(self) -> None:
+    def test_an_unchanged_output_refreshes_metadata(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 20])
         csv_path = self.datasets / f"{OUTPUT}@12@12@cum@dev.csv"
         before_csv = csv_path.read_text(encoding="utf-8")
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains") as cascade:
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["updated"][0]["dataset_name"], OUTPUT)
@@ -250,7 +244,6 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         self.assertEqual(len(sidecar["audit_log"]), 2)
         method = self.read_json(self.methods / f"BSSR@{OUTPUT}.json")
         self.assertEqual(method["method_metadata"]["last_modified"], sidecar["updated_at"])
-        cascade.assert_called_once()
 
     def test_a_source_the_refresh_cannot_read_marks_the_output_for_review(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
@@ -262,17 +255,15 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         csv_path = self.datasets / f"{OUTPUT}@12@12@cum@dev.csv"
         before_csv = csv_path.read_text(encoding="utf-8")
 
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains") as cascade:
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertFalse(report["ok"])
         self.assertEqual(report["errors"][0]["dataset_name"], OUTPUT)
         self.assertIn("Closed", report["errors"][0]["reason"])
         self.assertEqual(csv_path.read_text(encoding="utf-8"), before_csv)
         self.assertEqual(self.read_json(sidecar_path)["status"], 2)
-        cascade.assert_not_called()
 
     def test_a_source_of_the_wrong_period_is_refused_like_the_page_refuses_it(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
@@ -285,10 +276,9 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         ultimate["stored_period_length"] = 3
         self.write_json(ultimate_path, ultimate)
 
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"):
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertFalse(report["ok"])
         self.assertIn("not an annual dataset", report["errors"][0]["reason"])
@@ -320,7 +310,7 @@ class BerquistShermanRefreshTests(unittest.TestCase):
 
         with mock.patch.object(
             berquist_sherman_service.dataset_service, "valuation_months", return_value=36
-        ), mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"):
+        ):
             report = berquist_sherman_service.refresh_dependents(
                 "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
             )
@@ -340,10 +330,9 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         ultimate["stored_period_length"] = 1
         self.write_json(ultimate_path, ultimate)
 
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"):
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertTrue(report["ok"], report)
         csv_text = (self.datasets / f"{OUTPUT}@12@12@cum@dev.csv").read_text(encoding="utf-8")
@@ -362,12 +351,11 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         rebuilt.write_text(annual_cache.read_text(encoding="utf-8"), encoding="utf-8")
         annual_cache.unlink()
 
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"), \
-                mock.patch.object(
-                    berquist_sherman_service.precedent_cache_service,
-                    "materialize_engine_source",
-                    return_value=str(rebuilt),
-                ) as materialize:
+        with mock.patch.object(
+            berquist_sherman_service.precedent_cache_service,
+            "materialize_engine_source",
+            return_value=str(rebuilt),
+        ) as materialize:
             report = berquist_sherman_service.refresh_dependents(
                 "Project", "Class", ["Ultimate Counts"], rebuild_index=False, finalize_method_review_status=False
             )
@@ -379,7 +367,7 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         csv_text = (self.datasets / f"{OUTPUT}@12@12@cum@dev.csv").read_text(encoding="utf-8")
         self.assertEqual(csv_text, berquist_sherman_output_csv_text(self.expected_output([20, 20, 40]), 3))
 
-    def test_a_non_bs_dependent_is_left_to_the_central_cascade(self) -> None:
+    def test_a_non_bs_dependent_is_not_in_the_bs_report(self) -> None:
         self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
         self.write_json(self.sidecars / "DFM Over Paid.json", {
             "dataset_name": "DFM Over Paid",
@@ -396,123 +384,16 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         paid["dependents"] = [{"dataset_name": "DFM Over Paid"}]
         self.write_json(paid_path, paid)
 
-        with mock.patch.object(berquist_sherman_service, "_refresh_downstream_domains"):
-            report = berquist_sherman_service.refresh_dependents(
-                "Project", "Class", ["Paid"], rebuild_index=False, finalize_method_review_status=False
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project", "Class", ["Paid"], rebuild_index=False, finalize_method_review_status=False
+        )
 
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["updated"], [])
-        self.assertEqual(
-            report["skipped"],
-            [{"dataset_name": "DFM Over Paid", "reason": "non_bs_dependent_handled_by_central_cascade"}],
-        )
-
-    # -- the walk --------------------------------------------------------
-
-    def test_the_walk_runs_the_bs_wave_after_result_selection_and_feeds_the_later_waves(self) -> None:
-        order: list[str] = []
-
-        def record(name: str, payload: dict):
-            def _refresh(*_args, **_kwargs):
-                order.append(name)
-                return payload
-
-            return _refresh
-
-        with (
-            mock.patch(
-                "app_server.services.dfm_service.refresh_dependents",
-                side_effect=record("dfm", {"ok": True, "updated": [], "errors": []}),
-            ),
-            mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
-            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
-            mock.patch(
-                "app_server.services.result_selection_service.refresh_dependents",
-                side_effect=record("result_selection", {
-                    "ok": True,
-                    "updated": [{"dataset_name": "C 92 - Current Qtr Selected"}],
-                    "status_refreshed": [],
-                    "errors": [],
-                    "downstream_fresh_names": [],
-                    "downstream_blocked_names": [],
-                }),
-            ),
-            mock.patch.object(
-                berquist_sherman_service,
-                "refresh_dependents",
-                side_effect=record("berquist_sherman", {
-                    "ok": False,
-                    "updated": [{"dataset_name": OUTPUT, "dataset_type": "Gross Loss - ad hoc", "output_changed": True}],
-                    "status_refreshed": [],
-                    "errors": [{"dataset_name": "BS CRA Incurred", "reason": "Reported Claim Counts must be an annual triangle dataset: Reported"}],
-                    "downstream_fresh_names": ["D 18 - BS Paid DFM"],
-                    "downstream_blocked_names": ["D 19 - Blocked DFM"],
-                }),
-            ) as refresh_bs,
-            mock.patch(
-                "app_server.services.bornhuetter_ferguson_service.refresh_dependents",
-                side_effect=record("bornhuetter_ferguson", {"ok": True, "updated": [], "errors": []}),
-            ) as refresh_bf,
-            mock.patch(
-                "app_server.services.cape_cod_service.refresh_dependents",
-                side_effect=record("cape_cod", {"ok": True, "updated": [], "errors": []}),
-            ) as refresh_cc,
-            mock.patch(
-                "app_server.services.bootstrap_service.refresh_dependents",
-                side_effect=record("bootstrap", {"ok": True, "updated": [], "errors": []}),
-            ) as refresh_bst,
-            mock.patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
-        ):
-            result = calculated_dataset_service.recalculate_dependents(
-                "Project", "Class", "Claim Counts--CWP", "Claim Counts--CWP"
-            )
-
-        self.assertEqual(
-            order,
-            ["dfm", "result_selection", "berquist_sherman", "bornhuetter_ferguson", "cape_cod", "bootstrap"],
-        )
-        # The B&S wave failed for one method, so the walk is not clean.
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["berquist_sherman_updates"]["updated"][0]["dataset_name"], OUTPUT)
-        self.assertIn("C 92 - Current Qtr Selected", refresh_bs.call_args.args[2])
-        for refresher in (refresh_bf, refresh_cc, refresh_bst):
-            roots = refresher.call_args.args[2]
-            blocked = refresher.call_args.kwargs["blocked_precedent_names"]
-            self.assertIn(OUTPUT, roots)
-            self.assertIn("D 18 - BS Paid DFM", roots)
-            self.assertIn("BS CRA Incurred", blocked)
-            self.assertIn("D 19 - Blocked DFM", blocked)
-
-    def test_the_walk_can_leave_the_bs_wave_out(self) -> None:
-        with (
-            mock.patch(
-                "app_server.services.dfm_service.refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ),
-            mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
-            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
-            mock.patch(
-                "app_server.services.result_selection_service.refresh_dependents",
-                return_value={"ok": True, "updated": [], "status_refreshed": [], "errors": []},
-            ),
-            mock.patch.object(berquist_sherman_service, "refresh_dependents") as refresh_bs,
-            mock.patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
-        ):
-            result = calculated_dataset_service.recalculate_dependents(
-                "Project",
-                "Class",
-                "Paid",
-                "Paid",
-                include_berquist_sherman=False,
-                include_bornhuetter_ferguson=False,
-                include_cape_cod=False,
-                include_bootstrap=False,
-            )
-
-        self.assertTrue(result["ok"], result)
-        self.assertIsNone(result["berquist_sherman_updates"])
-        refresh_bs.assert_not_called()
+        # The DFM over the same triangle is refreshed by the same ordered
+        # pass, under the DFM domain's own report, so the B&S report says
+        # nothing about it at all.
+        self.assertEqual(report["skipped"], [])
 
     def test_refresh_output_matches_the_walk_and_reports_a_failure(self) -> None:
         """One output refreshed on its own publishes what the whole walk does."""
@@ -544,38 +425,29 @@ class BerquistShermanRefreshTests(unittest.TestCase):
             self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
 
         fixture()
-        with mock.patch.object(
-            berquist_sherman_service,
-            "_refresh_downstream_domains",
-            return_value={"ok": True, "updated": [], "skipped": []},
-        ):
-            report = berquist_sherman_service.refresh_dependents(
-                "Project",
-                "Class",
-                ["Ultimate Counts"],
-                rebuild_index=False,
-                finalize_method_review_status=False,
-            )
+        report = berquist_sherman_service.refresh_dependents(
+            "Project",
+            "Class",
+            ["Ultimate Counts"],
+            rebuild_index=False,
+            finalize_method_review_status=False,
+        )
 
         self.assertTrue(report["ok"], report)
         expected = published()
 
         wipe()
         fixture()
-        with mock.patch.object(
-            berquist_sherman_service, "_refresh_downstream_domains"
-        ) as cascade:
-            result = berquist_sherman_service.refresh_output(
-                "Project",
-                "Class",
-                OUTPUT,
-                changed_precedents=["Ultimate Counts"],
-                caches={},
-            )
+        result = berquist_sherman_service.refresh_output(
+            "Project",
+            "Class",
+            OUTPUT,
+            changed_precedents=["Ultimate Counts"],
+            caches={},
+        )
 
         self.assertTrue(result["ok"], result)
         self.assertTrue(result["updated"])
-        cascade.assert_not_called()
         self.assertEqual(published(), expected)
 
         # A failure comes back as a reason rather than an exception.

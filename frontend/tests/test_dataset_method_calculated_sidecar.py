@@ -11,6 +11,7 @@ FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
+from app_server import helpers
 from app_server.services import calculated_dataset_service, dataset_service
 from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
 
@@ -198,7 +199,23 @@ class GeneratedFormulaWalkTargetTests(unittest.TestCase):
         self.propagation_workspace.stop()
 
     def _walk_from(self, root: str):
+        def plain_sidecars(_project, _reserving, names):
+            """Every type here is a plain dataset with no dependents of its own."""
+            return {
+                helpers._canon_dataset_name(name): {
+                    "dataset_name": name,
+                    "source_kind": "input",
+                    "dependents": [],
+                }
+                for name in names
+            }
+
         with (
+            patch.object(
+                calculated_dataset_service.dataset_sidecar_status_service,
+                "read_sidecars",
+                side_effect=plain_sidecars,
+            ),
             patch.object(
                 calculated_dataset_service,
                 "_dataset_type_rows",
@@ -209,25 +226,17 @@ class GeneratedFormulaWalkTargetTests(unittest.TestCase):
                 "_existing_dataset_keys",
                 return_value={"earned premium", "remaining budget premium", "total earned premium"},
             ),
-            patch.object(calculated_dataset_service, "_refresh_link_driven_dependents", return_value=[]),
             patch.object(calculated_dataset_service, "recalculate_dataset") as recalculate,
             patch.object(
                 calculated_dataset_service.dataset_sidecar_status_service,
                 "refresh_method_statuses_for_dependents",
                 return_value=[],
             ),
-            patch("app_server.services.dfm_service.refresh_dependents", return_value={
+            patch("app_server.services.dfm_service.refresh_output", return_value={
                 "ok": True,
-                "updated": [],
-                "status_refreshed": [],
-                "skipped": [],
-                "errors": [],
+                "dataset_name": "DFM",
+                "updated": True,
             }) as refresh_dfm,
-            patch("app_server.services.result_selection_service.refresh_dependents", return_value={
-                "ok": True,
-                "updated": [],
-                "errors": [],
-            }),
             patch.object(calculated_dataset_service.dataset_instance_index_service, "rebuild_index"),
         ):
             result = calculated_dataset_service.recalculate_dependents(
@@ -250,15 +259,13 @@ class GeneratedFormulaWalkTargetTests(unittest.TestCase):
         self.assertEqual(result["updated"], [])
         self.assertEqual(result["skipped"], [])
 
-    def test_the_generated_formula_s_own_refresh_reaches_the_method_reading_it(self) -> None:
-        _result, recalculate, refresh_dfm = self._walk_from("Total Earned Premium")
+    def test_the_generated_formula_is_crossed_when_it_is_the_saved_root(self) -> None:
+        result, recalculate, _refresh_dfm = self._walk_from("Total Earned Premium")
 
+        # The Engine owns it, so the ordered pass never recomputes it; what
+        # reads it is refreshed from its own sidecar edges.
         recalculate.assert_not_called()
-        refresh_dfm.assert_called_once()
-        self.assertEqual(
-            refresh_dfm.call_args.args[2],
-            ["Total Earned Premium", "Total Earned Premium"],
-        )
+        self.assertEqual(result["targets"], [])
 
 
 if __name__ == "__main__":

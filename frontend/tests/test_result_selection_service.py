@@ -736,8 +736,8 @@ class ResultSelectionServiceTests(unittest.TestCase):
             mock.patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=rows),
             mock.patch.object(
                 calculated_dataset_service,
-                "_existing_downstream_keys",
-                return_value=["calculated a"],
+                "_existing_dataset_keys",
+                return_value={"paid b", "calculated a"},
             ),
             mock.patch.object(calculated_dataset_service, "recalculate_dataset", return_value={
                 "ok": False,
@@ -855,10 +855,13 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         result = result_selection_service.refresh_dependents("Project", "Class", ["Root"])
 
-        self.assertTrue(result["ok"], result)
+        self.assertFalse(result["ok"])
         self.assertEqual(result["updated"], [])
         self.assertEqual((self.methods / "RS@Selection.json").read_bytes(), before)
-        self.assertIn("non_result_selection_dependent", result["skipped"][0]["reason"])
+        self.assertEqual(
+            result["errors"],
+            [{"dataset_name": "Selection", "reason": "Precedent refresh failed: Stale DFM"}],
+        )
 
     def test_obsolete_finer_period_cache_is_not_accepted_after_origin_change(self) -> None:
         obsolete = self.datasets / "Selection@3.csv"
@@ -1002,7 +1005,9 @@ class ResultSelectionServiceTests(unittest.TestCase):
             result = result_selection_service.refresh_dependents("Project", "Class", ["Root"])
 
         self.assertFalse(result["ok"])
-        self.assertEqual(blocked_at_fan_in, {"broken", "calculated broken"})
+        self.assertEqual(blocked_at_fan_in, set())
+        reasons = {item["dataset_name"]: item["reason"] for item in result["errors"]}
+        self.assertEqual(reasons["Fan In"], "Precedent refresh failed: Broken")
 
     def test_refresh_reuses_graph_snapshot_and_reloads_only_status_mutations(self) -> None:
         self.write_selection()
@@ -1063,7 +1068,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
         self.assertEqual(read_counts["paid"], 1)
-        self.assertEqual(read_counts["selection"], 1)
+        self.assertEqual(read_counts["selection"], 2)
         self.assertEqual(read_counts["selection two"], 1)
         saved = json.loads((self.methods / "RS@Selection Two.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["selected_ultimate"], [30.0, 99])
@@ -1247,9 +1252,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
             result["updated"],
             [{"dataset_name": "Selection"}, {"dataset_name": "Selection Two"}],
         )
-        skipped_by_name = {item["dataset_name"]: item["reason"] for item in result["skipped"]}
-        self.assertEqual(skipped_by_name["Calc A"], "non_result_selection_dependent_requires_explicit_refresh")
-        self.assertEqual(recalculate_dependents.call_count, 2)
+        self.assertEqual(result["skipped"], [])
         self.assertNotEqual(downstream_method_path.read_bytes(), downstream_method_before)
 
     def test_dfm_visited_to_the_same_publication_is_not_a_failed_precedent(self) -> None:
@@ -1320,10 +1323,7 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["updated"], [{"dataset_name": "Selection"}], result)
-        self.assertEqual(
-            result["skipped"],
-            [{"dataset_name": "CWP DFM", "reason": "non_result_selection_dependent_requires_explicit_refresh"}],
-        )
+        self.assertEqual(result["skipped"], [])
         saved = json.loads((self.methods / "RS@Selection.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["method_tab"]["calculated_ultimate"], [7.5, 13.0])
         self.assertEqual((self.datasets / "Selection@12.csv").read_text(encoding="utf-8"), "7.5\n99\n")
@@ -1414,36 +1414,6 @@ class ResultSelectionServiceTests(unittest.TestCase):
         self.assertEqual(result["updated"], [])
         self.assertIn("Cached dataset CSV is missing", result["errors"][0]["reason"])
         self.assertEqual({path: path.read_bytes() for path in paths}, before)
-
-    def test_calculated_cascade_always_invokes_result_selection_refresh(self) -> None:
-        with (
-            mock.patch.object(calculated_dataset_service, "_existing_downstream_keys", return_value=[]),
-            mock.patch.object(calculated_dataset_service, "_calculated_rows_by_key", return_value={}),
-            mock.patch(
-                "app_server.services.dataset_instance_index_service.rebuild_index",
-            ),
-            mock.patch.object(
-                result_selection_service,
-                "refresh_dependents",
-                return_value={"ok": True, "updated": [], "errors": []},
-            ) as refresh,
-        ):
-            result = calculated_dataset_service.recalculate_dependents(
-                "Project",
-                "Class",
-                "Paid Instance",
-                "Paid Type",
-            )
-
-        self.assertTrue(result["ok"])
-        refresh.assert_called_once_with(
-            "Project",
-            "Class",
-            ["Paid Instance", "Paid Type"],
-            rebuild_index=False,
-            blocked_precedent_names=[],
-            finalize_method_review_status=False,
-        )
 
     def test_calculated_graph_rebuild_preserves_registered_method_dependents(self) -> None:
         payload = {
