@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.6.0
-# Release Note: Restored the combined-adjustment special case for the BIR51+UMBIR51 reserving class's net-loss, incurred methods, now naming it a growth and BI limit adjustment.
+# Version: 1.5.0
+# Release Note: Removed the growth and size-of-loss special case; every growth vector's line now simply reads "Apply growth adjustment of ...".
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -45,12 +45,6 @@ MACRO_TITLE = "Generate Notes for Combined Adjustment"
 NO_ADJUSTMENT_NOTE = "No combined adjustments were needed for this method."
 
 _GROWTH_ADJUSTMENT_DATASET_KEYS = {name.lower() for name in GROWTH_ADJUSTMENT_DATASETS.values()}
-
-# This one reserving class runs its growth vector as a combined growth and
-# BI limit adjustment, but only for its net-loss, incurred DFM methods.
-GROWTH_AND_BI_LIMIT_RESERVING_CLASS = "PRNJ - PA\\PA\\NJ\\Direct Group\\BIR51+UMBIR51"
-GROWTH_AND_BI_LIMIT_CATEGORY = "f net loss"
-GROWTH_AND_BI_LIMIT_NAME_TOKEN = "incurred"
 
 # A displayed percent below this threshold rounds to 0.00%, so the factor is
 # treated as 1 and its adjustment line is omitted from the notes.
@@ -489,34 +483,15 @@ def _base_value(entry: dict[str, Any], base_label: str) -> float | None:
     return None
 
 
-def _is_growth_and_bi_limit_dfm(dfm: Any) -> bool:
-    reserving_class = _clean_text(getattr(dfm, "reserving_class", ""))
-    category = _clean_text((getattr(dfm, "details", None) or {}).get("output_category")).lower()
-    name = _clean_text(getattr(dfm, "name", "")).lower()
-    return (
-        reserving_class == GROWTH_AND_BI_LIMIT_RESERVING_CLASS
-        and category == GROWTH_AND_BI_LIMIT_CATEGORY
-        and GROWTH_AND_BI_LIMIT_NAME_TOKEN in name
-    )
-
-
-def _note_adjustment_description(dataset_name: str, *, growth_and_bi_limit: bool) -> str:
+def _note_adjustment_description(dataset_name: str) -> str:
     """How the notes name an adjustment dataset, collapsing a growth vector's
-    basis (counts, incurred, paid) since a reader does not need it, and
-    naming it as a combined growth and BI limit adjustment for the one
-    reserving class and DFM category that runs it that way."""
+    basis (counts, incurred, paid) since a reader does not need it."""
     if _clean_text(dataset_name).lower() in _GROWTH_ADJUSTMENT_DATASET_KEYS:
-        description = "growth adjustment"
-    else:
-        description = adjustment_description(dataset_name)
-    if growth_and_bi_limit and description == "growth adjustment":
-        return "growth and BI limit adjustment"
-    return description
+        return "growth adjustment"
+    return adjustment_description(dataset_name)
 
 
-def _factor_lines(
-    factors: list[dict[str, Any]], *, growth_and_bi_limit: bool
-) -> tuple[list[str], list[str], bool]:
+def _factor_lines(factors: list[dict[str, Any]]) -> tuple[list[str], list[str], bool]:
     """Build the "Apply ..." note lines and multiplier texts for non-unity factors."""
     lines: list[str] = []
     multipliers: list[str] = []
@@ -527,10 +502,7 @@ def _factor_lines(
             continue
         multiplier = _format_note_multiplier(effective)
         if factor["kind"] == "reference":
-            description = _note_adjustment_description(
-                factor["reference"]["dataset_name"],
-                growth_and_bi_limit=growth_and_bi_limit,
-            )
+            description = _note_adjustment_description(factor["reference"]["dataset_name"])
         else:
             description = "other adjustment"
         if factor["op"] == "/":
@@ -554,9 +526,7 @@ def _column_note(dfm: Any, entry: dict[str, Any], parsed: dict[str, Any]) -> str
         if factor["op"] == "/" and not factor["resolved_value"]:
             return _fallback_note(dfm, entry, parsed)
 
-    lines, multipliers, meaningful = _factor_lines(
-        factors, growth_and_bi_limit=_is_growth_and_bi_limit_dfm(dfm)
-    )
+    lines, multipliers, meaningful = _factor_lines(factors)
     if not meaningful:
         return None
 
