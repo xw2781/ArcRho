@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Refreshing a calculated vector now keeps its quarterly and annual cache views current."
+}

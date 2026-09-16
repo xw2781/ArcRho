@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name
+from app_server.helpers import read_dataset_csv, sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
@@ -782,9 +782,7 @@ def _dependency_values(
             exact=exact,
         )
     try:
-        frame = pd.read_csv(
-            path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip"
-        )
+        frame = read_dataset_csv(path, dtype="float64", keep_default_na=True)
     except Exception as exc:
         raise RuntimeError(f"Unable to read '{dataset_name}': {exc}") from exc
     rows = frame.to_numpy().tolist()

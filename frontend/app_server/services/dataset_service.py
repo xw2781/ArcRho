@@ -48,6 +48,7 @@ from app_server.helpers import (
     _canon_dataset_name,
     atomic_write_csv,
     build_dataset_cache_file_name,
+    read_dataset_csv,
     sanitize_dataset_file_name,
 )
 from app_server.services import (
@@ -328,12 +329,12 @@ def _resolve_development_labels(
 
 
 def infer_shape(path: str) -> Tuple[int, int]:
-    df = pd.read_csv(path, header=None)
+    df = read_dataset_csv(path)
     return int(df.shape[0]), int(df.shape[1])
 
 
 def load_triangle_values(path: str) -> pd.DataFrame:
-    return pd.read_csv(path, header=None, dtype="float64", float_precision="round_trip")
+    return read_dataset_csv(path, dtype="float64")
 
 
 def triangle_mask(n_origin: int, n_dev: int) -> np.ndarray:
@@ -1484,9 +1485,7 @@ def _rolled_up_dataset(ds_id: str) -> Tuple[pd.DataFrame, float] | None:
     source_path = str(recipe.get("source_path") or "")
     if not source_path or not os.path.exists(source_path):
         return None
-    rows = pd.read_csv(
-        source_path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip"
-    ).to_numpy().tolist()
+    rows = read_dataset_csv(source_path, dtype="float64", keep_default_na=True).to_numpy().tolist()
     values = rollup_triangle(
         rows,
         source_origin_length=int(recipe["source_origin_length"]),
@@ -1508,9 +1507,7 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     if rolled_up is None:
         if not os.path.exists(path):
             return None
-        df = pd.read_csv(
-            path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip"
-        )
+        df = read_dataset_csv(path, dtype="float64", keep_default_na=True)
         mtime = os.stat(path).st_mtime
     else:
         df, mtime = rolled_up
@@ -2012,7 +2009,7 @@ def load_cached_dataset_values(
             raise HTTPException(404, f"Requested cached dataset CSV not found for '{ds}'.")
         raise HTTPException(404, f"Cached dataset CSV not found for '{ds}'.")
     try:
-        df = pd.read_csv(csv_path, header=None, float_precision="round_trip")
+        df = read_dataset_csv(csv_path)
     except PermissionError:
         raise HTTPException(423, "Dataset cache CSV is locked or inaccessible.")
     except OSError as err:

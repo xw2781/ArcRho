@@ -40,6 +40,7 @@ from arcrho_engine_calculation_contract import (
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
+    read_dataset_csv,
     sanitize_dataset_file_name,
     set_data_path_like_vba,
 )
@@ -1053,9 +1054,7 @@ def _derive_triangle_cache(candidate: Dict[str, Any], pairs: list, target_path: 
     # The view is valued on the project's Development End Date, like every
     # triangle created at the requested shape would be.
     valuation = dataset_service.valuation_months(_pair_value(pairs, "ProjectName"))
-    df = pd.read_csv(
-        source_path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip"
-    )
+    df = read_dataset_csv(source_path, dtype="float64", keep_default_na=True)
     values = rollup_triangle(
         df.to_numpy().tolist(), valuation_months=valuation, **arguments
     )

@@ -1459,6 +1459,20 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertEqual(payload["precedents"], ["Paid", "Premium"])
 
+    def test_a_source_whose_newest_origin_is_empty_keeps_its_row(self) -> None:
+        # A method output writes an empty line for an origin with no ultimate,
+        # and the newest one often has none yet. Dropping that line shortened
+        # the vector and the refresh reported "returned 1 values; expected 2".
+        self.write_source("Paid", [10])
+        (self.datasets / "Paid@12.csv").write_text("10\n\n", encoding="utf-8")
+        sidecar = json.loads((self.sidecars / "Paid.json").read_text(encoding="utf-8"))
+
+        values = result_selection_service._dependency_values(
+            "Project", "Class", "Paid", sidecar, 12, exact=False
+        )
+
+        self.assertEqual(values, [10.0, None])
+
 
 if __name__ == "__main__":
     unittest.main()

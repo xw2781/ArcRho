@@ -34,7 +34,7 @@ from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 from arcrho_api.sidecar_core_contract import stored_lengths
 from arcrho_api.timestamps import persisted_timestamp, utc_now_text
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name
+from app_server.helpers import read_dataset_csv, sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
@@ -333,7 +333,7 @@ def _load_source_snapshot(
         if not csv_path:
             raise HTTPException(422, f"DFM precedent '{dataset_name}' does not identify its cache CSV.")
     try:
-        frame = pd.read_csv(csv_path, header=None, float_precision="round_trip").astype(object)
+        frame = read_dataset_csv(csv_path).astype(object)
     except FileNotFoundError as exc:
         raise HTTPException(404, f"DFM precedent CSV is missing: {dataset_name}") from exc
     except PermissionError as exc:

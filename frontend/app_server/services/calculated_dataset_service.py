@@ -29,7 +29,9 @@ from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
     _canon_dataset_name,
+    atomic_write_csv,
     build_dataset_cache_file_name,
+    read_dataset_csv,
     sanitize_dataset_file_name,
 )
 from app_server.services import (
@@ -742,7 +744,7 @@ def _finite_float(value: Any) -> float | None:
 
 
 def _read_numeric_csv(path: str) -> np.ndarray:
-    df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip")
+    df = read_dataset_csv(path, dtype="float64", keep_default_na=True)
     return df.to_numpy(dtype="float64")
 
 
@@ -920,6 +922,8 @@ def _candidate_csvs(
         for key in ("cumulative", "calendar"):
             if key in sidecar and bool(sidecar.get(key)) == bool(target_settings.get(key)):
                 score += 1
+        if _candidate_matches_target_shape(path, candidate_data_format, target_settings):
+            score += 3
         out.append({
             "path": path,
             "sidecar": sidecar,
@@ -929,7 +933,45 @@ def _candidate_csvs(
         })
     out.sort(key=lambda item: (int(item.get("score") or 0), float(item.get("mtime") or 0)), reverse=True)
     best_score = int(out[0].get("score") or 0) if out else 0
-    return [item for item in out if int(item.get("score") or 0) == best_score]
+    best = [item for item in out if int(item.get("score") or 0) == best_score]
+    if len(best) > 1:
+        # A sidecar names the copy it owns, and the sibling ``@n`` files beside
+        # it are coarser views of the same figures. The scoring above can never
+        # separate them: they share that one sidecar, and a vector states its
+        # period under ``period_length`` rather than the length keys scored
+        # here, so every view ties and the caller calls the dependency
+        # ambiguous. Let the sidecar's own file decide, as the runtime resolver
+        # does; ``_component_at_target_shape`` rolls it up afterwards.
+        named = [item for item in best if _is_sidecar_named_csv(item)]
+        if named:
+            return named
+    return best
+
+
+def _candidate_matches_target_shape(
+    path: str,
+    data_format: str,
+    target_settings: Mapping[str, Any],
+) -> bool:
+    if _clean_text(data_format).lower() != "vector":
+        return False
+    try:
+        target_period = int(target_settings.get("origin_length") or 0)
+    except (TypeError, ValueError):
+        return False
+    if target_period <= 0:
+        return False
+    return os.path.splitext(os.path.basename(path))[0].endswith(f"@{target_period}")
+
+
+def _is_sidecar_named_csv(candidate: Mapping[str, Any]) -> bool:
+    sidecar = candidate.get("sidecar")
+    named = _clean_text(sidecar.get("csv_file")) if isinstance(sidecar, Mapping) else ""
+    if not named:
+        return False
+    return os.path.normcase(os.path.basename(str(candidate.get("path") or ""))) == os.path.normcase(
+        os.path.basename(named)
+    )
 
 
 def _target_paths(
@@ -959,7 +1001,7 @@ def _target_paths(
 def _load_component_matrix(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """Read one component CSV and its content fingerprint (cache-miss loader)."""
 
-    df = pd.read_csv(path, header=None, dtype="float64", keep_default_na=True, float_precision="round_trip")
+    df = read_dataset_csv(path, dtype="float64", keep_default_na=True)
     return df.to_numpy(dtype="float64"), runtime_cache_provenance_service.file_fingerprint(path)
 
 
@@ -1021,6 +1063,73 @@ def _existing_target_settings(project_name: str, reserving_class: str, dataset_n
     }
 
 
+def _existing_vector_cache_periods(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    scan: _DatasetCacheScan | None = None,
+) -> List[int]:
+    prefix = re.escape(sanitize_dataset_file_name(dataset_name))
+    pattern = re.compile(rf"^{prefix}@(\d+)\.csv$", re.IGNORECASE)
+    dataset_scan = scan if scan is not None else _scan_dataset_cache_folder(project_name, reserving_class)
+    if not dataset_scan.exists:
+        return []
+    periods = {
+        int(match.group(1))
+        for path, _mtime in dataset_scan.csv_files
+        if (match := pattern.match(os.path.basename(path))) and int(match.group(1)) > 0
+    }
+    return sorted(periods)
+
+
+def _calculated_cache_settings(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    data_format: Any,
+    scan: _DatasetCacheScan | None = None,
+) -> List[Dict[str, Any]]:
+    settings = _existing_target_settings(project_name, reserving_class, dataset_name)
+    if _clean_text(data_format).lower() != "vector":
+        return [settings]
+    periods = _existing_vector_cache_periods(project_name, reserving_class, dataset_name, scan)
+    if not periods:
+        periods = [int(settings.get("origin_length") or 12)]
+    return [
+        {
+            **settings,
+            "origin_length": period,
+            "development_length": period,
+        }
+        for period in periods
+    ]
+
+
+def _rollup_calculated_vector(
+    project_name: str,
+    values: np.ndarray,
+    source_period: int,
+    target_period: int,
+) -> np.ndarray:
+    if source_period == target_period:
+        return values
+    rows = precedent_cache_service.rollup_rows(
+        project_name,
+        {
+            "source_kind": "input",
+            "data_format": "Vector",
+            "stored_period_length": source_period,
+        },
+        _jsonable_matrix(values),
+        target_period,
+        source_period,
+    )
+    return np.array(
+        [[np.nan if value is None else float(value) for value in row] for row in rows],
+        dtype="float64",
+    )
+
+
 def _load_components(
     project_name: str,
     reserving_class: str,
@@ -1030,6 +1139,7 @@ def _load_components(
     component_paths: Dict[str, str] | None = None,
     component_formats: Dict[str, str] | None = None,
     component_method_sources: Dict[str, Dict[str, str]] | None = None,
+    dataset_scan: _DatasetCacheScan | None = None,
 ) -> Tuple[Dict[str, np.ndarray], List[Dict[str, Any]], List[str]]:
     values: Dict[str, np.ndarray] = {}
     dependency_info: List[Dict[str, Any]] = []
@@ -1042,7 +1152,6 @@ def _load_components(
     # reads, so each folder is enumerated at most once per call instead of once
     # per component. On a network drive that removes one full sidecar sweep per
     # extra dependency.
-    dataset_scan: _DatasetCacheScan | None = None
     method_scan: _MethodFolderScan | None = None
 
     def cached_dataset_scan() -> _DatasetCacheScan:
@@ -1514,6 +1623,8 @@ def _recalculate_dataset_impl(
     component_method_sources: Dict[str, Dict[str, str]] | None = None,
     dataset_type_rows: List[Dict[str, Any]] | None = None,
     mark_dependents_review: bool = True,
+    target_settings: Mapping[str, Any] | None = None,
+    dataset_scan: _DatasetCacheScan | None = None,
 ) -> Dict[str, Any]:
     all_rows = _dataset_type_rows(project_name) if dataset_type_rows is None else dataset_type_rows
     rows_by_key = {
@@ -1528,7 +1639,7 @@ def _recalculate_dataset_impl(
     expr, refs = _replace_formula_refs(row["formula"], known_names)
     ordered_components = [refs[key] for key in sorted(refs.keys(), key=lambda item: int(item[2:]))]
 
-    settings = _existing_target_settings(project_name, reserving_class, row["name"])
+    settings = dict(target_settings or _existing_target_settings(project_name, reserving_class, row["name"]))
     values, precedents, errors = _load_components(
         project_name,
         reserving_class,
@@ -1541,6 +1652,7 @@ def _recalculate_dataset_impl(
             for item in all_rows
             if _canon_dataset_name(item.get("name"))
         },
+        dataset_scan=dataset_scan,
     )
     if errors:
         missing_prefix = "Missing dependency: "
@@ -1648,10 +1760,9 @@ def _recalculate_dataset_impl(
         _write_dataset_csv_and_sidecar,
     )
 
-    _append_dataset_audit_entry(payload, action_value, event_date=now, user_name=user_name)
-
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(sidecar_path), exist_ok=True)
+    _append_dataset_audit_entry(payload, action_value, event_date=now, user_name=user_name)
     _write_dataset_csv_and_sidecar(pd.DataFrame(arr), csv_path, sidecar_path, payload)
     # The sidecar names the precedents and nothing else. What this output was
     # built from -- the formula and each dependency's file and fingerprint --
@@ -1687,6 +1798,8 @@ def _recalculate_dataset_impl(
         "precedents": payload.get("precedents", []),
         "dependents": payload.get("dependents", []),
         "status_updates": status_updates,
+        "_calculated_matrix": arr,
+        "_precedent_fingerprints": _dependency_fingerprints(precedents),
     }
 
 
@@ -1701,15 +1814,82 @@ def recalculate_dataset(
     mark_dependents_review: bool = True,
 ) -> Dict[str, Any]:
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
-        return _recalculate_dataset_impl(
+        all_rows = _dataset_type_rows(project_name) if dataset_type_rows is None else dataset_type_rows
+        calculated_rows = {
+            _canon_dataset_name(item.get("name")): item
+            for item in _app_calculated_rows(all_rows)
+        }
+        row = calculated_rows.get(_canon_dataset_name(dataset_type_name))
+        if not row:
+            return _recalculate_dataset_impl(
+                project_name,
+                reserving_class,
+                dataset_type_name,
+                component_paths=component_paths,
+                component_method_sources=component_method_sources,
+                dataset_type_rows=all_rows,
+                mark_dependents_review=mark_dependents_review,
+            )
+        dataset_scan = (
+            _scan_dataset_cache_folder(project_name, reserving_class)
+            if _clean_text(row.get("data_format")).lower() == "vector"
+            else None
+        )
+        cache_settings = _calculated_cache_settings(
             project_name,
             reserving_class,
-            dataset_type_name,
+            row["name"],
+            row.get("data_format"),
+            dataset_scan,
+        )
+        result = _recalculate_dataset_impl(
+            project_name,
+            reserving_class,
+            row["name"],
             component_paths=component_paths,
             component_method_sources=component_method_sources,
-            dataset_type_rows=dataset_type_rows,
+            dataset_type_rows=all_rows,
             mark_dependents_review=mark_dependents_review,
+            target_settings=cache_settings[0],
+            dataset_scan=dataset_scan,
         )
+        if result.get("ok"):
+            source_period = int(cache_settings[0]["origin_length"])
+            values = result.pop("_calculated_matrix")
+            dependencies = result.pop("_precedent_fingerprints")
+            cache_paths = [str(result.get("path") or "")]
+            for settings in cache_settings[1:]:
+                target_period = int(settings["origin_length"])
+                values_at_target = _rollup_calculated_vector(
+                    project_name,
+                    values,
+                    source_period,
+                    target_period,
+                )
+                csv_path, _sidecar_path = _target_paths(
+                    project_name,
+                    reserving_class,
+                    row["name"],
+                    settings,
+                    row.get("data_format") or "Triangle",
+                )
+                atomic_write_csv(pd.DataFrame(values_at_target), csv_path)
+                runtime_cache_provenance_service.record_calculated(
+                    csv_path,
+                    identity=runtime_cache_provenance_service.calculated_cache_identity(
+                        csv_path,
+                        project_name=project_name,
+                        reserving_class=reserving_class,
+                        dataset_name=row["name"],
+                        dataset_type=row["name"],
+                    ),
+                    formula=row["formula"],
+                    dependencies=dependencies,
+                )
+                config.DATASETS["arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]] = csv_path
+                cache_paths.append(csv_path)
+            result["cache_paths"] = cache_paths
+        return result
 
 
 def _refresh_link_driven_dependents(

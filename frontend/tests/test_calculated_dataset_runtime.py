@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
+
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTEND_ROOT.parent
@@ -231,7 +233,13 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
         with (
             patch.object(calculated_dataset_service, "_calculated_rows_by_key", return_value={"calculated output": row}),
             patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[source_row, row]),
+            patch.object(calculated_dataset_service.config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
             patch.object(calculated_dataset_service, "_existing_target_settings", return_value={}),
+            patch.object(
+                calculated_dataset_service,
+                "_calculated_cache_settings",
+                return_value=[{"origin_length": 12, "development_length": 12}],
+            ),
             patch.object(
                 calculated_dataset_service,
                 "_load_components",
@@ -279,6 +287,74 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             {"dataset_name": "Formula Output"},
             {"dataset_name": "Selection"},
         ])
+
+    def test_vector_recalculation_refreshes_each_existing_cache_period(self) -> None:
+        row = {
+            "name": "Calculated Output",
+            "data_format": "Vector",
+            "formula": "Source",
+            "calculated": True,
+            "generated": False,
+        }
+        source_row = {
+            "name": "Source",
+            "data_format": "Vector",
+            "formula": "",
+            "calculated": False,
+            "generated": False,
+        }
+        sidecar_dir = self.cache_dir.parent / config.DATASET_SIDECAR_DIR
+        sidecar_dir.mkdir(parents=True)
+        sidecar_path = sidecar_dir / "Calculated Output.json"
+        sidecar_path.write_text(json.dumps({
+            "dataset_name": "Calculated Output",
+            "dataset_type": "Calculated Output",
+            "project_name": "Example Project",
+            "reserving_class": "Example RC",
+            "data_format": "Vector",
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_period_length": 12,
+            "csv_file": "Calculated Output@12.csv",
+            "dependents": [],
+        }), encoding="utf-8")
+        for period in (3, 12):
+            (self.cache_dir / f"Calculated Output@{period}.csv").write_text(
+                "0\n", encoding="utf-8"
+            )
+
+        def load_components(_project, _reserving, _components, settings, **_kwargs):
+            period = int(settings["origin_length"])
+            self.assertEqual(period, 3)
+            return {"_d0": np.array([[1.0], [2.0], [3.0], [4.0]])}, [], []
+
+        with (
+            patch.object(calculated_dataset_service.config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
+            patch.object(calculated_dataset_service.config, "get_project_dataset_sidecar_dir", return_value=str(sidecar_dir)),
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[source_row, row]),
+            patch.object(calculated_dataset_service, "_load_components", side_effect=load_components),
+            patch.object(calculated_dataset_service, "apply_sidecar_graph_fields", side_effect=lambda payload, *_args: payload.update({"precedents": [], "dependents": []})),
+            patch.object(calculated_dataset_service.dataset_number_format_service, "dataset_type_number_format_settings", return_value={"number_format": "0", "decimal_places": 0}),
+            patch.object(calculated_dataset_service.dataset_sidecar_status_service, "refresh_method_statuses_for_dependents", return_value=[]),
+            patch.object(dataset_service, "valuation_months", return_value=12),
+            patch.dict(config.DATASETS, {}, clear=True),
+        ):
+            result = calculated_dataset_service.recalculate_dataset(
+                "Example Project",
+                "Example RC",
+                "Calculated Output",
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(
+            [Path(path).name for path in result["cache_paths"]],
+            ["Calculated Output@3.csv", "Calculated Output@12.csv"],
+        )
+        self.assertEqual((self.cache_dir / "Calculated Output@3.csv").read_text(encoding="utf-8").strip(), "1.0\n2.0\n3.0\n4.0")
+        self.assertEqual((self.cache_dir / "Calculated Output@12.csv").read_text(encoding="utf-8").strip(), "10.0")
+        saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["csv_file"], "Calculated Output@3.csv")
+        self.assertEqual(saved["stored_period_length"], 3)
 
     def test_missing_app_calculated_cache_is_rebuilt_before_engine_request(self) -> None:
         calculated_path = str(

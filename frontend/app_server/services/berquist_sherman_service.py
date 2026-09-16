@@ -72,7 +72,11 @@ from arcrho_api.sidecar_core_contract import display_lengths, finalize_sidecar, 
 from arcrho_api.timestamps import utc_now_text
 
 from app_server import config
-from app_server.helpers import build_dataset_cache_file_name, sanitize_dataset_file_name
+from app_server.helpers import (
+    build_dataset_cache_file_name,
+    read_dataset_csv,
+    sanitize_dataset_file_name,
+)
 from app_server.services import (
     dataset_service,
     dataset_sidecar_status_service,
@@ -548,7 +552,7 @@ def _read_source_values(
     if not csv_path:
         raise RuntimeError(f"B&S source CSV is missing: {name}")
     try:
-        frame = pd.read_csv(csv_path, header=None, float_precision="round_trip").astype(object)
+        frame = read_dataset_csv(csv_path).astype(object)
     except PermissionError as exc:
         raise RuntimeError(f"B&S source CSV is locked: {name}") from exc
     except Exception as exc:

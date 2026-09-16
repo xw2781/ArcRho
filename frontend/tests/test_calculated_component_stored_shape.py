@@ -142,6 +142,66 @@ class CalculatedComponentStoredShapeTests(unittest.TestCase):
         self.assert_annual_loss(values["_d0"])
         self.assertEqual(values["_d0"].shape, values["_d1"].shape)
 
+    def test_a_vector_precedent_resolves_to_the_copy_its_sidecar_names(self) -> None:
+        # A vector keeps one period, so the ``@3`` and ``@6`` files beside its
+        # own copy are coarser views an earlier release left behind. They share
+        # the one sidecar and a vector states its period under
+        # ``period_length``, so nothing in the candidate scoring can separate
+        # them and the formula used to fail with "Ambiguous dependency".
+        name = "Expected Net Loss % of Earned Premium"
+        for period, rows in ((3, 12), (6, 6), (12, 3)):
+            (self.datasets / f"{name}@{period}.csv").write_text(
+                _csv([[float(index)] for index in range(rows)], 1), encoding="utf-8"
+            )
+        (self.sidecars / f"{name}.json").write_text(
+            json.dumps(
+                {
+                    "dataset_name": name,
+                    "dataset_type": name,
+                    "source_kind": "input",
+                    "data_format": "Vector",
+                    "csv_file": f"{name}@12.csv",
+                    "period_length": 12,
+                    "stored_period_length": 12,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        candidates = calculated_dataset_service._candidate_csvs(
+            "Project",
+            "Class",
+            name,
+            {"origin_length": 12, "development_length": 12, "cumulative": True, "calendar": False},
+            expected_data_format="Vector",
+        )
+
+        self.assertEqual(
+            [Path(item["path"]).name for item in candidates], [f"{name}@12.csv"]
+        )
+
+        quarterly_candidates = calculated_dataset_service._candidate_csvs(
+            "Project",
+            "Class",
+            name,
+            {"origin_length": 3, "development_length": 3, "cumulative": True, "calendar": False},
+            expected_data_format="Vector",
+        )
+
+        self.assertEqual(
+            [Path(item["path"]).name for item in quarterly_candidates], [f"{name}@3.csv"]
+        )
+
+        _values, _precedents, errors = calculated_dataset_service._load_components(
+            "Project",
+            "Class",
+            [name],
+            {"origin_length": 12, "development_length": 12, "cumulative": True, "calendar": False},
+        )
+        self.assertEqual(errors, [])
+
     def test_a_generated_precedents_source_granularity_is_not_rolled_up(self) -> None:
         # An engine dataset's stored pair says how fine the project's source
         # table is, not what shape the cache beside it holds, so its own CSV is

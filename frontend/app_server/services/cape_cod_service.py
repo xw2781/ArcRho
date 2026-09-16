@@ -30,7 +30,7 @@ from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_AUTO_REFRESH
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
-from app_server.helpers import sanitize_dataset_file_name
+from app_server.helpers import read_dataset_csv, sanitize_dataset_file_name
 from app_server.services import (
     dataset_instance_index_service,
     dataset_sidecar_status_service,
@@ -272,7 +272,7 @@ def _read_source_snapshot_from_sidecar(
     if not csv_path:
         raise HTTPException(422, f"Cape Cod precedent '{requested_name}' does not identify its cache CSV.")
     try:
-        frame = pd.read_csv(csv_path, header=None, float_precision="round_trip").astype(object)
+        frame = read_dataset_csv(csv_path).astype(object)
     except FileNotFoundError as exc:
         raise HTTPException(404, f"Cape Cod precedent CSV is missing: {requested_name}") from exc
     except PermissionError as exc:

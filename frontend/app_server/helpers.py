@@ -109,6 +109,27 @@ def build_length_scoped_dataset_file_name(
     return dataset_file
 
 
+def read_dataset_csv(path: Any, **overrides: Any) -> pd.DataFrame:
+    """Read one ArcRho dataset cache CSV into an unlabelled frame.
+
+    An empty line in these files is an origin with no value: every writer emits
+    one for a ``None``, and a method output whose newest origin has no ultimate
+    yet ends on exactly that. Pandas drops such a line by default, which
+    shortens the vector by one row per empty origin -- the "returned 39 values;
+    expected 40" a Result Selection reported -- and silently shifts every row
+    after a gap in the middle. Each reader passing its own options had the same
+    omission, so the whole read lives here instead.
+    """
+
+    options: Dict[str, Any] = {
+        "header": None,
+        "float_precision": "round_trip",
+        "skip_blank_lines": False,
+    }
+    options.update(overrides)
+    return pd.read_csv(path, **options)
+
+
 def build_dataset_cache_file_name(
     dataset_name: Any,
     data_format: Any,
