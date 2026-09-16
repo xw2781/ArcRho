@@ -27,16 +27,22 @@ behind; `git checkout --` the four version files to undo it.
 
 Two prerequisites bite on the client PC (see [[dev-pc-and-client-pc-identity]]):
 
-- `frontend\node-portable\codex.cmd` was **missing** here as of 2026-08-13, which fails the
-  ArcBot runtime smoke that is the build's very first step. `node-portable` is not in Git.
-  Fix with `frontend\build\arcbot_runtime\refresh_bundled_codex_runtime.ps1`. The `--check` mode runs this
-  same smoke, so it catches the gap in seconds instead of after a version bump.
+- `frontend\node-portable\codex.cmd` was **missing** on the Client PC as of 2026-08-13, which
+  failed the ArcBot runtime smoke that is the build's very first step. `node-portable` is not
+  in Git. Fix with `frontend\build\arcbot_runtime\refresh_bundled_codex_runtime.ps1`. The `--check` mode
+  runs this same smoke, so it catches the gap in seconds instead of after a version bump.
+  **Gone on the Client PC by 2026-09-16**: `--check` passes there outright (npm 11.6.2,
+  codex-cli 0.146.0, model gpt-5.6-sol), so run `--check` rather than assuming the gap.
 - `PYTHON_API_PACKAGE_DIR` defaults to `E:\ArcRho Server\packages`, which is a mapped drive
   onto the Dev PC, so an ArcRho build still needs that machine up. Override the variable to
   build without it; Arcode does not publish the wheel at all.
 
 `gh` must be authenticated: the version step derives the next version from the GitHub Releases
 history and deliberately fails rather than falling back to `package.json`.
+
+Run `--check` from PowerShell by the batch file's full path
+(`& "...\build_app_from_local_repo.bat" --check`). Reaching it through `cmd /c` from the Bash
+tool reports "is not recognized" even with the working directory set and the file present.
 
 Build contracts are pinned by `frontend\tests\bundled_codex_runtime.test.mjs` — edit a build
 script and run that file. Note test 4 fails on this PC purely because of the missing

@@ -20,7 +20,7 @@
 - [Prefer the built-in edit tool](prefer-built-in-edit-tool.md) — use Edit/Write so VS Code shows a diff panel; shell rewrites only for bulk work
 - [Bash tool heredoc pitfalls](bash-tool-heredoc-pitfalls.md) — heredocs choke on backticks and doubled backslashes; write scripts with Write and run by path; keep CRLF
 - [frontend/build folder layout](frontend-build-folder-layout.md) — runnable scripts at top level, helpers in subfolders; a bare runtime/ name collides with a gitignore
-- [Local release build](arcrho-local-release-build.md) — build_app_from_local_repo.bat builds in place, so the version bump and notes land in the tree; codex.cmd missing here blocks it
+- [Local release build](arcrho-local-release-build.md) — build_app_from_local_repo.bat builds in place, so the version bump and notes land in the tree; run --check first (the old codex.cmd gap is gone on the Client PC)
 - [Shared macro library deploy rule](shared-macro-library-deploy.md) — after editing an active macro publish via publish_macro_library.py; it reads the # Version: header, so bump both
 - [Bridge restart after deploy](bridge-restart-after-deploy.md) — only sessions with a live Orchestrator get their Bridge back; a hand-started Bridge stays down; check apps.bridge.auto_create_instance
 - [ResQ custom-average API](resq-custom-average-api.md) — dfm.CustomAverages(i) gives real type/settings; AverageType 6 = User Calculation; Formula is stale on other rows; decompiled help at E:\XWSpace\ResQ API Doc
