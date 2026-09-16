@@ -59,6 +59,14 @@ body {
 }
 .bfPage { display: none; }
 .bfPage.active { display: block; }
+#bfMethodPage[style*="display: block"],
+#bfMethodPage.bfTabFloatingPage {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
 #bfAuditPage[style*="display: block"],
 #bfAuditPage.bfTabFloatingPage {
   display: flex !important;
@@ -328,9 +336,11 @@ body {
 }
 .bfMethodToolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: stretch;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 6px;
   margin-bottom: 8px;
 }
 .bfToolGroup {
@@ -514,10 +524,10 @@ body {
   border-radius: 0;
   background: #fff;
   overflow: auto;
-  scrollbar-gutter: stable;
+  flex: 1 1 auto;
+  min-height: 0;
   padding-right: 1px;
   padding-bottom: 1px;
-  max-height: calc(100vh - 190px);
   box-shadow: none;
 }
 table.bfMethodTable {

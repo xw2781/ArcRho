@@ -1,0 +1,7 @@
+{
+  "type": "fix",
+  "scope": "bf",
+  "audience": "user",
+  "summary": "The BF Method table now fills the available page height, removing the unused gap below the table.",
+  "details": ["Added top spacing above the Method toolbar so its group titles remain fully visible."]
+}
