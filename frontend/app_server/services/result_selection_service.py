@@ -11,7 +11,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 import pandas as pd
 from fastapi import HTTPException
@@ -23,6 +23,7 @@ from app_server.helpers import read_dataset_csv, sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    dependent_walk_service,
     precedent_cache_service,
     user_identity_service,
 )
@@ -1230,6 +1231,62 @@ def _refresh_one_method(
         "output_changed": previous_output != method.get("selected_ultimate"),
         "sidecar": updated_sidecar,
     }
+
+
+def refresh_output(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Mapping[str, Any] | None = None,
+    changed_precedents: Iterable[Any] = (),
+    caches: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Republish one Result Selection method and report instead of raising.
+
+    The ordered walk in :mod:`dependent_walk_service` calls this for a node
+    whose precedents it has already refreshed, so no other domain is cascaded
+    from here. A failure — raised or reported — keeps the last valid
+    publication, marks the method Review Needed and comes back as
+    ``{"ok": False, "reason": ...}``, which is how the walk blocks everything
+    below it.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    output_name = _clean(dataset_name)
+    changed = _unique_names(list(changed_precedents))
+    sidecar_snapshot = dependent_walk_service.walk_cache(caches, "result_selection_sidecars")
+    value_cache = dependent_walk_service.walk_cache(caches, "result_selection_values")
+    stale_keys = [_key(name) for name in (*changed, output_name)]
+    dependent_walk_service.forget_cached(sidecar_snapshot, stale_keys)
+    dependent_walk_service.forget_cached(value_cache, stale_keys)
+    changed_sidecars = _read_sidecars_cached(project, reserving, changed, sidecar_snapshot)
+    output_sidecar = _read_sidecars_cached(
+        project, reserving, [output_name], sidecar_snapshot
+    ).get(output_name) or dict(sidecar or {})
+    try:
+        result = _refresh_one_method(
+            project,
+            reserving,
+            output_name,
+            output_sidecar,
+            changed_sidecars,
+            value_cache,
+            blocked_precedent_keys=set(),
+            sidecar_snapshot=sidecar_snapshot,
+        )
+    except Exception as exc:
+        result = {"ok": False, "dataset_name": output_name, "reason": str(exc)}
+    if result.get("ok") is False:
+        _mark_output_review_needed(project, reserving, output_name)
+        sidecar_snapshot.pop(_key(output_name), None)
+        return {
+            "ok": False,
+            "dataset_name": output_name,
+            "reason": _clean(result.get("reason")) or "result_selection_refresh_failed",
+        }
+    sidecar_snapshot[_key(output_name)] = result.get("sidecar") or output_sidecar
+    return result
 
 
 def refresh_dependents(

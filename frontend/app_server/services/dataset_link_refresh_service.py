@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 from fastapi import HTTPException
 
@@ -449,3 +449,35 @@ def refresh_dataset_links(
         )
     _write_dataset_csv_and_sidecar(frame, csv_path, sidecar_path, sidecar)
     return result
+
+
+def refresh_output(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Mapping[str, Any] | None = None,
+    changed_precedents: Iterable[Any] = (),
+    caches: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Re-evaluate one link-driven input's cells and report instead of raising.
+
+    The ordered walk in :mod:`dependent_walk_service` calls this for a node
+    whose precedents it has already refreshed, so nothing is cascaded from
+    here. A linked input carries no review flag of its own — the walk flags
+    the methods below it — so an ArcRho-side failure comes back as the same
+    ``link_error`` the walk records today and blocks its descendants, while an
+    Excel-side failure stays a warning on an otherwise successful refresh.
+    ``sidecar``, ``changed_precedents`` and ``caches`` belong to the one
+    refresher signature; the links name their own sources.
+    """
+
+    name = _clean_text(dataset_name)
+    try:
+        return refresh_dataset_links(project_name, reserving_class, name)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "dataset_name": name,
+            "reason": "link_error",
+            "errors": [str(exc)],
+        }

@@ -1447,6 +1447,78 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(changed, [])
         replace.assert_not_called()
 
+    def test_refresh_output_matches_the_walk_and_reports_a_failure(self) -> None:
+        """One object refreshed on its own publishes what the whole walk does."""
+
+        def scrub(value):
+            """The payload with every timestamp blanked, so two runs compare."""
+            if isinstance(value, dict):
+                return {key: scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            if isinstance(value, str) and len(value) > 18 and value[:4].isdigit() and value[4:5] == "-":
+                return "<time>"
+            return value
+
+        def published() -> dict:
+            files: dict = {}
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in sorted(folder.iterdir()):
+                    text = path.read_text(encoding="utf-8")
+                    files[path.name] = scrub(json.loads(text)) if path.suffix == ".json" else text
+            return files
+
+        def wipe() -> None:
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in folder.iterdir():
+                    path.unlink()
+
+        def fixture() -> None:
+            self.write_method_pair()
+            self.write_source(
+                "Paid",
+                "100,175\n200,\n",
+                data_format="Triangle",
+                dependents=["Development Output"],
+            )
+
+        fixture()
+        walk = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+        self.assertTrue(walk["ok"], walk)
+        self.assertEqual([item["dataset_name"] for item in walk["updated"]], ["Development Output"])
+        expected = published()
+
+        wipe()
+        fixture()
+        result = dfm_service.refresh_output(
+            "Project",
+            "Class",
+            "Development Output",
+            changed_precedents=["Paid"],
+            caches={},
+        )
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(result["updated"])
+        self.assertEqual(published(), expected)
+
+        # A failure comes back as a reason rather than an exception, and the
+        # output is flagged so the walk can block what reads it.
+        for path in self.datasets.glob("Paid*"):
+            path.unlink()
+        failed = dfm_service.refresh_output(
+            "Project",
+            "Class",
+            "Development Output",
+            changed_precedents=["Paid"],
+            caches={},
+        )
+
+        self.assertFalse(failed["ok"])
+        self.assertTrue(failed["reason"])
+        review = json.loads((self.sidecars / "Development Output.json").read_text(encoding="utf-8"))
+        self.assertEqual(review["status"], dataset_sidecar_status_service.STATUS_REVIEW_NEEDED)
+
 
 if __name__ == "__main__":
     unittest.main()

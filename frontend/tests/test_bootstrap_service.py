@@ -723,6 +723,90 @@ class BootstrapServiceTests(unittest.TestCase):
             normalize_bootstrap_method(json.loads(before))["results_tab"]["bootstrap_ultimate"],
         )
 
+    def test_refresh_output_matches_the_per_object_refresh_and_reports_a_failure(self) -> None:
+        """The walk's one-object refresher writes what _refresh_one writes."""
+
+        def scrub(value):
+            """The payload with every timestamp blanked, so two runs compare."""
+            if isinstance(value, dict):
+                return {key: scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            if isinstance(value, str) and len(value) > 18 and value[:4].isdigit() and value[4:5] == "-":
+                return "<time>"
+            return value
+
+        def published() -> dict:
+            files: dict = {}
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in sorted(folder.iterdir()):
+                    text = path.read_text(encoding="utf-8")
+                    files[path.name] = scrub(json.loads(text)) if path.suffix == ".json" else text
+            return files
+
+        def wipe() -> None:
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in folder.iterdir():
+                    path.unlink()
+
+        def fixture() -> None:
+            self._write_dfm()
+            self._write_target()
+            self.save()
+            self._write_target([value * 1.5 for value in self._target_values()])
+
+        fixture()
+        sidecar = json.loads(
+            (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
+        )
+        direct = bootstrap_service._refresh_one(
+            "Project",
+            "Class",
+            BOOTSTRAP_NAME,
+            sidecar,
+            [TARGET_NAME],
+            blocked_precedent_keys=set(),
+            sidecar_cache={},
+            snapshot_cache={},
+        )
+        self.assertTrue(direct["updated"], direct)
+        expected = published()
+
+        wipe()
+        fixture()
+        with mock.patch.object(bootstrap_service, "_refresh_downstream_domains") as cascade:
+            result = bootstrap_service.refresh_output(
+                "Project",
+                "Class",
+                BOOTSTRAP_NAME,
+                changed_precedents=[TARGET_NAME],
+                caches={},
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(result["updated"])
+        cascade.assert_not_called()
+        self.assertEqual(published(), expected)
+
+        # A failure comes back as a reason rather than an exception, and the
+        # output is flagged so the walk can block what reads it.
+        for path in self.datasets.glob(f"{TARGET_NAME}*"):
+            path.unlink()
+        failed = bootstrap_service.refresh_output(
+            "Project",
+            "Class",
+            BOOTSTRAP_NAME,
+            changed_precedents=[TARGET_NAME],
+            caches={},
+        )
+
+        self.assertFalse(failed["ok"])
+        self.assertTrue(failed["reason"])
+        review = json.loads(
+            (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(review["status"], dataset_sidecar_status_service.STATUS_REVIEW_NEEDED)
+
 
 if __name__ == "__main__":  # pragma: no cover - convenience entry point
     unittest.main()

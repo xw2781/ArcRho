@@ -1,6 +1,6 @@
 # Ordered single-pass dependent walk
 
-Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 1 of 5 done — the ordered closure landed 2026-09-16 as a pure module that names everything a save reaches and sorts it after its precedents.
+Status: Diagnosed 2026-09-16 on a real save that rewrote 26 objects 54 times; broken into 5 session-sized steps the same day covering the ordered closure, one refresher per object kind, the pass itself, the log and docs, and the measured deploy; the walk-scoped index snapshot that was the cheap half of the fix already shipped 2026-09-16; no decisions open, 2 of 5 done — the ordered closure landed 2026-09-16 as a pure module that names everything a save reaches and sorts it after its precedents, and each of the eight object kinds now has a one-object refresher beside it.
 Last updated: 2026-09-16
 
 ## Progress
@@ -10,12 +10,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | The walk works out, up front, everything a save reaches and the order to refresh it in | [x] | 2026-09-16 | Nothing to see yet: the app can now list everything one save affects and put it in the order it has to be redone in. |
-| 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [ ] | | |
+| 2 | Every kind of object can be refreshed on its own, without starting a walk of its own | [x] | 2026-09-16 | Nothing to see yet: the app can now bring any one affected object up to date on its own, and say why it could not, instead of starting a chain of its own. |
 | 3 | A save refreshes each downstream object exactly once, in that order | [ ] | | |
 | 4 | The saving popup and the server log describe the new walk | [ ] | | |
 | 5 | Released to the server and timed on the save that started this | [ ] | | |
 
-Overall: 1 of 5 steps done.
+Overall: 2 of 5 steps done.
 
 ## How agents work this plan
 
@@ -93,6 +93,8 @@ Files: `dfm_service.py`, `result_selection_service.py`, `berquist_sherman_servic
 - One test per domain that calls `refresh_output` directly and asserts the same files, status and audit entry the domain's `refresh_dependents` produces for one object.
 
 Done when: every domain has the function, the new tests pass, and every existing test still passes unchanged.
+
+Landed 2026-09-16 as `refresh_output(project_name, reserving_class, dataset_name, sidecar=None, changed_precedents=(), caches=None)` in all eight services, one signature for every kind. `caches` is the walk-scoped cache dict: each domain keeps its own entry in it through `dependent_walk_service.walk_cache`, and drops what a just-republished object owns through `forget_cached`, because the domains do not normalise a dataset name the same way and a cached precedent must never outlive its publication. The six method domains take the sidecar write lock, re-read the sidecar inside it, call their own `_refresh_one` with no `blocked_precedent_keys` — the pass decides what is blocked — and on a failure mark the output Review Needed before returning `{"ok": False, "reason": ...}`. Calculated datasets and link-driven inputs carry no review flag of their own, so their failures come back as the same `calculation_error` and `link_error` steps the waves record today, which is what blocks their descendants.
 
 ### Step 3 — the pass
 

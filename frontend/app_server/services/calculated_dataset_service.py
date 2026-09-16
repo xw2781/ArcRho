@@ -9,7 +9,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, NamedTuple, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Mapping, NamedTuple, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1897,6 +1897,49 @@ def recalculate_dataset(
                 cache_paths.append(csv_path)
             result["cache_paths"] = cache_paths
         return result
+
+
+def refresh_output(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Mapping[str, Any] | None = None,
+    changed_precedents: Iterable[Any] = (),
+    caches: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Recalculate one calculated dataset and report instead of raising.
+
+    The ordered walk in :mod:`dependent_walk_service` calls this for a node
+    whose precedents it has already refreshed, so nothing is cascaded from
+    here. A calculated dataset carries no review flag of its own — the walk
+    flags the methods below it — so a failure comes back as the same
+    ``calculation_error`` step the wave records today, which is what blocks
+    its descendants. ``sidecar`` and ``changed_precedents`` belong to the one
+    refresher signature and are not read here: the formula names its own
+    precedents.
+    """
+
+    name = _clean_text(dataset_name)
+    store = caches if caches is not None else {}
+    rows = store.get("dataset_type_rows")
+    if rows is None:
+        rows = _dataset_type_rows(project_name)
+        store["dataset_type_rows"] = rows
+    try:
+        return recalculate_dataset(
+            project_name,
+            reserving_class,
+            name,
+            dataset_type_rows=rows,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "dataset_type_name": name,
+            "skipped": True,
+            "reason": "calculation_error",
+            "errors": [str(exc)],
+        }
 
 
 _link_refresh_visited = contextvars.ContextVar("link_refresh_visited", default=None)

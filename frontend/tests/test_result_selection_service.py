@@ -1518,6 +1518,83 @@ class ResultSelectionServiceTests(unittest.TestCase):
 
         self.assertEqual(values, [10.0, None])
 
+    def test_refresh_output_matches_the_walk_and_reports_a_failure(self) -> None:
+        """One method refreshed on its own publishes what the whole walk does."""
+
+        def scrub(value):
+            """The payload with every timestamp blanked, so two runs compare."""
+            if isinstance(value, dict):
+                return {key: scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            if isinstance(value, str) and len(value) > 18 and value[:4].isdigit() and value[4:5] == "-":
+                return "<time>"
+            return value
+
+        def published() -> dict:
+            files: dict = {}
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in sorted(folder.iterdir()):
+                    text = path.read_text(encoding="utf-8")
+                    files[path.name] = scrub(json.loads(text)) if path.suffix == ".json" else text
+            return files
+
+        def wipe() -> None:
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in folder.iterdir():
+                    path.unlink()
+
+        def fixture() -> None:
+            self.write_selection()
+            self.write_source("Paid", [30, 40])
+
+        fixture()
+        with (
+            mock.patch(
+                "app_server.services.calculated_dataset_service.recalculate_dependents",
+                return_value={"updated": []},
+            ),
+            mock.patch("app_server.services.dataset_instance_index_service.rebuild_index"),
+        ):
+            walk = result_selection_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(walk["ok"], walk)
+        self.assertEqual(walk["updated"], [{"dataset_name": "Selection"}])
+        expected = published()
+
+        wipe()
+        fixture()
+        with mock.patch(
+            "app_server.services.calculated_dataset_service.recalculate_dependents",
+        ) as cascade:
+            result = result_selection_service.refresh_output(
+                "Project",
+                "Class",
+                "Selection",
+                changed_precedents=["Paid"],
+                caches={},
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(result["updated"])
+        cascade.assert_not_called()
+        self.assertEqual(published(), expected)
+
+        # A failure comes back as a reason rather than an exception.
+        for path in self.datasets.glob("Paid*"):
+            path.unlink()
+        (self.sidecars / "Paid.json").unlink()
+        failed = result_selection_service.refresh_output(
+            "Project",
+            "Class",
+            "Selection",
+            changed_precedents=["Paid"],
+            caches={},
+        )
+
+        self.assertFalse(failed["ok"])
+        self.assertTrue(failed["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

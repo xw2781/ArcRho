@@ -67,6 +67,41 @@ def _max_graph_nodes() -> int:
     return result_selection_service.MAX_REFRESH_GRAPH_NODES
 
 
+def walk_cache(caches: Dict[str, Any] | None, name: str) -> Dict[Any, Any]:
+    """One walk-scoped cache, named by the domain that owns it.
+
+    The pass hands every refresher the same ``caches`` dict so a sidecar or a
+    source snapshot is read once per walk. Each domain keeps its own entry
+    under its own name because the domains do not normalise a dataset name the
+    same way, so one shared cache could answer with another domain's key.
+    """
+
+    store = caches if caches is not None else {}
+    cache = store.get(name)
+    if not isinstance(cache, dict):
+        cache = {}
+        store[name] = cache
+    return cache
+
+
+def forget_cached(cache: Dict[Any, Any], keys: Iterable[str]) -> None:
+    """Drop what a just-republished object owns, so the next read is fresh.
+
+    A walk-scoped cache is only safe while its entries describe the current
+    publication. Every cache the refreshers share is keyed either by a
+    dataset's normalised name or by a tuple that starts with one, so dropping
+    by that leading key covers both.
+    """
+
+    stale = {key for key in keys if key}
+    if not stale:
+        return
+    for entry in list(cache):
+        head = entry[0] if isinstance(entry, tuple) and entry else entry
+        if head in stale:
+            cache.pop(entry, None)
+
+
 @dataclass(frozen=True)
 class WalkNode:
     """One object the walk crosses, with everything a refresher needs."""

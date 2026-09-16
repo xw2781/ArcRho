@@ -514,6 +514,84 @@ class BerquistShermanRefreshTests(unittest.TestCase):
         self.assertIsNone(result["berquist_sherman_updates"])
         refresh_bs.assert_not_called()
 
+    def test_refresh_output_matches_the_walk_and_reports_a_failure(self) -> None:
+        """One output refreshed on its own publishes what the whole walk does."""
+
+        def scrub(value):
+            """The payload with every timestamp blanked, so two runs compare."""
+            if isinstance(value, dict):
+                return {key: scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            if isinstance(value, str) and len(value) > 18 and value[:4].isdigit() and value[4:5] == "-":
+                return "<time>"
+            return value
+
+        def published() -> dict:
+            files: dict = {}
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in sorted(folder.iterdir()):
+                    text = path.read_text(encoding="utf-8")
+                    files[path.name] = scrub(json.loads(text)) if path.suffix == ".json" else text
+            return files
+
+        def wipe() -> None:
+            for folder in (self.methods, self.datasets, self.sidecars):
+                for path in folder.iterdir():
+                    path.unlink()
+
+        def fixture() -> None:
+            self.write_workspace(saved_ultimate=[20, 20, 20], current_ultimate=[20, 20, 40])
+
+        fixture()
+        with mock.patch.object(
+            berquist_sherman_service,
+            "_refresh_downstream_domains",
+            return_value={"ok": True, "updated": [], "skipped": []},
+        ):
+            report = berquist_sherman_service.refresh_dependents(
+                "Project",
+                "Class",
+                ["Ultimate Counts"],
+                rebuild_index=False,
+                finalize_method_review_status=False,
+            )
+
+        self.assertTrue(report["ok"], report)
+        expected = published()
+
+        wipe()
+        fixture()
+        with mock.patch.object(
+            berquist_sherman_service, "_refresh_downstream_domains"
+        ) as cascade:
+            result = berquist_sherman_service.refresh_output(
+                "Project",
+                "Class",
+                OUTPUT,
+                changed_precedents=["Ultimate Counts"],
+                caches={},
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(result["updated"])
+        cascade.assert_not_called()
+        self.assertEqual(published(), expected)
+
+        # A failure comes back as a reason rather than an exception.
+        for path in self.datasets.glob("Closed*"):
+            path.unlink()
+        failed = berquist_sherman_service.refresh_output(
+            "Project",
+            "Class",
+            OUTPUT,
+            changed_precedents=["Ultimate Counts"],
+            caches={},
+        )
+
+        self.assertFalse(failed["ok"])
+        self.assertTrue(failed["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

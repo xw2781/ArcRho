@@ -41,6 +41,7 @@ from app_server.helpers import read_dataset_csv, sanitize_dataset_file_name
 from app_server.services import (
     dataset_sidecar_status_service,
     dependent_propagation_service,
+    dependent_walk_service,
     precedent_cache_service,
     user_identity_service,
 )
@@ -1338,6 +1339,58 @@ def refresh_bootstrap_method(
     response["index_ok"] = bool(response["propagation"].get("index_ok", True))
     response["index_error"] = _clean(response["propagation"].get("index_error"))
     return response
+
+
+def refresh_output(
+    project_name: str,
+    reserving_class: str,
+    dataset_name: str,
+    sidecar: Mapping[str, Any] | None = None,
+    changed_precedents: Iterable[Any] = (),
+    caches: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Republish one Bootstrap output and report instead of raising.
+
+    The ordered walk in :mod:`dependent_walk_service` calls this for a node
+    whose precedents it has already refreshed, so no other domain is cascaded
+    from here. A failure keeps the last valid publication, marks the output
+    Review Needed and comes back as ``{"ok": False, "reason": ...}``, which is
+    how the walk blocks everything below it.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    output_dataset = _clean(dataset_name)
+    changed = _unique_names(changed_precedents)
+    sidecar_cache = dependent_walk_service.walk_cache(caches, "bootstrap_sidecars")
+    snapshot_cache = dependent_walk_service.walk_cache(
+        caches, "bootstrap_source_snapshots"
+    )
+    stale_keys = [_key(name) for name in (*changed, output_dataset)]
+    dependent_walk_service.forget_cached(sidecar_cache, stale_keys)
+    dependent_walk_service.forget_cached(snapshot_cache, stale_keys)
+    sidecar_path = _sidecar_path(project, reserving, output_dataset)
+    try:
+        with dataset_sidecar_status_service.sidecar_write_lock(sidecar_path):
+            latest_sidecar = _read_json(sidecar_path) or dict(sidecar or {})
+            return _refresh_one(
+                project,
+                reserving,
+                output_dataset,
+                latest_sidecar,
+                changed,
+                blocked_precedent_keys=set(),
+                sidecar_cache=sidecar_cache,
+                snapshot_cache=snapshot_cache,
+            )
+    except Exception as exc:
+        _mark_review_needed(project, reserving, output_dataset)
+        return {
+            "ok": False,
+            "dataset_name": output_dataset,
+            "dataset_type": _clean((sidecar or {}).get("dataset_type")) or output_dataset,
+            "reason": str(exc),
+        }
 
 
 def refresh_dependents(

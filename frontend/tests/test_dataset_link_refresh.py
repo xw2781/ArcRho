@@ -280,7 +280,7 @@ class LinkDrivenWalkTests(unittest.TestCase):
 class RefreshDatasetLinksTests(unittest.TestCase):
     """Server-side evaluation matches the Links-tab semantics."""
 
-    def _refresh(self, datasets, target_name, *, excel_results=None):
+    def _refresh(self, datasets, target_name, *, excel_results=None, through_refresh_output=False):
         written = {}
 
         def fake_sidecar_path(_project, _rc, name):
@@ -319,9 +319,12 @@ class RefreshDatasetLinksTests(unittest.TestCase):
                 side_effect=fake_excel_batch,
             ),
         ):
-            result = dataset_link_refresh_service.refresh_dataset_links(
-                "Project", "Class", target_name
+            refresher = (
+                dataset_link_refresh_service.refresh_output
+                if through_refresh_output
+                else dataset_link_refresh_service.refresh_dataset_links
             )
+            result = refresher("Project", "Class", target_name)
         return result, written
 
     def test_a_dataset_formula_recomputes_only_the_owned_cells(self) -> None:
@@ -352,6 +355,50 @@ class RefreshDatasetLinksTests(unittest.TestCase):
             written["payload"]["audit_log"][-1]["action"],
             "Auto Refresh",
         )
+
+    def test_refresh_output_matches_the_direct_refresh_and_reports_a_failure(self) -> None:
+        """The walk's one-object refresher wraps refresh_dataset_links."""
+
+        datasets = {
+            "Source": _vector("Source", [10.0, 20.0]),
+            "Target": _vector(
+                "Target",
+                [999.0, 999.0, 77.0],
+                links={
+                    "formula_links": [{
+                        "formula": "=[Source][1:2] * 2",
+                        "target_cells": [
+                            {"row": 0, "column": 0, "result_row": 0, "result_column": 0},
+                            {"row": 1, "column": 0, "result_row": 1, "result_column": 0},
+                        ],
+                    }],
+                },
+            ),
+        }
+
+        direct, direct_written = self._refresh(datasets, "Target")
+        walked, walked_written = self._refresh(datasets, "Target", through_refresh_output=True)
+
+        self.assertTrue(walked["ok"], walked)
+        self.assertEqual(walked, direct)
+        self.assertEqual(walked_written["values"], direct_written["values"])
+        self.assertEqual(
+            walked_written["payload"]["audit_log"][-1]["action"],
+            direct_written["payload"]["audit_log"][-1]["action"],
+        )
+
+        # A failure comes back as a reason rather than an exception, so the
+        # walk can block the objects that read this one.
+        with patch.object(
+            dataset_link_refresh_service,
+            "refresh_dataset_links",
+            side_effect=RuntimeError("the linked dataset is gone"),
+        ):
+            failed = dataset_link_refresh_service.refresh_output("Project", "Class", "Target")
+
+        self.assertFalse(failed["ok"])
+        self.assertEqual(failed["reason"], "link_error")
+        self.assertEqual(failed["errors"], ["the linked dataset is gone"])
 
     def test_an_unreadable_excel_operand_keeps_stale_values_and_warns(self) -> None:
         datasets = {
