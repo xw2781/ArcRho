@@ -128,7 +128,9 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
     #
     # Idempotent because an object already carrying the requested flag is
     # reported unchanged rather than rewritten, so a repeat leaves the same
-    # status, timestamp and user the first run wrote. ``status`` is optional
+    # status, timestamp, user and audit record the first run wrote. The one
+    # audit entry a real change appends names the decision itself rather than
+    # the default "Values", since the sign-off moved nothing. ``status`` is optional
     # because the required check reads an integer 0 as absent; a request that
     # omits it marks for review, which is the direction that can never
     # silently clear someone's sign-off.

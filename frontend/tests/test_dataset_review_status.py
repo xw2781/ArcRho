@@ -131,6 +131,41 @@ class DatasetReviewStatusTests(unittest.TestCase):
             self.read_sidecar("Net Loss--Paid")["status"], status_service.STATUS_CURRENT
         )
 
+    def test_the_audit_log_names_the_review_decision(self) -> None:
+        """Set Reviewed and Mark For Review each leave their own audit record."""
+
+        self.write_sidecar(
+            "G 41 - BF Paid",
+            method_type=status_service.METHOD_TYPE_BORN_HUETTER_FERGUSON,
+            source_kind="bornhuetter_ferguson",
+            status=status_service.STATUS_CURRENT,
+        )
+        self.set_status(["G 41 - BF Paid"], status_service.STATUS_REVIEW_NEEDED)
+        self.set_status(["G 41 - BF Paid"], status_service.STATUS_CURRENT)
+        payload = self.read_sidecar("G 41 - BF Paid")
+        entries = payload["audit_log"]
+        self.assertEqual(
+            [item["change_info"] for item in entries],
+            ["Marked For Review", "Set Reviewed"],
+        )
+        for entry in entries:
+            # The review decision is a person's, so it keeps the interactive
+            # action; an automatic one would collapse with its neighbours.
+            self.assertEqual(entry["action"], "Update")
+            self.assertEqual(entry["user"], "Reviewer Name")
+        # The record carries the moment of the write that produced the file.
+        self.assertEqual(entries[-1]["event_date"], payload["updated_at"])
+
+    def test_an_unchanged_object_writes_no_audit_record(self) -> None:
+        self.write_sidecar(
+            "Current DFM",
+            method_type=status_service.METHOD_TYPE_DFM,
+            source_kind="dfm",
+            status=status_service.STATUS_CURRENT,
+        )
+        self.set_status(["Current DFM"], status_service.STATUS_CURRENT)
+        self.assertEqual(self.read_sidecar("Current DFM").get("audit_log"), [])
+
     def test_the_flag_change_propagates_to_nothing(self) -> None:
         """A sign-off changes no values, so no dependent is marked or walked."""
 

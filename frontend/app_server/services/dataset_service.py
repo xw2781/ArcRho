@@ -24,6 +24,8 @@ from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_audit_contract import (
     AUDIT_ACTION_INSERT,
     AUDIT_ACTION_UPDATE,
+    AUDIT_CHANGE_INFO_MARK_FOR_REVIEW,
+    AUDIT_CHANGE_INFO_SET_REVIEWED,
     append_audit_entry,
     normalize_audit_log,
 )
@@ -446,7 +448,21 @@ def _normalize_dataset_audit_log(value: Any) -> List[Dict[str, str]]:
     return normalize_audit_log(value)
 
 
-def _append_dataset_audit_entry(payload: Dict[str, Any], action: str, *, event_date: str | None = None, user_name: str | None = None) -> None:
+def _append_dataset_audit_entry(
+    payload: Dict[str, Any],
+    action: str,
+    *,
+    event_date: str | None = None,
+    user_name: str | None = None,
+    change_info: str | None = None,
+) -> None:
+    """Record one durable write in the sidecar log (``arcrho_api.sidecar_audit_contract``).
+
+    *change_info* names what the write did when the default "Values" would be
+    wrong -- a review sign-off moves no number, so it says what it did instead
+    of claiming the values changed.
+    """
+
     action_value = (
         AUDIT_ACTION_INSERT
         if str(action or "").strip().lower() == "insert"
@@ -457,6 +473,7 @@ def _append_dataset_audit_entry(payload: Dict[str, Any], action: str, *, event_d
         event_date=event_date or _now_utc_iso(),
         action=action_value,
         user=str(user_name or "").strip() or _current_user_name(),
+        change_info=change_info,
     )
 
 
@@ -2916,6 +2933,13 @@ def _set_dataset_review_status_impl(
     if not project or not rc:
         raise HTTPException(400, "project_name and reserving_class are required.")
     target = dataset_sidecar_status_service.normalize_status(status)
+    # What the person clicked in the Project Instance table, recorded verbatim
+    # so the audit log names the decision rather than the file write.
+    change_info = (
+        AUDIT_CHANGE_INFO_MARK_FOR_REVIEW
+        if target == dataset_sidecar_status_service.STATUS_REVIEW_NEEDED
+        else AUDIT_CHANGE_INFO_SET_REVIEWED
+    )
     updated: List[str] = []
     unchanged: List[str] = []
     skipped: List[str] = []
@@ -2942,6 +2966,13 @@ def _set_dataset_review_status_impl(
             payload["status"] = target
             payload["updated_at"] = _now_utc_iso()
             payload["modified_by"] = _current_user_name()
+            _append_dataset_audit_entry(
+                payload,
+                "Update",
+                event_date=payload["updated_at"],
+                user_name=payload["modified_by"],
+                change_info=change_info,
+            )
             _write_dataset_sidecar_payload(path, payload)
             updated.append(name)
     return {

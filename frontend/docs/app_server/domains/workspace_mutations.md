@@ -26,13 +26,18 @@ The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action. It rewrites one sidecar per selected method output, which
 from a Client PC is a read and a write per object over the share, so hosting it
 puts the whole selection on local disk. It is a human sign-off on values nobody
-touched: it writes `status`, `updated_at` and `modified_by` and nothing else,
-marks no dependent, and enqueues no propagation walk, exactly as a notes edit
-does. It refuses nothing and raises nothing for an object it cannot act on --
-a dataset no method wrote, or a name with no sidecar -- and reports it under
+touched: it writes `status`, `updated_at` and `modified_by`, appends the one
+audit record naming the decision, and does nothing else -- it marks no
+dependent and enqueues no propagation walk, exactly as a notes edit does. The
+audit record is an `Update` carrying the moment and the signer, with
+`change_info` of `Marked For Review` or `Set Reviewed`
+(`arcrho_api.sidecar_audit_contract`) rather than the `Values` default, since
+the decision moved no number. It refuses nothing and raises nothing for an
+object it cannot act on -- a dataset no method wrote, or a name with no
+sidecar -- and reports it under
 `skipped` instead. It is idempotent because an object already carrying the
 requested flag is reported under `unchanged` rather than rewritten, so a repeat
-leaves the same status, timestamp and user the first run wrote.
+leaves the same status, timestamp, user and audit log the first run wrote.
 
 The ResQ sync-queue publish is the request file the Sync and Export Reserving
 Class with ResQ macros hand to a ResQ-connected Bridge worker. The payload and

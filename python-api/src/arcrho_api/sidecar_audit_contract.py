@@ -45,6 +45,12 @@ PROJECT_AUDIT_LOG_MAX_ENTRIES = 500
 # The ``change_info`` a writer records when it has nothing more specific to say.
 AUDIT_CHANGE_INFO_VALUES = "Values"
 
+# A human review decision moves no number, so it names itself rather than
+# taking the default above. These are the two decisions a reader can act on:
+# the Project Instance table's Mark For Review and Set Reviewed.
+AUDIT_CHANGE_INFO_MARK_FOR_REVIEW = "Marked For Review"
+AUDIT_CHANGE_INFO_SET_REVIEWED = "Set Reviewed"
+
 
 def _clean(value: Any) -> str:
     return str(value or "").strip()
@@ -178,6 +184,8 @@ __all__ = [
     "AUDIT_ACTION_AUTO_REFRESH",
     "AUDIT_ACTION_INSERT",
     "AUDIT_ACTION_UPDATE",
+    "AUDIT_CHANGE_INFO_MARK_FOR_REVIEW",
+    "AUDIT_CHANGE_INFO_SET_REVIEWED",
     "AUDIT_CHANGE_INFO_VALUES",
     "AUTOMATIC_AUDIT_ACTIONS",
     "DATASET_AUDIT_LOG_MAX_ENTRIES",
