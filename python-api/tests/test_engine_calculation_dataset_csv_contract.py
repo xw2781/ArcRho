@@ -104,15 +104,16 @@ class DatasetCsvOperationTests(unittest.TestCase):
 
     def test_the_run_options_are_accepted(self) -> None:
         request = _request(
-            options={"force_refresh": True, "local_only": False, "allow_derived": True}
+            options={"local_only": False, "allow_derived": True}
         )
         self.assertEqual(
             request["Options"],
-            {"force_refresh": True, "local_only": False, "allow_derived": True},
+            {"local_only": False, "allow_derived": True},
         )
 
     def test_an_unlisted_option_is_refused(self) -> None:
         for options in (
+            {"force_refresh": True},
             {"write_sidecar": False},
             {"temporary_session_id": "abc"},
             {"allow_runtime_cache_provenance": True},
@@ -123,7 +124,7 @@ class DatasetCsvOperationTests(unittest.TestCase):
 
     def test_an_option_of_the_wrong_type_is_refused(self) -> None:
         with self.assertRaises(EngineCalculationContractError):
-            _request(options={"force_refresh": "yes"})
+            _request(options={"allow_derived": "yes"})
 
     def test_no_output_variant_travels_with_the_operation(self) -> None:
         with self.assertRaises(EngineCalculationContractError):

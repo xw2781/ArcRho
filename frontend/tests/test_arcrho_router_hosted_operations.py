@@ -33,6 +33,7 @@ from app_server.schemas.arcrho import ArcRhoTriRequest, ArcRhoVecRequest
 from app_server.services import (
     arcrho_runtime_service,
     calculated_dataset_service,
+    dependent_propagation_service,
     engine_calculation_service,
     file_read_cache,
     project_settings_service,
@@ -155,7 +156,8 @@ class HostedDatasetCsvTests(unittest.TestCase):
         # settings a recalculated cache records provenance from are stubbed.
         for target, name, value in (
             (config, "get_project_dataset_cache_dir", str(self.cache_dir)),
-            (calculated_dataset_service, "calculated_dataset_contract", None),
+            (calculated_dataset_service, "_dataset_type_rows", [{"name": self.dataset_name, "data_format": "Triangle", "generated": True}]),
+            (dependent_propagation_service, "get_reserving_class_busy", {"ok": True, "busy": False}),
             (arcrho_runtime_service, "get_processing_config_hash", "processing-hash"),
             (
                 arcrho_runtime_service,
@@ -226,7 +228,7 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertFalse(answer["need_request"])
         self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
 
-    def test_always_refresh_leaves_a_hand_entered_dataset_alone(self) -> None:
+    def test_refresh_leaves_a_hand_entered_dataset_alone(self) -> None:
         self._write_csv(self.ENGINE_TEXT)
         self._write_sidecar()
 
@@ -234,7 +236,7 @@ class HostedDatasetCsvTests(unittest.TestCase):
             raise AssertionError("A hand-entered dataset has nothing to rebuild from.")
 
         with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
-            answer = self._answer(force_refresh=True)
+            answer = self._answer()
 
         self.assertTrue(answer["ok"])
         self.assertEqual(answer["local_cache_status"], "cache_exact")
@@ -242,7 +244,7 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
         self.assertEqual(self._read_csv(), self.ENGINE_TEXT)
 
-    def test_always_refresh_still_rebuilds_a_generated_dataset(self) -> None:
+    def test_refresh_serves_a_permanent_generated_dataset_without_rebuilding(self) -> None:
         self._write_csv(self.ENGINE_TEXT)
         self._write_sidecar(source_kind="engine")
         rebuilt = "1,2,3\n4,5,\n6,,\n"
@@ -253,14 +255,13 @@ class HostedDatasetCsvTests(unittest.TestCase):
             return {"ok": True, "status": "completed", "request_file": "r.json"}
 
         with patch.object(engine_calculation_service, "run_engine_calculation", fake_engine):
-            answer = self._answer(force_refresh=True)
+            answer = self._answer()
 
         self.assertTrue(answer["ok"])
-        self.assertTrue(answer["need_request"])
-        self.assertTrue(answer["cache_cleared"])
-        self.assertEqual(answer["csv_text"], rebuilt)
+        self.assertFalse(answer["need_request"])
+        self.assertEqual(answer["csv_text"], self.ENGINE_TEXT)
 
-    def test_always_refresh_serves_a_method_result_as_published(self) -> None:
+    def test_refresh_serves_a_method_result_as_published(self) -> None:
         # A Result Selection published this dataset. A dataset read cannot
         # produce it again, and the Engine, asked to, would answer with an
         # error and write that error over the published figures.
@@ -271,7 +272,7 @@ class HostedDatasetCsvTests(unittest.TestCase):
             raise AssertionError("A method result has nothing the Engine could rebuild it from.")
 
         with patch.object(engine_calculation_service, "run_engine_calculation", refuse):
-            answer = self._answer(force_refresh=True)
+            answer = self._answer()
 
         self.assertTrue(answer["ok"])
         self.assertEqual(answer["local_cache_status"], "cache_exact")
@@ -291,7 +292,7 @@ class HostedDatasetCsvTests(unittest.TestCase):
         self.assertFalse(answer["ok"])
         self.assertFalse(answer["need_request"])
         self.assertNotIn("csv_text", answer)
-        self.assertIn("is a method result", answer["message"])
+        self.assertIn("no published CSV", answer["message"])
         self.assertIn(self.dataset_name, answer["message"])
         self.assertFalse(self.csv_path.exists())
 

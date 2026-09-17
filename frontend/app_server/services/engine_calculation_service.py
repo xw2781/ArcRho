@@ -224,20 +224,20 @@ def execute_hosted_engine_calculation(
         # behind them, so each is served by its own function; every one of the
         # three answers in the same text field.
         wait = clamp_engine_calculation_wait(timeout_sec)
-        force_refresh = bool(settings.get("force_refresh", False))
         function = engine_function_of(normalized_pairs)
         if function == ENGINE_FUNCTION_HEADERS:
             return arcrho_runtime_service.run_arcrho_headers_csv(
-                normalized_pairs, timeout_sec=wait, force_refresh=force_refresh
+                normalized_pairs, timeout_sec=wait
             )
         if function == ENGINE_FUNCTION_PROJECT_SETTINGS:
             return arcrho_runtime_service.run_arcrho_project_settings_csv(
-                normalized_pairs, timeout_sec=wait, force_refresh=force_refresh
+                normalized_pairs, timeout_sec=wait
             )
-        return arcrho_runtime_service.run_arcrho_dataset_csv(
+        from app_server.services import excel_dataset_service
+
+        return excel_dataset_service.read_dataset_csv(
             normalized_pairs,
             timeout_sec=wait,
-            force_refresh=force_refresh,
             local_only=bool(settings.get("local_only", False)),
             allow_derived=bool(settings.get("allow_derived", True)),
         )

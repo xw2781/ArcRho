@@ -39,7 +39,19 @@ Dependent propagation is Gateway-required on Client PCs: queue submission, statu
 
 DSV and DFM numeric evaluation shares the canonical dataset-cell contract, including TAKE, INDEX, TRANSPOSE and array constants. DFM retains its rounding policy and positive one-row User Entry constraint. Numeric Excel add-in dataset calls use generated signatures and the canonical hosted dataset reader; empty project/RC arguments resolve against the editor's context. Local calls create local dependency edges, while other-project/RC calls resolve and refresh explicitly without aliasing local nodes. See [formula-bar behavior](../ui/formula_bar.md).
 
+Excel add-in refreshes use the Gateway `dataset_csv` operation and a dedicated
+read-only publication policy. Sidecar-backed instances are served from their
+declared publication, with compatible manual/input period views derived in memory; Excel never
+regenerates permanent datasets or their dependencies. Sidecar-less generated
+requests may reuse technical caches only while their source and configuration
+provenance match. Temporary calculated requests evaluate without publication.
+The frontend's dataset-run and formula-evaluation paths retain their own
+existing behavior. The add-in persists refreshed results in each workbook and
+serves that snapshot on open and ordinary recalculation; only an explicit
+ArcRho refresh contacts the server. No sidecar or index schema changes.
+
 ## Before Finishing
+
 1. State which business-logic area changed, or state "no business-logic impact."
 2. Update affected MANUAL sections in `docs/app_server/*.md`, `docs/app_server/domains/*.md`, or `docs/runtime/*.md` when behavior changes.
 3. Run `python tools/docs_index_builder.py --write`.

@@ -7,11 +7,11 @@ This note defines how dataset type metadata, dataset instances, and cache rebuil
 
 | Scenario | Canonical `source_kind` | Instances Per Dataset Type | Editable Cells | Calculated | Engine Request | Cache Rebuild / Clear Behavior | Primary Rebuild Trigger | Storage |
 | --- | --- | ---: | --- | --- | --- | --- | --- | --- |
-| Pure data-engine dataset | `engine` | 1 | No | No | Yes | Existing cache may be reused. Force refresh / `removeData=True` may delete the matching CSV and request a fresh engine output. | User run, Excel formula refresh, frontend force refresh | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
-| Calculated from only generated/rebuildable components | `calculated` | 1 | No | Yes | Yes, allowed when the engine can resolve every formula dependency | Treat as generated-class for refresh purposes. Force refresh / `removeData=True` may clear the matching CSV and request a fresh output, or the app may recalculate eagerly after a component rebuild. | Direct request, component engine output save, or explicit recalculation | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
-| Calculated from any manual/imported component | `calculated` | 1 | No | Yes | No | Treat as non-generated-class for cache-clearing purposes. Do not delete because of Excel `removeData=True`; recalculate eagerly when editable/imported components change. | Component save/import or explicit recalculation | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
-| Manual user-entered dataset | `input` | Many allowed | Yes | No | No | Never cleared by data-engine refresh or Excel `removeData=True`. Users can paste/edit values. | User save / paste | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
-| Imported dataset | `import` | Many allowed unless a type explicitly opts into single-instance | Usually no after import; optionally editable if the import flow marks it editable | No | No | Never cleared by data-engine refresh or Excel `removeData=True`. Replaced only by an import action or an explicit user save if editable. | Import action / optional user save | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
+| Pure data-engine dataset | `engine` | 1 | No | No | Yes | Existing cache may be reused. Frontend force refresh may delete the matching CSV and request a fresh engine output. | Frontend run or source refresh | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
+| Calculated from only generated/rebuildable components | `calculated` | 1 | No | Yes | Yes, allowed when the engine can resolve every formula dependency | Treat as generated-class for refresh purposes. Frontend force refresh may clear the matching CSV and request a fresh output, or the app may recalculate eagerly after a component rebuild. | Direct request, component engine output save, or explicit recalculation | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
+| Calculated from any manual/imported component | `calculated` | 1 | No | Yes | No | Treat as non-generated-class for cache-clearing purposes. Do not delete because of Excel refresh; recalculate eagerly when editable/imported components change. | Component save/import or explicit recalculation | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
+| Manual user-entered dataset | `input` | Many allowed | Yes | No | No | Never cleared by data-engine refresh or Excel refresh. Users can paste/edit values. | User save / paste | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
+| Imported dataset | `import` | Many allowed unless a type explicitly opts into single-instance | Usually no after import; optionally editable if the import flow marks it editable | No | No | Never cleared by data-engine refresh or Excel refresh. Replaced only by an import action or an explicit user save if editable. | Import action / optional user save | `data/<ReservingClass>/datasets/*.csv` plus `sidecars/*.json` |
 | Method-owned dataset output, such as DFM result data | `method` | Usually 1 per method output name | No for output cells; method settings are edited through method UI | Yes, method-calculated | No direct ArcRhoTri engine request | Rebuilt when the owning method is saved or recalculated. The dataset cache should not be manually edited. | Method save / method recalculation | `data/<ReservingClass>/datasets/*.csv`, `methods/*.json`, plus `sidecars/*.json` when needed |
 | Helper cache, such as headers/project settings | `helper` | Not a dataset instance | No | No | May request engine/helper output | Not listed as a reserving-class dataset instance. May use project data-root helper cache files. | Helper request | `data/*.csv` or another helper-specific cache path |
 
@@ -24,7 +24,7 @@ This note defines how dataset type metadata, dataset instances, and cache rebuil
 | `single_instance` | True for `engine`, `calculated`, and method-owned outputs. False for manual/imported input types unless a type-specific rule says otherwise. |
 | `engine_request` | True for `source_kind=engine` and engine-backed helper caches. Also true for `source_kind=calculated` when every formula dependency is generated/rebuildable and the engine can resolve the formula. False for calculated outputs with any input/import/manual-bound dependency. |
 | `generated_class` | True for `source_kind=engine`; true for `source_kind=calculated` only when every dependency is generated-class. False when any dependency is input/import/manual-bound. |
-| Excel `removeData=True` clear | Allowed for generated-class engine request outputs, including calculated outputs whose dependencies are all generated/rebuildable. Never clear input/import/manual-bound datasets. |
+| Excel refresh | Read every sidecar-backed instance as published; never clear or regenerate it. Validate source/configuration provenance before reusing a sidecar-less generated cache. |
 | User can create multiple instances | Only useful for manual/imported source kinds. Generated and calculated dataset types should stay single-instance because duplicate instances would have the same deterministic result unless the type has explicit parameters. |
 
 ## Minimal JSON Categorization
@@ -73,15 +73,11 @@ Dataset type name and instance name are distinct:
 
 ## Excel Add-In Lookup Rule
 
-For `ArcRhoTri`, the Excel add-in has the full cache identity in the UDF arguments: path, triangle or instance name, origin length, development length, cumulative mode, and calendar/development mode. It should therefore build the exact current CSV cache path directly:
+Add-in 3.0.0 opens and recalculates from the saved workbook snapshot. Only an explicit Refresh Worksheet or Refresh Workbook sends the logical request identity over HTTP to the Gateway. Excel never looks for CSVs or sidecars over the workspace share.
 
-`data/<ReservingClass>/datasets/<InstanceName>@<OriginLength>@<DevelopmentLength>@<cum|inc>@<dev|cal>.csv`
+The hosted Excel reader uses the requested instance's sidecar and its declared `csv_file` as the permanent publication. It never regenerates a permanent dataset, even if its publication is missing or stale. Compatible manual/input period rollups are computed in memory; other unsupported shapes or modes are refused rather than aggregating a potentially non-additive result. Source, formula, configuration, and dependency changes are handled by the frontend's publishing workflows.
 
-For `ArcRhoVec`, the cache identity only needs the vector period length:
-
-`data/<ReservingClass>/datasets/<InstanceName>@<PeriodLength>.csv`
-
-If the triangle/instance name is not found in `dataset_types.json`, Excel should treat it as a non-generated dataset instance, load that exact CSV if it exists, and never clear it because of `removeData=True`. No legacy unsuffixed CSV fallback is required.
+A sidecar-less generated request may reuse a matching technical cache only while the source-table identity and processing configuration are unchanged. Temporary formula requests evaluate their dependencies under the same ownership rule and publish no permanent sidecar or index entry. Corrupt or unreadable sidecars are errors, not evidence that a dataset is temporary. Refresh is refused while a propagation job holds the class.
 
 ## ResQ Reserving-Class Migration
 

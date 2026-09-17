@@ -75,10 +75,8 @@ OUTPUT_VARIANTS: tuple[str, ...] = (OUTPUT_VARIANT_CANONICAL, OUTPUT_VARIANT_TEM
 OPERATION_EXCHANGE = "exchange"
 OPERATION_DATASET_RUN = "dataset_run"
 OPERATION_DATASET_PRECHECK = "dataset_precheck"
-# ``dataset_csv`` is ``dataset_run`` plus the figures. A worksheet formula has
-# no way to open the server's CSV, so the answer carries the text that file
-# holds -- or, for a coarser view of a hand-entered dataset, the text it would
-# have held, built from the in-memory roll-up so nothing is written.
+# ``dataset_csv`` reads permanent publications and validates temporary
+# generated caches. It never republishes permanent datasets for a worksheet.
 OPERATION_DATASET_CSV = "dataset_csv"
 OPERATIONS: tuple[str, ...] = (
     OPERATION_EXCHANGE,
@@ -114,7 +112,6 @@ OPERATION_OPTIONS: dict[str, dict[str, str]] = {
     # worksheet formula, which reads the reserving class's own datasets and
     # never a Temporary view.
     OPERATION_DATASET_CSV: {
-        "force_refresh": _BOOL,
         "local_only": _BOOL,
         "allow_derived": _BOOL,
     },

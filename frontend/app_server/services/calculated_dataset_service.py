@@ -510,6 +510,39 @@ def _eval_ast(node: ast.AST, values: Dict[str, np.ndarray]) -> np.ndarray | floa
     raise ValueError("Formula contains unsupported syntax.")
 
 
+def _evaluate_formula_expression(
+    expression: str,
+    values: Dict[str, np.ndarray],
+    scalar_template: np.ndarray | None = None,
+) -> np.ndarray:
+    """Evaluate the shared dataset grammar without publishing any artifacts."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = _eval_ast(ast.parse(expression, mode="eval"), values)
+    arr = np.asarray(result, dtype="float64")
+    if arr.ndim == 0:
+        template = next(iter(values.values()), scalar_template)
+        shape = template.shape if template is not None else (1, 1)
+        arr = np.full(shape, float(arr), dtype="float64")
+    if arr.ndim == 1:
+        arr = arr.reshape((-1, 1))
+    return arr
+
+
+def evaluate_formula(
+    formula: str, known_names: List[str], components: Mapping[str, np.ndarray]
+) -> np.ndarray:
+    """Calculate from already resolved components, with no filesystem reads."""
+    expression, references = _replace_formula_refs(formula, known_names)
+    values = {
+        variable: components[_canon_dataset_name(name)]
+        for variable, name in references.items()
+    }
+    result = _evaluate_formula_expression(expression, values)
+    if result.ndim != 2:
+        raise ValueError("Unsupported calculated dataset result shape.")
+    return result
+
+
 def _read_sidecar(path: str) -> Dict[str, Any]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -1698,9 +1731,7 @@ def _recalculate_dataset_impl(
         eval_values[var] = values[f"_d{idx}"]
 
     try:
-        parsed = ast.parse(expr, mode="eval")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            result = _eval_ast(parsed, eval_values)
+        arr = _evaluate_formula_expression(expr, eval_values)
     except Exception as exc:
         return {
             "ok": False,
@@ -1710,12 +1741,6 @@ def _recalculate_dataset_impl(
             "errors": [str(exc)],
         }
 
-    arr = np.asarray(result, dtype="float64")
-    if arr.ndim == 0:
-        first = next(iter(eval_values.values()), np.zeros((1, 1), dtype="float64"))
-        arr = np.full(first.shape, float(arr), dtype="float64")
-    if arr.ndim == 1:
-        arr = arr.reshape((-1, 1))
     if arr.ndim != 2:
         return {"ok": False, "dataset_type_name": row["name"], "skipped": True, "reason": "unsupported_result_shape"}
 
@@ -2183,9 +2208,7 @@ def preview_dependents(
             if f"_d{idx}" in component_values:
                 eval_values[var] = component_values[f"_d{idx}"]
         try:
-            parsed = ast.parse(expr, mode="eval")
-            with np.errstate(divide="ignore", invalid="ignore"):
-                result = _eval_ast(parsed, eval_values)
+            arr = _evaluate_formula_expression(expr, eval_values, source_arr)
         except Exception as exc:
             steps.append({
                 "ok": False,
@@ -2196,12 +2219,6 @@ def preview_dependents(
             })
             continue
 
-        arr = np.asarray(result, dtype="float64")
-        if arr.ndim == 0:
-            first = next(iter(eval_values.values()), source_arr)
-            arr = np.full(first.shape, float(arr), dtype="float64")
-        if arr.ndim == 1:
-            arr = arr.reshape((-1, 1))
         if arr.ndim != 2:
             steps.append({
                 "ok": False,
