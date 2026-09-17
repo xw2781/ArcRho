@@ -156,6 +156,11 @@ class DatasetInternalLinksResolveRequest(BaseModel):
     project_name: str
     reserving_class: str
     references: List[str] = Field(..., min_length=1)
+    # The period lengths of the grid the references are written in. Sent, each
+    # referenced dataset is read at them the way a method reads a precedent at
+    # its own period; omitted, every source reads at its own file's rows.
+    origin_length: Optional[int] = Field(None, ge=1)
+    development_length: Optional[int] = Field(None, ge=1)
 
 
 class DatasetSidecarSaveRequest(BaseModel):

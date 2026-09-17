@@ -1,6 +1,6 @@
 # Dataset cell links read their source at the referencing dataset's period
 
-Status: Investigated 2026-09-17 and broken into 5 session-sized steps the same day; step 1 of 5 done 2026-09-17, the reader that can serve a dataset at any coarser period a caller names; no decisions open.
+Status: Investigated 2026-09-17 and broken into 5 session-sized steps the same day; steps 1 and 2 of 5 done 2026-09-17, the reader that can serve a dataset at any coarser period a caller names and the resolve route that reads every source at the lengths the request names; no decisions open.
 Last updated: 2026-09-17
 
 ## Progress
@@ -10,12 +10,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | A dataset can be read at any coarser period a caller names | [x] | 2026-09-17 | 35 min | 12 min | Nothing visible yet: the part that reads a dataset can now serve it at any coarser period asked for, and says why when it cannot. |
-| 2 | A cell link resolves its source at the period the referencing grid is shown at | [ ] | | 45 min | | |
+| 2 | A cell link resolves its source at the period the referencing grid is shown at | [x] | 2026-09-17 | 45 min | 7 min | Nothing visible yet: a request to resolve references can now say which period the grid is in, and each source is read at that period or refused with the reason. |
 | 3 | The automatic refresh reads sources the same way the link was entered | [ ] | | 20 min | | |
 | 4 | The Dataset window sends the period it is showing with every reference | [ ] | | 35 min | | |
 | 5 | Released to the server and checked in the app | [ ] | | 35 min | | |
 
-Overall: 1 of 5 steps done. Estimated 170 min, actual so far 12 min.
+Overall: 2 of 5 steps done. Estimated 170 min, actual so far 19 min.
 
 ## How agents work this plan
 
@@ -92,7 +92,7 @@ Five steps, estimated at 170 minutes of agent time: 112 minutes of reading and e
 
 **Done when.** The resolver tests and the read-client tests (`tests/test_workspace_read_client.py`) pass, and the docs index check passes.
 
-**Estimate.** Estimate: code edit 33 min, test/validation 12 min, total 45 min.
+**Estimate.** Estimate: code edit 33 min, test/validation 12 min, total 45 min. Actual: code edit 5 min, test/validation 2 min, total 7 min - far under, because step 1 had already put the whole roll-up decision behind one reader keyword, so this step was two optional fields carried through a schema, a router, the registry and the resolver, with no logic of its own.
 
 ### Step 3 — The automatic refresh reads sources the way the link was entered
 

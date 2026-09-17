@@ -15,7 +15,10 @@ if str(FRONTEND_ROOT) not in sys.path:
 
 from fastapi import HTTPException
 
-from app_server.schemas.dataset import DatasetSidecarSaveRequest
+from app_server.schemas.dataset import (
+    DatasetInternalLinksResolveRequest,
+    DatasetSidecarSaveRequest,
+)
 from app_server.services import calculated_dataset_service, dataset_service
 from app_server.services import dataset_internal_link_service
 from dependent_propagation_workspace_stub import IsolatedPropagationWorkspace
@@ -86,21 +89,24 @@ class InternalReferenceParseTests(unittest.TestCase):
 
 
 class InternalReferenceResolveTests(unittest.TestCase):
-    def _resolve(self, references, datasets=None):
+    def _resolve(self, references, datasets=None, lengths=None):
         loaded = []
         by_name = {}
         for dataset in datasets or [_vector_dataset()]:
             by_name[dataset["dataset_name"].casefold()] = dataset
 
-        def load(project, reserving_class, name):
-            loaded.append((project, reserving_class, name))
+        def load(project, reserving_class, name, **read_kwargs):
+            loaded.append((project, reserving_class, name, read_kwargs))
             return by_name[str(name).casefold()]
 
+        asked = {}
+        if lengths is not None:
+            asked = {"origin_length": lengths[0], "development_length": lengths[1]}
         with patch.object(
             dataset_service, "load_cached_dataset_values", side_effect=load
         ):
             result = dataset_internal_link_service.resolve_dataset_internal_links(
-                "Project", "Class", references
+                "Project", "Class", references, **asked
             )
         return result, loaded
 
@@ -171,6 +177,91 @@ class InternalReferenceResolveTests(unittest.TestCase):
             [(cell["row"], cell["column"], cell["value"]) for cell in cells],
             [(0, 0, 10.0), (0, 1, 20.0), (1, 0, 30.0), (1, 1, None)],
         )
+
+    def test_requested_lengths_are_passed_to_every_read_and_omitted_without_them(self) -> None:
+        datasets = [_vector_dataset(), _vector_dataset("Case Reserves")]
+        _result, loaded = self._resolve(
+            ["=[C 82 - Prior Qtr Selected][1]", "=[Case Reserves][1]"],
+            datasets=datasets,
+            lengths=(12, 12),
+        )
+        self.assertEqual(len(loaded), 2)
+        for _project, _rc, _name, read_kwargs in loaded:
+            self.assertEqual(read_kwargs, {"at_lengths": (12, 12)})
+
+        _bare, bare_loaded = self._resolve(
+            ["=[C 82 - Prior Qtr Selected][1]"], datasets=[_vector_dataset()]
+        )
+        self.assertEqual([read_kwargs for *_head, read_kwargs in bare_loaded], [{}])
+
+    def test_an_index_counts_at_the_requested_period(self) -> None:
+        # What the reader answers with when a monthly vector is asked for at
+        # yearly lengths: one row per year, and an origin length that says so.
+        yearly = _vector_dataset()
+        yearly["origin_length"] = 12
+        yearly["values"] = [[120.0], [240.0], [360.0], [480.0], [600.0], [720.0]]
+        with patch.object(
+            dataset_service, "valuation_origin_row_count", return_value=5
+        ) as row_count:
+            result, loaded = self._resolve(
+                [
+                    "=[C 82 - Prior Qtr Selected][1]",
+                    "=[C 82 - Prior Qtr Selected][-1]",
+                ],
+                datasets=[yearly],
+                lengths=(12, 12),
+            )
+        self.assertEqual(loaded[0][3], {"at_lengths": (12, 12)})
+        first = result["results"][0]["cells"][0]
+        self.assertEqual((first["row_label"], first["value"]), ("2017", 120.0))
+        last = result["results"][1]["cells"][0]
+        self.assertEqual((last["row_label"], last["value"]), ("2021", 600.0))
+        row_count.assert_called_once_with("Project", 12)
+
+    def test_a_source_the_reader_refuses_fails_the_reference(self) -> None:
+        refusal = HTTPException(
+            422,
+            "'C 82 - Prior Qtr Selected' is stored at 12-month periods and "
+            "cannot be shown at 3-month periods.",
+        )
+        with patch.object(
+            dataset_service, "load_cached_dataset_values", side_effect=refusal
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                dataset_internal_link_service.resolve_dataset_internal_links(
+                    "Project",
+                    "Class",
+                    ["=[C 82 - Prior Qtr Selected][1]"],
+                    origin_length=3,
+                    development_length=3,
+                )
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertIn("cannot be shown at 3-month periods", str(raised.exception.detail))
+
+
+class InternalLinksResolveRequestTests(unittest.TestCase):
+    def _request(self, **overrides):
+        payload = {
+            "project_name": "Project",
+            "reserving_class": "Class",
+            "references": ["=[C 82][1]"],
+        }
+        payload.update(overrides)
+        return DatasetInternalLinksResolveRequest(**payload)
+
+    def test_lengths_are_optional_and_default_to_none(self) -> None:
+        bare = self._request()
+        self.assertIsNone(bare.origin_length)
+        self.assertIsNone(bare.development_length)
+        sized = self._request(origin_length=12, development_length=3)
+        self.assertEqual((sized.origin_length, sized.development_length), (12, 3))
+
+    def test_rejects_zero_or_negative_lengths(self) -> None:
+        for field in ("origin_length", "development_length"):
+            for value in (0, -12):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaises(ValidationError):
+                        self._request(**{field: value})
 
 
 class InternalLinkSchemaTests(unittest.TestCase):
@@ -442,6 +533,9 @@ class InternalLinkReadContractTests(unittest.TestCase):
         self.assertEqual(spec.function, "resolve_dataset_internal_links")
         self.assertEqual(
             set(spec.required), {"project_name", "reserving_class", "references"}
+        )
+        self.assertEqual(
+            set(spec.optional), {"origin_length", "development_length"}
         )
 
 

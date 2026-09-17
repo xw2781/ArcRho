@@ -187,8 +187,19 @@ def resolve_dataset_internal_links(
     project_name: str,
     reserving_class: str,
     references: Iterable[Any],
+    origin_length: int | None = None,
+    development_length: int | None = None,
 ) -> Dict[str, Any]:
-    """Resolve internal link references with one dataset read per unique name."""
+    """Resolve internal link references with one dataset read per unique name.
+
+    ``origin_length`` / ``development_length`` are the period lengths of the
+    grid the references are written in. Given both, every referenced dataset
+    is read at that pair however its own file is held, so an index follows the
+    period of the grid the reference was typed into rather than the period its
+    source happens to be stored at; a source that cannot be brought there is
+    refused by the reader with the reason. Omitted, every source reads at its
+    own file's rows.
+    """
 
     from app_server.services import dataset_service
 
@@ -205,12 +216,16 @@ def resolve_dataset_internal_links(
     for item in parsed:
         if item is None: continue
         names_by_key.setdefault(_key(item["dataset_name"]), item["dataset_name"])
+    read_kwargs: Dict[str, Any] = {}
+    if origin_length and development_length:
+        read_kwargs["at_lengths"] = (int(origin_length), int(development_length))
     futures = {
         key: _READ_EXECUTOR.submit(
             dataset_service.load_cached_dataset_values,
             project,
             rc,
             name,
+            **read_kwargs,
         )
         for key, name in names_by_key.items()
     }

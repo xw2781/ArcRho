@@ -271,11 +271,15 @@ def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> D
             "project_name": req.project_name,
             "reserving_class": req.reserving_class,
             "references": list(req.references),
+            "origin_length": req.origin_length,
+            "development_length": req.development_length,
         },
         local=lambda: dataset_internal_link_service.resolve_dataset_internal_links(
             req.project_name,
             req.reserving_class,
             req.references,
+            origin_length=req.origin_length,
+            development_length=req.development_length,
         ),
         gateway_required=True,
     )
