@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec5d33a-1179-4b13-9b77-8a931ebeb128
-  modified: 2026-08-27T22:38:20.409Z
+  modified: 2026-09-17T19:13:52.391Z
 ---
 
 Since 2026-08-17, component rebuilds go through `python server-components/deploy.py` (no arguments = every stale component). It queues a request under `E:\ArcRho Server\requests\builds` and the **ArcRho Build Listener** — the "Listen for build requests" toggle in `server-components\build_manager.bat` on the server — runs the same `build_exe.py` locally, streaming its log back. Exit codes: `0` ok, `1` build failed, `2` usage/precondition, `3` no listener running (relay the CLI's message asking a human to start it; nothing else in the flow needs a person).
@@ -47,3 +47,5 @@ Gotchas: the listener **resets its own clone** on every request, so nothing may 
 Related: [[gateway-deploy-swap-lock]], [[bridge-restart-after-deploy]], [[client-pc-primary-workstation]], [[pi-path-load-smb-cost]]
 
 **Client fallback timing, 2026-09-01.** With the listener down (no heartbeat since 2026-08-25), `ARCRHO_DEPLOY_ROOT="E:\ArcRho Server"` + each component's `build_exe.py` from the Client PC deployed bridge, engine, and gateway in **5 minutes total** (1:52, 1:48, 1:12): the warm slot means only the delta is copied (Bridge: 364 of 1,813 files), so the old 8-minutes-per-component figure applies to a cold slot only. A detached `Start-Process powershell -File <script>` chaining the three, logging to a file, plus a `Monitor` on that log, survives the tool's 10-minute timeout. Bridge (+ worker), Engine (3 instances), and Gateway all came back on their own within 20 s.
+
+**A listener older than a component role refuses the whole no-argument deploy (2026-09-17).** `deploy.py --stale` on the Client PC lists `credential` (the component added with the Excel add-in server-access work, commit 025e2427, 2026-09-13), but the listener running on `NE7SASWPN02` was started 2026-09-03 and answers `Unknown component role(s): credential. Known roles: admin, bridge, engine, gateway, launcher, orchestrator.` — the request is rejected before anything builds, and the CLI exits 1. Name the components it knows (`deploy.py bridge engine gateway`, 7 minutes for all three) and report that `credential` stays undeployed until someone restarts the listener from a checkout that carries the role. Related: [[gateway-deploy-swap-lock]].
