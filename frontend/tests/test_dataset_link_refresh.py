@@ -394,6 +394,110 @@ class RefreshDatasetLinksTests(unittest.TestCase):
         self.assertEqual(calls[0][0], "Target")
         self.assertIs(calls[0][1].get("at_linked_shape"), True)
 
+    def test_every_source_is_read_at_the_lengths_the_target_was_read_at(self) -> None:
+        # An index in a reference follows the period of the grid the reference
+        # was typed into, so the unattended refresh reads each source at the
+        # lengths the target itself came back at.
+        datasets = {
+            "Source": _vector("Source", [5.0]),
+            "Target": _vector(
+                "Target",
+                [0.0],
+                links={
+                    "stored_period_length": 12,
+                    "internal_links": [{
+                        "reference": "=[Source][1:1]",
+                        "target_cells": [{"row": 0, "column": 0, "source_row": 0, "source_column": 0}],
+                    }],
+                },
+            ),
+        }
+        calls = []
+
+        def fake_load(_project, _rc, name, **kwargs):
+            calls.append((name, kwargs))
+            return {
+                "dataset_name": name,
+                "data_format": "Vector",
+                "values": copy.deepcopy(datasets[name]["values"]),
+                "origin_labels": ["2024"],
+                "dev_labels": ["Ultimate"],
+                "origin_length": 12,
+                "development_length": 12,
+                "path": f"{name}.csv",
+            }
+
+        with (
+            patch.object(dataset_sidecar_status_service, "sidecar_path", side_effect=lambda _p, _rc, n: n),
+            patch.object(
+                dataset_sidecar_status_service,
+                "read_sidecar",
+                side_effect=lambda path: copy.deepcopy(datasets[path]["sidecar"]),
+            ),
+            patch.object(dataset_service, "load_cached_dataset_values", side_effect=fake_load),
+            patch.object(dataset_service, "_write_dataset_csv_and_sidecar"),
+        ):
+            result = dataset_link_refresh_service.refresh_dataset_links("Project", "Class", "Target")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([name for name, _ in calls], ["Target", "Source"])
+        self.assertEqual(calls[1][1].get("at_lengths"), (12, 12))
+
+    def test_a_source_the_reader_refuses_fails_the_refresh_and_writes_nothing(self) -> None:
+        # A source stored coarser than the grid its reference is written in
+        # cannot be brought to the target's lengths; the reader's message is
+        # the reason the walk reports, and the target keeps its last values.
+        refusal = (
+            "'Source' is stored at 12-month periods and cannot be read at "
+            "3-month periods: a dataset can only be read at a coarser period."
+        )
+        datasets = {
+            "Source": _vector("Source", [5.0]),
+            "Target": _vector(
+                "Target",
+                [0.0],
+                links={
+                    "internal_links": [{
+                        "reference": "=[Source][1:1]",
+                        "target_cells": [{"row": 0, "column": 0, "source_row": 0, "source_column": 0}],
+                    }],
+                },
+            ),
+        }
+
+        def fake_load(_project, _rc, name, **_kwargs):
+            if name != "Target":
+                from fastapi import HTTPException
+
+                raise HTTPException(422, refusal)
+            return {
+                "dataset_name": name,
+                "data_format": "Vector",
+                "values": copy.deepcopy(datasets[name]["values"]),
+                "origin_labels": ["2024"],
+                "dev_labels": ["Ultimate"],
+                "origin_length": 3,
+                "development_length": 3,
+                "path": f"{name}.csv",
+            }
+
+        with (
+            patch.object(dataset_sidecar_status_service, "sidecar_path", side_effect=lambda _p, _rc, n: n),
+            patch.object(
+                dataset_sidecar_status_service,
+                "read_sidecar",
+                side_effect=lambda path: copy.deepcopy(datasets[path]["sidecar"]),
+            ),
+            patch.object(dataset_service, "load_cached_dataset_values", side_effect=fake_load),
+            patch.object(dataset_service, "_write_dataset_csv_and_sidecar") as write,
+        ):
+            result = dataset_link_refresh_service.refresh_dataset_links("Project", "Class", "Target")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "link_error")
+        self.assertEqual(result["errors"], [refusal])
+        write.assert_not_called()
+
     def test_an_internal_link_copies_by_stored_source_coordinates(self) -> None:
         datasets = {
             "Source": _vector("Source", [5.0, 6.0, 7.0]),

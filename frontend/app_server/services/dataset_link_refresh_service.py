@@ -13,7 +13,8 @@ disagree about a value.
 
 Failure semantics are asymmetric on purpose:
 
-- An ArcRho-side problem — a referenced dataset missing, a non-numeric cell, a
+- An ArcRho-side problem — a referenced dataset missing, one that cannot be
+  read at the shape the links were written on, a non-numeric cell, a
   result that no longer covers the linked cells — fails the refresh. The
   dataset keeps its last values, the walk records the error, and downstream
   methods are flagged for review, exactly as a calculated dataset's
@@ -124,7 +125,16 @@ def _load_source_datasets(
     project_name: str,
     reserving_class: str,
     names: List[str],
+    at_lengths: Tuple[Any, Any],
 ) -> Dict[str, Mapping[str, Any]]:
+    """One read per unique source, each at the lengths the target reads at.
+
+    ``at_lengths`` is the shape the target's links were written on, so an
+    index in a reference means the same period unattended as it did when the
+    user typed it. A source that cannot be brought there is refused by the
+    reader and fails the refresh.
+    """
+
     from app_server.services import dataset_service
     from app_server.services.dfm_service import _key
 
@@ -138,8 +148,14 @@ def _load_source_datasets(
                 project_name,
                 reserving_class,
                 name,
+                at_lengths=at_lengths,
             )
         except HTTPException as err:
+            if int(getattr(err, "status_code", 0)) == 422:
+                # The reader refused to bring this source to the target's
+                # lengths and its message already names the dataset, both
+                # period pairs and the reason; that is what the walk reports.
+                raise _LinkRefreshHardError(str(err.detail))
             raise _LinkRefreshHardError(f"Missing dependency: {name} ({err.detail})")
     return datasets
 
@@ -306,7 +322,12 @@ def refresh_dataset_links(
     errors: List[str] = []
     changed = False
     try:
-        datasets = _load_source_datasets(project_name, reserving_class, source_names)
+        datasets = _load_source_datasets(
+            project_name,
+            reserving_class,
+            source_names,
+            (target.get("origin_length"), target.get("development_length")),
+        )
 
         for link in internal_links:
             resolved = _resolve_internal_matrix(str(link.get("reference") or ""), datasets)

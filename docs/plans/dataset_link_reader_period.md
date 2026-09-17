@@ -1,6 +1,6 @@
 # Dataset cell links read their source at the referencing dataset's period
 
-Status: Investigated 2026-09-17 and broken into 5 session-sized steps the same day; steps 1 and 2 of 5 done 2026-09-17, the reader that can serve a dataset at any coarser period a caller names and the resolve route that reads every source at the lengths the request names; no decisions open.
+Status: Investigated 2026-09-17 and broken into 5 session-sized steps the same day; steps 1 to 3 of 5 done 2026-09-17, the reader that can serve a dataset at any coarser period a caller names, the resolve route that reads every source at the lengths the request names, and the unattended refresh that reads each source at the shape the target's links were written on; no decisions open.
 Last updated: 2026-09-17
 
 ## Progress
@@ -11,11 +11,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | A dataset can be read at any coarser period a caller names | [x] | 2026-09-17 | 35 min | 12 min | Nothing visible yet: the part that reads a dataset can now serve it at any coarser period asked for, and says why when it cannot. |
 | 2 | A cell link resolves its source at the period the referencing grid is shown at | [x] | 2026-09-17 | 45 min | 7 min | Nothing visible yet: a request to resolve references can now say which period the grid is in, and each source is read at that period or refused with the reason. |
-| 3 | The automatic refresh reads sources the same way the link was entered | [ ] | | 20 min | | |
+| 3 | The automatic refresh reads sources the same way the link was entered | [x] | 2026-09-17 | 20 min | 6 min | Nothing visible yet: an unattended refresh of a link-driven dataset now reads each source at the period the grid was in when the reference was typed, and reports the reason instead of writing when a source cannot be read there. |
 | 4 | The Dataset window sends the period it is showing with every reference | [ ] | | 35 min | | |
 | 5 | Released to the server and checked in the app | [ ] | | 35 min | | |
 
-Overall: 2 of 5 steps done. Estimated 170 min, actual so far 19 min.
+Overall: 3 of 5 steps done. Estimated 170 min, actual so far 25 min.
 
 ## How agents work this plan
 
@@ -109,7 +109,7 @@ Five steps, estimated at 170 minutes of agent time: 112 minutes of reading and e
 
 **Done when.** The refresh tests pass and the docs index check passes.
 
-**Estimate.** Estimate: code edit 12 min, test/validation 8 min, total 20 min.
+**Estimate.** Estimate: code edit 12 min, test/validation 8 min, total 20 min. Actual: code edit 4 min, test/validation 2 min, total 6 min - under, because the refresh already read the target at its linked shape and already turned every reader refusal into a hard error, so the change was one argument threaded through one helper.
 
 ### Step 4 — The Dataset window sends the period it is showing with every reference
 
