@@ -71,9 +71,12 @@ test("Dataset Viewer hides the total row for ratio formulas", () => {
   assert.equal(shouldShowDatasetGridTotals({ isDfmHost: false, formula: "Paid * 0.80", showSubtotal: true }), true);
 });
 
-test("Dataset Viewer offers only the three clipboard actions with shortcut hints", () => {
+test("Dataset Viewer offers the three clipboard actions with shortcut hints, then Clear data", () => {
   const menu = datasetViewerSource.slice(datasetViewerSource.indexOf('<div id="ctxMenu"'));
-  assert.deepEqual([...menu.matchAll(/data-action="([^"]+)"/gu)].map((match) => match[1]), ["copy_value", "paste", "copy_all"]);
+  assert.deepEqual(
+    [...menu.matchAll(/data-action="([^"]+)"/gu)].map((match) => match[1]),
+    ["copy_value", "paste", "copy_all", "clear_data"],
+  );
   assert.deepEqual([...menu.matchAll(/class="ctx-shortcut">([^<]+)</gu)].map((match) => match[1]), ["Ctrl+C", "Ctrl+V", "Ctrl+A"]);
   assert.match(persistenceSource, /show_subtotal:\s*state\.showSubtotal\s*!==\s*false/u);
 });

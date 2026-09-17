@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Clear data is back on the Dataset Viewer Data tab's right-click menu, below the copy and paste items.",
+  "details": [
+    "It sets every editable cell of the whole table to 0, whatever is selected, which frees the length controls again on a hand-entered dataset.",
+    "The item is hidden on a table that cannot be edited."
+  ]
+}

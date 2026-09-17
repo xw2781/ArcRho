@@ -7,7 +7,7 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260916a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260908b";
 import {
@@ -222,6 +222,7 @@ export function wireDatasetGridInteractions(deps) {
     },
     onCellContextMenu: (displayR, displayC) => prepareContextSelection(displayR, displayC),
     canPasteSelection: () => hasEditableSelectionTarget(),
+    canClearData: () => !isReadOnly() && !!getDisplayDatasetModel(),
     onContextAction: (action) => handleGridContextAction(action),
     onTableRendered: () => {
       formulaHover.hide?.();
@@ -700,6 +701,17 @@ export function wireDatasetGridInteractions(deps) {
     return fillSelectedCells(0, describeZeroed);
   }
 
+  // `Clear data` on the context menu: every cell the grid shows goes to 0,
+  // which is what lets the length controls open up again on a hand-entered
+  // dataset.
+  function clearAllCells() {
+    const model = getDisplayDatasetModel();
+    const rows = model?.origin_labels?.length || 0;
+    const cols = model?.dev_labels?.length || 0;
+    const ranges = rows && cols ? [normalizeRange(0, 0, rows - 1, cols - 1)] : [];
+    return fillCells(ranges, 0, describeZeroed);
+  }
+
   function selectionSignature() {
     return selectedRanges().map((range) => `${range.r0}:${range.c0}:${range.r1}:${range.c1}`).join("|");
   }
@@ -1016,6 +1028,7 @@ export function wireDatasetGridInteractions(deps) {
   async function handleGridContextAction(action) {
     if (action === "paste") return pasteSelectionFromClipboard();
     if (action === "copy_all") return copyAllToClipboard();
+    if (action === "clear_data") return clearAllCells();
     return false;
   }
 

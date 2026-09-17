@@ -61,7 +61,7 @@ const interactionSource = (await readFile(
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260916a"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(
@@ -272,5 +272,30 @@ test("Copy All and Ctrl+A copy the entire display including the Total row", asyn
     assert.deepEqual(globalThis.__arTestCopiedRanges, [{ r0: 0, c0: 0, r1: 2, c1: 1 }]);
   } finally {
     context.cleanup();
+  }
+});
+
+test("Clear data zeroes every editable cell of the grid, whatever is selected", async () => {
+  const context = setup();
+  try {
+    context.state.selRanges = [{ r0: 0, c0: 0, r1: 0, c1: 0 }];
+    await globalThis.__arTestGridEditConfig.onContextAction("clear_data");
+
+    // The masked cell is left alone, the same way a typed range fill skips it.
+    assert.deepEqual(context.state.model.values, [[0, 0], [0, 4]]);
+    assert.equal(context.calls.statuses.at(-1), "Set 3 cells to 0.");
+  } finally {
+    context.cleanup();
+  }
+});
+
+test("Clear data is offered only on a grid that can be edited", () => {
+  for (const readOnly of [false, true]) {
+    const context = setup({ isReadOnly: () => readOnly });
+    try {
+      assert.equal(globalThis.__arTestGridEditConfig.canClearData(), !readOnly);
+    } finally {
+      context.cleanup();
+    }
   }
 });

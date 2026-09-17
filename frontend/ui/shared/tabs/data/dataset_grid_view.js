@@ -168,6 +168,15 @@ function showCtxMenu(anchorEl, clientX, clientY) {
   if (!menu) return;
   const pasteButton = menu.querySelector('[data-action="paste"]');
   if (pasteButton) pasteButton.hidden = !gridEditConfig?.canPasteSelection?.();
+  // `Clear data` is the one destructive item here, so it sits below a rule of
+  // its own; a read-only grid drops the rule with the item rather than closing
+  // the menu on a line with nothing under it.
+  const clearButton = menu.querySelector('[data-action="clear_data"]');
+  if (clearButton) {
+    clearButton.hidden = !gridEditConfig?.canClearData?.();
+    const separator = clearButton.previousElementSibling;
+    if (separator?.classList.contains("ctx-sep")) separator.hidden = clearButton.hidden;
+  }
   openContextMenu(menu, {
     anchorEl,
     clientX,

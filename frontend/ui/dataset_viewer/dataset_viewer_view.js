@@ -319,6 +319,8 @@ export function mountDatasetViewer(container) {
       <button class="ctx-item" type="button" role="menuitem" data-action="copy_value"><span>Copy</span><span class="ctx-shortcut">Ctrl+C</span></button>
       <button class="ctx-item" type="button" role="menuitem" data-action="paste"><span>Paste</span><span class="ctx-shortcut">Ctrl+V</span></button>
       <button class="ctx-item" type="button" role="menuitem" data-action="copy_all"><span>Copy All</span><span class="ctx-shortcut">Ctrl+A</span></button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" type="button" role="menuitem" data-action="clear_data">Clear data</button>
     </div>
   </div>
 
