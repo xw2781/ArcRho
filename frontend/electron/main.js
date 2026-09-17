@@ -147,6 +147,7 @@ const SCRIPTING_SHORTCUTS_FILE = "scripting_shortcuts.json";
 const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const MACRO_PREFS_FILE = "macro_prefs.json";
 const FLIGHT_DECK_PREFS_FILE = "flight_deck.json";
+const NOTES_PANEL_PREFS_FILE = "notes_panel_prefs.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
@@ -238,6 +239,10 @@ function getMacroPrefsPath() {
 
 function getFlightDeckPrefsPath() {
   return path.join(getPrefsDir(), FLIGHT_DECK_PREFS_FILE);
+}
+
+function getNotesPanelPrefsPath() {
+  return path.join(getPrefsDir(), NOTES_PANEL_PREFS_FILE);
 }
 
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
@@ -1752,98 +1757,61 @@ ipcMain.handle("arcode-user-settings-save", async (_event, payload) => {
   }
 });
 
-ipcMain.handle("home-folders-preferences-load", async () => {
-  const filePath = getHomeFoldersPrefsPath();
-  try {
-    if (!fs.existsSync(filePath)) return { ok: true, exists: false, preferences: {} };
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Home folder preferences must contain a JSON object.");
-    }
-    return { ok: true, exists: true, preferences: parsed };
-  } catch (err) {
-    return { ok: false, exists: false, preferences: {}, error: String(err?.message || err || "Could not load Home folder preferences.") };
-  }
-});
+// A local-user preference kept as one JSON object in its own file under `%APPDATA%\ArcRho\prefs`,
+// read and written whole. Each preference has its own file because one window saving would
+// otherwise erase what another window had just stored in a shared one.
+function preferencesFileHandlers(getPath, label) {
+  return {
+    async load() {
+      const filePath = getPath();
+      try {
+        if (!fs.existsSync(filePath)) return { ok: true, exists: false, preferences: {} };
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error(`${label} preferences must contain a JSON object.`);
+        }
+        return { ok: true, exists: true, preferences: parsed };
+      } catch (err) {
+        return { ok: false, exists: false, preferences: {}, error: String(err?.message || err || `Could not load ${label} preferences.`) };
+      }
+    },
+    async save(_event, payload) {
+      const preferences = payload?.preferences;
+      if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
+        return { ok: false, error: `Invalid ${label} preferences payload.` };
+      }
+      const filePath = getPath();
+      try {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const stored = { ...preferences, updatedAt: new Date().toISOString() };
+        const tmpPath = `${filePath}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
+        fs.renameSync(tmpPath, filePath);
+        return { ok: true, path: filePath, preferences: stored };
+      } catch (err) {
+        return { ok: false, error: String(err?.message || err || `Could not save ${label} preferences.`) };
+      }
+    },
+  };
+}
 
-ipcMain.handle("home-folders-preferences-save", async (_event, payload) => {
-  const preferences = payload?.preferences;
-  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
-    return { ok: false, error: "Invalid Home folder preferences payload." };
-  }
-  const filePath = getHomeFoldersPrefsPath();
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const stored = {
-      ...preferences,
-      updatedAt: new Date().toISOString(),
-    };
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
-    fs.renameSync(tmpPath, filePath);
-    return { ok: true, path: filePath, preferences: stored };
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Could not save Home folder preferences.") };
-  }
-});
+const homeFolderPreferences = preferencesFileHandlers(getHomeFoldersPrefsPath, "Home folder");
+ipcMain.handle("home-folders-preferences-load", homeFolderPreferences.load);
+ipcMain.handle("home-folders-preferences-save", homeFolderPreferences.save);
 
-ipcMain.handle("macro-preferences-load", async () => {
-  const filePath = getMacroPrefsPath();
-  try {
-    if (!fs.existsSync(filePath)) return { ok: true, preferences: {} };
-    return { ok: true, preferences: JSON.parse(fs.readFileSync(filePath, "utf8")) };
-  } catch (err) {
-    return { ok: false, preferences: {}, error: String(err?.message || err || "Could not load macro preferences.") };
-  }
-});
+const macroPreferences = preferencesFileHandlers(getMacroPrefsPath, "macro");
+ipcMain.handle("macro-preferences-load", macroPreferences.load);
+ipcMain.handle("macro-preferences-save", macroPreferences.save);
 
-ipcMain.handle("macro-preferences-save", async (_event, payload) => {
-  const preferences = payload?.preferences;
-  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
-    return { ok: false, error: "Invalid macro preferences payload." };
-  }
-  const filePath = getMacroPrefsPath();
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const stored = { ...preferences, updatedAt: new Date().toISOString() };
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
-    fs.renameSync(tmpPath, filePath);
-    return { ok: true, path: filePath, preferences: stored };
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Could not save macro preferences.") };
-  }
-});
+const flightDeckPreferences = preferencesFileHandlers(getFlightDeckPrefsPath, "Flight Deck");
+ipcMain.handle("flight-deck-preferences-load", flightDeckPreferences.load);
+ipcMain.handle("flight-deck-preferences-save", flightDeckPreferences.save);
 
-// The Flight Deck keeps its own file rather than sharing macro_prefs.json: both are written
-// whole, so one window saving would otherwise erase what the other had just stored.
-ipcMain.handle("flight-deck-preferences-load", async () => {
-  const filePath = getFlightDeckPrefsPath();
-  try {
-    if (!fs.existsSync(filePath)) return { ok: true, exists: false, preferences: {} };
-    return { ok: true, exists: true, preferences: JSON.parse(fs.readFileSync(filePath, "utf8")) };
-  } catch (err) {
-    return { ok: false, exists: false, preferences: {}, error: String(err?.message || err || "Could not load Flight Deck preferences.") };
-  }
-});
-
-ipcMain.handle("flight-deck-preferences-save", async (_event, payload) => {
-  const preferences = payload?.preferences;
-  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
-    return { ok: false, error: "Invalid Flight Deck preferences payload." };
-  }
-  const filePath = getFlightDeckPrefsPath();
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const stored = { ...preferences, updatedAt: new Date().toISOString() };
-    const tmpPath = `${filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(stored, null, 2), "utf8");
-    fs.renameSync(tmpPath, filePath);
-    return { ok: true, path: filePath, preferences: stored };
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err || "Could not save Flight Deck preferences.") };
-  }
-});
+// The notes panel size is a file rather than browser storage: File > Restart and Clear Cache
+// & Reload clear that storage, and a fallback backend port moves the app to another origin.
+const notesPanelPreferences = preferencesFileHandlers(getNotesPanelPrefsPath, "notes panel");
+ipcMain.handle("notes-panel-preferences-load", notesPanelPreferences.load);
+ipcMain.handle("notes-panel-preferences-save", notesPanelPreferences.save);
 
 ipcMain.handle("scripting-last-notebook-load", async () => {
   const filePath = getScriptingNotebookPrefsPath();

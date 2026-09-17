@@ -259,8 +259,8 @@ test("shared Notes remembers its font size and panel size and marks the editing 
   assert.match(notesSource, /fontSize:\s*readStoredNotesFontSize\(windowObject\)/u);
   assert.match(notesStyles, /\.arNotesTab\.is-editing \.arNotesTabInput,/u);
   assert.match(notesStyles, /box-shadow:\s*inset 0 0 0 2px/u);
-  assert.match(notesSource, /localStorage\?\.getItem\(NOTES_PANEL_SIZE_STORAGE_KEY\)/u);
-  assert.match(notesSource, /localStorage\?\.setItem\(NOTES_PANEL_SIZE_STORAGE_KEY/u);
+  assert.match(notesSource, /\?\.loadNotesPanelPreferences;/u);
+  assert.match(notesSource, /\?\.saveNotesPanelPreferences;/u);
   assert.match(notesSource, /restoreNotesPanelSize\(\);/u);
   assert.match(notesSource, /scheduleNotesPanelSizeSave\(\);/u);
 });

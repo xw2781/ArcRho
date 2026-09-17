@@ -23,11 +23,15 @@ const NOTES_FONT_SIZE_STORAGE_KEY = "arcrho.notes.font-size";
 const DEFAULT_NOTES_FONT_SIZE = 13;
 const MIN_NOTES_FONT_SIZE = 8;
 const MAX_NOTES_FONT_SIZE = 48;
-// The panel size the user dragged the note to, remembered the same way.
-const NOTES_PANEL_SIZE_STORAGE_KEY = "arcrho.notes.panel-size";
+// The panel size the user dragged the note to, remembered for every Notes tab
+// in a preference file the desktop host keeps: File > Restart clears browser
+// storage, and a fallback backend port moves the app to another origin.
 const MIN_NOTES_PANEL_SIZE_PX = 160;
 const MAX_NOTES_PANEL_SIZE_PX = 4000;
 const NOTES_PANEL_SIZE_SAVE_DELAY_MS = 200;
+// A drag that ends this close to the width the host had clamped the panel to
+// was a height adjustment with sideways drift, not a narrower choice.
+const NOTES_PANEL_CLAMP_TOLERANCE_PX = 8;
 const AUTO_CLOSE_PAIRS = { "{": "}", "(": ")" };
 const MOUNTED_NOTES_TABS = new WeakMap();
 
@@ -351,18 +355,34 @@ function writeStoredNotesFontSize(windowObject, fontSize) {
   }
 }
 
+/** The desktop host bridge; a nested page reaches it through its top window. */
+function notesHostApi(windowObject) {
+  try {
+    return windowObject?.ADAHost || windowObject?.top?.ADAHost || null;
+  } catch {
+    return null;
+  }
+}
+
+/** A stored panel dimension, or 0 for one the grip never set. */
+function notesPanelDimension(value) {
+  const number = Math.round(Number(value) || 0);
+  if (number <= 0) return 0;
+  return Math.min(MAX_NOTES_PANEL_SIZE_PX, Math.max(MIN_NOTES_PANEL_SIZE_PX, number));
+}
+
 /**
  * The remembered panel size, or null when none is stored. Only a drag of the
  * resize grip is remembered: the browser writes the dragged width and height
  * to the inline style, while a window resize leaves the style alone.
  */
-function readStoredNotesPanelSize(windowObject) {
+async function readStoredNotesPanelSize(windowObject) {
+  const load = notesHostApi(windowObject)?.loadNotesPanelPreferences;
+  if (typeof load !== "function") return null;
   try {
-    const raw = windowObject?.localStorage?.getItem(NOTES_PANEL_SIZE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const width = clampInteger(parsed?.width, MIN_NOTES_PANEL_SIZE_PX, MAX_NOTES_PANEL_SIZE_PX, 0);
-    const height = clampInteger(parsed?.height, MIN_NOTES_PANEL_SIZE_PX, MAX_NOTES_PANEL_SIZE_PX, 0);
+    const stored = (await load())?.preferences;
+    const width = notesPanelDimension(stored?.width);
+    const height = notesPanelDimension(stored?.height);
     if (!width && !height) return null;
     return { width, height };
   } catch {
@@ -371,11 +391,11 @@ function readStoredNotesPanelSize(windowObject) {
 }
 
 function writeStoredNotesPanelSize(windowObject, size) {
-  try {
-    windowObject?.localStorage?.setItem(NOTES_PANEL_SIZE_STORAGE_KEY, JSON.stringify(size));
-  } catch {
-    // A blocked or full storage only costs the panel its remembered size.
-  }
+  const save = notesHostApi(windowObject)?.saveNotesPanelPreferences;
+  if (typeof save !== "function") return;
+  Promise.resolve(save(size)).catch(() => {
+    // A host that cannot write only costs the panel its remembered size.
+  });
 }
 
 function rgbStringToHex(value) {
@@ -521,7 +541,13 @@ export function mountNotesTab({
   let flushTimer = null;
   let panelSizeSaveTimer = null;
   let resizeObserver = null;
+  // The inline size the panel was last set to, the remembered width behind
+  // it, the width the host last rendered, and the rendered width the current
+  // drag started from, so a drag can tell a clamped box from a chosen one.
   let panelSizeStyle = { width: "", height: "" };
+  let preferredPanelWidth = 0;
+  let renderedPanelWidth = 0;
+  let dragStartPanelWidth = 0;
   // Where the mouse went down on the rendered view; a release without a drag
   // enters editing, a drag leaves the rendered text selected for copying.
   let decorPress = null;
@@ -548,36 +574,58 @@ export function mountNotesTab({
   };
 
   /**
+   * Stores the size a drag ended at. The browser sizes a drag from the box it
+   * rendered, so while the host clamps the panel narrower than its remembered
+   * width every drag starts at that clamped width. A drag that ends there — a
+   * height adjustment with sideways drift, or a pull past the edge — keeps the
+   * remembered width, which a wider window shows again.
+   */
+  const saveDraggedNotesPanelSize = () => {
+    const width = Math.round(Number.parseFloat(panelSizeStyle.width) || 0);
+    const height = Math.round(Number.parseFloat(panelSizeStyle.height) || 0);
+    const clamped = dragStartPanelWidth > 0 && dragStartPanelWidth < preferredPanelWidth;
+    if (clamped && width >= dragStartPanelWidth - NOTES_PANEL_CLAMP_TOLERANCE_PX) {
+      inputWrap.style.width = String(preferredPanelWidth) + "px";
+      panelSizeStyle = { ...panelSizeStyle, width: inputWrap.style.width };
+    } else {
+      preferredPanelWidth = width;
+    }
+    writeStoredNotesPanelSize(windowObject, { width: preferredPanelWidth, height });
+  };
+
+  /**
    * Remembers the size the grip was dragged to. The inline width and height
    * are the browser's own record of that drag, so an empty pair means the
    * panel is still at its stylesheet size and nothing is stored.
    */
   const scheduleNotesPanelSizeSave = () => {
     if (destroyed) return;
+    const renderedBefore = renderedPanelWidth;
+    renderedPanelWidth = inputWrap.offsetWidth || 0;
     const { width, height } = inputWrap.style;
     if (!width && !height) return;
     // Restoring, hiding, or constraining a tab can resize its rendered box
     // without the user dragging it. Only changed inline dimensions are a drag.
     if (width === panelSizeStyle.width && height === panelSizeStyle.height) return;
+    if (panelSizeSaveTimer === null) dragStartPanelWidth = renderedBefore;
     panelSizeStyle = { width, height };
     clearPanelSizeSaveTimer();
     panelSizeSaveTimer = windowObject.setTimeout(() => {
       panelSizeSaveTimer = null;
       if (destroyed) return;
-      writeStoredNotesPanelSize(windowObject, {
-        width: Math.round(Number.parseFloat(width) || 0),
-        height: Math.round(Number.parseFloat(height) || 0),
-      });
+      saveDraggedNotesPanelSize();
     }, NOTES_PANEL_SIZE_SAVE_DELAY_MS);
   };
 
-  const restoreNotesPanelSize = () => {
-    const stored = readStoredNotesPanelSize(windowObject);
-    if (!stored) return;
+  const restoreNotesPanelSize = async () => {
+    const stored = await readStoredNotesPanelSize(windowObject);
+    // A drag that beat the host's answer is the newer choice.
+    if (destroyed || !stored || panelSizeStyle.width || panelSizeStyle.height) return;
     // `max-width: 100%` keeps a panel wider than its host from overflowing.
     if (stored.width) inputWrap.style.width = String(stored.width) + "px";
     if (stored.height) inputWrap.style.height = String(stored.height) + "px";
     panelSizeStyle = { width: inputWrap.style.width, height: inputWrap.style.height };
+    preferredPanelWidth = stored.width;
   };
 
   const setPlainTextMode = (enabled) => {
@@ -1535,7 +1583,7 @@ export function mountNotesTab({
   applyTextStyle(getDefaultTextStyle());
   renderDecor();
   setPlainTextMode(false);
-  restoreNotesPanelSize();
+  void restoreNotesPanelSize();
   syncToolbarWidth();
 
   if (typeof windowObject.ResizeObserver === "function") {

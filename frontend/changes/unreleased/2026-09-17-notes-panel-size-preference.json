@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "notes",
+  "audience": "user",
+  "summary": "Notes panels keep their dragged size across restarts and window sizes instead of sometimes opening at the minimum width.",
+  "details": [
+    "The size is now a desktop preference, so File > Restart, Clear Cache & Reload, and a fallback app port no longer forget it.",
+    "Adjusting only the height no longer resets the width to the minimum, and a height adjustment in a window too narrow for the panel keeps the wider width for when the window is maximized."
+  ]
+}
