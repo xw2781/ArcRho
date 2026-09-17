@@ -1,13 +1,51 @@
 # ArcRho Excel Add-in
 
 `ArcRho.xlam` is loaded from the ArcRho Server share, so every user runs the
-version that is on the share. Since add-in 2.6.0 it reads no project data from
-that share at all: every worksheet function asks the ArcRho Server over HTTP,
-and the server works out where a dataset lives, who is asking, and how a coarser
-shape is built. What a PC needs in order for that to work, and what each failure
-message means, is below.
+version that is on the share. Version 3.0.0 reads saved ArcRho results from the
+workbook until someone explicitly refreshes them. A refresh asks the ArcRho
+Server over HTTP; no worksheet function reads project data from the share.
 
 The VBA source of record is [`src_vba/`](src_vba); the `.xlam` is built from it.
+
+## Saved workbook results
+
+Use **Refresh Worksheet** or **Refresh Workbook** to fetch current results,
+then save the workbook. Its hidden `_ArcRhoCache` sheet holds one result array
+per distinct request, including headers and project settings, with the snapshot
+format and refresh time. Existing worksheet formulas stay in place.
+
+Another user can open the saved workbook and read the same results without
+dataset requests, source freshness checks, or Engine calculations. Ordinary
+Excel recalculation uses that workbook's snapshot; other spreadsheet formulas
+continue to calculate normally. A new request missing from the snapshot asks
+the user to refresh. Workbooks created before 3.0.0 need one successful refresh
+and save to acquire a snapshot.
+
+Repeated requests share one fetched result during refresh. A failed or cancelled
+refresh preserves the previous snapshot. Refresh Worksheet updates that sheet's
+requests while retaining saved requests used elsewhere in the workbook. Save
+the workbook after refreshing to share the new values. Snapshot data contains
+no credentials or raw source tables.
+
+## Server refresh policy
+
+- A dataset with a sidecar is read as published from the CSV named by the
+  sidecar. Excel never regenerates it or rewrites its metadata. Manual/input
+  datasets support coarser periods in memory with the same cumulative/calendar
+  mode. Other outputs require their published shape, because aggregating a
+  calculated ratio can change its meaning. A missing publication or an
+  unsupported shape must be refreshed or corrected in the frontend.
+- A generated request without a sidecar reuses a matching technical cache while
+  its source-table identity and processing configuration remain unchanged.
+  Otherwise the server regenerates it without creating a permanent sidecar.
+- Temporary calculated requests evaluate their formulas from published
+  permanent inputs and current temporary inputs without publishing datasets.
+- A propagation job covering the class asks the refresh to retry when the job
+  has finished. Published values are the last successful publication; Excel
+  does not repair a failed propagation job.
+
+The old **always refresh** / `removeData` setting has been removed. Refresh
+commands follow the server policy for every dataset.
 
 ## What this PC needs
 
@@ -15,7 +53,8 @@ The VBA source of record is [`src_vba/`](src_vba); the `.xlam` is built from it.
   library files listed at the end still come from it. Project data does not.
 - **A credential for the ArcRho Server**, at
   `%APPDATA%\ArcRho\arcrho_gateway.json`. The add-in installs one for itself the
-  first time it opens, so nobody sets a PC up by hand.
+  first time a refresh needs server access, so reading a saved workbook needs
+  no enrollment.
 
 ## The credential
 
@@ -26,22 +65,21 @@ file under their own Windows account can add an entry to it, and that is how the
 server knows who is asking: the share is the authentication, and the Gateway
 itself hands nothing out to a caller that can only reach its port.
 
-**It installs itself the first time Excel opens.** When the add-in loads and
+**It installs itself when a refresh first needs access.** When a refresh starts and
 finds no credential file, it runs `apps\ArcRho Credential\ArcRho Credential.exe`
 from the share, hidden, and waits for it, with
 `Setting this PC up to read ArcRho data ...` in the loading window. The whole
-enrollment takes eleven to fourteen seconds and is paid once on a PC that has
-never had a credential; afterwards the first formula of that same session
-already has it.
+enrollment is paid once on a PC that has never had a credential. Opening and
+recalculating a saved snapshot does not run the helper.
 
 Three things about that first run are deliberate:
 
 - It is tried **once per Excel session**. A PC away from the office pays one
-  short failure at startup rather than one per launch, and never one per formula.
+  short failure when refreshing, and never one per formula.
 - It is skipped without a word when **the share cannot be reached**.
 - A credential file that says `"enabled": false` is a **deliberate opt-out** and
-  is left exactly as it is. Formulas then show the "not set up" line below, which
-  is the intended outcome, not a fault.
+  is left exactly as it is. Refresh reports that the PC is not configured;
+  previously saved values remain available.
 
 **On the rare PC where the first run does not work**, run the helper by hand from
 a command prompt, handing it the workspace folder:
@@ -54,7 +92,7 @@ It prints one line and exits non-zero when it installed nothing:
 
 | Line | What it means |
 | :--- | :--- |
-| `ArcRho credential installed: <path>` | Done. Restart Excel and formulas will work. |
+| `ArcRho credential installed: <path>` | Done. Restart Excel, then refresh the workbook. |
 | `ArcRho credential already present: <path>` | A credential file is already here and was left alone, whatever it says. |
 | `ArcRho Server has no Gateway address for clients to use.` | The server is not yet configured to be reached by clients. Ask the ArcRho team. |
 | `ArcRho credential not installed: <reason>` | The share or the Gateway could not be reached, or the registry could not be written. The reason is Windows' own. Nothing was written, so it is safe to try again. |
@@ -79,26 +117,24 @@ signing half alone, without Excel and without sending anything.
 
 ## What each failure message means
 
-### In a cell, in place of the figures
+### While refreshing
+
+Refresh failures appear in Excel's status bar and preserve the previous
+snapshot. A formula absent from the snapshot displays
+`(ArcRho: Refresh Worksheet or Refresh Workbook to load saved data.)`.
 
 | Message | Cause and what to do |
 | :--- | :--- |
-| `(this PC is not set up to read ArcRho data. Ask the ArcRho team to give you access, then restart Excel.)` | No usable credential on this PC: the first-run install did not happen, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
-| `(ArcRho is not ready to answer this yet. Ask the ArcRho team to update the ArcRho Server.)` | The server this PC reaches is older than the add-in and does not serve dataset figures over HTTP. The server has to be updated. |
+| `This PC is not set up to refresh ArcRho data.` | No usable credential on this PC: enrollment did not succeed, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
+| `Ask the ArcRho team to update the ArcRho Server.` | The server this PC reaches does not serve dataset figures over HTTP. The server has to be updated. |
 | `(ArcRho Server not reached: <reason>)` | The request never arrived. The reason is Windows' own — a timeout, a refused connection, no network. `no answer` means the server closed the connection without a reply. |
 | `(ArcRho Server <status>: <message>)` | The server answered and refused. The message is the server's own; the status says what kind of refusal it was. |
 | `(ArcRho Server sent an answer this add-in could not read.)` | The reply was not the JSON the add-in expects, which usually means something other than the ArcRho Server answered on that address. |
 | `(ArcRho Server answered without the dataset's figures.)` | The server accepted the request and reported success but sent no figures. |
 | `ArcRho error <number>: <description>` | The add-in itself failed inside Excel, before or after the server was involved. |
 
-A failure the server itself reports — a dataset that does not exist, a reserving
-class that cannot be read, a calculation that failed — arrives as the server's
-own sentence in brackets, with no wording added by the add-in.
-
-`This PC has no ArcRho Gateway credential.` is the reason text the add-in's own
-client returns when there is nothing to sign with; it reaches a cell only as the
-tail of the "not reached" line above, because the "not set up to read ArcRho
-data" line is shown first.
+A failure the server itself reports includes its reason, such as a missing
+publication or a class currently being refreshed by the frontend.
 
 ### In the Select Datasets window
 
@@ -124,22 +160,28 @@ still opened directly, so a PC that cannot reach the share loses them:
 
 ## The recorded checks
 
-There is no automated harness for the add-in's VBA, so each behaviour that
-cannot be tested in Python has a manual check kept beside the code, with the run
-that was recorded against it:
+Snapshot behavior is checked in isolated Excel sessions. The checks below
+describe the expected results and retain earlier transport measurements:
+
+Run `py -3.10 -B excel-addin/tools/verify_workbook_snapshots.py` on a Windows
+PC with Excel, pywin32, and trusted VBA project access. The harness uses
+synthetic Gateway responses and disposable workbooks under repository `test/`.
+After building, `py -3.10 -B excel-addin/tools/verify_built_addin.py
+excel-addin/beta/ARCRHO_BETA.xlam` checks the compiled add-in against its source.
 
 | Check | What it proves |
 | :--- | :--- |
-| [check_dataset_cache.md](tools/check_dataset_cache.md) | A dataset several formulas ask for is fetched once per recalculation. |
+| [check_dataset_cache.md](tools/check_dataset_cache.md) | Saved snapshots reopen without server access and explicit refresh fetches each distinct request once. |
 | [check_gateway_signing.md](tools/check_gateway_signing.md) | The add-in signs a request the way the server verifies it, and this PC can reach the server. |
 | [check_gateway_transport.md](tools/check_gateway_transport.md) | Every worksheet function returns the same figures from the server as it did from the share, and how long each takes. |
-| [check_first_run_credential.md](tools/check_first_run_credential.md) | A PC with no credential gives itself one when Excel opens, an opt-out is left alone, and a dead share fails quickly. |
+| [check_first_run_credential.md](tools/check_first_run_credential.md) | A PC with no credential gives itself one when refreshing, an opt-out is left alone, and a dead share fails quickly. |
 
 ## Building and releasing
 
 [`agent-instructions/excel-addin-build-and-release.md`](../agent-instructions/excel-addin-build-and-release.md)
 owns the procedure. `tools/build_xlam.ps1` builds the beta add-in;
 `tools/release_xlam.ps1` publishes `ArcRho.xlam` to the share, where every user
-picks it up on the next Excel launch. The release can only be run from the clone
-on the ArcRho Server, because the beta workbook and the VBA signature files exist
-only there.
+picks it up on the next Excel launch. The scripts require the existing beta
+workbook and signature files. When invoking the required server-clone scripts
+from another working clone, pass that clone's current `SourceDir` and
+`CustomUIPath` explicitly so the build includes the changes being released.

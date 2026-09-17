@@ -206,61 +206,6 @@ Private Function IsNonEmptyValue(ByVal v As Variant) As Boolean
     End If
 End Function
 
-' Re-enter one block of ArcRho formulas and calculate it, which is what sends
-' its request to the server. ref like:  "Sheet Name!$B$4:$C$11"
-'
-' What this pass already fetched is deliberately kept: a block asking for a
-' dataset an earlier block already brought back is answered from memory, so a
-' sheet holding twenty blocks over one triangle costs one request.
-Public Sub RefreshArcRhoBlock(ByVal ref As String)
-    Dim parts() As String
-    Dim shName As String, addr As String
-    Dim ws As Worksheet
-    Dim rng As Range, topCell As Range
-
-    parts = Split(ref, "!")
-    If UBound(parts) <> 1 Then Exit Sub
-    
-    shName = parts(0)
-    addr = parts(1)
-    
-    On Error Resume Next
-    Set ws = ActiveWorkbook.Worksheets(shName)
-    If ws Is Nothing Then Exit Sub
-    
-    ' ws.Activate
-    
-    Set rng = ws.Range(addr)
-    If rng Is Nothing Then Exit Sub
-    
-    Set topCell = rng.Cells(1, 1)   ' works for single / CSE / spill
-    'topCell.Select
-    
-    ' 1) Legacy CSE array: re-enter entire array
-    If topCell.HasArray Then
-        topCell.CurrentArray.FormulaArray = topCell.CurrentArray.FormulaArray
-
-    ' 2) Dynamic spill or normal single formula:
-    '    re-enter only the formula cell
-    Else
-        On Error Resume Next
-        topCell.Formula2 = topCell.Formula2   ' Excel 365+
-        If Err.Number <> 0 Then
-            Err.Clear
-            topCell.formula = topCell.formula ' fallback for older Excel
-        End If
-        On Error GoTo 0
-    End If
-
-    ' Re-entering a formula calculates it straight away while the workbook is
-    ' automatic, and only marks it dirty while it is manual. Calculating the
-    ' block here covers both, so one step of the progress bar always means one
-    ' block that has actually been asked for and answered.
-    On Error Resume Next
-    rng.Calculate
-    On Error GoTo 0
-End Sub
-
 Public Function GetParamValue(ByVal fullStr As String, ByVal paramName As String) As String
     Dim parts() As String
     Dim i As Long, pair As String, p As Long

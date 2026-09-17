@@ -3,3 +3,7 @@
 # must always be checked out with CRLF.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Excel's VBA importer requires CRLF in exported class and form headers.
+excel-addin/src_vba/*.cls text eol=crlf
+excel-addin/src_vba/*.frm text eol=crlf

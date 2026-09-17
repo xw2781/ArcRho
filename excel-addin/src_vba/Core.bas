@@ -2,12 +2,11 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "2.6.0"
+Public Const ARCRHO_VERSION As String = "3.0.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
 Public configPath As String
-Public removeData As Boolean
 Public disable_ufLoading As Boolean
 Public teamProfile As String
 Public debugMode As Boolean
@@ -21,13 +20,6 @@ Public maxWaitTime As Single
 Public errCount As Integer
 Public lastRequestInfo As String
 
-' True only while Calculate Worksheet or Calculate Workbook is running. Those
-' two buttons exist to bring a workbook up to date with the project, so every
-' dataset they reach is produced again rather than read from the copy already
-' sitting in the reserving class. Ordinary recalculation leaves it False and
-' keeps reading what is there.
-Public rebuildDatasets As Boolean
-
 Public processedCells As New Collection
 Public processedArrays As New Collection
 Public cancelUpdate As Boolean
@@ -36,12 +28,6 @@ Public disableWatcher As Boolean
 
 Public triangle_tool_row As Long
 Public triangle_tool_col As Long
-
-' One recalculation pass fetches a dataset once. The dictionary is keyed by the
-' request text GetDataset receives and holds the array that request returned, so
-' every later formula asking for the same dataset in the same pass is answered
-' from memory. It is dropped at each pass boundary.
-Private datasetResults As Object
 
 ' Counts the dataset requests formulas make and the reads GetDataset actually
 ' performs, for the check in excel-addin\tools\check_dataset_cache.md.
@@ -97,145 +83,29 @@ Public Function ProductPath(ByVal relativePath As String) As String
     ProductPath = ProductRootPath() & "\" & relativePath
 End Function
 
-Public Sub ClearDatasetResultCache()
-    Set datasetResults = Nothing
-End Sub
-
-' Does this request ask the server to produce the dataset again rather than
-' answer from the copy already in the reserving class? Calculate Worksheet and
-' Calculate Workbook always do, and so does "always refresh". What being
-' produced again means is the server's decision, and it differs by dataset: a
-' generated one is rebuilt from the project's source table, a calculated one is
-' worked out again from its inputs, and a hand-entered one is answered exactly
-' as it stands, because there is nothing behind it to produce.
-Private Function RebuildRequested() As Boolean
-    RebuildRequested = rebuildDatasets Or removeData
-End Function
-
-' Is a dataset worth keeping for the rest of this pass? Calculate Worksheet and
-' Calculate Workbook produce each dataset once and then answer every other
-' formula asking for the same one from memory, so a sheet holding twenty
-' formulas over one triangle costs one rebuild rather than twenty. "Always
-' refresh" on its own means the opposite: every formula reads the dataset again.
-Private Function RememberDatasets() As Boolean
-    RememberDatasets = rebuildDatasets Or Not removeData
-End Function
-
-Private Sub StoreDatasetResult(ByVal requestText As String, ByRef values As Variant)
-    ' Nothing is remembered when every formula is meant to read the dataset
-    ' again. Only a real dataset array is worth keeping; a message such as
-    ' "request time out" must be retried by the next formula.
-    If Not RememberDatasets() Then Exit Sub
-    If Not IsArray(values) Then Exit Sub
-    If datasetResults Is Nothing Then Set datasetResults = CreateObject("Scripting.Dictionary")
-    datasetResults(requestText) = values
-End Sub
-
-Private Function TryDatasetResult(ByVal requestText As String, ByRef values As Variant) As Boolean
-    If datasetResults Is Nothing Then Exit Function
-    If Not datasetResults.Exists(requestText) Then Exit Function
-    values = datasetResults(requestText)
-    TryDatasetResult = True
-End Function
-
 Private Sub InitConfigPaths()
     configDir = Environ$("LOCALAPPDATA") & "\ArcRho"
     configPath = configDir & "\config.txt"
 End Sub
 
-Public Function GetDataset(funcArgs As String)
-' +---------------+
-' | Main Function |
-' +---------------+
-' Every worksheet function funnels through here, and the ArcRho Server answers
-' every one of them. One signed call carries only the logical pairs the formula
-' asked with; the server owns where the dataset lives, who is asking, and how a
-' coarser shape is built, so nothing about a path is ever sent or received.
-    Dim datasetValues As Variant
-    Dim refusal As String
-    On Error GoTo ErrHandler
-
-    If skipDataProcess Then
-        Exit Function
-    End If
-
+Public Function GetDataset(funcArgs As String) As Variant
+    Dim book As Workbook, values As Variant, requestKey As String
+    On Error GoTo Failed
+    If skipDataProcess Then Exit Function
+    Set book = CallerWorkbook()
+    requestKey = SnapshotRequestKey(funcArgs)
     datasetRequestCount = datasetRequestCount + 1
-
-    ' --- Case 0: this pass already fetched the same dataset ---
-    If Not RememberDatasets() Then
-        ClearDatasetResultCache
-    ElseIf TryDatasetResult(funcArgs, datasetValues) Then
+    If DatasetRefreshInScope(book) Then
+        GetDataset = RefreshDataset(funcArgs, requestKey)
+    ElseIf SnapshotRead(book, requestKey, values) Then
         datasetHitCount = datasetHitCount + 1
-        GetDataset = datasetValues
-        errCount = 0
-        GoTo CleanExit
-    End If
-
-    ' --- Case 1: this PC cannot ask the server at all ---
-    refusal = DatasetGatewayRefusal()
-    If Len(refusal) > 0 Then
-        GetDataset = refusal
-        GoTo CleanExit
-    End If
-
-    ' --- Case 2: ask the server for the figures ---
-    ufLoading.UpdateText "Updating [" & DatasetRequestLabel(funcArgs) & "]"
-    datasetFetchCount = datasetFetchCount + 1
-    datasetValues = GetDatasetFromGateway(funcArgs)
-    If IsArray(datasetValues) Then
-        StoreDatasetResult funcArgs, datasetValues
-        errCount = 0
-    End If
-    GetDataset = datasetValues
-
-CleanExit:
-    Unload ufLoading
-    ufLoading.Reset
-    Exit Function
-
-ErrHandler:
-    Debug.Print "GetDataset error: "; Err.Number; Err.Description
-    GetDataset = "ArcRho error " & Err.Number & ": " & Err.Description
-    Resume CleanExit
-
-End Function
-
-
-' Empty when this PC can ask the ArcRho Server for project data. Otherwise the
-' one line a cell shows in place of its figures, saying what to do about it
-' rather than naming a file, a folder or a server.
-Private Function DatasetGatewayRefusal() As String
-    If Not GatewayIsConfigured() Then
-        DatasetGatewayRefusal = "(this PC is not set up to read ArcRho data. " & _
-            "Ask the ArcRho team to give you access, then restart Excel.)"
-        Exit Function
-    End If
-    If Not GatewayServesDatasetCsv() Then
-        DatasetGatewayRefusal = "(ArcRho is not ready to answer this yet. " & _
-            "Ask the ArcRho team to update the ArcRho Server.)"
-    End If
-End Function
-
-' What the loading window names while the server answers.
-Private Function DatasetRequestLabel(ByVal funcArgs As String) As String
-    DatasetRequestLabel = GetParamValue(funcArgs, "DatasetName")
-    If Len(DatasetRequestLabel) > 0 Then Exit Function
-    DatasetRequestLabel = GetParamValue(funcArgs, "Function")
-End Function
-
-' The dataset as the server sees it, or the reason it could not answer. The
-' server's own message is passed through, so a user is never told a file is
-' missing when the real cause was a refusal or an unreachable server.
-Private Function GetDatasetFromGateway(ByVal funcArgs As String)
-    Dim csvText As String
-    Dim message As String
-
-    If GatewayDatasetCsv(funcArgs, RebuildRequested(), csvText, message) Then
-        GetDatasetFromGateway = DataArrayFromText(csvText)
+        GetDataset = values
     Else
-        Debug.Print "[error] - ArcRho Server: "; message
-        GetDatasetFromGateway = "(" & message & ")"
+        GetDataset = SNAPSHOT_REFRESH_REQUIRED
     End If
+    Exit Function
+Failed:
+    GetDataset = "(ArcRho: " & Err.Description & ")"
 End Function
 
 Public Sub LoadConfig()
@@ -285,7 +155,6 @@ Public Sub LoadConfig()
         f = FreeFile
         Open configPath For Output As #f
         Print #f, "version = " & ARCRHO_VERSION
-        Print #f, "removeData = False"
         Print #f, "disable_ufLoading = False"
         Print #f, "teamProfile = Default"
         Print #f, "debugMode = False"
@@ -310,19 +179,16 @@ Public Sub LoadConfig()
                 Case "version"
                     ' ignore, already handled
 
-                Case "removedata"
-                    removeData = CBool(Trim$(parts(1)))
-
-                Case "disable_ufLoading", "disable_ufLoading"
+                Case "disable_ufloading"
                     disable_ufLoading = CBool(Trim$(parts(1)))
 
                 Case "teamprofile"
                     teamProfile = Trim$(parts(1))
 
-                Case "debugMode"
+                Case "debugmode"
                     debugMode = CBool(Trim$(parts(1)))
 
-                Case "disableProgressBar"
+                Case "disableprogressbar"
                     disableProgressBar = CBool(Trim$(parts(1)))
 
             End Select
@@ -377,9 +243,11 @@ End Function
 
 Public Function SetDefaultProject(ByVal ProjectName As String)
     Dim tmpName As String
+    Dim book As Workbook
+    Set book = CallerWorkbook()
     ' SetProjectName
     If ProjectName = "Default" Then
-        tmpName = ActiveWorkbook.Sheets("ResQ Settings").Range("B7").Value
+        tmpName = book.Sheets("ResQ Settings").Range("B7").Value
     Else
         tmpName = ProjectName
     End If

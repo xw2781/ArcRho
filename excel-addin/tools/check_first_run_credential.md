@@ -1,10 +1,10 @@
-# Check: a PC with no access gives itself access when Excel opens
+# Check: a PC with no access enrolls on explicit refresh
 
 A five-minute manual check that the add-in installs this PC's own ArcRho
-Server credential the first time it loads, that a credential deliberately
+Server credential when an explicit refresh first needs it, that a credential deliberately
 turned off is left alone, and that a PC away from the office pays one short
-failure rather than a hang. There is no automated harness for the add-in's
-VBA, so this is the check.
+failure rather than a hang. The snapshot harness substitutes the credential
+helper; these checks exercise real enrollment.
 
 ## What it needs
 
@@ -18,10 +18,9 @@ VBA, so this is the check.
 Excel is driven over COM. Set `DisplayAlerts`, `EnableEvents` and
 `ScreenUpdating` to `False` the moment the application object exists — a modal
 alert from an invisible instance lands on the desktop and blocks the call for
-ever — then turn `EnableEvents` back on for the one line that opens the
-add-in, because the whole point is to let `Workbook_Open` run. Never write a
-formula into a cell that might sit in an array formula: call the function with
-`Application.Run` instead, which returns the same array and touches no sheet.
+ever — keep events disabled while opening the add-in. Opening and recalculating a
+saved snapshot must not provision a credential. Run the explicit ribbon refresh
+for the enrollment check. Never overwrite part of an array formula.
 
 ## The four checks
 
@@ -30,16 +29,17 @@ formula into a cell that might sit in an array formula: call the function with
    hidden, waiting for it — handing it the workspace root as its one argument.
    It must exit 0 with no warning dialog and the credential must be back.
 2. **Excel sets the PC up on its own.** Move the credential aside again, open
-   the beta `.xlam`, and confirm the credential is back with no command run by
-   hand, then ask for a triangle and confirm it returns figures.
+   the beta `.xlam`, and confirm no credential is created while reading saved
+   values. Run Refresh Workbook and confirm the credential is installed and
+   current figures are returned.
 3. **An opt-out is honoured.** Put `{"enabled": false}` in the credential file,
-   open the add-in, and confirm the file is untouched and a formula shows the
-   "not set up to read ArcRho data" line rather than figures.
+   run an explicit refresh, and confirm the file is untouched and refresh reports the
+   "not set up to refresh ArcRho data" message and preserves saved figures.
 4. **A dead share fails quickly.** Time the add-in's own guard — `Dir$` against
    a path on a host that does not exist — and confirm it comes back with an
    error in about a second and raises no dialog.
 
-## Result, 2026-09-12, `L-H2MQ6280FVP`, add-in 2.6.0
+## Historical result before enrollment moved to explicit refresh, 2026-09-12, `L-H2MQ6280FVP`, add-in 2.6.0
 
 Against `NJ_Annual_Prod_202605_Fake`, reserving class
 `HPPREF\HO+DF\NJ\Legacy\HOL`, dataset `Net Loss--Incurred Adjusted***` asked

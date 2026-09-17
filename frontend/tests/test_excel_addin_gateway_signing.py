@@ -1,6 +1,6 @@
 """The Excel add-in's Gateway signing, pinned to the Python contract.
 
-No harness runs VBA, so the add-in carries one fixed request — secret, user,
+These contract tests cannot run VBA, so the add-in carries one fixed request — secret, user,
 timestamp, method, path, body, and the digest and signature they produce — in a
 marked block in ``GatewayClient.bas`` and in the standalone
 ``verify_gateway_signing.vbs``. This test derives those two values from
@@ -30,7 +30,6 @@ from arcrho_engine_calculation_contract import (
     ENGINE_CALCULATION_OPERATION_FIELD,
     ENGINE_CALCULATION_PATH,
     OPERATION_DATASET_CSV,
-    OPERATION_OPTIONS,
     OUTPUT_VARIANT_CANONICAL,
 )
 from arcrho_hosted_save_http_contract import (
@@ -165,11 +164,9 @@ class ExcelAddInGatewayConstantTests(unittest.TestCase):
         self.assertEqual(self.constants["GATEWAY_OUTPUT_VARIANT"], OUTPUT_VARIANT_CANONICAL)
         self.assertEqual(self.constants["GATEWAY_CSV_FIELD"], ENGINE_CALCULATION_CSV_FIELD)
 
-    def test_the_only_option_the_add_in_sends_is_accepted(self) -> None:
-        self.assertIn(
-            self.constants["GATEWAY_FORCE_REFRESH_OPTION"],
-            OPERATION_OPTIONS[OPERATION_DATASET_CSV],
-        )
+    def test_excel_cannot_override_server_dataset_freshness_policy(self) -> None:
+        self.assertNotIn("GATEWAY_FORCE_REFRESH_OPTION", self.constants)
+        self.assertNotIn("force_refresh", read_source(GATEWAY_CLIENT_BAS))
 
 
 if __name__ == "__main__":

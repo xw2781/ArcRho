@@ -24,14 +24,19 @@ Private Sub UserForm_Initialize()
     On Error GoTo 0
     ComboBox2.Value = ProductPath("Team Profile\Actuarial_NJ.xlsm")
     
-    If removeData Then
-        OptionButton1.Value = False
-        OptionButton2.Value = True
-    Else
-        OptionButton1.Value = True
-        OptionButton2.Value = False
-    End If
-    qqq disableProgressBar
+    ' The build preserves the existing form designer, so hide these obsolete
+    ' refresh-policy controls even in an add-in built from an older template.
+    OptionButton1.Visible = False
+    OptionButton2.Visible = False
+    OptionButton1.Parent.Caption = "Saved workbook data"
+    Label1.Caption = "ArcRho uses saved values until you click Refresh. Save after refreshing to share the updated values."
+    Label1.Left = 10
+    Label1.Top = 18
+    Label1.Width = OptionButton1.Parent.Width - 20
+    Label1.Height = 42
+    Label1.WordWrap = True
+    Label1.Visible = True
+    CheckBox7.Visible = False
     If disableProgressBar Then
         CheckBox5.Value = True
     Else
@@ -42,18 +47,6 @@ End Sub
 ' +--------+
 ' | Page 1 |
 ' +--------+
-Private Sub OptionButton1_Click()
-    removeData = False
-    UpdateConfigValue "removeData", "False"
-    Label1.Visible = False
-End Sub
-
-Private Sub OptionButton2_Click()
-    removeData = True
-    UpdateConfigValue "removeData", "True"
-    Label1.Visible = True
-End Sub
-
 Private Sub cmdb2_Click()
     Unload ufSettings
 End Sub

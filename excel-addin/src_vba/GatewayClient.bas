@@ -38,7 +38,6 @@ Private Const GATEWAY_CALCULATION_FUNCTION As String = "ArcRhoEngineCalculation"
 Private Const GATEWAY_CONTRACT_VERSION As String = "1"
 Private Const GATEWAY_OPERATION_DATASET_CSV As String = "dataset_csv"
 Private Const GATEWAY_OUTPUT_VARIANT As String = "canonical"
-Private Const GATEWAY_FORCE_REFRESH_OPTION As String = "force_refresh"
 Private Const GATEWAY_CSV_FIELD As String = "csv_text"
 ' --- end gateway calculation names ---
 
@@ -218,7 +217,7 @@ End Function
 ' a worksheet function already builds; its pairs travel as they are, and the
 ' server derives the dataset's location, the acting user and the shape itself.
 ' Answers True with the CSV text, or False with the reason to show the user.
-Public Function GatewayDatasetCsv(ByVal funcArgs As String, ByVal forceRefresh As Boolean, _
+Public Function GatewayDatasetCsv(ByVal funcArgs As String, _
                                   ByRef outText As String, ByRef outMessage As String) As Boolean
     Dim replyStatus As Long
     Dim replyText As String
@@ -227,7 +226,7 @@ Public Function GatewayDatasetCsv(ByVal funcArgs As String, ByVal forceRefresh A
     outText = ""
     outMessage = ""
     If Not GatewayPost(GATEWAY_ENGINE_CALCULATION_PATH, _
-                       DatasetCalculationBody(funcArgs, forceRefresh), _
+                       DatasetCalculationBody(funcArgs), _
                        DATASET_HTTP_TIMEOUT_SECONDS, replyStatus, replyText) Then
         outMessage = "ArcRho Server not reached: " & OneLine(TextOrNoAnswer(replyText))
         Exit Function
@@ -316,9 +315,9 @@ Private Function DatasetTypesReadBody(ByVal projectName As String) As String
 End Function
 
 ' The request body the calculation contract validates: only the logical pairs
-' the worksheet function asked with, the operation, and the one option the
-' add-in's "always refresh" setting controls.
-Private Function DatasetCalculationBody(ByVal funcArgs As String, ByVal forceRefresh As Boolean) As String
+' the worksheet function asked with and the read operation. The server owns
+' whether a temporary dataset cache is current.
+Private Function DatasetCalculationBody(ByVal funcArgs As String) As String
     Dim body As String
 
     body = "{" & JsonQuote("Function") & ":" & JsonQuote(GATEWAY_CALCULATION_FUNCTION)
@@ -328,8 +327,7 @@ Private Function DatasetCalculationBody(ByVal funcArgs As String, ByVal forceRef
     body = body & "," & JsonQuote("TimeoutSeconds") & ":" & DATASET_WAIT_SECONDS
     body = body & "," & JsonQuote("OutputVariant") & ":" & JsonQuote(GATEWAY_OUTPUT_VARIANT)
     body = body & "," & JsonQuote("Operation") & ":" & JsonQuote(GATEWAY_OPERATION_DATASET_CSV)
-    body = body & "," & JsonQuote("Options") & ":{" & JsonQuote(GATEWAY_FORCE_REFRESH_OPTION) & _
-           ":" & JsonBoolean(forceRefresh) & "}"
+    body = body & "," & JsonQuote("Options") & ":{}"
     body = body & "," & JsonQuote("UserName") & ":" & JsonQuote(gatewayUser)
     body = body & "," & JsonQuote("UserDisplayName") & ":" & JsonQuote("") & "}"
     DatasetCalculationBody = body
@@ -379,13 +377,7 @@ Private Function RequestPairsJson(ByVal funcArgs As String) As String
     RequestPairsJson = pairs
 End Function
 
-Private Function JsonBoolean(ByVal value As Boolean) As String
-    If value Then
-        JsonBoolean = "true"
-    Else
-        JsonBoolean = "false"
-    End If
-End Function
+
 
 ' A token the server logs this request under. Unique within the session, and
 ' made only of the characters the contract accepts.
@@ -503,11 +495,11 @@ Private Sub EnsureGatewayConfig()
 End Sub
 
 ' Give this PC its own access to the ArcRho Server when it has none. Called as
-' the add-in loads and never from a worksheet function, so a formula can only
-' ever find the answer already there.
+' a user explicitly refreshes, never when the add-in loads or a saved workbook
+' calculates. Reading a workbook snapshot needs no server credential.
 '
 ' It is tried once per Excel session: a PC away from the office should pay one
-' short failure at startup, not one per launch, and certainly not one per
+' short failure on refresh, not one per launch, and certainly not one per
 ' formula. A file that is already here is the answer whatever it says, because
 ' a credential turned off is a deliberate choice and not a missing one.
 Public Sub EnsureGatewayCredential()
@@ -525,15 +517,17 @@ Public Sub EnsureGatewayCredential()
     helperPath = ProductPath(CREDENTIAL_HELPER)
     If Len(Dir$(helperPath)) = 0 Then Exit Sub
 
-    ufLoading.UpdateText "Setting this PC up to read ArcRho data ..."
-    ufLoading.Show vbModeless
+    If Not disable_ufLoading Then
+        ufLoading.UpdateText "Setting this PC up to read ArcRho data ..."
+        ufLoading.Show vbModeless
+    End If
     DoEvents
 
     Set shell = CreateObject("WScript.Shell")
     shell.Run """" & helperPath & """ """ & ProductRootPath() & """", 0, True
 
     ' Whatever the helper did, this session has not looked at the credential
-    ' yet, so let the first formula read what is there now.
+    ' yet, so let this refresh read what is there now.
     ClearGatewayConfigCache
 
 CleanExit:

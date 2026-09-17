@@ -13,7 +13,6 @@ Private Sub Workbook_Open()
     disableRequest = False
     disableWaitTime = False
     skipDataProcess = False
-    rebuildDatasets = False
     cancelUpdate = False
     lastRequestInfo = "N"
     errCount = 0
@@ -21,9 +20,8 @@ Private Sub Workbook_Open()
     Set processedCells = New Collection
     Set processedArrays = New Collection
 
-    ' A PC that has never been given access to the ArcRho Server gives itself
-    ' access here, once, before any formula asks for figures.
-    EnsureGatewayCredential
+    ' Saved workbook snapshots can be read without contacting the server.
+    ' Credentials are enrolled only when a user explicitly refreshes.
     
     ' StartPendingWatcher
     

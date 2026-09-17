@@ -261,6 +261,8 @@ try {
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
+    $excel.EnableEvents = $false
+    $excel.ScreenUpdating = $false
 
     $workbook = $excel.Workbooks.Open($targetPathFull)
     $vbProject = $workbook.VBProject

@@ -4,8 +4,8 @@
 			<tab id="aTab" label="ArcRho" insertAfterMso="TabHome">   
         			<group id="Group1" label="Unlimited Remote Access">
           				<button id="G11" label="Connect and Login"  imageMso="ImportMoreMenu"  size="large" onAction="uiSetupConnection2"/>
-          				<button id="G12" label="Calculate Worksheet" imageMso="CalculateSheet"  size="large" onAction="uiRefreshSheet"/>
-          				<button id="G13" label="Calculate Workbook"  imageMso="Calculator"    size="large" onAction="uiRefreshWorkbook"/>
+						<button id="G12" label="Refresh Worksheet" imageMso="CalculateSheet"  size="large" onAction="uiRefreshSheet"/>
+						<button id="G13" label="Refresh Workbook"  imageMso="Calculator"    size="large" onAction="uiRefreshWorkbook"/>
 					</group>
 
 					<group id="Group2" label="Shortcuts">

@@ -1,98 +1,68 @@
-# Check: one dataset is fetched once per recalculation
+# Check: saved workbook snapshots and explicit refresh
 
-A two-minute manual check that a dataset several formulas ask for during one
-recalculation is read once, that a refresh still picks up an edited dataset,
-that the "always refresh" setting still bypasses everything, and that the two
-ribbon buttons ask the server to produce each dataset again while still paying
-for it only once. There is no automated harness for the add-in's VBA, so this is
-the check.
+Version 3.0.0 keeps ArcRho values in the workbook until an explicit refresh.
+Use an isolated Excel process for checks and set DisplayAlerts, EnableEvents,
+and ScreenUpdating to False before opening any workbook. Never close a user's
+existing Excel process.
 
-## What the add-in counts
+Run `py -3.10 -B excel-addin/tools/verify_workbook_snapshots.py` for the
+isolated Excel integration checks. After building, run
+`py -3.10 -B excel-addin/tools/verify_built_addin.py excel-addin/beta/ARCRHO_BETA.xlam`
+to compare every compiled module/form with current source and check the version
+and settings controls. Both commands require Excel and trusted VBA project access.
 
-`Core.bas` keeps three running totals for this check. They are never reset by the
-add-in, so read each one before and after a pass and take the difference.
+## Workbook
 
-| Counter | Meaning |
-| :--- | :--- |
-| `datasetRequestCount` | Dataset requests the worksheet's formulas made. |
-| `datasetHitCount` | Requests answered from the dataset already fetched in this pass. |
-| `datasetFetchCount` | Requests that actually read the dataset's file. |
+Use one array formula and twenty INDEX formulas referring to the same
+ArcRhoTri request, plus a vector, headers, and project settings. Add a second
+sheet with a different dataset and a second workbook with a different default
+project. Use synthetic data in the automated smoke test; live checks may use
+only an authorized project.
 
-Read them in the VBA Immediate window with `?datasetRequestCount`,
-`?datasetHitCount` and `?datasetFetchCount`, and zero them with
-`datasetRequestCount = 0` and the same for the other two.
+## Expected behavior
 
-## The sheet
+1. Before the first refresh, a request absent from the snapshot shows a clear
+   refresh-required message. It sends no server request.
+2. Refresh Workbook fetches each distinct request once. Twenty-one identical
+   triangle calls cost one fetch; later calls in that refresh use memory.
+3. The hidden `_ArcRhoCache` sheet contains the snapshot. It is written after
+   successful calculation, outside the worksheet function.
+4. Save, close Excel, and reopen in a fresh process. All saved ArcRho figures
+   match, with zero dataset fetches. Repeat with server access unavailable.
+5. Ordinary recalculation still uses the saved values, even if the server's
+   published values have changed. Only an explicit refresh updates them.
+6. Refresh Worksheet updates requests on that sheet and retains the saved
+   requests used elsewhere. Refresh Workbook affects the active workbook only.
+7. A failed or cancelled refresh leaves the previous snapshot and figures
+   available, reports the failure, and does not claim success.
+8. A new request after opening asks for refresh; it never silently fetches.
+9. Two open workbooks use their own snapshots and caller-specific default
+   projects even when the other workbook is active.
+10. Round-trip 1x1 values, vectors, arrays, blanks, and header/settings text.
+11. Settings no longer shows the old always-refresh/removeData option.
 
-One array formula and twenty single-cell formulas over the same triangle. The
-single-cell formulas index into the same call so that every formula makes the
-same request; `ArcRhoTriCell` cannot be used here, because it asks for the
-transposed calendar shape rather than the one the array formula asks for.
+## Server checks
 
-```
-A1    =ArcRhoTri("HPPREF\HO+DF\NJ\Legacy\HOL","Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,"NJ_Annual_Prod_202605_Fake",1,1)
-OJ1   =INDEX(ArcRhoTri("HPPREF\HO+DF\NJ\Legacy\HOL","Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,"NJ_Annual_Prod_202605_Fake",1,1),1,1)
-OJ2   ... the same with the row index 2, and so on down to row 20
-```
+- Exact published engine, calculated, input, and method datasets never call
+  the Engine or modify their CSV, sidecar, or index during an Excel refresh.
+- A permanent dataset without a readable publication fails clearly.
+- Input datasets roll up only to compatible coarser periods in the same mode.
+  Generated, calculated, and method outputs refuse unsupported shapes rather
+  than summing non-additive results.
+- A sidecar-less generated cache is reused when source/configuration provenance
+  matches and regenerated when it changes. Failed generation preserves the last
+  successful cache and creates no permanent metadata.
+- Temporary calculations use published permanent dependencies and create no
+  sidecars or index entries.
+- A propagation hold causes a retry response.
 
-That triangle is hand entered, so nothing is asked of the Engine and no request
-file is written while the check runs.
+## Counters
 
-## The passes
+`datasetRequestCount`, `datasetHitCount`, and `datasetFetchCount` remain useful
+for a live run. Read before and after the operation and compare differences.
+A reopen or ordinary recalculation has zero fetches. An explicit refresh has
+one fetch per distinct request, not one per formula cell.
 
-Put Excel in manual calculation, then for each pass: mark the twenty-one formula
-cells dirty, zero the three counters, calculate, and read the counters.
-
-1. **Cold.** In the Immediate window run `ClearDatasetResultCache` first, so the
-   pass starts with nothing remembered.
-2. **Always refresh.** Turn "always refresh" on in the add-in's settings, then
-   repeat.
-3. **Ribbon button.** Turn "always refresh" back off, zero the counters, and
-   press **Calculate Worksheet** instead of calculating by hand. Do the same
-   again with "always refresh" on: the button must behave the same either way,
-   because it already asks for everything to be produced again.
-
-   The window itself is part of what this pass checks. It first counts the
-   formulas on the sheet, and its bar fills as it reads them. It then says
-   `Updating 21 ArcRho range(s) ...` and counts them off one by one, which is
-   the sheet's one array formula plus its twenty single-cell formulas. Cancel
-   must stop it between two ranges rather than at the end.
-
-## What to expect
-
-| Pass | Requests | Hits | Fetches |
-| :--- | :--- | :--- | :--- |
-| Cold | 21 | 20 | 1 |
-| Always refresh | 21 | 0 | 21 |
-| Ribbon button, always refresh off | 21 | 20 | 1 |
-| Ribbon button, always refresh on | 21 | 20 | 1 |
-
-Before the dataset was remembered within a pass, the cold pass read the file
-twenty-one times. The two ribbon buttons drop what is remembered at the start of
-their search, so an edited dataset is still picked up.
-
-The two ribbon rows are the point of the third pass: the button asks the server
-to produce each dataset again, and one fetch rather than twenty-one shows that
-it pays for that once and answers the rest from memory. Watching the fetch count
-is all this sheet can show, because its triangle is hand entered and the server
-answers a hand-entered dataset as it stands. To see a dataset genuinely produced
-again, point one formula at a generated dataset and press the button: the
-reserving class's copy of that CSV should carry a new modified time afterwards,
-and the hand-entered one should not.
-
-## Recorded run
-
-2026-09-12 on the developer Client PC `L-H2MQ6280FVP`, Excel 16.0 driven over
-COM, add-in version 2.4.0, against
-`Net Loss--Incurred Adjusted***` in reserving class
-`HPPREF\HO+DF\NJ\Legacy\HOL` of `NJ_Annual_Prod_202605_Fake`, a 33 KB triangle of
-120 rows by 113 columns.
-
-| Pass | Requests | Hits | Fetches |
-| :--- | :--- | :--- | :--- |
-| Cold, before the change | 21 | 0 | 21 |
-| Cold, after the change | 21 | 20 | 1 |
-| Always refresh, after the change | 21 | 0 | 21 |
-
-"Before the change" was measured with the same build with only the lookup
-removed, so the two rows differ in nothing else.
+The pre-3.0.0 check measured 21 calls, 20 hits, and one fetch on 2026-09-12.
+Version 3.0.0 retains that deduplication and also persists the result across
+Excel sessions and users. Earlier always-refresh expectations no longer apply.

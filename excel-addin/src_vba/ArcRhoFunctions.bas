@@ -72,7 +72,7 @@ Public Function ArcRhoTriDiag( _
 
     tri = ArcRhoTri( _
               Path, TriangleName, _
-              Cumulative, Transposed = 1, Calendar = 0, _
+              Cumulative, False, False, _
               ProjectName, OriginLength, DevelopmentLength, _
               ByTypeName, SuppressWarnings)
 
@@ -103,11 +103,11 @@ Public Function ArcRhoTriCell( _
 ) As Variant
 
     Dim tri As Variant
-    On Error Resume Next
+    On Error GoTo InvalidPeriod
     
     tri = ArcRhoTri( _
               Path, TriangleName, _
-              Cumulative, Transposed = False, Calendar = False, _
+              Cumulative, False, False, _
               ProjectName, OriginLength, DevelopmentLength, _
               ByTypeName, SuppressWarnings)
 
@@ -116,8 +116,11 @@ Public Function ArcRhoTriCell( _
         Exit Function
     End If
 
-    ArcRhoTriCell = tri(DevelopmentPeriod, OriginPeriod)
-
+    If OriginPeriod < 1 Or DevelopmentPeriod < 1 Then GoTo InvalidPeriod
+    ArcRhoTriCell = tri(LBound(tri, 1) + OriginPeriod - 1, LBound(tri, 2) + DevelopmentPeriod - 1)
+    Exit Function
+InvalidPeriod:
+    ArcRhoTriCell = CVErr(xlErrRef)
 End Function
 
 Public Function ArcRhoHeaders( _
@@ -178,7 +181,7 @@ Public Function ArcRhoTriOrigin( _
     
     tri = ArcRhoTri( _
             Path, TriangleName, _
-            Cumulative, 0, Calendar, _
+            Cumulative, False, False, _
             ProjectName, OriginLength, DevelopmentLength, _
             ByTypeName, SuppressWarnings)
 
