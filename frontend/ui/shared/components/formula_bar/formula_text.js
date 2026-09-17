@@ -13,12 +13,17 @@ to each surface, which knows which token kinds it can offer actions for.
  * Recognises Excel refs, quoted row references, bracketed references,
  * operators, and plain text.
  */
+import { findArcRhoFormulaReferences } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
+
 export function tokenizeFormula(rawText) {
   const text = String(rawText || "").trim();
   if (!text) return [];
 
   // Ensure leading '='
   const normalizedText = text.startsWith("=") ? text : "=" + text;
+  let calls = new Map();
+  try { calls = new Map(findArcRhoFormulaReferences(normalizedText).map(call => [call.start, call])); }
+  catch { /* An incomplete draft still needs to render while being typed. */ }
   let remaining = normalizedText;
   let offset = 0;
   const tokens = [];
@@ -30,6 +35,10 @@ export function tokenizeFormula(rawText) {
   };
 
   while (remaining.length > 0) {
+    if (calls.has(offset)) {
+      pushToken("arcrho", calls.get(offset).match);
+      continue;
+    }
     // Excel ref: 'dir\[file.xlsx]Sheet'!A1 or a range such as ...!A1:C3
     const xlMatch = /^'([^[]*)\[([^\]]+)\]([^'!]+)'!\$?[A-Z]+\$?[0-9]+(?::\$?[A-Z]+\$?[0-9]+)?/i.exec(remaining);
     if (xlMatch) {

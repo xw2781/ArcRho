@@ -169,6 +169,8 @@ export function normalizeLinkRecord(record, index, idPrefix = "link") {
     kind,
     workbookPath,
     datasetName,
+    ...(source.projectName ? { projectName: source.projectName } : {}),
+    ...(source.reservingClass ? { reservingClass: source.reservingClass } : {}),
     formula,
     source: sourceText,
     reference,

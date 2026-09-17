@@ -676,7 +676,7 @@ class DfmMethod:
             item["dataset_name"]
             for item in dependency_entries(existing_output_sidecar.get("precedents"))
         ]
-        new_precedents = dfm_precedent_names(self.payload)
+        new_precedents = dfm_precedent_names(self.payload, project_name=self.project_name, reserving_class=self.reserving_class)
         old_by_key = {clean_text(name).casefold(): clean_text(name) for name in old_precedents if clean_text(name)}
         new_by_key = {clean_text(name).casefold(): clean_text(name) for name in new_precedents if clean_text(name)}
         graph_changed = set(old_by_key) != set(new_by_key)

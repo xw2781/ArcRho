@@ -81,7 +81,7 @@ interactionSource = interactionSource
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260916a"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(
@@ -507,6 +507,11 @@ test("manual formula panel tracks selection, edits values, and rejects invalid i
     const opened = context.formulaHover.openCalls.at(-1);
     assert.equal(opened.cell, panel);
     assert.equal(opened.context.formula, "5");
+    context.state.selRanges = [{ r0: 0, c0: 0, r1: 1, c1: 1 }];
+    context.state.activeCell = { r: 1, c: 1 };
+    context.config.onTableRendered();
+    assert.equal(context.formulaHover.openCalls.at(-1).context.formula, "5");
+    assert.equal(context.formulaHover.openCalls.at(-1).context.valueDisplayRow, 0);
     const invalid = await context.formulaHoverOptions.onCommit({ formula: "wrong", context: opened.context });
     assert.equal(invalid.ok, false);
     assert.equal(context.state.model.values[0][0], 5);

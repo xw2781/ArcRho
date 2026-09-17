@@ -138,6 +138,16 @@ test("commitReference resolves every source once, calculates, spills, and claims
   assert.equal(controller.isDirty(), true);
 });
 
+test("ArcRho calls spill, persist and refresh with their scoped source identity", async () => {
+  const { state, controller } = controllerWith({resolve: [resolvedVector([10,20]), resolvedVector([30,40])]});
+  const result = await controller.commitReference({displayRow: 0, displayColumn: 0, reference: '=TAKE(ArcRhoVec("Other RC","Paid",,"Other"),2)'});
+  assert.equal(result.ok, true); assert.deepEqual(state.model.values.slice(0,2), [[10],[20]]);
+  const record = controller.listRecords()[0];
+  assert.equal(record.projectName, "Other"); assert.equal(record.reservingClass, "Other RC"); assert.equal(record.datasetName, "Paid");
+  assert.match(controller.serialize()[0].formula, /ArcRhoVec/);
+  await controller.refreshAll(); assert.deepEqual(state.model.values.slice(0,2), [[30],[40]]);
+});
+
 test("a formula over an Excel range and a dataset range reads the workbook cells in one batch", async () => {
   const { state, controller, excelCalls } = controllerWith({
     resolve: [resolvedVector([1, 2])],

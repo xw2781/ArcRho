@@ -265,7 +265,8 @@ export function wireDatasetGridInteractions(deps) {
   function syncFormulaPanel(focus = false) {
     const panel = getFormulaPanel();
     if (!panel || formulaHover.isEditing?.()) return;
-    const cell = state.activeCell;
+    const range = state.selRanges?.[0];
+    const cell = state.activeCell && range ? { r: range.r0, c: range.c0 } : state.activeCell;
     if (!cell) {
       formulaHover.open(panel, {
         note: "Select a cell to edit the formula",

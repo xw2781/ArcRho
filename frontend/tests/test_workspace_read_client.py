@@ -104,7 +104,7 @@ class _CaptureRead:
         self.payload = payload if payload is not None else {"ok": True}
         self.remote = remote
 
-    def __call__(self, read_kind, kwargs, *, local, finalize=None):
+    def __call__(self, read_kind, kwargs, *, local, finalize=None, gateway_required=False):
         self.calls.append((read_kind, dict(kwargs)))
         if self.remote:
             payload = dict(self.payload)

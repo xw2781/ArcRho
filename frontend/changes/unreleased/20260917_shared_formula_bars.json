@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "DSV and DFM",
+  "audience": "user",
+  "summary": "Added array functions, ArcRho dataset formulas, autocomplete, and an fx formula helper to DSV and DFM.",
+  "details": [
+    "Use TAKE, INDEX, and TRANSPOSE with current or other-project/segment dataset calls; empty project and RC arguments use the current context.",
+    "Choose functions and argument values, preview results, and insert a formula draft from fx.",
+    "Typing [ offers dataset names in DSV, and range selections show their first cell in the formula bar.",
+    "Links to other projects and segments update through explicit refresh."
+  ]
+}

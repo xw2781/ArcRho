@@ -342,6 +342,7 @@ def refresh_dataset_links(
                     changed = True
 
         excel_matrices, excel_failures = _read_excel_matrices(formula_links)
+        arcrho_cache = {}
         for link in formula_links:
             formula = str(link.get("formula") or "")
             tokens = tokenize_dataset_formula(formula)
@@ -368,6 +369,13 @@ def refresh_dataset_links(
             def lookup(token: Mapping[str, Any]) -> Dict[str, Any] | None:
                 if token["kind"] == "excel":
                     return excel_matrices.get(token["canonical"])
+                if token["kind"] == "arcrho":
+                    from app_server.services.arcrho_formula_service import resolve_arcrho_reference
+                    try:
+                        resolved = resolve_arcrho_reference(token["canonical"], project_name, reserving_class, arcrho_cache)
+                    except HTTPException as err:
+                        raise _LinkRefreshHardError(f"{formula}: {err.detail}") from err
+                    return _matrix_from_flat(resolved["row_count"], resolved["column_count"], [cell["value"] for cell in resolved["cells"]])
                 return _resolve_internal_matrix(token["text"], datasets)["matrix"]
 
             try:

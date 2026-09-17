@@ -20,6 +20,8 @@ import {
 import { createFormulaBarDragController } from "/ui/shared/components/formula_bar/formula_bar_drag.js?v=20260829b";
 import { createFormulaBarExcelLinkButton } from "/ui/shared/components/formula_bar/formula_bar_excel_link.js?v=20260908a";
 import { tokenizeFormula } from "/ui/shared/components/formula_bar/formula_text.js?v=20260908a";
+import { installFormulaAutocomplete } from "/ui/shared/components/formula_bar/formula_autocomplete.js?v=20260917a";
+import { wireFormulaHelper } from "/ui/shared/components/formula_bar/formula_helper.js?v=20260917a";
 
 const FORMULA_HOVER_STYLE_ID = "arcrho-formula-hover-style";
 const FORMULA_HOVER_STYLESHEETS = [
@@ -167,6 +169,7 @@ export function createFormulaHoverEditor(options = {}) {
   let input = null;
   let display = null;
   let excelLink = null;
+  let autocomplete = null;
   let errorMessage = null;
   let activeAnchor = null;
   let activePositionRect = null;
@@ -196,6 +199,7 @@ export function createFormulaHoverEditor(options = {}) {
   });
 
   function handleDocumentMouseDown(event) {
+    if (input?.dataset.formulaHelperOpen === "1") return;
     if (getDockElement()) return;
     if (!root?.classList?.contains("isOpen") || commitPending) return;
     if (root.contains?.(event.target) || activeAnchor?.contains?.(event.target)) return;
@@ -266,6 +270,8 @@ export function createFormulaHoverEditor(options = {}) {
     root.appendChild(excelLink.el);
     root.appendChild(errorMessage);
     documentRef.body.appendChild(root);
+    autocomplete = installFormulaAutocomplete(input);
+    wireFormulaHelper(formulaMark, input, { onOpen: () => { setEditing(true); input.focus(); } });
 
     formulaMark.addEventListener("pointerdown", (event) => {
       if (getDockElement()) event.stopImmediatePropagation();
@@ -294,6 +300,7 @@ export function createFormulaHoverEditor(options = {}) {
       onEditStart(activeContext);
     });
     input.addEventListener("blur", (event) => {
+      if (input.dataset.formulaHelperOpen === "1") return;
       // Clicking cells in another Dataset window takes focus out of this one.
       // That is part of writing the formula, so the edit is left standing.
       if (shouldStayOpenUnfocused()) return;
@@ -510,7 +517,7 @@ export function createFormulaHoverEditor(options = {}) {
   }
 
   function hide() {
-    if (!root || commitPending) return false;
+    if (!root || commitPending || input?.dataset.formulaHelperOpen === "1") return false;
     if (getDockElement()) {
       const restoreFocus = documentRef.activeElement === input;
       clearHideTimer();
@@ -550,7 +557,7 @@ export function createFormulaHoverEditor(options = {}) {
   function scheduleHide() {
     clearHideTimer();
     if (getDockElement()) return;
-    if (commitPending || shouldStayOpenUnfocused()) return;
+    if (commitPending || input?.dataset.formulaHelperOpen === "1" || shouldStayOpenUnfocused()) return;
     // A pinned editor stays put until it is clicked away or dismissed.
     if (pinnedKey && pinnedKey === activeKey) return;
     hideTimer = windowRef.setTimeout(() => {
@@ -686,6 +693,7 @@ export function createFormulaHoverEditor(options = {}) {
   }
 
   function destroy() {
+    autocomplete?.destroy();
     commitSequence += 1;
     commitPending = false;
     pinnedKey = "";

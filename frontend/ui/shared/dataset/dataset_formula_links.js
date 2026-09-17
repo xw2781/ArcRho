@@ -1,3 +1,4 @@
+import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
 /*
 ===============================================================================
 Dataset Formula Links
@@ -18,10 +19,6 @@ formula is re-evaluated only when the user asks.
 */
 import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260819a";
 import {
-  excelColumnFromIndex,
-  parseExcelCellAddress,
-} from "/ui/shared/integrations/excel_reference.js?v=20260715a";
-import {
   applyDatasetLinkOutlineClasses,
   buildDatasetExternalLinkTargets,
   buildDatasetLinkOutline,
@@ -29,7 +26,6 @@ import {
 } from "/ui/shared/dataset/dataset_external_links.js?v=20260907b";
 import {
   classifyDatasetFormula,
-  evaluateDatasetFormula,
   parseDatasetFormula,
 } from "/ui/shared/dataset/dataset_formula.js?v=20260830a";
 import { formatInternalDatasetReference } from "/ui/shared/dataset/dataset_internal_reference.js?v=20260830a";
@@ -160,7 +156,13 @@ function excelReferenceAddressText(parsed) {
 function formulaComponents(parsed) {
   const components = new Map();
   for (const reference of parsed.references) {
-    const component = reference.kind === "internal"
+    const component = reference.kind === "arcrho"
+      ? {
+        datasetName: reference.parsed.datasetName, reference: reference.canonical,
+        projectName: /^default$/i.test(reference.parsed.arguments.ProjectName || "") ? "" : reference.parsed.arguments.ProjectName || "",
+        reservingClass: reference.parsed.arguments.Path || "",
+      }
+      : reference.kind === "internal"
       ? {
         datasetName: String(reference.parsed.datasetName || ""),
         reference: internalReferenceCoordinateText(reference.parsed),
@@ -169,7 +171,7 @@ function formulaComponents(parsed) {
         workbookPath: String(reference.parsed.bookPath || ""),
         reference: excelReferenceAddressText(reference.parsed),
       };
-    const key = component.datasetName || component.workbookPath;
+    const key = component.datasetName ? JSON.stringify([component.projectName || "", component.reservingClass || "", component.datasetName]) : component.workbookPath;
     if (key && !components.has(key)) components.set(key, component);
   }
   return Array.from(components.values());
@@ -185,41 +187,6 @@ function requestedLinkIds(ids) {
       .map((id) => String(id || "").split(COMPONENT_ID_SEPARATOR)[0])
       .filter(Boolean),
   );
-}
-
-function excelCellValue(result) {
-  if (!result?.ok) return { ok: false, error: String(result?.error || "Excel cell read failed.") };
-  if (result.value === null || result.value === undefined || result.value === "") return { ok: true, value: null };
-  const value = Number(result.value);
-  return Number.isFinite(value)
-    ? { ok: true, value }
-    : { ok: false, error: `Excel returned a non-numeric value: ${String(result.value)}` };
-}
-
-function excelRangeCells(parsed) {
-  const start = parseExcelCellAddress(parsed.cell);
-  const end = parseExcelCellAddress(parsed.endCell || parsed.cell);
-  const row0 = Math.min(start.row, end.row);
-  const row1 = Math.max(start.row, end.row);
-  const col0 = Math.min(start.col, end.col);
-  const col1 = Math.max(start.col, end.col);
-  const cells = [];
-  for (let row = row0; row <= row1; row += 1) {
-    for (let col = col0; col <= col1; col += 1) {
-      cells.push(`${excelColumnFromIndex(col)}${row + 1}`);
-    }
-  }
-  return { rows: row1 - row0 + 1, cols: col1 - col0 + 1, cells };
-}
-
-function matrixFromCells(rows, cols, flat) {
-  const values = [];
-  for (let row = 0; row < rows; row += 1) values.push(flat.slice(row * cols, (row + 1) * cols));
-  return { rows, cols, values };
-}
-
-function referenceKey(token) {
-  return `${token.kind}${token.canonical}`;
 }
 
 export function createDatasetFormulaLinksController({
@@ -431,73 +398,8 @@ export function createDatasetFormulaLinksController({
    * that names the reference at fault.
    */
   async function evaluateFormula(parsed, generation, signal) {
-    const matrices = new Map();
-    const internalReferences = parsed.references.filter((token) => token.kind === "internal");
-    if (internalReferences.length) {
-      let resp;
-      try {
-        resp = await resolveReferences(internalReferences.map((token) => `=${token.canonical}`));
-      } catch (error) {
-        return { ok: false, error: String(error?.message || error || "Dataset reference resolve failed.") };
-      }
-      if (generation !== requestGeneration) return { ok: false, stale: true };
-      if (!resp?.ok) {
-        return {
-          ok: false,
-          error: String(resp?.data?.detail || resp?.data?.error || "The dataset reference could not be resolved."),
-        };
-      }
-      const results = Array.isArray(resp.data?.results) ? resp.data.results : [];
-      for (let index = 0; index < internalReferences.length; index += 1) {
-        const result = results[index];
-        const rows = Number(result?.row_count) || 0;
-        const cols = Number(result?.column_count) || 0;
-        if (!Array.isArray(result?.cells) || result.cells.length !== rows * cols) {
-          return { ok: false, error: `${internalReferences[index].text} could not be resolved.` };
-        }
-        matrices.set(
-          referenceKey(internalReferences[index]),
-          matrixFromCells(rows, cols, result.cells.map((cell) => cell.value ?? null)),
-        );
-      }
-    }
-    const excelReferences = parsed.references.filter((token) => token.kind === "excel");
-    if (excelReferences.length) {
-      const items = [];
-      const spans = excelReferences.map((token) => {
-        const range = excelRangeCells(token.parsed);
-        const start = items.length;
-        range.cells.forEach((cell) => items.push({
-          book_path: token.parsed.bookPath,
-          sheet: token.parsed.sheet,
-          cell,
-        }));
-        return { token, range, start };
-      });
-      let resp;
-      try {
-        resp = await readCellsBatch(items, { signal });
-      } catch (error) {
-        if (error?.name === "AbortError") return { ok: false, aborted: true };
-        return { ok: false, error: String(error?.message || error || "Excel read failed.") };
-      }
-      if (generation !== requestGeneration) return { ok: false, stale: true };
-      if (!resp?.ok || !Array.isArray(resp.results) || resp.results.length !== items.length) {
-        return { ok: false, error: String(resp?.error || "Excel range read failed.") };
-      }
-      for (const span of spans) {
-        const flat = [];
-        for (let offset = 0; offset < span.range.cells.length; offset += 1) {
-          const parsedValue = excelCellValue(resp.results[span.start + offset]);
-          if (!parsedValue.ok) {
-            return { ok: false, error: `${span.range.cells[offset]}: ${parsedValue.error}` };
-          }
-          flat.push(parsedValue.value);
-        }
-        matrices.set(referenceKey(span.token), matrixFromCells(span.range.rows, span.range.cols, flat));
-      }
-    }
-    return evaluateDatasetFormula(parsed.tree, (token) => matrices.get(referenceKey(token)));
+    const result = await evaluateFormulaValues(parsed, { resolveReferences, readCellsBatch, signal });
+    return generation !== requestGeneration ? { ok: false, stale: true } : result;
   }
 
   async function commitReference({ displayRow, displayColumn, reference } = {}) {

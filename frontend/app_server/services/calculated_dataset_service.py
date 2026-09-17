@@ -427,6 +427,7 @@ def apply_sidecar_graph_fields(
             for name in link_precedent_names(
                 payload.get("internal_links"),
                 payload.get("formula_links"),
+                project_name=project, reserving_class=payload.get("reserving_class", ""),
             )
             if _canon_dataset_name(name) != own_key
         ]

@@ -72,6 +72,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
+- The [shared formula-bar guide](formula_bar.md) defines array functions, Excel add-in dataset calls, autocomplete, fx previews, and DFM's one-row positive-result requirement.
 - Exchanges `arcrho:*` messages with shell and workflow iframe.
 - Reuses dataset APIs and reserving class selectors.
 - DFM lives under `ui/method_pages/dfm/` and uses `ui/shared/tabbed_page/` for reusable tab chrome plus the matching `ui/shared/tabs/data/`, `ui/shared/tabs/details/`, `ui/shared/tabs/notes/`, `ui/shared/tabs/links/`, and `ui/shared/tabs/audit_log/` modules for shared tab presentation/runtime. DFM modules still own method persistence, dirty state, save/close coordination, calculations, and page-specific behavior; `dfm_data_tab_adapter.js` connects those feature concerns to the host-neutral Data tab without importing Dataset Viewer assets. Established DFM tab IDs and `arcrho:*` contracts remain unchanged.

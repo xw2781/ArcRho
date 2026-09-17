@@ -5,6 +5,8 @@ DFM Ratios Summary Formula Bar
 */
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260814b";
+import { wireFormulaHelper } from "/ui/shared/components/formula_bar/formula_helper.js?v=20260917a";
+import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
 import {
   getCachedDfmDatasetReferenceValues,
   resolveDfmDatasetReferencesInFormulaDetailed,
@@ -561,6 +563,22 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
     installDfmDatasetAutocomplete(input);
+    wireFormulaHelper(el.querySelector(".arFormulaBarFxIcon"), input, {
+      onOpen: () => { updateFormulaBarDisplayMode(el, true); input.focus(); },
+      evaluate: async (formula, options) => {
+        const table = document.querySelector("#ratioWrap table.ratioSummaryTable");
+        const resolved = await resolveDfmDatasetReferencesInFormulaDetailed(formula, options);
+        const result = await evaluateFormulaValues(resolved.resolvedFormula, {
+          ...options,
+          referenceValues: summaryRuntime.buildSummaryReferenceValues(table, Number(input.dataset.col)),
+          round: summaryRuntime.roundHalfUp,
+        });
+        if (result.ok && (result.rows !== 1 || result.values[0].some(value => !Number.isFinite(value) || value <= 0))) {
+          return { ok: false, error: "DFM needs one row of values greater than zero. Use TRANSPOSE, TAKE or INDEX to select the required values." };
+        }
+        return result;
+      },
+    });
     // The badge is the bar's drag handle; it carries no tooltip of its own so a
     // bubble cannot sit under the pointer that is about to move the bar.
     summaryRuntime.wireSummaryFormulaBarDragHandle?.(el, el.querySelector(".arFormulaBarFxIcon"));
@@ -668,6 +686,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       }
     });
     input?.addEventListener("blur", async () => {
+      if (input.dataset.formulaHelperOpen === "1") return;
       if (input.dataset.skipFormulaBlurCommit === "1") {
         delete input.dataset.skipFormulaBlurCommit;
         scheduleFormulaBarDisplayMode(el, input);

@@ -1,4 +1,4 @@
-import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260907a";
+import { mountDatasetViewer } from "/ui/dataset_viewer/dataset_viewer_view.js?v=20260917a";
 import { configureDataTabHost } from "/ui/shared/tabs/data/data_tab_context.js";
 import { configureDataTabChart } from "/ui/shared/tabs/data/data_tab_chart_port.js";
 import { configureDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
@@ -160,11 +160,17 @@ const datasetLinksTab = createLinksTab({
   onBreakLinks: (records) => datasetDataTab.breakDatasetLinks(records),
   onOpenDataset: (record) => {
     const params = new URLSearchParams(window.location.search);
+    if (record?.projectName && record.projectName.toLowerCase() !== (params.get("project") || "").toLowerCase()) {
+      window.top?.postMessage?.({ type: "arcrho:open-dataset-from-history", entry: {
+        project: record.projectName, path: record.reservingClass || params.get("path"), tri: record.datasetName,
+      } }, "*");
+      return { ok: true, message: `Opening dataset ${record.datasetName}...` };
+    }
     window.parent?.postMessage?.({
       type: "arcrho:project-instance-open-dependent-dataset",
       datasetName: record?.datasetName,
-      reservingClass: (params.get("path") || "").trim(),
-      projectName: (params.get("project") || "").trim(),
+      reservingClass: record?.reservingClass || (params.get("path") || "").trim(),
+      projectName: record?.projectName || (params.get("project") || "").trim(),
     }, "*");
     return { ok: true, message: `Opening dataset ${record?.datasetName || ""}...` };
   },

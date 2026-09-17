@@ -201,6 +201,23 @@ class RefreshDatasetLinksTests(unittest.TestCase):
             "Auto Refresh",
         )
 
+    def test_cross_scope_call_refreshes_and_a_missing_source_preserves_the_target(self):
+        from app_server.services import arcrho_runtime_service
+        target = _vector("Target", [999.0, 77.0], links={"formula_links": [{
+            "formula": '=INDEX(ArcRhoVec("Other RC","Source",,"Other"),2)',
+            "target_cells": [{"row": 0, "column": 0, "result_row": 0, "result_column": 0}],
+        }]})
+        with patch.object(arcrho_runtime_service, "run_arcrho_dataset_csv", return_value={"ok": True, "csv_text": "4\n8\n"}) as read:
+            result, written = self._refresh({"Target": target}, "Target")
+        self.assertTrue(result["ok"])
+        self.assertEqual(written["values"], [[8.0], [77.0]])
+        self.assertEqual(dict(read.call_args.args[0])["ProjectName"], "Other")
+        with patch.object(arcrho_runtime_service, "run_arcrho_dataset_csv", return_value={"ok": False, "error": "Source missing"}):
+            result, written = self._refresh({"Target": target}, "Target")
+        self.assertFalse(result["ok"])
+        self.assertIn("Source missing", result["errors"][0])
+        self.assertEqual(written, {})
+
     def test_refresh_output_matches_the_direct_refresh_and_reports_a_failure(self) -> None:
         """The walk's one-object refresher wraps refresh_dataset_links."""
 

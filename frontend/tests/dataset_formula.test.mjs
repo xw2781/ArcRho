@@ -130,7 +130,7 @@ test("IF and IFERROR handle array errors per cell and aggregates skip blanks", (
 });
 
 test("invalid function names and argument counts never reach evaluation", () => {
-  for (const text of ["=MISSING(1)", "=IF(1)", "=IFERROR(1)", "=SUM()", "=ABS(1,2)", "=ROUND(1)", "=SUM(1,)"]) {
+  for (const text of ["=MISSING(1)", "=IF(1)", "=IFERROR(1)", "=SUM()", "=ABS(1,2)", "=ROUND()", "=SUM(1,)"]) {
     assert.equal(formula.parseDatasetFormula(text).ok, false, text);
   }
 });

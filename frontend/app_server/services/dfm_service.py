@@ -218,8 +218,8 @@ def _identity(payload: Mapping[str, Any]) -> Tuple[str, str]:
     return method_name, output_dataset
 
 
-def _precedent_names(payload: Mapping[str, Any]) -> List[str]:
-    return dfm_precedent_names(payload)
+def _precedent_names(payload: Mapping[str, Any], project_name="", reserving_class="") -> List[str]:
+    return dfm_precedent_names(payload, project_name=project_name, reserving_class=reserving_class)
 
 
 def _revision_response(payload: Mapping[str, Any]) -> Dict[str, str]:
@@ -767,9 +767,10 @@ def _resolved_reference_token_values(
     project_name: str,
     reserving_class: str,
     tokens: List[Dict[str, Any]],
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """Resolve dataset-reference tokens to values keyed by their reference text."""
 
+    scalar_tokens = [token for token in tokens if token.get("kind") != "arcrho"]
     response = resolve_dfm_dataset_references(
         project_name,
         reserving_class,
@@ -779,14 +780,23 @@ def _resolved_reference_token_values(
                 "row_idx": token["row_idx"],
                 **({"col_idx": token["col_idx"]} if token["col_idx"] else {}),
             }
-            for token in tokens
+            for token in scalar_tokens
         ],
-    )
+    ) if scalar_tokens else {"results": []}
     results = response.get("results") or []
-    return {
+    values = {
         token["match"]: result["value"]
-        for token, result in zip(tokens, results)
+        for token, result in zip(scalar_tokens, results)
     }
+    from app_server.services.arcrho_formula_service import resolve_arcrho_reference
+    cache = {}
+    for token in tokens:
+        if token.get("kind") != "arcrho": continue
+        result = resolve_arcrho_reference(token["match"], project_name, reserving_class, cache)
+        rows, cols = result["row_count"], result["column_count"]
+        cells = result["cells"]
+        values[token["match"]] = {"rows": rows, "cols": cols, "values": [[cells[r * cols + c]["value"] for c in range(cols)] for r in range(rows)]}
+    return values
 
 
 def _assert_refreshable_precedents(
@@ -798,7 +808,7 @@ def _assert_refreshable_precedents(
 ) -> None:
     missing = []
     futures = {}
-    names = list(precedent_names) if precedent_names is not None else _precedent_names(payload)
+    names = list(precedent_names) if precedent_names is not None else _precedent_names(payload, project_name, reserving_class)
     for name in names:
         normalized = _key(name)
         cached = next(
@@ -881,7 +891,7 @@ def _build_sidecar(
             "reserving_class": reserving_class,
             "source_kind": "dfm",
             "method_type": dataset_sidecar_status_service.METHOD_TYPE_DFM,
-            "precedents": dataset_sidecar_status_service.name_entries(_precedent_names(payload)),
+            "precedents": dataset_sidecar_status_service.name_entries(_precedent_names(payload, project_name, reserving_class)),
             "dependents": [],
         }
         calculated_dataset_service.apply_sidecar_graph_fields(
@@ -939,7 +949,7 @@ def _publish(
         automatic=automatic,
     )
     old_precedents = dataset_sidecar_status_service.entry_names(existing_sidecar.get("precedents"))
-    new_precedents = _precedent_names(payload)
+    new_precedents = _precedent_names(payload, project_name, reserving_class)
     graph_updated = False
     graph_changed = {_key(item) for item in old_precedents} != {_key(item) for item in new_precedents}
     try:
@@ -1010,7 +1020,7 @@ def _validate_pair(
         sidecar.get("method_type"), sidecar.get("source_kind")
     ) != dataset_sidecar_status_service.METHOD_TYPE_DFM:
         raise HTTPException(409, "DFM output sidecar does not identify a DFM output.")
-    method_precedents = {_key(item) for item in _precedent_names(method)}
+    method_precedents = {_key(item) for item in _precedent_names(method, sidecar.get("project_name", ""), sidecar.get("reserving_class", ""))}
     sidecar_precedents = {
         _key(item) for item in dataset_sidecar_status_service.entry_names(sidecar.get("precedents"))
     }
@@ -1196,7 +1206,7 @@ def save_dfm_method(
     response["unreviewed_precedents"] = dataset_sidecar_status_service.review_needed_precedent_names(
         project,
         reserving,
-        _precedent_names(refreshed),
+        _precedent_names(refreshed, project, reserving),
     )
     response["unreviewed_precedent_count"] = len(response["unreviewed_precedents"])
     output_type = _clean(_details(refreshed).get("output_type")) or output_dataset

@@ -8,7 +8,6 @@ an equivalent JSON payload regardless of the producer or machine path.
 
 from __future__ import annotations
 
-import ast
 import math
 import re
 from copy import deepcopy
@@ -747,12 +746,18 @@ def dataset_reference_tokens(value: Any) -> list[dict[str, Any]]:
     """
 
     text = str(value if value is not None else "")
+    from .arcrho_formula_reference import arcrho_formula_references
+    calls = arcrho_formula_references(text)
     tokens: list[dict[str, Any]] = []
     cursor = 0
     while cursor < len(text):
         dataset_start = text.find("[", cursor)
         if dataset_start < 0:
             break
+        containing_call = next((call for call in calls if call["start"] <= dataset_start < call["end"]), None)
+        if containing_call:
+            cursor = containing_call["end"]
+            continue
         dataset_end = text.find("]", dataset_start + 1)
         if dataset_end < 0:
             break
@@ -801,17 +806,19 @@ def dataset_reference_tokens(value: Any) -> list[dict[str, Any]]:
                 "col_idx": coordinate_parts[1] if len(coordinate_parts) == 2 else None,
             })
         cursor = coordinate_end + 1
-    return tokens
+    return sorted(tokens + [{**call, "kind": "arcrho"} for call in calls], key=lambda item: item["start"])
 
 
-def _dataset_reference_names(value: Any) -> list[str]:
+def _dataset_reference_names(value: Any, project_name="", reserving_class="") -> list[str]:
     """Return valid ``[Dataset][coordinate]`` identities in formula order."""
 
-    return [token["dataset_name"] for token in dataset_reference_tokens(value)]
+    from .arcrho_formula_reference import reference_is_local
+    return [token["dataset_name"] for token in dataset_reference_tokens(value)
+            if token.get("kind") != "arcrho" or reference_is_local(token, project_name, reserving_class)]
 
 
 def _contains_dataset_reference(value: Any) -> bool:
-    return bool(_dataset_reference_names(value))
+    return bool(dataset_reference_tokens(value))
 
 
 def dfm_dataset_reference_tokens(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -849,6 +856,11 @@ def _substitute_dataset_references(
         return None
     text = str(formula if formula is not None else "")
     for token in reversed(tokens):
+        matrix = reference_values.get(token["match"])
+        if isinstance(matrix, dict) and "values" in matrix:
+            literal = "{" + ";".join(",".join('""' if cell is None else str(cell) for cell in row) for row in matrix["values"]) + "}"
+            text = f"{text[:token['start']]}{literal}{text[token['end']:]}"
+            continue
         try:
             value = float(reference_values.get(token["match"]))
         except (TypeError, ValueError):
@@ -1091,7 +1103,7 @@ def method_revisions(payload: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
-def dfm_precedent_names(payload: Mapping[str, Any]) -> list[str]:
+def dfm_precedent_names(payload: Mapping[str, Any], *, project_name="", reserving_class="") -> list[str]:
     details = _tab(payload, "details_tab")
     results = _tab(payload, "results_tab")
     formulas = _tab(_tab(payload, "ratios_tab"), "average_formulas")
@@ -1101,7 +1113,7 @@ def dfm_precedent_names(payload: Mapping[str, Any]) -> list[str]:
         for row in inputs
         if isinstance(row, list)
         for formula in row
-        for dataset_name in _dataset_reference_names(formula)
+        for dataset_name in _dataset_reference_names(formula, project_name, reserving_class)
     ]
     return dependency_names([
         details.get("input_triangle"),
@@ -1198,7 +1210,7 @@ def build_dfm_output_sidecar(
         "notes_source": sidecar_notes_source,
         "origin_labels": deepcopy(data.get("origin_labels") or []),
         "development_labels": ["Ultimate"],
-        "precedents": dependency_entries(dfm_precedent_names(method)),
+        "precedents": dependency_entries(dfm_precedent_names(method, project_name=project_name, reserving_class=reserving_class)),
         "dependents": dependency_entries(prior.get("dependents") if dependents is None else dependents),
         "created": created,
         "updated_at": published_at,
@@ -1456,50 +1468,18 @@ def contains_excel_reference(value: Any) -> bool:
 
 
 def _safe_arithmetic(expression: str) -> float | None:
-    # ast.parse in eval mode rejects leading whitespace (IndentationError), so
-    # a formula like "= expr" must not reach it with the space that stripping
-    # the "=" leaves behind.
+    from .dataset_link_contract import (
+        DatasetLinkError, evaluate_dataset_formula, parse_dataset_formula_tree,
+        tokenize_dataset_formula,
+    )
     try:
-        tree = ast.parse(str(expression or "").strip(), mode="eval")
-    except (SyntaxError, ValueError):
+        tree = parse_dataset_formula_tree(tokenize_dataset_formula(expression))
+        result = evaluate_dataset_formula(tree, lambda token: None, round_number=round_half_up)
+    except DatasetLinkError:
         return None
-    binary = {
-        ast.Add: lambda left, right: left + right,
-        ast.Sub: lambda left, right: left - right,
-        ast.Mult: lambda left, right: left * right,
-        ast.Div: lambda left, right: left / right,
-        ast.Pow: lambda left, right: left**right,
-        ast.Mod: lambda left, right: left % right,
-    }
-    unary = {ast.UAdd: lambda value: value, ast.USub: lambda value: -value}
-
-    def evaluate(node: ast.AST) -> float:
-        if isinstance(node, ast.Expression):
-            return evaluate(node.body)
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
-            return float(node.value)
-        if isinstance(node, ast.BinOp) and type(node.op) in binary:
-            return binary[type(node.op)](evaluate(node.left), evaluate(node.right))
-        if isinstance(node, ast.UnaryOp) and type(node.op) in unary:
-            return unary[type(node.op)](evaluate(node.operand))
-        # ROUND(x) or ROUND(x, digits): the one function the formula language
-        # offers, so a formula can fix an operand at the precision the notes show.
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id.upper() == "ROUND"
-            and not node.keywords
-            and 1 <= len(node.args) <= 2
-        ):
-            digits = evaluate(node.args[1]) if len(node.args) == 2 else 0.0
-            return round_half_up(evaluate(node.args[0]), int(digits))
-        raise ValueError("unsupported expression")
-
-    try:
-        result = evaluate(tree)
-    except (ArithmeticError, OverflowError, ValueError):
+    if result["rows"] != 1 or result["cols"] != 1:
         return None
-    return result if math.isfinite(result) else None
+    return canonical_input_number(result["values"][0][0])
 
 
 def _evaluate_internal_formula(

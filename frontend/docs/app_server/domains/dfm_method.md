@@ -2,6 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
+DFM numeric formulas delegate to the shared dataset-cell evaluator, including TAKE, INDEX, and TRANSPOSE, with DFM's decimal half-up rounding override. Excel add-in dataset calls resolve through `arcrho_formula_service`; saved INDEX expressions retain each spilled result's source for server recalculation. Contextual local sources contribute graph edges, while other-scope references remain explicit-refresh sources. See the [formula-bar guide](../../ui/formula_bar.md).
 The DFM method domain owns self-contained v2 method loading, canonical calculation preview, revision-aware saves, explicit recovery refreshes, and automatic refresh after ArcRho-managed precedent updates.
 <!-- MANUAL:END -->
 

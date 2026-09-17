@@ -46,7 +46,7 @@ INTERNAL_REFERENCE_SYNTAX_HINT = (
 DATASET_FORMULA_SYNTAX_HINT = (
     "Enter an Excel link such as ='C:\\Folder\\[Book.xlsx]Sheet1'!A1:C3, a dataset "
     "link such as =[Dataset][1:6], or a formula that combines them with + - * / ^, "
-    "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, and ROUND."
+    "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, ROUND, TAKE, INDEX, TRANSPOSE, or ArcRho dataset functions."
 )
 
 _EXCEL_TOKEN_RE = re.compile(
@@ -55,7 +55,18 @@ _EXCEL_TOKEN_RE = re.compile(
 )
 _NUMBER_TOKEN_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 _BINARY_PRECEDENCE = {"=": 1, "<>": 1, "<": 1, ">": 1, "<=": 1, ">=": 1, "+": 2, "-": 2, "*": 3, "/": 3, "^": 4}
-FORMULA_FUNCTION_ARITY = {"IF": [2, 3], "IFERROR": [2, 2], "SUM": [1, 255], "MAX": [1, 255], "MIN": [1, 255], "MEDIAN": [1, 255], "AVERAGE": [1, 255], "COUNT": [1, 255], "ABS": [1, 1], "ROUND": [2, 2]}
+FORMULA_FUNCTION_ARGUMENTS = {
+    "IF": ["logical_test", "value_if_true", "[value_if_false]"],
+    "IFERROR": ["value", "value_if_error"],
+    **{name: ["number1", "[number2, …]"] for name in ("SUM", "MAX", "MIN", "MEDIAN", "AVERAGE", "COUNT")},
+    "ABS": ["number"], "ROUND": ["number", "[num_digits]"],
+    "TAKE": ["array", "rows", "[columns]"],
+    "INDEX": ["array", "row_num", "[column_num]"], "TRANSPOSE": ["array"],
+}
+FORMULA_FUNCTION_ARITY = {
+    name: [sum(not arg.startswith("[") for arg in args), 255 if name in ("SUM", "MAX", "MIN", "MEDIAN", "AVERAGE", "COUNT") else len(args)]
+    for name, args in FORMULA_FUNCTION_ARGUMENTS.items()
+}
 
 
 # ── Internal dataset references ────────────────────────────────────────────────
@@ -262,6 +273,17 @@ def tokenize_dataset_formula(raw_text: Any) -> List[Dict[str, Any]]:
             continue
         identifier = re.match(r"[A-Za-z_][A-Za-z_0-9]*", text[cursor:])
         if identifier:
+            from .arcrho_formula_reference import scan_arcrho_call, parse_arcrho_call
+            try:
+                call = scan_arcrho_call(text, cursor)
+                if call:
+                    raw = text[cursor:call["end"]]
+                    parsed = parse_arcrho_call(raw)
+                    tokens.append({"type": "reference", "kind": "arcrho", "text": raw, "canonical": parsed["canonical"], "parsed": parsed})
+                    cursor = call["end"]
+                    continue
+            except ValueError as error:
+                raise DatasetLinkError(str(error)) from error
             name = identifier.group(0).upper()
             tokens.append({"type": "number" if name in ("TRUE", "FALSE") else "function", "text": name})
             cursor += len(identifier.group(0))
@@ -272,6 +294,10 @@ def tokenize_dataset_formula(raw_text: Any) -> List[Dict[str, Any]]:
             continue
         if character == ",":
             tokens.append({"type": "comma", "text": character})
+            cursor += 1
+            continue
+        if character in "{};":
+            tokens.append({"type": "array", "text": character})
             cursor += 1
             continue
         comparison = re.match(r"<=|>=|<>|=|<|>", text[cursor:])
@@ -346,6 +372,20 @@ def parse_dataset_formula_tree(tokens: List[Dict[str, Any]]) -> Dict[str, Any]:
         if token["type"] == "blank":
             position += 1
             return {"kind": "number", "value": None}
+        if token["text"] == "{":
+            position += 1
+            rows = [[]]
+            while True:
+                rows[-1].append(parse_binary(1))
+                separator = peek()
+                if not separator or separator["text"] not in (",", ";"):
+                    break
+                position += 1
+                if separator["text"] == ";": rows.append([])
+            if not peek() or peek()["text"] != "}": fail("Array is missing its closing brace.")
+            position += 1
+            if any(len(row) != len(rows[0]) for row in rows): fail("Array rows must have the same length.")
+            return {"kind": "array", "rows": rows}
         if token["type"] == "function":
             name = token["text"]
             limits = FORMULA_FUNCTION_ARITY.get(name)
@@ -358,7 +398,7 @@ def parse_dataset_formula_tree(tokens: List[Dict[str, Any]]) -> Dict[str, Any]:
             args = []
             if not peek() or peek()["text"] != ")":
                 while True:
-                    args.append(parse_binary(1))
+                    args.append({"kind": "omitted"} if peek() and peek()["text"] in (",", ")") else parse_binary(1))
                     if not peek() or peek()["type"] != "comma":
                         break
                     position += 1
@@ -367,6 +407,8 @@ def parse_dataset_formula_tree(tokens: List[Dict[str, Any]]) -> Dict[str, Any]:
             position += 1
             if not limits[0] <= len(args) <= limits[1]:
                 fail(f"Wrong number of arguments for {name}.")
+            if name not in ("TAKE", "INDEX") and any(arg["kind"] == "omitted" for arg in args):
+                fail(f"Missing argument for {name}.")
             return {"kind": "function", "name": name, "args": args}
         if token["type"] == "reference":
             position += 1
@@ -434,6 +476,7 @@ def formula_reference_tokens(raw_text: Any) -> List[Dict[str, Any]]:
 def link_precedent_names(
     internal_links: Iterable[Mapping[str, Any]] | None,
     formula_links: Iterable[Mapping[str, Any]] | None,
+    *, project_name: str = "", reserving_class: str = "",
 ) -> List[str]:
     """The datasets a sidecar's ArcRho cell links read, once each, in link order.
 
@@ -471,6 +514,11 @@ def link_precedent_names(
         except DatasetLinkError:
             continue
         for token in tokens:
+            if token["kind"] == "arcrho":
+                from .arcrho_formula_reference import reference_is_local
+                if reference_is_local(token["parsed"], project_name, reserving_class):
+                    add(token["parsed"]["dataset_name"])
+                continue
             if token["kind"] != "internal":
                 continue
             try:
@@ -555,7 +603,7 @@ def _combine(left: Matrix, right: Matrix, operator: str) -> Matrix:
     return _map_matrices([left, right], calculate)
 
 
-def evaluate_dataset_formula(tree: Mapping[str, Any], lookup: Callable[[Mapping[str, Any]], Matrix | None]) -> Matrix:
+def evaluate_dataset_formula(tree: Mapping[str, Any], lookup: Callable[[Mapping[str, Any]], Matrix | None], *, round_number=None) -> Matrix:
     """Evaluate numeric formulas with per-cell errors for IF/IFERROR selection."""
     def call(node: Mapping[str, Any]) -> Matrix:
         args, name = node["args"], node["name"]
@@ -575,11 +623,19 @@ def evaluate_dataset_formula(tree: Mapping[str, Any], lookup: Callable[[Mapping[
                 return _map_matrices([condition, choose(False)], lambda _test, value: value)
             return _map_matrices([condition, choose(True), choose(False)], lambda test, yes, no: yes if _numeric(test) else no)
         matrices = [visit(arg) for arg in args]
+        if name in ("TAKE", "INDEX", "TRANSPOSE"):
+            from .dataset_formula_arrays import evaluate_array_function
+            return evaluate_array_function(name, matrices, [arg["kind"] == "omitted" for arg in args])
         if name == "ABS":
             return _map_matrices(matrices, lambda value: abs(_numeric(value)))
         if name == "ROUND":
+            if len(matrices) == 1: matrices.append(scalar_matrix(0))
             def rounded(value: Any, digits: Any) -> float:
                 number = _numeric(value)
+                if round_number is not None:
+                    value = round_number(number, math.trunc(_numeric(digits)))
+                    if value is None: raise DatasetLinkError("ROUND result is not finite.")
+                    return _numeric(value)
                 factor = 10.0 ** math.trunc(_numeric(digits))
                 return _numeric(math.copysign(math.floor(abs(number) * factor + 0.5), number) / factor)
             return _map_matrices(matrices, rounded)
@@ -598,6 +654,15 @@ def evaluate_dataset_formula(tree: Mapping[str, Any], lookup: Callable[[Mapping[
     def visit(node: Mapping[str, Any]) -> Matrix:
         try:
             if node["kind"] == "number": return scalar_matrix(node["value"])
+            if node["kind"] == "omitted": return scalar_matrix(0)
+            if node["kind"] == "array":
+                values = []
+                for row in node["rows"]:
+                    cells = [visit(item) for item in row]
+                    if any(cell["rows"] != 1 or cell["cols"] != 1 for cell in cells):
+                        raise DatasetLinkError("Array constant items must be scalar values.")
+                    values.append([cell["values"][0][0] for cell in cells])
+                return {"rows": len(values), "cols": len(values[0]), "values": values}
             if node["kind"] == "function": return call(node)
             if node["kind"] == "reference":
                 matrix = lookup(node["token"])

@@ -1,3 +1,6 @@
+import { findArcRhoFormulaReferences } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
+import { formulaMatrixLiteral } from "/ui/shared/components/formula_bar/formula_api.js?v=20260917a";
+
 export class DfmDatasetReferenceSyntaxError extends Error {
   constructor(message) {
     super(message);
@@ -34,9 +37,11 @@ function splitCoordinates(raw) {
 
 export function findDfmDatasetReferences(rawFormula) {
   const text = String(rawFormula || "");
+  const calls = findArcRhoFormulaReferences(text);
   const references = [];
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "[") continue;
+    if (calls.some(call => start >= call.start && start < call.end)) continue;
     const datasetEnd = text.indexOf("]", start + 1);
     if (datasetEnd < 0) continue;
     let coordinateStart = datasetEnd + 1;
@@ -83,72 +88,14 @@ export function findDfmDatasetReferences(rawFormula) {
     });
     start = coordinateEnd;
   }
-  return references;
+  return [...references, ...calls.map(call => ({ ...call, kind: "arcrho" }))].sort((a, b) => a.start - b.start);
 }
 
 export function containsDfmDatasetReference(rawFormula) {
   return findDfmDatasetReferences(rawFormula).length > 0;
 }
 
-function insideSingleQuotedSegment(text, index) {
-  let quoted = false;
-  for (let cursor = 0; cursor < index; cursor += 1) {
-    if (text[cursor] === "'") quoted = !quoted;
-  }
-  return quoted;
-}
-
-export function findActiveDfmDatasetNameQuery(rawFormula, caretPosition) {
-  const text = String(rawFormula || "");
-  const caret = Math.max(0, Math.min(text.length, Number(caretPosition) || 0));
-  const open = text.lastIndexOf("[", caret - 1);
-  if (open < 0 || text.slice(open + 1, caret).includes("]")) return null;
-  if (insideSingleQuotedSegment(text, open)) return null;
-
-  let prior = open - 1;
-  while (prior >= 0 && /\s/.test(text[prior])) prior -= 1;
-  // A bracket immediately following a completed bracket is the coordinate
-  // portion of [Dataset][row, col], not a new dataset-name token.
-  if (prior >= 0 && text[prior] === "]") return null;
-
-  return {
-    start: open,
-    end: caret,
-    query: text.slice(open + 1, caret),
-  };
-}
-
-export function filterDfmDatasetNames(datasetNames, rawQuery) {
-  const query = String(rawQuery || "").trim().toLocaleLowerCase();
-  const seen = new Set();
-  const matches = [];
-  for (const rawName of Array.isArray(datasetNames) ? datasetNames : []) {
-    const name = String(rawName || "").trim();
-    const key = name.toLocaleLowerCase();
-    if (!name || seen.has(key) || (query && !key.includes(query))) continue;
-    seen.add(key);
-    matches.push(name);
-  }
-  return matches.sort((left, right) => left.localeCompare(right, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  }));
-}
-
-export function completeDfmDatasetName(rawFormula, activeQuery, datasetName) {
-  const text = String(rawFormula || "");
-  const start = Number(activeQuery?.start);
-  const end = Number(activeQuery?.end);
-  const name = String(datasetName || "").trim();
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || !name) {
-    return null;
-  }
-  const insertion = `[${name}][`;
-  return {
-    value: `${text.slice(0, start)}${insertion}${text.slice(end)}`,
-    caret: start + insertion.length,
-  };
-}
+export { completeDfmDatasetName, filterDfmDatasetNames, findActiveDfmDatasetNameQuery } from "/ui/shared/components/formula_bar/formula_completion.js?v=20260917a";
 
 export function substituteDfmDatasetReferences(rawFormula, references, resolvedResults) {
   const source = String(rawFormula || "");
@@ -157,6 +104,10 @@ export function substituteDfmDatasetReferences(rawFormula, references, resolvedR
   if (refs.length !== results.length) throw new Error("Dataset reference response is incomplete.");
   let output = source;
   for (let index = refs.length - 1; index >= 0; index -= 1) {
+    if (results[index]?.matrix) {
+      output = `${output.slice(0, refs[index].start)}${formulaMatrixLiteral(results[index].matrix)}${output.slice(refs[index].end)}`;
+      continue;
+    }
     const value = Number(results[index]?.value);
     if (!Number.isFinite(value)) throw new Error(`Dataset reference ${refs[index].match} is not numeric.`);
     output = `${output.slice(0, refs[index].start)}${value}${output.slice(refs[index].end)}`;
@@ -178,6 +129,7 @@ export function substituteDfmDatasetReferenceLabels(rawFormula, references, reso
   let output = source;
   for (let index = refs.length - 1; index >= 0; index -= 1) {
     const reference = refs[index];
+    if (reference.kind === "arcrho") continue;
     const result = results[index];
     const rowLabel = resolvedCoordinateLabel(result, "row_label");
     const coordinateLabels = reference.colIndex === null

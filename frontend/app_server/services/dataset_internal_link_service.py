@@ -199,9 +199,11 @@ def resolve_dataset_internal_links(
         raise HTTPException(422, "Project and reserving class are required.")
     if not requested:
         raise HTTPException(422, "At least one dataset reference is required.")
-    parsed = [parse_internal_reference(reference) for reference in requested]
+    from app_server.services.arcrho_formula_service import resolve_arcrho_reference
+    parsed = [parse_internal_reference(reference) if reference.lstrip("= ").startswith("[") else None for reference in requested]
     names_by_key: Dict[str, str] = {}
     for item in parsed:
+        if item is None: continue
         names_by_key.setdefault(_key(item["dataset_name"]), item["dataset_name"])
     futures = {
         key: _READ_EXECUTOR.submit(
@@ -213,10 +215,11 @@ def resolve_dataset_internal_links(
         for key, name in names_by_key.items()
     }
     datasets = with_valuation_row_counts(project, {key: future.result() for key, future in futures.items()})
+    call_cache = {}
     return {
         "ok": True,
         "results": [
-            _resolved_internal_reference(
+            resolve_arcrho_reference(requested[index], project, rc, call_cache) if item is None else _resolved_internal_reference(
                 requested[index],
                 item,
                 datasets[_key(item["dataset_name"])],

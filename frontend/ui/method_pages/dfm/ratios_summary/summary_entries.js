@@ -182,6 +182,7 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
 }
 
 function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCol, raw) {
+  if (containsDfmDatasetReference(raw)) return { handled: false, ok: true };
   const parsedArray = parseSummaryArrayFormula(raw);
   if (!parsedArray) return { handled: false, ok: true };
   if (!parsedArray.ok) return { handled: true, ok: false, error: parsedArray.error };
@@ -190,13 +191,6 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
       handled: true,
       ok: false,
       error: "Array formulas currently support numbers and DFM row-reference math, but not Excel cell links inside the array.",
-    };
-  }
-  if (containsDfmDatasetReference(raw)) {
-    return {
-      handled: true,
-      ok: false,
-      error: "Array formulas do not support ArcRho dataset references.",
     };
   }
 
@@ -362,6 +356,36 @@ async function commitSummaryFormulaInput(inputEl) {
     });
     if (!isCurrent()) return false;
     const refValues = buildSummaryReferenceValues(summaryTable, col);
+    const matrix = summaryRuntime.evaluateSummaryFormulaMatrix(resolvedDatasetFormula.resolvedFormula, refValues);
+    if (matrix && (matrix.rows > 1 || matrix.cols > 1)) {
+      if (matrix.rows !== 1) {
+        showSummaryFormulaBarValidationError("DFM formulas must return one row. Use TRANSPOSE, TAKE or INDEX to select the required values.", inputEl);
+        return false;
+      }
+      const targets = getSummaryArrayFormulaDestination(summaryTable, rowId, col, matrix.cols).entries;
+      if (targets.length !== matrix.cols || matrix.values[0].some(value => !Number.isFinite(value) || value <= 0)) {
+        showSummaryFormulaBarValidationError("The formula must fit the available User Entry cells and every value must be greater than zero.", inputEl);
+        return false;
+      }
+      restoreSupersededExcelRange(summaryTable, rowId, col, raw);
+      targets.forEach((target, index) => {
+        const formula = `=INDEX(${stripFormulaEquals(raw)},1,${index + 1})`;
+        setUserEntryCellEntry(rowId, target.col, formula, matrix.values[0][index], { persist: false });
+        setUserEntryCellDisplayValue(target.cell, matrix.values[0][index]);
+        selectedSummaryByCol.set(target.col, String(rowId));
+        summaryTable.querySelectorAll(`td.summaryCell[data-col="${target.col}"]`).forEach(cell => cell.classList.remove("ratioSelectedCell"));
+        target.cell.classList.add("ratioSelectedCell");
+      });
+      persistUserEntryRowsFromState();
+      if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+      applyUserEntryReferenceHighlights(summaryTable);
+      applyExcelRangeHighlights(summaryTable);
+      clearSummaryReferenceUi(summaryTable);
+      summaryRuntime.summaryFormulaEditState = null;
+      updateSummaryFormulaBarForCell(targets[0].cell);
+      summaryRuntime._onRatioStateMutated();
+      return true;
+    }
     const parsed = stripFormulaEquals(resolvedDatasetFormula.resolvedFormula)
       ? evaluateSimpleMathExpression(resolvedDatasetFormula.resolvedFormula, refValues)
       : 1;

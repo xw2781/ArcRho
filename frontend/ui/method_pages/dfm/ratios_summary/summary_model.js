@@ -7,6 +7,8 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
+import { substituteFormulaRowValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
+import { parseDatasetFormula, evaluateDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
 
 const {
   state, calcRatio, roundRatio, roundHalfUp, formatRatio, computeAverageForColumn,
@@ -679,36 +681,21 @@ function applyUserEntryReferenceHighlights(summaryTable) {
   });
 }
 
-function evaluateSimpleMathExpression(raw, referenceValues) {
+function evaluateSummaryFormulaMatrix(raw, referenceValues) {
   const txt = String(raw || "").trim();
   if (!txt) return null;
   let expr = txt.startsWith("=") ? txt.slice(1).trim() : txt;
   if (!expr) return null;
-  if (referenceValues instanceof Map && referenceValues.size) {
-    const entries = Array.from(referenceValues.entries())
-      .filter(([label, value]) => String(label || "").trim() && Number.isFinite(Number(value)))
-      .sort((a, b) => String(b[0]).length - String(a[0]).length);
-    entries.forEach(([label, value]) => {
-      const lit = escapeRegExp(String(label));
-      const numeric = String(Number(value));
-      expr = expr.replace(new RegExp(`"${lit}"`, "g"), numeric);
-      expr = expr.replace(new RegExp(`'${lit}'`, "g"), numeric);
-      expr = expr.replace(new RegExp(lit, "g"), numeric);
-    });
-  }
-  // ROUND(x, digits) is the one function the formula language offers, so the
-  // syntax check admits that word and nothing else made of letters.
-  expr = expr.replace(/\bround\s*\(/giu, "ROUND(");
-  if (!/^(?:[0-9+\-*/().,\s]|ROUND\()+$/u.test(expr)) return null;
-  if (expr.includes("**")) return null;
-  try {
-    const out = Function("ROUND", `"use strict"; return (${expr});`)(
-      (value, digits = 0) => roundHalfUp(Number(value), Number(digits)),
-    );
-    return Number.isFinite(out) ? Number(out) : null;
-  } catch {
-    return null;
-  }
+  expr = substituteFormulaRowValues(expr, referenceValues);
+  const parsed = parseDatasetFormula(expr);
+  if (!parsed.ok) return null;
+  const result = evaluateDatasetFormula(parsed.tree, () => null, { round: roundHalfUp });
+  return result.ok ? result : null;
+}
+
+function evaluateSimpleMathExpression(raw, referenceValues) {
+  const result = evaluateSummaryFormulaMatrix(raw, referenceValues);
+  return result?.rows === 1 && result.cols === 1 && Number.isFinite(result.values[0][0]) ? result.values[0][0] : null;
 }
 
 function stripFormulaEquals(raw) {
@@ -809,12 +796,10 @@ function parseArrayConstant(raw) {
 function parseSummaryArrayFormula(raw) {
   const expr = stripFormulaEquals(raw);
   if (!expr) return null;
-  const transposeMatch = /^TRANSPOSE\s*/i.exec(expr);
+  const transposeMatch = /^TRANSPOSE\s*(?=\(\s*\{)/i.exec(expr);
   if (transposeMatch) {
     const args = stripSingleOuterParens(expr.slice(transposeMatch[0].length).trim());
-    if (args == null) {
-      return { ok: false, error: "TRANSPOSE array formulas must look like =TRANSPOSE({1;2;3})." };
-    }
+    if (args == null) return null;
     const parsed = parseArrayConstant(args);
     if (!parsed.ok) return parsed;
     if (!parsed.rows.length || parsed.rows.some((row) => row.length !== 1)) {
@@ -823,6 +808,7 @@ function parseSummaryArrayFormula(raw) {
     return { ok: true, expressions: parsed.rows.map((row) => row[0]) };
   }
   if (!expr.startsWith("{")) return null;
+  if (!expr.endsWith("}")) return null;
   const parsed = parseArrayConstant(expr);
   if (!parsed.ok) return parsed;
   if (parsed.rows.length !== 1) {
@@ -1036,6 +1022,7 @@ registerSummaryFunctions({
   applyUserEntryReferenceHighlights,
   formatUserEntryFormulaEvaluationValue,
   evaluateSimpleMathExpression,
+  evaluateSummaryFormulaMatrix,
   stripFormulaEquals,
   splitFormulaTopLevel,
   stripSingleOuterParens,

@@ -77,6 +77,8 @@ const patchedSource = [
   ["formula_bar_excel_link.js", excelLinkModuleUrl],
   ["formula_text.js", sharedModuleUrl("formula_text.js")],
   ["formula_bar_drag.js", dragModuleUrl],
+  ["formula_autocomplete.js", asModule("export const installFormulaAutocomplete = () => ({ destroy() {} });")],
+  ["formula_helper.js", asModule("export const wireFormulaHelper = () => {};")],
 ].reduce(
   (text, [name, replacement]) => replaceSharedImport(text, name, replacement, "formula_hover.js"),
   source,

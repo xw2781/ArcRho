@@ -7,6 +7,7 @@ import {
   substituteDfmDatasetReferenceLabels,
   substituteDfmDatasetReferences,
 } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
+import { resolveFormulaDatasets } from "/ui/shared/components/formula_bar/formula_api.js?v=20260917a";
 
 // Last-resolved dataset-reference values for this page session, keyed by
 // project, reserving class, and the reference text exactly as stored in the
@@ -32,8 +33,8 @@ export function substituteCachedDfmDatasetReferencesInFormula(rawFormula) {
   const resolvedResults = [];
   for (const reference of references) {
     const cached = resolvedDatasetReferenceValues.get(datasetReferenceCacheKey(identity, reference.match));
-    if (!Number.isFinite(cached)) return { ok: false, formula };
-    resolvedResults.push({ value: cached });
+    if (!Number.isFinite(cached) && !cached?.values) return { ok: false, formula };
+    resolvedResults.push(cached?.values ? { matrix: cached } : { value: cached });
   }
   return { ok: true, formula: substituteDfmDatasetReferences(formula, references, resolvedResults) };
 }
@@ -76,17 +77,28 @@ export async function resolveDfmDatasetReferencesInFormulasDetailed(rawFormulas,
   if (!identity.project_name || !identity.reserving_class) {
     throw new Error("Project and reserving class are required to resolve dataset references.");
   }
-  const response = await resolveDfmDatasetReferences({
+  const scalarReferences = references.filter(reference => reference.kind !== "arcrho");
+  const calls = references.filter(reference => reference.kind === "arcrho");
+  const [response, matrices] = await Promise.all([
+    scalarReferences.length ? resolveDfmDatasetReferences({
     project_name: identity.project_name,
     reserving_class: identity.reserving_class,
-    references: references.map((reference) => ({
+    references: scalarReferences.map((reference) => ({
       dataset_name: reference.datasetName,
       row_idx: reference.rowIndex,
       ...(reference.colIndex ? { col_idx: reference.colIndex } : {}),
     })),
-  }, options);
-  const results = Array.isArray(response?.results) ? response.results : [];
+  }, options) : { results: [] },
+    resolveFormulaDatasets(calls.map(call => call.match), identity, options.signal),
+  ]);
+  let scalarIndex = 0, callIndex = 0;
+  const results = references.map(reference => reference.kind === "arcrho"
+    ? { matrix: matrices[callIndex++] } : response.results[scalarIndex++]);
   references.forEach((reference, index) => {
+    if (results[index]?.matrix) {
+      resolvedDatasetReferenceValues.set(datasetReferenceCacheKey(identity, reference.match), results[index].matrix);
+      return;
+    }
     const value = Number(results[index]?.value);
     if (Number.isFinite(value)) {
       resolvedDatasetReferenceValues.set(datasetReferenceCacheKey(identity, reference.match), value);

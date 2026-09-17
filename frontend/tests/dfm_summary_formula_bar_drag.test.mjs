@@ -241,11 +241,13 @@ test("the anchored path, showing, and hiding all know about a hand-placed bar", 
   assert.match(excelSource, /function hideSummaryFormulaBar[\s\S]*?clearSummaryFormulaBarDragPlacement\?\.\(el\)/u);
 });
 
-test("a hand-placed bar is fixed to the page and stays under its own tooltip", () => {
+test("a hand-placed bar is fixed to the page and stays under its own tooltip", async () => {
   assert.match(dfmCss, /\.dfmSummaryFormulaBar\.isDragPlaced \{\s*position: fixed;\s*z-index: 1600;/u);
   assert.match(dfmCss, /\.dfmSummaryFormulaBar \.arFormulaBarFxIcon \{\s*cursor: grab;/u);
   assert.match(dfmCss, /\.dfmSummaryFormulaBar\.isDragging \.arFormulaBarFxIcon \{\s*cursor: grabbing;/u);
   // The validation tooltip and the dataset list must still draw over the bar.
   assert.match(dfmCss, /\.dfmSummaryFormulaBarError \{[\s\S]*?z-index: 1700;/u);
-  assert.match(dfmCss, /\.dfmDatasetAutocomplete \{[\s\S]*?z-index: 1750;/u);
+  const assistCss = await readFile(new URL("../ui/shared/components/formula_bar/formula_assist.css", import.meta.url), "utf8");
+  const listZ = Number(/\.arFormulaAutocomplete \{[\s\S]*?z-index: (\d+);/u.exec(assistCss)?.[1]);
+  assert.ok(listZ > 1700);
 });

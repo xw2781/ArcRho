@@ -59,6 +59,7 @@ def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: 
         local=lambda: dataset_service.list_cached_dataset_names(
             project_name, reserving_class, refresh=refresh
         ),
+        gateway_required=True,
     )
 
 
@@ -262,9 +263,8 @@ def load_dataset_cache(req: DatasetCacheLoadRequest) -> Dict[str, Any]:
 
 @router.post("/dataset/internal_links/resolve")
 def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> Dict[str, Any]:
-    # One cached-dataset read per unique referenced name; hosted on the
-    # Gateway when it offers the kind so a Client PC pays one HTTP round trip
-    # instead of one SMB visit per referenced dataset.
+    # Formula reads, including cross-project calls, require the Gateway on
+    # Client PCs. Server processes execute the canonical resolver locally.
     return workspace_read_client.run_workspace_read(
         "dataset_internal_links_resolve",
         {
@@ -277,6 +277,7 @@ def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> D
             req.reserving_class,
             req.references,
         ),
+        gateway_required=True,
     )
 
 

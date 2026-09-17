@@ -2717,6 +2717,7 @@ def _save_dataset_sidecar_impl(
             for name in link_precedent_names(
                 _normalize_dataset_internal_links(existing.get("internal_links")),
                 _normalize_dataset_formula_links(existing.get("formula_links")),
+                project_name=p, reserving_class=rc,
             )
             if _canon_dataset_name(name) != own_key
         ]
@@ -2725,6 +2726,7 @@ def _save_dataset_sidecar_impl(
             for name in link_precedent_names(
                 payload.get("internal_links"),
                 payload.get("formula_links"),
+                project_name=p, reserving_class=rc,
             )
             if _canon_dataset_name(name) != own_key
         ]

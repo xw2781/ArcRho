@@ -28,9 +28,11 @@ Dataset Viewer value editing allows only manual/input datasets and new manual dr
 
 An eligible manual/input Dataset Viewer or method Save remains available while clean and triggers full downstream recalculation. Derived-dataset display saves skip propagation. Dirty state continues to govern unsaved-change prompts, not propagation eligibility.
 
-Dataset Viewer Data exposes Copy, eligible manual/input Paste, and Copy All with muted shortcut hints. Ctrl/Cmd+A selects and copies the displayed grid when the grid owns keyboard focus. Manual/input datasets keep the cell formula editor in a separate full-width panel above the table; the existing editing and read-only rules still apply.
+Dataset Viewer Data exposes Copy, eligible manual/input Paste, and Copy All with muted shortcut hints, plus Clear data, which zeroes every editable cell of the displayed grid and is offered only while the grid is editable. Ctrl/Cmd+A selects and copies the displayed grid when the grid owns keyboard focus. Manual/input datasets keep the cell formula editor in a separate full-width panel above the table; the existing editing and read-only rules still apply.
 
 The manual Data formula panel provides a compact formula field with Enter to apply and Escape to cancel edits. Plain numeric edits remain values, while `=` expressions use the canonical dataset-cell formula grammar and retain their formula links on save.
+
+DSV and DFM share formula completion and an fx dialog for function selection, argument choices, and read-only result previews. Inserting a validated formula changes only the draft; the editor's normal Enter command applies it. Typing `[` offers dataset names in both editors. DSV's formula panel shows the top-left cell of the first selected range. The [formula-bar guide](../ui/formula_bar.md) defines the supported dataset calls and scope defaults.
 
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
