@@ -98,11 +98,20 @@ export function registerDataTabPersistenceController(runtime) {
       if (name !== owner) runtime[name]?.hardCodeTargetCells(cells);
     });
   };
-  const resolveReferences = (references) => resolveDatasetInternalLinks({
-    project_name: getResolvedProjectValue(),
-    reserving_class: getResolvedReservingClassValue(),
-    references,
-  });
+  // A reference is indexed on the grid it is written in, so every source is
+  // read at the lengths the two controls show right now rather than at the
+  // display the sidecar last saved. A vector has one period and no development
+  // control, so its origin value stands for both.
+  const resolveReferences = (references) => {
+    const lengths = getCurrentLengthControlValues();
+    return resolveDatasetInternalLinks({
+      project_name: getResolvedProjectValue(),
+      reserving_class: getResolvedReservingClassValue(),
+      references,
+      origin_length: lengths.origin_length,
+      development_length: currentDatasetIsVector() ? lengths.origin_length : lengths.development_length,
+    });
+  };
   runtime.datasetExternalLinks = createDatasetExternalLinksController({
     state,
     isReadOnly: linksControllerIsReadOnly,

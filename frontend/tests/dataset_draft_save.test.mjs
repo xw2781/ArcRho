@@ -1,6 +1,8 @@
 // A Project Instance "Add > Dataset" draft opens fully prefilled, so no control
 // or grid edit happens before the user saves. These tests pin that the draft is
-// still save-eligible and that its first save writes the placeholder grid.
+// still save-eligible and that its first save writes the placeholder grid. The
+// last tests use the same headless persistence controller to pin the request a
+// committed dataset reference is resolved with.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -89,7 +91,7 @@ function installFakeDom(overrides = {}) {
   return elements;
 }
 
-function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSaves = [], isReadOnlyDatasetViewer = false } = {}) {
+function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSaves = [], isReadOnlyDatasetViewer = false, dataFormat = "Triangle", resolveRequests = [], linkControllerOptions = {} } = {}) {
   const state = {
     dirty: new Map(),
     model,
@@ -115,6 +117,8 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
     datasetInstanceNameConflictMessage: "",
     saveControlCalls,
     sidecarSaves,
+    resolveRequests,
+    linkControllerOptions,
 
     // Deferred collaborators the controller reads through `runtime`.
     getResolvedProjectValue: () => PROJECT,
@@ -159,16 +163,27 @@ function createRuntime({ isProjectInstanceDraft = true, model = null, sidecarSav
       abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
       serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
     }),
-    createDatasetInternalLinksController: () => ({
-      abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
-      hardCodeTargetCells: () => 0, getLinkFailures: () => [],
-      serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
-    }),
-    createDatasetFormulaLinksController: () => ({
-      abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
-      hardCodeTargetCells: () => 0, getLinkFailures: () => [],
-      serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
-    }),
+    getDatasetRunDataFormat: () => dataFormat,
+    resolveDatasetInternalLinks: async (payload) => {
+      resolveRequests.push(payload);
+      return { ok: true, status: 200, data: { ok: true, results: [] } };
+    },
+    createDatasetInternalLinksController: (options) => {
+      linkControllerOptions.internal = options;
+      return {
+        abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
+        hardCodeTargetCells: () => 0, getLinkFailures: () => [],
+        serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
+      };
+    },
+    createDatasetFormulaLinksController: (options) => {
+      linkControllerOptions.formula = options;
+      return {
+        abort() {}, clear() {}, load() {}, markClean() {}, isDirty: () => false,
+        hardCodeTargetCells: () => 0, getLinkFailures: () => [],
+        serialize: () => [], refreshAll: async () => ({ linkedCellCount: 0, changedCount: 0, failedCount: 0 }),
+      };
+    },
   };
   const runtime = new Proxy(base, {
     get(target, prop) {
@@ -364,4 +379,45 @@ test("a non-draft refresh marker saves the durable grid even when values are unc
   assert.equal(runtime.sidecarSaves.length, 1);
   assert.deepEqual(runtime.sidecarSaves[0].values, [[0, 0], [0, null]]);
   assert.equal(runtime.state.dirty.size, 0);
+});
+
+test("a reference is resolved at the lengths the length controls show when it is committed", async () => {
+  const elements = installFakeDom();
+  const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel() });
+  // The plain-link and formula controllers are handed the same resolver, so
+  // both kinds of reference read their sources at one grid.
+  const resolveReferences = runtime.linkControllerOptions.internal.resolveReferences;
+  assert.equal(runtime.linkControllerOptions.formula.resolveReferences, resolveReferences);
+
+  elements.get("originLenSelect").value = "12";
+  elements.get("devLenSelect").value = "12";
+  await resolveReferences(["[A][1]"]);
+
+  // Lowering a control before the next commit moves the next request with it,
+  // so the lengths are the live ones and not a value read once at load.
+  elements.get("devLenSelect").value = "3";
+  await resolveReferences(["[A][1]"]);
+
+  assert.deepEqual(runtime.resolveRequests.map((request) => [request.origin_length, request.development_length]), [
+    [12, 12],
+    [12, 3],
+  ]);
+  assert.equal(runtime.resolveRequests[0].project_name, PROJECT);
+  assert.equal(runtime.resolveRequests[0].reserving_class, RESERVING_CLASS);
+  assert.deepEqual(runtime.resolveRequests[0].references, ["[A][1]"]);
+});
+
+test("a vector sends its one period as both lengths", async () => {
+  const elements = installFakeDom();
+  const runtime = createRuntime({ isProjectInstanceDraft: false, model: draftModel(), dataFormat: "Vector" });
+  elements.get("originLenSelect").value = "6";
+  // A vector locks its development control at 0, which no source could be read
+  // at; its period stands for both axes instead.
+  elements.get("devLenSelect").value = "0";
+
+  await runtime.linkControllerOptions.internal.resolveReferences(["[A][1:5]"]);
+
+  assert.equal(runtime.resolveRequests.length, 1);
+  assert.equal(runtime.resolveRequests[0].origin_length, 6);
+  assert.equal(runtime.resolveRequests[0].development_length, 6);
 });

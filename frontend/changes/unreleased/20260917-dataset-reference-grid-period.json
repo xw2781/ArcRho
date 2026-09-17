@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A dataset reference now reads its source at the period the grid is shown at, so the position in the reference means what it looks like on screen.",
+  "details": [
+    "A reference typed into a yearly grid takes yearly figures from a source held monthly instead of that source's first months.",
+    "A source that cannot be shown at the grid's period is refused with the reason rather than answering with its own rows.",
+    "The ArcRhoVec and ArcRhoTri function forms still name their own period and are unchanged."
+  ]
+}
