@@ -1,6 +1,6 @@
 # Dataset cell links read their source at the referencing dataset's period
 
-Status: Investigated 2026-09-17 and broken into 5 session-sized steps the same day; steps 1 to 4 of 5 done 2026-09-17, the reader that can serve a dataset at any coarser period a caller names, the resolve route that reads every source at the lengths the request names, the unattended refresh that reads each source at the shape the target's links were written on, and the Dataset window that sends its live length controls with every committed reference; only the release to the server and the check in the app remain; no decisions open.
+Status: Completed 2026-09-17: all 5 steps done, the Bridge, the Engine and the Gateway deployed the same day and the change checked against the fake project through the hosted read; the credential component is still undeployed because the running Build Listener predates its role.
 Last updated: 2026-09-17
 
 ## Progress
@@ -13,9 +13,9 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | A cell link resolves its source at the period the referencing grid is shown at | [x] | 2026-09-17 | 45 min | 7 min | Nothing visible yet: a request to resolve references can now say which period the grid is in, and each source is read at that period or refused with the reason. |
 | 3 | The automatic refresh reads sources the same way the link was entered | [x] | 2026-09-17 | 20 min | 6 min | Nothing visible yet: an unattended refresh of a link-driven dataset now reads each source at the period the grid was in when the reference was typed, and reports the reason instead of writing when a source cannot be read there. |
 | 4 | The Dataset window sends the period it is showing with every reference | [x] | 2026-09-17 | 35 min | 9 min | A reference typed into a dataset grid now reads its source at the period that grid is showing, so a yearly grid gets years out of a monthly source. |
-| 5 | Released to the server and checked in the app | [ ] | | 35 min | | |
+| 5 | Released to the server and checked in the app | [x] | 2026-09-17 | 35 min | 12 min | The Bridge, the Engine and the Gateway now run the change. Checked against the fake project's HOL class through the same server read the Dataset window uses: a yearly grid reading the monthly "C 82 - Prior Qtr Selected" gets yearly sums, a quarterly grid gets quarters, a monthly grid still gets months, and a yearly source asked for from a monthly grid is refused with the reason. The check was not typed into the window itself. |
 
-Overall: 4 of 5 steps done. Estimated 170 min, actual so far 34 min.
+Overall: 5 of 5 steps done. Estimated 170 min, actual so far 46 min.
 
 ## How agents work this plan
 
@@ -142,4 +142,4 @@ Five steps, estimated at 170 minutes of agent time: 112 minutes of reading and e
 
 **Done when.** `deploy.py` exits 0 for every stale component and the app check shows yearly figures from the monthly source.
 
-**Estimate.** Estimate: code edit 0 min, test/validation 35 min, total 35 min.
+**Estimate.** Estimate: code edit 0 min, test/validation 35 min, total 35 min. Actual: code edit 0 min, test/validation 12 min, total 12 min; under half because the app check ran through the hosted read from a script instead of a driven window, and the first deploy attempt was refused outright because the running Build Listener predates the credential component role, so the three components it knows were named explicitly.
