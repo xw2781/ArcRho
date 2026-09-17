@@ -22,6 +22,11 @@ is not enough - you must bump its `?v=` in **every importer**, and bump `ui_shel
 `ui/index.html` when anything in the shell graph changes. Otherwise the browser keeps serving the
 cached copy and the edit silently has no effect.
 
+Correction (verified 2026-09-17): since commit 4f10a5ef on 2026-08-18, `app_server/ui_static.py`
+serves every `/ui/*` file with `cache-control: no-cache`, so the browser revalidates each module
+before reuse and a full app relaunch picks up an edit without a `?v=` bump. Bumps are still needed
+only where a test pins an exact stamp or where two stamps would load one module twice.
+
 A module served under two different `?v=` strings is **two module instances** with separate
 top-level state, so a per-session cache in one of them is invisible to the other. That makes
 the bump transitive: rewriting an importer changes that file too, so its own importers must be
