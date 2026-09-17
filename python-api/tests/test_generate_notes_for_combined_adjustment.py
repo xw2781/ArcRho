@@ -290,6 +290,20 @@ class NoteGenerationTests(unittest.TestCase):
             "Apply growth and BI limit adjustment (paid) of 1+0.26% = 1.0026;", note
         )
 
+    def test_growth_and_bi_limit_special_case_covers_paid_methods(self):
+        dfm = single_column_dfm(
+            '= "Simple - 2" * [Growth Adjustment--Paid][-1]',
+            3.0493,
+            reserving_class=MACRO.GROWTH_AND_BI_LIMIT_RESERVING_CLASS,
+            output_category="F Net Loss",
+            name="F 02 - Paid Development",
+        )
+        resolver = make_resolver({"Growth Adjustment--Paid": (1.0026, "2026")})
+        note = generate(dfm, resolver)["note_blocks"][0]
+        self.assertIn(
+            "Apply growth and BI limit adjustment (paid) of 1+0.26% = 1.0026;", note
+        )
+
     def test_growth_and_bi_limit_special_case_requires_class_category_and_name(self):
         base_kwargs = dict(
             reserving_class=MACRO.GROWTH_AND_BI_LIMIT_RESERVING_CLASS,
@@ -300,7 +314,7 @@ class NoteGenerationTests(unittest.TestCase):
         for override in (
             {"reserving_class": "RC"},
             {"output_category": "C Claim Counts"},
-            {"name": "F 02 - Paid Development"},
+            {"name": "F 03 - Reported Counts Development"},
         ):
             with self.subTest(override=override):
                 kwargs = {**base_kwargs, **override}

@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.8.0
-# Release Note: The combined growth and BI limit wording now covers the paid development methods of the BIR51+UMBIR51 class as well as the incurred ones.
+# Version: 1.7.1
+# Release Note: The macro now brackets a growth vector's basis itself, so "Apply growth adjustment (counts) of ..." is written whatever version of the shared adjustment names the app carries.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -44,10 +44,10 @@ MACRO_TITLE = "Generate Notes for Combined Adjustment"
 NO_ADJUSTMENT_NOTE = "No combined adjustments were needed for this method."
 
 # This one reserving class runs its growth vector as a combined growth and
-# BI limit adjustment, but only for its net-loss incurred and paid DFM methods.
+# BI limit adjustment, but only for its net-loss, incurred DFM methods.
 GROWTH_AND_BI_LIMIT_RESERVING_CLASS = "PRNJ - PA\\PA\\NJ\\Direct Group\\BIR51+UMBIR51"
 GROWTH_AND_BI_LIMIT_CATEGORY = "f net loss"
-GROWTH_AND_BI_LIMIT_NAME_TOKENS = ("incurred", "paid")
+GROWTH_AND_BI_LIMIT_NAME_TOKEN = "incurred"
 _GROWTH_DESCRIPTION = "growth adjustment"
 _GROWTH_AND_BI_LIMIT_DESCRIPTION = "growth and BI limit adjustment"
 # "Growth Adjustment--Counts" carries its basis after a double dash. The notes
@@ -500,7 +500,7 @@ def _is_growth_and_bi_limit_dfm(dfm: Any) -> bool:
     return (
         reserving_class == GROWTH_AND_BI_LIMIT_RESERVING_CLASS
         and category == GROWTH_AND_BI_LIMIT_CATEGORY
-        and any(token in name for token in GROWTH_AND_BI_LIMIT_NAME_TOKENS)
+        and GROWTH_AND_BI_LIMIT_NAME_TOKEN in name
     )
 
 
@@ -508,7 +508,7 @@ def _note_adjustment_description(dataset_name: str, *, growth_and_bi_limit: bool
     """How the notes name an adjustment dataset, keeping a growth vector's
     basis (counts, incurred, paid) in brackets after the adjustment, and
     naming it as a combined growth and BI limit adjustment for the one
-    reserving class, DFM category and method names that run it that way."""
+    reserving class and DFM category that runs it that way."""
     name = _clean_text(dataset_name)
     basis = ""
     found = _DATASET_BASIS_RE.search(name)

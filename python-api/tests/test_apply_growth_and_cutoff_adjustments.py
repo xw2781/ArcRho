@@ -261,14 +261,25 @@ class FormulaTests(unittest.TestCase):
             '= ROUND("Simple - 3", 4) * [Growth Adjustment--Counts][-3]',
         )
 
-    def test_only_the_first_three_periods_are_considered(self):
+    def test_only_the_first_ten_periods_are_considered(self):
+        columns = 12
         rows = {
-            "Accounting Cutoff": {f"-{n}": (1.0, str(2027 - n)) for n in range(1, 5)},
-            "Growth Adjustment--Counts": {f"-{n}": (1.05, str(2027 - n)) for n in range(1, 5)},
+            "Accounting Cutoff": {f"-{n}": (1.0, str(2027 - n)) for n in range(1, columns + 1)},
+            "Growth Adjustment--Counts": {
+                f"-{n}": (1.05, str(2027 - n)) for n in range(1, columns + 1)
+            },
         }
-        dfm = FakeDfm(selected_row=1)
+        dfm = FakeDfm(
+            selected_row=1, origin_labels=[str(2027 - n) for n in range(columns, 0, -1)]
+        )
+        formulas = dfm.average_formulas
+        for key in ("selected", "values", "inputs", "display_inputs"):
+            for row in formulas[key]:
+                row.extend([row[-1]] * (columns - len(row)))
+        dfm._average_col_count = lambda: columns
+        dfm.dev_period = lambda index: f"({index})"
         _basis, result = plan(dfm, rows)
-        self.assertEqual([item["col"] for item in result["plans"]], [0, 1, 2])
+        self.assertEqual([item["col"] for item in result["plans"]], list(range(10)))
 
     def test_severity_writes_a_division_term(self):
         dfm = FakeDfm(

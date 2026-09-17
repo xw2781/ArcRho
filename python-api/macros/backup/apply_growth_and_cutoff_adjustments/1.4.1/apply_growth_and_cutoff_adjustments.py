@@ -1,12 +1,12 @@
 # <arcrho-macro>
 # Title: Apply Growth and Cutoff Adjustments
-# Version: 1.5.0
-# Release Note: The adjustment now reaches the first ten development periods instead of three; a period whose vectors are 1 is still left alone, so methods adjusted within the first three periods are unchanged.
+# Version: 1.4.1
+# Release Note: The adjusted value is stored with every digit it has instead of being trimmed to six decimals, so the number in the User Entry cell is exactly what its own formula evaluates to.
 # Description: Write the combined growth and accounting cutoff adjustment into the active
 #   DFM's User Entry row as a live in-cell formula, for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
 #   The adjustment basis comes from the method's own input triangle: claim counts, paid,
-#   incurred, or a severity ratio of incurred over counts. Only the first ten development
+#   incurred, or a severity ratio of incurred over counts. Only the first three development
 #   periods are considered, each reading one row further back in the vectors, and a period
 #   whose factor is 1 is left alone. The average factor is rounded to the four decimals the
 #   notes show it at; the vectors are multiplied in as stored. The average cell the
@@ -39,9 +39,9 @@ from arcrho_api.dfm_contract import round_half_up
 
 MACRO_TITLE = "Apply Growth and Cutoff Adjustments"
 
-# An adjustment reaches at most ten development periods, comfortably past the
-# few where the vectors differ from 1; a period whose factor is 1 is skipped.
-MAX_ADJUSTED_COLUMNS = 10
+# An adjustment reaches at most three development periods; beyond that the
+# vectors are 1 in every reserve review, annual and quarterly alike.
+MAX_ADJUSTED_COLUMNS = 3
 
 # A factor this close to 1 shows as 0.00% and carries no adjustment, so its
 # term is left out of the formula.
