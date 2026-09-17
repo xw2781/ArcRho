@@ -9,6 +9,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = FRONTEND_ROOT.parent
 TEST_TEMP_ROOT = REPO_ROOT / "test"
@@ -21,6 +23,7 @@ from app_server.services import (
     arcrho_runtime_service,
     dataset_service,
     engine_calculation_service,
+    precedent_cache_service,
 )
 
 # The text a worksheet formula receives for the yearly view of the monthly
@@ -342,6 +345,237 @@ class ManualVectorRollupViewTests(unittest.TestCase):
 
         self.assertEqual(float(first.splitlines()[0]), 7800.0)
         self.assertEqual(float(second.splitlines()[0]), 15600.0)
+
+
+def _project_development_headers(
+    _ds_id: str,
+    _path: str,
+    _project_name: str,
+    period_length: int,
+    *,
+    period_type: int = 0,
+    transposed: bool = False,
+    calendar: bool = False,
+) -> list:
+    """The project's own development ages at the period asked for.
+
+    Origins run 2023-2024 and the valuation date is the end of 2024, so a
+    yearly view is aged 12m and 24m and a quarterly file is aged 3m upward.
+    """
+
+    step = max(1, int(period_length))
+    return [str(step * (index + 1)) for index in range(36 // step)]
+
+
+class CallerNamedLengthsReadTests(unittest.TestCase):
+    """A dataset read at the lengths the caller names, not its file's own.
+
+    A cell link counts its index in the periods of the grid it was typed
+    into, so the reader has to serve any source at that grid's lengths: a
+    finer hand-entered one is added up, a generated one is produced again,
+    and one that cannot be brought there is refused instead of answering
+    with the rows its file happens to hold.
+    """
+
+    project_name = "Example Project"
+    reserving_class = "Example Reserving Class"
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        root = Path(self.temp_dir.name)
+        self.cache_dir = root / config.DATASET_CACHE_DIR
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        settings_path = root / "general_settings.json"
+        settings_path.write_text(
+            '{"origin_start_date":"202301","origin_end_date":"202412","development_end_date":"202412"}',
+            encoding="utf-8",
+        )
+        # A hand-entered vector kept one figure per month, the case the user
+        # types "=[A][1]" against while looking at a yearly grid.
+        self.vector_csv = self.cache_dir / "Exposure@1.csv"
+        self.vector_csv.write_text(
+            "\n".join(f"{100.0 * (row + 1):.1f}" for row in range(24)) + "\n",
+            encoding="utf-8",
+        )
+        self.vector_sidecar = {
+            "dataset_name": "Exposure",
+            "dataset_type": "Exposure",
+            "data_format": "Vector",
+            "source_kind": "input",
+            "csv_file": self.vector_csv.name,
+            "period_length": 12,
+            "stored_period_length": 1,
+        }
+        # A hand-entered triangle kept at yearly origins and quarterly columns.
+        self.triangle_csv = self.cache_dir / "Case@12@3@cum@dev.csv"
+        first = ",".join(str(3 * (column + 1)) for column in range(8))
+        second = ",".join(str(3 * (column + 1)) for column in range(4)) + "," * 4
+        self.triangle_csv.write_text(f"{first}\n{second}\n", encoding="utf-8")
+        self.triangle_sidecar = {
+            "dataset_name": "Case",
+            "dataset_type": "Case",
+            "data_format": "Triangle",
+            "source_kind": "input",
+            "csv_file": self.triangle_csv.name,
+            "cumulative": True,
+            "calendar": False,
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_origin_length": 12,
+            "stored_development_length": 3,
+        }
+        # A generated triangle, whose stored pair records how fine the
+        # project's source table is rather than the shape of its own cache.
+        self.engine_csv = self.cache_dir / "Ultimate@12@12@cum@dev.csv"
+        self.engine_csv.write_text("40,80\n40,\n", encoding="utf-8")
+        self.engine_sidecar = {
+            "dataset_name": "Ultimate",
+            "dataset_type": "Ultimate",
+            "data_format": "Triangle",
+            "source_kind": "engine",
+            "csv_file": "Ultimate@1@1@cum@dev.csv",
+            "cumulative": True,
+            "calendar": False,
+            "origin_length": 12,
+            "development_length": 12,
+            "stored_origin_length": 1,
+            "stored_development_length": 1,
+        }
+        self.sidecar = self.vector_sidecar
+        patches = [
+            patch.object(
+                config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)
+            ),
+            patch.object(config, "get_general_settings_path", return_value=str(settings_path)),
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(
+                dataset_service,
+                "_read_dataset_sidecar",
+                side_effect=lambda _path: self.sidecar,
+            ),
+            patch.object(
+                dataset_service,
+                "_resolve_origin_labels",
+                side_effect=lambda _id, _path, _project, _period, count: [
+                    str(index) for index in range(count)
+                ],
+            ),
+            patch.object(
+                dataset_service,
+                "_load_project_header_labels",
+                side_effect=_project_development_headers,
+            ),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def tearDown(self) -> None:
+        config.DATASETS.clear()
+        config.DATASET_ROLLUPS.clear()
+        self.temp_dir.cleanup()
+
+    def _load(self, dataset_name: str, **kwargs: object) -> dict:
+        return dataset_service.load_cached_dataset_values(
+            self.project_name, self.reserving_class, dataset_name, **kwargs
+        )
+
+    def test_a_monthly_vector_answers_a_yearly_reader_in_years(self) -> None:
+        result = self._load("Exposure", at_lengths=(12, 12))
+
+        self.assertEqual(result["values"], [[7800.0], [22200.0]])
+        self.assertEqual(result["origin_length"], 12)
+        self.assertEqual(result["development_length"], 12)
+        self.assertEqual(result["stored_period_length"], 1)
+        # The file stays the only copy of the figures.
+        self.assertEqual(result["csv_file"], self.vector_csv.name)
+        self.assertFalse(Path(result["path"]).exists())
+
+    def test_the_stored_lengths_read_the_file_as_before(self) -> None:
+        result = self._load("Exposure", at_lengths=(1, 1))
+
+        self.assertEqual(len(result["values"]), 24)
+        self.assertEqual(result["values"][0], [100.0])
+        self.assertEqual(result["origin_length"], 1)
+        self.assertEqual(result["path"], str(self.vector_csv))
+        self.assertEqual(config.DATASET_ROLLUPS, {})
+
+    def test_a_quarterly_triangle_reads_as_the_yearly_grid_it_is_shown_at(self) -> None:
+        self.sidecar = self.triangle_sidecar
+
+        named = self._load("Case", at_lengths=(12, 12))
+        shown = self._load("Case", at_display_shape=True)
+
+        self.assertEqual(named["values"], [[12.0, 24.0], [12.0, None]])
+        self.assertEqual(named["values"], shown["values"])
+        self.assertEqual(
+            (named["origin_length"], named["development_length"]),
+            (shown["origin_length"], shown["development_length"]),
+        )
+        self.assertEqual(named["dev_labels"], ["12", "24"])
+
+    def test_a_finer_reader_than_the_file_is_refused(self) -> None:
+        self.sidecar = self.triangle_sidecar
+
+        with self.assertRaises(HTTPException) as caught:
+            self._load("Case", at_lengths=(12, 1))
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("'Case'", caught.exception.detail)
+        self.assertIn("12-month origins and 3-month development periods", caught.exception.detail)
+        self.assertIn("12-month origins and 1-month development periods", caught.exception.detail)
+        self.assertIn("finer to coarser", caught.exception.detail)
+
+    def test_a_reader_that_is_not_a_whole_multiple_is_refused(self) -> None:
+        self.sidecar = self.triangle_sidecar
+
+        with self.assertRaises(HTTPException) as caught:
+            self._load("Case", at_lengths=(12, 8))
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("'Case'", caught.exception.detail)
+        self.assertIn("whole multiples", caught.exception.detail)
+
+    def test_a_generated_dataset_is_produced_again_at_those_lengths(self) -> None:
+        self.sidecar = self.engine_sidecar
+
+        with patch.object(
+            precedent_cache_service,
+            "materialize_engine_source",
+            return_value=str(self.engine_csv),
+        ) as materialize:
+            result = self._load("Ultimate", at_lengths=(12, 12))
+
+        materialize.assert_called_once_with(
+            self.project_name, self.reserving_class, "Ultimate", self.engine_sidecar, 12, 12
+        )
+        self.assertEqual(result["csv_file"], self.engine_csv.name)
+        self.assertEqual(result["values"], [[40.0, 80.0], [40.0, None]])
+        self.assertEqual((result["origin_length"], result["development_length"]), (12, 12))
+        self.assertEqual(config.DATASET_ROLLUPS, {})
+
+    def test_a_generated_dataset_that_cannot_be_built_is_refused(self) -> None:
+        self.sidecar = self.engine_sidecar
+
+        with patch.object(
+            precedent_cache_service,
+            "materialize_engine_source",
+            side_effect=RuntimeError("the data engine is unavailable"),
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                self._load("Ultimate", at_lengths=(12, 12))
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("'Ultimate'", caught.exception.detail)
+        self.assertIn("the data engine is unavailable", caught.exception.detail)
+
+    def test_no_lengths_keeps_the_file_the_answer(self) -> None:
+        self.sidecar = self.triangle_sidecar
+
+        result = self._load("Case")
+
+        self.assertEqual(len(result["values"][0]), 8)
+        self.assertEqual((result["origin_length"], result["development_length"]), (12, 3))
 
 
 if __name__ == "__main__":

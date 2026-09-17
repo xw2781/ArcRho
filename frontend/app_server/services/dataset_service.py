@@ -38,6 +38,7 @@ from arcrho_api.sidecar_core_contract import (
     SIDECAR_LINKED_DEVELOPMENT_FIELD,
     display_lengths,
     finalize_sidecar,
+    is_vector_format,
     linked_length_fields,
     linked_lengths,
     stored_length_fields,
@@ -1951,6 +1952,35 @@ def _parse_length_scoped_cache_name(filename: str) -> Dict[str, Any]:
     }
 
 
+def _requested_view_lengths(at_lengths: Any) -> Tuple[int, int] | None:
+    """The ``(origin, development)`` pair a caller named, or ``None`` for none.
+
+    The pair is optional in every route that carries it, so anything that is
+    not two positive period lengths reads as "no target given" and the file's
+    own rows are served.
+    """
+
+    if not at_lengths:
+        return None
+    try:
+        origin, development = at_lengths
+    except (TypeError, ValueError):
+        return None
+    origin = _int_or_default(origin, 0)
+    development = _int_or_default(development, 0)
+    if origin <= 0 or development <= 0:
+        return None
+    return origin, development
+
+
+def _period_shape_text(is_vector: bool, lengths: Tuple[int, int]) -> str:
+    """How a period pair is named in a message a user reads."""
+
+    if is_vector:
+        return f"{lengths[0]}-month periods"
+    return f"{lengths[0]}-month origins and {lengths[1]}-month development periods"
+
+
 def load_cached_dataset_values(
     project_name: str,
     reserving_class: str,
@@ -1963,6 +1993,7 @@ def load_cached_dataset_values(
     calendar: bool = False,
     at_display_shape: bool = False,
     at_linked_shape: bool = False,
+    at_lengths: Tuple[int, int] | None = None,
 ) -> Dict[str, Any]:
     """Read a dataset's CSV with the sidecar settings a window needs beside it.
 
@@ -1976,6 +2007,14 @@ def load_cached_dataset_values(
     builds it and never written beside it. ``at_linked_shape`` rolls it up
     the same way to the display its cell links were written against, which
     is where a link refresh reads and writes its cells.
+
+    ``at_lengths`` is the third form, the one a caller names itself: the
+    dataset is served at that ``(origin, development)`` pair however its own
+    file is held, the way a method reads a precedent at the method's own
+    period. A hand-entered dataset is rolled up to it from its own CSV, an
+    Engine-generated one is rebuilt at it, and a dataset that cannot be
+    brought to it is refused with ``422`` rather than quietly answering with
+    the file's own rows. Sending no lengths keeps today's behaviour.
     """
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     sidecar_path = _get_dataset_sidecar_path(p, rc, ds)
@@ -1984,6 +2023,30 @@ def load_cached_dataset_values(
         data_dir = config.get_project_dataset_cache_dir(p, rc)
     except ValueError as err:
         raise HTTPException(404, str(err))
+    view_lengths = _requested_view_lengths(at_lengths)
+    source_kind = str(sidecar.get("source_kind") or "").strip().casefold()
+    if view_lengths and source_kind == "engine":
+        # An Engine-generated dataset is produced again at the lengths asked
+        # for rather than rolled up, the way a DFM brings a generated
+        # precedent to the method's period. Its own stored pair records how
+        # fine the project's source table is, not the shape of the cache
+        # beside it, so it cannot answer whether a rebuild is needed; the
+        # runtime serves the existing cache when it is already current at
+        # these lengths.
+        from app_server.services import precedent_cache_service
+
+        try:
+            csv_file = os.path.basename(
+                precedent_cache_service.materialize_engine_source(
+                    p, rc, ds, sidecar, view_lengths[0], view_lengths[1]
+                )
+            )
+        except RuntimeError as err:
+            raise HTTPException(
+                422,
+                f"'{ds}' could not be generated at "
+                f"{_period_shape_text(is_vector_format(sidecar.get('data_format')), view_lengths)}: {err}",
+            )
     exact_candidates: List[str] = []
     exact_requested = bool(csv_file or (origin_length and development_length))
     if csv_file:
@@ -2048,14 +2111,40 @@ def load_cached_dataset_values(
     linked_origin_length, linked_development_length = linked_lengths(sidecar)
     dataset_id = "arcrhotri_" + hashlib.sha1(csv_path.encode("utf-8")).hexdigest()[:16]
     handle_path = csv_path
-    if at_display_shape or at_linked_shape:
+    view_target: Tuple[int, int] | None = None
+    if view_lengths:
+        # The caller named the shape it reads at, so a dataset that cannot be
+        # brought to it is refused rather than answered with its own rows: a
+        # reference that silently returns months where the reader counts
+        # years is the bug this closes. An Engine-generated dataset was
+        # rebuilt at these lengths above and its file is already the answer.
+        if source_kind != "engine" and view_lengths != (
+            sidecar_origin_length,
+            sidecar_development_length,
+        ):
+            from app_server.services import precedent_cache_service
+
+            reason = precedent_cache_service.rollup_reason(
+                sidecar, view_lengths[0], view_lengths[1]
+            )
+            if reason:
+                raise HTTPException(
+                    422,
+                    f"'{ds}' is stored at "
+                    f"{_period_shape_text(is_vector, (sidecar_origin_length, sidecar_development_length))} "
+                    f"and cannot be read at {_period_shape_text(is_vector, view_lengths)}: {reason}",
+                )
+            view_target = view_lengths
+    elif at_display_shape or at_linked_shape:
+        view_target = linked_lengths(sidecar) if at_linked_shape else display_lengths(sidecar)
+    if view_target is not None:
         view = _display_view_of_stored_values(
             p,
             ds,
             sidecar,
             csv_path,
             values,
-            linked_lengths(sidecar) if at_linked_shape else display_lengths(sidecar),
+            view_target,
         )
         if view is not None:
             values, resolved_origin_length, resolved_development_length, dataset_id, handle_path = view
