@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel add-in 3.0.0 keeps saved workbook results until an explicit refresh.",
+  "details": [
+    "Shared workbooks reopen with the last saved ArcRho values without contacting the server.",
+    "Refresh commands read permanent datasets as published and reuse unchanged temporary generated results.",
+    "Removed the always-refresh setting and preserved saved results when a refresh fails or is cancelled."
+  ]
+}
