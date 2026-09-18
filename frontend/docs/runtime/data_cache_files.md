@@ -23,6 +23,8 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/dependent_propagation/refresh_dependents` | `dependent_propagation` | `submit_refresh_dependents_job` |
 | `GET` | `/dependent_propagation/refresh_dependents/status/{request_id}` | `dependent_propagation` | `get_refresh_dependents_job_status` |
 | `POST` | `/dfm/method-index/refresh` | `dfm_method_index` | `refresh_dfm_method_index` |
+| `POST` | `/excel_links/refresh` | `excel_link` | `excel_links_refresh` |
+| `POST` | `/excel_links/refresh/plan` | `excel_link` | `plan_excel_links_refresh` |
 | `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `project_settings` | `clear_generated_dataset_csv_caches` |
 | `POST` | `/reserving_class_values/refresh` | `reserving_class` | `refresh_reserving_class_values` |
 | `POST` | `/source_table/refresh` | `source_table` | `refresh_source_table` |

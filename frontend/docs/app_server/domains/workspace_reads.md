@@ -20,6 +20,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /cape-cod/load` | `cape_cod_load` | `cape_cod_service.load_cape_cod_method` |
 | `POST /bootstrap/load` | `bootstrap_load` | `bootstrap_service.load_bootstrap_method` |
 | `POST /excel_links/list` | `excel_link_listing` | `excel_link_service.list_reserving_class_excel_links` |
+| `POST /excel_links/check` | `excel_link_value_check` | `excel_link_service.check_reserving_class_excel_link_values` |
 | `GET /datasets/dependency-graph` | `dataset_dependency_graph` | `dataset_dependency_graph_service.build_reserving_class_dependency_graph` |
 | `GET /table_summary` | `table_summary` | `table_summary_service.get_table_summary` |
 | `POST /dfm/rpc-bridge/compare` | `dfm_rpc_bridge_compare` | `dfm_rpc_bridge_service.hosted_compare` |
@@ -55,7 +56,7 @@ Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read
 <!-- MANUAL:BEGIN -->
 1. Move another read to the server: add one `WorkspaceReadKind` entry naming the service function and its keyword arguments, then wrap the route's service call in `workspace_read_client.run_workspace_read(...)`. `test_workspace_reads.py` fails if the registry names an argument the function lacks or omits one it requires; the gateway build validates the import graph and bundles the module automatically. Rebuild and redeploy the gateway.
 2. A read that registers process-local state (like the dataset handle registry) must supply a `finalize` hook so the client process adopts that state from a remote payload.
-3. Machine-local values that are not paths (a driver-availability flag, the process account) must not be exposed through this transport; keep such reads local or split the machine-local part out. A machine-local *answer* is different from a machine-local value: `excel_link_listing` deliberately reports whether the server host can open each linked workbook, because that host is the one every retarget and refresh reads workbooks on, so the server's view is the truth the user needs and a Client PC's would mislead.
+3. Machine-local values that are not paths (a driver-availability flag, the process account) must not be exposed through this transport; keep such reads local or split the machine-local part out. A machine-local *answer* is different from a machine-local value: `excel_link_listing` deliberately reports whether the server host can open each linked workbook, and `excel_link_value_check` opens them there to compare the linked cells with the stored values, because that host is the one every retarget and refresh reads workbooks on, so the server's view is the truth the user needs and a Client PC's would mislead.
 <!-- MANUAL:END -->
 
 ## Known Risks

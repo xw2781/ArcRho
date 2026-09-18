@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Manage Excel Links now tells you whether a linked value actually changed, keeps itself up to date, and can load the changed values for you.",
+  "details": [
+    "Status compares the real cell values against the workbook instead of only comparing file times, so a workbook saved without edits no longer reads as out of date.",
+    "Refresh all shows which datasets and methods hold changed values, and after you accept, loads and saves exactly those and recalculates what depends on them.",
+    "The list refreshes itself every few seconds and after any save in the class, so the manual refresh button is gone.",
+    "Rows now select like the dataset table, and the right-click menu, including the new Refresh links, acts on every highlighted row."
+  ]
+}
