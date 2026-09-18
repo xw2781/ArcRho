@@ -178,7 +178,7 @@ def check_vectors(book):
     check(sheet.Range("A1:A4").Value2 == ((10,), (30,), (20,), (42,))
           and sheet.Range("C1:C3").Value2 == ((10,), (20,), (30,))
           and sheet.Range("E1:G2").Value2 == ((10, 20, 30), (10, 20, 30)),
-          "VecCell and ADAS aliases preserve vertical, horizontal and scalar vector values")
+          "VecCell preserves vertical, horizontal and scalar vector values")
 
 
 def first_user(directory: Path) -> None:
