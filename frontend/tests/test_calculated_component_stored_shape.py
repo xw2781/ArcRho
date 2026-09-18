@@ -217,6 +217,86 @@ class CalculatedComponentStoredShapeTests(unittest.TestCase):
 
         self.assert_annual_loss(values["_d0"])
 
+    def test_a_generated_precedent_at_another_period_is_rebuilt_at_the_formulas(self) -> None:
+        # A quarterly formula vector reads a quarterly hand-entered vector as it
+        # stands, but its Engine-generated precedent has only the annual cache
+        # its sidecar names. That cache cannot be rolled up, so the loader asks
+        # the Engine for the quarterly one, as a method reading it would.
+        quarterly = {"origin_length": 3, "development_length": 3, "cumulative": True, "calendar": False}
+        expected = "Expected Net Loss % of Earned Premium"
+        premium = "Earned Premium"
+        (self.datasets / f"{expected}@3.csv").write_text(
+            _csv([[0.5]] * 12, 1), encoding="utf-8"
+        )
+        (self.sidecars / f"{expected}.json").write_text(
+            json.dumps(
+                {
+                    "dataset_name": expected,
+                    "dataset_type": expected,
+                    "source_kind": "input",
+                    "data_format": "Vector",
+                    "csv_file": f"{expected}@3.csv",
+                    "period_length": 3,
+                    "stored_period_length": 3,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (self.datasets / f"{premium}@12.csv").write_text(
+            _csv([[1200.0]] * 3, 1), encoding="utf-8"
+        )
+        (self.sidecars / f"{premium}.json").write_text(
+            json.dumps(
+                {
+                    "dataset_name": premium,
+                    "dataset_type": premium,
+                    "source_kind": "engine",
+                    "data_format": "Vector",
+                    "csv_file": f"{premium}@12.csv",
+                    "period_length": 12,
+                    "stored_period_length": 1,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        def materialize(project, reserving_class, dataset_name, sidecar, origin_length, development_length=None):
+            path = self.datasets / f"{dataset_name}@{origin_length}.csv"
+            path.write_text(_csv([[300.0]] * 12, 1), encoding="utf-8")
+            return str(path)
+
+        with mock.patch.object(
+            calculated_dataset_service.precedent_cache_service,
+            "materialize_engine_source",
+            side_effect=materialize,
+        ) as rebuilt:
+            values, precedents, errors = calculated_dataset_service._load_components(
+                "Project", "Class", [expected, premium], quarterly
+            )
+
+        self.assertEqual(errors, [])
+        rebuilt.assert_called_once()
+        self.assertEqual(rebuilt.call_args.args[2:5][::2], (premium, 3))
+        self.assertEqual(rebuilt.call_args.kwargs, {"development_length": 3})
+        self.assertEqual(values["_d0"].shape, (12, 1))
+        self.assertEqual(values["_d1"].shape, (12, 1))
+        self.assertEqual(Path(precedents[1]["path"]).name, f"{premium}@3.csv")
+
+        # The annual formula reads the annual cache the sidecar names as is.
+        with mock.patch.object(
+            calculated_dataset_service.precedent_cache_service, "materialize_engine_source"
+        ) as rebuilt:
+            _values, _precedents, errors = calculated_dataset_service._load_components(
+                "Project",
+                "Class",
+                [premium],
+                {"origin_length": 12, "development_length": 12, "cumulative": True, "calendar": False},
+            )
+        self.assertEqual(errors, [])
+        rebuilt.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

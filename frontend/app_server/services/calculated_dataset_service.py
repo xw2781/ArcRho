@@ -1010,6 +1010,28 @@ def _is_sidecar_named_csv(candidate: Mapping[str, Any]) -> bool:
     )
 
 
+def _engine_cache_at_target_shape(
+    path: str,
+    sidecar: Mapping[str, Any],
+    target_settings: Mapping[str, Any],
+) -> bool:
+    """Whether an Engine-generated cache is already at the formula's lengths.
+
+    The file name is the only record of a generated cache's shape: the
+    sidecar's stored pair is the source table's granularity.
+    """
+
+    expected = build_dataset_cache_file_name(
+        _clean_text(sidecar.get("dataset_name")) or _csv_base_name(path),
+        sidecar.get("data_format") or "Triangle",
+        int(target_settings.get("origin_length") or 12),
+        int(target_settings.get("development_length") or 12),
+        sidecar.get("cumulative", True),
+        sidecar.get("calendar", False),
+    )
+    return os.path.normcase(os.path.splitext(os.path.basename(path))[0]) == os.path.normcase(expected)
+
+
 def _target_paths(
     project_name: str,
     reserving_class: str,
@@ -1396,6 +1418,26 @@ def _load_components(
             continue
         item = candidates[0]
         path = str(item["path"])
+        sidecar = item.get("sidecar") if isinstance(item.get("sidecar"), dict) else {}
+        if _clean_text(sidecar.get("source_kind")).lower() == "engine" and not _engine_cache_at_target_shape(
+            path, sidecar, target_settings
+        ):
+            # An Engine-generated precedent cannot be rolled up in memory: its
+            # stored pair is the source table's granularity, not its file's
+            # shape, so ``_component_at_target_shape`` leaves it alone. Rebuild
+            # it at the formula's own lengths, as the method services do.
+            try:
+                path = precedent_cache_service.materialize_engine_source(
+                    project_name,
+                    reserving_class,
+                    _clean_text(sidecar.get("dataset_name")) or component,
+                    sidecar,
+                    int(target_settings.get("origin_length") or 12),
+                    development_length=int(target_settings.get("development_length") or 12),
+                )
+            except RuntimeError as exc:
+                errors.append(f"Failed to read dependency {component}: {exc}")
+                continue
         try:
             arr, fingerprint = class_folder_scan_cache.read_matrix_cached(
                 path,
@@ -1409,7 +1451,6 @@ def _load_components(
         except Exception as exc:
             errors.append(f"Failed to read dependency {component}: {exc}")
             continue
-        sidecar = item.get("sidecar") if isinstance(item.get("sidecar"), dict) else {}
         try:
             arr = _component_at_target_shape(project_name, sidecar, arr, target_settings)
         except ValueError as exc:

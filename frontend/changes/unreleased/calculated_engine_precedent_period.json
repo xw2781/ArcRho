@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A calculated formula that reads an Engine-generated dataset at another period now rebuilds it at the formula's own period instead of failing to refresh.",
+  "details": [
+    "Saving a quarterly vector such as an expected loss ratio failed its dependent 'Expected Net Loss % * Earned Premium' with 'operands could not be broadcast together with shapes (40,1) (10,1)', because the Earned Premium was read from its annual file.",
+    "The refresh now asks the Engine for the generated dataset at the formula's period, the same way a method reads a generated precedent."
+  ]
+}
