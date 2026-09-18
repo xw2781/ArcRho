@@ -35,6 +35,13 @@ H 02 and F 91 in the NJ Legacy HOL class.
   `materialize_engine_source` at the period wanted. Berquist Sherman gained one on
   2026-09-07 (`_read_source_values` looks the annual cache up by name and materializes
   only when it is missing).
-- Still unaudited for the same hole: `calculated_dataset_service`'s dependency
-  provenance record (recorded, not enforced) and the `dataset_service` stored-shape reads.
+- `calculated_dataset_service` has the hole (seen 2026-09-18, NY MP+PIP F 63 =
+  P 06 x Earned Premium: "operands could not be broadcast together with shapes
+  (40,1) (10,1)"): a vector formula runs at its finest `@n` cache period, a
+  hand-entered precedent is rolled up by `_component_at_target_shape`, but an
+  `engine` precedent is read from its sidecar-named `@12` file and returned
+  unchanged because `rollup_reason` only rolls up `input`. Nothing calls
+  `materialize_engine_source` there. Before 2026-09-15 the same walk stopped
+  earlier at "Ambiguous dependency", so this is the next layer, not a regression.
+  Still unaudited: the `dataset_service` stored-shape reads.
 - Related: [[origin-length-is-not-row-count]], [[hosted-save-fix-needs-engine-deploy]].
