@@ -41,7 +41,9 @@ H 02 and F 91 in the NJ Legacy HOL class.
   hand-entered precedent is rolled up by `_component_at_target_shape`, but an
   `engine` precedent is read from its sidecar-named `@12` file and returned
   unchanged because `rollup_reason` only rolls up `input`. Nothing calls
-  `materialize_engine_source` there. Before 2026-09-15 the same walk stopped
+  `materialize_engine_source` there. Fixed the same day in `_load_components`
+  (`_engine_cache_at_target_shape` + `materialize_engine_source`); needs an
+  Engine + Gateway deploy. Before 2026-09-15 the same walk stopped
   earlier at "Ambiguous dependency", so this is the next layer, not a regression.
   Still unaudited: the `dataset_service` stored-shape reads.
 - Related: [[origin-length-is-not-row-count]], [[hosted-save-fix-needs-engine-deploy]].
