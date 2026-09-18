@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel reads generated datasets at any period: coarser ones roll up from the published values, finer ones or another mode are calculated by the Engine without changing the publication.",
+  "details": [
+    "Generated triangles and vectors roll up from their published CSV using its native period lengths.",
+    "A generated dataset asked for at a finer period, a non-multiple, or another cumulative/calendar mode than its publication, such as ArcRhoVec at 3 months for an annually published exposure vector, is calculated by the ArcRho Engine from the source table and cached beside the publication.",
+    "Excel leaves the published CSV, sidecar, and reserving-class index unchanged.",
+    "A refused shape now names the published and requested periods in its message."
+  ]
+}

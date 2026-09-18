@@ -100,9 +100,15 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         self.publish()
         self.csv_path(period=24).write_text("999\n", encoding="utf-8")
         before = self.snapshot()
-        result = excel.read_dataset_csv(self.pairs(period=24), 1)
-        self.assertFalse(result["ok"])
-        self.assertIn("published shape", result["message"])
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("Published data must roll up in memory")):
+            result = excel.read_dataset_csv(self.pairs(period=24), 1)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["need_request"])
+        self.assertEqual(result["local_cache_status"], "cache_derived")
+        pd.testing.assert_frame_equal(
+            pd.read_csv(io.StringIO(result["csv_text"]), header=None),
+            pd.DataFrame([[10, 80], [60, float("nan")]], dtype="float64"),
+        )
         self.assertEqual(self.snapshot(), before)
 
     def test_manual_coarser_view_is_derived_without_writing(self):
@@ -114,14 +120,38 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_nonadditive_calculated_output_is_not_rolled_up(self):
-        self.publish(source_kind="calculated", text="0.1,0.2,0.3\n0.4,0.5,\n0.6,,\n")
-        result = excel.read_dataset_csv(self.pairs(period=24), 1)
-        self.assertFalse(result["ok"])
+        for kind in ("calculated", "result_selection", "dfm"):
+            with self.subTest(kind=kind):
+                self.publish(source_kind=kind, text="0.1,0.2,0.3\n0.4,0.5,\n0.6,,\n")
+                before = self.snapshot()
+                result = excel.read_dataset_csv(self.pairs(period=24), 1)
+                self.assertFalse(result["ok"])
+                self.assertEqual(self.snapshot(), before)
 
-    def test_mode_change_and_missing_publication_do_not_regenerate(self):
+    def test_engine_mode_change_is_built_beside_the_publication(self):
         self.publish()
+        before = self.snapshot()
+        def calculate(pairs, path, timeout):
+            self.assertEqual(runtime._pair_value(pairs, "Cumulative"), "False")
+            Path(path).write_text("1,2\n3,\n", encoding="utf-8")
+            return {"ok": True}
+        with patch.object(engine, "run_engine_calculation", side_effect=calculate) as compute:
+            result = excel.read_dataset_csv(self.pairs(cumulative=False), 1)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["need_request"])
+            self.assertEqual(Path(result["data_path"]), self.cache / "Paid@12@12@inc@dev.csv")
+            self.assertFalse(excel.read_dataset_csv(self.pairs(cumulative=False), 1)["need_request"])
+        self.assertEqual(compute.call_count, 1)
+        after = self.snapshot()
+        self.assertEqual({key: after[key] for key in before}, before)
+        self.assertEqual([path.name for path in self.sidecars.iterdir()], ["Paid.json"])
+
+    def test_manual_mode_change_and_missing_publication_do_not_regenerate(self):
+        self.publish(source_kind="input")
         with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
-            self.assertFalse(excel.read_dataset_csv(self.pairs(cumulative=False), 1)["ok"])
+            refused = excel.read_dataset_csv(self.pairs(cumulative=False), 1)
+            self.assertFalse(refused["ok"])
+            self.assertIn("cumulative or calendar mode differs", refused["message"])
             self.csv_path().unlink()
             result = excel.read_dataset_csv(self.pairs(), 1)
         self.assertIn("no published CSV", result["message"])
@@ -253,6 +283,15 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["local_cache_status"], "cache_exact")
         self.assertFalse(excel.read_dataset_csv(self.pairs(period=1), 1)["ok"])
+        before = self.snapshot()
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+            coarser = excel.read_dataset_csv(self.pairs(period=24), 1)
+        self.assertTrue(coarser["ok"])
+        pd.testing.assert_frame_equal(
+            pd.read_csv(io.StringIO(coarser["csv_text"]), header=None),
+            pd.DataFrame([[10, 80], [60, float("nan")]], dtype="float64"),
+        )
+        self.assertEqual(self.snapshot(), before)
 
     def test_engine_vector_publication_uses_csv_period(self):
         self.publish()
@@ -265,6 +304,118 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         result = excel.read_dataset_csv(pairs, 1)
         self.assertTrue(result["ok"])
         self.assertEqual(result["csv_text"].splitlines(), ["10", "20"])
+
+    def test_engine_vector_rollup_sums_origins_using_published_period(self):
+        self.publish()
+        sidecar = self.sidecars / "Paid.json"
+        payload = json.loads(sidecar.read_text())
+        payload.update(data_format="Vector", period_length=12, stored_period_length=1, csv_file="Paid@12.csv")
+        sidecar.write_text(persisted_json_text(payload), encoding="utf-8")
+        (self.cache / "Paid@12.csv").write_text("10\n20\n30\n40\n50\n", encoding="utf-8")
+        (self.cache / "Paid@24.csv").write_text("999\n", encoding="utf-8")
+        pairs = [(key, "ArcRhoVec" if key == "Function" else value) for key, value in self.pairs(period=24)]
+        before = self.snapshot()
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+            result = excel.read_dataset_csv(pairs, 1)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["need_request"])
+        self.assertEqual(result["local_cache_status"], "cache_derived")
+        self.assertEqual(pd.read_csv(io.StringIO(result["csv_text"]), header=None)[0].tolist(), [30, 70, 50])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_generated_publication_at_another_period_is_built_by_the_engine(self):
+        self.publish()
+        before = self.snapshot()
+        def calculate(pairs, path, timeout):
+            Path(path).write_text(f"{runtime._pair_value(pairs, 'OriginLength')}\n", encoding="utf-8")
+            return {"ok": True}
+        with patch.object(engine, "run_engine_calculation", side_effect=calculate) as compute:
+            for period in (6, 18):
+                with self.subTest(period=period):
+                    result = excel.read_dataset_csv(self.pairs(period=period), 1)
+                    self.assertTrue(result["ok"])
+                    self.assertTrue(result["need_request"])
+                    self.assertEqual(result["csv_text"].strip(), str(period))
+                    self.assertEqual(Path(result["data_path"]), self.csv_path(period=period))
+                    self.assertFalse(excel.read_dataset_csv(self.pairs(period=period), 1)["need_request"])
+        self.assertEqual(compute.call_count, 2)
+        after = self.snapshot()
+        self.assertEqual({key: after[key] for key in before}, before)
+        self.assertEqual([path.name for path in self.sidecars.iterdir()], ["Paid.json"])
+
+    def test_disabled_derived_views_refuse_without_the_engine(self):
+        self.publish()
+        before = self.snapshot()
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+            for period in (6, 24):
+                with self.subTest(period=period):
+                    result = excel.read_dataset_csv(self.pairs(period=period), 1, allow_derived=False)
+                    self.assertFalse(result["ok"])
+                    self.assertIn("derived views are disabled", result["message"])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_engine_vector_finer_than_its_publication_is_built_from_the_source(self):
+        self.publish()
+        sidecar = self.sidecars / "Paid.json"
+        payload = json.loads(sidecar.read_text())
+        payload.update(data_format="Vector", period_length=12, stored_period_length=1, csv_file="Paid@12.csv")
+        sidecar.write_text(persisted_json_text(payload), encoding="utf-8")
+        (self.cache / "Paid@12.csv").write_text("10\n20\n", encoding="utf-8")
+        pairs = [(key, "ArcRhoVec" if key == "Function" else value) for key, value in self.pairs(period=3)]
+        before = self.snapshot()
+        def calculate(request, path, timeout):
+            self.assertEqual(runtime._pair_value(request, "OriginLength"), "3")
+            Path(path).write_text("1\n2\n3\n4\n5\n6\n7\n8\n", encoding="utf-8")
+            return {"ok": True}
+        with patch.object(engine, "run_engine_calculation", side_effect=calculate) as compute:
+            result = excel.read_dataset_csv(pairs, 1)
+            self.assertTrue(result["ok"])
+            self.assertEqual(Path(result["data_path"]), self.cache / "Paid@3.csv")
+            self.assertEqual(result["csv_text"].split(), [str(n) for n in range(1, 9)])
+            self.assertFalse(excel.read_dataset_csv(pairs, 1)["need_request"])
+            annual = excel.read_dataset_csv([(key, "12" if key in ("OriginLength", "DevelopmentLength") else value)
+                                             for key, value in pairs], 1)
+        self.assertEqual(compute.call_count, 1)
+        self.assertEqual(annual["csv_text"].split(), ["10", "20"])
+        self.assertEqual(annual["local_cache_status"], "cache_exact")
+        after = self.snapshot()
+        self.assertEqual({key: after[key] for key in before}, before)
+
+    def test_refusal_names_the_published_and_requested_periods(self):
+        self.publish(source_kind="input")
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+            result = excel.read_dataset_csv(self.pairs(period=6), 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], excel.PUBLICATION_SHAPE_STATUS)
+        self.assertIn("published at 12-month origin and 12-month development periods", result["message"])
+        self.assertIn("cannot be read at 6-month origin and 6-month development periods", result["message"])
+        self.assertIn("finer to coarser", result["message"])
+
+    def test_generated_triangle_rollup_retains_published_incremental_and_calendar_modes(self):
+        cases = (
+            (False, False, "1,2,3\n4,5,\n6,,\n", [[1, 14], [6, float("nan")]]),
+            (True, True, "1,2,3\n,4,5\n,,6\n", [[6, 8], [float("nan"), 6]]),
+            (False, True, "1,2,3\n,4,5\n,,6\n", [[7, 8], [float("nan"), 6]]),
+        )
+        for cumulative, calendar, text, expected in cases:
+            with self.subTest(cumulative=cumulative, calendar=calendar):
+                self.publish()
+                sidecar = self.sidecars / "Paid.json"
+                payload = json.loads(sidecar.read_text())
+                payload["csv_file"] = f"Paid@12@12@{'cum' if cumulative else 'inc'}@{'cal' if calendar else 'dev'}.csv"
+                sidecar.write_text(persisted_json_text(payload), encoding="utf-8")
+                (self.cache / payload["csv_file"]).write_text(text, encoding="utf-8")
+                pairs = [(key, str(calendar) if key == "Calendar" else value)
+                         for key, value in self.pairs(period=24, cumulative=cumulative)]
+                before = self.snapshot()
+                with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+                    result = excel.read_dataset_csv(pairs, 1)
+                self.assertTrue(result["ok"])
+                pd.testing.assert_frame_equal(
+                    pd.read_csv(io.StringIO(result["csv_text"]), header=None),
+                    pd.DataFrame(expected, dtype="float64"),
+                )
+                self.assertEqual(self.snapshot(), before)
 
     def test_saved_display_mode_does_not_relabel_published_csv_values(self):
         self.publish()

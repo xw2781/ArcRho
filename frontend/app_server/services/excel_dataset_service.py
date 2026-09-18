@@ -1,4 +1,12 @@
-"""Excel reads publications; only datasets without a sidecar may be calculated.
+"""Excel reads publications; the Engine fills in only what no publication holds.
+
+A dataset with a sidecar is served from the CSV the sidecar names, rolled up
+in memory when a coarser period is asked for. An Engine-generated dataset asked
+for at a shape or mode its publication cannot provide is built by the Engine
+as a technical cache beside the publication, exactly as a dataset with no
+sidecar is; the publication, its sidecar, and the class index stay untouched.
+Hand-entered, calculated, and method outputs have no other source of figures,
+so a shape their publication cannot provide is refused.
 
 This policy belongs to the hosted ``dataset_csv`` operation. Dataset editors
 and propagation keep using the ordinary runtime calculation service.
@@ -14,7 +22,8 @@ from typing import Any
 import pandas as pd
 from fastapi import HTTPException
 
-from arcrho_api.sidecar_core_contract import is_vector_format, stored_lengths
+from arcrho_api import triangle_rollup
+from arcrho_api.sidecar_core_contract import is_vector_format, stored_length_fields, stored_lengths
 from arcrho_engine_calculation_contract import ENGINE_CALCULATION_CSV_FIELD, OUTPUT_VARIANT_CANONICAL
 from app_server.helpers import _canon_dataset_name, read_dataset_csv as read_numeric_csv
 from app_server.services import (
@@ -60,6 +69,20 @@ def _failure(data_path: str, message: str, status: str = "published_dataset_unav
     return {"ok": False, "status": status, "need_request": False, "data_path": data_path, "message": message}
 
 
+# The publication exists but not at the shape or mode the formula asked for.
+PUBLICATION_SHAPE_STATUS = "publication_shape_unavailable"
+
+
+def _source_kind(payload: dict) -> str:
+    return str(payload.get("source_kind") or "").lower()
+
+
+def _shape_text(vector: bool, origin: int, development: int) -> str:
+    if vector:
+        return f"{origin}-month periods"
+    return f"{origin}-month origin and {development}-month development periods"
+
+
 def _csv(values: Any) -> str:
     buffer = io.StringIO()
     pd.DataFrame(values).to_csv(buffer, header=False, index=False)
@@ -78,16 +101,22 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
     source_path = os.path.join(os.path.dirname(data_path), os.path.basename(str(payload["csv_file"])))
     source_origin, source_development = stored_lengths(payload)
     vector = is_vector_format(payload.get("data_format"))
+    source_kind = _source_kind(payload)
     # Engine stored_* fields describe source-table granularity. The published
     # CSV may have been generated at coarser periods, recorded in its filename.
-    if str(payload.get("source_kind") or "").lower() == "engine":
+    if source_kind == "engine":
         settings = runtime._dependency_cache_settings(payload, payload.get("data_format"), source_path)
         source_origin = int(settings.get("periodlength" if vector else "originlength") or source_origin)
         source_development = int(settings.get("developmentlength") or source_development)
     variant = runtime._parse_cache_variant(source_path)
     source_cumulative = variant.get("cumulative", bool(payload.get("cumulative", True)))
     source_calendar = variant.get("calendar", bool(payload.get("calendar", False)))
-    native_payload = {**payload, "cumulative": source_cumulative, "calendar": source_calendar}
+    native_payload = {
+        **payload,
+        **stored_length_fields(payload.get("data_format"), source_origin, source_development),
+        "cumulative": source_cumulative,
+        "calendar": source_calendar,
+    }
     target_origin = runtime._pair_int_value(pairs, "OriginLength", 12)
     target_development = runtime._pair_int_value(pairs, "DevelopmentLength", 12)
     reason = ""
@@ -100,11 +129,26 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
         reason = "the requested cumulative or calendar mode differs from the publication"
     same_periods = target_origin == source_origin and (vector or target_development == source_development)
     if not reason and not same_periods:
-        reason = precedent_cache_service.rollup_reason(native_payload, target_origin, target_development)
         if not allow_derived:
             reason = "derived views are disabled"
+        elif source_kind == "engine":
+            arguments = precedent_cache_service.rollup_arguments(native_payload, target_origin, target_development)
+            reason = triangle_rollup.rollup_reason(
+                arguments["source_origin_length"], arguments["source_development_length"],
+                arguments["target_origin_length"], arguments["target_development_length"],
+                calendar=arguments["calendar"],
+            )
+        else:
+            reason = precedent_cache_service.rollup_reason(native_payload, target_origin, target_development)
     if reason:
-        return _failure(data_path, f"'{name}' cannot be read at the requested shape: {reason}. Use its published shape or refresh it in the ArcRho frontend.")
+        published = _shape_text(vector, source_origin, source_development)
+        requested = _shape_text(runtime._request_is_vector(pairs), target_origin, target_development)
+        return _failure(
+            data_path,
+            f"'{name}' is published at {published} and cannot be read at {requested}: {reason}. "
+            "Use the published shape, or change the dataset's shape in the ArcRho frontend.",
+            PUBLICATION_SHAPE_STATUS,
+        )
     try:
         if same_periods:
             text = _validated_csv_text(source_path)
@@ -127,6 +171,25 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
     }
 
 
+def _from_publication(data_path: str, pairs: list, payload: dict, allow_derived: bool) -> dict | None:
+    """Serve the request from its publication, or ``None`` when the Engine has to.
+
+    ``None`` means an Engine-generated dataset was asked for at a shape or
+    mode its publication cannot provide, not even by rolling up. The Engine
+    can build that shape from the same source table, so the caller treats the
+    request the way it treats a dataset with no publication at all: a
+    technical cache beside the publication, which itself stays untouched.
+    A caller that disabled derived views gets the refusal instead, the way
+    the runtime reports a plain cache miss for it.
+    """
+    result = _published(data_path, pairs, payload, allow_derived)
+    if result["ok"] or result["status"] != PUBLICATION_SHAPE_STATUS:
+        return result
+    if _source_kind(payload) != "engine" or not allow_derived:
+        return result
+    return None
+
+
 class _Reader:
     def __init__(self, timeout_sec: float, local_only: bool, allow_derived: bool):
         self.timeout_sec = timeout_sec
@@ -137,6 +200,13 @@ class _Reader:
         self.rows: dict[str, list] = {}
         self.scans: dict[tuple[str, str], Any] = {}
 
+    def served_publication(self, data_path: str, pairs: list) -> dict | None:
+        """The publication's answer, or ``None`` when there is none to give."""
+        payload = _publication(data_path, pairs)
+        if payload is None:
+            return None
+        return _from_publication(data_path, pairs, payload, self.allow_derived)
+
     def read(self, pairs: list) -> dict:
         data_path = engine.resolve_engine_output_path(pairs, OUTPUT_VARIANT_CANONICAL)
         key = os.path.normcase(os.path.abspath(data_path))
@@ -146,7 +216,9 @@ class _Reader:
             return self.results[key]
         payload = _publication(data_path, pairs)
         if payload is not None:
-            result = _published(data_path, pairs, payload, self.allow_derived)
+            result = _from_publication(data_path, pairs, payload, self.allow_derived)
+            if result is None:
+                result = self.generate(pairs, data_path, key)
         else:
             project = runtime._pair_value(pairs, "ProjectName")
             if project not in self.rows:
@@ -221,9 +293,9 @@ class _Reader:
             # Another request may have filled the cache, or the frontend may
             # have published this instance while this request waited.
             _require_available(pairs)
-            payload = _publication(data_path, pairs)
-            if payload is not None:
-                return _published(data_path, pairs, payload, self.allow_derived)
+            served = self.served_publication(data_path, pairs)
+            if served is not None:
+                return served
             processing_hash = runtime._processing_hash_getter(pairs)
             if os.path.isfile(data_path) and runtime._runtime_cache_provenance_matches(data_path, pairs, processing_hash):
                 try:
@@ -253,9 +325,9 @@ class _Reader:
                     return _failure(data_path, "The ArcRho Engine returned invalid dataset values. The previous cache was preserved; check the dataset's processing configuration.", "engine_error")
                 with dataset_sidecar_status_service.sidecar_write_lock(runtime._dataset_sidecar_path(data_path, pairs)):
                     _require_available(pairs)
-                    payload = _publication(data_path, pairs)
-                    if payload is not None:
-                        return _published(data_path, pairs, payload, self.allow_derived)
+                    served = self.served_publication(data_path, pairs)
+                    if served is not None:
+                        return served
                     if runtime._processing_hash_getter(pairs)() != before:
                         return _failure(data_path, "The source or processing settings changed during calculation. Retry Excel Refresh.", "inputs_changed")
                     dataset_sidecar_status_service.replace_staged_file(staging_path, data_path)
