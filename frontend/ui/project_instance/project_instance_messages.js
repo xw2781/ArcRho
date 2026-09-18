@@ -1541,6 +1541,9 @@ window.addEventListener("message", (event) => {
     void refreshCachedDatasetTableFromDisk().catch((err) => {
       setStatus(`Project Instance refresh failed: ${toText(err?.message) || err}`, true);
     });
+    // An open Excel Link Manager for the saved object's class reloads on the
+    // same event, so a dataset whose links were just refreshed reads Updated.
+    api.notifyExcelLinksWindows?.(frame?.dataset?.windowPath || state.selectedPath);
     return;
   }
   if (msg.type === "arcrho:dfm-tab-changed") {

@@ -22,7 +22,13 @@
   color: #243044;
   font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
   background: #fafbfc;
+  /* A tool window of rows to click and select, not text to copy: a drag
+     across it must never start a text highlight. The filter search box below
+     is the one place typed text still selects. */
+  user-select: none;
 }
+
+.pi-excel-links-filter-search { user-select: text; }
 
 .pi-excel-links-body {
   height: 100%;
@@ -32,25 +38,83 @@
   overflow: hidden;
 }
 
-.pi-excel-links-icon-btn {
-  width: 26px;
+/* The command button at the end of the toolbar: the Preferences window's
+   primary button, blue-tinted rather than filled (C02), with the reload glyph
+   beside its label. */
+.pi-excel-links-btn {
   height: 26px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--ar-color-border-strong);
   border-radius: 4px;
-  background: transparent;
-  color: #475569;
+  background: var(--ar-color-surface);
+  color: var(--ar-color-text);
+  font: inherit;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.pi-excel-links-icon-btn:hover { border-color: #cbd5e1; background: #fff; color: #1e293b; }
-.pi-excel-links-icon-btn:disabled { opacity: .55; cursor: default; }
-/* A step larger than the Project Instance dataset toolbar buttons: this one sits
-   alone at the end of a wide command row, where a 15px glyph reads as small. */
-.pi-excel-links-icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pi-excel-links-btn.primary {
+  border-color: var(--ar-color-border-focus);
+  background: var(--ar-color-accent-soft);
+  color: var(--ar-color-accent);
+  font-weight: 700;
+}
+
+.pi-excel-links-btn:hover:not(:disabled) { border-color: var(--ar-color-accent); }
+.pi-excel-links-btn:focus-visible { outline: 2px solid var(--ar-color-focus-ring); outline-offset: 1px; }
+.pi-excel-links-btn:disabled { opacity: .55; cursor: default; }
+.pi-excel-links-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The right-hand group: the running-work indicator and the command button. */
+.pi-excel-links-tools {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Running work only (V13): shown while the listing loads or the linked
+   values are being compared, hidden the rest of the time. */
+.pi-excel-links-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ar-color-text-muted);
+  white-space: nowrap;
+}
+
+.pi-excel-links-working[hidden] { display: none; }
+
+/* A small take on the shared progress card's ring: a static track under a
+   rotating accent sweep. */
+.pi-excel-links-spinner {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.pi-excel-links-spinner::before,
+.pi-excel-links-spinner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.pi-excel-links-spinner::before { border: 2px solid var(--ar-color-border); }
+
+.pi-excel-links-spinner::after {
+  border: 2px solid transparent;
+  border-top-color: var(--ar-color-accent);
+  animation: pi-excel-links-sweep 1.05s linear infinite;
+}
+
+@keyframes pi-excel-links-sweep { to { transform: rotate(360deg); } }
 
 .pi-excel-links-content {
   min-height: 0;
@@ -62,8 +126,9 @@
 }
 
 /* One compact command row above the table: a muted cue on the left (every
-   action lives in the row context menu) and the refresh icon on the right, so
-   nothing sits above the table but what the user acts on. */
+   action lives in the row context menu) and, on the right, the running-work
+   indicator and the Refresh all button, so nothing sits above the table but
+   what the user acts on. */
 .pi-excel-links-toolbar {
   min-height: 24px;
   flex: 0 0 auto;
@@ -276,10 +341,61 @@ body.pi-excel-links-resizing-column * {
 .pi-excel-links-open:hover { text-decoration: underline; }
 .pi-excel-links-open:focus-visible { outline: 1px solid var(--ar-color-accent); outline-offset: 1px; }
 
+/* While the value check runs the Status cell shows the small spinner instead
+   of a verdict the check may overturn. */
+.pi-excel-links-status-pending {
+  position: relative;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: middle;
+}
+
+.pi-excel-links-status-pending::before,
+.pi-excel-links-status-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.pi-excel-links-status-pending::before { border: 2px solid var(--ar-color-border); }
+
+.pi-excel-links-status-pending::after {
+  border: 2px solid transparent;
+  border-top-color: var(--ar-color-text-muted);
+  animation: pi-excel-links-sweep 1.05s linear infinite;
+}
+
+/* Selected rows follow the dataset table (pi_table.css): one shared fill, a
+   solid left bar on a lone selection and on the active row of a multi-row
+   selection, a hollow bar on the other selected rows. */
+.pi-excel-links-table tbody tr[data-record-key] { cursor: default; }
+.pi-excel-links-table tbody tr[data-record-key].selected td {
+  background: var(--ar-color-accent-soft);
+  box-shadow: inset 0 1px 0 var(--ar-color-border-focus), inset 0 -1px 0 var(--ar-color-border-focus);
+}
+.pi-excel-links-table tbody tr[data-record-key].selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--ar-color-accent), inset 0 1px 0 var(--ar-color-border-focus), inset 0 -1px 0 var(--ar-color-border-focus);
+}
+.pi-excel-links-table tbody tr[data-record-key].selected.multi:not(.active) td:first-child {
+  box-shadow: inset 0 1px 0 var(--ar-color-border-focus), inset 0 -1px 0 var(--ar-color-border-focus);
+  background-image: linear-gradient(
+    to right,
+    var(--ar-color-accent) 0 1px,
+    transparent 1px 3px,
+    var(--ar-color-accent) 3px 4px,
+    transparent 4px
+  );
+}
+
 /* The row a context menu is open for stays highlighted while it is open. */
 .pi-excel-links-table tbody tr.context-target td { background: #eaf2ff; }
 /* Hidden until openContextMenu shows it; closeMenu clears that inline display. */
 .pi-excel-links-menu { display: none; width: 232px; max-width: min(232px, calc(100vw - 16px)); }
+/* Change Link... is offered only for one highlighted workbook; with several it
+   stays in place, muted, in both themes. */
+.pi-excel-links-menu .ctx-item:disabled { color: var(--ar-color-text-muted); background: transparent; cursor: default; }
 
 /* Column filter popover: the dataset table's value-checkbox pattern, sized for
    this window and positioned by openContextMenu. */

@@ -2514,12 +2514,12 @@
   background: var(--ar-color-surface-hover);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-prefs-close, .pi-number-formats-remove, .pi-excel-links-icon-btn) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-close, .pi-number-formats-remove) {
   background: transparent;
   color: var(--ar-color-text-muted);
 }
 
-:root[data-arcrho-theme="dark"] :is(.pi-prefs-close:hover, .pi-excel-links-icon-btn:hover) {
+:root[data-arcrho-theme="dark"] :is(.pi-prefs-close:hover) {
   border-color: var(--ar-color-border-focus);
   background: var(--ar-color-surface-hover);
   color: var(--ar-color-text-strong);

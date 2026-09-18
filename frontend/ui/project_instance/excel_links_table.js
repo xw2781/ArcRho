@@ -14,10 +14,18 @@
 // read server-side where the workbook lives, so they survive a copy or a move
 // that would reset the file's creation time.
 //
-// Status is the dataset table's review glyph, settled by the listing itself:
-// a workbook saved after the file that holds the row's linked values reads
-// Needs Review, otherwise Updated, and a verdict the server could not settle
-// leaves the cell blank.
+// Status is the dataset table's review glyph. While the page is still
+// comparing the linked cells with the stored values the cell shows a small
+// spinner; once the check settles, a row whose workbook holds different values
+// reads Needs Review, one whose values all match reads Updated, and a verdict
+// the server could not settle - a cell it could not read - leaves the cell
+// blank with the reason in its tooltip. When the value check itself fails the
+// page falls back to the listing's file-time verdict, and the tooltip says so.
+//
+// Rows select like the dataset table's: a click selects one row, Ctrl toggles,
+// Shift extends from the anchor, and a right-click outside the selection
+// collapses it to the clicked row, so the page's context menu always acts on
+// the highlighted rows. The selection survives a reload by row key.
 //
 // The table follows the pi-table column model used by the Project Instance
 // dataset table: every column carries an explicit width, a colgroup sets those
@@ -34,8 +42,9 @@
 // instead of being cut, which is why a cell's text lives in its own element.
 //
 // The page module owns the data, the row context menu, and every action; this
-// module owns only the view: widths, filters, rendering, and the two callbacks
-// a row can raise (open the used-by object, open the row's context menu).
+// module owns only the view: widths, filters, selection, rendering, and the
+// callbacks a row can raise (open the used-by object, open the row's context
+// menu, report the selection).
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
@@ -62,6 +71,8 @@ const BLANK_LABEL = "(blank)";
 // The listing's verdict per usage, and the text its filter offers.
 const STATUS_NEEDS_REVIEW = "needs_review";
 const STATUS_LABELS = { [STATUS_NEEDS_REVIEW]: "Needs Review", updated: "Updated" };
+// The unit separator, as in the Project Instance window keys.
+const KEY_SEPARATOR = "\u001f";
 // What a column needs beyond its text: cell padding for a body cell, and for a
 // header also the gap and the filter button that sit beside the label.
 const AUTOFIT_CELL_EXTRA_WIDTH = 20;
@@ -87,7 +98,10 @@ export function excelLinkDetailRows(workbooks) {
       lastModifiedBy: text(workbook?.lastModifiedBy),
     };
     if (!usages.length) {
-      rows.push({ ...base, kind: "", name: "", datasetType: "", methodType: "", status: "" });
+      rows.push({
+        ...base, kind: "", name: "", datasetType: "", methodType: "", status: "",
+        statusPending: false, checkedValues: false, changedCellCount: 0, checkError: "",
+      });
       continue;
     }
     for (const usage of usages) {
@@ -98,10 +112,28 @@ export function excelLinkDetailRows(workbooks) {
         datasetType: text(usage?.datasetType),
         methodType: text(usage?.methodType),
         status: text(usage?.status),
+        // True while the page is still comparing values for this row.
+        statusPending: usage?.statusPending === true,
+        // True once `status` is the value comparison rather than the file times.
+        checkedValues: usage?.checkedValues === true,
+        changedCellCount: Number(usage?.changedCellCount) || 0,
+        checkError: text(usage?.checkError),
       });
     }
   }
   return rows;
+}
+
+/**
+ * The identity a row keeps across reloads: the object it names and the
+ * workbook it reads, so a selection survives a poll that rebuilt the rows.
+ */
+export function excelLinkRowKey(row) {
+  return [
+    row?.kind === "dfm" ? "dfm" : "dataset",
+    text(row?.name),
+    text(row?.workbookPath).replace(/\//g, "\\").toLowerCase(),
+  ].join(KEY_SEPARATOR);
 }
 
 /** The text one column shows for a row; also the value its filter matches. */
@@ -123,6 +155,29 @@ export function excelLinkCellText(row, key) {
   if (key === "lastModified") return formatArcrhoTimestamp(row?.modified);
   if (key === "created") return formatArcrhoTimestamp(row?.created);
   if (key === "user") return text(row?.lastModifiedBy);
+  return "";
+}
+
+/** The Status cell's tooltip: what the verdict rests on, or why there is none. */
+export function excelLinkStatusTooltip(row) {
+  const object = row?.kind === "dfm" ? "DFM method" : "dataset";
+  const book = text(row?.workbookName) || "the workbook";
+  if (row?.statusPending) return `Checking the linked values against ${book}...`;
+  if (row?.checkedValues) {
+    if (row.status === STATUS_NEEDS_REVIEW) {
+      const cells = Number(row.changedCellCount) || 0;
+      const count = cells ? `${cells} linked cell${cells === 1 ? "" : "s"} in` : "The linked cells in";
+      return `${count} ${book} no longer match the values this ${object} holds. Refresh the links to load them.`;
+    }
+    if (row.status === "updated") return `Every linked value matches ${book}.`;
+    return row.checkError
+      ? `The linked values could not be checked: ${row.checkError}`
+      : `The linked values could not be checked against ${book}.`;
+  }
+  if (row?.status === STATUS_NEEDS_REVIEW) {
+    return `${book} was saved after this ${object}'s linked values were last loaded (values not compared). Open the ${object} and refresh its links to review them.`;
+  }
+  if (row?.status === "updated") return `The linked values were loaded after ${book} was last saved (values not compared).`;
   return "";
 }
 
@@ -197,6 +252,47 @@ export function pruneExcelLinkFilters(filters, rows) {
   return filters;
 }
 
+/**
+ * The dataset table's selection rules applied to this table's rows.
+ *
+ * `selection` is `{ keys: Set, anchorKey, activeKey }` and is updated in
+ * place; `visibleKeys` is the rendered order a Shift range runs along. A plain
+ * click on the only selected row clears the selection, a plain click anywhere
+ * else keeps just that row, Ctrl toggles, and Shift selects from the anchor.
+ */
+export function applyExcelLinkRowSelection(selection, key, visibleKeys, event = {}) {
+  const additive = !!(event.ctrlKey || event.metaKey);
+  const clickedIndex = visibleKeys.indexOf(key);
+  const anchorIndex = visibleKeys.indexOf(selection.anchorKey);
+  if (event.shiftKey && clickedIndex >= 0 && anchorIndex >= 0) {
+    const [start, end] = clickedIndex < anchorIndex ? [clickedIndex, anchorIndex] : [anchorIndex, clickedIndex];
+    if (!additive) selection.keys.clear();
+    for (const rangeKey of visibleKeys.slice(start, end + 1)) selection.keys.add(rangeKey);
+  } else if (additive) {
+    if (selection.keys.has(key)) selection.keys.delete(key);
+    else selection.keys.add(key);
+    selection.anchorKey = key;
+  } else {
+    const lone = selection.keys.size === 1 && selection.keys.has(key);
+    selection.keys.clear();
+    if (!lone) selection.keys.add(key);
+    selection.anchorKey = key;
+  }
+  selection.activeKey = key;
+  return selection;
+}
+
+/** A right-click outside the selection collapses it to the clicked row. */
+export function targetExcelLinkRowSelection(selection, key) {
+  if (!selection.keys.has(key)) {
+    selection.keys.clear();
+    selection.keys.add(key);
+    selection.anchorKey = key;
+  }
+  selection.activeKey = key;
+  return selection;
+}
+
 function clampWidth(key, width) {
   const col = COLUMN_BY_KEY.get(key);
   const minWidth = col?.minWidth || 48;
@@ -252,11 +348,13 @@ function sortIconSvg(dir) {
 /**
  * Wires the Excel Links table view.
  *
- * `onOpenUsage(row)` fires when a Dataset Name cell is clicked, and
- * `onRowMenu(row, rowEl, event, columnKey)` when a row is right-clicked, naming
- * the cell's column so the page can offer column-specific actions. The page
- * module decides what either one does. `onViewChange({ visible, total,
- * filtered })` reports what the current filters left on screen.
+ * `onOpenUsage(row)` fires when a Dataset Name cell is clicked;
+ * `onRowMenu(rows, rowEl, event, columnKey)` when a row is right-clicked, with
+ * every selected row (the clicked one always among them) and the cell's
+ * column, so the page can offer column-specific actions;
+ * `onSelectionChange(rows)` whenever the selection changes. The page module
+ * decides what any of them does. `onViewChange({ visible, total, filtered })`
+ * reports what the current filters left on screen.
  */
 export function createExcelLinksTable(options = {}) {
   const table = options.table || null;
@@ -264,6 +362,7 @@ export function createExcelLinksTable(options = {}) {
   const popover = options.popover || null;
   const onOpenUsage = typeof options.onOpenUsage === "function" ? options.onOpenUsage : () => {};
   const onRowMenu = typeof options.onRowMenu === "function" ? options.onRowMenu : () => {};
+  const onSelectionChange = typeof options.onSelectionChange === "function" ? options.onSelectionChange : () => {};
   const onViewChange = typeof options.onViewChange === "function" ? options.onViewChange : () => {};
 
   const widths = new Map(EXCEL_LINK_COLUMNS.map((col) => [col.key, col.width]));
@@ -275,6 +374,7 @@ export function createExcelLinksTable(options = {}) {
   let sort = { key: "", dir: "asc" };
   let rows = [];
   let visibleRows = [];
+  const selection = { keys: new Set(), anchorKey: "", activeKey: "" };
   let autoFitPending = false;
   let filterColumn = "";
   let filterAnchor = null;
@@ -451,6 +551,18 @@ export function createExcelLinksTable(options = {}) {
     }
 
     if (col.key === "status") {
+      const tooltip = excelLinkStatusTooltip(row);
+      if (tooltip) attachArcrhoTooltip(td, tooltip);
+      if (row.statusPending) {
+        // The value check is still running: a small spinner rather than a
+        // verdict the check may overturn.
+        const pending = document.createElement("span");
+        pending.className = "pi-excel-links-status-pending";
+        pending.setAttribute("role", "img");
+        pending.setAttribute("aria-label", "Checking linked values");
+        td.appendChild(pending);
+        return td;
+      }
       // The dataset table's glyph, from the module that table draws it from;
       // a verdict the server could not settle leaves the cell empty rather
       // than showing a check the reader would trust.
@@ -460,10 +572,6 @@ export function createExcelLinksTable(options = {}) {
       wrap.className = `pi-status-cell ${needsReview ? "warning" : "updated"}`;
       wrap.setAttribute("aria-label", value);
       wrap.innerHTML = reviewStatusIconSvg(needsReview);
-      const object = row.kind === "dfm" ? "DFM method" : "dataset";
-      attachArcrhoTooltip(td, needsReview
-        ? `${row.workbookName} was saved after this ${object}'s linked values were last loaded. Open the ${object} and refresh its links to review them.`
-        : `The linked values were loaded after ${row.workbookName} was last saved.`);
       td.appendChild(wrap);
       return td;
     }
@@ -476,6 +584,36 @@ export function createExcelLinksTable(options = {}) {
       attachArcrhoTooltip(td, "Arco Server cannot open this workbook at this path.");
     }
     return td;
+  }
+
+  function selectedRows() {
+    return rows.filter((row) => selection.keys.has(excelLinkRowKey(row)));
+  }
+
+  function syncSelectionDom() {
+    if (!table) return;
+    const multi = selection.keys.size > 1;
+    for (const tr of table.querySelectorAll("tbody tr[data-record-key]")) {
+      const key = tr.dataset.recordKey;
+      const selected = selection.keys.has(key);
+      tr.classList.toggle("selected", selected);
+      tr.classList.toggle("multi", selected && multi);
+      tr.classList.toggle("active", selected && multi && key === selection.activeKey);
+      tr.setAttribute("aria-selected", selected ? "true" : "false");
+    }
+  }
+
+  function commitSelection() {
+    syncSelectionDom();
+    onSelectionChange(selectedRows());
+  }
+
+  function clearSelection() {
+    if (!selection.keys.size) return;
+    selection.keys.clear();
+    selection.anchorKey = "";
+    selection.activeKey = "";
+    commitSelection();
   }
 
   function render() {
@@ -499,12 +637,21 @@ export function createExcelLinksTable(options = {}) {
 
     const tbody = document.createElement("tbody");
     visibleRows = sortExcelLinkRows(filterExcelLinkRows(rows, filters), sort);
+    const visibleKeys = visibleRows.map((row) => excelLinkRowKey(row));
     for (const row of visibleRows) {
       const tr = document.createElement("tr");
+      const key = excelLinkRowKey(row);
+      tr.dataset.recordKey = key;
       for (const col of EXCEL_LINK_COLUMNS) tr.appendChild(buildBodyCell(row, col));
+      tr.addEventListener("click", (event) => {
+        applyExcelLinkRowSelection(selection, key, visibleKeys, event);
+        commitSelection();
+      });
       tr.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        onRowMenu(row, tr, event, text(event.target?.closest?.("td")?.dataset?.colKey));
+        targetExcelLinkRowSelection(selection, key);
+        commitSelection();
+        onRowMenu(selectedRows(), tr, event, text(event.target?.closest?.("td")?.dataset?.colKey));
       });
       tbody.appendChild(tr);
     }
@@ -518,6 +665,7 @@ export function createExcelLinksTable(options = {}) {
       autoFitColumns();
     }
     syncTableWidth();
+    syncSelectionDom();
     onViewChange({ visible: visibleRows.length, total: rows.length, filtered: filters.size > 0 });
   }
 
@@ -669,14 +817,35 @@ export function createExcelLinksTable(options = {}) {
   wrap?.addEventListener("scroll", closeFilterPopover);
   window.addEventListener("resize", closeFilterPopover);
   window.addEventListener("blur", closeFilterPopover);
+  // A click on the frame around the rows clears the selection, as in the
+  // dataset table; the rows and the header handle their own clicks.
+  wrap?.addEventListener("click", (event) => {
+    if (event.target === wrap) clearSelection();
+  });
 
   return {
-    setRows(nextRows) {
+    /**
+     * Replaces the rows. `autoFit` (default true) re-sizes the columns the
+     * user has not dragged; a reload that only re-stamps statuses passes false
+     * so the table does not shift under the reader. The selection is kept for
+     * every row key that still exists.
+     */
+    setRows(nextRows, { autoFit = true } = {}) {
       rows = Array.isArray(nextRows) ? nextRows : [];
       pruneExcelLinkFilters(filters, rows);
-      autoFitPending = true;
+      const keys = new Set(rows.map((row) => excelLinkRowKey(row)));
+      let pruned = false;
+      for (const key of [...selection.keys]) {
+        if (keys.has(key)) continue;
+        selection.keys.delete(key);
+        pruned = true;
+      }
+      if (autoFit) autoFitPending = true;
       render();
+      if (pruned) onSelectionChange(selectedRows());
     },
+    getSelectedRows: selectedRows,
+    clearSelection,
     closeFilterPopover,
   };
 }

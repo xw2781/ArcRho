@@ -6,8 +6,10 @@ const stubUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).t
 const tooltipStubUrl = stubUrl("export function attachArcrhoTooltip() {}");
 const menuStubUrl = stubUrl("export function openContextMenu() {}");
 const openPathStubUrl = stubUrl("export function openPathThroughDesktopHost() {}");
+const messageBoxStubUrl = stubUrl("export function showPageMessageBox() {}");
+const progressPopupStubUrl = stubUrl("export function createArcRhoBusyOverlay() { return { begin() { return { dismiss() {} }; } }; }");
 const tableStubUrl = stubUrl(
-  "export function createExcelLinksTable() { return { setRows() {}, closeFilterPopover() {} }; }\n"
+  "export function createExcelLinksTable() { return { setRows() {}, getSelectedRows() { return []; }, clearSelection() {}, closeFilterPopover() {} }; }\n"
   + "export function excelLinkDetailRows() { return []; }",
 );
 
@@ -34,6 +36,8 @@ let moduleSource = rawModuleSource
   .replace(TOOLTIP_IMPORT, JSON.stringify(tooltipStubUrl))
   .replace(MENU_IMPORT, JSON.stringify(menuStubUrl))
   .replace(/"\/ui\/shared\/integrations\/open_path\.js\?v=\d{8}[a-z]"/, JSON.stringify(openPathStubUrl))
+  .replace(/"\/ui\/shared\/components\/message_box\/message_box\.js\?v=\d{8}[a-z]"/, JSON.stringify(messageBoxStubUrl))
+  .replace(/"\/ui\/shared\/components\/progress_popup\/progress_popup\.js\?v=\d{8}[a-z]"/, JSON.stringify(progressPopupStubUrl))
   .replace(/"\/ui\/project_instance\/excel_links_table\.js\?v=\d{8}[a-z]"/, JSON.stringify(tableStubUrl));
 // The page module reads the DOM and starts a load as soon as it is imported;
 // only its exported pure helpers are exercised here.
@@ -260,7 +264,8 @@ test("the Status column is the dataset table's review glyph, settled by the list
     excelLinks.excelLinkInventorySummary({ workbookCount: 2, visibleRows: 4, totalRows: 4, needsReviewCount: 2, scanErrorCount: 1 }),
     "2 linked workbooks, 4 references. 2 references need review. 1 file could not be read.",
   );
-  assert.match(rawModuleSource, /needsReviewCount: manager\.rows\.filter\(\(row\) => row\.status === "needs_review"\)\.length/);
+  assert.match(rawModuleSource, /const STATUS_NEEDS_REVIEW = "needs_review";/);
+  assert.match(rawModuleSource, /needsReviewCount: manager\.rows\.filter\(\(row\) => row\.status === STATUS_NEEDS_REVIEW\)\.length/);
 });
 
 test("clicking a header sorts by that column, then reverses, then restores the listing order", () => {
@@ -417,7 +422,8 @@ test("the manager is a nested window page, not inline Project Instance markup", 
     assert.ok(!htmlSource.includes(gone), `${gone} should no longer be in project_instance.html`);
   }
   for (const id of [
-    "excelLinksRefresh",
+    "excelLinksRefreshAll",
+    "excelLinksWorking",
     "excelLinksTable",
     "excelLinksTableWrap",
     "excelLinksState",
@@ -485,9 +491,9 @@ test("the row menu opens, relinks, and - on a Workbook Path cell - opens the fol
   ]) {
     assert.ok(!windowHtmlSource.includes(gone), `${gone} should no longer be in the window page`);
   }
-  assert.match(windowHtmlSource, /class="pi-excel-links-toolbar"[\s\S]*id="excelLinksRefresh"/);
+  assert.match(windowHtmlSource, /class="pi-excel-links-toolbar"[\s\S]*id="excelLinksRefreshAll"/);
   assert.match(windowHtmlSource, /class="ctx-menu pi-excel-links-menu" id="excelLinksMenu"/);
-  for (const action of ["open-workbook", "open-workbook-read-only", "open-folder", "change-link"]) {
+  for (const action of ["open-workbook", "open-workbook-read-only", "open-folder", "refresh-links", "change-link"]) {
     assert.match(windowHtmlSource, new RegExp(`class="ctx-item"[^>]*data-action="${action}"`));
   }
   // Opening the folder belongs to the Workbook Path cell only.
@@ -495,7 +501,13 @@ test("the row menu opens, relinks, and - on a Workbook Path cell - opens the fol
   assert.match(moduleSource, /folderItem\.hidden = columnKey !== "workbookPath"/);
   assert.match(rawModuleSource, /import \{ openPathThroughDesktopHost \} from "\/ui\/shared\/integrations\/open_path\.js\?v=\d{8}[a-z]"/);
   assert.match(moduleSource, /openPathThroughDesktopHost\(path, \{ readOnly: !!readOnly \}\)/);
-  assert.match(moduleSource, /opened: "Folder opened in File Explorer\."/);
+  assert.match(moduleSource, /opened in File Explorer\./);
+  // The menu acts on every highlighted row: each distinct workbook or folder
+  // opens in turn, and a link change needs exactly one workbook highlighted.
+  assert.match(moduleSource, /const workbooks = distinct\(rows, \(row\) => row\.workbookPath\)/);
+  assert.match(moduleSource, /item\("change-link"\)\.disabled = many;/);
+  assert.match(moduleSource, /else if \(action === "refresh-links"\) void refreshLinks\(rows, "selected"\)/);
+  assert.match(moduleSource, /else if \(action === "change-link"\) void changeWorkbook\(rows\[0\]\)/);
   assert.match(moduleSource, /function closeMenu\(\) \{[\s\S]*els\.menu\.style\.display = ""/, "closing hands the menu back to the stylesheet");
   // The request carries only the two paths: refresh is unconditional and the
   // server decides whether it can read the workbook.
@@ -606,11 +618,213 @@ test("columns auto-fit on load, cap their width, and wrap long text to two lines
   assert.doesNotMatch(cssRule(".pi-excel-links-open"), /white-space: nowrap;/);
 });
 
-test("the refresh icon matches the Project Instance dataset toolbar buttons", () => {
-  const refreshButton = windowHtmlSource.slice(
-    windowHtmlSource.indexOf('id="excelLinksRefresh"'),
-    windowHtmlSource.indexOf("</button>", windowHtmlSource.indexOf('id="excelLinksRefresh"')),
+test("the toolbar holds Refresh all and a running-work indicator; the refresh icon is gone", () => {
+  // The manual refresh icon is retired: the window keeps itself current.
+  assert.ok(!windowHtmlSource.includes('id="excelLinksRefresh"'), "the icon-only refresh button is gone");
+  assert.ok(!windowHtmlSource.includes("pi-excel-links-icon-btn"));
+  assert.ok(!windowCssSource.includes(".pi-excel-links-icon-btn"));
+  const refreshAll = windowHtmlSource.slice(
+    windowHtmlSource.indexOf('id="excelLinksRefreshAll"'),
+    windowHtmlSource.indexOf("</button>", windowHtmlSource.indexOf('id="excelLinksRefreshAll"')),
   );
-  assert.match(refreshButton, /viewBox="0 0 24 24"/, "the 24-unit refresh glyph, like datasetRefreshBtn");
-  assert.match(windowCssSource, /\.pi-excel-links-icon-btn svg \{ width: 15px; height: 15px;[^}]*stroke-width: 1\.8;/);
+  assert.match(refreshAll, /viewBox="0 0 24 24"/, "the 24-unit reload glyph, like datasetRefreshBtn");
+  assert.match(refreshAll, /<span>Refresh all<\/span>/);
+  assert.match(windowHtmlSource, /class="pi-excel-links-btn primary" id="excelLinksRefreshAll"/);
+  assert.match(windowCssSource, /\.pi-excel-links-btn\.primary \{[^}]*background: var\(--ar-color-accent-soft\);/);
+  // The indicator is a real-work spinner (V13), hidden whenever nothing runs.
+  assert.match(windowHtmlSource, /id="excelLinksWorking" hidden/);
+  assert.match(windowHtmlSource, /class="pi-excel-links-spinner"/);
+  assert.match(windowCssSource, /@keyframes pi-excel-links-sweep/);
+  assert.match(moduleSource, /setWorking\("Checking linked values\.\.\."\)/);
+  assert.match(moduleSource, /setWorking\("Loading Excel links\.\.\."\)/);
+  assert.match(moduleSource, /els\.refreshAll\?\.addEventListener\("click", \(\) => void refreshLinks\(manager\.rows, "all"\)\)/);
+});
+
+test("opening the window checks the linked values, not only the file times", () => {
+  // Two steps: the listing first, its statuses blanked and marked pending,
+  // then the value check settles them.
+  const pending = excelLinks.pendingExcelLinkWorkbooks(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  assert.ok(pending[0].usages.every((usage) => usage.statusPending && usage.status === "" && !usage.checkedValues));
+  const rows = excelLinksTable.excelLinkDetailRows(pending);
+  assert.ok(rows.every((row) => row.statusPending));
+  assert.match(rawTableSource, /if \(row\.statusPending\) \{[\s\S]*className = "pi-excel-links-status-pending"/);
+  assert.match(windowCssSource, /\.pi-excel-links-status-pending::after \{[^}]*animation: pi-excel-links-sweep/);
+  assert.equal(excelLinksTable.excelLinkStatusTooltip(rows[0]), "Checking the linked values against Book.xlsx...");
+
+  // The check's listing carries the value comparison per usage.
+  const checked = excelLinks.normalizeExcelLinkWorkbooks([{
+    ...LISTING[0],
+    usages: [
+      { kind: "dataset", name: "Manual Paid", status: "needs_review", changed_cell_count: 3 },
+      { kind: "dataset", name: "Manual Incurred", status: "updated", changed_cell_count: 0 },
+      { kind: "dfm", name: "Development", status: "", check_error: "Sheet not found: Inputs" },
+    ],
+  }], { valueCheck: true });
+  const checkedRows = excelLinksTable.excelLinkDetailRows(checked);
+  assert.ok(checkedRows.every((row) => row.checkedValues && !row.statusPending));
+  assert.deepEqual(checkedRows.map((row) => [row.status, row.changedCellCount, row.checkError]), [
+    ["needs_review", 3, ""],
+    ["updated", 0, ""],
+    ["", 0, "Sheet not found: Inputs"],
+  ]);
+  assert.match(excelLinksTable.excelLinkStatusTooltip(checkedRows[0]), /^3 linked cells in Book\.xlsx no longer match the values this dataset holds\./);
+  assert.equal(excelLinksTable.excelLinkStatusTooltip(checkedRows[1]), "Every linked value matches Book.xlsx.");
+  assert.equal(excelLinksTable.excelLinkStatusTooltip(checkedRows[2]), "The linked values could not be checked: Sheet not found: Inputs");
+  // Without a value check the file-time verdict says so in its tooltip.
+  const timed = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  assert.match(excelLinksTable.excelLinkStatusTooltip(timed[0]), /values not compared/);
+
+  // The page asks the check endpoint after the listing, and falls back to the
+  // listing's own statuses when the check cannot run.
+  assert.match(moduleSource, /const CHECK_ENDPOINT = "\/excel_links\/check";/);
+  assert.match(moduleSource, /await fetchListing\(CHECK_ENDPOINT\)/);
+  assert.match(moduleSource, /normalizeExcelLinkWorkbooks\(payload\?\.workbooks, \{ valueCheck: true \}\)/);
+  assert.match(moduleSource, /setRows\(manager\.listing, \{ autoFit: false \}\);\s*setManagerStatus\(`Linked values could not be checked/);
+  const loadBody = moduleSource.slice(moduleSource.indexOf("async function loadExcelLinks"), moduleSource.indexOf("async function pollListing"));
+  assert.match(loadBody, /adoptListing\(payload\);[\s\S]*await checkValues\(seq\);/);
+});
+
+test("the window keeps itself current: saves in its class and external workbook saves", () => {
+  // A nested window's save reaches the manager through the host, from the
+  // same event that reloads the dataset table.
+  assert.match(messagesSource, /api\.notifyExcelLinksWindows\?\.\(frame\?\.dataset\?\.windowPath \|\| state\.selectedPath\)/);
+  assert.match(hostSource, /const EXCEL_LINKS_DATASETS_CHANGED_MESSAGE = "arcrho:excel-links-datasets-changed";/);
+  assert.match(hostSource, /function notifyExcelLinksWindows\(path\)[\s\S]*data-window-kind="excel_links"[\s\S]*normalizePath\(frame\.dataset\.windowPath\) !== target\) continue;/);
+  assert.match(moduleSource, /message\?\.type !== "arcrho:excel-links-datasets-changed"\) return;[\s\S]*void loadExcelLinks\(\);/);
+  // The listing is polled; only a listing that moved is adopted and re-checked.
+  assert.equal(excelLinks.LISTING_POLL_MS, 15000);
+  assert.match(moduleSource, /window\.setInterval\(\(\) => void pollListing\(\), LISTING_POLL_MS\)/);
+  assert.match(moduleSource, /if \(manager\.polling \|\| manager\.loading \|\| manager\.checking \|\| manager\.busy \|\| document\.hidden\) return;/);
+  assert.match(moduleSource, /if \(excelLinkListingSignature\(next\) === manager\.listingSignature\) return;/);
+  assert.match(moduleSource, /visibilitychange/);
+  const base = excelLinks.normalizeExcelLinkWorkbooks([{ ...LISTING[0], mtime: 1700000000.5 }]);
+  const same = excelLinks.normalizeExcelLinkWorkbooks([{ ...LISTING[0], mtime: 1700000000.5 }]);
+  assert.equal(excelLinks.excelLinkListingSignature(base), excelLinks.excelLinkListingSignature(same));
+  // A workbook saved in Excel moves its file time; a dataset saved in ArcRho
+  // moves its file-time verdict; a workbook that vanished moves `exists`.
+  const savedInExcel = excelLinks.normalizeExcelLinkWorkbooks([{ ...LISTING[0], mtime: 1700000099 }]);
+  assert.notEqual(excelLinks.excelLinkListingSignature(base), excelLinks.excelLinkListingSignature(savedInExcel));
+  const savedInArcRho = excelLinks.normalizeExcelLinkWorkbooks([{
+    ...LISTING[0], mtime: 1700000000.5,
+    usages: LISTING[0].usages.map((usage, index) => (index === 0 ? { ...usage, status: "updated" } : usage)),
+  }]);
+  assert.notEqual(excelLinks.excelLinkListingSignature(base), excelLinks.excelLinkListingSignature(savedInArcRho));
+  const gone = excelLinks.normalizeExcelLinkWorkbooks([{ ...LISTING[0], mtime: null, exists: false }]);
+  assert.notEqual(excelLinks.excelLinkListingSignature(base), excelLinks.excelLinkListingSignature(gone));
+});
+
+test("Refresh all previews the directly affected objects and saves only those", () => {
+  const rows = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks([
+    {
+      ...LISTING[0],
+      usages: [
+        { kind: "dataset", name: "Manual Paid", dataset_type: "Paid Loss", method_type: "None", status: "needs_review", changed_cell_count: 2 },
+        { kind: "dataset", name: "Manual Incurred", status: "updated", changed_cell_count: 0 },
+        { kind: "dfm", name: "Development", method_type: "DFM", status: "needs_review", changed_cell_count: 1 },
+      ],
+    },
+    {
+      ...LISTING[1], exists: true,
+      // The same dataset from a second workbook: one target, both workbooks named.
+      usages: [{ kind: "dataset", name: "Manual Paid", status: "needs_review", changed_cell_count: 4 }],
+    },
+  ], { valueCheck: true }));
+  const targets = excelLinks.excelLinkRefreshTargets(rows);
+  assert.deepEqual(
+    targets.map((target) => [target.kind, target.name, target.changedCellCount, target.workbookNames]),
+    [["dataset", "Manual Paid", 6, ["Book.xlsx", "Tail.xlsx"]], ["dfm", "Development", 1, ["Book.xlsx"]]],
+  );
+  // A file-time verdict alone never makes a target: only compared values do.
+  const timed = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  assert.deepEqual(excelLinks.excelLinkRefreshTargets(timed), []);
+
+  // The preview is the shared message box with Accept; the commit posts only
+  // the accepted objects, and the host is told around the write as for a retarget.
+  const refreshBody = moduleSource.slice(moduleSource.indexOf("async function refreshLinks"), moduleSource.indexOf("async function reloadKeepingStatus"));
+  assert.match(refreshBody, /await checkValues\(seq\);/, "the preview rests on a fresh comparison");
+  assert.match(refreshBody, /showPageMessageBox\(\{[\s\S]*actions: \[\{ id: "accept", label: "Accept" \}\],\s*okLabel: "Cancel",/);
+  assert.match(refreshBody, /if \(choice !== "accept"\) return;/);
+  assert.match(refreshBody, /Nothing to refresh\./);
+  assert.match(refreshBody, /const REFRESH_ENDPOINT|postJson\(REFRESH_ENDPOINT, \{[\s\S]*targets,\s*\}\)/);
+  assert.match(refreshBody, /postToParent\("arcrho:excel-links-retarget-begin"\)/);
+  assert.match(refreshBody, /finally \{[\s\S]*arcrho:excel-links-retarget-end/);
+  assert.match(moduleSource, /const REFRESH_ENDPOINT = "\/excel_links\/refresh";/);
+
+  // The status line after the commit.
+  const saved = excelLinks.excelLinkRefreshSummary({
+    results: [
+      { kind: "dataset", name: "Manual Paid", ok: true, saved: true, value_changed: true },
+      { kind: "dfm", name: "Development", ok: true, saved: false, value_changed: false },
+    ],
+    changed_file_count: 1, refreshed_cell_count: 3, failed_refresh_count: 0, propagation: { ok: true, status: "completed" }, propagation_ok: true,
+  });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.message, "Refreshed 3 linked cells and saved 1 file; 1 object already matched and was skipped. Affected objects and their dependents are marked Needs Review.");
+  const nothing = excelLinks.excelLinkRefreshSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, saved: false }],
+    changed_file_count: 0, refreshed_cell_count: 2, failed_refresh_count: 0, propagation_ok: true,
+  });
+  assert.equal(nothing.ok, true);
+  assert.match(nothing.message, /^Nothing was saved: the linked values of 1 object already matched\./);
+  const partial = excelLinks.excelLinkRefreshSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, saved: true }, { kind: "dfm", name: "Development", ok: false, error: "locked" }],
+    changed_file_count: 1,
+  });
+  assert.equal(partial.ok, false);
+  assert.match(partial.message, /Refreshed 1 of 2 files; Development: locked/);
+  const failedCells = excelLinks.excelLinkRefreshSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, saved: true }],
+    changed_file_count: 1, refreshed_cell_count: 2, failed_refresh_count: 1, propagation_ok: true,
+  });
+  assert.equal(failedCells.ok, false);
+  assert.match(failedCells.message, /1 linked cell could not be read and kept the stored values\./);
+});
+
+test("rows select like the dataset table's, and the selection survives a reload", () => {
+  const rows = excelLinksTable.excelLinkDetailRows(excelLinks.normalizeExcelLinkWorkbooks(LISTING));
+  const keys = rows.map((row) => excelLinksTable.excelLinkRowKey(row));
+  assert.equal(new Set(keys).size, 4, "every usage row has its own key");
+  assert.equal(
+    excelLinksTable.excelLinkRowKey({ kind: "dataset", name: "Manual Paid", workbookPath: "c:/data/BOOK.xlsx" }),
+    keys[0],
+    "the key ignores path case and separators, so a reload matches the same row",
+  );
+  const selection = { keys: new Set(), anchorKey: "", activeKey: "" };
+  const apply = (index, event = {}) => excelLinksTable.applyExcelLinkRowSelection(selection, keys[index], keys, event);
+  apply(0);
+  assert.deepEqual([...selection.keys], [keys[0]]);
+  apply(0);
+  assert.equal(selection.keys.size, 0, "clicking the only selected row again clears the selection");
+  apply(0);
+  apply(2, { shiftKey: true });
+  assert.deepEqual([...selection.keys], [keys[0], keys[1], keys[2]], "Shift selects the visible range from the anchor");
+  assert.equal(selection.activeKey, keys[2]);
+  apply(1, { ctrlKey: true });
+  assert.deepEqual([...selection.keys], [keys[0], keys[2]], "Ctrl toggles one row");
+  apply(3);
+  assert.deepEqual([...selection.keys], [keys[3]], "a plain click inside a multi-selection narrows to that row");
+  // A right-click outside the selection collapses it to the clicked row; one
+  // inside keeps it and moves the active row.
+  excelLinksTable.targetExcelLinkRowSelection(selection, keys[1]);
+  assert.deepEqual([...selection.keys], [keys[1]]);
+  apply(2, { shiftKey: true });
+  excelLinksTable.targetExcelLinkRowSelection(selection, keys[1]);
+  assert.deepEqual([...selection.keys], [keys[1], keys[2]]);
+  assert.equal(selection.activeKey, keys[1]);
+  // The wiring: rows carry their key and the selected/multi/active classes of
+  // pi_table.css, the menu receives every selected row, and setRows keeps the
+  // keys that still exist.
+  assert.match(rawTableSource, /tr\.dataset\.recordKey = key;/);
+  assert.match(rawTableSource, /tr\.classList\.toggle\("multi", selected && multi\);/);
+  assert.match(rawTableSource, /onRowMenu\(selectedRows\(\), tr, event, /);
+  assert.match(rawTableSource, /getSelectedRows: selectedRows,/);
+  assert.match(rawTableSource, /for \(const key of \[\.\.\.selection\.keys\]\) \{\s*if \(keys\.has\(key\)\) continue;/);
+  assert.match(windowCssSource, /\.pi-excel-links-table tbody tr\[data-record-key\]\.selected td \{/);
+  assert.match(windowCssSource, /\.pi-excel-links-table tbody tr\[data-record-key\]\.selected\.multi:not\(\.active\) td:first-child \{/);
+  assert.match(windowHtmlSource, /aria-multiselectable="true"/);
+  assert.match(windowHtmlSource, /Click a row to select it, right-click for workbook actions\./);
+  // Rows are for selecting, not for highlighting as text; only the filter
+  // search box keeps text selection.
+  assert.match(windowCssSource, /\.pi-excel-links-page \{[^}]*user-select: none;/);
+  assert.match(windowCssSource, /\.pi-excel-links-filter-search \{ user-select: text; \}/);
 });

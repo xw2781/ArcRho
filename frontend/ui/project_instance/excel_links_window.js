@@ -2,46 +2,63 @@
 //
 // This runs inside a Project Instance nested window (pi-window). The host frame
 // in project_instance_windows.js owns the titlebar, dragging, resizing,
-// minimize/maximize/close and the dock; this page owns the inventory and the
-// row actions reached from a right-click menu: open the workbook, open it
-// read-only, change what it points at, and - on a Workbook Path cell - open
-// the containing folder. The window is pinned to the
-// reserving class it was opened on, which arrives in the query string, so
-// selecting another class in the tree leaves it alone exactly like a Dataset or
-// DFM window.
+// minimize/maximize/close and the dock; this page owns the inventory, the
+// Refresh all command, and the row actions reached from a right-click menu:
+// open the workbook, open it read-only, refresh the selected rows' links,
+// change what a workbook points at, and - on a Workbook Path cell - open the
+// containing folder. The window is pinned to the reserving class it was opened
+// on, which arrives in the query string, so selecting another class in the
+// tree leaves it alone exactly like a Dataset or DFM window.
 //
 // The table shows one row per usage - a workbook read by two datasets is two
 // rows - and lives in excel_links_table.js, which owns the column widths,
-// filters, and rendering. Clicking a Dataset Name cell asks the Project
-// Instance page to open that dataset in DSV or that method in DFM, through the
-// same arcrho:project-instance-open-dependent-dataset message a method page
-// uses for a precedent.
+// filters, selection, and rendering. Clicking a Dataset Name cell asks the
+// Project Instance page to open that dataset in DSV or that method in DFM,
+// through the same arcrho:project-instance-open-dependent-dataset message a
+// method page uses for a precedent. Rows select like the dataset table's, so
+// the context menu acts on every highlighted row.
 //
-// Everything about a workbook is answered by ArcRho Server: the listing's
-// found/missing verdict is whether the server can open the file, its Status
-// per row is whether the workbook was saved after the file holding that row's
-// linked values (so opening the window is itself the staleness check), and a
-// change is an Engine-hosted job that opens the picked workbook there,
-// refreshes every affected dataset and DFM, and flags them and their
-// dependents Needs Review. Opening a workbook is the exception and runs on the
+// Everything about a workbook is answered by ArcRho Server. Opening the window
+// is a two-step check: the listing arrives first, with the server's
+// found/missing verdict per workbook, and the linked cells are then read on
+// the server and compared with the stored values, so the Status column says
+// whether a workbook actually holds different numbers rather than only that
+// it was saved later. The window keeps itself current: it reloads when the
+// Project Instance page reports a save in this reserving class, and it polls
+// the listing so a workbook saved in Excel shows up without a manual refresh.
+// Refresh all previews the datasets and DFM methods whose values changed and,
+// once accepted, re-reads and saves exactly those on Arco Engine, which walks
+// their dependents once. A change of link is the same kind of Engine-hosted
+// job for one workbook. Opening a workbook is the exception and runs on the
 // client machine, through the desktop host, because that is where Excel is.
 //
-// Two messages go back to the Project Instance page, because the retarget
-// writes files the host is watching:
+// Two messages go back to the Project Instance page around any write, because
+// the job rewrites files the host is watching:
 //   arcrho:excel-links-retarget-begin  - suppress the host's index-change prompt
 //   arcrho:excel-links-retarget-end    - restore it, report status, and reload
 //                                        the cached dataset table when files changed
+// and one comes in: arcrho:excel-links-datasets-changed, sent by the host when
+// a nested window saved something in this class, which reloads the inventory.
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260907b";
-import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260911b";
+import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260918a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
+const CHECK_ENDPOINT = "/excel_links/check";
+const REFRESH_ENDPOINT = "/excel_links/refresh";
 const RETARGET_ENDPOINT = "/excel_links/retarget";
+// How often the listing is polled for a workbook saved outside ArcRho. The
+// listing is one hosted read that stats each workbook; the values are only
+// re-compared when the listing itself moved.
+export const LISTING_POLL_MS = 15000;
 const EXCEL_FILE_FILTERS = [
   { name: "Excel Workbooks", extensions: ["xlsx", "xlsm", "xlsb", "xls"] },
   { name: "All Files", extensions: ["*"] },
 ];
+const STATUS_NEEDS_REVIEW = "needs_review";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -52,6 +69,10 @@ function count(value) {
   return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
 }
 
+function plural(n, singular, pluralForm = `${singular}s`) {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
 function detailMessage(payload, fallback) {
   const detail = payload?.detail;
   if (typeof detail === "string" && detail.trim()) return detail.trim();
@@ -59,7 +80,12 @@ function detailMessage(payload, fallback) {
   return fallback;
 }
 
-export function normalizeExcelLinkWorkbooks(value) {
+/**
+ * The listing's workbooks in the shape the table reads. `valueCheck` marks
+ * every usage's status as the value comparison (`checkedValues`) rather than
+ * the listing's file-time verdict.
+ */
+export function normalizeExcelLinkWorkbooks(value, { valueCheck = false } = {}) {
   const source = Array.isArray(value) ? value : [];
   return source
     .map((item) => ({
@@ -67,6 +93,8 @@ export function normalizeExcelLinkWorkbooks(value) {
       workbookName: text(item?.workbook_name) || text(item?.workbook_path),
       folder: text(item?.folder),
       exists: item?.exists === true,
+      // The server's stat of the file; part of the poll's change signature.
+      mtime: Number.isFinite(Number(item?.mtime)) && item?.mtime !== null ? Number(item.mtime) : null,
       // The workbook's own Created/Modified/Last saved by, the workbook-side
       // answer to the dataset table's Created, Last Modified, and User. A
       // workbook that carries none - a legacy .xls, an encrypted package -
@@ -86,12 +114,42 @@ export function normalizeExcelLinkWorkbooks(value) {
           methodType: text(usage?.method_type),
           // needs_review / updated, or blank when the server could not settle it.
           status: text(usage?.status),
+          statusPending: false,
+          checkedValues: valueCheck === true,
+          changedCellCount: count(usage?.changed_cell_count),
+          checkError: text(usage?.check_error),
           linkCount: count(usage?.link_count),
           cellCount: count(usage?.cell_count),
         }))
         .filter((usage) => usage.name),
     }))
     .filter((item) => item.workbookPath);
+}
+
+/** The same workbooks with every status blanked and marked as being checked. */
+export function pendingExcelLinkWorkbooks(workbooks) {
+  return (Array.isArray(workbooks) ? workbooks : []).map((workbook) => ({
+    ...workbook,
+    usages: workbook.usages.map((usage) => ({
+      ...usage, status: "", statusPending: true, checkedValues: false, changedCellCount: 0, checkError: "",
+    })),
+  }));
+}
+
+/**
+ * What the poll compares one listing with the last: each workbook's path,
+ * file time, and reachability, and each usage with its file-time verdict. A
+ * workbook saved in Excel moves its file time; a dataset saved in ArcRho
+ * moves its verdict; a link added or removed changes the usages.
+ */
+export function excelLinkListingSignature(workbooks) {
+  return JSON.stringify((Array.isArray(workbooks) ? workbooks : []).map((workbook) => [
+    text(workbook?.workbookPath).toLowerCase(),
+    workbook?.mtime ?? null,
+    workbook?.exists === true,
+    text(workbook?.modified),
+    (Array.isArray(workbook?.usages) ? workbook.usages : []).map((usage) => [usage.kind, usage.name, usage.status]),
+  ]));
 }
 
 export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRows, needsReviewCount, scanErrorCount }) {
@@ -110,21 +168,34 @@ export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRow
   return `${workbooks}, ${references}.${review}${skipped}`;
 }
 
-export function excelLinkRetargetSummary(payload) {
+function propagationSentence(payload) {
+  if (payload?.propagation_ok === false) return " Dependent recalculation reported a problem; check the affected pages.";
+  if (text(payload?.propagation?.status) === "queued") {
+    return " Dependent recalculation has started; affected objects are marked Needs Review.";
+  }
+  return " Affected objects and their dependents are marked Needs Review.";
+}
+
+function failureSummary(payload, verb) {
   const results = Array.isArray(payload?.results) ? payload.results : [];
   const failures = results.filter((item) => item?.ok === false);
+  if (!failures.length) return null;
+  const changedFiles = count(payload?.changed_file_count);
+  const first = failures[0];
+  const name = text(first?.name) || "a file";
+  const error = text(first?.error) || "The file could not be updated.";
+  const others = failures.length > 1 ? ` (+${failures.length - 1} more)` : "";
+  return {
+    ok: false,
+    message: `${verb} ${changedFiles} of ${changedFiles + failures.length} files; ${name}: ${error}${others}`,
+  };
+}
+
+export function excelLinkRetargetSummary(payload) {
+  const failed = failureSummary(payload, "Updated");
+  if (failed) return failed;
   const changedFiles = count(payload?.changed_file_count);
   const changedLinks = count(payload?.changed_link_count);
-  if (failures.length) {
-    const first = failures[0];
-    const name = text(first?.name) || "a file";
-    const error = text(first?.error) || "The file could not be updated.";
-    const others = failures.length > 1 ? ` (+${failures.length - 1} more)` : "";
-    return {
-      ok: false,
-      message: `Updated ${changedFiles} of ${changedFiles + failures.length} files; ${name}: ${error}${others}`,
-    };
-  }
   if (!changedFiles) {
     return { ok: true, message: text(payload?.message) || "No saved links needed a change." };
   }
@@ -136,19 +207,60 @@ export function excelLinkRetargetSummary(payload) {
     : "stored values already matched";
   const refreshed = `recalculated ${refreshedCells} linked cell${refreshedCells === 1 ? "" : "s"} (${values}).`;
   const failedRefresh = count(payload?.failed_refresh_count);
-  const failed = failedRefresh
+  const failed2 = failedRefresh
     ? ` ${failedRefresh} linked cell${failedRefresh === 1 ? "" : "s"} could not be recalculated and kept the stored values.`
     : "";
-  let propagation = " Affected objects and their dependents are marked Needs Review.";
-  if (payload?.propagation_ok === false) {
-    propagation = " Dependent recalculation reported a problem; check the affected pages.";
-  } else if (text(payload?.propagation?.status) === "queued") {
-    propagation = " Dependent recalculation has started; affected objects are marked Needs Review.";
-  }
   return {
     ok: !failedRefresh && payload?.propagation_ok !== false,
-    message: `${relinked}; ${refreshed}${failed}${propagation}`,
+    message: `${relinked}; ${refreshed}${failed2}${propagationSentence(payload)}`,
   };
+}
+
+/** The status line after a refresh: what was saved, skipped, and flagged. */
+export function excelLinkRefreshSummary(payload) {
+  const failed = failureSummary(payload, "Refreshed");
+  if (failed) return failed;
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  const savedFiles = count(payload?.changed_file_count);
+  const skipped = results.filter((item) => item?.ok !== false && item?.saved === false).length;
+  const failedRefresh = count(payload?.failed_refresh_count);
+  const failedCells = failedRefresh
+    ? ` ${plural(failedRefresh, "linked cell")} could not be read and kept the stored values.`
+    : "";
+  if (!savedFiles) {
+    return {
+      ok: !failedRefresh,
+      message: `Nothing was saved: the linked values of ${plural(skipped, "object")} already matched.${failedCells}`,
+    };
+  }
+  const refreshedCells = count(payload?.refreshed_cell_count);
+  const saved = `Refreshed ${plural(refreshedCells, "linked cell")} and saved ${plural(savedFiles, "file")}`;
+  const unchanged = skipped ? `; ${plural(skipped, "object")} already matched and ${skipped === 1 ? "was" : "were"} skipped` : "";
+  return {
+    ok: !failedRefresh && payload?.propagation_ok !== false,
+    message: `${saved}${unchanged}.${failedCells}${propagationSentence(payload)}`,
+  };
+}
+
+/**
+ * The objects a refresh would save, from the rows the value check flagged:
+ * one target per dataset or DFM, with the workbooks and cell counts behind it.
+ */
+export function excelLinkRefreshTargets(rows) {
+  const targets = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row?.checkedValues || row.status !== STATUS_NEEDS_REVIEW || !text(row.name)) continue;
+    const kind = row.kind === "dfm" ? "dfm" : "dataset";
+    const key = `${kind}\u001f${text(row.name).toLowerCase()}`;
+    const target = targets.get(key) || {
+      kind, name: text(row.name), datasetType: text(row.datasetType), methodType: text(row.methodType),
+      changedCellCount: 0, workbookNames: [], row,
+    };
+    target.changedCellCount += count(row.changedCellCount);
+    if (!target.workbookNames.includes(row.workbookName)) target.workbookNames.push(row.workbookName);
+    targets.set(key, target);
+  }
+  return [...targets.values()];
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -157,7 +269,9 @@ const projectName = text(params.get("project"));
 const reservingClass = text(params.get("class"));
 
 const els = {
-  refresh: document.getElementById("excelLinksRefresh"),
+  refreshAll: document.getElementById("excelLinksRefreshAll"),
+  working: document.getElementById("excelLinksWorking"),
+  workingText: document.getElementById("excelLinksWorkingText"),
   table: document.getElementById("excelLinksTable"),
   wrap: document.getElementById("excelLinksTableWrap"),
   state: document.getElementById("excelLinksState"),
@@ -168,16 +282,27 @@ const els = {
 
 const manager = {
   loading: false,
+  checking: false,
   busy: false,
+  // The last listing as the server stated it (file-time statuses), and the
+  // signature the poll compares the next listing with.
+  listing: [],
+  listingSignature: "",
+  // What the table shows: the listing with statuses settled by values once
+  // the check has run, or with the file-time statuses when it could not.
   workbooks: [],
   rows: [],
   visibleRows: 0,
   requestSeq: 0,
   scanErrorCount: 0,
-  // The detail row the context menu is open for, and its <tr>.
-  menuRow: null,
+  polling: false,
+  pollTimer: 0,
+  // The rows the context menu is open for, its <tr>, and the clicked column.
+  menuRows: [],
   menuRowEl: null,
 };
+
+const busyOverlay = createArcRhoBusyOverlay({ title: "Excel links", documentRef: document });
 
 function postToParent(type, payload = {}) {
   try {
@@ -199,14 +324,21 @@ function setManagerStatus(message, tone = "") {
   els.status.className = `pi-excel-links-status${tone ? ` ${tone}` : ""}`;
 }
 
+function setWorking(message) {
+  if (!els.working) return;
+  const label = text(message);
+  els.working.hidden = !label;
+  if (els.workingText) els.workingText.textContent = label;
+}
+
 function syncControls() {
   const blocked = manager.busy || manager.loading;
-  if (els.refresh) els.refresh.disabled = blocked;
+  if (els.refreshAll) els.refreshAll.disabled = blocked || manager.checking || !manager.rows.length;
   if (blocked) {
     closeMenu();
     table?.closeFilterPopover();
   }
-  document.body.setAttribute("aria-busy", blocked ? "true" : "false");
+  document.body.setAttribute("aria-busy", blocked || manager.checking ? "true" : "false");
 }
 
 function setBusy(busy) {
@@ -225,7 +357,7 @@ function syncInventoryStatus() {
     workbookCount: manager.workbooks.length,
     visibleRows: manager.visibleRows,
     totalRows: manager.rows.length,
-    needsReviewCount: manager.rows.filter((row) => row.status === "needs_review").length,
+    needsReviewCount: manager.rows.filter((row) => row.status === STATUS_NEEDS_REVIEW).length,
     scanErrorCount: manager.scanErrorCount,
   }), manager.scanErrorCount ? "error" : "");
 }
@@ -235,7 +367,7 @@ const table = createExcelLinksTable({
   wrap: els.wrap,
   popover: els.filterPopover,
   onOpenUsage: (row) => openUsage(row),
-  onRowMenu: (row, rowEl, event, columnKey) => openMenu(row, rowEl, event, columnKey),
+  onRowMenu: (rows, rowEl, event, columnKey) => openMenu(rows, rowEl, event, columnKey),
   onViewChange: ({ visible, total, filtered }) => {
     manager.visibleRows = visible;
     if (manager.loading) return;
@@ -245,54 +377,141 @@ const table = createExcelLinksTable({
   },
 });
 
-function setRows(workbooks) {
+function setRows(workbooks, options = {}) {
   manager.workbooks = workbooks;
   manager.rows = excelLinkDetailRows(workbooks);
   closeMenu();
-  table.setRows(manager.rows);
+  table.setRows(manager.rows, options);
   syncControls();
+}
+
+async function postJson(endpoint, body) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(detailMessage(payload, `HTTP ${response.status}`));
+  }
+  return payload;
+}
+
+function fetchListing(endpoint) {
+  return postJson(endpoint, { project_name: projectName, reserving_class: reservingClass });
+}
+
+// ---------------------------------------------------------------------------
+// Load, check, poll
+// ---------------------------------------------------------------------------
+
+/** Adopts one listing: file-time statuses, blanked while the values are checked. */
+function adoptListing(payload) {
+  manager.listing = normalizeExcelLinkWorkbooks(payload?.workbooks);
+  manager.listingSignature = excelLinkListingSignature(manager.listing);
+  manager.scanErrorCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
+  setRows(pendingExcelLinkWorkbooks(manager.listing));
+  if (!manager.workbooks.length) {
+    showState("No Excel links are saved in this reserving class.");
+    setManagerStatus("");
+  }
+}
+
+/**
+ * Reads every linked cell on the server and settles each row's status by
+ * value. When the check cannot run the rows fall back to the listing's
+ * file-time verdict, and the status line says so.
+ */
+async function checkValues(seq) {
+  if (!manager.listing.length) return;
+  manager.checking = true;
+  setWorking("Checking linked values...");
+  syncControls();
+  try {
+    const payload = await fetchListing(CHECK_ENDPOINT);
+    if (seq !== manager.requestSeq) return;
+    setRows(normalizeExcelLinkWorkbooks(payload?.workbooks, { valueCheck: true }), { autoFit: false });
+    syncInventoryStatus();
+  } catch (error) {
+    if (seq !== manager.requestSeq) return;
+    setRows(manager.listing, { autoFit: false });
+    setManagerStatus(`Linked values could not be checked (${error.message}); Status shows the file times instead.`, "error");
+  } finally {
+    if (seq === manager.requestSeq) {
+      manager.checking = false;
+      setWorking("");
+      syncControls();
+    }
+  }
 }
 
 async function loadExcelLinks() {
   const seq = ++manager.requestSeq;
-  setRows([]);
   if (!projectName || !reservingClass) {
     manager.loading = false;
+    setRows([]);
     showState("This window is missing its project or reserving class.");
     setManagerStatus("");
     syncControls();
     return;
   }
   manager.loading = true;
-  showState("Loading Excel links...");
-  setManagerStatus("");
+  if (!manager.rows.length) showState("Loading Excel links...");
+  setWorking("Loading Excel links...");
   syncControls();
   try {
-    const response = await fetch(LIST_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_name: projectName, reserving_class: reservingClass }),
-    });
-    const payload = await response.json().catch(() => ({}));
+    const payload = await fetchListing(LIST_ENDPOINT);
     if (seq !== manager.requestSeq) return;
-    if (!response.ok || payload?.ok === false) {
-      throw new Error(detailMessage(payload, `HTTP ${response.status}`));
-    }
     manager.loading = false;
-    manager.scanErrorCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
-    setRows(normalizeExcelLinkWorkbooks(payload?.workbooks));
-    if (!manager.workbooks.length) {
-      showState("No Excel links are saved in this reserving class.");
-      setManagerStatus("");
-    }
+    adoptListing(payload);
   } catch (error) {
     if (seq !== manager.requestSeq) return;
     manager.loading = false;
+    setRows([]);
     showState("Excel links could not be loaded.");
     setManagerStatus(`Could not load Excel links: ${error.message}`, "error");
+    return;
   } finally {
-    if (seq === manager.requestSeq) syncControls();
+    if (seq === manager.requestSeq) {
+      setWorking("");
+      syncControls();
+    }
   }
+  await checkValues(seq);
+}
+
+/**
+ * One poll: fetch the listing and, only when it moved since the last one,
+ * adopt it and compare the values again. Skipped while anything else is in
+ * flight or the window is hidden.
+ */
+async function pollListing() {
+  if (manager.polling || manager.loading || manager.checking || manager.busy || document.hidden) return;
+  if (!projectName || !reservingClass) return;
+  manager.polling = true;
+  const seq = manager.requestSeq;
+  try {
+    const payload = await fetchListing(LIST_ENDPOINT);
+    if (seq !== manager.requestSeq) return;
+    const next = normalizeExcelLinkWorkbooks(payload?.workbooks);
+    if (excelLinkListingSignature(next) === manager.listingSignature) return;
+    const checkSeq = ++manager.requestSeq;
+    adoptListing(payload);
+    await checkValues(checkSeq);
+  } catch {
+    // A poll that fails says nothing; the next one, or the user, tries again.
+  } finally {
+    manager.polling = false;
+  }
+}
+
+function startPolling() {
+  if (manager.pollTimer) return;
+  manager.pollTimer = window.setInterval(() => void pollListing(), LISTING_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void pollListing();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -330,26 +549,52 @@ function openUsage(row) {
 // ---------------------------------------------------------------------------
 
 function closeMenu() {
-  if (!manager.menuRow || !els.menu) return;
+  if (!manager.menuRows.length || !els.menu) return;
   // openContextMenu shows the menu with an inline display; clearing it hands
   // the menu back to the stylesheet's hidden default.
   els.menu.style.display = "";
   manager.menuRowEl?.classList.remove("context-target");
-  manager.menuRow = null;
+  manager.menuRows = [];
   manager.menuRowEl = null;
 }
 
-function openMenu(row, rowEl, event, columnKey = "") {
+function distinct(rows, pick) {
+  const seen = new Set();
+  const values = [];
+  for (const row of rows) {
+    const value = text(pick(row));
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    values.push(value);
+  }
+  return values;
+}
+
+function openMenu(rows, rowEl, event, columnKey = "") {
   closeMenu();
-  if (manager.busy || manager.loading || !els.menu) return;
+  if (manager.busy || manager.loading || !els.menu || !rows.length) return;
   table.closeFilterPopover();
-  manager.menuRow = row;
+  manager.menuRows = rows;
   manager.menuRowEl = rowEl;
   rowEl.classList.add("context-target");
+  const workbooks = distinct(rows, (row) => row.workbookPath);
+  const folders = distinct(rows, (row) => row.folder);
+  const many = workbooks.length > 1;
+  const item = (action) => els.menu.querySelector(`[data-action="${action}"]`);
+  item("open-workbook").textContent = many ? `Open ${workbooks.length} workbooks` : "Open workbook";
+  item("open-workbook-read-only").textContent = many
+    ? `Open ${workbooks.length} workbooks as Read-Only`
+    : "Open workbook as Read-Only";
   // Opening the folder belongs to the Workbook Path cell, so it appears only
-  // there rather than adding a fourth item to every row's menu.
-  const folderItem = els.menu.querySelector('[data-action="open-folder"]');
-  if (folderItem) folderItem.hidden = columnKey !== "workbookPath" || !text(row?.folder);
+  // there rather than adding another item to every row's menu.
+  const folderItem = item("open-folder");
+  folderItem.hidden = columnKey !== "workbookPath" || !folders.length;
+  folderItem.textContent = folders.length > 1 ? `Open ${folders.length} folders in File Explorer` : "Open folder in File Explorer";
+  item("refresh-links").textContent = rows.length > 1 ? `Refresh links of ${rows.length} rows` : "Refresh links";
+  // A link change repoints one workbook for every object reading it; with two
+  // workbooks highlighted there is no one file to change.
+  item("change-link").disabled = many;
   openContextMenu(els.menu, {
     anchorEl: rowEl,
     clientX: Number(event?.clientX),
@@ -357,22 +602,23 @@ function openMenu(row, rowEl, event, columnKey = "") {
     offset: 8,
     align: "top-left",
   });
-  els.menu.querySelector(".ctx-item")?.focus();
+  els.menu.querySelector(".ctx-item:not([hidden]):not(:disabled)")?.focus();
 }
 
 function wireMenu() {
   if (!els.menu) return;
   els.menu.addEventListener("click", (event) => {
     const item = event.target.closest?.(".ctx-item");
-    if (!item) return;
-    const row = manager.menuRow;
+    if (!item || item.disabled) return;
+    const rows = manager.menuRows;
     closeMenu();
-    if (!row) return;
+    if (!rows.length) return;
     const action = item.dataset.action;
-    if (action === "open-workbook") void openWorkbook(row, false);
-    else if (action === "open-workbook-read-only") void openWorkbook(row, true);
-    else if (action === "open-folder") void openFolder(row);
-    else if (action === "change-link") void changeWorkbook(row);
+    if (action === "open-workbook") void openWorkbooks(rows, false);
+    else if (action === "open-workbook-read-only") void openWorkbooks(rows, true);
+    else if (action === "open-folder") void openFolders(rows);
+    else if (action === "refresh-links") void refreshLinks(rows, "selected");
+    else if (action === "change-link") void changeWorkbook(rows[0]);
   });
   document.addEventListener("mousedown", (event) => {
     if (!els.menu.contains(event.target)) closeMenu();
@@ -392,41 +638,141 @@ function wireMenu() {
 // Opening runs on the client machine through the desktop host, not on ArcRho
 // Server: the workbook opens for this user in their own Excel, so a workbook
 // the server cannot reach can still open here and the reverse. The same route
-// hands a folder to File Explorer.
-async function openThroughDesktopHost(path, messages, readOnly = false) {
-  if (!path || manager.busy || manager.loading) return;
+// hands a folder to File Explorer. Several highlighted rows open each distinct
+// path in turn.
+async function openThroughDesktopHost(paths, messages, readOnly = false) {
+  if (!paths.length || manager.busy || manager.loading) return;
   setBusy(true);
   setManagerStatus(messages.opening);
+  const failures = [];
   try {
-    const result = await openPathThroughDesktopHost(path, { readOnly: !!readOnly });
-    if (result?.ok) {
-      setManagerStatus(messages.opened, "success");
-    } else {
-      setManagerStatus(`Could not open ${path}: ${text(result?.error) || messages.failed}`, "error");
+    for (const path of paths) {
+      try {
+        const result = await openPathThroughDesktopHost(path, { readOnly: !!readOnly });
+        if (!result?.ok) failures.push(`${path}: ${text(result?.error) || messages.failed}`);
+      } catch (error) {
+        failures.push(`${path}: ${error.message}`);
+      }
     }
-  } catch (error) {
-    setManagerStatus(`Could not open ${path}: ${error.message}`, "error");
+    if (!failures.length) setManagerStatus(messages.opened, "success");
+    else setManagerStatus(`Could not open ${failures.join("; ")}`, "error");
   } finally {
     setBusy(false);
   }
 }
 
-function openWorkbook(row, readOnly) {
-  const name = text(row?.workbookName) || text(row?.workbookPath);
-  return openThroughDesktopHost(text(row?.workbookPath), {
+function openWorkbooks(rows, readOnly) {
+  const paths = distinct(rows, (row) => row.workbookPath);
+  const name = paths.length === 1 ? (text(rows[0]?.workbookName) || paths[0]) : plural(paths.length, "workbook");
+  return openThroughDesktopHost(paths, {
     opening: readOnly ? `Opening ${name} read-only...` : `Opening ${name}...`,
-    opened: readOnly ? "Workbook opened read-only." : "Workbook opened.",
+    opened: readOnly ? `${paths.length === 1 ? "Workbook" : "Workbooks"} opened read-only.` : `${paths.length === 1 ? "Workbook" : "Workbooks"} opened.`,
     failed: readOnly ? "The workbook could not be opened read-only." : "The workbook could not be opened.",
   }, readOnly);
 }
 
-function openFolder(row) {
-  const folder = text(row?.folder);
-  return openThroughDesktopHost(folder, {
-    opening: `Opening ${folder}...`,
-    opened: "Folder opened in File Explorer.",
+function openFolders(rows) {
+  const folders = distinct(rows, (row) => row.folder);
+  return openThroughDesktopHost(folders, {
+    opening: `Opening ${folders.length === 1 ? folders[0] : plural(folders.length, "folder")}...`,
+    opened: `${folders.length === 1 ? "Folder" : "Folders"} opened in File Explorer.`,
     failed: "The folder could not be opened.",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Refresh all / refresh selected
+// ---------------------------------------------------------------------------
+
+/**
+ * Previews the datasets and DFM methods among `rows` whose linked values
+ * changed, and on Accept re-reads and saves exactly those on Arco Engine.
+ * The value check is (re)run first so the preview never rests on an older
+ * comparison than the one the user is looking at.
+ */
+async function refreshLinks(rows, scope = "all") {
+  if (manager.busy || manager.loading || manager.checking || !reservingClass) return;
+  const seq = ++manager.requestSeq;
+  await checkValues(seq);
+  if (seq !== manager.requestSeq) return;
+  // The rows the caller named, re-read from the checked table by key.
+  const wanted = new Set(rows.map((row) => `${row.kind}\u001f${text(row.name).toLowerCase()}\u001f${text(row.workbookPath).toLowerCase()}`));
+  const checked = manager.rows.filter((row) => wanted.has(`${row.kind}\u001f${text(row.name).toLowerCase()}\u001f${text(row.workbookPath).toLowerCase()}`));
+  const targets = excelLinkRefreshTargets(checked);
+  const unreadable = checked.filter((row) => row.checkedValues && !row.status && row.checkError).length;
+  if (!targets.length) {
+    const where = scope === "selected" ? "the selected rows" : "this reserving class";
+    const caveat = unreadable ? ` ${plural(unreadable, "row")} could not be checked; see the Status tooltip.` : "";
+    setManagerStatus(`Every linked value in ${where} already matches its workbook. Nothing to refresh.${caveat}`, unreadable ? "error" : "success");
+    return;
+  }
+  const choice = await showPageMessageBox({
+    title: scope === "selected" ? "Refresh selected links" : "Refresh all links",
+    message: `${plural(targets.length, "object")} in this reserving class ${targets.length === 1 ? "holds" : "hold"} linked cells whose workbook values changed. `
+      + "Accept to load the new values, save these objects, and recalculate everything that depends on them. "
+      + "Only the objects below are refreshed; their dependents are recalculated by the save.",
+    links: targets.map((target) => ({
+      label: `${target.name}${target.kind === "dfm" ? " (DFM)" : ""}`,
+      ariaLabel: `Open ${target.kind === "dfm" ? "DFM method" : "dataset"} ${target.name}`,
+      note: `${plural(target.changedCellCount, "changed cell")} from ${target.workbookNames.join(", ")}`,
+      row: target.row,
+    })),
+    onLinkClick: (item) => openUsage(item.row),
+    actions: [{ id: "accept", label: "Accept" }],
+    okLabel: "Cancel",
+    balancedActions: true,
+  });
+  if (choice !== "accept") return;
+  await runRefresh(targets.map((target) => ({ kind: target.kind, name: target.name })));
+}
+
+async function runRefresh(targets) {
+  if (manager.busy || manager.loading) return;
+  const seq = ++manager.requestSeq;
+  setBusy(true);
+  const scope = busyOverlay.begin(`Reading the linked workbooks on Arco Server and saving ${plural(targets.length, "object")}...`);
+  setManagerStatus(`Refreshing ${plural(targets.length, "object")} from their workbooks...`);
+  // The refresh rewrites files and rebuilds index.json on the server; the
+  // host suppresses its own disk-watch prompt for this window's change.
+  postToParent("arcrho:excel-links-retarget-begin");
+  let summary = { ok: false, message: "" };
+  let payload = null;
+  try {
+    payload = await postJson(REFRESH_ENDPOINT, {
+      project_name: projectName,
+      reserving_class: reservingClass,
+      targets,
+    });
+    summary = excelLinkRefreshSummary(payload);
+    setManagerStatus(summary.message, summary.ok ? "success" : "error");
+  } catch (error) {
+    setManagerStatus(`Could not refresh the links: ${error.message}`, "error");
+  } finally {
+    scope.dismiss();
+    postToParent("arcrho:excel-links-retarget-end", {
+      ok: !!summary.ok,
+      changedFileCount: count(payload?.changed_file_count),
+    });
+    setBusy(false);
+  }
+  if (seq !== manager.requestSeq) return;
+  // The saved objects now match their workbooks; reload and re-check so the
+  // Status column shows that, keeping the outcome on the status line.
+  const outcome = { message: els.status?.textContent || "", tone: els.status?.className.includes("error") ? "error" : "success" };
+  await reloadKeepingStatus(outcome);
+}
+
+async function reloadKeepingStatus(outcome) {
+  const seq = ++manager.requestSeq;
+  try {
+    const payload = await fetchListing(LIST_ENDPOINT);
+    if (seq !== manager.requestSeq) return;
+    adoptListing(payload);
+    await checkValues(seq);
+  } catch {
+    // The outcome below is what matters; the poll refreshes the rows later.
+  }
+  if (seq === manager.requestSeq && outcome?.message) setManagerStatus(outcome.message, outcome.tone);
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +800,7 @@ async function changeWorkbook(row) {
 
   const seq = ++manager.requestSeq;
   setBusy(true);
+  const scope = busyOverlay.begin(`Relinking ${row.workbookName} on Arco Server and recalculating the affected datasets and DFM methods...`);
   setManagerStatus(`Relinking ${row.workbookName} to ${picked} on Arco Server and recalculating affected datasets and DFM methods...`);
   // The retarget rewrites files and rebuilds index.json on the server; the
   // host suppresses its own disk-watch prompt for this window's change.
@@ -461,23 +808,13 @@ async function changeWorkbook(row) {
   let summary = { ok: false, message: "" };
   let payload = null;
   try {
-    const response = await fetch(RETARGET_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: projectName,
-        reserving_class: reservingClass,
-        old_workbook_path: row.workbookPath,
-        new_workbook_path: picked,
-      }),
+    payload = await postJson(RETARGET_ENDPOINT, {
+      project_name: projectName,
+      reserving_class: reservingClass,
+      old_workbook_path: row.workbookPath,
+      new_workbook_path: picked,
     });
-    payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(detailMessage(payload, `HTTP ${response.status}`));
     summary = excelLinkRetargetSummary(payload);
-    if (seq === manager.requestSeq) {
-      setRows(normalizeExcelLinkWorkbooks(payload?.workbooks));
-      if (!manager.workbooks.length) showState("No Excel links are saved in this reserving class.");
-    }
     setManagerStatus(summary.message, summary.ok ? "success" : "error");
   } catch (error) {
     // A refused workbook arrives as the server's own verdict ("ArcRho Server
@@ -485,6 +822,7 @@ async function changeWorkbook(row) {
     // because the server redacts paths from its messages.
     setManagerStatus(`Could not change the link to ${picked}: ${error.message}`, "error");
   } finally {
+    scope.dismiss();
     postToParent("arcrho:excel-links-retarget-end", {
       ok: !!summary.ok,
       workbookPath: picked,
@@ -492,12 +830,29 @@ async function changeWorkbook(row) {
     });
     setBusy(false);
   }
+  if (seq !== manager.requestSeq) return;
+  const outcome = { message: els.status?.textContent || "", tone: els.status?.className.includes("error") ? "error" : "success" };
+  await reloadKeepingStatus(outcome);
 }
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
 
 // The host posts arcrho:set-zoom to every nested window on load, so this page
 // scales with the app exactly like a Dataset or DFM window.
 window.ArcRhoZoomBridge?.wirePageZoomBridge();
 
-els.refresh?.addEventListener("click", () => void loadExcelLinks());
+els.refreshAll?.addEventListener("click", () => void refreshLinks(manager.rows, "all"));
+// A nested window saved something in this reserving class: reload and
+// re-check, the way the Project Instance dataset table reloads on the same
+// event, so a dataset whose links were just refreshed reads Updated here.
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (message?.type !== "arcrho:excel-links-datasets-changed") return;
+  if (manager.busy || manager.loading || manager.checking) return;
+  void loadExcelLinks();
+});
 wireMenu();
 void loadExcelLinks();
+startPolling();
