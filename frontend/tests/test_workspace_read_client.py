@@ -38,7 +38,11 @@ from app_server.schemas.bornhuetter_ferguson import BornhuetterFergusonIdentityR
 from app_server.schemas.cape_cod import CapeCodIdentityRequest
 from app_server.schemas.dataset import DatasetCacheLoadRequest
 from app_server.schemas.dfm_method import DfmMethodIdentityRequest
-from app_server.schemas.excel_link import ExcelLinkListRequest, ExcelLinkRetargetRequest
+from app_server.schemas.excel_link import (
+    ExcelLinkListRequest,
+    ExcelLinkRefreshRequest,
+    ExcelLinkRetargetRequest,
+)
 from app_server.schemas.result_selection import ResultSelectionLoadRequest
 from app_server.services import workspace_read_client
 
@@ -326,6 +330,79 @@ class RouteWiringTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 400)
         local.assert_called_once()
         self.assertEqual(hosted.calls, [])
+
+    def test_excel_link_value_check_is_hosted_whole_beside_the_listing(self) -> None:
+        # The check opens every linked workbook, so it runs on the same host as
+        # the listing and the refresh; this process opens nothing when the
+        # gateway answered.
+        remote = _CaptureRead(
+            {"ok": True, "value_check": True, "workbooks": [{"usages": [{"status": "needs_review"}]}]},
+            remote=True,
+        )
+        with (
+            patch.object(excel_link_router.workspace_read_client, "run_workspace_read", remote),
+            patch.object(excel_link_router.excel_link_service, "check_reserving_class_excel_link_values") as local,
+        ):
+            response = excel_link_router.excel_links_check(
+                ExcelLinkListRequest(project_name="Demo", reserving_class="COL")
+            )
+        local.assert_not_called()
+        self.assertTrue(response["value_check"])
+        self.assertEqual(
+            remote.calls, [("excel_link_value_check", {"project_name": "Demo", "reserving_class": "COL"})]
+        )
+        self._assert_registered(remote)
+
+        # Locally the route runs the same whole-check service function.
+        capture = _CaptureRead()
+        with (
+            patch.object(excel_link_router.workspace_read_client, "run_workspace_read", capture),
+            patch.object(
+                excel_link_router.excel_link_service,
+                "check_reserving_class_excel_link_values",
+                return_value={"ok": True, "value_check": True},
+            ) as check,
+        ):
+            self.assertTrue(
+                excel_link_router.excel_links_check(
+                    ExcelLinkListRequest(project_name="Demo", reserving_class="COL")
+                )["value_check"]
+            )
+        check.assert_called_once_with("Demo", "COL")
+
+    def test_excel_link_refresh_is_an_engine_hosted_save(self) -> None:
+        # The refresh reads the workbooks and writes the moved values on Arco
+        # Engine; this process only names the objects the user accepted.
+        request = ExcelLinkRefreshRequest(
+            project_name="Demo",
+            reserving_class="COL",
+            targets=[
+                {"kind": "dataset", "name": "Manual Paid"},
+                {"kind": "dfm", "name": "Development"},
+            ],
+        )
+        with (
+            patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save", return_value={"ok": True}) as hosted,
+            patch.object(excel_link_router.excel_link_service, "refresh_reserving_class_excel_links") as local,
+        ):
+            self.assertTrue(excel_link_router.excel_links_refresh(request)["ok"])
+        local.assert_not_called()
+        hosted.assert_called_once_with(
+            "excel_link_refresh",
+            "Demo",
+            "COL",
+            args=["Demo", "COL"],
+            kwargs={
+                "targets": [
+                    {"kind": "dataset", "name": "Manual Paid"},
+                    {"kind": "dfm", "name": "Development"},
+                ],
+            },
+        )
+        with patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save_plan", return_value={"ok": True}) as plan:
+            excel_link_router.plan_excel_links_refresh(request)
+        self.assertEqual(plan.call_args.kwargs["args"], hosted.call_args.kwargs["args"])
+        self.assertEqual(plan.call_args.kwargs["kwargs"], hosted.call_args.kwargs["kwargs"])
 
     def test_excel_link_retarget_is_an_engine_hosted_save(self) -> None:
         # The retarget never runs in this process: it is shipped to ArcRho

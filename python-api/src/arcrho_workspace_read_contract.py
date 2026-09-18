@@ -154,6 +154,16 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "list_reserving_class_excel_links",
         ("project_name", "reserving_class"),
     ),
+    # The same listing with every usage's status settled by reading the
+    # linked cells and comparing them with the stored values. The workbooks
+    # are opened on the server host, where the retarget and the refresh open
+    # them too; a Client PC reads them over its mapped drive only when no
+    # gateway offers the read.
+    "excel_link_value_check": WorkspaceReadKind(
+        "excel_link_service",
+        "check_reserving_class_excel_link_values",
+        ("project_name", "reserving_class"),
+    ),
     # The Dependency Graph window's whole diagram: the class index for its
     # nodes plus every sidecar for its edges, assembled where the files are.
     "dataset_dependency_graph": WorkspaceReadKind(

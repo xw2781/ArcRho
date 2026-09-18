@@ -72,6 +72,9 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     # one more — the workbook itself must be opened where Arco Server can
     # reach it, never over a Client PC's mapped drive.
     "excel_link_retarget": ("excel_link_service", "retarget_reserving_class_workbook"),
+    # Re-reads the linked cells of the datasets and DFMs the user accepted and
+    # saves the ones whose values moved; hosted for the same workbook reason.
+    "excel_link_refresh": ("excel_link_service", "refresh_reserving_class_excel_links"),
 }
 
 # Every kind's propagation roots are resolved by this function in the same
