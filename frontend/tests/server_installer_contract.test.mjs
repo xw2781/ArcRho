@@ -72,6 +72,46 @@ test("server setup delegates mutation to the frozen transactional helper", () =>
 });
 
 
+test("desktop setup closes every process running from the install folder before touching it", () => {
+  const closer = fs.readFileSync(
+    new URL("../build/installer/close_arcrho_processes.ps1", import.meta.url),
+    "utf8"
+  );
+  const nsh = frontendInstaller.replace(/\r\n/g, "\n");
+  // The macro replaces electron-builder's main-executable-only check in both
+  // the installer and the uninstaller, so it must sit outside the installer-only block.
+  const macroIndex = nsh.indexOf("!macro customCheckAppRunning");
+  const installerOnlyIndex = nsh.indexOf("!ifndef BUILD_UNINSTALLER\n  ; A setup the app started for an update goes back");
+  assert.ok(macroIndex >= 0);
+  assert.ok(installerOnlyIndex > macroIndex);
+  assert.match(
+    nsh,
+    /!macro customCheckAppRunning[\s\S]*File \/oname=\$PLUGINSDIR\\close_arcrho_processes\.ps1/
+  );
+  assert.match(nsh, /-InstallDir "\$INSTDIR" -DetectOnly/);
+  assert.match(nsh, /MB_RETRYCANCEL[^\n]*could not be closed[^\n]*Task Manager/);
+  assert.match(closer, /Win32_Process/);
+  assert.match(closer, /CloseMainWindow\(\)/);
+  assert.match(closer, /Stop-Process -Id \$process\.ProcessId -Force/);
+  assert.doesNotMatch(closer, /\.MainModule/, "MainModule is refused across the 32/64-bit boundary");
+});
+
+
+test("a setup the app starts for an update shows only the file progress page", () => {
+  const nsh = frontendInstaller.replace(/\r\n/g, "\n");
+  assert.match(nsh, /!macro customInstallMode[\s\S]*\$isForceCurrentInstall "1"/);
+  assert.match(
+    nsh,
+    /Function ArcRho_ExcelAddInOptions_Show\n[^\n]*\n[^\n]*\n\s*\$\{If\} \$ArcRhoIsUpdate == "1"\n\s*Abort/
+  );
+  assert.match(
+    nsh,
+    /!macro customFinishPage[\s\S]*Function ArcRho_FinishPage_Pre[\s\S]*Call ArcRho_StartApp\n\s*Abort/
+  );
+  assert.match(nsh, /MUI_PAGE_CUSTOMFUNCTION_PRE ArcRho_FinishPage_Pre/);
+});
+
+
 test("server release staging builds every component without live deployment", () => {
   assert.match(releaseBuilder, /environment\["ARCRHO_STAGE_ONLY"\] = "1"/);
   assert.match(releaseBuilder, /build_manifest\(version, component_roots\)/);

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "user",
+  "summary": "Installing an update is now one click, and setup can no longer be blocked by a process the app left behind.",
+  "details": [
+    "Update now hides the main window at once and shows the download in a small progress window of its own, so a frozen main window never appears.",
+    "The app closes its background server completely and confirms it is gone before setup starts; the ordinary quit path waits for the same cleanup.",
+    "Setup started from the app skips its option, location and finish pages, shows only the file progress, and relaunches the app when it is done.",
+    "Setup closes every process running from the installation folder, not only the main window, and names any process it could not end."
+  ]
+}

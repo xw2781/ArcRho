@@ -23,6 +23,7 @@ const {
   getBackendPort,
   startBackendWithRetry,
   requestBackendShutdown,
+  stopBackendForUpdate,
   registerBackendClient,
   unregisterBackendClient,
   clearBackendControlFlags,
@@ -100,7 +101,30 @@ initBackendLifecycle({
   appRoot: APP_ROOT,
   pythonExe: PYTHON_EXE,
 });
-initUpdateChecker({ appMode: APP_MODE, getMainWindow: () => win });
+initUpdateChecker({
+  appMode: APP_MODE,
+  getMainWindow: () => win,
+  updateHost: {
+    // The startup splash doubles as the update window: same size, same
+    // progress bar, and already outside the main window.
+    begin: () => {
+      if (win && !win.isDestroyed()) win.hide();
+      createSplashWindow();
+    },
+    progress: (progress, text) => updateSplashProgress(progress, text),
+    cancel: () => {
+      closeSplash();
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+      }
+    },
+    shutdown: () => prepareQuit({ forUpdate: true }),
+    // exit(), not quit(): everything quit() would do has been done, and the
+    // installer is already waiting for this process to be gone.
+    exit: () => app.exit(0),
+  },
+});
 
 function getDfmRatioUndoRoot() {
   return path.join(app.getPath("temp"), "ArcRho", "dfm-ratio-undo");
@@ -2174,7 +2198,10 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", async () => {
+// Everything that has to be gone before this process ends. For an update the
+// backend is stopped outright and its exit confirmed, since setup replaces
+// the files it runs from; a normal quit leaves a backend other windows share.
+async function prepareQuit({ forUpdate = false } = {}) {
   allowClose = true;
   for (const watchId of Array.from(arcodeFolderWatchers.keys())) {
     closeArcodeFolderWatch(watchId);
@@ -2184,7 +2211,24 @@ app.on("before-quit", async () => {
   }
   arcBotHost?.stop();
   removeUiReadyMarker();
-  await requestBackendShutdown();
+  const backendStopped = forUpdate ? await stopBackendForUpdate() : (await requestBackendShutdown(), true);
   unregisterBackendClient();
   cleanupBackendEndpoint();
+  return backendStopped;
+}
+
+// Electron does not wait for an async before-quit handler, so the shutdown
+// used to race the exit: the backend's stop request could be cut off and its
+// client marker left behind. Hold the quit until the cleanup is done, then
+// let the second pass through.
+let quitPrepared = false;
+app.on("before-quit", (event) => {
+  if (quitPrepared) return;
+  event.preventDefault();
+  prepareQuit()
+    .catch((err) => appendElectronLog("Shutdown cleanup failed", err))
+    .finally(() => {
+      quitPrepared = true;
+      app.quit();
+    });
 });

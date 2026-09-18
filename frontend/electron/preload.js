@@ -22,12 +22,6 @@ contextBridge.exposeInMainWorld("ADAHost", {
   getAppInfo: () => invoke("app-info"),
   checkForUpdates: () => invoke("app-check-for-update"),
   getReleaseHistory: () => invoke("app-release-history"),
-  onUpdateDownloadProgress: (callback) => {
-    if (typeof callback !== "function") return () => {};
-    const listener = (_event, payload) => callback(payload);
-    ipcRenderer.on("update-download-progress", listener);
-    return () => ipcRenderer.removeListener("update-download-progress", listener);
-  },
   toggleDevPanel: () => invoke("app-toggle-dev-panel"),
   minimizeWindow: () => invoke("window-minimize"),
   maximizeWindow: () => invoke("window-maximize"),

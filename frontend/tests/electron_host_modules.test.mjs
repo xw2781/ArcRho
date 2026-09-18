@@ -20,8 +20,10 @@ const electronStub = {
   app: {
     getPath: (name) => (name === "downloads" ? downloadsDir : userDataDir),
     getVersion: () => "0.0.1",
+    getName: () => "ArcRho",
     isPackaged: false,
     quit: () => {},
+    exit: () => {},
   },
   dialog: {
     showMessageBox: async () => ({ response: 1 }),
@@ -211,13 +213,19 @@ test("update_checker downloads a newer release with progress events and rejects 
     throw new Error(`Unexpected fetch URL in test: ${target}`);
   };
 
-  const progressEvents = [];
+  // The progress goes to the host's update window, never to the main window.
+  const hostCalls = [];
+  const updateHost = {
+    begin: () => hostCalls.push(["begin"]),
+    progress: (percent, text) => hostCalls.push(["progress", percent, text]),
+    cancel: () => hostCalls.push(["cancel"]),
+    shutdown: async () => hostCalls.push(["shutdown"]),
+    exit: () => hostCalls.push(["exit"]),
+  };
   const fakeWin = {
     isDestroyed: () => false,
     webContents: {
-      send: (channel, payload) => {
-        if (channel === "update-download-progress") progressEvents.push(payload);
-      },
+      send: () => assert.fail("the main window must not receive update progress"),
       executeJavaScript: async () => true,
     },
   };
@@ -229,7 +237,7 @@ test("update_checker downloads a newer release with progress events and rejects 
   };
 
   process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK = "1";
-  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => fakeWin, fetchImpl: fetchStub });
+  updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => fakeWin, updateHost, fetchImpl: fetchStub });
   let result;
   try {
     result = await updateChecker.checkForUpdate({ showNoUpdate: false });
@@ -240,9 +248,17 @@ test("update_checker downloads a newer release with progress events and rejects 
 
   assert.equal(result.status, "verification-failed");
   assert.equal(result.version, "0.0.2");
-  assert.deepEqual(progressEvents.map((event) => event.phase), ["start", "progress", "progress", "verifying", "error"]);
+  assert.deepEqual(hostCalls.map((call) => call[0]), ["begin", "progress", "progress", "progress", "progress", "cancel"]);
+  const [, first, second, third, verifying] = hostCalls;
+  assert.deepEqual(first, ["progress", 0, "Downloading Arco 0.0.2... 0.0 MB / 0.0 MB"]);
+  // The bar moves on every chunk; the caption is refreshed at most once a second.
+  assert.deepEqual(second, ["progress", 34, undefined]);
+  assert.deepEqual(third, ["progress", 100, undefined]);
+  assert.deepEqual(verifying, ["progress", 100, "Verifying the download..."]);
+  assert.ok(!hostCalls.some((call) => call[0] === "shutdown" || call[0] === "exit"),
+    "a failed verification must leave the app running");
 
-  const downloadedPath = path.join(downloadsDir, "ArcRho-Setup-0.0.2.exe");
+  const downloadedPath = path.join(downloadsDir, "Arco-Setup-0.0.2.exe");
   assert.ok(!fs.existsSync(downloadedPath), "a failed checksum verification must delete the downloaded installer");
   assert.ok(!fs.existsSync(`${downloadedPath}.part`), "no partial download may be left in the Downloads folder");
 });
@@ -478,8 +494,10 @@ test("update_checker retries a busy installer launch and records the cleanup mar
   // Windows reports a busy installer either way: spawn() throws EBUSY
   // synchronously, while other launch failures arrive as an "error" event.
   const spawnCalls = [];
-  const spawnStub = (command) => {
-    spawnCalls.push(command);
+  const sequence = [];
+  const spawnStub = (command, args) => {
+    spawnCalls.push({ command, args });
+    sequence.push("spawn");
     const busy = Object.assign(new Error("spawn EBUSY"), { code: "EBUSY" });
     if (spawnCalls.length === 1) throw busy;
     const child = new EventEmitter();
@@ -496,9 +514,17 @@ test("update_checker retries a busy installer launch and records the cleanup mar
 
   process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK = "1";
   const fakeWin = { isDestroyed: () => false, webContents: { send: () => {}, executeJavaScript: async () => true } };
+  const updateHost = {
+    begin: () => sequence.push("begin"),
+    progress: () => {},
+    cancel: () => sequence.push("cancel"),
+    shutdown: async () => sequence.push("shutdown"),
+    exit: () => sequence.push("exit"),
+  };
   updateChecker.initUpdateChecker({
     appMode: "arcrho",
     getMainWindow: () => fakeWin,
+    updateHost,
     fetchImpl: fetchStub,
     spawnImpl: spawnStub,
   });
@@ -513,8 +539,13 @@ test("update_checker retries a busy installer launch and records the cleanup mar
 
   assert.deepEqual(result, { status: "launching", version: "0.0.4" });
   assert.equal(spawnCalls.length, 3, "a busy launch must be retried rather than reported to the user");
+  // The app is closed before setup starts, and the process ends only after
+  // setup is running; the main window is never brought back on this path.
+  assert.deepEqual(sequence, ["begin", "shutdown", "spawn", "spawn", "spawn", "exit"]);
+  assert.ok(spawnCalls.every((call) => call.args[0] === "--updated"),
+    "setup started by the app must run as an update");
 
-  const installerPath = path.join(downloadsDir, "ArcRho-Setup-0.0.4.exe");
+  const installerPath = path.join(downloadsDir, "Arco-Setup-0.0.4.exe");
   assert.ok(fs.existsSync(installerPath), "a launched installer stays until the next launch deletes it");
   const marker = JSON.parse(fs.readFileSync(path.join(userDataDir, "pending_update_cleanup.json"), "utf8"));
   assert.deepEqual(marker, { installerPath, version: "0.0.4" });
@@ -523,16 +554,26 @@ test("update_checker retries a busy installer launch and records the cleanup mar
   assert.ok(!fs.existsSync(installerPath));
 });
 
-test("backend_lifecycle initializes, resolves its port, and manages client markers", () => {
-  backendLifecycle.initBackendLifecycle({
-    appMode: "arcrho",
-    host: "127.0.0.1",
-    backendToken: "test-token",
-    appRoot: userDataDir,
-    pythonExe: "python",
-  });
+test("backend_lifecycle initializes, resolves its port, and manages client markers", async () => {
+  // A port nothing listens on: the update stop below would end a real backend
+  // found on the preferred port of a development machine.
+  process.env.ARCRHO_PORT = "28799";
+  try {
+    backendLifecycle.initBackendLifecycle({
+      appMode: "arcrho",
+      host: "127.0.0.1",
+      backendToken: "test-token",
+      appRoot: userDataDir,
+      pythonExe: "python",
+    });
+  } finally {
+    delete process.env.ARCRHO_PORT;
+  }
   const port = backendLifecycle.getBackendPort();
-  assert.ok(Number.isInteger(port) && port > 0 && port <= 65535);
+  assert.equal(port, 28799);
+  // Nothing was started and nothing listens, so the update stop reports the
+  // backend gone without waiting.
+  assert.equal(await backendLifecycle.stopBackendForUpdate(), true);
 
   backendLifecycle.registerBackendClient();
   const markerPath = path.join(userDataDir, "backend_clients", `${process.pid}.json`);

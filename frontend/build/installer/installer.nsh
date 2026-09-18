@@ -32,6 +32,7 @@
   Var ArcRhoExcelAddInPath
   Var ArcRhoPreferredInstallDirectory
   Var ArcRhoInstallLocationIsOwned
+  Var ArcRhoIsUpdate
 
   !macro ArcRho_PrintInstallDetail MSG
     ; Keep action-level output in the details list so it cannot replace the
@@ -42,6 +43,54 @@
 !endif
 
 ShowUninstDetails show
+
+; Replaces electron-builder's running-app check, which closes only
+; ${APP_EXECUTABLE_FILENAME}: the bundled app server and node runtime kept
+; running from the same folder, so setup could only report that the app cannot
+; be closed. This closes everything that runs from the installation folder and
+; returns once it is gone. Expanded in the install section and in the
+; uninstaller's init, so it uses no functions of its own.
+!macro customCheckAppRunning
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\close_arcrho_processes.ps1 "${PROJECT_DIR}\build\installer\close_arcrho_processes.ps1"
+  ; A setup the app started for an update has that app's consent already; a
+  ; setup run by hand still asks before closing anything.
+  ${IfNot} ${isUpdated}
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close_arcrho_processes.ps1" -InstallDir "$INSTDIR" -DetectOnly'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+      MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(appRunning)" /SD IDOK IDOK +2
+      Quit
+    ${EndIf}
+  ${EndIf}
+  ${Do}
+    DetailPrint "Closing $(^Name)..."
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close_arcrho_processes.ps1" -InstallDir "$INSTDIR"'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+      ${ExitDo}
+    ${EndIf}
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(^Name) is still running and could not be closed:$\r$\n$\r$\n$1$\r$\nEnd it in Task Manager, or restart the computer if it cannot be ended, then click Retry." /SD IDCANCEL IDRETRY +2
+    Quit
+  ${Loop}
+!macroend
+
+!ifndef BUILD_UNINSTALLER
+  ; A setup the app started for an update goes back into the existing
+  ; installation, so the "who should this be installed for" page has nothing
+  ; to ask. Expanded inside electron-builder's install-mode page function.
+  !macro customInstallMode
+    ${If} ${isUpdated}
+      ${If} $hasPerUserInstallation == "1"
+        StrCpy $isForceCurrentInstall "1"
+      ${ElseIf} $hasPerMachineInstallation == "1"
+        StrCpy $isForceMachineInstall "1"
+      ${EndIf}
+    ${EndIf}
+  !macroend
+!endif
 
 !macro preInit
   SetDetailsPrint both
@@ -54,6 +103,12 @@ ShowUninstDetails show
   ; can use neither its install-mode variables nor the StdUtils plugin. This macro
   ; is expanded inside .onInit after initMultiUser, where both are available, so
   ; decide there whether something already owns the install location.
+  ; ${isUpdated} needs the StdUtils plugin, which page functions parsed at the
+  ; top of the script cannot reach; they read this variable instead.
+  StrCpy $ArcRhoIsUpdate "0"
+  ${If} ${isUpdated}
+    StrCpy $ArcRhoIsUpdate "1"
+  ${EndIf}
   StrCpy $ArcRhoInstallLocationIsOwned ""
   !ifndef INSTALL_MODE_PER_ALL_USERS
     ${If} $perUserInstallationFolder != ""
@@ -248,7 +303,12 @@ ShowUninstDetails show
   FunctionEnd
 
   Function ArcRho_ExcelAddInOptions_Show
-    !insertmacro MUI_HEADER_TEXT "Setup Options" "Choose the optional ArcRho setup steps."
+    ; An update started from the app keeps the defaults this page would show
+    ; pre-selected, so it has nothing to ask.
+    ${If} $ArcRhoIsUpdate == "1"
+      Abort
+    ${EndIf}
+    !insertmacro MUI_HEADER_TEXT "Setup Options" "Choose the optional Arco setup steps."
 
     nsDialogs::Create 1018
     Pop $0
@@ -486,20 +546,42 @@ ShowUninstDetails show
     ${If} $ArcRhoInstallExcelAddIn == "1"
       Call ArcRho_InstallExcelAddIn
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Excel add-in installation skipped."
     ${EndIf}
     ${If} $ArcRhoLaunchDataEngine == "1"
       Call ArcRho_LaunchDataEngineComponents
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho data engine launch skipped."
+      !insertmacro ArcRho_PrintInstallDetail "Arco data engine launch skipped."
     ${EndIf}
     Call ArcRho_InstFiles_CompleteProgressText
     !insertmacro ArcRho_PrintInstallDetail "Installation complete."
+  !macroend
+
+  ; electron-builder's finish page, with one difference: a setup the app started
+  ; for an update relaunches the app and closes on its own instead of waiting
+  ; for a click on Finish. Expanded at the page-definition point, after
+  ; $launchLink and the StartApp macro from common.nsh exist.
+  !macro customFinishPage
+    Function ArcRho_StartApp
+      !insertmacro StartApp
+    FunctionEnd
+
+    Function ArcRho_FinishPage_Pre
+      ${If} ${isUpdated}
+        Call ArcRho_StartApp
+        Abort
+      ${EndIf}
+    FunctionEnd
+
+    !define MUI_PAGE_CUSTOMFUNCTION_PRE ArcRho_FinishPage_Pre
+    !define MUI_FINISHPAGE_RUN
+    !define MUI_FINISHPAGE_RUN_FUNCTION "ArcRho_StartApp"
+    !insertmacro MUI_PAGE_FINISH
   !macroend
 !endif
 
 !macro customUnInstall
   SetDetailsPrint both
   SetDetailsView show
-  DetailPrint "===== Uninstalling ArcRho ====="
+  DetailPrint "===== Uninstalling Arco Workspace ====="
 !macroend

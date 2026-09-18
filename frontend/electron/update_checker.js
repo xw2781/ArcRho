@@ -9,7 +9,6 @@ const { sleep, withTimeout } = require("./host_support");
 
 const SHA256_RE = /\b[a-fA-F0-9]{64}\b/;
 const GITHUB_API_ROOT = "https://api.github.com";
-const DOWNLOAD_PROGRESS_CHANNEL = "update-download-progress";
 const MANDATORY_MARKER_RE = /\bmandatory\s*:\s*true\b/i;
 // Wide enough that a user who skipped a long run of releases still gets every
 // note in between; only the winning version costs a checksum round trip.
@@ -27,11 +26,18 @@ const LOCAL_RELEASE_NOTES_DIR = path.resolve(__dirname, "..", "docs", "releases"
 const LOCAL_RELEASE_NOTE_FILE_RE = /^(\d+\.\d+\.\d+)\.md$/i;
 const PENDING_CLEANUP_FILE = "pending_update_cleanup.json";
 const CLEANUP_RETRY_DELAY_MS = 20000;
+const BYTES_PER_MB = 1024 * 1024;
+const PROGRESS_TEXT_INTERVAL_MS = 1000;
+let lastProgressTextAt = 0;
 const INSTALLER_LAUNCH_RETRY_DELAYS_MS = [400, 1200, 2500, 5000];
 const TRANSIENT_LAUNCH_ERROR_CODES = new Set(["EBUSY", "ETXTBSY", "EACCES", "EPERM"]);
 const MAX_INSTALLER_NAME_ATTEMPTS = 100;
 
 let getMainWindow = () => null;
+// The host's side of an update: hide the main window and show the small
+// progress window, move its bar, bring the main window back, close the
+// backend, and end the process. Provided by main.js; null outside the host.
+let updateHost = null;
 let fetchImpl = typeof fetch === "function" ? fetch : null;
 let spawnImpl = spawn;
 let UPDATE_GITHUB_REPO = "xw2781/ArcRho";
@@ -39,14 +45,17 @@ let UPDATE_GITHUB_TOKEN = "";
 let UPDATE_CHECK_TIMEOUT_MS = 3000;
 let UPDATE_INSTALLER_NAME_RE = /$^/;
 let DEV_UPDATE_CHECK_ENABLED = false;
+let PRODUCT_LABEL = "Arco";
 
 function initUpdateChecker({
   appMode,
   getMainWindow: getWin,
+  updateHost: injectedHost,
   fetchImpl: injectedFetch,
   spawnImpl: injectedSpawn,
 } = {}) {
   getMainWindow = typeof getWin === "function" ? getWin : () => null;
+  updateHost = injectedHost && typeof injectedHost === "object" ? injectedHost : null;
   if (typeof injectedFetch === "function") fetchImpl = injectedFetch;
   spawnImpl = typeof injectedSpawn === "function" ? injectedSpawn : spawn;
   UPDATE_GITHUB_REPO = (
@@ -63,9 +72,10 @@ function initUpdateChecker({
       10
     ) || 3000
   );
+  PRODUCT_LABEL = appMode === "arcode" ? "Arcode" : "Arco";
   UPDATE_INSTALLER_NAME_RE = appMode === "arcode"
     ? /^Arcode-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i
-    : /^ArcRho-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
+    : /^Arco-Setup-(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)\.exe$/i;
   DEV_UPDATE_CHECK_ENABLED = String(
     appMode === "arcode" ? process.env.ARCODE_ENABLE_DEV_UPDATE_CHECK : process.env.ARCRHO_ENABLE_DEV_UPDATE_CHECK
   ).trim() === "1";
@@ -452,10 +462,38 @@ async function cleanupCompletedUpdateInstaller() {
   return { status: "retry-scheduled", installerPath };
 }
 
+// The brand a caption shows. app.getName() is the packaging identity that also
+// names the per-user data folder, so it is not what the user should read here.
+function productName() {
+  return PRODUCT_LABEL;
+}
+
+// Installers run to hundreds of megabytes, so both sides stay in MB rather than
+// scaling per value: a unit that changes mid-download makes the readout jump.
+function formatDownloadedSize(receivedBytes, totalBytes) {
+  const megabytes = (bytes) => (bytes > 0 ? bytes / BYTES_PER_MB : 0).toFixed(1);
+  const received = `${megabytes(receivedBytes)} MB`;
+  return totalBytes > 0 ? `${received} / ${megabytes(totalBytes)} MB` : received;
+}
+
+// The progress window fades its caption on every text change, so the size
+// readout moves once a second while the bar itself follows every chunk.
 function sendDownloadProgress(payload) {
-  const win = getMainWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(DOWNLOAD_PROGRESS_CHANNEL, payload);
+  if (!updateHost) return;
+  const { phase, version, receivedBytes = 0, totalBytes = 0 } = payload;
+  if (phase === "start" || phase === "progress") {
+    const percent = totalBytes > 0 ? Math.min(100, Math.floor((receivedBytes / totalBytes) * 100)) : 0;
+    const now = Date.now();
+    let text;
+    if (phase === "start" || now - lastProgressTextAt >= PROGRESS_TEXT_INTERVAL_MS) {
+      lastProgressTextAt = now;
+      text = `Downloading ${productName()} ${version}... ${formatDownloadedSize(receivedBytes, totalBytes)}`;
+    }
+    updateHost.progress(percent, text);
+  } else if (phase === "verifying") {
+    updateHost.progress(100, "Verifying the download...");
+  } else if (phase === "closing") {
+    updateHost.progress(100, `Closing ${productName()} so setup can start...`);
   }
 }
 
@@ -511,24 +549,15 @@ function showMainWindowMessageBox(options) {
   return dialog.showMessageBox(options);
 }
 
-async function confirmUpdateShutdown() {
-  const win = getMainWindow();
-  if (!win || win.isDestroyed()) return true;
-  try {
-    return !!(await win.webContents.executeJavaScript(
-      "window.__arcrho_confirm_app_shutdown ? window.__arcrho_confirm_app_shutdown() : true"
-    ));
-  } catch {
-    return true;
-  }
-}
-
 // Settles on the child's own outcome: spawn() throws EBUSY synchronously but
 // reports EACCES/ENOENT as an "error" event, which with no listener would take
 // the main process down instead of reaching the caller's error dialog.
+// `--updated` is electron-builder's own flag for a setup the app started: the
+// installer reinstalls into the existing location without asking, and this
+// build's installer script skips its option and finish pages on it as well.
 function spawnUpdateInstaller(installerPath) {
   return new Promise((resolve, reject) => {
-    const child = spawnImpl(installerPath, [], {
+    const child = spawnImpl(installerPath, ["--updated"], {
       detached: true,
       stdio: "ignore",
       windowsHide: false,
@@ -566,16 +595,20 @@ async function launchUpdateInstaller(installerPath) {
 }
 
 async function downloadVerifyAndInstall(updateInfo) {
+  // The main window goes away at once and the download, the verification and
+  // the shutdown are shown in a small window of their own, so the user never
+  // sits in front of a frozen main window while setup waits for it.
+  updateHost?.begin();
   let installerPath = "";
   try {
     installerPath = await downloadReleaseAsset(updateInfo);
   } catch (err) {
-    console.warn(`ArcRho update download failed: ${err?.message || err}`);
-    sendDownloadProgress({ phase: "error", version: updateInfo.version });
+    console.warn(`Arco update download failed: ${err?.message || err}`);
+    updateHost?.cancel();
     await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be downloaded",
-      message: "ArcRho did not install the update.",
+      message: "Arco did not install the update.",
       detail: String(err?.message || err),
       buttons: ["OK"],
       noLink: true,
@@ -587,12 +620,12 @@ async function downloadVerifyAndInstall(updateInfo) {
   const actualSha256 = await calculateFileSha256(installerPath).catch(() => "");
   const verified = actualSha256 && actualSha256 === String(updateInfo.sha256 || "").toLowerCase();
   if (!verified) {
-    sendDownloadProgress({ phase: "error", version: updateInfo.version });
     await fs.promises.unlink(installerPath).catch(() => {});
+    updateHost?.cancel();
     await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be verified",
-      message: "ArcRho did not install the update.",
+      message: "Arco did not install the update.",
       detail: "The downloaded installer checksum did not match the published SHA-256 value.",
       buttons: ["OK"],
       noLink: true,
@@ -600,19 +633,23 @@ async function downloadVerifyAndInstall(updateInfo) {
     return { status: "verification-failed", version: updateInfo.version };
   }
 
-  sendDownloadProgress({ phase: "done", version: updateInfo.version });
+  // Setup replaces the files the backend runs from, so the backend has to be
+  // gone - not merely asked to stop - before the installer starts. Quitting
+  // right after the launch left that shutdown racing the process exit, and an
+  // installer that then found the backend alive could only report that the
+  // app cannot be closed.
+  sendDownloadProgress({ phase: "closing", version: updateInfo.version });
+  await updateHost?.shutdown();
   try {
     await launchUpdateInstaller(installerPath);
-    recordPendingInstallerCleanup(installerPath, updateInfo.version);
-    app.quit();
-    return { status: "launching", version: updateInfo.version };
   } catch (err) {
     // The installer is downloaded and verified, so name it: running it by hand
-    // is all that is left to do, and ArcRho keeps running in the meantime.
+    // is all that is left to do, and the app is already closed.
+    updateHost?.cancel();
     await showMainWindowMessageBox({
       type: "error",
       title: "Update could not be started",
-      message: "ArcRho could not launch the update installer.",
+      message: "Arco could not launch the update installer.",
       detail: [
         String(err?.message || err),
         "",
@@ -622,8 +659,12 @@ async function downloadVerifyAndInstall(updateInfo) {
       buttons: ["OK"],
       noLink: true,
     });
+    updateHost?.exit();
     return { status: "launch-failed", version: updateInfo.version, installerPath };
   }
+  recordPendingInstallerCleanup(installerPath, updateInfo.version);
+  updateHost?.exit();
+  return { status: "launching", version: updateInfo.version };
 }
 
 function releasesPageUrl() {
@@ -701,9 +742,8 @@ async function promptForUpdateInstall(updateInfo) {
   const accepted = choice === null ? await nativeUpdatePrompt(updateInfo) : choice === "update";
   if (!accepted) return { status: "deferred", version: updateInfo.version };
 
-  const canShutdown = await confirmUpdateShutdown();
-  if (!canShutdown) return { status: "cancelled", version: updateInfo.version };
-
+  // "Update now" is the one click: it is the consent to close the app, so no
+  // second "Quit the application?" prompt follows it.
   return downloadVerifyAndInstall(updateInfo);
 }
 

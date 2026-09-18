@@ -572,11 +572,37 @@ async function requestBackendShutdown() {
   }
 }
 
+// Setup replaces every file under the install folder, so the backend has to be
+// gone before the installer starts - not merely asked to stop. Every ArcRho
+// window of this user closes for the update, so the shared-backend rule that
+// keeps a backend alive for other clients does not apply, and a sibling backend
+// this launch reused (the only kind that can listen on this port) goes too.
+async function stopBackendForUpdate() {
+  if (serverProc) {
+    await httpPost("/app/shutdown");
+    await terminateBackend();
+  }
+  const deadline = Date.now() + 8000;
+  let pids = await getBackendPortListenerPids(PORT);
+  while (pids.length && Date.now() < deadline) {
+    for (const pid of pids) {
+      try {
+        await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+      } catch {}
+    }
+    await sleep(400);
+    pids = await getBackendPortListenerPids(PORT);
+  }
+  backendOwned = false;
+  return pids.length === 0;
+}
+
 module.exports = {
   initBackendLifecycle,
   getBackendPort,
   startBackendWithRetry,
   requestBackendShutdown,
+  stopBackendForUpdate,
   registerBackendClient,
   unregisterBackendClient,
   clearBackendControlFlags,

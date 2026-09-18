@@ -252,12 +252,11 @@ test("a read-only review table drops the tick column and closes with one button,
 });
 
 test("shell UI automation wires asynchronous review-table open, status, and close commands", async () => {
-  const [automation, index, uiShell, shellMessages, updateProgress, component, view, styles] = await Promise.all([
+  const [automation, index, uiShell, shellMessages, component, view, styles] = await Promise.all([
     source("ui/shell/ui_automation.js"),
     source("ui/index.html"),
     source("ui/shell/ui_shell.js"),
     source("ui/shell/shell_messages.js"),
-    source("ui/shell/update_progress.js"),
     source("ui/shared/components/review_table/review_table.js"),
     source("ui/shared/components/review_table/review_table_view.js"),
     source("ui/shared/components/review_table/review_table.css"),
@@ -280,7 +279,7 @@ test("shell UI automation wires asynchronous review-table open, status, and clos
   // loads the shared table sheet the grid is dressed by.
   assert.match(index, /shared\/styles\/pi_table\.css\?v=20260819a/u);
   assert.match(index, /ui_shell\.js\?v=20260913b/u);
-  for (const consumer of [uiShell, shellMessages, updateProgress]) {
+  for (const consumer of [uiShell, shellMessages]) {
     assert.match(consumer, /ui_automation\.js\?v=20260904resize2/u);
   }
   // Payload text reaches the DOM as text, never as markup, in both modules.
