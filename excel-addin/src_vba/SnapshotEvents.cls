@@ -12,6 +12,10 @@ Option Explicit
 Public WithEvents App As Excel.Application
 Attribute App.VB_VarHelpID = -1
 
+Private Sub App_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    If TypeOf Sh Is Excel.Worksheet Then LoadEnteredFormulas Target
+End Sub
+
 Private Sub App_WorkbookBeforeClose(ByVal Wb As Workbook, Cancel As Boolean)
     If DatasetRefreshOwnsWorkbook(Wb) Then
         Cancel = True

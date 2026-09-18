@@ -52,6 +52,17 @@ Public Function SnapshotRead(ByVal book As Workbook, ByVal requestKey As String,
     SnapshotRead = True
 End Function
 
+Public Sub InitializeSnapshotEvents()
+    If snapshotBooks Is Nothing Then
+        Set snapshotBooks = New Collection
+        Set snapshotEntries = New Collection
+    End If
+    If snapshotEvents Is Nothing Then
+        Set snapshotEvents = New SnapshotEvents
+        Set snapshotEvents.App = Application
+    End If
+End Sub
+
 Public Sub SnapshotPrepare(ByVal book As Workbook)
     Dim entries As Object
     Set entries = EntriesForBook(book)
@@ -71,12 +82,7 @@ End Sub
 Private Function EntriesForBook(ByVal book As Workbook) As Object
     Dim i As Long, entries As Object
     If book Is Nothing Then Err.Raise 5, , "No workbook is available for the ArcRho snapshot."
-    If snapshotBooks Is Nothing Then
-        Set snapshotBooks = New Collection
-        Set snapshotEntries = New Collection
-        Set snapshotEvents = New SnapshotEvents
-        Set snapshotEvents.App = Application
-    End If
+    InitializeSnapshotEvents
     For i = 1 To snapshotBooks.Count
         If snapshotBooks(i) Is book Then
             Set EntriesForBook = snapshotEntries(i)

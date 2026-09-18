@@ -6,15 +6,24 @@ Private refreshSheet As Worksheet
 Private refreshResults As Object
 Private refreshFailure As String
 Private committing As Boolean
+Private refreshTarget As Range
+Private missingOnly As Boolean
+Private fetchAllowed As Boolean
+Private needsGateway As Boolean
 
-Public Sub BeginDatasetRefresh(ByVal book As Workbook, Optional ByVal sheet As Worksheet)
+Public Sub BeginDatasetRefresh(ByVal book As Workbook, Optional ByVal sheet As Worksheet, _
+                               Optional ByVal onlyMissing As Boolean = False, Optional ByVal target As Range)
     If Not refreshBook Is Nothing Then Err.Raise 5, , "An ArcRho refresh is already running."
     SnapshotPrepare book
     Set refreshBook = book
     Set refreshSheet = sheet
+    Set refreshTarget = target
     Set refreshResults = CreateObject("Scripting.Dictionary")
     refreshFailure = ""
     committing = False
+    missingOnly = onlyMissing
+    fetchAllowed = Not onlyMissing
+    needsGateway = False
     datasetRequestCount = 0
     datasetFetchCount = 0
     datasetHitCount = 0
@@ -24,8 +33,21 @@ Public Sub EndDatasetRefresh()
     Set refreshBook = Nothing
     Set refreshSheet = Nothing
     Set refreshResults = Nothing
+    Set refreshTarget = Nothing
     committing = False
 End Sub
+
+Public Function DatasetRefreshNeedsGateway() As Boolean
+    DatasetRefreshNeedsGateway = needsGateway
+End Function
+
+Public Sub AllowDatasetRefreshFetch()
+    fetchAllowed = True
+End Sub
+
+Public Function DatasetRefreshHasResults() As Boolean
+    If Not refreshResults Is Nothing Then DatasetRefreshHasResults = (refreshResults.Count > 0)
+End Function
 
 Public Function DatasetRefreshError() As String
     DatasetRefreshError = refreshFailure
@@ -45,13 +67,21 @@ Public Function DatasetRefreshInScope(ByVal book As Workbook) As Boolean
     If refreshBook Is Nothing Then Exit Function
     If committing Then Exit Function
     If Not book Is refreshBook Then Exit Function
+    If refreshSheet Is Nothing And refreshTarget Is Nothing Then
+        DatasetRefreshInScope = True
+        Exit Function
+    End If
+    On Error Resume Next
+    Set caller = Application.Caller
+    On Error GoTo 0
     If Not refreshSheet Is Nothing Then
-        On Error Resume Next
-        Set caller = Application.Caller
-        On Error GoTo 0
         If TypeOf caller Is Excel.Range Then
             If Not caller.Worksheet Is refreshSheet Then Exit Function
         End If
+    End If
+    If Not refreshTarget Is Nothing Then
+        If Not TypeOf caller Is Excel.Range Then Exit Function
+        If Application.Intersect(caller, refreshTarget) Is Nothing Then Exit Function
     End If
     DatasetRefreshInScope = True
 End Function
@@ -62,6 +92,18 @@ Public Function RefreshDataset(ByVal funcArgs As String, ByVal requestKey As Str
     If refreshResults.Exists(requestKey) Then
         datasetHitCount = datasetHitCount + 1
         RefreshDataset = refreshResults(requestKey)
+        Exit Function
+    End If
+    If missingOnly Then
+        If SnapshotRead(refreshBook, requestKey, values) Then
+            datasetHitCount = datasetHitCount + 1
+            RefreshDataset = values
+            Exit Function
+        End If
+    End If
+    If Not fetchAllowed Then
+        needsGateway = True
+        RefreshDataset = "(ArcRho: loading this formula's data...)"
         Exit Function
     End If
     If cancelUpdate Then

@@ -41,14 +41,22 @@ DSV and DFM numeric evaluation shares the canonical dataset-cell contract, inclu
 
 Excel add-in refreshes use the Gateway `dataset_csv` operation and a dedicated
 read-only publication policy. Sidecar-backed instances are served from their
-declared publication, with compatible manual/input period views derived in memory; Excel never
-regenerates permanent datasets or their dependencies. Sidecar-less generated
-requests may reuse technical caches only while their source and configuration
-provenance match. Temporary calculated requests evaluate without publication.
+declared publication, with compatible manual/input and Engine-generated period
+views derived in memory using the published CSV's native lengths. An
+Engine-generated instance at a shape or mode its publication cannot provide is
+built by the Engine as a technical cache beside the publication, which stays
+untouched; Excel never rewrites a publication or its dependencies. Other
+outputs at an unsupported shape are refused. Sidecar-less generated requests
+and these technical caches may be reused only while their source and
+configuration provenance match. Temporary calculated requests evaluate without publication.
 The frontend's dataset-run and formula-evaluation paths retain their own
 existing behavior. The add-in persists refreshed results in each workbook and
-serves that snapshot on open and ordinary recalculation; only an explicit
-ArcRho refresh contacts the server. No sidecar or index schema changes.
+serves that snapshot on open and ordinary recalculation. Entering, editing, or
+pasting an ArcRho formula loads only requests missing from that workbook's
+snapshot, then persists successful results outside worksheet calculation.
+An explicit ArcRho refresh fetches current results for its scope, including
+requests already saved. Formula entry that can use saved results needs no
+server access or credential enrollment. No sidecar or index schema changes.
 
 ## Before Finishing
 

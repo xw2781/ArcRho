@@ -29,7 +29,7 @@ Private Sub UserForm_Initialize()
     OptionButton1.Visible = False
     OptionButton2.Visible = False
     OptionButton1.Parent.Caption = "Saved workbook data"
-    Label1.Caption = "ArcRho uses saved values until you click Refresh. Save after refreshing to share the updated values."
+    Label1.Caption = "New formulas load automatically. Existing formulas use saved values until Refresh. Save to share updated values."
     Label1.Left = 10
     Label1.Top = 18
     Label1.Width = OptionButton1.Parent.Width - 20

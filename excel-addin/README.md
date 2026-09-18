@@ -1,9 +1,9 @@
 # ArcRho Excel Add-in
 
 `ArcRho.xlam` is loaded from the ArcRho Server share, so every user runs the
-version that is on the share. Version 3.0.0 reads saved ArcRho results from the
-workbook until someone explicitly refreshes them. A refresh asks the ArcRho
-Server over HTTP; no worksheet function reads project data from the share.
+version that is on the share. Version 3.0.1 reads saved ArcRho results from the
+workbook and loads missing results when a formula is entered or edited. Server
+requests use HTTP; no worksheet function reads project data from the share.
 
 The VBA source of record is [`src_vba/`](src_vba); the `.xlam` is built from it.
 
@@ -17,24 +17,34 @@ format and refresh time. Existing worksheet formulas stay in place.
 Another user can open the saved workbook and read the same results without
 dataset requests, source freshness checks, or Engine calculations. Ordinary
 Excel recalculation uses that workbook's snapshot; other spreadsheet formulas
-continue to calculate normally. A new request missing from the snapshot asks
-the user to refresh. Workbooks created before 3.0.0 need one successful refresh
-and save to acquire a snapshot.
+continue to calculate normally.
+
+Typing, editing, or pasting an ArcRho formula loads any missing request as soon
+as the entry is complete and adds the result to the workbook snapshot. This
+includes changing the formula's explicit project name. If the same request is
+already saved, the formula uses it without contacting the server or enrolling
+the PC. Use a Refresh command when you want to update those existing results.
+Workbooks created before 3.0.0 need one successful refresh and save to acquire
+a snapshot for their existing formulas.
 
 Repeated requests share one fetched result during refresh. A failed or cancelled
 refresh preserves the previous snapshot. Refresh Worksheet updates that sheet's
 requests while retaining saved requests used elsewhere in the workbook. Save
-the workbook after refreshing to share the new values. Snapshot data contains
-no credentials or raw source tables.
+the workbook after refreshing or adding formulas to share the new values.
+Snapshot data contains no credentials or raw source tables.
 
 ## Server refresh policy
 
 - A dataset with a sidecar is read as published from the CSV named by the
-  sidecar. Excel never regenerates it or rewrites its metadata. Manual/input
-  datasets support coarser periods in memory with the same cumulative/calendar
-  mode. Other outputs require their published shape, because aggregating a
-  calculated ratio can change its meaning. A missing publication or an
-  unsupported shape must be refreshed or corrected in the frontend.
+  sidecar. Excel never rewrites that CSV or its metadata. Manual/input and
+  generated datasets support coarser periods in memory with the same
+  cumulative/calendar mode. A generated dataset asked for at a finer period, a
+  non-multiple, or another mode is calculated by the Engine from its source
+  table into a technical cache beside the publication, which stays as it is.
+  Calculated and method outputs require their published shape, because
+  aggregating a calculated ratio can change its meaning. A missing publication
+  or an unsupported shape must be refreshed or corrected in the frontend; the
+  message names the published and requested periods.
 - A generated request without a sidecar reuses a matching technical cache while
   its source-table identity and processing configuration remain unchanged.
   Otherwise the server regenerates it without creating a permanent sidecar.
@@ -53,8 +63,8 @@ commands follow the server policy for every dataset.
   library files listed at the end still come from it. Project data does not.
 - **A credential for the ArcRho Server**, at
   `%APPDATA%\ArcRho\arcrho_gateway.json`. The add-in installs one for itself the
-  first time a refresh needs server access, so reading a saved workbook needs
-  no enrollment.
+  first time an entered formula or a refresh needs server access, so reading a
+  saved workbook needs no enrollment.
 
 ## The credential
 
@@ -65,8 +75,9 @@ file under their own Windows account can add an entry to it, and that is how the
 server knows who is asking: the share is the authentication, and the Gateway
 itself hands nothing out to a caller that can only reach its port.
 
-**It installs itself when a refresh first needs access.** When a refresh starts and
-finds no credential file, it runs `apps\ArcRho Credential\ArcRho Credential.exe`
+**It installs itself when server access is first needed.** When an entered
+formula has no saved result, or a refresh starts, and no credential file exists,
+the add-in runs `apps\ArcRho Credential\ArcRho Credential.exe`
 from the share, hidden, and waits for it, with
 `Setting this PC up to read ArcRho data ...` in the loading window. The whole
 enrollment is paid once on a PC that has never had a credential. Opening and
@@ -75,11 +86,11 @@ recalculating a saved snapshot does not run the helper.
 Three things about that first run are deliberate:
 
 - It is tried **once per Excel session**. A PC away from the office pays one
-  short failure when refreshing, and never one per formula.
+  short enrollment failure, and never one per formula.
 - It is skipped without a word when **the share cannot be reached**.
 - A credential file that says `"enabled": false` is a **deliberate opt-out** and
-  is left exactly as it is. Refresh reports that the PC is not configured;
-  previously saved values remain available.
+  is left exactly as it is. A new data request reports that the PC is not
+  configured; previously saved values remain available.
 
 **On the rare PC where the first run does not work**, run the helper by hand from
 a command prompt, handing it the workspace folder:
@@ -117,15 +128,17 @@ signing half alone, without Excel and without sending anything.
 
 ## What each failure message means
 
-### While refreshing
+### While loading or refreshing results
 
 Refresh failures appear in Excel's status bar and preserve the previous
-snapshot. A formula absent from the snapshot displays
+snapshot. A failed formula-entry load also leaves previously saved results
+available. An existing formula absent from the snapshot during ordinary
+recalculation displays
 `(ArcRho: Refresh Worksheet or Refresh Workbook to load saved data.)`.
 
 | Message | Cause and what to do |
 | :--- | :--- |
-| `This PC is not set up to refresh ArcRho data.` | No usable credential on this PC: enrollment did not succeed, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
+| `This PC is not set up to load ArcRho data.` / `This PC is not set up to refresh ArcRho data.` | No usable credential on this PC: enrollment did not succeed, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
 | `Ask the ArcRho team to update the ArcRho Server.` | The server this PC reaches does not serve dataset figures over HTTP. The server has to be updated. |
 | `(ArcRho Server not reached: <reason>)` | The request never arrived. The reason is Windows' own — a timeout, a refused connection, no network. `no answer` means the server closed the connection without a reply. |
 | `(ArcRho Server <status>: <message>)` | The server answered and refused. The message is the server's own; the status says what kind of refusal it was. |
@@ -171,10 +184,10 @@ excel-addin/beta/ARCRHO_BETA.xlam` checks the compiled add-in against its source
 
 | Check | What it proves |
 | :--- | :--- |
-| [check_dataset_cache.md](tools/check_dataset_cache.md) | Saved snapshots reopen without server access and explicit refresh fetches each distinct request once. |
+| [check_dataset_cache.md](tools/check_dataset_cache.md) | Saved snapshots reopen without server access, entered formulas load missing requests, and explicit refresh fetches each distinct request once. |
 | [check_gateway_signing.md](tools/check_gateway_signing.md) | The add-in signs a request the way the server verifies it, and this PC can reach the server. |
 | [check_gateway_transport.md](tools/check_gateway_transport.md) | Every worksheet function returns the same figures from the server as it did from the share, and how long each takes. |
-| [check_first_run_credential.md](tools/check_first_run_credential.md) | A PC with no credential gives itself one when refreshing, an opt-out is left alone, and a dead share fails quickly. |
+| [check_first_run_credential.md](tools/check_first_run_credential.md) | A PC with no credential gives itself one when a new formula or refresh needs data, an opt-out is left alone, and a dead share fails quickly. |
 
 ## Building and releasing
 

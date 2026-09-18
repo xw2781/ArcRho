@@ -4,6 +4,7 @@ Private Sub Workbook_Open()
     ' UDF help metadata is registered during the XLAM build.
     ' Register_ArcRhoTri_Help_Safe
     
+    InitializeSnapshotEvents
     LoadConfig
     
     triangle_tool_row = 10
@@ -21,7 +22,7 @@ Private Sub Workbook_Open()
     Set processedArrays = New Collection
 
     ' Saved workbook snapshots can be read without contacting the server.
-    ' Credentials are enrolled only when a user explicitly refreshes.
+    ' Entering formulas or explicitly refreshing can enroll credentials.
     
     ' StartPendingWatcher
     

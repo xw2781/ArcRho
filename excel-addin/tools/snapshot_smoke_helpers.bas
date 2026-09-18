@@ -5,13 +5,21 @@ Option Explicit
 Private calls As Long
 Private offset As Double
 Private failureMode As String
+Private progressCalls As Long
+Private firstProgress As Double
+Private credentialCalls As Long
 
 Public Function SmokeBasic() As String
     SmokeBasic = "ready"
 End Function
 
 Public Sub EnsureGatewayCredential()
+    credentialCalls = credentialCalls + 1
 End Sub
+
+Public Function SmokeCredentialCalls() As Long
+    SmokeCredentialCalls = credentialCalls
+End Function
 
 Public Function GatewayIsConfigured() As Boolean
     GatewayIsConfigured = True
@@ -22,11 +30,19 @@ Public Function GatewayServesDatasetCsv() As Boolean
 End Function
 
 Public Sub Show_ufProgressBar()
-    Err.Raise 5, , "The isolated smoke test must not show UI."
+    ufProgressBar.Show vbModeless
+    DoEvents
 End Sub
 
 Public Function GatewayDatasetCsv(ByVal request As String, ByRef csv As String, ByRef message As String) As Boolean
+    Dim form As Object
     calls = calls + 1
+    For Each form In VBA.UserForms
+        If TypeName(form) = "ufProgressBar" And form.Visible Then
+            If progressCalls = 0 Then firstProgress = Val(form.LabelPct.Caption)
+            progressCalls = progressCalls + 1
+        End If
+    Next form
     If failureMode = "fail" Then
         message = "Simulated Gateway failure"
         Exit Function
@@ -35,6 +51,15 @@ Public Function GatewayDatasetCsv(ByVal request As String, ByRef csv As String, 
     Select Case GetParamValue(request, "DatasetName")
         Case "Single": csv = CStr(7 + offset)
         Case "Blank": csv = ""
+        Case "Vertical": csv = "10" & vbLf & "20" & vbLf & "30"
+        Case "Horizontal": csv = "10,20,30"
+        Case "VectorSingle": csv = "42"
+        Case "ProjectVector"
+            If GetParamValue(request, "ProjectName") = "Beta" Then
+                csv = "200" & vbLf & "210" & vbLf & "220"
+            Else
+                csv = "100" & vbLf & "110" & vbLf & "120"
+            End If
         Case Else
             If GetParamValue(request, "ProjectName") = "Beta" Then
                 csv = CStr(200 + offset) & ",210" & vbLf & "220,"
@@ -54,14 +79,29 @@ Public Sub SmokeResponse(ByVal newOffset As Double, Optional ByVal mode As Strin
     failureMode = mode
 End Sub
 
-Public Sub SmokeRefresh(Optional ByVal sheetOnly As Boolean = False)
-    RefreshWorkbookSnapshots sheetOnly, False
+Public Sub SmokeRefresh(Optional ByVal sheetOnly As Boolean = False, Optional ByVal showProgress As Boolean = False)
+    RefreshWorkbookSnapshots sheetOnly, showProgress
 End Sub
 
-Public Function SmokeFailedRefresh(ByVal mode As String) As Boolean
+Public Function SmokeProgressCalls() As Long
+    SmokeProgressCalls = progressCalls
+End Function
+
+Public Function SmokeFirstProgress() As Double
+    SmokeFirstProgress = firstProgress
+End Function
+
+Public Function SmokeProgressVisible() As Boolean
+    Dim form As Object
+    For Each form In VBA.UserForms
+        If TypeName(form) = "ufProgressBar" And form.Visible Then SmokeProgressVisible = True
+    Next form
+End Function
+
+Public Function SmokeFailedRefresh(ByVal mode As String, Optional ByVal showProgress As Boolean = False) As Boolean
     On Error GoTo ExpectedFailure
     failureMode = mode
-    RefreshWorkbookSnapshots False, False
+    RefreshWorkbookSnapshots False, showProgress
     SmokeFailedRefresh = InStr(1, CStr(Application.StatusBar), "unchanged", vbTextCompare) > 0
     failureMode = ""
     Exit Function
@@ -91,6 +131,19 @@ End Sub
 Public Sub SmokeForget(ByVal bookName As String)
     SnapshotForget Workbooks(bookName)
 End Sub
+
+Public Sub SmokePrepare(ByVal bookName As String)
+    SnapshotPrepare Workbooks(bookName)
+End Sub
+
+Public Function SmokeBlocks(ByVal bookName As String, ByVal address As String) As String
+    Dim block As Range, blocks As Collection
+    Set blocks = FindArcRhoFormulaBlocks(Workbooks(bookName).Worksheets(1).Range(address))
+    For Each block In blocks
+        If Len(SmokeBlocks) > 0 Then SmokeBlocks = SmokeBlocks & "|"
+        SmokeBlocks = SmokeBlocks & block.Address
+    Next block
+End Function
 
 Public Sub SmokeSeedTypes(ByVal bookName As String)
     Dim updates As Object, values As Variant

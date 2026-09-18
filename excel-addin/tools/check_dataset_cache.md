@@ -1,6 +1,7 @@
-# Check: saved workbook snapshots and explicit refresh
+# Check: saved workbook snapshots, formula entry, and refresh
 
-Version 3.0.0 keeps ArcRho values in the workbook until an explicit refresh.
+Version 3.0.1 keeps existing ArcRho values in the workbook until an explicit
+refresh, and loads missing requests after formula entry.
 Use an isolated Excel process for checks and set DisplayAlerts, EnableEvents,
 and ScreenUpdating to False before opening any workbook. Never close a user's
 existing Excel process.
@@ -21,8 +22,9 @@ only an authorized project.
 
 ## Expected behavior
 
-1. Before the first refresh, a request absent from the snapshot shows a clear
-   refresh-required message. It sends no server request.
+1. Opening or recalculating an existing formula with no snapshot shows a clear
+   refresh-required message. It sends no server request. An older workbook
+   needs one successful Refresh Workbook and save for its existing formulas.
 2. Refresh Workbook fetches each distinct request once. Twenty-one identical
    triangle calls cost one fetch; later calls in that refresh use memory.
 3. The hidden `_ArcRhoCache` sheet contains the snapshot. It is written after
@@ -35,10 +37,17 @@ only an authorized project.
    requests used elsewhere. Refresh Workbook affects the active workbook only.
 7. A failed or cancelled refresh leaves the previous snapshot and figures
    available, reports the failure, and does not claim success.
-8. A new request after opening asks for refresh; it never silently fetches.
+8. Typing, editing, or pasting ArcRho formulas loads missing requests immediately
+   after entry and stores successful results in the snapshot. Duplicate requests
+   share one fetch. An entered formula whose request is already saved needs no
+   server access or credential enrollment. Changing an explicit project name
+   loads that project's missing result; `Default` and the same explicit project
+   reuse one result.
 9. Two open workbooks use their own snapshots and caller-specific default
    projects even when the other workbook is active.
 10. Round-trip 1x1 values, vectors, arrays, blanks, and header/settings text.
+    `ArcRhoVecCell` and `ADASVecCell` use the same saved vector as `ArcRhoVec`;
+    check first and last 1-based indices for horizontal and vertical vectors.
 11. Settings no longer shows the old always-refresh/removeData option.
 
 ## Server checks
@@ -61,8 +70,18 @@ only an authorized project.
 `datasetRequestCount`, `datasetHitCount`, and `datasetFetchCount` remain useful
 for a live run. Read before and after the operation and compare differences.
 A reopen or ordinary recalculation has zero fetches. An explicit refresh has
-one fetch per distinct request, not one per formula cell.
+one fetch per distinct request, not one per formula cell. A formula-entry batch
+fetches only distinct requests missing from the workbook snapshot.
 
 The pre-3.0.0 check measured 21 calls, 20 hits, and one fetch on 2026-09-12.
-Version 3.0.0 retains that deduplication and also persists the result across
-Excel sessions and users. Earlier always-refresh expectations no longer apply.
+Version 3.0.0 introduced persistence across Excel sessions and users; 3.0.1
+retains it while allowing formula entry to load missing values. Earlier
+always-refresh expectations no longer apply.
+
+## Formula discovery performance
+
+The workbook refresh scan reads formula batches and visits each legacy array
+block once. In an isolated synthetic check on 2026-09-17, finding a 20,000-cell
+legacy array took 36.842 seconds before the change and 0.103 seconds afterwards.
+These timings measure formula discovery only, not Gateway or Engine work.
+The progress display also advances during discovery, before data requests start.

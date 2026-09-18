@@ -1,8 +1,8 @@
-# Check: a PC with no access enrolls on explicit refresh
+# Check: a PC with no access enrolls when data is needed
 
 A five-minute manual check that the add-in installs this PC's own ArcRho
-Server credential when an explicit refresh first needs it, that a credential deliberately
-turned off is left alone, and that a PC away from the office pays one short
+Server credential when a new formula or explicit refresh first needs it, that a
+credential deliberately turned off is left alone, and that a PC away from the office pays one short
 failure rather than a hang. The snapshot harness substitutes the credential
 helper; these checks exercise real enrollment.
 
@@ -19,8 +19,9 @@ Excel is driven over COM. Set `DisplayAlerts`, `EnableEvents` and
 `ScreenUpdating` to `False` the moment the application object exists — a modal
 alert from an invisible instance lands on the desktop and blocks the call for
 ever — keep events disabled while opening the add-in. Opening and recalculating a
-saved snapshot must not provision a credential. Run the explicit ribbon refresh
-for the enrollment check. Never overwrite part of an array formula.
+saved snapshot must not provision a credential. Enable events for the formula-entry
+check, or run the explicit ribbon refresh for the refresh check. Never overwrite
+part of an array formula.
 
 ## The four checks
 
@@ -30,16 +31,19 @@ for the enrollment check. Never overwrite part of an array formula.
    It must exit 0 with no warning dialog and the credential must be back.
 2. **Excel sets the PC up on its own.** Move the credential aside again, open
    the beta `.xlam`, and confirm no credential is created while reading saved
-   values. Run Refresh Workbook and confirm the credential is installed and
-   current figures are returned.
+   values. Enter a formula for an already saved request and confirm no credential
+   is created. Then enter a formula whose request is missing and confirm the
+   credential is installed and figures are returned. Repeat in a fresh session
+   with Refresh Workbook as the first request instead.
 3. **An opt-out is honoured.** Put `{"enabled": false}` in the credential file,
-   run an explicit refresh, and confirm the file is untouched and refresh reports the
-   "not set up to refresh ArcRho data" message and preserves saved figures.
+   enter a formula for a missing request or run an explicit refresh, and confirm
+   the file is untouched, the operation reports that this PC is not configured,
+   and saved figures remain available.
 4. **A dead share fails quickly.** Time the add-in's own guard — `Dir$` against
    a path on a host that does not exist — and confirm it comes back with an
    error in about a second and raises no dialog.
 
-## Historical result before enrollment moved to explicit refresh, 2026-09-12, `L-H2MQ6280FVP`, add-in 2.6.0
+## Historical result before enrollment moved out of workbook open, 2026-09-12, `L-H2MQ6280FVP`, add-in 2.6.0
 
 Against `NJ_Annual_Prod_202605_Fake`, reserving class
 `HPPREF\HO+DF\NJ\Legacy\HOL`, dataset `Net Loss--Incurred Adjusted***` asked

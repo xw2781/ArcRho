@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel add-in 3.0.1 loads missing values after formula entry and fixes slow workbook refresh discovery.",
+  "details": [
+    "Typing, editing, or pasting an ArcRho formula loads missing results without requiring a Refresh button, including formulas with an explicit project name.",
+    "Opening saved workbooks and ordinary recalculation continue to use saved values without contacting the server.",
+    "Refresh Workbook scans large array formulas once and shows progress while finding formulas."
+  ]
+}
