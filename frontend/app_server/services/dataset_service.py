@@ -2004,9 +2004,11 @@ def load_cached_dataset_values(
     ``at_display_shape`` a hand-entered dataset shown coarser than it is
     stored is rolled up to the display shape its sidecar saved, the view the
     Dataset window opens at, built from the stored CSV the same way a run
-    builds it and never written beside it. ``at_linked_shape`` rolls it up
-    the same way to the display its cell links were written against, which
-    is where a link refresh reads and writes its cells.
+    builds it and never written beside it. An Engine-generated dataset whose
+    saved display differs from its file's shape is produced again at that
+    display instead, since it is never rolled up. ``at_linked_shape`` rolls
+    a hand-entered dataset up the same way to the display its cell links were
+    written against, which is where a link refresh reads and writes its cells.
 
     ``at_lengths`` is the third form, the one a caller names itself: the
     dataset is served at that ``(origin, development)`` pair however its own
@@ -2025,6 +2027,22 @@ def load_cached_dataset_values(
         raise HTTPException(404, str(err))
     view_lengths = _requested_view_lengths(at_lengths)
     source_kind = str(sidecar.get("source_kind") or "").strip().casefold()
+    if view_lengths is None and at_display_shape and source_kind == "engine":
+        # The window opens a generated dataset at the display pair its sidecar
+        # saved. Its file is the Engine's build at whatever display the dataset
+        # had when that file was written, and a generated dataset is never
+        # rolled up in memory, so a saved display that differs from the file's
+        # shape is produced again at that display -- the same move a method
+        # makes for a generated precedent -- rather than answered with the
+        # file's own rows, which would put the old lengths back on screen. A
+        # file already at the display is read as it stands.
+        display = display_lengths(sidecar)
+        file_shape = _parse_length_scoped_cache_name(str(sidecar.get("csv_file") or ""))
+        if all(months > 0 for months in display) and display != (
+            file_shape.get("origin_length"),
+            file_shape.get("development_length"),
+        ):
+            view_lengths = display
     if view_lengths and source_kind == "engine":
         # An Engine-generated dataset is produced again at the lengths asked
         # for rather than rolled up, the way a DFM brings a generated

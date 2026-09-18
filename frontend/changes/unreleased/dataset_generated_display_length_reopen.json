@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A generated dataset reopens at the display lengths you saved instead of falling back to the lengths it was first built at.",
+  "details": [
+    "Saving a new origin or development length on an Engine-generated dataset already wrote the choice; opening the dataset from Project Instance then showed the old lengths again.",
+    "The open now rebuilds the dataset at the saved display when its file is at another shape, the same way a method reads a generated precedent at its own period."
+  ]
+}
