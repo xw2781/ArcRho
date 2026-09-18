@@ -1,6 +1,6 @@
 """Canonical contract for the project-owned imported source table.
 
-Every ArcRho project folder owns exactly one imported raw table at a fixed
+Every Arco project folder owns exactly one imported raw table at a fixed
 location and a fixed name:
 
     <project dir>/source/master_table.csv
@@ -54,7 +54,7 @@ def source_dir(project_dir: str) -> str:
 
 
 def master_table_path(project_dir: str) -> str:
-    """The one table every ArcRho consumer reads for this project."""
+    """The one table every Arco consumer reads for this project."""
     return os.path.join(source_dir(project_dir), MASTER_TABLE_FILE)
 
 
@@ -290,7 +290,7 @@ def same_csv_identity(last_import: Any, identity: Dict[str, Any]) -> bool:
 
 
 # --- Shared SQL Server connection history --------------------------------
-# Server-shared preference: every user of one ArcRho Server sees the same list
+# Server-shared preference: every user of one Arco Server sees the same list
 # of previously used server/database pairs. It records identifiers only - no
 # credentials, and no table name, because the table is a per-project choice.
 MSSQL_CONNECTIONS_FILE = "mssql_connections.json"

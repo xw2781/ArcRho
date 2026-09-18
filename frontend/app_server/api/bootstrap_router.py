@@ -62,7 +62,7 @@ def plan_bootstrap_save(req: BootstrapSaveRequest) -> Dict[str, Any]:
 
 @router.post("/bootstrap/save")
 def save_bootstrap(req: BootstrapSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # The save runs on Arco Engine next to the data; this endpoint keeps
     # its exact response shape and error codes.
     return engine_hosted_save_service.run_hosted_save(
         "bootstrap_method",

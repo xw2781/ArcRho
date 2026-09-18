@@ -134,7 +134,7 @@ def require_engine_workers(
         return heartbeats
     instance_dir = _canonical_engine_instances_directory(root)
     raise EngineUnavailableError(
-        "No active ArcRho Engine worker was found. "
+        "No active Arco Engine worker was found. "
         f"Expected a heartbeat newer than {max_age_sec:g} seconds under [{instance_dir}]."
     )
 

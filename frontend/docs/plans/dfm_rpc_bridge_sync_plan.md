@@ -18,7 +18,7 @@ The feature should start from a new Sync button in `dfmTabBar`.
 Relevant current behavior:
 
 1. Dataset Viewer already sends bridge request files through app-server routes under `/arcrho/tri`.
-2. The backend builds a flat `Function = ArcRhoTri` JSON request, writes a `.json` request file under the configured requests directory, and waits for the expected data file.
+2. The backend builds a flat `Function = ArcoTri` JSON request, writes a `.json` request file under the configured requests directory, and waits for the expected data file.
 3. DFM method save/load already persists the core method JSON locally under:
 
    ```text

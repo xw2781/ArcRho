@@ -125,7 +125,7 @@ def _safe_status_message(exc: BaseException) -> str:
         return _redact_machine_paths(exc) or "The dataset type change failed."
     if isinstance(exc, OSError):
         return (
-            "The ArcRho Server filesystem could not complete the dataset type change."
+            "The Arco Server filesystem could not complete the dataset type change."
         )
     # A service refusal (an unresolved formula component, an unavailable
     # dataset-type document) carries the sentence the user needs; it is a

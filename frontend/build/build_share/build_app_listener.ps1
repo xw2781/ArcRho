@@ -160,8 +160,8 @@ function Invoke-ReleaseSync {
         throw "Sync request carried an invalid version: '$version'."
     }
     $product = [string]$Request.product
-    if ([string]::IsNullOrWhiteSpace($product)) { $product = "ArcRho" }
-    if ($product -notin @("ArcRho", "Arcode")) {
+    if ([string]::IsNullOrWhiteSpace($product)) { $product = "Arco" }
+    if ($product -notin @("Arco", "Arcode")) {
         throw "Sync request carried an unsupported product: '$product'."
     }
     if (-not (Test-Path -LiteralPath $syncScript -PathType Leaf)) {

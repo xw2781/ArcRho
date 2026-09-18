@@ -8,7 +8,7 @@
 
    The diagram is one SVG sized to the zoomed graph inside a scrolling canvas
    that draws no scrollbars, so dragging and the wheel pan it and nothing
-   frames it but its own border. The port list keeps the framed ArcRho
+   frames it but its own border. The port list keeps the framed Arco
    scrollbars (shared/styles/framed_scrollbars.css) it needs when it is long.
    Edges are paths; nodes are foreignObject boxes so their
    text ellipsizes and their colours come from this sheet rather than from

@@ -1,7 +1,7 @@
 """Client-PC transport selection for Server-hosted workspace mutations.
 
 A registered mutation (``arcrho_workspace_mutation_contract``) runs on the
-ArcRho Server host through the Gateway when the gateway advertises it, and
+Arco Server host through the Gateway when the gateway advertises it, and
 locally over the mapped drive otherwise. Deleting a reserving class's cached
 files is the first such kind: every unlink is its own SMB round trip and the
 index rebuild that follows reads the whole folder again, so a delete a user
@@ -151,7 +151,7 @@ def run_workspace_mutation(
                     context["reason"] = failure.reason
                     raise HTTPException(
                         504,
-                        "The ArcRho Server did not confirm this change. "
+                        "The Arco Server did not confirm this change. "
                         "Refresh the dataset table to see whether it was applied.",
                     ) from failure
                 context["reason"] = failure.reason
@@ -167,7 +167,7 @@ def run_workspace_mutation(
                 )
                 return _finish(payload)
         if gateway_required and context["reason"] != "server_process":
-            raise HTTPException(503, "ArcRho Gateway is required for this operation and is unavailable or needs updating.")
+            raise HTTPException(503, "Arco Gateway is required for this operation and is unavailable or needs updating.")
         return _finish(local())
     except HTTPException as error:
         http_status = int(error.status_code)

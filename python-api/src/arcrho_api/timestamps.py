@@ -1,4 +1,4 @@
-"""The one representation of a persisted ArcRho timestamp.
+"""The one representation of a persisted Arco timestamp.
 
 Every time a persisted file records -- ``created``, ``updated_at``,
 ``last_modified``, ``data_refreshed``, ``event_date``, ``source_modified`` --

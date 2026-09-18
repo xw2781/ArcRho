@@ -88,14 +88,14 @@ class TransferReviewTableTests(unittest.TestCase):
         payload = _payload(
             [
                 _row("Paid Loss"),
-                _row("ArcRho Only", presence="arcrho", resq_timestamp="", newer_side=""),
+                _row("Arco Only", presence="arcrho", resq_timestamp="", newer_side=""),
                 _row("ResQ Only", presence="resq", arcrho_timestamp="", newer_side=""),
             ],
             "import",
         )
 
         cells = [row["cells"] for row in payload["rows"]]
-        self.assertEqual([cell["presence"]["text"] for cell in cells], ["Both", "ArcRho only", "ResQ only"])
+        self.assertEqual([cell["presence"]["text"] for cell in cells], ["Both", "Arco only", "ResQ only"])
         self.assertEqual([cell["arcrho_timestamp"] for cell in cells][2], "-")
         self.assertEqual([cell["resq_timestamp"] for cell in cells][1], "-")
         # An unpaired row has no comparison to report on either column.
@@ -116,7 +116,7 @@ class ExportPlanColumnTests(unittest.TestCase):
         )
 
         cells = [row["cells"] for row in payload["rows"]]
-        self.assertEqual([cell["changed"]["text"] for cell in cells], ["None", "ArcRho", "ResQ", "Both"])
+        self.assertEqual([cell["changed"]["text"] for cell in cells], ["None", "Arco", "ResQ", "Both"])
         self.assertEqual(
             [cell["plan"]["text"] for cell in cells],
             [
@@ -154,7 +154,7 @@ class ImportPlanColumnTests(unittest.TestCase):
             [_row("ResQ Only", presence="resq", arcrho_timestamp="", newer_side="")], "import"
         )
 
-        self.assertEqual(payload["rows"][0]["cells"]["plan"]["text"], "Added to ArcRho")
+        self.assertEqual(payload["rows"][0]["cells"]["plan"]["text"], "Added to Arco")
 
     def test_overwrite_warns_about_the_arcrho_edit_and_merge_says_it_is_kept(self):
         rows = [_row("Paid Loss", export_review=_verdict("arcrho"))]
@@ -162,23 +162,23 @@ class ImportPlanColumnTests(unittest.TestCase):
         overwriting = _payload(rows, "import", overwrite=True)["rows"][0]["cells"]["plan"]
         merging = _payload(rows, "import", overwrite=False)["rows"][0]["cells"]["plan"]
 
-        self.assertEqual(overwriting, {"text": "Overwrites newer ArcRho copy", "tone": "warn"})
-        self.assertEqual(merging, {"text": "Keeps the newer ArcRho copy", "tone": "ok"})
+        self.assertEqual(overwriting, {"text": "Overwrites newer Arco copy", "tone": "warn"})
+        self.assertEqual(merging, {"text": "Keeps the newer Arco copy", "tone": "ok"})
 
     def test_an_untouched_arcrho_copy_is_simply_overwritten(self):
         payload = _payload([_row("Paid Loss", export_review=_verdict("resq"))], "import", overwrite=True)
 
-        self.assertEqual(payload["rows"][0]["cells"]["plan"]["text"], "Overwrites ArcRho copy")
+        self.assertEqual(payload["rows"][0]["cells"]["plan"]["text"], "Overwrites Arco copy")
 
     def test_an_item_arcrho_cannot_receive_says_so(self):
         payload = _payload(
-            [_row("Odd Type", transfer_supported=False, detail="Dataset Type X is not configured in ArcRho.")],
+            [_row("Odd Type", transfer_supported=False, detail="Dataset Type X is not configured in Arco.")],
             "import",
         )
 
         cells = payload["rows"][0]["cells"]
         self.assertEqual(cells["plan"], {"text": "Not imported", "tone": "muted"})
-        self.assertEqual(cells["detail"], "Dataset Type X is not configured in ArcRho.")
+        self.assertEqual(cells["detail"], "Dataset Type X is not configured in Arco.")
 
 
 class TransferReviewSummaryTests(unittest.TestCase):
@@ -213,8 +213,8 @@ class TransferReviewSummaryTests(unittest.TestCase):
     def test_an_import_header_names_arcrho_as_the_side_at_risk(self):
         summary = _payload([_row("Paid Loss", export_review=_verdict("arcrho"))], "import")["summary"]
 
-        self.assertIn("1 can be written to ArcRho", summary)
-        self.assertIn("carry an ArcRho change this run would overwrite", summary)
+        self.assertIn("1 can be written to Arco", summary)
+        self.assertIn("carry an Arco change this run would overwrite", summary)
 
 
 class EditsAtRiskTests(unittest.TestCase):

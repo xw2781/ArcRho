@@ -180,7 +180,7 @@ function renderPayload(payload) {
   const isUpdate = payload.mode === "update";
   const releases = Array.isArray(payload.releases) ? payload.releases : [];
 
-  titleEl.textContent = isUpdate ? "ArcRho Update Available" : "ArcRho Release History";
+  titleEl.textContent = isUpdate ? "Arco Update Available" : "Arco Release History";
   summaryEl.replaceChildren();
   scrollEl.replaceChildren();
   scrollEl.scrollTop = 0;

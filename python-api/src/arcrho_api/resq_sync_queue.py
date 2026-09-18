@@ -1,4 +1,4 @@
-"""Client of the ResQ reserving-class synchronization queue served by ArcRho Bridge.
+"""Client of the ResQ reserving-class synchronization queue served by Arco Bridge.
 
 ResQ automation exists only where ResQ is installed, which is usually not the
 machine ArcRho runs on. The Sync and Export macros therefore own no ResQ
@@ -149,7 +149,7 @@ def _logical_rc_path(value: object) -> str:
         or "\x00" in normalized
         or any(part in {"", ".", ".."} for part in segments)
     ):
-        raise ValueError("Reserving-class path must be a relative logical ArcRho path.")
+        raise ValueError("Reserving-class path must be a relative logical Arco path.")
     return normalized
 
 
@@ -188,8 +188,8 @@ def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tup
     if workers:
         return workers
     raise BridgeUnavailableError(
-        "No active ArcRho Bridge worker was found, so ResQ cannot be reached from "
-        "this computer. Start ArcRho on a machine where ResQ is running, then "
+        "No active Arco Bridge worker was found, so ResQ cannot be reached from "
+        "this computer. Start Arco on a machine where ResQ is running, then "
         f"try again.\n{tracker.describe()}. "
         f"Expected a ResQ-connected heartbeat newer than {BRIDGE_WORKER_MAX_AGE_SEC:g} "
         f"seconds under [{Path(server_root) / BRIDGE_WORKER_DIR}]."
@@ -217,7 +217,7 @@ def create_sync_request(
     request_id: str | None = None,
     user_name: str = "",
 ) -> tuple[str, dict[str, Any]]:
-    """Build the location-independent payload consumed by ArcRho Bridge.
+    """Build the location-independent payload consumed by Arco Bridge.
 
     ``user_name`` is the person the request is for; the hosted publish passes
     the identity it acts under, and a direct caller leaves it to the process.
@@ -290,7 +290,7 @@ def _selection_payload(selected_rows: list[Mapping[str, Any]] | None) -> list[di
         signature = row.get("signature")
         if not row_id or not isinstance(signature, Mapping):
             raise ValueError(
-                "The ArcRho Bridge preview did not report a signature for every selected "
+                "The Arco Bridge preview did not report a signature for every selected "
                 "row. Compare the reserving class again."
             )
         rows.append({"Id": row_id, "Signature": dict(signature), "Name": str(row.get("name") or "")})
@@ -326,7 +326,7 @@ def publish_sync_request(
         except OSError:
             pass
         raise BridgeRequestError(
-            f"Could not publish ArcRho Bridge request [{request_id}]: {exc}"
+            f"Could not publish Arco Bridge request [{request_id}]: {exc}"
         ) from exc
     return request_path
 
@@ -371,7 +371,7 @@ def wait_for_sync_result(
     poll_interval_sec: float = POLL_INTERVAL_SEC,
     claim_timeout_sec: float = REQUEST_CLAIM_TIMEOUT_SEC,
     progress=None,
-    progress_label: str = "ArcRho Bridge is working with ResQ",
+    progress_label: str = "Arco Bridge is working with ResQ",
     on_poll: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Poll the request's status until a terminal result arrives.
@@ -400,43 +400,43 @@ def wait_for_sync_result(
             reported_id = str(status.get("request_id") or status.get("RequestId") or "").strip()
             if reported_id != request_id:
                 raise BridgeRequestError(
-                    "ArcRho Bridge returned a status for a different or missing request ID at "
+                    "Arco Bridge returned a status for a different or missing request ID at "
                     f"[{status_path}]."
                 )
             version = status.get("contract_version")
             if isinstance(version, bool) or version != CONTRACT_VERSION:
                 raise BridgeRequestError(
-                    f"ArcRho Bridge returned unsupported status contract version [{version!r}]."
+                    f"Arco Bridge returned unsupported status contract version [{version!r}]."
                 )
             _update_progress_from_status(progress, status, progress_label)
             state = str(status.get("status") or "").strip().casefold()
             if state == "success":
                 return status
             if state == "error":
-                detail = str(status.get("message") or "unknown ArcRho Bridge error").strip()
+                detail = str(status.get("message") or "unknown Arco Bridge error").strip()
                 raise BridgeRequestError(
-                    f"ArcRho Bridge request [{request_id}] failed: {detail}",
+                    f"Arco Bridge request [{request_id}] failed: {detail}",
                     status=status,
                 )
             if state and state not in STATUS_VALUES:
                 raise BridgeRequestError(
-                    f"ArcRho Bridge request [{request_id}] returned unsupported status [{state}]."
+                    f"Arco Bridge request [{request_id}] returned unsupported status [{state}]."
                 )
         elif time.monotonic() > claim_deadline:
             raise BridgeRequestError(
-                f"No ArcRho Bridge worker claimed request [{request_id}] within "
+                f"No Arco Bridge worker claimed request [{request_id}] within "
                 f"{claim_timeout_sec:g} seconds. Confirm ResQ is running on a machine with "
-                "ArcRho open."
+                "Arco open."
             )
         if not tracker.record(observation) and tracker.exceeded:
             raise BridgeUnavailableError(
-                f"ArcRho Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
+                f"Arco Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
                 "Whether the run finished is unknown; if the Bridge was only slow it may "
                 f"still complete. Check [{status_path}] before running this macro again."
             )
         if time.monotonic() > deadline:
             raise BridgeRequestError(
-                f"ArcRho Bridge request [{request_id}] did not finish within "
+                f"Arco Bridge request [{request_id}] did not finish within "
                 f"{timeout_sec:g} seconds."
             )
         time.sleep(poll_interval_sec)
@@ -500,7 +500,7 @@ def submit_sync_request(
     except Exception as exc:
         detail = getattr(exc, "detail", None) or exc
         raise BridgeRequestError(
-            f"Could not publish ArcRho Bridge request [{request_id}]: {detail}"
+            f"Could not publish Arco Bridge request [{request_id}]: {detail}"
         ) from exc
     return request_id
 
@@ -542,7 +542,7 @@ def run_bridge_phase(
     result = status.get("result")
     if not isinstance(result, Mapping):
         raise BridgeRequestError(
-            f"ArcRho Bridge reported success for [{request_id}] without a result payload.",
+            f"Arco Bridge reported success for [{request_id}] without a result payload.",
             status=dict(status),
         )
     return dict(result)

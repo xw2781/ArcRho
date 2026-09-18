@@ -108,7 +108,7 @@ def _compare_ratio_matrices(
 
     arcrho_shape = (len(arcrho_matrix), max((len(r) for r in arcrho_matrix), default=0))
     resq_shape = (len(resq_matrix), max((len(r) for r in resq_matrix), default=0))
-    note = "" if arcrho_shape == resq_shape else f"shape mismatch: ArcRho {arcrho_shape} vs ResQ {resq_shape}"
+    note = "" if arcrho_shape == resq_shape else f"shape mismatch: Arco {arcrho_shape} vs ResQ {resq_shape}"
 
     max_diff: float | None = None
     row_limit = min(len(arcrho_matrix), len(resq_matrix))
@@ -174,7 +174,7 @@ def run_comparison(app_factory=None, progress=print) -> list[dict]:
                             "rc_path": rc_path,
                             "dfm_name": name,
                             "max_diff": None,
-                            "note": "DFM exists in ResQ but no persisted ArcRho method JSON was found",
+                            "note": "DFM exists in ResQ but no persisted Arco method JSON was found",
                         }
                     )
                     continue
@@ -198,7 +198,7 @@ def run_comparison(app_factory=None, progress=print) -> list[dict]:
                         "rc_path": rc_path,
                         "dfm_name": name,
                         "max_diff": None,
-                        "note": "DFM has a persisted ArcRho method JSON but was not found in ResQ",
+                        "note": "DFM has a persisted Arco method JSON but was not found in ResQ",
                     }
                 )
     finally:

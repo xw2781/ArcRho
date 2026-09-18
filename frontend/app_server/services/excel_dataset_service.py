@@ -47,7 +47,7 @@ def _require_available(pairs: list) -> None:
         runtime._pair_value(pairs, "ProjectName"), runtime._pair_value(pairs, "Path")
     )
     if state.get("busy"):
-        raise HTTPException(423, "This reserving class is being refreshed in ArcRho. Retry Excel Refresh when it finishes.")
+        raise HTTPException(423, "This reserving class is being refreshed in Arco. Retry Excel Refresh when it finishes.")
 
 
 def _publication(data_path: str, pairs: list) -> dict | None:
@@ -57,11 +57,11 @@ def _publication(data_path: str, pairs: list) -> dict | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as error:
-        raise HTTPException(503, "The published dataset metadata cannot be read. Refresh it in the ArcRho frontend.") from error
+        raise HTTPException(503, "The published dataset metadata cannot be read. Refresh it in the Arco frontend.") from error
     if not isinstance(payload, dict) or not runtime._cache_payload_name_matches(
         payload, runtime._request_dataset_name(pairs)
     ) or not payload.get("csv_file"):
-        raise HTTPException(422, "The published dataset metadata is invalid. Refresh it in the ArcRho frontend.")
+        raise HTTPException(422, "The published dataset metadata is invalid. Refresh it in the Arco frontend.")
     return payload
 
 
@@ -146,7 +146,7 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
         return _failure(
             data_path,
             f"'{name}' is published at {published} and cannot be read at {requested}: {reason}. "
-            "Use the published shape, or change the dataset's shape in the ArcRho frontend.",
+            "Use the published shape, or change the dataset's shape in the Arco frontend.",
             PUBLICATION_SHAPE_STATUS,
         )
     try:
@@ -159,11 +159,11 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
                 frame.to_numpy().tolist(), target_origin, target_development,
             ))
     except FileNotFoundError:
-        return _failure(data_path, f"'{name}' has no published CSV. Refresh it in the ArcRho frontend.")
+        return _failure(data_path, f"'{name}' has no published CSV. Refresh it in the Arco frontend.")
     except (ValueError, pd.errors.ParserError, pd.errors.EmptyDataError):
-        return _failure(data_path, f"'{name}' does not contain a valid numeric published CSV. Refresh it in the ArcRho frontend.")
+        return _failure(data_path, f"'{name}' does not contain a valid numeric published CSV. Refresh it in the Arco frontend.")
     except OSError:
-        return _failure(data_path, f"'{name}' cannot be read from its published CSV. Check access to the dataset in the ArcRho frontend.")
+        return _failure(data_path, f"'{name}' cannot be read from its published CSV. Check access to the dataset in the Arco frontend.")
     return {
         "ok": True, "need_request": False, "data_path": source_path,
         "sidecar_written": False, "local_cache_status": "cache_exact" if same_periods else "cache_derived",
@@ -235,7 +235,7 @@ class _Reader:
             else:
                 row = next((row for row in rows if _canon_dataset_name(row["name"]) == _canon_dataset_name(name)), {})
                 if not row.get("generated"):
-                    result = _failure(data_path, f"'{name}' has no published dataset and cannot be generated. Refresh it in the ArcRho frontend.")
+                    result = _failure(data_path, f"'{name}' has no published dataset and cannot be generated. Refresh it in the Arco frontend.")
                 else:
                     result = self.generate(pairs, data_path, key)
         if result.get("ok"):
@@ -322,7 +322,7 @@ class _Reader:
                 try:
                     text = _validated_csv_text(staging_path)
                 except (ValueError, pd.errors.ParserError, pd.errors.EmptyDataError):
-                    return _failure(data_path, "The ArcRho Engine returned invalid dataset values. The previous cache was preserved; check the dataset's processing configuration.", "engine_error")
+                    return _failure(data_path, "The Arco Engine returned invalid dataset values. The previous cache was preserved; check the dataset's processing configuration.", "engine_error")
                 with dataset_sidecar_status_service.sidecar_write_lock(runtime._dataset_sidecar_path(data_path, pairs)):
                     _require_available(pairs)
                     served = self.served_publication(data_path, pairs)

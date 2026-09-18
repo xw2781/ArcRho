@@ -135,7 +135,7 @@ def _safe_status_message(exc: Exception) -> str:
         return _redact_machine_paths(exc) or "Dependent propagation failed."
     if isinstance(exc, OSError):
         return (
-            "The ArcRho Server filesystem could not complete dependent propagation."
+            "The Arco Server filesystem could not complete dependent propagation."
         )
     return "Dependent propagation failed."
 

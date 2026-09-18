@@ -1,7 +1,7 @@
 /*
 ===============================================================================
 Formula Text
-How ArcRho reads a cell formula. Every surface that shows one — the DFM Ratios
+How Arco reads a cell formula. Every surface that shows one — the DFM Ratios
 formula bar, the Dataset Viewer linked-cell editor — tokenises it here, so a
 reference is recognised the same way wherever it is displayed. Rendering is left
 to each surface, which knows which token kinds it can offer actions for.

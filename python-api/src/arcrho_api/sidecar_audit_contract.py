@@ -1,6 +1,6 @@
 """Canonical vocabulary, policy, and reader for persisted audit entries.
 
-Every ArcRho dataset sidecar carries an ``audit_log``: one entry per durable
+Every Arco dataset sidecar carries an ``audit_log``: one entry per durable
 write, naming when it happened, which action produced it, and who ran it. The
 entries are appended by the per-method output-sidecar builders in this package
 (``build_dfm_output_sidecar`` and its siblings), by the engine sidecar

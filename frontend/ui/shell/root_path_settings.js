@@ -24,7 +24,7 @@ async function scanInitialServerPath(input) {
     return;
   }
 
-  setRootPathSetupMessage("First-time setup: searching drives D: through Z: for ArcRho Server...");
+  setRootPathSetupMessage("First-time setup: searching drives D: through Z: for Arco Server...");
   try {
     const result = await hostApi.findArcRhoServerRoot();
     const foundPath = String(result?.path || "").trim();
@@ -34,7 +34,7 @@ async function scanInitialServerPath(input) {
       return;
     }
     setRootPathSetupMessage(
-      "First-time setup: ArcRho Server was not found on drives D: through Z:. Select Browse or enter the root path manually.",
+      "First-time setup: Arco Server was not found on drives D: through Z:. Select Browse or enter the root path manually.",
       true,
     );
   } catch (err) {

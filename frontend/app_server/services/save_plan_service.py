@@ -1,6 +1,6 @@
 """Step one of a two-step save: what would this save refresh?
 
-An ArcRho save rewrites every dependent object it can reach, and until now the
+An Arco save rewrites every dependent object it can reach, and until now the
 user only learned which ones after the write had already landed. This module
 answers the same question beforehand, reading only: it resolves the save's
 propagation roots through the owning service, walks the two dependency graphs

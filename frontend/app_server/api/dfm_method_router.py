@@ -79,7 +79,7 @@ def plan_dfm_method_save(req: DfmMethodSaveRequest) -> Dict[str, Any]:
 
 @router.post("/dfm/method/save")
 def save_dfm_method(req: DfmMethodSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # The save runs on Arco Engine next to the data; this endpoint keeps
     # its exact response shape and error codes.
     return engine_hosted_save_service.run_hosted_save(
         "dfm_method",

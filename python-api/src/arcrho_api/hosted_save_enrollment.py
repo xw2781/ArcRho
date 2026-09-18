@@ -1,4 +1,4 @@
-"""Canonical first-run enrollment for the ArcRho Gateway credential.
+"""Canonical first-run enrollment for the Arco Gateway credential.
 
 Two callers install a credential for the logged-in Windows user: the desktop
 app, as its app server starts, and the small frozen helper the Excel add-in

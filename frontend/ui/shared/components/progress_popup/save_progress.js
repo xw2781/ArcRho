@@ -1,6 +1,6 @@
 /*
 ===============================================================================
-Shared save progress - one saving animation for every ArcRho editor window
+Shared save progress - one saving animation for every Arco editor window
 ===============================================================================
 Every method window and the Dataset window run the same shape of save: prepare
 the object (recalculate, refresh origin labels, re-read sources), write it,

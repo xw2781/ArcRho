@@ -16,7 +16,7 @@
   --ar-spreadsheet-anchor-color: #0f172a;
   --ar-spreadsheet-link-error-text: #b91c1c;
   /* A linked range is outlined in the color of where its values come from:
-     Excel's own green for a workbook, ArcRho's blue for another dataset. The
+     Excel's own green for a workbook, Arco's blue for another dataset. The
      same two colors name the two kinds of link everywhere they are shown. */
   --ar-spreadsheet-excel-link-border: #217346;
   --ar-spreadsheet-excel-link-glow: rgba(33, 115, 70, 0.28);

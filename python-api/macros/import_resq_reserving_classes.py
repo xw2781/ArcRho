@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.9.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.10.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
 # Icon: layers
@@ -199,11 +199,11 @@ def review_table_payload(
             f"{len(classes)} default reserving class(es) listed"
             + (f", {new_count} not in this project yet" if new_count else "")
             + "; every selected class is imported from ResQ one at a time by "
-            f"{worker_count} ArcRho Bridge worker(s). A class marked "
-            f"{NEW_CLASS_LABEL} has no ArcRho folder yet; the import creates "
+            f"{worker_count} Arco Bridge worker(s). A class marked "
+            f"{NEW_CLASS_LABEL} has no Arco folder yet; the import creates "
             "it. Unselect any class to leave it untouched. Overwrite makes "
-            "the fresh ResQ copy win even where the ArcRho copy is newer; "
-            "datasets that exist only in ArcRho are kept either way."
+            "the fresh ResQ copy win even where the Arco copy is newer; "
+            "datasets that exist only in Arco are kept either way."
         ),
         "columns": [
             {"key": "path", "label": "Reserving Class", "width": 420},
@@ -212,11 +212,11 @@ def review_table_payload(
         "rows": rows,
         "options": [{
             "key": OVERWRITE_OPTION_KEY,
-            "label": "Overwrite existing ArcRho data",
+            "label": "Overwrite existing Arco data",
             "checked": False,
             "hint": (
-                "The fresh ResQ copy replaces the ArcRho copy for everything "
-                "ResQ provides, even where the ArcRho copy is newer."
+                "The fresh ResQ copy replaces the Arco copy for everything "
+                "ResQ provides, even where the Arco copy is newer."
             ),
         }],
         "acceptLabel": "Import Selected",
@@ -257,7 +257,7 @@ def review_class_selection(
     dialog_id = str(opened_payload.get("dialogId") or opened_payload.get("dialog_id") or "").strip()
     if not dialog_id:
         raise RuntimeError(
-            "ArcRho did not return a review-table dialog ID. Update or restart the ArcRho shell."
+            "Arco did not return a review-table dialog ID. Update or restart the Arco shell."
         )
     try:
         while True:
@@ -360,7 +360,7 @@ def import_selected_classes(
                 results.append({
                     "path": remaining,
                     "success": False,
-                    "error": "Skipped: the ArcRho Bridge stopped responding, so this class was not sent.",
+                    "error": "Skipped: the Arco Bridge stopped responding, so this class was not sent.",
                     "request_id": "",
                 })
             break
@@ -444,7 +444,7 @@ def _backup_lines(results: list[dict[str, Any]]) -> list[str]:
     if unconfirmed:
         lines.append("")
         lines.append(
-            "WARNING - ArcRho Server did not confirm the copy taken before the "
+            "WARNING - Arco Server did not confirm the copy taken before the "
             f"import, so whether there is a restore point under "
             f"[{IMPORT_BACKUP_RELATIVE_DIR}] is unknown for:"
         )
@@ -483,7 +483,7 @@ def _summary_message(project_name: str, results: list[dict[str, Any]]) -> str:
     partial = [item for item in succeeded if item.get("skipped_items")]
     if partial:
         lines.append("")
-        lines.append("Skipped items (could not be exported from ResQ; any existing ArcRho copy is kept):")
+        lines.append("Skipped items (could not be exported from ResQ; any existing Arco copy is kept):")
         reported = 0
         for item in partial:
             if reported >= MAX_REPORTED_FAILURES:
@@ -501,7 +501,7 @@ def _summary_message(project_name: str, results: list[dict[str, Any]]) -> str:
     if differing:
         lines.append("")
         lines.append(
-            "WARNING - ArcRho Engine results that differ from ResQ at two decimal places "
+            "WARNING - Arco Engine results that differ from ResQ at two decimal places "
             "(the Engine result was kept):"
         )
         for item in differing:
@@ -539,13 +539,13 @@ def run_macro(active_dfm=None, active_context=None):
         bridge_workers = single.require_live_bridge_workers(server_root)
     except single.BridgeUnavailableError as exc:
         message = (
-            "No active ArcRho Bridge worker was detected, so no import was started.\n\n"
+            "No active Arco Bridge worker was detected, so no import was started.\n\n"
             f"Project: {project_name}\n\n{exc}"
         )
-        _message(ui, message, title="ArcRho Bridge Unavailable", kind="error")
+        _message(ui, message, title="Arco Bridge Unavailable", kind="error")
         return {"success": False, "message": message, "reason": "bridge_unavailable"}
     except Exception as exc:
-        message = f"Could not prepare the ArcRho Bridge import.\n\n{exc}"
+        message = f"Could not prepare the Arco Bridge import.\n\n{exc}"
         _message(ui, message, kind="error")
         return {"success": False, "message": message}
 

@@ -53,7 +53,7 @@ PROJECT_ROOT = _resolve_project_root()
 # ---------------------------------------------------------------------------
 
 # Workspace root resolution is owned by ``arcrho_api.config`` so the app server,
-# the Python API, and macros can never disagree about the ArcRho Server root.
+# the Python API, and macros can never disagree about the Arco Server root.
 DEFAULT_WORKSPACE_ROOT = api_config.DEFAULT_WORKSPACE_ROOT
 RUNTIME_SERVER_ROOT_ENV = api_config.RUNTIME_SERVER_ROOT_ENV
 DEFAULT_WORKSPACE_PATHS = dict(api_config.DEFAULT_WORKSPACE_PATHS)
@@ -93,7 +93,7 @@ def app_runtime_name() -> str:
     the user has to fix, and only this module knows which app is running.
     """
 
-    return "Arcode" if _is_arcode_mode() else "ArcRho"
+    return "Arcode" if _is_arcode_mode() else "Arco"
 
 
 def _get_user_local_appdata_dir() -> str:
@@ -159,7 +159,7 @@ WORKSPACE_PATHS_PATH = os.path.join(
     _get_user_appdata_dir(), api_config.WORKSPACE_PATHS_FILE_NAME
 )
 SNOWFLAKE_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_connections.json")
-# Per-user Arcode SQL Server console profiles. This is not the ArcRho Server's
+# Per-user Arcode SQL Server console profiles. This is not the Arco Server's
 # shared server/database history behind `get_mssql_connections_path()`: that one
 # records pairs Project Settings has reached, this one holds the named
 # connections the Arcode SQL Server console runs queries through.
@@ -277,7 +277,7 @@ MACRO_LIBRARY_SUBPATH = os.path.join("shared", "macros")
 
 
 def _get_macro_library_dir() -> str:
-    """Shared read-only macro library on the ArcRho Server workspace root.
+    """Shared read-only macro library on the Arco Server workspace root.
 
     The directory is deployer-managed; users only read from it, so this
     resolver never creates it.

@@ -87,7 +87,7 @@ def _error_detail(error: HTTPError) -> Any:
         text = str(detail or payload.get("message") or "").strip()
         if text:
             return text
-    return f"ArcRho Server returned HTTP {error.code}."
+    return f"Arco Server returned HTTP {error.code}."
 
 
 def reset_capability_cache() -> None:
@@ -355,8 +355,8 @@ def run_workspace_read(
                     context["reason"] = failure.reason
                     raise HTTPException(
                         504 if failure.timed_out else 503,
-                        "The ArcRho Server took too long to answer this read. Try again in a moment."
-                        if failure.timed_out else "ArcRho Gateway could not answer this request.",
+                        "The Arco Server took too long to answer this read. Try again in a moment."
+                        if failure.timed_out else "Arco Gateway could not answer this request.",
                     ) from failure
                 context["reason"] = failure.reason
             except HTTPException:
@@ -371,7 +371,7 @@ def run_workspace_read(
                     payload = finalize(payload)
                 return _finish(payload)
         if gateway_required and context["reason"] != "server_process":
-            raise HTTPException(503, "ArcRho Gateway is required for this operation and is unavailable or needs updating.")
+            raise HTTPException(503, "Arco Gateway is required for this operation and is unavailable or needs updating.")
         return _finish(local())
     except WorkspaceReadContractError as error:
         http_status = 400

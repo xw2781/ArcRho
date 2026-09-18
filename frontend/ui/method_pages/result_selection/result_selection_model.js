@@ -291,7 +291,7 @@
               // work stays in this window. Drop the spinner first so the
               // message box cannot open behind it.
               progress.finish();
-              void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+              void showPageMessageBox({ title: "Arco Engine Unavailable", message, tone: "warn" });
             }
             throw new Error(message);
           }

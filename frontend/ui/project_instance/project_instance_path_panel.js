@@ -175,7 +175,7 @@ async function pasteSelectedPath() {
   try {
     pastedText = await navigator.clipboard.readText();
   } catch {
-    setStatus("ArcRho could not read the clipboard.", true);
+    setStatus("Arco could not read the clipboard.", true);
     return false;
   }
   const nextPath = resolvePastedLeafPath(pastedText);
@@ -212,7 +212,7 @@ function initPathContextMenu() {
     if (!action) return;
     if (action === "copy") {
       const copied = await copySelectedPath();
-      setStatus(copied ? "Copied reserving class path." : "ArcRho could not copy the reserving class path.", !copied);
+      setStatus(copied ? "Copied reserving class path." : "Arco could not copy the reserving class path.", !copied);
     } else if (action === "paste") {
       await pasteSelectedPath();
     }

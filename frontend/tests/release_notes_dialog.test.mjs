@@ -224,7 +224,7 @@ test("release history marks the installed version and offers only a close action
 
   await openReleaseHistory();
 
-  assert.equal(dom.get("releaseNotesTitle").textContent, "ArcRho Release History");
+  assert.equal(dom.get("releaseNotesTitle").textContent, "Arco Release History");
   assert.equal(dom.get("releaseNotesUpdateBtn").hidden, true, "history never offers to install anything");
   assert.equal(dom.get("releaseNotesLaterBtn").textContent, "Close");
 

@@ -16,7 +16,7 @@ Attribute VB_Exposed = False
 
 Option Explicit
 
-' The project's dataset types as the ArcRho Server answered with them.
+' The project's dataset types as the Arco Server answered with them.
 ' mData is a 2D array including headers (row 1)
 Private mData As Variant
 Private mColCat As Long, mColName As Long, mColFmt As Long
@@ -45,7 +45,7 @@ Private Sub UserForm_Initialize()
     
     On Error GoTo clean_fail
     
-    ' Ask the ArcRho Server for the project's dataset types, in the array shape
+    ' Ask the Arco Server for the project's dataset types, in the array shape
     ' the filter code below already works with.
     mData = LoadDatasetTypesData(mProjectName)
     
@@ -98,7 +98,7 @@ Private Function CurrentWorkbookDefaultProject() As String
     Dim projectValue As String
 
     On Error Resume Next
-    Set ws = ActiveWorkbook.Worksheets("ResQ Settings")
+    Set ws = SettingsSheet(ActiveWorkbook)
     On Error GoTo 0
     If ws Is Nothing Then Exit Function
 
@@ -113,10 +113,10 @@ Private Sub ShowDefaultProjectWarning()
 
     msg = "Please connect and log in, then select a default project before using Select Datasets."
     On Error Resume Next
-    ufAlert.ShowMessage msg, "ArcRho"
+    ufAlert.ShowMessage msg, "Arco"
     If Err.Number <> 0 Then
         Err.Clear
-        MsgBox msg, vbExclamation, "ArcRho"
+        MsgBox msg, vbExclamation, "Arco"
     End If
     On Error GoTo 0
 End Sub
@@ -308,12 +308,12 @@ Private Sub cmdSelect_Click()
     Dim tgt As Range, owner As Range
     Set tgt = ActiveCell
 
-    ' 1) If active cell itself is ArcRho or legacy alias formula -> update its second arg
+    ' 1) If active cell itself is an Arco formula -> update its second arg
     If tgt.HasFormula And IsArcRhoFormula(tgt.Formula2) Then
         If UpdateArcRhoArg(2, tgt, picked) Then Exit Sub
     End If
 
-    ' 2) If active cell is inside a spill from an ArcRho or legacy alias formula -> update that owner
+    ' 2) If active cell is inside a spill from an Arco formula -> update that owner
     Set owner = FindArcRhoOwnerForCell(tgt)
     If Not owner Is Nothing Then
         If UpdateArcRhoArg(2, owner, picked) Then Exit Sub

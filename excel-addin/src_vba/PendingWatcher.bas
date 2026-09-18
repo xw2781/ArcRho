@@ -15,7 +15,7 @@ Public Sub PendingWatcher_Tick()
        And Application.Interactive Then
 
         pendingUpdate = False
-        Application.StatusBar = "ArcRho: use Refresh Workbook to update saved data."
+        Application.StatusBar = "Arco: use Refresh Workbook to update saved data."
     End If
 
     ScheduleNextCheck

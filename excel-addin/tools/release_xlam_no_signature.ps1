@@ -61,7 +61,7 @@ function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
             $descriptionNode = $xml.CreateElement('dc', 'description', 'http://purl.org/dc/elements/1.1/')
             [void]$xml.DocumentElement.AppendChild($descriptionNode)
         }
-        $descriptionNode.InnerText = 'ArcRho actuarial data and analytics system'
+        $descriptionNode.InnerText = 'Arco actuarial data and analytics system'
 
         $entry.Delete()
         $newEntry = $zip.CreateEntry('docProps/core.xml', [System.IO.Compression.CompressionLevel]::Optimal)

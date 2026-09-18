@@ -457,7 +457,7 @@ def _write_backup_manifest(
         "backup_of": "reserving class",
         "backup_id": backup_id,
         "taken_at": datetime.now().isoformat(timespec="seconds"),
-        # Hosted, the copy runs under the ArcRho Server's own profile, so the
+        # Hosted, the copy runs under the Arco Server's own profile, so the
         # person who asked for it is passed in rather than read from here.
         "taken_by": str(taken_by or "").strip() or _user_name(),
         "taken_before": "ResQ import",
@@ -471,7 +471,7 @@ def _write_backup_manifest(
             "page."
         ),
         "excluded": (
-            "Engine-generated datasets; ArcRho rebuilds those from the source "
+            "Engine-generated datasets; Arco rebuilds those from the source "
             "warehouse."
         ),
         "file_count": backup["files"],
@@ -557,7 +557,7 @@ def back_up_reserving_class(
         return backup
     if not isinstance(result, dict):
         backup = _empty_backup(identifier)
-        backup["error"] = "The ArcRho Server did not describe the copy it took."
+        backup["error"] = "The Arco Server did not describe the copy it took."
         backup["unconfirmed"] = True
         return backup
     merged = _empty_backup(identifier)
@@ -572,7 +572,7 @@ def backup_sentence(backup: object) -> str:
     error = str(entry.get("error") or "")
     if error and entry.get("unconfirmed"):
         return (
-            "WARNING - ArcRho Server did not confirm the copy of the existing "
+            "WARNING - Arco Server did not confirm the copy of the existing "
             "reserving class, so whether there is a restore point is unknown. "
             f"Look under [{IMPORT_BACKUP_RELATIVE_DIR}] before importing this "
             f"class again: {error}"

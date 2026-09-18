@@ -402,7 +402,7 @@ test("renders one compact row per link and offers the bulk actions through the c
   // Each section is headed by a stamp in its kind's colour that reads as the
   // kind's name; it is the only place the kind is written.
   const stamps = sections.map((section) => byClass(section, "arLinksSectionStamp")[0]);
-  assert.deepEqual(stamps.map(renderedText), ["ArcRho", "Excel"]);
+  assert.deepEqual(stamps.map(renderedText), ["Arco", "Excel"]);
   assert.deepEqual(
     stamps.map((stamp) => stamp.className),
     [

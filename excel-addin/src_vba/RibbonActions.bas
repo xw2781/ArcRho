@@ -9,7 +9,7 @@ Public Sub CopyActiveRangeAddress()
     On Error GoTo ErrorHandler
 
     If TypeName(Application.Selection) <> "Range" Then
-        ufAlert.ShowMessage "Select a worksheet range before copying its address.", "ArcRho"
+        ufAlert.ShowMessage "Select a worksheet range before copying its address.", "Arco"
         Exit Sub
     End If
 
@@ -17,7 +17,7 @@ Public Sub CopyActiveRangeAddress()
     Set selectedWorkbook = selectedRange.Worksheet.Parent
 
     If Len(selectedWorkbook.Path) = 0 Then
-        ufAlert.ShowMessage "Save the workbook before copying a full range address.", "ArcRho"
+        ufAlert.ShowMessage "Save the workbook before copying a full range address.", "Arco"
         Exit Sub
     End If
 
@@ -35,12 +35,12 @@ Public Sub CopyActiveRangeAddress()
 
     ufAlert.ShowTimedMessage _
         "Active range address copied to the clipboard.", _
-        "ArcRho", _
+        "Arco", _
         2
     Exit Sub
 
 ErrorHandler:
-    ufAlert.ShowMessage "The active range address could not be copied: " & Err.Description, "ArcRho"
+    ufAlert.ShowMessage "The active range address could not be copied: " & Err.Description, "Arco"
 End Sub
 
 Public Sub ScheduleTimedAlertClose(ByVal delaySeconds As Long)
@@ -114,9 +114,9 @@ Public Sub SetupConnection2()
     Dim sheet1 As Worksheet
     Dim Sheet2 As Worksheet
         
-    If Not SheetExists("ResQ Settings") Then
+    If Not SheetExists(SETTINGS_SHEET_NAME) And Not SheetExists(LEGACY_SETTINGS_SHEET_NAME) Then
         Set sheet1 = ActiveWorkbook.Worksheets.Add(Before:=ActiveWorkbook.Sheets(1))
-        sheet1.Name = "ResQ Settings"
+        sheet1.Name = SETTINGS_SHEET_NAME
     End If
     
     If Not SheetExists("Project Details") Then
@@ -124,7 +124,7 @@ Public Sub SetupConnection2()
         Sheet2.Name = "Project Details"
     End If
     
-    Set sheet1 = ActiveWorkbook.Sheets("ResQ Settings")
+    Set sheet1 = SettingsSheet(ActiveWorkbook)
         sheet1.Columns("A").ColumnWidth = 72.71
         sheet1.Columns("B").ColumnWidth = 44.71
         
@@ -139,7 +139,7 @@ Public Sub SetupConnection2()
         Sheet2.Columns("B").ColumnWidth = 22.14
         Sheet2.Columns("C").ColumnWidth = 39.43
         
-        Sheet2.Range("B4:C11").FormulaArray = "=ArcRhoProjectSettings()"
+        Sheet2.Range("B4:C11").FormulaArray = "=ArcoProjectSettings()"
         Sheet2.Range("C4:C11").Interior.Color = 10092543
         Sheet2.Range("C4:C11").HorizontalAlignment = xlCenter
         Sheet2.Range("C4:C11").Font.Color = 255 ' Red
@@ -247,7 +247,7 @@ Sub ResetAddinReferences()
         ReplaceInWorkbook "='C:\Program Files (x86)\Willis Towers Watson\ResQ\Addins\ResQ.xlam'!ResQ", "=ArcRho"
         ReplaceInWorkbook TextResQ, "=ArcRho"
         ReplaceInWorkbook "=ResQ", "=ArcRho"
-        Application.StatusBar = "ArcRho Excel Add-in activated."
+        Application.StatusBar = "Arco Excel Add-in activated."
         
     ElseIf Not hasOldLink And hasArcRhoLink Then ' Change to ResQ
         If Dir("C:\Program Files\Willis Towers Watson\ResQ\Addins\ResQ.xlam") <> "" Then
@@ -267,7 +267,7 @@ Sub ResetAddinReferences()
         And hasBetaLink Then
         Application.StatusBar = ""
         ReplaceInWorkbook ProductPath("Excel Add-ins\beta\ARCRHO_BETA.xlam"), ProductPath("Excel Add-ins\ArcRho.xlam")
-        Application.StatusBar = "ArcRho - Update Completed!"
+        Application.StatusBar = "Arco - Update Completed!"
     End If
     
 CleanExit:

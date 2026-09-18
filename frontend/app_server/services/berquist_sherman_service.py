@@ -3,7 +3,7 @@
 Opening a page used to cost a Client PC two independent share visits made one
 after the other: the output sidecar over the app server, then the method JSON
 straight from the renderer's host API. The second one could never reach the
-ArcRho Gateway at all, because a host-API file read does not enter the app
+Arco Gateway at all, because a host-API file read does not enter the app
 server, and the first one is heavier than it looks —
 :func:`dataset_service.load_dataset_sidecar` also opens the project's
 dataset-type rows and the reserving-class index.
@@ -319,7 +319,7 @@ def save_berquist_sherman(
 ) -> Dict[str, Any]:
     """Write a B&S method JSON, its output CSV, and its output sidecar as one save.
 
-    This runs on ArcRho Engine, where the workspace is local disk. It used to be
+    This runs on Arco Engine, where the workspace is local disk. It used to be
     two calls from the Client PC: this one wrote the method JSON and the CSV
     across the share, and the page then saved the output sidecar through
     ``/dataset/sidecar/save``. Each share visit costs a round trip whatever the
@@ -348,7 +348,7 @@ def save_berquist_sherman(
     # Everything both halves need is resolved before either is written, so a
     # refusal from the second half cannot leave the first half's file behind:
     # the paths, the sidecar body, and — because dependent propagation runs on
-    # ArcRho Engine — whether a live Engine can pick the walk up at all and no
+    # Arco Engine — whether a live Engine can pick the walk up at all and no
     # other walk is still rewriting this reserving class.
     method_path = berquist_sherman_method_path(project, reserving, method_type, name)
     files: Dict[str, str] = {method_path: persisted_json_text(dict(method))}

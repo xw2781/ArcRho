@@ -280,7 +280,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertFalse((self.server_root / self.module.REQUEST_ROOT).exists())
         message, options = self.ui.messages[-1]
         self.assertIn("import was not started", message)
-        self.assertEqual(options["title"], "ArcRho Bridge Unavailable")
+        self.assertEqual(options["title"], "Arco Bridge Unavailable")
         self.assertEqual(options["kind"], "error")
 
     def test_progress_status_exposes_indeterminate_and_determinate_phase_labels(self):
@@ -307,7 +307,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
                 "status": "processing",
                 "progress": {
                     "event": "engine_wait",
-                    "message": "Waiting for ArcRho Engine result 3 of 8: Paid Loss",
+                    "message": "Waiting for Arco Engine result 3 of 8: Paid Loss",
                     "completed": 41,
                     "total": 130,
                 },
@@ -317,7 +317,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertEqual(progress.completed, 41)
         self.assertEqual(
             progress.updates[-1]["label"],
-            "Waiting for ArcRho Engine result 3 of 8: Paid Loss",
+            "Waiting for Arco Engine result 3 of 8: Paid Loss",
         )
 
     def test_non_dfm_macro_context_falls_back_to_project_instance_context(self):
@@ -506,7 +506,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         prompts = [(msg, kwargs) for msg, kwargs in self.ui.messages if kwargs.get("buttons")]
         self.assertEqual(len(prompts), 1)
         message, options = prompts[0]
-        self.assertIn("1 ArcRho copy is newer than the ResQ version", message)
+        self.assertIn("1 Arco copy is newer than the ResQ version", message)
         self.assertEqual(options["buttons"], ["Overwrite", "Cancel"])
         self.assertEqual(options["kind"], "warning")
         self.assertEqual(options["presentation"], "floating")
@@ -716,7 +716,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
                     "name": "Paid Loss",
                     "message": (
                         "3 cell(s) differ from ResQ at 2 decimal places; first at origin 4, "
-                        "development 2: ResQ 12,345.67, ArcRho Engine 12,345.70."
+                        "development 2: ResQ 12,345.67, Arco Engine 12,345.70."
                     ),
                 }],
             },
@@ -735,7 +735,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.assertTrue(result["success"])
         message, options = self.ui.messages[-1]
         self.assertIn("Import from ResQ completed.", message)
-        self.assertIn("WARNING - ArcRho Engine results that differ from ResQ at two decimal places", message)
+        self.assertIn("WARNING - Arco Engine results that differ from ResQ at two decimal places", message)
         self.assertIn("- triangle Paid Loss: 3 cell(s) differ from ResQ", message)
         self.assertNotIn("Skipped (could not be exported", message)
         self.assertEqual(options["kind"], "warning")

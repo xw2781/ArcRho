@@ -1595,7 +1595,7 @@ async function runBornhuetterFergusonSave(progress) {
         // in this window. The spinner is already gone, so the message box
         // cannot open behind it.
         void showPageMessageBox({
-          title: "ArcRho Engine Unavailable",
+          title: "Arco Engine Unavailable",
           message: String(err?.message || err),
           tone: "warn",
         });

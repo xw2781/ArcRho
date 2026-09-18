@@ -310,7 +310,7 @@ def run_reserving_class_import(
                     "status": "warning",
                     "message": (
                         f"Skipped {skipped_source_items} ResQ item(s) that could not be "
-                        "exported; any existing ArcRho copy of each is kept."
+                        "exported; any existing Arco copy of each is kept."
                     ),
                 },
             )
@@ -332,7 +332,7 @@ def run_reserving_class_import(
                     "kind": "engine_restore",
                     "status": "warning",
                     "message": (
-                        "Retained the prior ArcRho Engine datasets because the "
+                        "Retained the prior Arco Engine datasets because the "
                         "engine stage was unavailable or incomplete."
                     ),
                 },
@@ -358,9 +358,9 @@ def run_reserving_class_import(
                     "kind": "arcrho_merge",
                     "status": "success",
                     "message": (
-                        f"Retained {preserved_groups} ArcRho-only dataset/method group(s)."
+                        f"Retained {preserved_groups} Arco-only dataset/method group(s)."
                         if import_policy == "overwrite"
-                        else f"Retained {preserved_groups} ArcRho-owned or newer "
+                        else f"Retained {preserved_groups} Arco-owned or newer "
                         "dataset/method group(s)."
                     ),
                 },
@@ -1000,7 +1000,7 @@ def _refresh_stage_contract(
             requested_names=requested_names,
         )
         if not isinstance(merge_result, Mapping):
-            raise ResQMigrationBundleError("The canonical ArcRho merge returned a non-object result.")
+            raise ResQMigrationBundleError("The canonical Arco merge returned a non-object result.")
         refresh_graphs(stage_rc_dir)
         rebuild_index(project_name, rc_path, stage_rc_dir)
         return dict(merge_result)
@@ -1068,7 +1068,7 @@ def _commit_staged_rc(
         if _is_transient_folder_lock_error(exc):
             detail += (
                 " A reserving-class file is still open in another program."
-                " Close it in ArcRho, Excel, or Windows Explorer and import again."
+                " Close it in Arco, Excel, or Windows Explorer and import again."
             )
         if restore_errors:
             detail += (

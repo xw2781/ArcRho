@@ -90,7 +90,7 @@ export function validateDatasetOriginLabels(labels, options = {}) {
 }
 
 function originLabelResolutionError(project, reason) {
-  const detail = String(reason || "ArcRho project headers are unavailable").trim();
+  const detail = String(reason || "Arco project headers are unavailable").trim();
   if (/^cannot load\b/i.test(detail) || /Origin Start Date|Project Settings/i.test(detail)) {
     return new Error(detail);
   }

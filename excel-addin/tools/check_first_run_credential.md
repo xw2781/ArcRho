@@ -52,7 +52,7 @@ for at one month by one month.
 | Check | Result |
 | :--- | :--- |
 | Helper from the share | exit 0 in 14.05 s, no dialog, credential back and byte-identical to the one moved aside |
-| Excel opens with no credential | credential installed during `Workbook_Open` in 11.78 s; `ArcRhoTri` then returned a 120 x 113 array in 0.47 s |
+| Excel opens with no credential | credential installed during `Workbook_Open` in 11.78 s; `ArcoTri` then returned a 120 x 113 array in 0.47 s |
 | `enabled: false` left alone | file unchanged; the formula answered "(this PC is not set up to read ArcRho data. Ask the ArcRho team to give you access, then restart Excel.)" |
 | Host that does not exist | VBA error 52 after 1.34 s, nothing shown, nothing left running |
 

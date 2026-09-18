@@ -1,4 +1,4 @@
-"""ArcRho runtime request operations."""
+"""Arco runtime request operations."""
 from __future__ import annotations
 
 import getpass
@@ -715,7 +715,7 @@ def _write_runtime_cache_provenance(
             ),
         )
     except Exception as error:
-        print(f"Unable to record ArcRho runtime cache provenance: {error}")
+        print(f"Unable to record Arco runtime cache provenance: {error}")
         return False
 
 
@@ -723,7 +723,7 @@ def _remove_runtime_cache_provenance(data_path: str) -> None:
     try:
         runtime_cache_provenance_service.remove(data_path)
     except OSError as error:
-        print(f"Unable to remove ArcRho runtime cache provenance: {error}")
+        print(f"Unable to remove Arco runtime cache provenance: {error}")
 
 
 def _require_runtime_cache_provenance(
@@ -736,7 +736,7 @@ def _require_runtime_cache_provenance(
     raise HTTPException(
         503,
         (
-            "The generated dataset CSV is available, but ArcRho could not record "
+            "The generated dataset CSV is available, but Arco could not record "
             "its technical cache provenance. The CSV was left unchanged; check "
             "write access to the reserving-class data folder and retry."
         ),
@@ -1552,7 +1552,7 @@ def _require_valid_header_project_settings(pairs: list) -> Dict[str, Any]:
     if not settings.get("exists") or not match or int(match.group(1)) <= 0:
         raise HTTPException(
             422,
-            f"Cannot load ArcRho project headers for '{project_name}': Origin Start Date is missing or invalid. "
+            f"Cannot load Arco project headers for '{project_name}': Origin Start Date is missing or invalid. "
             "Set a valid Origin Start Date in Project Settings, then try again.",
         )
     return settings
@@ -1566,9 +1566,9 @@ def _drop_project_csv_cache(data_path: str, what: str) -> None:
     try:
         os.remove(data_path)
     except PermissionError:
-        raise HTTPException(423, f"ArcRho project {what} cache is locked or inaccessible.")
+        raise HTTPException(423, f"Arco project {what} cache is locked or inaccessible.")
     except OSError as err:
-        raise HTTPException(500, f"Failed to refresh ArcRho project {what} cache: {str(err)}")
+        raise HTTPException(500, f"Failed to refresh Arco project {what} cache: {str(err)}")
 
 
 def _drop_project_csv_cache_older_than_settings(
@@ -1586,9 +1586,9 @@ def _drop_project_csv_cache_older_than_settings(
     try:
         stale = os.path.getmtime(data_path) < os.path.getmtime(settings_path)
     except PermissionError:
-        raise HTTPException(423, f"ArcRho project {what} cache is locked or inaccessible.")
+        raise HTTPException(423, f"Arco project {what} cache is locked or inaccessible.")
     except OSError as err:
-        raise HTTPException(500, f"Failed to refresh ArcRho project {what} cache: {str(err)}")
+        raise HTTPException(500, f"Failed to refresh Arco project {what} cache: {str(err)}")
     if stale:
         _drop_project_csv_cache(data_path, what)
 
@@ -1606,7 +1606,7 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
         try:
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as err:
-            raise HTTPException(500, f"Failed to create ArcRho headers data folder: {str(err)}")
+            raise HTTPException(500, f"Failed to create the project header cache folder: {str(err)}")
         outcome = engine_calculation_service.run_engine_calculation(
             pairs, data_path, max(0.1, float(timeout_sec))
         )
@@ -1616,7 +1616,7 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
                 "ok": False,
                 "status": outcome["status"],
                 "message": outcome.get("message")
-                or "Timed out while loading ArcRho project headers. Verify the data engine is running, then try again.",
+                or "Timed out while loading Arco project headers. Verify the data engine is running, then try again.",
                 "request_file": request_file,
                 "data_path": data_path,
             }
@@ -1655,7 +1655,7 @@ def arcrho_project_settings(pairs: list, timeout_sec: float) -> Dict[str, Any]:
         try:
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as err:
-            raise HTTPException(500, f"Failed to create ArcRho project data folder: {str(err)}")
+            raise HTTPException(500, f"Failed to create Arco project data folder: {str(err)}")
         outcome = engine_calculation_service.run_engine_calculation(
             pairs, data_path, max(0.1, float(timeout_sec))
         )
@@ -1665,7 +1665,7 @@ def arcrho_project_settings(pairs: list, timeout_sec: float) -> Dict[str, Any]:
                 "ok": False,
                 "status": outcome["status"],
                 "message": outcome.get("message")
-                or "Timed out while loading ArcRho project settings. Verify the data engine is running, then try again.",
+                or "Timed out while loading Arco project settings. Verify the data engine is running, then try again.",
                 "request_file": request_file,
                 "data_path": data_path,
             }
@@ -1795,9 +1795,9 @@ def clear_arcrho_headers_cache(project_name: str, origin_length: Any = None, dev
                 os.remove(path)
                 cleared_files.append(os.path.basename(path))
         except PermissionError:
-            raise HTTPException(423, "Cannot clear ArcRhoHeaders cache files because the project data folder is locked.")
+            raise HTTPException(423, "Cannot clear the project header cache files because the project data folder is locked.")
         except OSError as e:
-            raise HTTPException(500, f"Failed to clear ArcRhoHeaders cache files: {str(e)}")
+            raise HTTPException(500, f"Failed to clear the project header cache files: {str(e)}")
 
         return {
             "ok": True,
@@ -1831,9 +1831,9 @@ def clear_arcrho_headers_cache(project_name: str, origin_length: Any = None, dev
                 os.remove(entry.path)
                 cleared_files.append(entry.name)
     except PermissionError:
-        raise HTTPException(423, "Cannot clear ArcRhoHeaders cache files because the project data folder is locked.")
+        raise HTTPException(423, "Cannot clear the project header cache files because the project data folder is locked.")
     except OSError as e:
-        raise HTTPException(500, f"Failed to clear ArcRhoHeaders cache files: {str(e)}")
+        raise HTTPException(500, f"Failed to clear the project header cache files: {str(e)}")
 
     return {
         "ok": True,
@@ -2572,7 +2572,7 @@ def _run_temporary_arcrho_tri(
             os.remove(temporary_data_path)
             cache_cleared = True
         except OSError as err:
-            raise HTTPException(423, f"Cannot clear temporary ArcRho tri file: {str(err)}") from err
+            raise HTTPException(423, f"Cannot clear the temporary dataset cache file: {str(err)}") from err
 
     need_request = force_refresh or not temporary_cache_exists
     request_file = None
@@ -2580,7 +2580,7 @@ def _run_temporary_arcrho_tri(
         try:
             os.makedirs(os.path.dirname(temporary_data_path), exist_ok=True)
         except OSError as err:
-            raise HTTPException(500, f"Failed to create temporary ArcRho tri data folder: {str(err)}") from err
+            raise HTTPException(500, f"Failed to create the temporary dataset cache folder: {str(err)}") from err
         outcome = engine_calculation_service.run_engine_calculation(
             pairs,
             temporary_data_path,
@@ -2742,14 +2742,14 @@ def run_arcrho_tri(
             _remove_runtime_cache_provenance(data_path)
             cache_cleared = True
         except OSError as e:
-            raise HTTPException(423, f"Cannot clear cached ArcRho tri file: {str(e)}")
+            raise HTTPException(423, f"Cannot clear the cached dataset file: {str(e)}")
 
     need_request = force_refresh or (not cache_matches)
     if need_request:
         try:
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as err:
-            raise HTTPException(500, f"Failed to create ArcRho tri data folder: {str(err)}")
+            raise HTTPException(500, f"Failed to create the dataset cache folder: {str(err)}")
         outcome = engine_calculation_service.run_engine_calculation(
             pairs, data_path, max(0.1, float(timeout_sec))
         )
@@ -2801,7 +2801,7 @@ def run_arcrho_tri(
         if refresh_index and not recalculate_dependents_on_cache_write:
             _refresh_dataset_instance_index_after_cache_write(pairs)
     except OSError as err:
-        raise HTTPException(500, f"Failed to write ArcRho tri dataset metadata: {str(err)}")
+        raise HTTPException(500, f"Failed to write the dataset cache metadata: {str(err)}")
 
     ds_id = _register_arcrho_dataset(data_path, pairs)
 

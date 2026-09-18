@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Generate Notes for Combined Adjustment
-# Version: 1.8.0
-# Release Note: The combined growth and BI limit wording now covers the paid development methods of the BIR51+UMBIR51 class as well as the incurred ones.
+# Version: 1.9.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Read the selected User Entry formulas on the DFM Ratios tab that pull
 #   adjustment factors from other ArcRho datasets (for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [C 01 - Growth Adjustment][-1]),
@@ -359,9 +359,9 @@ def resolve_references_via_app_server(
         from app_server.services import dfm_service
     except Exception as exc:  # pragma: no cover - depends on app runtime
         raise DfmDataError(
-            "Dataset references could not be resolved because the ArcRho app "
+            "Dataset references could not be resolved because the Arco app "
             f"server is not available in this Python session ({exc}). Run this "
-            "macro from the ArcRho Macro window."
+            "macro from the Arco Macro window."
         ) from exc
 
     payload = [

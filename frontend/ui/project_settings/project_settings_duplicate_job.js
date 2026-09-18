@@ -170,7 +170,7 @@ export async function waitForDuplicateProjectJob({
     if (!isCurrentWorkspace()) {
       throw codedError(
         "DUPLICATE_WORKSPACE_CHANGED",
-        `The ArcRho Server connection changed while job "${jobId}" was active. Its recovery record was retained for the original workspace.`,
+        `The Arco Server connection changed while job "${jobId}" was active. Its recovery record was retained for the original workspace.`,
       );
     }
   };

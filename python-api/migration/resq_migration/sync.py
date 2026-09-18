@@ -148,14 +148,14 @@ def _support_for_action(
         source = arcrho or {}
         target = resq or {}
         if not bool(source.get("can_export_to_resq", False)):
-            return False, str(source.get("export_block_reason") or "ArcRho cannot export this item to ResQ.")
+            return False, str(source.get("export_block_reason") or "Arco cannot export this item to ResQ.")
         if target and not bool(target.get("can_receive_from_arcrho", True)):
             return False, str(target.get("receive_block_reason") or "The ResQ item cannot be overwritten.")
         return True, ""
     if action == ACTION_RESQ_TO_ARCRHO:
         source = resq or {}
         if not bool(source.get("can_import_to_arcrho", False)):
-            return False, str(source.get("import_block_reason") or "ArcRho cannot import this ResQ item.")
+            return False, str(source.get("import_block_reason") or "Arco cannot import this ResQ item.")
         return True, ""
     return False, "No synchronization action is available."
 
@@ -205,7 +205,7 @@ def transfer_support(
 
     normalized = transfer_direction(direction)
     if normalized == DIRECTION_EXPORT and not arcrho:
-        return False, "ArcRho has no copy of this item to export."
+        return False, "Arco has no copy of this item to export."
     if normalized == DIRECTION_IMPORT and not resq:
         return False, "ResQ has no copy of this item to import."
     if normalized == DIRECTION_EXPORT and not resq:
@@ -260,13 +260,13 @@ def changed_since_baseline(
 _EXPORT_REVIEW_TEXT = {
     CHANGED_BOTH: (
         "Both changed",
-        "Both sides changed since the last export; the ArcRho copy overwrites the ResQ change.",
+        "Both sides changed since the last export; the Arco copy overwrites the ResQ change.",
     ),
     CHANGED_RESQ: (
         "ResQ changed",
-        "Only ResQ changed since the last export; the ArcRho copy overwrites that change.",
+        "Only ResQ changed since the last export; the Arco copy overwrites that change.",
     ),
-    CHANGED_ARCRHO: ("ArcRho changed", "Only ArcRho changed since the last export."),
+    CHANGED_ARCRHO: ("Arco changed", "Only Arco changed since the last export."),
     CHANGED_NEITHER: ("Synchronized", "Neither side has changed since the two were last synchronized."),
 }
 
@@ -295,7 +295,7 @@ def export_review(
         side = newer_side(arcrho or {}, resq or {})
         overwrites_edit = side == "resq"
         if side:
-            label = "ResQ" if side == "resq" else "ArcRho"
+            label = "ResQ" if side == "resq" else "Arco"
             status = f"{label} newer"
             detail = f"No baseline is recorded yet; {label} has the newer timestamp."
         elif _timestamp((arcrho or {}).get("modified_timestamp")) is None or _timestamp(
@@ -363,7 +363,7 @@ def _comparison_action(
     if local_time is None or remote_time is None:
         missing = []
         if local_time is None:
-            missing.append("ArcRho")
+            missing.append("Arco")
         if remote_time is None:
             missing.append("ResQ")
         return "", "Unknown timestamp", f"{', '.join(missing)} timestamp is unavailable; the row is left alone.", False
@@ -376,22 +376,22 @@ def _comparison_action(
             return "", "Unknown baseline", "The saved synchronization baseline is incomplete; the row is left alone.", False
         if not local_changed and not remote_changed:
             return "", "Synchronized", "Neither side changed since the last accepted synchronization.", False
-        status = "Both changed" if local_changed and remote_changed else ("ArcRho changed" if local_changed else "ResQ changed")
+        status = "Both changed" if local_changed and remote_changed else ("Arco changed" if local_changed else "ResQ changed")
         detail = f"{status} since the last synchronization."
     else:
         if _timestamps_equal(local_time, remote_time):
             return "", "Same timestamp", "The timestamps match; content equality was not assumed.", False
         local_changed = local_time > remote_time
         remote_changed = not local_changed
-        status = "ArcRho newer" if local_changed else "ResQ newer"
+        status = "Arco newer" if local_changed else "ResQ newer"
         detail = f"{status.split()[0]} has the newer timestamp."
 
     if not direction:
         return "", status, f"{detail} The reserving class has no newer side, so nothing is pushed.", False
     if direction == ACTION_ARCRHO_TO_RESQ:
-        source, target, target_changed = "ArcRho", "ResQ", remote_changed
+        source, target, target_changed = "Arco", "ResQ", remote_changed
     else:
-        source, target, target_changed = "ResQ", "ArcRho", local_changed
+        source, target, target_changed = "ResQ", "Arco", local_changed
     if target_changed:
         return direction, status, f"{detail} The {source} copy overwrites this {target} change; review before applying.", True
     return direction, status, detail, False
@@ -441,7 +441,7 @@ def build_sync_plan(
             row.update(
                 status="Ambiguous name",
                 detail=(
-                    f"Found {len(local_candidates)} ArcRho and {len(remote_candidates)} ResQ items "
+                    f"Found {len(local_candidates)} Arco and {len(remote_candidates)} ResQ items "
                     "with the same normalized name."
                 ),
             )
@@ -456,7 +456,7 @@ def build_sync_plan(
         if logical_key(local_kind) != logical_key(remote_kind):
             row.update(
                 status="Type mismatch",
-                detail=f"ArcRho identifies this as {local_kind}; ResQ identifies it as {remote_kind}.",
+                detail=f"Arco identifies this as {local_kind}; ResQ identifies it as {remote_kind}.",
             )
             rows.append(row)
             continue
@@ -466,7 +466,7 @@ def build_sync_plan(
         if local_format and remote_format and logical_key(local_format) != logical_key(remote_format):
             row.update(
                 status="Format mismatch",
-                detail=f"ArcRho is {local_format}; ResQ is {remote_format}.",
+                detail=f"Arco is {local_format}; ResQ is {remote_format}.",
             )
             rows.append(row)
             continue
@@ -475,7 +475,7 @@ def build_sync_plan(
         if local_type and remote_type and logical_key(local_type) != logical_key(remote_type):
             row.update(
                 status="Dataset Type mismatch",
-                detail=f"ArcRho uses {local_type}; ResQ uses {remote_type}.",
+                detail=f"Arco uses {local_type}; ResQ uses {remote_type}.",
             )
             rows.append(row)
             continue
@@ -490,7 +490,7 @@ def build_sync_plan(
             row.update(
                 status="Method mismatch",
                 detail=(
-                    f"ArcRho method {local_method_name} and ResQ method "
+                    f"Arco method {local_method_name} and ResQ method "
                     f"{remote_method_name} produce the same output name."
                 ),
             )

@@ -391,7 +391,7 @@ async function commitSummaryFormulaInput(inputEl) {
       : 1;
     if (!Number.isFinite(parsed) || parsed <= 0) {
       showSummaryFormulaBarValidationError(
-        "Enter a number > 0, a DFM row formula, or an ArcRho dataset reference.",
+        "Enter a number > 0, a DFM row formula, or an Arco dataset reference.",
         inputEl
       );
       return false;

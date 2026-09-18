@@ -101,7 +101,7 @@ class EngineCalculationExecutor:
         except Exception as exc:
             self._log(self.root, f"engine calculation runtime unavailable: {exc!r}")
             raise WorkspaceReadHttpError(
-                503, "The ArcRho Server cannot run engine calculations right now."
+                503, "The Arco Server cannot run engine calculations right now."
             ) from exc
 
         from fastapi import HTTPException

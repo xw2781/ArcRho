@@ -49,7 +49,7 @@ AUTH_CLOCK_SKEW_SECONDS = 300
 AUTH_USER_HEADER = "X-ArcRho-User"
 AUTH_TIMESTAMP_HEADER = "X-ArcRho-Timestamp"
 AUTH_SIGNATURE_HEADER = "X-ArcRho-Signature"
-# These name the ArcRho Gateway component, not the hosted-save workload it
+# These name the Arco Gateway component, not the hosted-save workload it
 # started out serving: one credential, one server registry, and one receipt
 # store back every kind of request the Gateway carries.
 CLIENT_CONFIG_FILE_NAME = "arcrho_gateway.json"

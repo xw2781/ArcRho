@@ -52,9 +52,9 @@ test("Home replaces its left panel with a compact welcome panel", async () => {
   assert.doesNotMatch(view, /class="homeSidebar"/u);
   assert.doesNotMatch(view, /data-home-launch-group/u);
   assert.match(view, /class="homeWelcomePanel"/u);
-  assert.match(view, /class="homeWelcomeTitle">Welcome to ArcRho</u);
+  assert.match(view, /class="homeWelcomeTitle">Welcome to Arco</u);
   assert.match(view, /class="homeBrand"/u);
-  assert.match(view, /class="homeBrandTitle">ArcRho</u);
+  assert.match(view, /class="homeBrandTitle">Arco</u);
   assert.match(styles, /\.homeWelcomePanel\s*\{/u);
   assert.doesNotMatch(styles, /\.homeSidebar\s*\{/u);
 });

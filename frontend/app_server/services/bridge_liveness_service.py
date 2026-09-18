@@ -25,7 +25,7 @@ from app_server import config
 def get_bridge_worker_liveness(queue: str = "import", request_id: str = "") -> Dict[str, Any]:
     queue_name = str(queue or "import").strip().casefold()
     if queue_name not in QUEUE_STATUS_DIRS:
-        raise HTTPException(400, "Unknown ArcRho Bridge request queue.")
+        raise HTTPException(400, "Unknown Arco Bridge request queue.")
     identifier = str(request_id or "").strip()
     if identifier:
         try:

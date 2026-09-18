@@ -19,7 +19,7 @@ from app_server.services import (
 router = APIRouter()
 
 
-# The ArcRho Bridge that serves these requests runs on the server host, where
+# The Arco Bridge that serves these requests runs on the server host, where
 # the request folder and the method files are local disk; only the Client PC
 # half of the exchange crosses SMB. Each route therefore runs on the Gateway
 # when it advertises the kind, and locally over the mapped drive otherwise.

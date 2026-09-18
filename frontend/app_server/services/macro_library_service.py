@@ -1,4 +1,4 @@
-"""Shared macro library on the ArcRho Server workspace.
+"""Shared macro library on the Arco Server workspace.
 
 Lists the deployer-managed read-only library folder and copies ("loads")
 selected macros into the user's local macro folder, which remains the only

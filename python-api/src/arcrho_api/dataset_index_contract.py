@@ -1,4 +1,4 @@
-"""Canonical ArcRho reserving-class dataset index contract.
+"""Canonical Arco reserving-class dataset index contract.
 
 This module is deliberately standard-library-only so the frontend app server and
 the ResQ migration can use the same scanner, row projection, signature, and JSON

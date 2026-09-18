@@ -51,6 +51,6 @@ def back_up_reserving_class_for_import(
         backup_id=identifier,
         import_policy=import_policy,
         # The backup names the person who asked for it, not the profile the
-        # ArcRho Server runs under.
+        # Arco Server runs under.
         taken_by=user_identity_service.get_windows_login_name(),
     )

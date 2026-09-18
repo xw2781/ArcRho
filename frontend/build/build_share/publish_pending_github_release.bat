@@ -12,7 +12,7 @@ REM Usage:
 REM   publish_pending_github_release.bat [version] [product]
 REM   publish_pending_github_release.bat --check
 REM
-REM Defaults to ArcRho 1.2.5. Safe to re-run: an existing release is updated in
+REM Defaults to Arco 1.2.5. Safe to re-run: an existing release is updated in
 REM place rather than duplicated.
 
 set "BUILD_SHARE_ROOT=%~dp0"
@@ -29,9 +29,9 @@ set "PRODUCT_NAME=%~2"
 if /i "%APP_VERSION%"=="--check" set "APP_VERSION="
 if /i "%PRODUCT_NAME%"=="--check" set "PRODUCT_NAME="
 if not defined APP_VERSION set "APP_VERSION=1.2.5"
-if not defined PRODUCT_NAME set "PRODUCT_NAME=ArcRho"
+if not defined PRODUCT_NAME set "PRODUCT_NAME=Arco"
 
-if /i "%PRODUCT_NAME%"=="ArcRho" (
+if /i "%PRODUCT_NAME%"=="Arco" (
     set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
     set "FEED_DIR=E:\ArcRho Server\releases\installers"
 ) else if /i "%PRODUCT_NAME%"=="Arcode" (
@@ -39,7 +39,7 @@ if /i "%PRODUCT_NAME%"=="ArcRho" (
     set "FEED_DIR=E:\Arcode Server\releases\arcode-installers"
 ) else (
     echo ERROR: Unsupported product: %PRODUCT_NAME%
-    echo Expected ArcRho or Arcode.
+    echo Expected Arco or Arcode.
     echo.
     pause
     exit /b 1

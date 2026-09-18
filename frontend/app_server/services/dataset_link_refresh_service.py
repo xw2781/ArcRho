@@ -1,4 +1,4 @@
-"""Re-evaluate a dataset's ArcRho cell links where the workspace is local disk.
+"""Re-evaluate a dataset's Arco cell links where the workspace is local disk.
 
 A manual-input dataset whose cells are driven by ArcRho links — standalone
 dataset references (``internal_links``) and formulas (``formula_links``) — is
@@ -13,7 +13,7 @@ disagree about a value.
 
 Failure semantics are asymmetric on purpose:
 
-- An ArcRho-side problem — a referenced dataset missing, one that cannot be
+- An Arco-side problem — a referenced dataset missing, one that cannot be
   read at the shape the links were written on, a non-numeric cell, a
   result that no longer covers the linked cells — fails the refresh. The
   dataset keeps its last values, the walk records the error, and downstream
@@ -118,7 +118,7 @@ def _values_equal(a: Any, b: Any) -> bool:
 
 
 class _LinkRefreshHardError(Exception):
-    """An ArcRho-side link failure: the dataset's refresh must report an error."""
+    """An Arco-side link failure: the dataset's refresh must report an error."""
 
 
 def _load_source_datasets(
@@ -255,13 +255,13 @@ def refresh_dataset_links(
     reserving_class: str,
     dataset_name: str,
 ) -> Dict[str, Any]:
-    """Re-evaluate one dataset's ArcRho cell links and rewrite the linked cells.
+    """Re-evaluate one dataset's Arco cell links and rewrite the linked cells.
 
     Returns ``{ok, dataset_name, refreshed, changed, warnings}`` on success —
     ``refreshed`` is false when the dataset has no links to evaluate, and each
     warning is ``{reference, reason}`` for an Excel-read failure whose cells
     kept their last values — or ``{ok: False, dataset_name, reason, errors}``
-    when an ArcRho-side reference failed and nothing was written.
+    when an Arco-side reference failed and nothing was written.
     """
 
     from app_server.services import dataset_service
@@ -493,7 +493,7 @@ def refresh_output(
     The ordered walk in :mod:`dependent_walk_service` calls this for a node
     whose precedents it has already refreshed, so nothing is cascaded from
     here. A linked input carries no review flag of its own — the walk flags
-    the methods below it — so an ArcRho-side failure comes back as the same
+    the methods below it — so an Arco-side failure comes back as the same
     ``link_error`` the walk records today and blocks its descendants, while an
     Excel-side failure stays a warning on an otherwise successful refresh.
     ``sidecar``, ``changed_precedents`` and ``caches`` belong to the one

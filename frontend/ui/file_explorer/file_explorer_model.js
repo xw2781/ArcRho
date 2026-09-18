@@ -1,6 +1,6 @@
 const HOME_FILE_TYPE_LABELS = Object.freeze({
-  arcnb: "ArcRho Notebook",
-  arcwf: "ArcRho Workflow",
+  arcnb: "Arco Notebook",
+  arcwf: "Arco Workflow",
   bat: "Windows Batch File",
   bmp: "Bitmap Image",
   cjs: "JavaScript File",

@@ -25,12 +25,12 @@ KIND_DATASET = "Dataset"
 
 _PRESENCE_CELLS = {
     "both": ("Both", ""),
-    "arcrho": ("ArcRho only", "muted"),
+    "arcrho": ("Arco only", "muted"),
     "resq": ("ResQ only", "info"),
 }
 
 _NEWER_CELLS = {
-    "arcrho": ("ArcRho", ""),
+    "arcrho": ("Arco", ""),
     "resq": ("ResQ", ""),
 }
 
@@ -39,7 +39,7 @@ _NEWER_CELLS = {
 _CHANGED_CELLS = {
     "both": ("Both", "warn"),
     "resq": ("ResQ", "warn"),
-    "arcrho": ("ArcRho", "warn"),
+    "arcrho": ("Arco", "warn"),
     "none": ("None", "muted"),
 }
 
@@ -121,12 +121,12 @@ def _import_plan_cell(row: Mapping[str, Any], overwrite: bool) -> tuple[str, str
     if not row.get("transfer_supported"):
         return "Not imported", "muted"
     if str(row.get("presence") or "") == "resq":
-        return "Added to ArcRho", "info"
+        return "Added to Arco", "info"
     if _edited_side(row, "arcrho"):
         if overwrite:
-            return "Overwrites newer ArcRho copy", "warn"
-        return "Keeps the newer ArcRho copy", "ok"
-    return "Overwrites ArcRho copy", "info"
+            return "Overwrites newer Arco copy", "warn"
+        return "Keeps the newer Arco copy", "ok"
+    return "Overwrites Arco copy", "info"
 
 
 def _plan_cell(row: Mapping[str, Any], direction: str, overwrite: bool) -> dict[str, str]:
@@ -183,7 +183,7 @@ def _summary(
     actionable = [row for row in preview if row.get("transfer_supported")]
     selected = [row for row in actionable if row.get("selected")]
     at_risk = len(edits_at_risk(selected, direction))
-    target, article = ("ResQ", "a") if direction == DIRECTION_EXPORT else ("ArcRho", "an")
+    target, article = ("ResQ", "a") if direction == DIRECTION_EXPORT else ("Arco", "an")
     saved_by = str(selection.get("updated_by") or "").strip()
     saved_at = str(selection.get("updated_at") or "").strip()
     if selection.get("names"):
@@ -194,7 +194,7 @@ def _summary(
         remembered = "No selection has been saved for this reserving class yet, so everything is ticked."
     return (
         f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
-        f"Latest ArcRho change: {class_direction.get('arcrho_timestamp') or 'Unknown'} | "
+        f"Latest Arco change: {class_direction.get('arcrho_timestamp') or 'Unknown'} | "
         f"Latest ResQ change: {class_direction.get('resq_timestamp') or 'Unknown'}\n"
         f"Compared {len(preview)} item(s); {len(actionable)} can be written to {target} and "
         f"{len(selected)} are selected, of which {at_risk} carry {article} {target} change this "
@@ -241,7 +241,7 @@ def transfer_review_payload(
             {"key": "kind", "label": "Type", "width": 150},
             {"key": "name", "label": "Dataset / Method Output", "width": 250},
             {"key": "presence", "label": "Held By", "width": 110},
-            {"key": "arcrho_timestamp", "label": "ArcRho Timestamp", "width": 200},
+            {"key": "arcrho_timestamp", "label": "Arco Timestamp", "width": 200},
             {"key": "resq_timestamp", "label": "ResQ Timestamp", "width": 200},
             {"key": "newer", "label": "Newer", "width": 90},
             {"key": "changed", "label": "Changed Since Last Run", "width": 170},
@@ -253,7 +253,7 @@ def transfer_review_payload(
         "cancelLabel": "Cancel",
         "searchPlaceholder": "Filter datasets and methods",
         "emptyMessage": (
-            "Neither ArcRho nor ResQ holds a dataset or method for this reserving class, "
+            "Neither Arco nor ResQ holds a dataset or method for this reserving class, "
             "so there is nothing to transfer."
         ),
     }

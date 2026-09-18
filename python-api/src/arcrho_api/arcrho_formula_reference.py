@@ -1,4 +1,4 @@
-"""Excel add-in dataset-call syntax used by both ArcRho formula editors.
+"""Excel add-in dataset-call syntax used by both Arco formula editors.
 
 Signatures/defaults are generated from ArcRhoFunctions.bas. Empty project/path
 arguments are contextual in ArcRho. Data reads belong to the hosted resolver.
@@ -33,14 +33,14 @@ def scan_arcrho_call(text, start=0):
         else:
             current += char
         cursor += 1
-    raise ValueError("ArcRho dataset function is missing its closing quote or parenthesis.")
+    raise ValueError("Arco dataset function is missing its closing quote or parenthesis.")
 
 
 def parse_arcrho_call(text):
     source = str(text).strip().lstrip("=").lstrip()
     call = scan_arcrho_call(source)
     if not call or call["end"] != len(source):
-        raise ValueError("Expected an ArcRho dataset function.")
+        raise ValueError("Expected an Arco dataset function.")
     spec = ARCRHO_FORMULA_FUNCTIONS[call["name"]]
     if not spec["minimum"] <= len(call["parts"]) <= len(spec["arguments"]):
         raise ValueError(f"Wrong number of arguments for {spec['name']}.")

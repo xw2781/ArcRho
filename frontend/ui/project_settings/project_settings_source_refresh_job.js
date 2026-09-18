@@ -248,7 +248,7 @@ export async function waitForSourceRefreshJob({
       if (consecutiveFailures > maxStatusRetries) {
         throw codedError(
           "SOURCE_REFRESH_STATUS_UNAVAILABLE",
-          `Source refresh status is unavailable after repeated checks. Job "${jobId}" may still be running on ArcRho Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
+          `Source refresh status is unavailable after repeated checks. Job "${jobId}" may still be running on Arco Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
         );
       }
       onProgress({ label: "Waiting for refresh status...", completed: 0, total: 0 });
@@ -308,7 +308,7 @@ export async function waitForSourceRefreshJob({
     } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, allowedStaleMs)) {
       throw codedError(
         "SOURCE_REFRESH_STATUS_STALE",
-        `Source refresh status has stopped updating. Job "${jobId}" appears to have stalled on ArcRho Engine.`,
+        `Source refresh status has stopped updating. Job "${jobId}" appears to have stalled on Arco Engine.`,
       );
     }
     await waitForPoll(pollIntervalMs);

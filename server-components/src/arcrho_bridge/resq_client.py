@@ -43,7 +43,7 @@ def resq_connection_settings():
         raise RuntimeError(
             "The shared ResQ service account is not configured: set "
             f"'{RESQ_CONFIG_SECTION}.user_name' and '{RESQ_CONFIG_SECTION}.password' "
-            "in the ArcRho Server config.json."
+            "in the Arco Server config.json."
         )
     return connection_name, user_name, password
 

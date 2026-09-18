@@ -120,10 +120,10 @@ def _workspace_server_root(
         _record_latency(timings, f"{timing_prefix}_config_load_ms", started)
     server_root_value = str(workspace.get("workspace_root") or "").strip()
     if not server_root_value:
-        raise HTTPException(500, "The ArcRho Server workspace is not configured.")
+        raise HTTPException(500, "The Arco Server workspace is not configured.")
     server_root = Path(server_root_value).expanduser()
     if not server_root.is_absolute():
-        raise HTTPException(500, "The ArcRho Server workspace root must be absolute.")
+        raise HTTPException(500, "The Arco Server workspace root must be absolute.")
     started = time.perf_counter_ns()
     try:
         root_available = server_root.is_dir()
@@ -131,12 +131,12 @@ def _workspace_server_root(
         _invalidate_protocol_path_cache(server_root)
         _record_latency(timings, f"{timing_prefix}_root_access_ms", started)
         raise HTTPException(
-            500, "The ArcRho Server workspace root is inaccessible."
+            500, "The Arco Server workspace root is inaccessible."
         ) from error
     _record_latency(timings, f"{timing_prefix}_root_access_ms", started)
     if not root_available:
         _invalidate_protocol_path_cache(server_root)
-        raise HTTPException(500, "The ArcRho Server workspace root is unavailable.")
+        raise HTTPException(500, "The Arco Server workspace root is unavailable.")
     _validate_protocol_paths(
         server_root,
         timings=timings,
@@ -402,7 +402,7 @@ def require_reserving_class_writable(
 
 
 def workspace_server_root() -> Path:
-    """Return the validated ArcRho Server workspace root for this process.
+    """Return the validated Arco Server workspace root for this process.
 
     Exposed so a sibling job service reaches the same validated root through
     the module that owns the propagation protocol paths instead of deriving
@@ -557,7 +557,7 @@ def _publish_propagation_request(server_root: Path, request: Mapping[str, Any]) 
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
         write_json_atomic(request_path, request)
@@ -919,7 +919,7 @@ def get_dependent_propagation_status(request_id: str) -> Dict[str, Any]:
     except json.JSONDecodeError as error:
         raise HTTPException(
             502,
-            "ArcRho Engine published an invalid dependent propagation status.",
+            "Arco Engine published an invalid dependent propagation status.",
         ) from error
     except OSError as error:
         raise HTTPException(
@@ -933,7 +933,7 @@ def get_dependent_propagation_status(request_id: str) -> Dict[str, Any]:
     except DependentPropagationContractError as error:
         raise HTTPException(
             502,
-            "ArcRho Engine published an invalid dependent propagation status.",
+            "Arco Engine published an invalid dependent propagation status.",
         ) from error
 
     return {"ok": True, "job_id": normalized_request_id, **status}

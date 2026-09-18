@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 class Project:
-    """ArcRho project folder under an ArcRho Server root."""
+    """Arco project folder under an Arco Server root."""
 
     def __init__(self, client: "ArcRhoClient", name: str) -> None:
         self.client = client

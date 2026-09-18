@@ -18,7 +18,7 @@
   color: #1f2937;
   font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
   /* Each kind's stamp wears the same colour here as its cells' perimeter
-     wears in the Data tab grid — Excel green, ArcRho blue; the spreadsheet
+     wears in the Data tab grid — Excel green, Arco blue; the spreadsheet
      sheet owns the tokens and these are its fallbacks for a page that has
      not loaded it. */
   --ar-links-excel: var(--ar-spreadsheet-excel-link-border, #217346);

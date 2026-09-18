@@ -1,7 +1,7 @@
 """Publish one ResQ sync-queue request where the workspace is local disk.
 
 The Sync and Export Reserving Class with ResQ macros hand their request to a
-ResQ-connected ArcRho Bridge worker through a request file in the shared
+ResQ-connected Arco Bridge worker through a request file in the shared
 queue. Written from a Client PC that file crosses the share; registered as a
 hosted workspace mutation it lands on the server's own disk through the
 Gateway. The payload, the queue folders, and the on-disk write are all

@@ -962,7 +962,7 @@ class ExportMacroResultsTableTests(unittest.TestCase):
                 {"id": "paid loss", "name": "Paid Loss", "kind": "Dataset", "outcome": "exported", "message": "Written to ResQ."},
                 {"id": "paid ldf", "name": "Paid LDF", "kind": "DFM", "outcome": "exported", "message": "Written to ResQ."},
                 {"id": "bf ult", "name": "BF Ult", "kind": "Bornhuetter Ferguson", "outcome": "saved", "message": "Written to ResQ."},
-                {"id": "orphan", "name": "Orphan", "kind": "Dataset", "outcome": "skipped", "message": "The ArcRho dataset CSV cache is missing."},
+                {"id": "orphan", "name": "Orphan", "kind": "Dataset", "outcome": "skipped", "message": "The Arco dataset CSV cache is missing."},
                 {"id": "sel", "name": "Selected Ult", "kind": "Result Selection", "outcome": "failed", "message": "COM error"},
             ],
         })
@@ -987,7 +987,7 @@ class ExportMacroResultsTableTests(unittest.TestCase):
                 {"text": "Failed", "tone": "error"},
             ],
         )
-        self.assertEqual(cells[3]["detail"], "The ArcRho dataset CSV cache is missing.")
+        self.assertEqual(cells[3]["detail"], "The Arco dataset CSV cache is missing.")
 
     def test_the_results_say_what_was_saved_for_the_next_review_to_compare_against(self):
         def summary(baseline):
@@ -998,7 +998,7 @@ class ExportMacroResultsTableTests(unittest.TestCase):
             })["summary"]
 
         self.assertIn(
-            "Saved the ArcRho and ResQ timestamps of 3 written item(s)",
+            "Saved the Arco and ResQ timestamps of 3 written item(s)",
             summary({"recorded": 3, "absorbed": 0, "error": ""}),
         )
         self.assertIn(
@@ -1006,7 +1006,7 @@ class ExportMacroResultsTableTests(unittest.TestCase):
             summary({"recorded": 3, "absorbed": 2, "error": ""}),
         )
         self.assertIn(
-            "The ArcRho and ResQ timestamps were not saved",
+            "The Arco and ResQ timestamps were not saved",
             summary({"recorded": 0, "absorbed": 0, "error": "The share went away."}),
         )
         self.assertIn("because nothing was written", summary({}))
@@ -1241,7 +1241,7 @@ class ExportMacroRunTests(unittest.TestCase):
         ui = _ShellUI()
 
         result, _run_phase, review = self._run(
-            ui, preview_error=resq_sync_queue.BridgeUnavailableError("No active ArcRho Bridge worker")
+            ui, preview_error=resq_sync_queue.BridgeUnavailableError("No active Arco Bridge worker")
         )
 
         # An unreachable Bridge is a precondition, not a comparison the person can skip.
@@ -1249,7 +1249,7 @@ class ExportMacroRunTests(unittest.TestCase):
         self.assertEqual(result["status"], "unavailable")
         self.assertEqual(ui.messages[-1][1]["kind"], "warning")
         self.assertNotIn("buttons", {key: value for key, value in ui.messages[-1][1].items() if value})
-        self.assertIn("No active ArcRho Bridge worker", ui.messages[-1][0])
+        self.assertIn("No active Arco Bridge worker", ui.messages[-1][0])
 
     def test_a_bridge_that_disappears_after_the_review_is_reported_the_same_way(self):
         ui = _ShellUI()
@@ -1257,7 +1257,7 @@ class ExportMacroRunTests(unittest.TestCase):
         result, run_phase, _review = self._run(
             ui,
             preview_rows=[_preview_row("Paid Loss")],
-            phase_error=resq_sync_queue.BridgeUnavailableError("No active ArcRho Bridge worker"),
+            phase_error=resq_sync_queue.BridgeUnavailableError("No active Arco Bridge worker"),
         )
 
         self.assertEqual(

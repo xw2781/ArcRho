@@ -132,18 +132,16 @@ End Function
 
 Public Function IsArcRhoFormula(ByVal f As String) As Boolean
     Dim u As String: u = UCase$(Trim$(f))
-    IsArcRhoFormula = (Left$(u, 9) = "=ADASTRI(") _
-        Or (Left$(u, 9) = "=ADASVEC(") _
-        Or (Left$(u, 11) = "=ARCRHOTRI(") _
-        Or (Left$(u, 11) = "=ARCRHOVEC(")
+    IsArcRhoFormula = (Left$(u, 9) = "=ARCOTRI(") _
+        Or (Left$(u, 9) = "=ARCOVEC(")
 End Function
 
-' Return the top-left “owner” cell if ActiveCell is inside a spilled ArcRho or legacy alias output;
+' Return the top-left “owner” cell if ActiveCell is inside a spilled Arco output;
 ' otherwise Nothing.
 Public Function FindArcRhoOwnerForCell(ByVal c As Range) As Range
     On Error Resume Next
 
-    ' 1) If c itself is an ArcRho or legacy alias formula, it’s the owner
+    ' 1) If c itself is an Arco formula, it’s the owner
     If c.HasFormula Then
         If IsArcRhoFormula(c.Formula2) Then
             Set FindArcRhoOwnerForCell = c
@@ -151,7 +149,7 @@ Public Function FindArcRhoOwnerForCell(ByVal c As Range) As Range
         End If
     End If
 
-    ' 2) Look for a nearby spilled ArcRho or legacy alias formula whose spill range contains c.
+    ' 2) Look for a nearby spilled Arco formula whose spill range contains c.
     '    Limit the search to CurrentRegion to keep it snappy.
     Dim region As Range
     If c.CurrentRegion Is Nothing Then
@@ -185,7 +183,7 @@ Public Function FindArcRhoOwnerForCell(ByVal c As Range) As Range
     End If
 End Function
 
-' Replace the N-th argument in the ArcRho or legacy alias formula:
+' Replace the N-th argument in the Arco formula:
 '   - If the N-th arg is a string literal, replace it in the formula text.
 '   - If the N-th arg is a reference, write newVal into that reference and
 '     leave the formula unchanged.

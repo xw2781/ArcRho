@@ -1,4 +1,4 @@
-"""Contract for Gateway-hosted ArcRho Engine calculation requests.
+"""Contract for Gateway-hosted Arco Engine calculation requests.
 
 The legacy ``ArcRhoTri`` / ``ArcRhoVec`` / ``ArcRhoHeaders`` exchange writes
 one ``request-*.json`` into the workspace ``requests`` folder and waits for the
@@ -10,7 +10,7 @@ A dataset run can chain several such exchanges (headers, calculated-dataset
 inputs, the dataset itself), which is where a multi-second wait comes from.
 
 A Client PC may instead POST the same logical request to the machine-wide
-ArcRho Gateway. The Gateway runs the very same ``app_server`` publish-and-wait
+Arco Gateway. The Gateway runs the very same ``app_server`` publish-and-wait
 helpers on the server host — the request lands in the local ``requests`` root
 the Engine already watches, and the CSV wait is a local file-system event —
 then answers with the completion. Nothing about the Engine changes: it still

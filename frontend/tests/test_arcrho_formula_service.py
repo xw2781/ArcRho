@@ -27,48 +27,48 @@ class ArcRhoFormulaTests(unittest.TestCase):
         return [[cell["value"] for cell in result["cells"][r:r + result["column_count"]]] for r in range(0, len(result["cells"]), result["column_count"])]
 
     def test_empty_context_defaults_and_remote_scope_keep_shape_options(self):
-        self.values('ArcRhoTri(,"Paid",FALSE,,TRUE,,6,3)')
+        self.values('ArcoTri(,"Paid",FALSE,,TRUE,,6,3)')
         pairs = dict(self.reader.call_args.args[0])
         self.assertEqual((pairs["ProjectName"], pairs["Path"]), ("Current", "Current/RC"))
         self.assertEqual((pairs["OriginLength"], pairs["DevelopmentLength"], pairs["Cumulative"], pairs["Calendar"]), ("6", "3", "False", "True"))
-        self.values('ArcRhoVec("Other/RC","Premium",FALSE,"Other",6)')
+        self.values('ArcoVec("Other/RC","Premium",FALSE,"Other",6)')
         pairs = dict(self.reader.call_args.args[0])
         self.assertEqual((pairs["ProjectName"], pairs["Path"], pairs["OriginLength"]), ("Other", "Other/RC", "6"))
 
     def test_related_functions_and_transposition_share_one_read_per_shape(self):
         cache = {}
-        self.assertEqual(self.values('ArcRhoTriCell(,"Paid",2,1)', cache), [[40]])
-        self.assertEqual(self.values('ArcRhoTriOrigin(,"Paid",1,,TRUE)', cache), [[10], [20], [30]])
-        self.assertEqual(self.values('ArcRhoTriDiag(,"Paid")', cache), [[30], [50], [60]])
-        self.assertEqual(self.values('ArcRhoTriDiag(,"Paid",-1)', cache), [[20], [40], [0]])
+        self.assertEqual(self.values('ArcoTriCell(,"Paid",2,1)', cache), [[40]])
+        self.assertEqual(self.values('ArcoTriOrigin(,"Paid",1,,TRUE)', cache), [[10], [20], [30]])
+        self.assertEqual(self.values('ArcoTriDiag(,"Paid")', cache), [[30], [50], [60]])
+        self.assertEqual(self.values('ArcoTriDiag(,"Paid",-1)', cache), [[20], [40], [0]])
         self.assertEqual(self.reader.call_count, 1)
         self.reader.return_value = {"ok": True, "csv_text": "10\n20\n30\n"}
-        self.assertEqual(self.values('ArcRhoVecCell(,"Premium",2)'), [[20]])
-        self.assertEqual(self.values('ArcRhoVec(,"Premium",TRUE)'), [[10, 20, 30]])
+        self.assertEqual(self.values('ArcoVecCell(,"Premium",2)'), [[20]])
+        self.assertEqual(self.values('ArcoVec(,"Premium",TRUE)'), [[10, 20, 30]])
 
     def test_invalid_coordinates_and_read_failures_are_visible(self):
-        for formula in ['ArcRhoVecCell(,"V",0)', 'ArcRhoTri(,"T",,,,,0)', 'ArcRhoTriCell(,"T",99,1)']:
+        for formula in ['ArcoVecCell(,"V",0)', 'ArcoTri(,"T",,,,,0)', 'ArcoTriCell(,"T",99,1)']:
             with self.subTest(formula=formula), self.assertRaises(HTTPException): self.values(formula)
         self.reader.return_value = {"ok": False, "error": "Dataset not found"}
-        with self.assertRaisesRegex(HTTPException, "Dataset not found"): self.values('ArcRhoVec(,"Missing")')
+        with self.assertRaisesRegex(HTTPException, "Dataset not found"): self.values('ArcoVec(,"Missing")')
 
     def test_dfm_recalculation_resolves_saved_index_formulas_with_remote_context(self):
         self.reader.return_value = {"ok": True, "csv_text": "1.5\n2.5\n"}
-        raw = '=INDEX(TRANSPOSE(ArcRhoVec("Other/RC","Factors",,"Other")),1,2)'
+        raw = '=INDEX(TRANSPOSE(ArcoVec("Other/RC","Factors",,"Other")),1,2)'
         tokens = dataset_reference_tokens(raw)
         values = dfm_service._resolved_reference_token_values("Current", "Current/RC", tokens)
         self.assertEqual(_safe_arithmetic(_substitute_dataset_references(raw, tokens, values).lstrip("=")), 2.5)
 
     def test_local_edges_use_full_context_and_remote_names_do_not_alias_local_datasets(self):
-        formulas = [{'formula': '=ArcRhoVec("Current/RC","Local",,"Current")'}, {'formula': '=ArcRhoVec("Other/RC","Remote",,"Other")'}]
+        formulas = [{'formula': '=ArcoVec("Current/RC","Local",,"Current")'}, {'formula': '=ArcoVec("Other/RC","Remote",,"Other")'}]
         self.assertEqual(link_precedent_names([], formulas, project_name="Current", reserving_class="Current/RC"), ["Local"])
 
     def test_call_text_inside_dataset_names_is_not_a_function(self):
-        self.assertEqual(arcrho_formula_references('=[ArcRhoVec(fake)][1]'), [])
+        self.assertEqual(arcrho_formula_references('=[ArcoVec(fake)][1]'), [])
 
     def test_formula_route_requires_gateway_and_preserves_transport_errors(self):
         router = importlib.import_module("app_server.api.dataset_router")
-        request = router.DatasetInternalLinksResolveRequest(project_name="Current", reserving_class="RC", references=['=ArcRhoVec(,"Paid")'])
+        request = router.DatasetInternalLinksResolveRequest(project_name="Current", reserving_class="RC", references=['=ArcoVec(,"Paid")'])
         with patch.object(router.workspace_read_client, "run_workspace_read", return_value={"ok": True}) as transport:
             router.resolve_dataset_internal_links(request)
             self.assertTrue(transport.call_args.kwargs["gateway_required"])

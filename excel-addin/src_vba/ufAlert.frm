@@ -1,6 +1,6 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} ufAlert 
-   Caption         =   "ArcRho"
+   Caption         =   "Arco"
    ClientHeight    =   2610
    ClientLeft      =   120
    ClientTop       =   465
@@ -18,7 +18,7 @@ Option Explicit
 
 Private WithEvents mOkButton As MSForms.CommandButton
 
-Public Sub ShowMessage(ByVal messageText As String, Optional ByVal titleText As String = "ArcRho")
+Public Sub ShowMessage(ByVal messageText As String, Optional ByVal titleText As String = "Arco")
     CancelTimedAlertClose
     ConfigureMessage messageText, titleText
     Me.Show vbModal
@@ -26,7 +26,7 @@ End Sub
 
 Public Sub ShowTimedMessage( _
     ByVal messageText As String, _
-    Optional ByVal titleText As String = "ArcRho", _
+    Optional ByVal titleText As String = "Arco", _
     Optional ByVal displaySeconds As Long = 2)
 
     CancelTimedAlertClose

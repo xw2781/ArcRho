@@ -44,7 +44,7 @@ def _item_field(item: Any, name: str) -> Any:
 def excel_workbook_readable(book_path: str) -> Dict[str, Any]:
     """Report whether this process can open the workbook as an Excel file.
 
-    Answers for the machine it runs on: on ArcRho Server this is the truth
+    Answers for the machine it runs on: on Arco Server this is the truth
     the Excel Link Manager reports and the retarget requires, and a path the
     server cannot reach is refused rather than guessed at.
     """
@@ -67,7 +67,7 @@ def excel_workbook_readable(book_path: str) -> Dict[str, Any]:
 
 
 def workbook_cell_value(raw: Any) -> Dict[str, Any]:
-    """Turn one raw workbook cell into the value ArcRho stores, or its error.
+    """Turn one raw workbook cell into the value Arco stores, or its error.
 
     This is the single rule for what a linked cell means, shared by the single
     read and the batch reads so a client and the hosted retarget can never

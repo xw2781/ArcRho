@@ -25,20 +25,20 @@ REM                 the GitHub Releases history.
 REM   --no-commit   Leave the release bookkeeping in the working tree, uncommitted.
 REM
 REM Optional environment overrides:
-REM   set ARCRHO_BUILD_PRODUCT=arcode                    REM defaults to arcrho
+REM   set ARCRHO_BUILD_PRODUCT=arcode                    REM defaults to arco
 REM   set ARCRHO_LOCAL_RELEASE_WORK_DIR=D:\ArcRho Build  REM build logs, outside the repo
 REM   set PYTHON_API_PACKAGE_DIR=D:\packages             REM shared Python API wheel target
 
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..\..") do set "REPO_ROOT=%%~fI"
 
-if not defined ARCRHO_BUILD_PRODUCT set "ARCRHO_BUILD_PRODUCT=arcrho"
+if not defined ARCRHO_BUILD_PRODUCT set "ARCRHO_BUILD_PRODUCT=arco"
 set "PRODUCT_NAME="
-if /i "%ARCRHO_BUILD_PRODUCT%"=="arcrho" set "PRODUCT_NAME=ArcRho"
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arco" set "PRODUCT_NAME=Arco"
 if /i "%ARCRHO_BUILD_PRODUCT%"=="arcode" set "PRODUCT_NAME=Arcode"
 if not defined PRODUCT_NAME (
     echo ERROR: Unsupported ARCRHO_BUILD_PRODUCT: %ARCRHO_BUILD_PRODUCT%
-    echo Expected arcrho or arcode.
+    echo Expected arco or arcode.
     exit /b 1
 )
 
@@ -117,7 +117,7 @@ echo Repository:        %REPO_ROOT%
 echo Builds in:         %REPO_ROOT%\frontend
 echo Build logs:        %ARCRHO_BUILD_LOG_DIR%
 echo Python:            %PYTHON_EXE%
-if /i "%ARCRHO_BUILD_PRODUCT%"=="arcrho" echo Python API target: %PYTHON_API_PACKAGE_DIR%
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arco" echo Python API target: %PYTHON_API_PACKAGE_DIR%
 if defined EXPLICIT_VERSION echo Requested version: %EXPLICIT_VERSION%
 if defined BUILD_ONLY echo Mode:              build installer for local testing only
 if defined PUBLISH_ONLY echo Mode:              publish an existing pending installer
@@ -322,7 +322,7 @@ REM client PC is a mapped network drive. Fail here rather than after a full pack
 REM A build-only installer retains the wheel locally and defers this shared write until
 REM the explicit publish action, so it can be tested while the server workspace is offline.
 if defined BUILD_ONLY goto check_fragments
-if /i not "%ARCRHO_BUILD_PRODUCT%"=="arcrho" goto check_fragments
+if /i not "%ARCRHO_BUILD_PRODUCT%"=="arco" goto check_fragments
 for %%I in ("%PYTHON_API_PACKAGE_DIR%\..") do set "PYTHON_API_PACKAGE_PARENT=%%~fI"
 if not exist "%PYTHON_API_PACKAGE_PARENT%" (
     echo ERROR: The Python API package destination is unreachable: %PYTHON_API_PACKAGE_DIR%

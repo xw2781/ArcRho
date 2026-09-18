@@ -1,4 +1,4 @@
-"""Whether a ResQ-connected ArcRho Bridge worker is alive, as one shared rule.
+"""Whether a ResQ-connected Arco Bridge worker is alive, as one shared rule.
 
 The Bridge worker on the Server PC rewrites its heartbeat file every second and
 touches the status file of the request it is running just as often. A macro
@@ -224,7 +224,7 @@ class BridgeSilenceTracker:
 
     def describe(self) -> str:
         return (
-            f"no sign of a live ArcRho Bridge worker for {self.silent_for_sec:.0f} seconds "
+            f"no sign of a live Arco Bridge worker for {self.silent_for_sec:.0f} seconds "
             f"({self.silent_checks} consecutive checks; last check: {self.last_detail})"
         )
 

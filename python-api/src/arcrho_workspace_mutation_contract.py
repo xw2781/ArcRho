@@ -1,4 +1,4 @@
-"""Contract for ArcRho Server-hosted workspace mutations.
+"""Contract for Arco Server-hosted workspace mutations.
 
 ``arcrho_workspace_read_contract`` hosts reads, whose defining property is that
 they are pure functions of the workspace: an uncertain answer may simply be
@@ -173,7 +173,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "request_id"),
         ("expected_revision", "rules"),
     ),
-    # The DFM sync dialog publishes a request file the ArcRho Bridge claims,
+    # The DFM sync dialog publishes a request file the Arco Bridge claims,
     # then waits for the JSON the Bridge exports from ResQ. Both halves are
     # server-local for the Bridge and both cross SMB for a Client PC, where the
     # publish is several round trips and every wait tick writes and deletes a

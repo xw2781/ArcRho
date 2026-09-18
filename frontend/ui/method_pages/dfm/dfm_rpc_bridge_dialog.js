@@ -593,7 +593,7 @@ function getOrderedVersions(data) {
   if (timestampsAreSame(local, remote)) return [];
   const localVersion = {
     key: "local",
-    source: labels.local || "ArcRho - Local",
+    source: labels.local || "Arco - Local",
     meta: local,
     snapshot: data?.snapshots?.local || {},
     action: actions.local || (resolveComparison(data) === "local_latest" ? "update-remote" : "keep-local"),
@@ -1189,7 +1189,7 @@ export function createDfmRpcBridgeDialog(options = {}) {
         <div class="dfmRpcStatus ${msg.tone}">${msg.text}</div>
         <div class="dfmRpcGrid">
           <div class="dfmRpcVersionCard">
-            <div class="dfmRpcVersionTitle"><span class="dfmRpcSourceLabel">ArcRho - Local</span></div>
+            <div class="dfmRpcVersionTitle"><span class="dfmRpcSourceLabel">Arco - Local</span></div>
             <div class="dfmRpcMeta">
               <div><strong>Last Modified:</strong> ${escapeHtml(formatTime(local))}</div>
             </div>

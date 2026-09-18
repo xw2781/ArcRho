@@ -1,10 +1,10 @@
-"""Contract for ArcRho Server-hosted workspace reads.
+"""Contract for Arco Server-hosted workspace reads.
 
 A Client PC that opens a reserving class, a cached dataset, a method window, or
 the Project Settings table summary pays one SMB round trip per file it touches,
 and a stale reserving-class index makes it open every sidecar and method JSON in
 the class over the mapped drive. The app server can instead ask the machine-wide
-ArcRho Gateway to run the very same ``app_server`` service function on the
+Arco Gateway to run the very same ``app_server`` service function on the
 server host, where the workspace is local disk, and return the service's
 response verbatim.
 
@@ -147,7 +147,7 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
     ),
     # The whole listing is hosted, including whether each linked workbook can
     # be opened. That answer is deliberately the server host's: a workbook a
-    # Client PC can see but ArcRho Server cannot is one no retarget or refresh
+    # Client PC can see but Arco Server cannot is one no retarget or refresh
     # can read, so reporting it as found would be a lie.
     "excel_link_listing": WorkspaceReadKind(
         "excel_link_service",

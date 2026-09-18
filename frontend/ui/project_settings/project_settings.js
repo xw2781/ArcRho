@@ -1052,7 +1052,7 @@ async function importSourceData(sourceType, scope = {}) {
     }
     setStatus(
       `Imported ${rowCount.toLocaleString("en-US")} row(s) into "${name}". `
-      + "ArcRho Engine is unavailable, so dependents will refresh when each object is opened.",
+      + "Arco Engine is unavailable, so dependents will refresh when each object is opened.",
     );
     await reloadSourceDataViews(name, { forceRefresh: true });
     return { ok: true, rowCount };
@@ -1161,7 +1161,7 @@ async function clearArcRhoHeadersCacheForProject(projectName) {
     if (!res.ok) throw new Error(await readResponseErrorDetail(res));
     return res.json();
   } catch (err) {
-    setStatus(`Warning: failed to clear ArcRhoHeaders cache for "${name}": ${err.message}`);
+    setStatus(`Warning: failed to clear the project header cache for "${name}": ${err.message}`);
     return { ok: false, error: String(err.message || err) };
   }
 }

@@ -327,9 +327,9 @@ def _read_json(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8-sig") as stream:
             payload = json.load(stream)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Could not read ArcRho metadata {path}: {exc}") from exc
+        raise RuntimeError(f"Could not read Arco metadata {path}: {exc}") from exc
     if not isinstance(payload, dict):
-        raise RuntimeError(f"ArcRho metadata must contain a JSON object: {path}")
+        raise RuntimeError(f"Arco metadata must contain a JSON object: {path}")
     return payload
 
 
@@ -343,7 +343,7 @@ def _directory_files(directory: Path, suffix: str) -> list[tuple[Path, float]]:
                 try:
                     modified = float(entry.stat(follow_symlinks=False).st_mtime)
                 except OSError as exc:
-                    raise RuntimeError(f"Could not read ArcRho file metadata {entry.path}: {exc}") from exc
+                    raise RuntimeError(f"Could not read Arco file metadata {entry.path}: {exc}") from exc
                 rows.append((Path(entry.path), modified))
     except (FileNotFoundError, NotADirectoryError):
         return []
@@ -490,9 +490,9 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
         reason = ""
         if not can_export:
             reason = (
-                "ArcRho-to-ResQ write-back is not supported for Berquist Sherman or Bootstrap methods."
+                "Arco-to-ResQ write-back is not supported for Berquist Sherman or Bootstrap methods."
                 if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}
-                else f"ArcRho-to-ResQ write-back is not supported for {kind}."
+                else f"Arco-to-ResQ write-back is not supported for {kind}."
             )
         item = {
             "name": name,
@@ -548,7 +548,7 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
         if kind != KIND_DATASET:
             block_reason = f"The {kind} method JSON is missing; only its output sidecar is present."
         elif not csv_available:
-            block_reason = "The ArcRho dataset CSV cache is missing; open the dataset once to build it."
+            block_reason = "The Arco dataset CSV cache is missing; open the dataset once to build it."
         else:
             block_reason = ""
         item = {
@@ -588,7 +588,7 @@ def collect_arcrho_inventory(runtime: Mapping[str, Any], rc_dir: Path) -> list[d
                 "modified_timestamp": _parsed_timestamp(parser, modified_text),
                 "timestamp_source": "File modified",
                 "can_export_to_resq": False,
-                "export_block_reason": "The ArcRho dataset sidecar is missing.",
+                "export_block_reason": "The Arco dataset sidecar is missing.",
                 "payload": {},
                 "csv_file": path.name,
             })
@@ -683,10 +683,10 @@ def _resq_method_items(runtime: Mapping[str, Any], exporter) -> list[dict[str, A
                 "timestamp_source": timestamp_source.replace("ResQ ", "ResQ output ", 1),
                 "can_import_to_arcrho": known_type,
                 "import_block_reason": (
-                    "" if known_type else f"Dataset Type {dataset_type} is not configured in ArcRho."
+                    "" if known_type else f"Dataset Type {dataset_type} is not configured in Arco."
                 ),
                 "can_receive_from_arcrho": kind in _EXPORTABLE_METHOD_KINDS,
-                "receive_block_reason": "" if kind in _EXPORTABLE_METHOD_KINDS else f"ArcRho cannot write {kind} methods to ResQ.",
+                "receive_block_reason": "" if kind in _EXPORTABLE_METHOD_KINDS else f"Arco cannot write {kind} methods to ResQ.",
                 "resq_collection": "vector",
                 "resq_object_name": raw_output_name,
                 "resq_method_name": raw_method_name or raw_output_name,
@@ -773,21 +773,21 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             elif kind in {KIND_BS_SR, KIND_BS_CRA} and not resq_method_name:
                 import_reason = f"The matching {kind} method has no stable name in ResQ."
             elif not known_type:
-                import_reason = f"Dataset Type {dataset_type} is not configured in ArcRho."
+                import_reason = f"Dataset Type {dataset_type} is not configured in Arco."
             elif kind not in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}:
-                import_reason = f"ResQ-to-ArcRho import is not supported for {kind}."
+                import_reason = f"ResQ-to-Arco import is not supported for {kind}."
             else:
                 import_reason = ""
             can_receive = kind == KIND_DATASET
             receive_reason = ""
             if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}:
                 can_receive = False
-                receive_reason = f"ArcRho-to-ResQ write-back is not supported for {kind}."
+                receive_reason = f"Arco-to-ResQ write-back is not supported for {kind}."
             elif kind == KIND_DATASET and calculated:
                 # ResQ derives this one from its own formula and would only
                 # recompute over whatever ArcRho wrote.
                 can_receive = False
-                receive_reason = "ResQ computes this dataset from its own formula, so ArcRho values cannot be written to it."
+                receive_reason = "ResQ computes this dataset from its own formula, so Arco values cannot be written to it."
             items.append({
                 "name": name,
                 "kind": kind,
@@ -831,9 +831,9 @@ def _timestamp_cell(item: Mapping[str, Any]) -> str:
 def _direction_label(direction: object) -> str:
     normalized = str(direction or "")
     if normalized == "arcrho_to_resq":
-        return "ArcRho -> ResQ"
+        return "Arco -> ResQ"
     if normalized == "resq_to_arcrho":
-        return "ResQ -> ArcRho"
+        return "ResQ -> Arco"
     return ""
 
 
@@ -1010,7 +1010,7 @@ def _export_one_to_resq(exporter, row: Mapping[str, Any]) -> tuple[bool, str]:
                     ) from exc
             exporter.export_result_selections([entry])
         else:
-            return False, f"ArcRho-to-ResQ write-back is not supported for {kind}."
+            return False, f"Arco-to-ResQ write-back is not supported for {kind}."
         _verify_method_export(exporter, row)
     outcome, message = _export_result_delta(exporter, before, _WRITTEN_COUNT_FIELDS.get(kind, ""))
     return outcome == OUTCOME_WRITTEN, message
@@ -1101,7 +1101,7 @@ def _dataset_export_values(exporter, row: Mapping[str, Any]) -> list[list[float 
         / csv_file
     )
     if not csv_file or not csv_path.is_file():
-        raise RuntimeError("The ArcRho dataset CSV cache is missing.")
+        raise RuntimeError("The Arco dataset CSV cache is missing.")
     values: list[list[float | None]] = []
     with csv_path.open("r", encoding="utf-8-sig", newline="") as stream:
         for raw_row in csv.reader(stream):
@@ -1123,13 +1123,13 @@ def _preflight_dataset_export(exporter, row: Mapping[str, Any]) -> list[list[flo
     flat = [source[0] if source else None for source in values]
     if any(value is None for value in flat):
         raise RuntimeError(
-            "Vector write-back is blocked because ArcRho contains blank values and "
+            "Vector write-back is blocked because Arco contains blank values and "
             "the ResQ COM API has no verified blank-cell writer."
         )
     target = exporter._find_vector(str(row.get("name") or ""))
     if target is not None and int(getattr(target, "Count")) != len(flat):
         raise RuntimeError(
-            f"Vector length mismatch: ArcRho has {len(flat)} values; ResQ has {int(getattr(target, 'Count'))}."
+            f"Vector length mismatch: Arco has {len(flat)} values; ResQ has {int(getattr(target, 'Count'))}."
         )
     return values
 
@@ -1159,7 +1159,7 @@ def _verify_dataset_export(
         origin_count = int(getattr(target, "OriginCount"))
         if origin_count != len(values):
             raise RuntimeError(
-                f"ResQ triangle row count did not match ArcRho after the write "
+                f"ResQ triangle row count did not match Arco after the write "
                 f"({origin_count} versus {len(values)})."
             )
         for origin_index in range(1, origin_count + 1):
@@ -1168,7 +1168,7 @@ def _verify_dataset_export(
             if width < len(source_row):
                 trailing = source_row[width:]
                 if any(value is not None for value in trailing):
-                    raise RuntimeError("ResQ triangle truncated nonblank ArcRho development values.")
+                    raise RuntimeError("ResQ triangle truncated nonblank Arco development values.")
             for development_index in range(1, width + 1):
                 expected = source_row[development_index - 1] if development_index <= len(source_row) else None
                 if expected is None:
@@ -1180,7 +1180,7 @@ def _verify_dataset_export(
                         continue
                     if actual_blank is not None and abs(float(actual_blank)) > 1e-9:
                         raise RuntimeError(
-                            f"ResQ triangle retained a value in ArcRho blank cell "
+                            f"ResQ triangle retained a value in Arco blank cell "
                             f"({origin_index}, {development_index})."
                         )
                     continue
@@ -1195,7 +1195,7 @@ def _verify_dataset_export(
     flat = [source[0] for source in values]
     target = exporter._find_vector(name)
     if target is None or int(getattr(target, "Count")) != len(flat):
-        raise RuntimeError("ResQ vector length did not match ArcRho after the write.")
+        raise RuntimeError("ResQ vector length did not match Arco after the write.")
     for index, expected in enumerate(flat, start=1):
         actual = float(target.ValuesByIndex(index))
         if expected is None or abs(actual - expected) > 1e-9:
@@ -1233,7 +1233,7 @@ def _preflight_method_export(
         clean = str(name or "").strip()
         if not clean:
             raise RuntimeError(
-                f"The ArcRho {role} link is blank; ResQ link clearing is not supported safely."
+                f"The Arco {role} link is blank; ResQ link clearing is not supported safely."
             )
         require(clean, finder, role)
 
@@ -1252,14 +1252,14 @@ def _preflight_method_export(
         actual_input = _name_key(getattr(getattr(target, "InputTriangle"), "Name"))
         if actual_input != expected_input:
             raise RuntimeError(
-                "Existing ResQ DFM input triangle differs from ArcRho; safe retargeting is not supported."
+                "Existing ResQ DFM input triangle differs from Arco; safe retargeting is not supported."
             )
         expected_origin_length = int(details.get("origin_length") or 0)
         expected_development_length = int(details.get("development_length") or 0)
         if expected_origin_length and int(getattr(target, "OriginLength")) != expected_origin_length:
-            raise RuntimeError("Existing ResQ DFM origin length differs from ArcRho.")
+            raise RuntimeError("Existing ResQ DFM origin length differs from Arco.")
         if expected_development_length and int(getattr(target, "DevelopmentLength")) != expected_development_length:
-            raise RuntimeError("Existing ResQ DFM development length differs from ArcRho.")
+            raise RuntimeError("Existing ResQ DFM development length differs from Arco.")
         ratios_tab = payload.get("ratios_tab") if isinstance(payload.get("ratios_tab"), Mapping) else {}
         ratio_triangle = ratios_tab.get("ratio_triangle") if isinstance(ratios_tab.get("ratio_triangle"), Mapping) else {}
         excluded = ratio_triangle.get("excluded") if isinstance(ratio_triangle.get("excluded"), list) else []
@@ -1274,10 +1274,10 @@ def _preflight_method_export(
             if not meaningful:
                 continue
             if origin_index > origin_count:
-                raise RuntimeError("ResQ DFM has fewer origin rows than the ArcRho exclusion pattern.")
+                raise RuntimeError("ResQ DFM has fewer origin rows than the Arco exclusion pattern.")
             ratio_count = max(int(target.DevelopmentCount(origin_index)) - 1, 0)
             if max(meaningful) > ratio_count:
-                raise RuntimeError("ResQ DFM has fewer ratio columns than the ArcRho exclusion pattern.")
+                raise RuntimeError("ResQ DFM has fewer ratio columns than the Arco exclusion pattern.")
 
         averages = ratios_tab.get("average_formulas") if isinstance(ratios_tab.get("average_formulas"), Mapping) else {}
         labels = averages.get("label") if isinstance(averages.get("label"), list) else []
@@ -1297,7 +1297,7 @@ def _preflight_method_export(
             if not isinstance(source_row, list):
                 continue
             if any(value in (1, True, "1") for value in source_row[columns:]):
-                raise RuntimeError("ResQ DFM has fewer selection columns than ArcRho.")
+                raise RuntimeError("ResQ DFM has fewer selection columns than Arco.")
 
         values = averages.get("values") if isinstance(averages.get("values"), list) else []
         user_row = exporter._user_entry_payload_row_index(averages)
@@ -1318,7 +1318,7 @@ def _preflight_method_export(
                 if not has_user_entry:
                     raise RuntimeError("ResQ DFM has no User Entry average row.")
                 if max(positive_indexes) > columns:
-                    raise RuntimeError("ResQ DFM has fewer User Entry columns than ArcRho.")
+                    raise RuntimeError("ResQ DFM has fewer User Entry columns than Arco.")
     elif kind == KIND_BF:
         require_present(method_tab.get("latest_dataset"), find_triangle_or_vector, "latest")
         require_present(method_tab.get("dfm_dataset"), exporter._find_vector, "percentage-developed")
@@ -1356,7 +1356,7 @@ def _preflight_method_export(
             extras = sorted(name for key, name in existing.items() if key not in desired)
             if extras:
                 raise RuntimeError(
-                    "ResQ Result Selection has source datasets ArcRho cannot remove: "
+                    "ResQ Result Selection has source datasets Arco cannot remove: "
                     + ", ".join(extras)
                 )
             origin_count = int(getattr(target, "OriginCount", 0) or 0)
@@ -1366,12 +1366,12 @@ def _preflight_method_export(
                 weights = source.get("weights") if isinstance(source.get("weights"), list) else []
                 if len(weights) > origin_count:
                     raise RuntimeError(
-                        "ArcRho Result Selection has more weights than the ResQ origin count."
+                        "Arco Result Selection has more weights than the ResQ origin count."
                     )
             overrides = method_tab.get("ultimate_overrides")
             if isinstance(overrides, list) and len(overrides) > origin_count:
                 raise RuntimeError(
-                    "ArcRho Result Selection has more ultimate overrides than the ResQ origin count."
+                    "Arco Result Selection has more ultimate overrides than the ResQ origin count."
                 )
 
 
@@ -1389,7 +1389,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
     def assert_link(actual: object, expected: object, role: str) -> None:
         actual_name = key(getattr(actual, "Name"))
         if actual_name != key(expected):
-            raise RuntimeError(f"ResQ {role} link did not match ArcRho after the write.")
+            raise RuntimeError(f"ResQ {role} link did not match Arco after the write.")
 
     if kind == KIND_DFM:
         details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
@@ -1499,24 +1499,24 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
         expected_origin_length = int(details.get("origin_length") or 0)
         if expected_origin_length and int(getattr(target, "OriginLength")) != expected_origin_length:
-            raise RuntimeError("ResQ BF origin length did not match ArcRho after the write.")
+            raise RuntimeError("ResQ BF origin length did not match Arco after the write.")
         assert_link(getattr(target, "Latest"), method_tab.get("latest_dataset"), "BF latest")
         expected_latest = exporter._find_triangle(str(method_tab.get("latest_dataset") or ""))
         expected_latest_type = 0 if expected_latest is not None else 1
         if int(getattr(target, "LatestType")) != expected_latest_type:
-            raise RuntimeError("ResQ BF latest data format did not match ArcRho after the write.")
+            raise RuntimeError("ResQ BF latest data format did not match Arco after the write.")
         assert_link(getattr(target, "PercentageDeveloped"), method_tab.get("dfm_dataset"), "BF percentage-developed")
         expected_pd_type = method_tab.get("percentage_developed_type_code")
         expected_pd_type = 2 if expected_pd_type is None else int(expected_pd_type)
         if int(getattr(target, "PercentageDevelopedType")) != expected_pd_type:
-            raise RuntimeError("ResQ BF percentage-developed type did not match ArcRho after the write.")
+            raise RuntimeError("ResQ BF percentage-developed type did not match Arco after the write.")
         priors = method_tab.get("prior_datasets") if isinstance(method_tab.get("prior_datasets"), list) else []
         prior = priors[0] if priors and isinstance(priors[0], Mapping) else {}
         assert_link(getattr(target, "Prior"), prior.get("name"), "BF prior")
         expected_prior_type = method_tab.get("prior_type_code")
         expected_prior_type = 0 if expected_prior_type is None else int(expected_prior_type)
         if int(getattr(target, "PriorType")) != expected_prior_type:
-            raise RuntimeError("ResQ BF prior type did not match ArcRho after the write.")
+            raise RuntimeError("ResQ BF prior type did not match Arco after the write.")
         _verify_notes(exporter, target, item, "BF")
         return
 
@@ -1529,11 +1529,11 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
         expected_origin_length = int(details.get("origin_length") or 0)
         if expected_origin_length and int(getattr(target, "OriginLength")) != expected_origin_length:
-            raise RuntimeError("ResQ Cape Cod origin length did not match ArcRho after the write.")
+            raise RuntimeError("ResQ Cape Cod origin length did not match Arco after the write.")
         assert_link(getattr(target, "Exposure"), method_tab.get("exposure_dataset"), "Cape Cod exposure")
         assert_link(getattr(target, "Latest"), method_tab.get("latest_dataset"), "Cape Cod latest")
         if int(getattr(target, "LatestType")) != 0:
-            raise RuntimeError("ResQ Cape Cod latest data format did not match ArcRho after the write.")
+            raise RuntimeError("ResQ Cape Cod latest data format did not match Arco after the write.")
         assert_link(
             getattr(target, "PercentageDeveloped"),
             method_tab.get("prior_ultimate_dataset"),
@@ -1542,7 +1542,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         expected_pd_type = 1 if key(method_tab.get("prior_ultimate_mode")) == "pattern" else 2
         if int(getattr(target, "PercentageDevelopedType")) != expected_pd_type:
             raise RuntimeError(
-                "ResQ Cape Cod prior-ultimate mode did not match ArcRho after the write."
+                "ResQ Cape Cod prior-ultimate mode did not match Arco after the write."
             )
         for member, field in (
             ("AutoTrendFit", "auto_trend_fit"),
@@ -1551,10 +1551,10 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         ):
             expected = method_tab.get(field)
             if expected is not None and getattr(target, member) != expected:
-                raise RuntimeError(f"ResQ Cape Cod {field} did not match ArcRho after the write.")
+                raise RuntimeError(f"ResQ Cape Cod {field} did not match Arco after the write.")
         if method_tab.get("trend_rate") is not None and not bool(method_tab.get("auto_trend_fit")):
             if abs(float(getattr(target, "TrendRate")) - float(method_tab["trend_rate"])) > 1e-9:
-                raise RuntimeError("ResQ Cape Cod trend rate did not match ArcRho after the write.")
+                raise RuntimeError("ResQ Cape Cod trend rate did not match Arco after the write.")
         _verify_notes(exporter, target, item, "Cape Cod")
         return
 
@@ -1567,12 +1567,12 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
         details = payload.get("details_tab") if isinstance(payload.get("details_tab"), Mapping) else {}
         expected_origin_length = int(details.get("origin_length") or 0)
         if expected_origin_length and int(getattr(target, "OriginLength")) != expected_origin_length:
-            raise RuntimeError("ResQ Result Selection origin length did not match ArcRho after the write.")
+            raise RuntimeError("ResQ Result Selection origin length did not match Arco after the write.")
         loaded = method_tab.get("loaded_datasets") if isinstance(method_tab.get("loaded_datasets"), list) else []
         expected_names = [key(source.get("name")) for source in loaded if isinstance(source, Mapping)]
         actual_names = [key(target.Dataset(index).Name) for index in range(1, int(target.DatasetCount) + 1)]
         if set(actual_names) != set(expected_names):
-            raise RuntimeError("ResQ Result Selection source datasets did not match ArcRho after the write.")
+            raise RuntimeError("ResQ Result Selection source datasets did not match Arco after the write.")
         origin_count = int(getattr(target, "OriginCount", 0) or 0)
         for source in loaded:
             if not isinstance(source, Mapping):
@@ -1593,7 +1593,7 @@ def _verify_method_export(exporter, row: Mapping[str, Any]) -> None:
                     raise RuntimeError("ResQ Result Selection retained a cleared ultimate override.")
                 continue
             if not overridden:
-                raise RuntimeError("ResQ Result Selection did not retain an ArcRho ultimate override.")
+                raise RuntimeError("ResQ Result Selection did not retain an Arco ultimate override.")
             actual = float(target.Ultimates(origin_index, rs_origin_length))
             if abs(actual - float(expected)) > 1e-9:
                 raise RuntimeError("ResQ Result Selection ultimate override verification failed.")
@@ -1817,7 +1817,7 @@ def _import_one_from_resq(
     }.get(str(row.get("kind") or ""))
     if expected_count and int(method_counts.get(expected_count) or 0) < 1:
         return False, f"The ResQ output was read, but its {row.get('kind')} method was not imported."
-    return True, "Imported into ArcRho."
+    return True, "Imported into Arco."
 
 
 def _plan_by_id(plan: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -2117,7 +2117,7 @@ def apply_sync_plan(
                 current_row = _plan_by_id(current["plan"]).get(str(row.get("id") or ""))
                 if _row_moved_before_write(runtime, row, current_row):
                     source = (
-                        "ArcRho"
+                        "Arco"
                         if row.get("action") == sync_contract.ACTION_ARCRHO_TO_RESQ
                         else "ResQ"
                     )
@@ -2257,7 +2257,7 @@ def apply_sync_plan(
                 }
                 for item in absorbed:
                     sides = " and ".join(
-                        "ArcRho" if side == "arcrho" else "ResQ" for side in item["sides"]
+                        "Arco" if side == "arcrho" else "ResQ" for side in item["sides"]
                     )
                     results.append({
                         "id": str((locked_by_key.get(item["key"]) or {}).get("id") or ""),
@@ -2464,7 +2464,7 @@ def _transfer_rows(
                 rows.append(row)
                 continue
             item = candidates[0]
-            other_side = "ResQ" if side == "arcrho" else "ArcRho"
+            other_side = "ResQ" if side == "arcrho" else "Arco"
             rows.append(
                 _transfer_row(
                     sync_contract,
@@ -2533,7 +2533,7 @@ def preview_sync(
             "event": "scan",
             "completed": 0,
             "total": 0,
-            "message": f"Comparing ArcRho and ResQ: {rc_path}",
+            "message": f"Comparing Arco and ResQ: {rc_path}",
         })
         preview = _plan_context(runtime, project_name, rc_path, root)
         rows = _public_plan_rows(runtime, preview["plan"])
@@ -2603,7 +2603,7 @@ def preview_transfer(
             "event": "scan",
             "completed": 0,
             "total": 0,
-            "message": f"Comparing ArcRho and ResQ: {rc_path}",
+            "message": f"Comparing Arco and ResQ: {rc_path}",
         })
         context = _plan_context(runtime, project_name, rc_path, root)
         connection_name = _resq_credentials(runtime)["connection_name"]
@@ -2866,12 +2866,12 @@ def export_reserving_class(
         }
         rc_dir = migration.PROJECT_DATA_DIR / migration._encode_rc_folder(rc_path)
         if not rc_dir.is_dir():
-            raise RuntimeError(f"ArcRho reserving-class folder not found: {rc_dir}")
+            raise RuntimeError(f"Arco reserving-class folder not found: {rc_dir}")
         _emit_progress(progress_callback, {
             "event": "scan",
             "completed": 0,
             "total": 0,
-            "message": f"Reading the ArcRho reserving class: {rc_path}",
+            "message": f"Reading the Arco reserving class: {rc_path}",
         })
         local = collect_arcrho_inventory(runtime, rc_dir)
         rows = _export_rows(runtime, local)
@@ -2919,7 +2919,7 @@ def export_reserving_class(
                 "event": "baseline",
                 "completed": len(rows),
                 "total": len(rows),
-                "message": "Recording the ArcRho and ResQ timestamps",
+                "message": "Recording the Arco and ResQ timestamps",
             })
             # "Exported" and "saved" both mean ResQ took the write; only those
             # two leave the two sides agreeing, so only those are baselined.

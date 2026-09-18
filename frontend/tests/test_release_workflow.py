@@ -21,7 +21,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
         self.work_dir = self.root / "work"
-        self.installer = self.root / "ArcRho-Setup-1.2.13.exe"
+        self.installer = self.root / "Arco-Setup-1.2.13.exe"
         self.installer.write_bytes(b"installer payload")
         self.fragment_path = self.root / "release-manager.json"
         self.fragment_path.write_text(
@@ -54,7 +54,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             return_value=[self.fragment],
         ):
             manifest_path, manifest = release_workflow.capture_built_release(
-                "ArcRho",
+                "Arco",
                 "1.2.13",
                 self.installer,
                 work_dir=self.work_dir,
@@ -72,7 +72,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             return_value=[self.fragment],
         ):
             _, manifest = release_workflow.capture_built_release(
-                "ArcRho",
+                "Arco",
                 "1.2.13",
                 self.installer,
                 work_dir=self.work_dir,
@@ -114,8 +114,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         payload = json.dumps(
             [
                 {
-                    "tag_name": "ArcRho-v1.2.13",
-                    "name": "ArcRho 1.2.13",
+                    "tag_name": "Arco-v1.2.13",
+                    "name": "Arco 1.2.13",
                     "published_at": "2026-08-14T12:00:00Z",
                     "html_url": "https://example.invalid/arcrho",
                 },
@@ -132,31 +132,31 @@ class ReleaseWorkflowTests(unittest.TestCase):
             "_run_checked",
             return_value=payload,
         ):
-            history = release_workflow.list_release_history("ArcRho")
+            history = release_workflow.list_release_history("Arco")
 
-        self.assertEqual([item["tag"] for item in history], ["ArcRho-v1.2.13"])
+        self.assertEqual([item["tag"] for item in history], ["Arco-v1.2.13"])
 
     def test_history_is_ordered_newest_first_with_undated_drafts_last(self) -> None:
         payload = json.dumps(
             [
                 {
-                    "tag_name": "ArcRho-v1.2.11",
+                    "tag_name": "Arco-v1.2.11",
                     "published_at": "2026-08-11T08:00:00Z",
                     "html_url": "https://example.invalid/1.2.11",
                 },
                 {
-                    "tag_name": "ArcRho-v1.2.14",
+                    "tag_name": "Arco-v1.2.14",
                     "draft": True,
                     "published_at": None,
                     "html_url": "https://example.invalid/1.2.14",
                 },
                 {
-                    "tag_name": "ArcRho-v1.2.13",
+                    "tag_name": "Arco-v1.2.13",
                     "published_at": "2026-08-14T12:00:00Z",
                     "html_url": "https://example.invalid/1.2.13",
                 },
                 {
-                    "tag_name": "ArcRho-v1.2.12",
+                    "tag_name": "Arco-v1.2.12",
                     "published_at": "2026-08-12T09:30:00Z",
                     "html_url": "https://example.invalid/1.2.12",
                 },
@@ -167,7 +167,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             "_run_checked",
             return_value=payload,
         ):
-            history = release_workflow.list_release_history("ArcRho")
+            history = release_workflow.list_release_history("Arco")
 
         self.assertEqual(
             [item["version"] for item in history],
@@ -193,7 +193,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             return_value=[self.fragment],
         ):
             _, manifest = release_workflow.capture_built_release(
-                "ArcRho",
+                "Arco",
                 "1.2.13",
                 self.installer,
                 work_dir=self.work_dir,
@@ -219,7 +219,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
                 "_run_repository_bookkeeping",
             ) as bookkeeping:
                 result = release_workflow.publish_pending_release(
-                    "ArcRho",
+                    "Arco",
                     "1.2.13",
                     work_dir=self.work_dir,
                 )
@@ -233,9 +233,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_revoke_uses_cleanup_tag_after_history_confirmation(self) -> None:
         commands: list[list[str]] = []
         record = {
-            "product": "ArcRho",
+            "product": "Arco",
             "version": "1.2.13",
-            "tag": "ArcRho-v1.2.13",
+            "tag": "Arco-v1.2.13",
         }
         with mock.patch.object(release_workflow, "list_release_history", return_value=[record]), mock.patch.object(
             release_workflow,
@@ -246,12 +246,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
             "_run_checked",
             side_effect=lambda command, **_kwargs: commands.append(command) or "",
         ):
-            release_workflow.revoke_remote_release("ArcRho", "1.2.13", work_dir=self.work_dir)
+            release_workflow.revoke_remote_release("Arco", "1.2.13", work_dir=self.work_dir)
 
         self.assertEqual(len(commands), 1)
         self.assertIn("--cleanup-tag", commands[0])
         self.assertIn("--yes", commands[0])
-        self.assertIn("ArcRho-v1.2.13", commands[0])
+        self.assertIn("Arco-v1.2.13", commands[0])
 
 
 if __name__ == "__main__":

@@ -92,7 +92,7 @@ IMPORT_HEARTBEAT_INTERVAL_SECONDS = 1.0
 # closes those out; otherwise the UI waits on an import that will never report.
 RESQ_IMPORT_STATUS_STALE_SECONDS = 120.0
 RESQ_IMPORT_ORPHANED_STATUS_MESSAGE = (
-    "The ArcRho Bridge stopped before this import finished. The live reserving "
+    "The Arco Bridge stopped before this import finished. The live reserving "
     "class was left unchanged; import it again."
 )
 
@@ -122,7 +122,7 @@ _RESQ_SYNC_REQUIRED_FIELDS = RESQ_SYNC_CONTRACT["required_request_fields"]
 _RESQ_SYNC_ALLOWED_PHASES = frozenset(RESQ_SYNC_CONTRACT["allowed_phases"])
 _RESQ_SYNC_SELECTION_FIELD = RESQ_SYNC_CONTRACT["selection_field"]
 RESQ_SYNC_ORPHANED_STATUS_MESSAGE = (
-    "The ArcRho Bridge stopped before this synchronization finished. Compare the "
+    "The Arco Bridge stopped before this synchronization finished. Compare the "
     "reserving class again to see what was applied."
 )
 
@@ -347,7 +347,7 @@ def run_bridge_supervisor():
     # the same user exits here; other users' bridges are never touched.
     current_user = os.getlogin()
     if same_user_bridge_is_running(current_user):
-        print(f"An ArcRho Bridge is already running for {current_user}; exiting.")
+        print(f"An Arco Bridge is already running for {current_user}; exiting.")
         return
 
     bridge_id = make_instance_id(BRIDGE_ROLE)
@@ -445,7 +445,7 @@ def _validate_resq_import_rc_path(rc_path):
         or any(part in {"", ".", ".."} for part in segments)
     ):
         raise ValueError(
-            "Path must be a relative Windows ArcRho reserving-class path without '..'."
+            "Path must be a relative Windows Arco reserving-class path without '..'."
         )
     return normalized_path
 
@@ -1214,7 +1214,7 @@ def run_bridge_worker():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run ArcRho Bridge.")
+    parser = argparse.ArgumentParser(description="Run Arco Bridge.")
     parser.add_argument("--worker", action="store_true", help="Run as the ResQ-connected bridge worker.")
     args = parser.parse_args()
 

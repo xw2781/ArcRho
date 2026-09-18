@@ -55,7 +55,7 @@ class ResqSyncPlanTests(unittest.TestCase):
             (
                 [_item(timestamp=200)],
                 [_item(timestamp=100)],
-                "ArcRho newer",
+                "Arco newer",
                 sync.ACTION_ARCRHO_TO_RESQ,
                 True,
             ),
@@ -113,7 +113,7 @@ class ResqSyncPlanTests(unittest.TestCase):
             [_item(timestamp=110)],
             state,
         )[0]
-        self.assertEqual(local_changed["status"], "ArcRho changed")
+        self.assertEqual(local_changed["status"], "Arco changed")
         self.assertEqual(local_changed["action"], sync.ACTION_ARCRHO_TO_RESQ)
 
     def _baselined_state(self):
@@ -153,7 +153,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         state = self._baselined_state()
         before = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=100)], state)
         after = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=150)], state)
-        self.assertEqual(before[0]["status"], "ArcRho changed")
+        self.assertEqual(before[0]["status"], "Arco changed")
 
         updated, absorbed = sync.absorb_propagated_changes(state, before, after, keys=["paid loss"])
 
@@ -161,7 +161,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         entry = updated["items"]["paid loss"]
         self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (200.0, 150.0))
         replan = sync.build_sync_plan([_item(timestamp=300)], [_item(timestamp=150)], updated)
-        self.assertEqual(replan[0]["status"], "ArcRho changed")
+        self.assertEqual(replan[0]["status"], "Arco changed")
 
     def test_a_row_without_a_baseline_is_baselined_only_from_matching_timestamps(self):
         empty = sync.empty_sync_state("Demo", r"Auto\PP", "ResQ Demo")
@@ -212,7 +212,7 @@ class ResqSyncPlanTests(unittest.TestCase):
             _baseline(),
         )[0]
 
-        self.assertEqual(row["status"], "ArcRho changed")
+        self.assertEqual(row["status"], "Arco changed")
         self.assertEqual(row["action"], sync.ACTION_ARCRHO_TO_RESQ)
         self.assertFalse(row["review"])
         self.assertTrue(row["selected"])
@@ -227,7 +227,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertEqual(row["status"], "Both changed")
         self.assertEqual(row["action"], sync.ACTION_RESQ_TO_ARCRHO)
         self.assertTrue(row["review"])
-        self.assertIn("overwrites this ArcRho change", row["detail"])
+        self.assertIn("overwrites this Arco change", row["detail"])
         self.assertTrue(row["selected"])
         self.assertFalse(row["disabled"])
 
@@ -253,7 +253,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         )
         by_name = {row["name"]: row for row in plan}
         agreeing = by_name["Paid Loss"]
-        self.assertEqual((agreeing["status"], agreeing["action"]), ("ArcRho newer", sync.ACTION_ARCRHO_TO_RESQ))
+        self.assertEqual((agreeing["status"], agreeing["action"]), ("Arco newer", sync.ACTION_ARCRHO_TO_RESQ))
         self.assertFalse(agreeing["review"])
         # The row's own timestamps point the other way: it is still pushed
         # with the class, ticked, but marked so the person reads it first.
@@ -262,7 +262,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertTrue(disagreeing["review"])
         self.assertTrue(disagreeing["selected"])
         self.assertFalse(disagreeing["disabled"])
-        self.assertIn("ArcRho copy overwrites this ResQ change", disagreeing["detail"])
+        self.assertIn("Arco copy overwrites this ResQ change", disagreeing["detail"])
 
     def test_matching_or_unknown_latest_timestamps_give_no_direction(self):
         matching = sync.build_sync_plan(
@@ -271,7 +271,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         )
         self.assertEqual(sync.plan_direction(matching)["direction"], "")
         self.assertEqual([row["action"] for row in matching], ["", ""])
-        self.assertEqual([row["status"] for row in matching], ["ResQ newer", "ArcRho newer"])
+        self.assertEqual([row["status"] for row in matching], ["ResQ newer", "Arco newer"])
         self.assertTrue(all(row["disabled"] for row in matching))
 
         unknown = sync.build_sync_plan([_item(timestamp=None)], [_item(timestamp=100)])
@@ -481,7 +481,7 @@ class ResqSyncPlanTests(unittest.TestCase):
         self.assertIn("No baseline is recorded yet", resq_newer["detail"])
 
         arcrho_newer = sync.export_review(_item(timestamp=200), _item(timestamp=100), None)
-        self.assertEqual(arcrho_newer["status"], "ArcRho newer")
+        self.assertEqual(arcrho_newer["status"], "Arco newer")
         self.assertFalse(arcrho_newer["overwrites_edit"])
 
         self.assertEqual(

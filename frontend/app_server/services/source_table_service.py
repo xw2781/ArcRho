@@ -133,7 +133,7 @@ def _save_configured_csv_path(project_name: str, csv_path: str) -> None:
     payload = _read_json_object(mapping_path)
     payload["project_name"] = project_name
     # Saved as the share it stands for, never as this machine's drive letter:
-    # the ArcRho Server host performs the import for a shared path and has no
+    # the Arco Server host performs the import for a shared path and has no
     # such mapping of its own.
     payload["table_path"] = normalize_import_source_path(csv_path)
     payload.setdefault("rows", [])
@@ -177,7 +177,7 @@ def record_refresh_scope(
 ) -> Dict[str, Any]:
     """Remember what the Engine refresh just covered, for the next import.
 
-    Written by the refresh job on the ArcRho Server host, so the record names
+    Written by the refresh job on the Arco Server host, so the record names
     the scope that actually ran rather than one a client asked for. It is
     project-owned and shared by every user of the project: the Import Scope
     step opens on it whoever imports next.
@@ -286,7 +286,7 @@ def _quote_object_name(table: str) -> str:
 
 
 # --- Shared connection history -------------------------------------------
-# The history file is shared by every user of this ArcRho Server, so writes are
+# The history file is shared by every user of this Arco Server, so writes are
 # serialized in-process and committed atomically.
 _CONNECTIONS_LOCK = threading.Lock()
 
@@ -742,7 +742,7 @@ def get_source_file_status(project_name: str) -> Dict[str, Any]:
 
     The import record only holds what the file's modified time was when the
     copy was taken, so the Source Data details panel asks the file itself. The
-    stat runs here rather than on the ArcRho Server host because an import
+    stat runs here rather than on the Arco Server host because an import
     source is not project data: the configured path may be a Client PC drive
     the server cannot see, which is the same reason
     `resolve_import_source_for_server` exists.
@@ -776,7 +776,7 @@ def get_source_file_status(project_name: str) -> Dict[str, Any]:
 
 
 def resolve_import_source_for_server(project_name: str) -> Dict[str, Any]:
-    """Report whether the ArcRho Server host can perform this project's import.
+    """Report whether the Arco Server host can perform this project's import.
 
     A CSV path saved before this contract existed - or saved by a client whose
     drive mapping was not resolvable at the time - can still be this machine's

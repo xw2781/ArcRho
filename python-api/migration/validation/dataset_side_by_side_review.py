@@ -371,9 +371,9 @@ def _build_record(
     if arcrho is not None and arcrho.get("error"):
         note_parts.append(arcrho["error"])
     if arcrho is None:
-        note_parts.append(f"{kind.lower()} exists in ResQ but ArcRho holds no sidecar for it")
+        note_parts.append(f"{kind.lower()} exists in ResQ but Arco holds no sidecar for it")
     if resq_payload is None:
-        note_parts.append(f"{kind.lower()} is persisted in ArcRho but was not found in ResQ")
+        note_parts.append(f"{kind.lower()} is persisted in Arco but was not found in ResQ")
 
     resq_values = resq_payload.get("values") if resq_payload else None
     origin_labels = [str(label) for label in (resq_payload or {}).get("origin_labels", []) or []]
@@ -386,7 +386,7 @@ def _build_record(
     resq_shape = _matrix_shape(resq_values)
     if arcrho_values is not None and resq_values is not None and arcrho_shape != resq_shape:
         note_parts.append(
-            f"shape differs: ArcRho {arcrho_shape[0]}x{arcrho_shape[1]}, ResQ {resq_shape[0]}x{resq_shape[1]}"
+            f"shape differs: Arco {arcrho_shape[0]}x{arcrho_shape[1]}, ResQ {resq_shape[0]}x{resq_shape[1]}"
         )
 
     row_count = max(arcrho_shape[0], resq_shape[0])
@@ -442,7 +442,7 @@ def _build_record(
         diff_matrix.append(d_row)
 
     if only_arcrho_cells:
-        note_parts.append(f"{only_arcrho_cells} cell(s) with a value in ArcRho only")
+        note_parts.append(f"{only_arcrho_cells} cell(s) with a value in Arco only")
     if only_resq_cells:
         note_parts.append(f"{only_resq_cells} cell(s) with a value in ResQ only")
 
@@ -596,9 +596,9 @@ def _write_dataset_block(sheet, start_row: int, record: dict, styles: dict) -> t
                 start_row=group_row, start_column=col, end_row=group_row, end_column=col + column_count - 1
             )
 
-    _group_header(arcrho_start_col, "ArcRho")
+    _group_header(arcrho_start_col, "Arco")
     _group_header(resq_start_col, "ResQ")
-    _group_header(diff_start_col, "Diff (ArcRho − ResQ)")
+    _group_header(diff_start_col, "Diff (Arco − ResQ)")
 
     sheet.cell(row=label_row, column=origin_col, value="Origin").font = styles["bold"]
     for j in range(column_count):
@@ -726,7 +726,7 @@ def write_workbook(
         "Kind",
         "Dataset",
         "Source",
-        "ArcRho Shape",
+        "Arco Shape",
         "ResQ Shape",
         "Max Abs Diff",
         "Max Rel Diff",

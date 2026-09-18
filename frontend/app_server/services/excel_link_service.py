@@ -5,7 +5,7 @@ by saved dataset sidecars (``external_links``) and saved DFM methods (Ratios
 User Entry ``inputs``) in one reserving class, and can repoint every reference
 from one workbook file to another.
 
-Both halves run on the ArcRho Server host, never against a Client PC's mapped
+Both halves run on the Arco Server host, never against a Client PC's mapped
 drives: the listing is a hosted workspace read (so "found" means the server
 can open the workbook, and each usage's ``status`` says whether the workbook
 was saved after the file holding its linked values) and the retarget is an
@@ -1180,7 +1180,7 @@ def _collect_file_results(
     return results
 
 
-WORKBOOK_UNREADABLE_PREFIX = "ArcRho Server cannot open the selected workbook"
+WORKBOOK_UNREADABLE_PREFIX = "Arco Server cannot open the selected workbook"
 
 
 def retarget_reserving_class_workbook(
@@ -1192,7 +1192,7 @@ def retarget_reserving_class_workbook(
     """Repoint every reference from one workbook to another and refresh the class.
 
     Registered as the ``excel_link_retarget`` hosted-save kind, so it runs on
-    ArcRho Engine under the reserving-class lease. The new workbook is opened
+    Arco Engine under the reserving-class lease. The new workbook is opened
     on that host and refused with 400 when it cannot be — a Client PC's view of
     the path is never consulted. Every affected dataset and DFM is then
     rewritten, refreshed from the new workbook in one deduplicated batch, and

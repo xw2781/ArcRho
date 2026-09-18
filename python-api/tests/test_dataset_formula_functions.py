@@ -16,7 +16,7 @@ from arcrho_api.dataset_link_contract import (
 )
 
 MATRICES = {"[A][1:4]": {"rows": 4, "cols": 1, "values": [[None], [0], [2], [4]]}}
-MATRICES['ArcRhoTri(, "Paid")'] = {"rows": 2, "cols": 2, "values": [[1, 2], [3, None]]}
+MATRICES['ArcoTri(, "Paid")'] = {"rows": 2, "cols": 2, "values": [[1, 2], [3, None]]}
 CASES = [
     ("=sum(1,2,3)", [[6]]), ("=MIN(3,-1,8)", [[-1]]), ("=MAX(3,-1,8)", [[8]]),
     ("=MEDIAN(9,1,3,5)", [[4]]), ("=AVERAGE(0,4,8)", [[4]]),
@@ -40,7 +40,7 @@ CASES = [
     ('=IFERROR(TAKE({1,2},0),9)', [[9]]),
     ('=IFERROR(INDEX({1,2},8),9)', [[9]]),
     ('=ROUND(1.5)', [[2]]),
-    ('=INDEX(ArcRhoTri(,"Paid"),2,1)', [[3]]),
+    ('=INDEX(ArcoTri(,"Paid"),2,1)', [[3]]),
 ]
 
 

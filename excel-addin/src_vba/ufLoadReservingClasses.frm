@@ -315,12 +315,12 @@ Private Sub cmdSelect_Click()
         Exit Sub
     End If
 
-    ' 1) If active cell itself is ArcRho or legacy alias formula -> update its second arg
+    ' 1) If active cell itself is an Arco formula -> update its second arg
     If tgt.HasFormula And IsArcRhoFormula(tgt.Formula2) Then
         If UpdateArcRhoArg(1, tgt, result) Then Exit Sub
     End If
 
-    ' 2) If active cell is inside a spill from an ArcRho or legacy alias formula -> update that owner
+    ' 2) If active cell is inside a spill from an Arco formula -> update that owner
     Set owner = FindArcRhoOwnerForCell(tgt)
     If Not owner Is Nothing Then
         If UpdateArcRhoArg(1, owner, result) Then Exit Sub

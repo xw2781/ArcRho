@@ -73,7 +73,7 @@ ShowUninstDetails show
   StrCpy $ArcRhoInstallExcelAddIn "1"
   Call ArcRho_DetectServerRoot
   ; Launching the data engine only makes sense on the computer that hosts the
-  ; ArcRho Server folder; a network-drive root means the services run elsewhere.
+  ; Arco Server folder; a network-drive root means the services run elsewhere.
   StrCpy $ArcRhoLaunchDataEngine "0"
   ${If} $ArcRhoServerRootIsLocal == "1"
   ${AndIf} $ArcRhoDataEngineInstalled == "1"
@@ -85,7 +85,7 @@ ShowUninstDetails show
     InitPluginsDir
     File /oname=$PLUGINSDIR\ArcRhoInstallerProgress.exe "${PROJECT_DIR}\build\generated\ArcRhoInstallerProgress.exe"
   ${EndIf}
-  DetailPrint "===== Installing ArcRho ====="
+  DetailPrint "===== Installing Arco Workspace ====="
   DetailPrint "Preparing installation..."
 !macroend
 
@@ -212,7 +212,7 @@ ShowUninstDetails show
     ${AndIf} $1 != ""
       StrCpy $ArcRhoServerRoot $1
       StrCpy $ArcRhoServerRootDetected "1"
-      DetailPrint "Configured ArcRho Server folder: $ArcRhoServerRoot"
+      DetailPrint "Configured Arco Server folder: $ArcRhoServerRoot"
     ${EndIf}
   FunctionEnd
 
@@ -259,21 +259,21 @@ ShowUninstDetails show
     ; The nsDialogs inner page is only ~140u tall, so every control below stays
     ; inside that box: intro at 0u, the server-root block at 16u-46u, the shared
     ; delivery note at 56u and the option checkboxes at 76u.
-    ${NSD_CreateLabel} 0 0 100% 10u "ArcRho can register the Excel add-in and start data engine components."
+    ${NSD_CreateLabel} 0 0 100% 10u "Arco can register the Excel add-in and start data engine components."
     Pop $1
 
     ${If} $ArcRhoServerRootDetected == "1"
-      ${NSD_CreateLabel} 0 16u 100% 10u "ArcRho Server folder: $ArcRhoServerRoot"
+      ${NSD_CreateLabel} 0 16u 100% 10u "Arco Server folder: $ArcRhoServerRoot"
       Pop $1
       ${If} $ArcRhoServerRootIsLocal != "1"
         ${NSD_CreateLabel} 0 28u 100% 18u "This folder is on a network drive, so the data engine runs on the PC that hosts it and cannot be started from here."
         Pop $1
       ${ElseIf} $ArcRhoDataEngineInstalled != "1"
-        ${NSD_CreateLabel} 0 28u 100% 18u "No server components found here. Use ArcRho Server Components Setup on the host PC."
+        ${NSD_CreateLabel} 0 28u 100% 18u "No server components found here. Use Arco Server Components Setup on the host PC."
         Pop $1
       ${EndIf}
     ${Else}
-      ${NSD_CreateLabel} 0 16u 100% 10u "Drive for the ArcRho Server folder:"
+      ${NSD_CreateLabel} 0 16u 100% 10u "Drive for the Arco Server folder:"
       Pop $1
       ${NSD_CreateDropList} 0 28u 60u 80u ""
       Pop $ArcRhoServerDriveDropList
@@ -309,13 +309,13 @@ ShowUninstDetails show
     ${NSD_CreateLabel} 0 56u 100% 18u "Server binaries are delivered separately and are never installed or removed by this setup."
     Pop $1
 
-    ${NSD_CreateCheckbox} 0 76u 48% 20u "Install ArcRho Excel add-in"
+    ${NSD_CreateCheckbox} 0 76u 48% 20u "Install Arco Excel add-in"
     Pop $ArcRhoInstallExcelAddInCheckbox
     ${If} $ArcRhoInstallExcelAddIn == "1"
       ${NSD_Check} $ArcRhoInstallExcelAddInCheckbox
     ${EndIf}
 
-    ${NSD_CreateCheckbox} 50% 76u 50% 20u "Launch ArcRho data engine at login"
+    ${NSD_CreateCheckbox} 50% 76u 50% 20u "Launch Arco data engine at login"
     Pop $ArcRhoLaunchDataEngineCheckbox
     ${If} $ArcRhoServerRootIsLocal == "1"
     ${AndIf} $ArcRhoDataEngineInstalled == "1"
@@ -361,7 +361,7 @@ ShowUninstDetails show
   Function ArcRho_InstFiles_Show
     !insertmacro MUI_HEADER_TEXT "" "$(MUI_TEXT_INSTALLING_SUBTITLE)"
     !insertmacro ArcRho_PrintInstallDetail "Installer progress monitoring started."
-    !insertmacro ArcRho_PrintInstallDetail "Preparing destination and installing ArcRho files..."
+    !insertmacro ArcRho_PrintInstallDetail "Preparing destination and installing Arco Workspace files..."
     FindWindow $0 "#32770" "" $HWNDPARENT
     GetDlgItem $1 $0 1004
     GetDlgItem $2 $0 1006
@@ -424,14 +424,14 @@ ShowUninstDetails show
     Call ArcRho_SetExcelAddInPath
 
     ${If} $ArcRhoExcelAddInPath == ""
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation skipped because no ArcRho Server root was selected or detected."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Excel add-in installation skipped because no Arco Server root was selected or detected."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be installed automatically because no ArcRho Server root was selected or detected."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Arco was installed, but the Excel add-in could not be installed automatically because no Arco Server root was selected or detected."
       ${EndIf}
       Return
     ${EndIf}
 
-    !insertmacro ArcRho_PrintInstallDetail "Installing ArcRho Excel add-in..."
+    !insertmacro ArcRho_PrintInstallDetail "Installing Arco Excel add-in..."
     !insertmacro ArcRho_PrintInstallDetail "Excel add-in path: $ArcRhoExcelAddInPath"
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -STA -File "$PLUGINSDIR\install_arcrho_excel_addin.ps1" -AddInPath "$ArcRhoExcelAddInPath"'
     Pop $0
@@ -442,17 +442,17 @@ ShowUninstDetails show
     ${EndIf}
 
     ${If} $0 == 0
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installed."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Excel add-in installed."
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Excel add-in installation failed with exit code $0."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Excel add-in installation failed with exit code $0."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the Excel add-in could not be registered automatically.$\r$\n$\r$\nTo add it manually, open Excel and go to File > Options > Add-ins, set Manage to Excel Add-ins, click Go, then Browse to:$\r$\n$ArcRhoExcelAddInPath$\r$\nIf Excel offers to copy the add-in to your local add-ins folder, choose No.$\r$\n$\r$\nThis usually means Excel is not allowed to run the add-in installer from that folder. In Excel, go to File > Options > Trust Center > Trust Center Settings > Trusted Locations, tick $\"Allow Trusted Locations on my network$\", then click Add new location and add:$\r$\n$ArcRhoServerRoot\Excel Add-ins$\r$\nwith $\"Subfolders of this location are also trusted$\" ticked."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Arco was installed, but the Excel add-in could not be registered automatically.$\r$\n$\r$\nTo add it manually, open Excel and go to File > Options > Add-ins, set Manage to Excel Add-ins, click Go, then Browse to:$\r$\n$ArcRhoExcelAddInPath$\r$\nIf Excel offers to copy the add-in to your local add-ins folder, choose No.$\r$\n$\r$\nThis usually means Excel is not allowed to run the add-in installer from that folder. In Excel, go to File > Options > Trust Center > Trust Center Settings > Trusted Locations, tick $\"Allow Trusted Locations on my network$\", then click Add new location and add:$\r$\n$ArcRhoServerRoot\Excel Add-ins$\r$\nwith $\"Subfolders of this location are also trusted$\" ticked."
       ${EndIf}
     ${EndIf}
   FunctionEnd
 
   Function ArcRho_LaunchDataEngineComponents
-    ; ArcRho Launcher owns the startup registration and service launch: it
+    ; Arco Launcher owns the startup registration and service launch: it
     ; recreates its own shortcut in the user's Startup folder and then starts
     ; the orchestrator and bridge, so the installer only needs to run it.
     StrCpy $0 "$ArcRhoServerRoot\apps\ArcRho Launcher\ArcRho Launcher.exe"
@@ -461,24 +461,24 @@ ShowUninstDetails show
     ${EndIf}
 
     ${IfNot} ${FileExists} "$0"
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho data engine launch skipped because no ArcRho Launcher was found under $ArcRhoServerRoot\apps."
+      !insertmacro ArcRho_PrintInstallDetail "Arco data engine launch skipped because no Arco Launcher was found under $ArcRhoServerRoot\apps."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but no server components were found under $ArcRhoServerRoot\apps. Run ArcRho Server Components Setup on the PC that locally hosts this workspace."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Arco was installed, but no server components were found under $ArcRhoServerRoot\apps. Run Arco Server Components Setup on the PC that locally hosts this workspace."
       ${EndIf}
       Return
     ${EndIf}
 
-    !insertmacro ArcRho_PrintInstallDetail "Starting ArcRho data engine components..."
-    !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher: $0"
+    !insertmacro ArcRho_PrintInstallDetail "Starting Arco data engine components..."
+    !insertmacro ArcRho_PrintInstallDetail "Arco Launcher: $0"
     ClearErrors
     Exec '"$0"'
     ${If} ${Errors}
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher could not be started."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Launcher could not be started."
       ${IfNot} ${Silent}
-        MessageBox MB_ICONEXCLAMATION|MB_OK "ArcRho was installed, but the data engine components could not be started. You can start them manually from $0."
+        MessageBox MB_ICONEXCLAMATION|MB_OK "Arco was installed, but the data engine components could not be started. You can start them manually from $0."
       ${EndIf}
     ${Else}
-      !insertmacro ArcRho_PrintInstallDetail "ArcRho Launcher started; it registers itself in the Startup folder and launches the data engine services."
+      !insertmacro ArcRho_PrintInstallDetail "Arco Launcher started; it registers itself in the Startup folder and launches the data engine services."
     ${EndIf}
   FunctionEnd
 

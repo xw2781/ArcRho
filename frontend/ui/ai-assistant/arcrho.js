@@ -49,7 +49,7 @@ function getArcRhoAppContextTooltipRows(context, fallback = {}) {
 }
 
 configureAiAssistant({
-  appName: "ArcRho",
+  appName: "Arco",
   botName: "ArcBot",
   messageNamespace: "arcrho",
   storagePrefix: "arcrho",

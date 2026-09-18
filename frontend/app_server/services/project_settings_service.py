@@ -471,7 +471,7 @@ def _submit_project_duplication_locked(
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
         write_json_atomic(request_path, request)
@@ -566,7 +566,7 @@ def _resume_project_duplication_submission(
                     "stage": "queued",
                     "completed": 0,
                     "total": 0,
-                    "label": "Queued for ArcRho Engine",
+                    "label": "Queued for Arco Engine",
                 },
             )
         if published_request is None:
@@ -656,7 +656,7 @@ def _project_duplication_workspace_layout() -> tuple[Path, str]:
     server_root_value = str(workspace.get("workspace_root") or "").strip()
     paths = workspace.get("paths")
     if not server_root_value or not isinstance(paths, dict):
-        raise HTTPException(500, "The ArcRho Server workspace is not configured.")
+        raise HTTPException(500, "The Arco Server workspace is not configured.")
     try:
         projects_directory = validate_projects_directory(
             paths.get("projects_dir") or "projects"
@@ -664,21 +664,21 @@ def _project_duplication_workspace_layout() -> tuple[Path, str]:
     except ProjectDuplicationContractError as error:
         raise HTTPException(
             500,
-            "The configured ArcRho projects directory is unsafe.",
+            "The configured Arco projects directory is unsafe.",
         ) from error
 
     server_root = Path(server_root_value).expanduser()
     if not server_root.is_absolute():
-        raise HTTPException(500, "The ArcRho Server workspace root must be absolute.")
+        raise HTTPException(500, "The Arco Server workspace root must be absolute.")
     try:
         root_available = server_root.is_dir()
     except OSError as error:
         raise HTTPException(
             500,
-            "The ArcRho Server workspace root is inaccessible.",
+            "The Arco Server workspace root is inaccessible.",
         ) from error
     if not root_available:
-        raise HTTPException(500, "The ArcRho Server workspace root is unavailable.")
+        raise HTTPException(500, "The Arco Server workspace root is unavailable.")
     _validate_project_duplication_protocol_paths(server_root)
     configured_projects_key = _project_duplication_path_identity(
         config.PROJECT_SETTINGS_DIR
@@ -689,7 +689,7 @@ def _project_duplication_workspace_layout() -> tuple[Path, str]:
     if configured_projects_key != canonical_projects_key:
         raise HTTPException(
             500,
-            "The ArcRho Engine projects-folder configuration is invalid.",
+            "The Arco Engine projects-folder configuration is invalid.",
         )
     return server_root, projects_directory
 
@@ -835,7 +835,7 @@ def get_duplicate_project_folder_status(
     except json.JSONDecodeError as error:
         raise HTTPException(
             502,
-            "ArcRho Engine published an invalid project duplication status.",
+            "Arco Engine published an invalid project duplication status.",
         ) from error
     except OSError as error:
         raise HTTPException(
@@ -851,7 +851,7 @@ def get_duplicate_project_folder_status(
     except ProjectDuplicationContractError as error:
         raise HTTPException(
             502,
-            "ArcRho Engine published an invalid project duplication status.",
+            "Arco Engine published an invalid project duplication status.",
         ) from error
 
     return {

@@ -970,7 +970,7 @@ function createWindow() {
     thickFrame: true,  // Adds Windows border for resize handles and visibility on Win10
     show: false,  // Hidden until splash closes
     backgroundColor: startupBackgroundColor,
-    title: APP_MODE === "arcode" ? "Arcode" : "ArcRho",
+    title: APP_MODE === "arcode" ? "Arcode" : "Arco Workspace",
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
@@ -2103,7 +2103,7 @@ ipcMain.handle("window-restore-to-last", (event) => {
 
 app.whenReady().then(async () => {
   appendElectronLog(
-    `ArcRho startup begin. packaged=${app.isPackaged}; version=${app.getVersion()}; appPath=${app.getAppPath()}; resourcesPath=${process.resourcesPath}`
+    `Arco startup begin. packaged=${app.isPackaged}; version=${app.getVersion()}; appPath=${app.getAppPath()}; resourcesPath=${process.resourcesPath}`
   );
   registerBackendClient();
 
@@ -2146,12 +2146,12 @@ app.whenReady().then(async () => {
         // Deletes the installer this launch was produced by; it is still locked
         // while setup exits, so this runs after the window is up, not before.
         cleanupCompletedUpdateInstaller().catch((err) => {
-          console.warn(`ArcRho update installer cleanup failed: ${err?.message || err}`);
+          console.warn(`Arco update installer cleanup failed: ${err?.message || err}`);
         });
         if (APP_MODE !== "arcode") {
           setTimeout(() => {
             checkForStartupUpdate().catch((err) => {
-              console.warn(`ArcRho startup update check failed: ${err?.message || err}`);
+              console.warn(`Arco startup update check failed: ${err?.message || err}`);
             });
           }, 750);
         }
@@ -2163,7 +2163,7 @@ app.whenReady().then(async () => {
     console.error("Startup error:", err);
     closeSplash();
     dialog.showErrorBox(
-      "ArcRho startup failed",
+      "Arco startup failed",
       `${String(err?.message || err)}\n\nLog: ${getElectronLogPath()}`
     );
     app.quit();

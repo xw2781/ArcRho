@@ -1,7 +1,7 @@
-# ArcRho Excel Add-in
+# Arco Excel Add-in
 
-`ArcRho.xlam` is loaded from the ArcRho Server share, so every user runs the
-version that is on the share. Version 3.0.1 reads saved ArcRho results from the
+`ArcRho.xlam` is loaded from the Arco Server share, so every user runs the
+version that is on the share. Version 4.0.0 reads saved Arco results from the
 workbook and loads missing results when a formula is entered or edited. Server
 requests use HTTP; no worksheet function reads project data from the share.
 
@@ -19,7 +19,7 @@ dataset requests, source freshness checks, or Engine calculations. Ordinary
 Excel recalculation uses that workbook's snapshot; other spreadsheet formulas
 continue to calculate normally.
 
-Typing, editing, or pasting an ArcRho formula loads any missing request as soon
+Typing, editing, or pasting an Arco formula loads any missing request as soon
 as the entry is complete and adds the result to the workbook snapshot. This
 includes changing the formula's explicit project name. If the same request is
 already saved, the formula uses it without contacting the server or enrolling
@@ -61,14 +61,14 @@ commands follow the server policy for every dataset.
 
 - **The workspace share.** The add-in itself is loaded from it, and the shared
   library files listed at the end still come from it. Project data does not.
-- **A credential for the ArcRho Server**, at
-  `%APPDATA%\ArcRho\arcrho_gateway.json`. The add-in installs one for itself the
+- **A credential for the Arco Server**, at
+  `%APPDATA%\Arco\arcrho_gateway.json`. The add-in installs one for itself the
   first time an entered formula or a refresh needs server access, so reading a
   saved workbook needs no enrollment.
 
 ## The credential
 
-The file holds this Windows user's name, the address of the ArcRho Server's
+The file holds this Windows user's name, the address of the Arco Server's
 Gateway, and a secret. The matching entry lives in the shared registry at
 `<workspace>\config\arcrho_gateway.json`. Only a person who can write to that
 file under their own Windows account can add an entry to it, and that is how the
@@ -77,9 +77,9 @@ itself hands nothing out to a caller that can only reach its port.
 
 **It installs itself when server access is first needed.** When an entered
 formula has no saved result, or a refresh starts, and no credential file exists,
-the add-in runs `apps\ArcRho Credential\ArcRho Credential.exe`
+the add-in runs `apps\Arco Credential\Arco Credential.exe`
 from the share, hidden, and waits for it, with
-`Setting this PC up to read ArcRho data ...` in the loading window. The whole
+`Setting this PC up to read Arco data ...` in the loading window. The whole
 enrollment is paid once on a PC that has never had a credential. Opening and
 recalculating a saved snapshot does not run the helper.
 
@@ -96,7 +96,7 @@ Three things about that first run are deliberate:
 a command prompt, handing it the workspace folder:
 
 ```
-"\\Ne7saswpn02\e\ArcRho Server\apps\ArcRho Credential\ArcRho Credential.exe" "\\Ne7saswpn02\e\ArcRho Server"
+"\\Ne7saswpn02\e\Arco Server\apps\Arco Credential\Arco Credential.exe" "\\Ne7saswpn02\e\Arco Server"
 ```
 
 It prints one line and exits non-zero when it installed nothing:
@@ -105,7 +105,7 @@ It prints one line and exits non-zero when it installed nothing:
 | :--- | :--- |
 | `ArcRho credential installed: <path>` | Done. Restart Excel, then refresh the workbook. |
 | `ArcRho credential already present: <path>` | A credential file is already here and was left alone, whatever it says. |
-| `ArcRho Server has no Gateway address for clients to use.` | The server is not yet configured to be reached by clients. Ask the ArcRho team. |
+| `ArcRho Server has no Gateway address for clients to use.` | The server is not yet configured to be reached by clients. Ask the Arco team. |
 | `ArcRho credential not installed: <reason>` | The share or the Gateway could not be reached, or the registry could not be written. The reason is Windows' own. Nothing was written, so it is safe to try again. |
 
 ## Checking this PC
@@ -134,17 +134,17 @@ Refresh failures appear in Excel's status bar and preserve the previous
 snapshot. A failed formula-entry load also leaves previously saved results
 available. An existing formula absent from the snapshot during ordinary
 recalculation displays
-`(ArcRho: Refresh Worksheet or Refresh Workbook to load saved data.)`.
+`(Arco: Refresh Worksheet or Refresh Workbook to load saved data.)`.
 
 | Message | Cause and what to do |
 | :--- | :--- |
-| `This PC is not set up to load ArcRho data.` / `This PC is not set up to refresh ArcRho data.` | No usable credential on this PC: enrollment did not succeed, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
-| `Ask the ArcRho team to update the ArcRho Server.` | The server this PC reaches does not serve dataset figures over HTTP. The server has to be updated. |
-| `(ArcRho Server not reached: <reason>)` | The request never arrived. The reason is Windows' own — a timeout, a refused connection, no network. `no answer` means the server closed the connection without a reply. |
-| `(ArcRho Server <status>: <message>)` | The server answered and refused. The message is the server's own; the status says what kind of refusal it was. |
-| `(ArcRho Server sent an answer this add-in could not read.)` | The reply was not the JSON the add-in expects, which usually means something other than the ArcRho Server answered on that address. |
-| `(ArcRho Server answered without the dataset's figures.)` | The server accepted the request and reported success but sent no figures. |
-| `ArcRho error <number>: <description>` | The add-in itself failed inside Excel, before or after the server was involved. |
+| `This PC is not set up to load Arco data.` / `This PC is not set up to refresh Arco data.` | No usable credential on this PC: enrollment did not succeed, or the file says `"enabled": false`. Run the helper by hand as above, then restart Excel. |
+| `Ask the Arco team to update the Arco Server.` | The server this PC reaches does not serve dataset figures over HTTP. The server has to be updated. |
+| `(Arco Server not reached: <reason>)` | The request never arrived. The reason is Windows' own — a timeout, a refused connection, no network. `no answer` means the server closed the connection without a reply. |
+| `(Arco Server <status>: <message>)` | The server answered and refused. The message is the server's own; the status says what kind of refusal it was. |
+| `(Arco Server sent an answer this add-in could not read.)` | The reply was not the JSON the add-in expects, which usually means something other than the Arco Server answered on that address. |
+| `(Arco Server answered without the dataset's figures.)` | The server accepted the request and reported success but sent no figures. |
+| `Arco error <number>: <description>` | The add-in itself failed inside Excel, before or after the server was involved. |
 
 A failure the server itself reports includes its reason, such as a missing
 publication or a class currently being refreshed by the frontend.
@@ -153,9 +153,9 @@ publication or a class currently being refreshed by the frontend.
 
 | Message | Cause and what to do |
 | :--- | :--- |
-| `This PC is not set up to read ArcRho data. Ask the ArcRho team to give you access, then restart Excel.` | The same missing credential, said without brackets because it is shown in a box rather than a cell. |
+| `This PC is not set up to read Arco data. Ask the Arco team to give you access, then restart Excel.` | The same missing credential, said without brackets because it is shown in a box rather than a cell. |
 | `Unable to load dataset list:` followed by a reason | The list could not be fetched. The reason beneath it is one of the cell messages above, or one of the two below. |
-| `ArcRho Server answered without the project's dataset types.` | The server answered but not with the table the picker lists. |
+| `Arco Server answered without the project's dataset types.` | The server answered but not with the table the picker lists. |
 | `This project defines no dataset types.` | The project was read and has no dataset types configured. |
 | `Please connect and log in, then select a default project before using Select Datasets.` | Nothing is wrong with the server; the workbook has no default project selected yet. |
 
@@ -165,7 +165,7 @@ Moving project data to the server did not remove the drive mapping. These are
 still opened directly, so a PC that cannot reach the share loses them:
 
 - the add-in itself, `Excel Add-ins\ArcRho.xlam` and the beta beside it;
-- `apps\ArcRho Credential\ArcRho Credential.exe`, the first-run helper;
+- `apps\Arco Credential\Arco Credential.exe`, the first-run helper;
 - `library\INDEX_RSV_CLS_INPUT.csv`, the reserving-class list the Load Reserving
   Classes window offers;
 - `library\Version Track.docx`, opened by the About window;

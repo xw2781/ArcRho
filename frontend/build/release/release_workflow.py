@@ -32,7 +32,7 @@ RELEASE_ROOT = BUILD_ROOT / "release"
 PUBLISH_SCRIPT = RELEASE_ROOT / "publish_github_release.ps1"
 SYNC_SCRIPT = RELEASE_ROOT / "sync_published_release.py"
 
-PRODUCTS = ("ArcRho", "Arcode")
+PRODUCTS = ("Arco", "Arcode")
 MANIFEST_SCHEMA_VERSION = 1
 VERSION_SNAPSHOT_SCHEMA_VERSION = 1
 DEFAULT_RECENT_RELEASE_LIMIT = 20
@@ -388,7 +388,7 @@ def _validate_installer(manifest: dict[str, Any]) -> Path:
 def _validate_python_api_wheel(manifest: dict[str, Any]) -> tuple[Path, Path]:
     wheel = manifest.get("python_api_wheel")
     if not isinstance(wheel, dict):
-        raise ReleaseWorkflowError("Pending ArcRho release has no valid Python API wheel.")
+        raise ReleaseWorkflowError("Pending Arco release has no valid Python API wheel.")
     wheel_path = Path(str(wheel.get("path", ""))).expanduser()
     package_dir = Path(str(wheel.get("package_dir", ""))).expanduser()
     expected_hash = str(wheel.get("sha256", "")).strip().lower()
@@ -399,7 +399,7 @@ def _validate_python_api_wheel(manifest: dict[str, Any]) -> tuple[Path, Path]:
             "The built Python API wheel changed after it was recorded. Rebuild before publishing."
         )
     if not str(package_dir):
-        raise ReleaseWorkflowError("Pending ArcRho release has no Python API package destination.")
+        raise ReleaseWorkflowError("Pending Arco release has no Python API package destination.")
     return wheel_path.resolve(), package_dir
 
 
@@ -684,7 +684,7 @@ def publish_pending_release(
         )
         _write_json(manifest_path, manifest)
 
-    if manifest["product"] == "ArcRho":
+    if manifest["product"] == "Arco":
         wheel_path, package_dir = _validate_python_api_wheel(manifest)
         if output:
             output(f"Publishing Python API wheel to {package_dir}...")
@@ -776,7 +776,7 @@ def _print_output(line: str) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Manage local ArcRho installers before and after GitHub publication."
+        description="Manage local Arco installers before and after GitHub publication."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

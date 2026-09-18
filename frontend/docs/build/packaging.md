@@ -99,14 +99,14 @@ Electron main entry: `electron/main.js`
 6. If a packaged build fails, inspect the newest `build_<product>_via_local_workspace_<timestamp>.log` in the log directory the entry point reported.
 7. If inspecting PyInstaller artifacts is needed, run `npm run build:python` or `npm run build:arcode:python` directly (the full build cleans them on success).
 8. If electron-builder is reinstalled or upgraded, rerun `npm run build:electron` or either release entry point; all paths reapply the ArcRho NSIS installer-progress patch before packaging.
-9. After validating a release installer outside the normal build flow, publish it to GitHub Releases (the source the desktop app actually checks) with `build\release\publish_github_release.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe -ReleaseNotes "<summary>"`, and optionally also to the backup network feed with `build\release\publish_update_feed.ps1 -InstallerPath dist\ArcRho-Setup-<version>.exe -ReleaseNotes "<summary>"`.
+9. After validating a release installer outside the normal build flow, publish it to GitHub Releases (the source the desktop app actually checks) with `build\release\publish_github_release.ps1 -InstallerPath dist\Arco-Setup-<version>.exe -ReleaseNotes "<summary>"`, and optionally also to the backup network feed with `build\release\publish_update_feed.ps1 -InstallerPath dist\Arco-Setup-<version>.exe -ReleaseNotes "<summary>"`.
 10. Build and publish the matching server-host companion separately with `py -3.10 server-components/server-installer/build_release.py` and `server-components/server-installer/publish_server_installer.ps1`; do not add its payload to Electron `extraResources` or `installer.nsh`.
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Packaging excludes can accidentally omit runtime files.
-- A frontend/server version mismatch can leave request-contract producers and workers out of sync. The server release builder rejects a version different from `frontend/package.json`, and publication requires the matching `ArcRho-v<version>` release.
+- A frontend/server version mismatch can leave request-contract producers and workers out of sync. The server release builder rejects a version different from `frontend/package.json`, and publication requires the matching `Arco-v<version>` release.
 - Divergence between dev and packaged paths causes startup failures.
 - With `asar: true`, `APP_ROOT` resolves inside `resources\app.asar`, a virtual path only Electron's patched `fs` can see. Windows cannot use it as a child-process working directory, and such a spawn fails as `spawn <command> ENOENT`, which misleadingly reads as a missing executable. `electron/main.js` therefore launches host commands from `getHostSpawnCwd()`, which skips `.asar` candidates and falls back to the app's user-data directory, and resolves `powershell.exe` under `%SystemRoot%` instead of relying on the inherited `PATH`.
 - Disabling `win.signAndEditExecutable` is intended for local unsigned launch testing; restore the normal resource-edit/signing path before preparing a polished release installer.

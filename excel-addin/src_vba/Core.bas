@@ -2,7 +2,7 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "3.0.1"
+Public Const ARCRHO_VERSION As String = "4.0.0"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -105,7 +105,7 @@ Public Function GetDataset(funcArgs As String) As Variant
     End If
     Exit Function
 Failed:
-    GetDataset = "(ArcRho: " & Err.Description & ")"
+    GetDataset = "(Arco: " & Err.Description & ")"
 End Function
 
 Public Sub LoadConfig()
@@ -241,13 +241,26 @@ Public Function ReadUtf8TextFile(ByVal filePath As String) As String
     stream.Close
 End Function
 
+' The workbook sheet that carries the default project name. A workbook set up
+' by an earlier version, or by ResQ itself, holds the ResQ spelling instead.
+Public Const SETTINGS_SHEET_NAME As String = "Arco Settings"
+Public Const LEGACY_SETTINGS_SHEET_NAME As String = "ResQ Settings"
+
+' The workbook's settings sheet under either spelling, or Nothing when it has neither.
+Public Function SettingsSheet(ByVal book As Workbook) As Worksheet
+    On Error Resume Next
+    Set SettingsSheet = book.Worksheets(SETTINGS_SHEET_NAME)
+    If SettingsSheet Is Nothing Then Set SettingsSheet = book.Worksheets(LEGACY_SETTINGS_SHEET_NAME)
+    On Error GoTo 0
+End Function
+
 Public Function SetDefaultProject(ByVal ProjectName As String)
     Dim tmpName As String
     Dim book As Workbook
     Set book = CallerWorkbook()
     ' SetProjectName
     If ProjectName = "Default" Then
-        tmpName = book.Sheets("ResQ Settings").Range("B7").Value
+        tmpName = SettingsSheet(book).Range("B7").Value
     Else
         tmpName = ProjectName
     End If

@@ -298,12 +298,12 @@ async function findAvailableUpdateFromReleases(releases, options = {}) {
     const checksumName = `${candidate.asset.name}.sha256`;
     const checksumAsset = candidate.assets.find((entry) => entry?.name === checksumName);
     if (!checksumAsset) {
-      console.warn(`ArcRho update asset is missing a SHA-256 checksum asset: ${candidate.asset.name}`);
+      console.warn(`Arco update asset is missing a SHA-256 checksum asset: ${candidate.asset.name}`);
       issue = issue || createUpdateIssue(
         "missing-checksum",
         candidate.version,
         candidate.asset.name,
-        "ArcRho found a newer installer, but it is missing a SHA-256 checksum.",
+        "Arco found a newer installer, but it is missing a SHA-256 checksum.",
         `Add a ${checksumName} asset to the release.`
       );
       continue;
@@ -311,12 +311,12 @@ async function findAvailableUpdateFromReleases(releases, options = {}) {
 
     const sha256 = parseSha256Text(await readAssetText(checksumAsset.browser_download_url));
     if (!sha256) {
-      console.warn(`ArcRho update checksum asset could not be read: ${checksumAsset.name}`);
+      console.warn(`Arco update checksum asset could not be read: ${checksumAsset.name}`);
       issue = issue || createUpdateIssue(
         "missing-checksum",
         candidate.version,
         candidate.asset.name,
-        "ArcRho found a newer installer, but its SHA-256 checksum could not be read."
+        "Arco found a newer installer, but its SHA-256 checksum could not be read."
       );
       continue;
     }
@@ -358,7 +358,7 @@ function installerDownloadDir() {
     const downloads = app.getPath("downloads");
     if (downloads) return downloads;
   } catch (err) {
-    console.warn(`ArcRho could not resolve the Downloads folder: ${err?.message || err}`);
+    console.warn(`Arco could not resolve the Downloads folder: ${err?.message || err}`);
   }
   return legacyUpdatesDownloadDir();
 }
@@ -389,7 +389,7 @@ function recordPendingInstallerCleanup(installerPath, version) {
       "utf8"
     );
   } catch (err) {
-    console.warn(`ArcRho could not record the update installer cleanup marker: ${err?.message || err}`);
+    console.warn(`Arco could not record the update installer cleanup marker: ${err?.message || err}`);
   }
 }
 
@@ -399,7 +399,7 @@ async function deleteInstallerFile(installerPath) {
     return true;
   } catch (err) {
     if (err?.code === "ENOENT") return true;
-    console.warn(`ArcRho could not delete the update installer ${installerPath}: ${err?.message || err}`);
+    console.warn(`Arco could not delete the update installer ${installerPath}: ${err?.message || err}`);
     return false;
   }
 }
@@ -554,7 +554,7 @@ async function launchUpdateInstaller(installerPath) {
     } catch (err) {
       lastError = err;
       if (!TRANSIENT_LAUNCH_ERROR_CODES.has(String(err?.code || ""))) break;
-      console.warn(`ArcRho update installer launch attempt ${attempt + 1} failed: ${err?.message || err}`);
+      console.warn(`Arco update installer launch attempt ${attempt + 1} failed: ${err?.message || err}`);
     }
   }
 
@@ -660,7 +660,7 @@ async function requestInAppUpdateChoice(win, updateInfo) {
     const choice = String(answer?.choice || "");
     return choice === "update" || choice === "later" ? choice : null;
   } catch (err) {
-    console.warn(`ArcRho could not show the in-app update dialog: ${err?.message || err}`);
+    console.warn(`Arco could not show the in-app update dialog: ${err?.message || err}`);
     return null;
   }
 }
@@ -682,8 +682,8 @@ async function nativeUpdatePrompt(updateInfo) {
 
   const response = await showMainWindowMessageBox({
     type: "info",
-    title: "ArcRho update available",
-    message: `ArcRho ${updateInfo.version} is available.`,
+    title: "Arco update available",
+    message: `Arco ${updateInfo.version} is available.`,
     detail: detailLines.join("\n"),
     buttons: ["Update now", "Later"],
     defaultId: 0,
@@ -722,7 +722,7 @@ async function readLocalReleaseHistory() {
   try {
     names = await fs.promises.readdir(LOCAL_RELEASE_NOTES_DIR);
   } catch (err) {
-    console.warn(`ArcRho could not read the bundled release notes: ${err?.message || err}`);
+    console.warn(`Arco could not read the bundled release notes: ${err?.message || err}`);
     return { ...base, available: false };
   }
 
@@ -750,7 +750,7 @@ async function checkForUpdate(options = {}) {
       await showMainWindowMessageBox({
         type: "info",
         title: "Update check unavailable",
-        message: "ArcRho update checks are available in the Windows desktop app.",
+        message: "Arco update checks are available in the Windows desktop app.",
         buttons: ["OK"],
         noLink: true,
       });
@@ -762,7 +762,7 @@ async function checkForUpdate(options = {}) {
       await showMainWindowMessageBox({
         type: "info",
         title: "Update check unavailable",
-        message: "ArcRho installer update checks are disabled in development mode.",
+        message: "Arco installer update checks are disabled in development mode.",
         detail: [
           "Development launches run from the local source tree instead of an installed package.",
           "Set ARCRHO_ENABLE_DEV_UPDATE_CHECK=1 before launch to test installer update checks from a dev app.",
@@ -779,15 +779,15 @@ async function checkForUpdate(options = {}) {
     updateInfo = await withTimeout(
       findAvailableUpdate({ reportIssues: showNoUpdate }),
       UPDATE_CHECK_TIMEOUT_MS,
-      "ArcRho update check"
+      "Arco update check"
     );
   } catch (err) {
-    console.warn(`ArcRho update check skipped: ${err?.message || err}`);
+    console.warn(`Arco update check skipped: ${err?.message || err}`);
     if (showNoUpdate) {
       await showMainWindowMessageBox({
         type: "info",
         title: "Update location unavailable",
-        message: "ArcRho could not reach the update location.",
+        message: "Arco could not reach the update location.",
         detail: [
           `Update location: https://github.com/${UPDATE_GITHUB_REPO}/releases`,
           String(err?.message || err),
@@ -804,7 +804,7 @@ async function checkForUpdate(options = {}) {
       await showMainWindowMessageBox({
         type: updateInfo.status === "missing-checksum" ? "warning" : "info",
         title: "Update installer is not ready",
-        message: updateInfo.message || "ArcRho found an update, but it cannot be installed yet.",
+        message: updateInfo.message || "Arco found an update, but it cannot be installed yet.",
         detail: [
           `Current version: ${app.getVersion()}`,
           updateInfo.version ? `Available version: ${updateInfo.version}` : "",
@@ -827,7 +827,7 @@ async function checkForUpdate(options = {}) {
       await showMainWindowMessageBox({
         type: "info",
         title: "No update available",
-        message: "ArcRho is up to date.",
+        message: "Arco is up to date.",
         detail: `Current version: ${app.getVersion()}`,
         buttons: ["OK"],
         noLink: true,

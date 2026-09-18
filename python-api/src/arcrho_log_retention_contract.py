@@ -1,6 +1,6 @@
-"""One retention rule for every ArcRho log file: thirty days, then gone.
+"""One retention rule for every Arco log file: thirty days, then gone.
 
-Every ArcRho component keeps a diagnostic log somewhere, and each one used to
+Every Arco component keeps a diagnostic log somewhere, and each one used to
 decide for itself how long that log lived. Files named after the moment they
 were opened -- one per app launch, one per request -- were never removed at
 all, and the two logs that append under a fixed name grew without any bound.

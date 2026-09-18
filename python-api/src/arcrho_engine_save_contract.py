@@ -1,4 +1,4 @@
-"""Contract for ArcRho Engine-hosted save jobs.
+"""Contract for Arco Engine-hosted save jobs.
 
 A save executed from a Client PC pays one SMB round trip per file touched
 (~0.4 s each over the mapped drive), so the app server ships the save to the
@@ -69,7 +69,7 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     # Not a single object's save: repoints every Excel reference in one
     # reserving class and refreshes every affected dataset and DFM from the
     # new workbook. It is hosted for the same reason as the saves above plus
-    # one more — the workbook itself must be opened where ArcRho Server can
+    # one more — the workbook itself must be opened where Arco Server can
     # reach it, never over a Client PC's mapped drive.
     "excel_link_retarget": ("excel_link_service", "retarget_reserving_class_workbook"),
 }

@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Sync Reserving Class with ResQ
-# Version: 1.5.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.6.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Compare every dataset and supported method output in the selected reserving class, push the whole class from whichever side changed last, and mark rows whose own timestamps disagree with that direction for review.
 # Scope: Reserving Class
 # Icon: sync
@@ -91,9 +91,9 @@ def _direction_sides(action: object) -> tuple[str, str]:
 
     normalized = str(action or "")
     if normalized == "arcrho_to_resq":
-        return "ArcRho", "ResQ"
+        return "Arco", "ResQ"
     if normalized == "resq_to_arcrho":
-        return "ResQ", "ArcRho"
+        return "ResQ", "Arco"
     return "", ""
 
 
@@ -155,7 +155,7 @@ def review_table_payload(
         "host": "projectInstance",
         "summary": (
             f"Project: {project_name} | Reserving class: {rc_path} | ResQ: {connection_name}\n"
-            f"Latest ArcRho change: {direction.get('arcrho_timestamp') or 'Unknown'} | "
+            f"Latest Arco change: {direction.get('arcrho_timestamp') or 'Unknown'} | "
             f"Latest ResQ change: {direction.get('resq_timestamp') or 'Unknown'} | "
             f"Direction: {direction_text}\n"
             f"Compared {len(preview)} logical dataset/method output(s). "
@@ -164,7 +164,7 @@ def review_table_payload(
         "columns": [
             {"key": "kind", "label": "Type", "width": 150},
             {"key": "name", "label": "Dataset / Method Output", "width": 250},
-            {"key": "arcrho_timestamp", "label": "ArcRho Timestamp", "width": 220},
+            {"key": "arcrho_timestamp", "label": "Arco Timestamp", "width": 220},
             {"key": "resq_timestamp", "label": "ResQ Timestamp", "width": 220},
             {"key": "status", "label": "Status", "width": 190},
             {"key": "review", "label": "Review", "width": 90},
@@ -174,7 +174,7 @@ def review_table_payload(
         "acceptLabel": f"Sync to {target}" if target else "Apply Selected",
         "cancelLabel": "Cancel",
         "searchPlaceholder": "Filter datasets and methods",
-        "emptyMessage": "No dataset or method exists in both ArcRho and ResQ for this reserving class.",
+        "emptyMessage": "No dataset or method exists in both Arco and ResQ for this reserving class.",
     }
 
 
@@ -339,7 +339,7 @@ def run_macro(active_dfm=None, active_context=None):
         progress_holder["value"] = ui.progress_bar(
             progress_id=f"{PROGRESS_ID}-scan",
             title=TITLE,
-            label=f"Comparing ArcRho and ResQ: {rc_path}",
+            label=f"Comparing Arco and ResQ: {rc_path}",
             total=0,
         )
         preview_result = run_bridge_phase(
@@ -349,7 +349,7 @@ def run_macro(active_dfm=None, active_context=None):
             phase="preview",
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress_holder.get("value"),
-            progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
+            progress_label=f"Comparing Arco and ResQ: {rc_path}",
             on_poll=_report_activity,
         )
         preview = [row for row in preview_result.get("preview") or [] if isinstance(row, Mapping)]
@@ -395,7 +395,7 @@ def run_macro(active_dfm=None, active_context=None):
                 selected_rows=reviewed,
                 timeout_sec=WRITE_TIMEOUT_SEC,
                 progress=progress_holder.get("value"),
-                progress_label="Synchronizing ArcRho and ResQ",
+                progress_label="Synchronizing Arco and ResQ",
                 on_poll=_report_activity,
             )
         result["preview"] = preview

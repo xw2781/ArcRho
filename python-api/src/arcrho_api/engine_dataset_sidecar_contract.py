@@ -1,4 +1,4 @@
-"""Canonical persisted sidecar contract for ArcRho Engine datasets."""
+"""Canonical persisted sidecar contract for Arco Engine datasets."""
 from __future__ import annotations
 
 from copy import deepcopy

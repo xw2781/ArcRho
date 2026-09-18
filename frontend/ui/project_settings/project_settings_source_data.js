@@ -1522,7 +1522,7 @@ export function createSourceDataFeature(deps = {}) {
     });
     if (!sourceState.driverAvailable) {
       setSourceStatus(
-        "SQL Server support is not installed in this ArcRho runtime. Install the Microsoft ODBC Driver for SQL Server.",
+        "SQL Server support is not installed in this Arco runtime. Install the Microsoft ODBC Driver for SQL Server.",
         "error",
       );
     }

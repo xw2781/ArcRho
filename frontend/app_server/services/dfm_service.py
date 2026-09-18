@@ -1114,7 +1114,7 @@ def save_dfm_method(
     reserving = _clean(reserving_class)
     if not project or not reserving:
         raise HTTPException(400, "project_name and reserving_class are required.")
-    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # Dependent propagation runs on Arco Engine; block the save before any
     # write when no live Engine can pick the job up or another walk is still
     # rewriting this reserving class.
     dependent_propagation_service.require_reserving_class_writable(project, reserving)

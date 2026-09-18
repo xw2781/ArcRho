@@ -3,7 +3,7 @@ import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values
 ===============================================================================
 Dataset Formula Links
 Per-cell links whose values are calculated from a formula rather than copied
-from one source: the third sibling of the Excel `external_links` and ArcRho
+from one source: the third sibling of the Excel `external_links` and Arco
 `internal_links` controllers. A link stores the canonical formula text and the
 target cells it owns, each mapped to a cell of the formula's result matrix:
 

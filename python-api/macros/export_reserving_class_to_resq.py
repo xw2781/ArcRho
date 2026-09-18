@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 2.13.0
-# Release Note: Notes now reach ResQ for every method type the export pushes: a Bornhuetter Ferguson, Cape Cod or B&S Settlement Rate method has its Notes written before it is saved, where before only its save was sent.
+# Version: 2.14.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections, the Notes of every dataset and method, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # Icon: upload
@@ -384,7 +384,7 @@ class ResQReservingClassExporter:
         if not csv_file or not csv_path.is_file():
             raise ExportSkipped(
                 "missing_csv_cache",
-                "no dataset CSV cache on disk (open the dataset once in ArcRho to build it)",
+                "no dataset CSV cache on disk (open the dataset once in Arco to build it)",
             )
         values = _read_csv_matrix(csv_path)
         if not values:
@@ -1323,13 +1323,13 @@ def export_baseline_sentence(baseline) -> str:
     entry = baseline if isinstance(baseline, dict) else {}
     error = str(entry.get("error") or "")
     if error:
-        return f"The ArcRho and ResQ timestamps were not saved, so the next review compares timestamps only. {error}"
+        return f"The Arco and ResQ timestamps were not saved, so the next review compares timestamps only. {error}"
     recorded = int(entry.get("recorded") or 0)
     if not recorded:
-        return "No ArcRho and ResQ timestamps were saved, because nothing was written."
+        return "No Arco and ResQ timestamps were saved, because nothing was written."
     absorbed = int(entry.get("absorbed") or 0)
     sentence = (
-        f"Saved the ArcRho and ResQ timestamps of {recorded} written item(s) "
+        f"Saved the Arco and ResQ timestamps of {recorded} written item(s) "
         "for the next export to compare against."
     )
     if absorbed:
@@ -1412,9 +1412,9 @@ def confirm_without_preview(ui, error) -> bool:
     confirmation = _message(
         ui,
         (
-            "The ResQ timestamp comparison failed, so the ArcRho and ResQ timestamps "
+            "The ResQ timestamp comparison failed, so the Arco and ResQ timestamps "
             f"cannot be shown before the export.\n\n{error}\n\n"
-            "Exporting overwrites the matching ResQ objects with the ArcRho copies."
+            "Exporting overwrites the matching ResQ objects with the Arco copies."
         ),
         kind="warning",
         buttons=["Export Anyway", "Cancel"],
@@ -1443,7 +1443,7 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
     progress = ui.progress_bar(
         progress_id=f"{PROGRESS_ID}-preview",
         title=TITLE,
-        label=f"Comparing ArcRho and ResQ: {rc_path}",
+        label=f"Comparing Arco and ResQ: {rc_path}",
         total=0,
     )
     preview_result: dict[str, Any] = {}
@@ -1457,7 +1457,7 @@ def review_export_plan(ui, root, project_name, rc_path) -> dict:
             direction=DIRECTION_EXPORT,
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress,
-            progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
+            progress_label=f"Comparing Arco and ResQ: {rc_path}",
             on_poll=_report_activity,
         )
     except BridgeUnavailableError:

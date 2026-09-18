@@ -226,10 +226,10 @@ def _build_dfm_record(rc_path: str, name: str, arcrho_payload: dict | None, dfm:
         except Exception as exc:
             note_parts.append(f"could not read ResQ ultimate values: {type(exc).__name__}: {exc}")
     else:
-        note_parts.append("DFM has a persisted ArcRho method JSON but was not found in ResQ")
+        note_parts.append("DFM has a persisted Arco method JSON but was not found in ResQ")
 
     if arcrho_payload is None:
-        note_parts.append("DFM exists in ResQ but no persisted ArcRho method JSON was found")
+        note_parts.append("DFM exists in ResQ but no persisted Arco method JSON was found")
 
     origin_count = max(len(arcrho_matrix), len(resq_matrix), len(arcrho_ultimate), len(resq_ultimate))
     dev_count = max(
@@ -279,7 +279,7 @@ def _build_dfm_record(rc_path: str, name: str, arcrho_payload: dict | None, dfm:
         diff_matrix.append(diff_row)
 
     if only_arcrho_cells:
-        note_parts.append(f"{only_arcrho_cells} cell(s) with a ratio computed in ArcRho only")
+        note_parts.append(f"{only_arcrho_cells} cell(s) with a ratio computed in Arco only")
     if only_resq_cells:
         note_parts.append(f"{only_resq_cells} cell(s) with a ratio computed in ResQ only")
 
@@ -311,7 +311,7 @@ def _build_dfm_record(rc_path: str, name: str, arcrho_payload: dict | None, dfm:
             ultimate_max_abs_diff = abs(diff)
 
     if only_arcrho_ultimate:
-        note_parts.append(f"{only_arcrho_ultimate} ultimate value(s) computed in ArcRho only")
+        note_parts.append(f"{only_arcrho_ultimate} ultimate value(s) computed in Arco only")
     if only_resq_ultimate:
         note_parts.append(f"{only_resq_ultimate} ultimate value(s) computed in ResQ only")
 
@@ -452,9 +452,9 @@ def _write_dfm_block(sheet, start_row: int, record: dict, styles: dict) -> tuple
         if width > 1:
             sheet.merge_cells(start_row=group_row, start_column=col, end_row=group_row, end_column=col + width - 1)
 
-    _group_header(arcrho_start_col, "ArcRho", dev_count)
+    _group_header(arcrho_start_col, "Arco", dev_count)
     _group_header(resq_start_col, "ResQ", dev_count)
-    _group_header(diff_start_col, "Diff (ArcRho − ResQ)", dev_count)
+    _group_header(diff_start_col, "Diff (Arco − ResQ)", dev_count)
     _group_header(ultimate_start_col, "Output vector (ultimate)", 3)
 
     sheet.cell(row=label_row, column=origin_col, value="Origin").font = styles["bold"]
@@ -464,7 +464,7 @@ def _write_dfm_block(sheet, start_row: int, record: dict, styles: dict) -> tuple
         sheet.cell(row=label_row, column=arcrho_start_col + j, value=a_label).font = styles["bold"]
         sheet.cell(row=label_row, column=resq_start_col + j, value=r_label).font = styles["bold"]
         sheet.cell(row=label_row, column=diff_start_col + j, value=a_label or r_label).font = styles["bold"]
-    for j, text in enumerate(("ArcRho", "ResQ", "Diff")):
+    for j, text in enumerate(("Arco", "ResQ", "Diff")):
         sheet.cell(row=label_row, column=ultimate_start_col + j, value=text).font = styles["bold"]
 
     for i in range(origin_count):

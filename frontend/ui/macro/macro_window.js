@@ -442,7 +442,7 @@ export async function captureActiveDfmContextForMacro() {
   }
   const nestedWindowId = String(activeContext?.activeNestedWindow?.windowId || "");
   if (tab.type === "project_instance" && !nestedWindowId) {
-    return { ok: false, error: "ArcRho could not identify the active Project Instance DFM window." };
+    return { ok: false, error: "Arco could not identify the active Project Instance DFM window." };
   }
   const target = {
     token,

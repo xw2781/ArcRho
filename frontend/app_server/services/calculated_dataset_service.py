@@ -401,7 +401,7 @@ def apply_sidecar_graph_fields(
             # A dependent survives the type-graph rebuild when it is a method
             # (the graph cannot re-derive a method edge) or when its own
             # sidecar still names this dataset as a precedent -- the
-            # instance-level edge an ArcRho cell link put there.
+            # instance-level edge an Arco cell link put there.
             if not dependent or dataset_sidecar_status_service.normalize_method_type(
                 dependent.get("method_type"),
                 dependent.get("source_kind"),
@@ -417,7 +417,7 @@ def apply_sidecar_graph_fields(
     if owning_method_type != dataset_sidecar_status_service.METHOD_TYPE_NONE:
         graph_fields["precedents"] = existing_precedents if isinstance(existing_precedents, list) else []
     else:
-        # ArcRho cell links are instance-level precedent edges on top of the
+        # Arco cell links are instance-level precedent edges on top of the
         # dataset-type formula graph: the dependent-propagation walk follows
         # them to re-evaluate the linked cells when a source dataset changes.
         # Excel references contribute no edge, and a self-reference never

@@ -1,4 +1,4 @@
-"""Shared filesystem lease primitives for durable ArcRho Engine jobs.
+"""Shared filesystem lease primitives for durable Arco Engine jobs.
 
 A lease is one exclusively created JSON file whose owner renews it by touching
 the file's modification time. A cooperating worker may take over a lease only
@@ -12,7 +12,7 @@ atomically fence the check-and-unlink race on a stale lease, so takeover uses
 rename-to-a-private-name before unlink and generous staleness thresholds.
 
 This module intentionally uses only the Python standard library so the frozen
-ArcRho Engine, the frozen Bridge, the frontend app server, and the public
+Arco Engine, the frozen Bridge, the frontend app server, and the public
 Python API can load the same source file.
 """
 

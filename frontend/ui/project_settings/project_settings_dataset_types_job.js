@@ -172,7 +172,7 @@ export async function waitForDatasetTypesChangeJob({
       if (consecutiveFailures > maxStatusRetries) {
         throw codedError(
           "DATASET_TYPES_CHANGE_STATUS_UNAVAILABLE",
-          `Dataset type change status is unavailable after repeated checks. Job "${jobId}" may still be running on ArcRho Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
+          `Dataset type change status is unavailable after repeated checks. Job "${jobId}" may still be running on Arco Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
         );
       }
       onProgress({ stage: "", label: "Waiting for the change status...", completed: 0, total: 0 });
@@ -230,7 +230,7 @@ export async function waitForDatasetTypesChangeJob({
     } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, allowedStaleMs)) {
       throw codedError(
         "DATASET_TYPES_CHANGE_STATUS_STALE",
-        `The dataset type change has stopped reporting progress. Job "${jobId}" appears to have stalled on ArcRho Engine.`,
+        `The dataset type change has stopped reporting progress. Job "${jobId}" appears to have stalled on Arco Engine.`,
       );
     }
     await waitForPoll(pollIntervalMs);

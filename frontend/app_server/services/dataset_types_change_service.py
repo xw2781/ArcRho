@@ -9,7 +9,7 @@ and the auto-saving grid that issued it had no way to tell a slow save from a
 lost one.
 
 This module replaces that with a durable job. The request is published for
-ArcRho Engine, which claims the *project-scope* lease, confirms the plan,
+Arco Engine, which claims the *project-scope* lease, confirms the plan,
 writes the table, narrows the lease to the reserving classes the plan named,
 and rebuilds those on local disk while the client only polls the status.
 Every other class of the project is writable again as soon as the table is
@@ -110,7 +110,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
     except json.JSONDecodeError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid dataset type change status."
+            502, "Arco Engine published an invalid dataset type change status."
         ) from error
     except OSError as error:
         raise HTTPException(
@@ -122,7 +122,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         )
     except DatasetTypesChangeContractError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid dataset type change status."
+            502, "Arco Engine published an invalid dataset type change status."
         ) from error
 
 
@@ -237,7 +237,7 @@ def submit_dataset_types_change_job(
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
         write_json_atomic(request_path, request)

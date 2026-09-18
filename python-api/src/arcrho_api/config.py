@@ -1,7 +1,7 @@
-"""ArcRho host workspace configuration for the Python API.
+"""Arco host workspace configuration for the Python API.
 
-This module is the canonical owner of ArcRho Server root resolution. Every
-ArcRho component that needs the server root -- including the bundled app server
+This module is the canonical owner of Arco Server root resolution. Every
+Arco component that needs the server root -- including the bundled app server
 in ``frontend/app_server/config.py`` -- must read these constants and helpers
 instead of redefining its own environment names, config file name, or default
 root, so a macro and the desktop app can never disagree about the workspace.
@@ -23,7 +23,7 @@ DEFAULT_WORKSPACE_PATHS = {
     "requests_dir": "requests",
 }
 # Environment overrides, highest precedence first. ``ARCRHO_RUNTIME_SERVER_ROOT``
-# is what the ArcRho Bridge import runner exports into worker processes.
+# is what the Arco Bridge import runner exports into worker processes.
 SERVER_ROOT_ENV = "ARCRHO_SERVER_ROOT"
 RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
 SERVER_ROOT_ENV_VARS = (SERVER_ROOT_ENV, RUNTIME_SERVER_ROOT_ENV)
@@ -43,13 +43,13 @@ def config_dir() -> Path:
 
 
 def get_config_path() -> Path:
-    """Return the ArcRho host workspace config file used by the Python API."""
+    """Return the Arco host workspace config file used by the Python API."""
 
     return config_dir() / WORKSPACE_PATHS_FILE_NAME
 
 
 def env_server_root() -> str:
-    """Return the ArcRho Server root set by environment override, if any."""
+    """Return the Arco Server root set by environment override, if any."""
 
     for name in SERVER_ROOT_ENV_VARS:
         value = str(os.environ.get(name) or "").strip()
@@ -68,13 +68,13 @@ def _validate_server_root(path_like: str | Path) -> Path:
         valid_root = root.exists() and root.is_dir()
         valid_projects = (root / "projects").exists() and (root / "projects").is_dir()
     except OSError as exc:
-        raise InvalidArcRhoServerError(f"ArcRho Server root is not accessible: {root}") from exc
+        raise InvalidArcRhoServerError(f"Arco Server root is not accessible: {root}") from exc
     if not valid_root:
-        raise InvalidArcRhoServerError(f"ArcRho Server root does not exist: {root}")
+        raise InvalidArcRhoServerError(f"Arco Server root does not exist: {root}")
     projects_dir = root / "projects"
     if not valid_projects:
         raise InvalidArcRhoServerError(
-            f"ArcRho Server root must contain a projects folder: {projects_dir}"
+            f"Arco Server root must contain a projects folder: {projects_dir}"
         )
     return root
 
@@ -116,9 +116,9 @@ def _load_env_server_root() -> Path | None:
 
 
 def _load_running_app_server_root() -> Path | None:
-    """Ask the running ArcRho desktop app which workspace root it is using.
+    """Ask the running Arco desktop app which workspace root it is using.
 
-    The host config file is only written when a user saves ArcRho Server
+    The host config file is only written when a user saves Arco Server
     Connection, so a fresh client install has no file at all. The desktop app
     resolves a root regardless, and its endpoint is discoverable, so querying it
     keeps macros on exactly the workspace the app is showing.
@@ -138,7 +138,7 @@ def _load_running_app_server_root() -> Path | None:
 
 
 def _load_default_server_root() -> Path | None:
-    """Return the packaged default root only when it is a real ArcRho Server."""
+    """Return the packaged default root only when it is a real Arco Server."""
 
     try:
         return _validate_server_root(DEFAULT_WORKSPACE_ROOT)
@@ -165,23 +165,23 @@ def _resolve_default_server_root() -> Path | None:
 # Set only by set_server_root(); an explicit call outranks every other source.
 _explicit_server_root: Path | None = None
 # Cached file/app/default resolution. The environment is deliberately not cached
-# here: the ArcRho Bridge exports ARCRHO_RUNTIME_SERVER_ROOT into an already
+# here: the Arco Bridge exports ARCRHO_RUNTIME_SERVER_ROOT into an already
 # running process, and that must not lose to a root cached at import time.
 _server_root: Path | None = _load_host_server_root()
 _discovery_attempted = False
 
 
 def get_server_root(*, required: bool = False) -> Path | None:
-    """Return the current default ArcRho Server root.
+    """Return the current default Arco Server root.
 
     Resolution order:
 
     1. an in-process root from :func:`set_server_root`;
     2. the ``ARCRHO_SERVER_ROOT`` / ``ARCRHO_RUNTIME_SERVER_ROOT`` environment
        overrides, re-read on every call;
-    3. the ArcRho host app workspace config file
+    3. the Arco host app workspace config file
        (``%APPDATA%\\ArcRho\\workspace_paths.json``);
-    4. the workspace root reported by the running ArcRho desktop app;
+    4. the workspace root reported by the running Arco desktop app;
     5. the packaged default root, when it exists and holds a projects folder.
 
     Steps 4 and 5 are attempted once per process; call
@@ -203,15 +203,15 @@ def get_server_root(*, required: bool = False) -> Path | None:
         return _server_root
     if required:
         raise InvalidArcRhoServerError(
-            "ArcRho Server root was not found in the ArcRho host config file. "
-            "Use ArcRho Server Connection, call set_server_root(...), set "
+            "Arco Server root was not found in the Arco host config file. "
+            "Use Arco Server Connection, call set_server_root(...), set "
             f"{SERVER_ROOT_ENV}, or pass server_root=... to ArcRhoClient(...)."
         )
     return None
 
 
 def set_server_root(server_root: str | Path, *, persist: bool = True, validate: bool = True) -> Path:
-    """Set the default ArcRho Server root in process and in the host config."""
+    """Set the default Arco Server root in process and in the host config."""
 
     global _explicit_server_root, _server_root, _discovery_attempted
     root = _validate_server_root(server_root) if validate else _normalize_path(server_root)

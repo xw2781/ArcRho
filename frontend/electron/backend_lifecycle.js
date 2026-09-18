@@ -107,7 +107,7 @@ function createBackendLogStream() {
     const appLabel = APP_MODE === "arcode" ? "arcode" : "arcrho";
     lastServerLogPath = path.join(logDir, `${appLabel}-server-${getTimestampForFileName()}.log`);
     const stream = fs.createWriteStream(lastServerLogPath, { flags: "a" });
-    stream.write(`${APP_MODE === "arcode" ? "Arcode" : "ArcRho"} packaged app-server log\nStarted: ${new Date().toISOString()}\n\n`);
+    stream.write(`${APP_MODE === "arcode" ? "Arcode" : "Arco"} packaged app-server log\nStarted: ${new Date().toISOString()}\n\n`);
     return stream;
   } catch (err) {
     console.warn(`Could not create app-server log file: ${err?.message || err}`);
@@ -475,7 +475,7 @@ async function waitForServer(timeoutMs = BACKEND_STARTUP_TIMEOUT_MS) {
     try {
       const payload = await requestBackendHealth(1500);
       if (!isCompatibleBackendHealth(payload)) {
-        throw new Error("health response is not compatible with this ArcRho frontend");
+        throw new Error("health response is not compatible with this Arco frontend");
       }
       return;
     } catch {
@@ -495,7 +495,7 @@ async function startBackendWithRetry() {
       PORT = reusablePort;
       backendOwned = false;
       serverProc = null;
-      appendElectronLog(`Reusing existing ArcRho backend on ${HOST}:${PORT}.`);
+      appendElectronLog(`Reusing existing Arco backend on ${HOST}:${PORT}.`);
       publishBackendEndpoint();
       return;
     }

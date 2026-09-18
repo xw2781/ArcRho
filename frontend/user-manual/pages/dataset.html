@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ArcRho Manual - Dataset Viewer</title>
+  <title>Arco Manual - Dataset Viewer</title>
   <link rel="stylesheet" href="../manual.css">
 </head>
 <body data-page="dataset">
@@ -81,7 +81,7 @@ The CSV stores the current value snapshot, not the Excel reference.</code></pre>
     <section class="manual-section" id="edge-cases">
       <div class="section-head"><p class="eyebrow">Rules</p><h2>Important dataset rules</h2></div>
       <div class="task-grid">
-        <article class="task-card"><h3>Generated datasets</h3><ul><li>ArcRhoTri can create missing generated caches when source inputs resolve.</li><li>Generated and calculated outputs are read-only in the grid.</li><li>Refresh can trigger dependent calculated datasets.</li></ul></article>
+        <article class="task-card"><h3>Generated datasets</h3><ul><li>ArcoTri can create missing generated caches when source inputs resolve.</li><li>Generated and calculated outputs are read-only in the grid.</li><li>Refresh can trigger dependent calculated datasets.</li></ul></article>
         <article class="task-card"><h3>Manual input datasets</h3><ul><li>Drafts open on Details with zero-filled placeholder data.</li><li>Triangle drafts use a triangular mask.</li><li>Vector drafts use one value column.</li><li>Duplicate names are blocked in the selected path.</li></ul></article>
         <article class="task-card"><h3>Excel ranges</h3><ul><li>A rectangular reference spills from the edited anchor into editable cells.</li><li>If a pasted range is larger than the Triangle or Vector UI, values outside the grid or in masked triangle cells are ignored.</li><li>Every affected in-area source cell is validated and loaded atomically, so an error does not partially replace values.</li><li>Transposed display maps the spill back to the same logical Dataset cells.</li><li>Linked cells use the normal dark value text; multi-cell ranges also have a thin blue outer contour with a light glow and no interior borders.</li><li>Choosing Refresh from Excel for a newer workbook marks the Dataset unsaved even when the refreshed values match, so Save records the completed refresh and prevents the same alert from returning.</li><li>Unsaved entry does not refresh the Project Instance disk inventory; Save persists the values and link mapping.</li></ul></article>
         <article class="task-card"><h3>Period lengths</h3><ul><li>Development Length cannot exceed Origin Length.</li><li>Origin Length must be a valid multiple of Development Length.</li><li>Saved sidecar lengths load before the triangle renders.</li></ul></article>

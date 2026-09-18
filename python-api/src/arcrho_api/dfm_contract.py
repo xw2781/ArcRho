@@ -2042,7 +2042,7 @@ def stamp_last_modified(payload: Mapping[str, Any], modified_at: Any) -> dict[st
     """Return *payload* with only its ``last modified`` value replaced.
 
     A DFM uploaded to the RPC server is saved there, and ResQ stamps that save
-    with its own ``Modified``. Nothing about the ArcRho method changed, so the
+    with its own ``Modified``. Nothing about the Arco method changed, so the
     two copies are identical in content while their recorded times are not, and
     the next sync reports the remote as newer. Recording the time ResQ actually
     wrote makes the pair agree again.

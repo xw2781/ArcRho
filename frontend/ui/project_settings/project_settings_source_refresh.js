@@ -145,7 +145,7 @@ export function createSourceRefreshFeature({
         if (response.status === 503) return { ok: false, unavailable: true, error: detail };
         return { ok: false, error: detail };
       }
-      setStatus(`Refreshing the source table for "${projectName}" on ArcRho Server...`);
+      setStatus(`Refreshing the source table for "${projectName}" on Arco Server...`);
       const outcome = await waitForSourceRefreshJob({
         fetchImpl,
         projectName,

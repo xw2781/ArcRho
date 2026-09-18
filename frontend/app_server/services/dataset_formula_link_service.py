@@ -1,7 +1,7 @@
 """Validate and canonicalize dataset cell formulas.
 
 A manual-input dataset cell can calculate its value from a formula whose
-operands are ArcRho dataset references, Excel references, and numbers::
+operands are Arco dataset references, Excel references, and numbers::
 
     =[C 82 - Prior Qtr Selected][1:7] * 2
     =([Paid Claims][1:6, 2] + 'C:\\Folder\\[Book.xlsx]Sheet1'!B1:B6) / 1000

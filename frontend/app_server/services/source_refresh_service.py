@@ -5,7 +5,7 @@ clicked in. On a Client PC that meant copying the external CSV through the
 client -- read from one share, written to another -- then reading the whole
 master copy back to count its rows, and finally rebuilding the table summary
 and reserving-class values over the same mapped drive. This module replaces
-that with a durable job: the request is published for the ArcRho Engine, which
+that with a durable job: the request is published for the Arco Engine, which
 does all of it on local disk, and the client only polls the status.
 
 The job optionally continues into the project's dependency graph, regenerating
@@ -86,18 +86,18 @@ def _workspace_server_root() -> Path:
     workspace = config.load_workspace_paths()
     server_root_value = str(workspace.get("workspace_root") or "").strip()
     if not server_root_value:
-        raise HTTPException(500, "The ArcRho Server workspace is not configured.")
+        raise HTTPException(500, "The Arco Server workspace is not configured.")
     server_root = Path(server_root_value).expanduser()
     if not server_root.is_absolute():
-        raise HTTPException(500, "The ArcRho Server workspace root must be absolute.")
+        raise HTTPException(500, "The Arco Server workspace root must be absolute.")
     try:
         root_available = server_root.is_dir()
     except OSError as error:
         raise HTTPException(
-            500, "The ArcRho Server workspace root is inaccessible."
+            500, "The Arco Server workspace root is inaccessible."
         ) from error
     if not root_available:
-        raise HTTPException(500, "The ArcRho Server workspace root is unavailable.")
+        raise HTTPException(500, "The Arco Server workspace root is unavailable.")
     _validate_protocol_paths(server_root)
     return server_root
 
@@ -122,7 +122,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
     except json.JSONDecodeError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid source refresh status."
+            502, "Arco Engine published an invalid source refresh status."
         ) from error
     except OSError as error:
         raise HTTPException(500, "Failed to read the source refresh status.") from error
@@ -130,7 +130,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         return validate_source_refresh_status(payload, expected_request_id=request_id)
     except SourceRefreshContractError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid source refresh status."
+            502, "Arco Engine published an invalid source refresh status."
         ) from error
 
 
@@ -138,7 +138,7 @@ def describe_source_refresh_plan(project_name: str) -> Dict[str, Any]:
     """Say who can perform this project's import, and whether one is running.
 
     The caller needs both answers before it offers the button: a CSV on a share
-    is imported by the ArcRho Server host, while a SQL Server profile or a path
+    is imported by the Arco Server host, while a SQL Server profile or a path
     only this machine can open has to be imported here first.
     """
 
@@ -228,7 +228,7 @@ def submit_source_table_refresh_job(
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
         write_json_atomic(request_path, request)

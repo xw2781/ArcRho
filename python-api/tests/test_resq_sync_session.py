@@ -119,7 +119,7 @@ class SyncSessionPhaseTests(unittest.TestCase):
         self.assertEqual(result["status"], "review_required")
         self.assertEqual(result["connection_name"], "ResQ Test")
         self.assertEqual(result["direction"]["action"], "arcrho_to_resq")
-        self.assertEqual(result["direction"]["label"], "ArcRho -> ResQ")
+        self.assertEqual(result["direction"]["label"], "Arco -> ResQ")
         self.assertNotEqual(result["direction"]["arcrho_timestamp"], "Unknown")
         apply_plan.assert_not_called()
         self.assertEqual(
@@ -330,36 +330,36 @@ class SyncSessionTransferPreviewTests(unittest.TestCase):
     def test_an_item_only_one_side_holds_is_still_a_row(self):
         result = self._preview(
             "import",
-            [self._arcrho("Paid Loss"), self._arcrho("ArcRho Only")],
+            [self._arcrho("Paid Loss"), self._arcrho("Arco Only")],
             [self._resq("Paid Loss"), self._resq("ResQ Only")],
         )
 
         rows = {row["name"]: row for row in result["preview"]}
-        self.assertEqual(set(rows), {"Paid Loss", "ArcRho Only", "ResQ Only"})
+        self.assertEqual(set(rows), {"Paid Loss", "Arco Only", "ResQ Only"})
         self.assertEqual(rows["Paid Loss"]["presence"], "both")
-        self.assertEqual(rows["ArcRho Only"]["presence"], "arcrho")
+        self.assertEqual(rows["Arco Only"]["presence"], "arcrho")
         self.assertEqual(rows["ResQ Only"]["presence"], "resq")
 
     def test_an_import_can_bring_a_resq_only_item_across_and_an_export_cannot(self):
-        arcrho = [self._arcrho("ArcRho Only")]
+        arcrho = [self._arcrho("Arco Only")]
         resq = [self._resq("ResQ Only")]
 
         importing = {row["name"]: row for row in self._preview("import", arcrho, resq)["preview"]}
         exporting = {row["name"]: row for row in self._preview("export", arcrho, resq)["preview"]}
 
         self.assertTrue(importing["ResQ Only"]["transfer_supported"])
-        self.assertFalse(importing["ArcRho Only"]["transfer_supported"])
+        self.assertFalse(importing["Arco Only"]["transfer_supported"])
         self.assertFalse(exporting["ResQ Only"]["transfer_supported"])
-        self.assertFalse(exporting["ArcRho Only"]["transfer_supported"])
-        self.assertIn("no matching dataset", exporting["ArcRho Only"]["transfer_block_reason"])
+        self.assertFalse(exporting["Arco Only"]["transfer_supported"])
+        self.assertIn("no matching dataset", exporting["Arco Only"]["transfer_block_reason"])
 
     def test_a_berquist_sherman_method_is_exportable_because_the_export_saves_it(self):
         for kind in (sync_session.KIND_BS_SR, sync_session.KIND_BS_CRA):
             with self.subTest(kind=kind):
                 arcrho = [self._arcrho("BS Paid", kind=kind, can_export_to_resq=False,
-                                       export_block_reason=f"ArcRho-to-ResQ write-back is not supported for {kind}.")]
+                                       export_block_reason=f"Arco-to-ResQ write-back is not supported for {kind}.")]
                 resq = [self._resq("BS Paid", kind=kind, can_receive_from_arcrho=False,
-                                   receive_block_reason=f"ArcRho cannot write {kind} methods to ResQ.")]
+                                   receive_block_reason=f"Arco cannot write {kind} methods to ResQ.")]
 
                 row = self._preview("export", arcrho, resq)["preview"][0]
 
@@ -428,7 +428,7 @@ class SyncSessionTransferPreviewTests(unittest.TestCase):
         result = self._preview(
             "export",
             [self._arcrho("Paid Loss"), self._arcrho("No Cache", can_export_to_resq=False,
-                                                    export_block_reason="The ArcRho dataset CSV cache is missing.")],
+                                                    export_block_reason="The Arco dataset CSV cache is missing.")],
             [self._resq("Paid Loss"), self._resq("No Cache")],
         )
 
@@ -471,7 +471,7 @@ class SyncSessionExportGuardTests(unittest.TestCase):
             "arcrho": {"payload": {"data_format": "Triangle"}},
         }
 
-        with self.assertRaisesRegex(RuntimeError, "retained a value in ArcRho blank cell"):
+        with self.assertRaisesRegex(RuntimeError, "retained a value in Arco blank cell"):
             sync_session._verify_dataset_export(exporter, row, [[None]])
 
 
@@ -1360,7 +1360,7 @@ class SyncSessionExportTests(unittest.TestCase):
             payload={"method_tab": {"inflation_selection": ["user"]}},
             method_name="Net Loss--Incurred - B&S Case Reserve Adequacy Adjustment",
             notes="Reviewed.",
-            export_block_reason="ArcRho-to-ResQ write-back is not supported for Berquist Sherman or Bootstrap methods.",
+            export_block_reason="Arco-to-ResQ write-back is not supported for Berquist Sherman or Bootstrap methods.",
         )
         row = {"kind": sync_session.KIND_BS_CRA, "name": "BS CRA Adj", "arcrho": item}
 
@@ -1396,12 +1396,12 @@ class SyncSessionExportTests(unittest.TestCase):
         row = {
             "kind": "Dataset",
             "name": "Paid Loss",
-            "arcrho": _export_item("Paid Loss", export_block_reason="The ArcRho dataset CSV cache is missing."),
+            "arcrho": _export_item("Paid Loss", export_block_reason="The Arco dataset CSV cache is missing."),
         }
 
         outcome, message = sync_session._push_row_to_resq(exporter, row)
 
-        self.assertEqual((outcome, message), ("skipped", "The ArcRho dataset CSV cache is missing."))
+        self.assertEqual((outcome, message), ("skipped", "The Arco dataset CSV cache is missing."))
         exporter.export_datasets.assert_not_called()
 
     def test_an_exporter_skip_or_error_is_reported_with_its_message(self):

@@ -451,14 +451,14 @@ class ReleaseManagerServer(ThreadingHTTPServer):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Open ArcRho Release Manager in a local browser.")
+    parser = argparse.ArgumentParser(description="Open Arco Release Manager in a local browser.")
     parser.add_argument("--port", type=int, default=0, help="Loopback port to listen on; 0 picks a free port.")
     parser.add_argument("--no-browser", action="store_true", help="Print the URL instead of opening a browser.")
     args = parser.parse_args(argv)
 
     server = ReleaseManagerServer(args.port)
     url = f"http://127.0.0.1:{server.server_port}/?{urlencode({'token': server.session_token})}"
-    print(f"ArcRho Release Manager: {url}", flush=True)
+    print(f"Arco Release Manager: {url}", flush=True)
     print("Keep this window open while you build, publish, or revoke. Press Ctrl+C to stop.", flush=True)
     if not args.no_browser:
         webbrowser.open(url)

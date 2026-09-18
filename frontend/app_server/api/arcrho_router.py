@@ -69,7 +69,7 @@ def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: l
         "allow_runtime_cache_provenance": not bool(req.WriteSidecar),
     }
     # The precheck and the run below are Server-hosted engine-calculation
-    # operations: the whole route runs on the ArcRho Server host when the
+    # operations: the whole route runs on the Arco Server host when the
     # Gateway advertises it, otherwise the same service function runs here.
     return engine_calculation_service.run_hosted_dataset_operation(
         OPERATION_DATASET_PRECHECK,

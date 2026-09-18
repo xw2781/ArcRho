@@ -1,7 +1,7 @@
 /*
 ===============================================================================
 DFM Curves Tab
-The ArcRho counterpart of ResQ's Curves | Data tab: the Initial Selection from
+The Arco counterpart of ResQ's Curves | Data tab: the Initial Selection from
 the Ratios tab, four fitted curves, user value columns, the Include flags, the
 Selected Estimate Number per development period and for the tail, and the
 chain the ultimates use. The numbers come from dfm_curve_fit.js, the mirror of
@@ -48,7 +48,7 @@ const FIT_LABELS = Object.freeze({
   [FIT_WARNING]: "Warning",
   [FIT_UNFITTED]: "",
 });
-const LEAST_SQUARES_NOTICE = "This method was fitted by least squares in ResQ. ArcRho fits by log regression, so the curves shown are its log-regression fits.";
+const LEAST_SQUARES_NOTICE = "This method was fitted by least squares in ResQ. Arco fits by log regression, so the curves shown are its log-regression fits.";
 
 let wired = false;
 let activeEditor = null;

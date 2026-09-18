@@ -50,7 +50,7 @@ test("desktop setup starts only an already-installed local deployment", () => {
     frontendInstaller,
     /\$ArcRhoServerRootIsLocal == "1"[\s\S]*\$ArcRhoDataEngineInstalled == "1"[\s\S]*NSD_Check/
   );
-  assert.match(frontendInstaller, /Use ArcRho Server Components Setup on the host PC/);
+  assert.match(frontendInstaller, /Use Arco Server Components Setup on the host PC/);
   assert.match(frontendInstaller, /Server binaries are delivered separately/);
   assert.doesNotMatch(frontendInstaller, /ArcRhoServerPayload|payload-manifest\.json/);
 });

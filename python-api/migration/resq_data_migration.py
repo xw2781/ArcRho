@@ -961,7 +961,7 @@ def _complete_engine_generated_tasks(
             total=int(progress_state.get("total") or len(tasks)),
             engine_completed=0,
             engine_total=len(tasks),
-            message=f"Submitting {len(tasks)} generated dataset(s) to ArcRho Engine...",
+            message=f"Submitting {len(tasks)} generated dataset(s) to Arco Engine...",
         )
         for engine_index, task in enumerate(tasks, start=1):
             job = task["job"]
@@ -1009,7 +1009,7 @@ def _complete_engine_generated_tasks(
             job = task["job"]
             try:
                 wait_message = (
-                    f"Waiting for ArcRho Engine result {engine_index} of "
+                    f"Waiting for Arco Engine result {engine_index} of "
                     f"{len(published)}: {task['name']}"
                 )
                 _report_progress(
@@ -1373,7 +1373,7 @@ def export_triangles_for_rc(
             engine_tasks,
             progress_callback=progress_callback,
             progress_state=progress_state,
-            reason="no active ArcRho Engine worker was available",
+            reason="no active Arco Engine worker was available",
             verbose=verbose,
         )
     elif engine_tasks:
@@ -1668,7 +1668,7 @@ def export_vectors_for_rc(
             engine_tasks,
             progress_callback=progress_callback,
             progress_state=progress_state,
-            reason="no active ArcRho Engine worker was available",
+            reason="no active Arco Engine worker was available",
             verbose=verbose,
         )
     elif engine_tasks:
@@ -1767,7 +1767,7 @@ def export_dfms_for_rc(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, and/or DFM methods to ArcRho dataset files.")
+    parser = argparse.ArgumentParser(description="Export ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, and/or DFM methods to Arco dataset files.")
     parser.add_argument(
         "--export",
         choices=("configured", "all", "triangles", "vectors", "vector", "dfm", "dfms"),
@@ -1956,10 +1956,10 @@ def _import_reserving_class_as_acting_user(
                 f"{len(worker_instances)} data-engine worker(s) available"
                 if engine_available
                 else (
-                    "ArcRho Engine processing provenance is unavailable; "
+                    "Arco Engine processing provenance is unavailable; "
                     "generated datasets will be skipped."
                     if engine_preflight_error
-                    else "No ArcRho Engine worker is available; generated datasets will be skipped."
+                    else "No Arco Engine worker is available; generated datasets will be skipped."
                 )
             ),
         )
@@ -2365,7 +2365,7 @@ def main(argv: list[str] | None = None) -> None:
                 if merge_result["groups"]:
                     print(
                         "    OK  retained "
-                        f"{merge_result['groups']} ArcRho-owned or newer dataset/method group(s)"
+                        f"{merge_result['groups']} Arco-owned or newer dataset/method group(s)"
                     )
                 snapshot_entry[0].cleanup()
                 pending_snapshots.remove(snapshot_entry)
@@ -2392,7 +2392,7 @@ def main(argv: list[str] | None = None) -> None:
                         if active_error is None:
                             raise
                         print(
-                            "    WARN failed to restore preserved ArcRho artifacts "
+                            "    WARN failed to restore preserved Arco artifacts "
                             f"after interrupted import: {merge_error}"
                         )
                 finally:

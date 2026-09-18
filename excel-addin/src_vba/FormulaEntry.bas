@@ -30,8 +30,8 @@ Public Sub LoadEnteredFormulas(ByVal target As Range)
     Next block
     If DatasetRefreshNeedsGateway() Then
         EnsureGatewayCredential
-        If Not GatewayIsConfigured() Then Err.Raise 5, , "This PC is not set up to load ArcRho data."
-        If Not GatewayServesDatasetCsv() Then Err.Raise 5, , "Ask the ArcRho team to update the ArcRho Server."
+        If Not GatewayIsConfigured() Then Err.Raise 5, , "This PC is not set up to load Arco data."
+        If Not GatewayServesDatasetCsv() Then Err.Raise 5, , "Ask the Arco team to update the Arco Server."
         AllowDatasetRefreshFetch
         For Each block In blocks
             If cancelUpdate Then Err.Raise 18
@@ -50,7 +50,7 @@ Finish:
     disable_ufLoading = oldLoading
     Application.EnableCancelKey = oldCancel
     cancelUpdate = False
-    If Len(message) > 0 Then Application.StatusBar = "ArcRho [" & book.Name & "]: " & message
+    If Len(message) > 0 Then Application.StatusBar = "Arco [" & book.Name & "]: " & message
     Exit Sub
 Failed:
     message = "Unable to load the entered formula; saved data is unchanged. " & Err.Description

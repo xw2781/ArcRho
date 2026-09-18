@@ -2,16 +2,16 @@
 setlocal EnableExtensions
 
 set "SCRIPT_DIR=%~dp0"
-if not defined ARCRHO_BUILD_PRODUCT set "ARCRHO_BUILD_PRODUCT=arcrho"
-if /i "%ARCRHO_BUILD_PRODUCT%"=="arcrho" goto product_arcrho
+if not defined ARCRHO_BUILD_PRODUCT set "ARCRHO_BUILD_PRODUCT=arco"
+if /i "%ARCRHO_BUILD_PRODUCT%"=="arco" goto product_arco
 if /i "%ARCRHO_BUILD_PRODUCT%"=="arcode" goto product_arcode
 echo ERROR: Unsupported ARCRHO_BUILD_PRODUCT: %ARCRHO_BUILD_PRODUCT%
-echo Expected arcrho or arcode.
+echo Expected arco or arcode.
 exit /b 1
 
-:product_arcrho
-set "PRODUCT_NAME=ArcRho"
-set "INSTALLER_PREFIX=ArcRho"
+:product_arco
+set "PRODUCT_NAME=Arco"
+set "INSTALLER_PREFIX=Arco"
 set "DEFAULT_LOCAL_ROOT=%USERPROFILE%\Documents\build_arcrho_app"
 set "PYTHON_SERVER_BUILD_SCRIPT=build\build_python_server.bat"
 set "PYTHON_SERVER_DIR=arcrho_server"

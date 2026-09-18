@@ -243,7 +243,7 @@ export function createDatasetRunController(deps) {
       try {
         validated = await validateTriInputsBeforeRun({ showMessage: showValidationMessage });
       } catch (err) {
-        console.error("Failed to validate ArcRhoTri inputs:", err);
+        console.error("Failed to validate ArcoTri inputs:", err);
         if (showValidationMessage) {
           setStatus("Failed to validate inputs. Please check project/reserving class/dataset values.");
         }
@@ -280,7 +280,7 @@ export function createDatasetRunController(deps) {
         ? buildVecRequestPayload(triRequestInputs)
         : buildTriRequestPayload(triRequestInputs);
       const routeRoot = isVector ? "/arcrho/vec" : "/arcrho/tri";
-      const runLabel = isVector ? "ArcRhoVec" : "ArcRhoTri";
+      const runLabel = isVector ? "ArcoVec" : "ArcoTri";
       if (status) {
         status.textContent = clearCache
           ? "Clearing cache and sending request..."
@@ -297,7 +297,7 @@ export function createDatasetRunController(deps) {
           try {
             await clearHeadersCacheForProject(project, { remote: true, originLen, devLen });
           } catch (err) {
-            console.warn("Failed to clear ArcRhoHeaders cache:", err);
+            console.warn("Failed to clear the project header cache:", err);
             return;
           }
           try {
@@ -588,9 +588,9 @@ export function createDatasetRunController(deps) {
         // before anything was written and unsaved edits stay in the grid.
         const message = String(
           data?.detail
-          || "The ArcRho Engine service is not available. Please try again later or contact the administrator.",
+          || "The Arco Engine service is not available. Please try again later or contact the administrator.",
         );
-        void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+        void showPageMessageBox({ title: "Arco Engine Unavailable", message, tone: "warn" });
         setStatus(message);
         logLine(`Save refused: ${message}`);
         return;

@@ -45,7 +45,7 @@ ArcRho replaces the traditional vendor-based reserving database with a lightweig
 ```mermaid
 flowchart LR
     subgraph Excel["Excel · VBA"]
-        A[UDF Call\nArcRhoTri · ArcRhoVec]
+        A[UDF Call\nArcoTri · ArcoVec]
     end
 
     subgraph Engine["ArcRho Engine · Python"]
@@ -63,7 +63,7 @@ flowchart LR
 ### How It Works
 
 **1. Send a request from the frontend**
-Users call ArcRho functions directly in Excel or the ArcRho desktop app, such as `=ArcRhoTri(...)`, to get a loss triangle dataset. Each request tells ArcRho which project, reserving class, and dataset to retrieve.
+Users call ArcRho functions directly in Excel or the ArcRho desktop app, such as `=ArcoTri(...)`, to get a loss triangle dataset. Each request tells ArcRho which project, reserving class, and dataset to retrieve.
 
 **2. Find the right data**
 ArcRho reads the project setup, filters the source data to the requested segment, and uses the configured dataset definitions to determine what should be returned.
@@ -124,15 +124,15 @@ Click **Select Datasets** to browse all datasets defined for the active project.
 
 ### UDF Reference
 
-All functions use the `ArcRho` prefix.
+All functions use the `Arco` prefix.
 
 | Function | Category | Description | Arguments |
 |---|---|---|---|
-| `ArcRhoTri` | Triangle | Returns a full loss triangle as a spilled array | `Path`, `TriangleName`, `[Cumulative]`, `[Transposed]`, `[Calendar]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
-| `ArcRhoTriDiag` | Triangle | Extracts a single diagonal. `DiagonalIndex = 0` = latest; negative values step back | `Path`, `TriangleName`, `[DiagonalIndex]`, `[Cumulative]`, `[Transposed]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
-| `ArcRhoTriOrigin` | Triangle | Returns one origin-period row across all development ages | `Path`, `TriangleName`, `OriginPeriod`, `[Cumulative]`, `[Transposed]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
-| `ArcRhoTriCell` | Triangle | Returns a single scalar cell at a specified origin and development position | `Path`, `TriangleName`, `OriginPeriod`, `DevelopmentPeriod`, `[Cumulative]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
-| `ArcRhoVec` | Vector | Returns a one-dimensional origin-period vector (e.g. earned exposure, premium) | `Path`, `VectorName`, `[Transposed]`, `[ProjectName]`, `[PeriodLength]` |
-| `ArcRhoVecCell` | Vector | Returns a single element from a vector by 1-based index | `Path`, `VectorName`, `Index`, `[ProjectName]`, `[PeriodLength]` |
-| `ArcRhoHeaders` | Utility | Returns axis labels for triangle headers. `periodType = 0` = origin labels; `1` = development age labels | `periodType`, `Transposed`, `[PeriodLength]`, `[ProjectName]` |
-| `ArcRhoProjectSettings` | Utility | Returns project metadata: name, origin type, start/end dates, development end date, period lengths | `[ProjectName]` |
+| `ArcoTri` | Triangle | Returns a full loss triangle as a spilled array | `Path`, `TriangleName`, `[Cumulative]`, `[Transposed]`, `[Calendar]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
+| `ArcoTriDiag` | Triangle | Extracts a single diagonal. `DiagonalIndex = 0` = latest; negative values step back | `Path`, `TriangleName`, `[DiagonalIndex]`, `[Cumulative]`, `[Transposed]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
+| `ArcoTriOrigin` | Triangle | Returns one origin-period row across all development ages | `Path`, `TriangleName`, `OriginPeriod`, `[Cumulative]`, `[Transposed]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
+| `ArcoTriCell` | Triangle | Returns a single scalar cell at a specified origin and development position | `Path`, `TriangleName`, `OriginPeriod`, `DevelopmentPeriod`, `[Cumulative]`, `[ProjectName]`, `[OriginLength]`, `[DevelopmentLength]` |
+| `ArcoVec` | Vector | Returns a one-dimensional origin-period vector (e.g. earned exposure, premium) | `Path`, `VectorName`, `[Transposed]`, `[ProjectName]`, `[PeriodLength]` |
+| `ArcoVecCell` | Vector | Returns a single element from a vector by 1-based index | `Path`, `VectorName`, `Index`, `[ProjectName]`, `[PeriodLength]` |
+| `ArcoHeaders` | Utility | Returns axis labels for triangle headers. `periodType = 0` = origin labels; `1` = development age labels | `periodType`, `Transposed`, `[PeriodLength]`, `[ProjectName]` |
+| `ArcoProjectSettings` | Utility | Returns project metadata: name, origin type, start/end dates, development end date, period lengths | `[ProjectName]` |

@@ -89,7 +89,7 @@ class WorkspaceMutationExecutor:
         except Exception as exc:
             self._log(self.root, f"workspace mutation runtime unavailable: {exc!r}")
             raise WorkspaceReadHttpError(
-                503, "The ArcRho Server cannot run workspace mutations right now."
+                503, "The Arco Server cannot run workspace mutations right now."
             ) from exc
 
         from fastapi import HTTPException

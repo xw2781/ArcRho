@@ -78,7 +78,7 @@ def wait_for_ui_ready(
             return last
         if time.monotonic() >= deadline:
             raise TimeoutError(
-                f"ArcRho UI did not report ready within {timeout_sec:.0f}s "
+                f"Arco UI did not report ready within {timeout_sec:.0f}s "
                 f"(marker: {app_ui_ready_marker_path(app_mode=app_mode, env=env)})"
             )
         time.sleep(max(0.05, float(poll_interval_sec)))

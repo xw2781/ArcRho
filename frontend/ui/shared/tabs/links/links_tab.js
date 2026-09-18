@@ -1,12 +1,12 @@
 /*
 ===============================================================================
 Links Tab
-One compact table per kind of link a page holds, in two framed panes: ArcRho
+One compact table per kind of link a page holds, in two framed panes: Arco
 dataset links above, Excel workbook links below, a formula listed once per
 source it reads under that source's kind. A draggable divider separates the panes and starts at the
 middle of the tab; double-clicking it puts it back there. Both tables share
 one set of column widths and scroll sideways together, though the source and
-reference headers read as Source Dataset/Cell Range for ArcRho and Source
+reference headers read as Source Dataset/Cell Range for Arco and Source
 Workbook/Cell Address for Excel, since each section names its own kind of
 link. Each row says where the values come from, the exact address the source
 contributes, the cells it fills (Destination), and how many they are (Total
@@ -62,11 +62,11 @@ const DEFAULT_SPLIT_RATIO = 0.5;
 const MIN_PANE_HEIGHT = 64;
 let sessionSplitRatio = DEFAULT_SPLIT_RATIO;
 
-const KIND_LABELS = { excel: "Excel", internal: "ArcRho" };
+const KIND_LABELS = { excel: "Excel", internal: "Arco" };
 // Section order on the page, top to bottom. A formula arrives as one record
 // per source it reads, each sitting in that source's section.
 export const LINK_SECTIONS = [
-  { kind: "internal", title: "ArcRho Links" },
+  { kind: "internal", title: "Arco Links" },
   { kind: "excel", title: "Excel Links" },
 ];
 
@@ -371,7 +371,7 @@ export function createLinksTab({
   divider.className = "arLinksDivider";
   divider.setAttribute("role", "separator");
   divider.setAttribute("aria-orientation", "horizontal");
-  divider.setAttribute("aria-label", "Resize the ArcRho and Excel panes");
+  divider.setAttribute("aria-label", "Resize the Arco and Excel panes");
 
   const widths = new Map(LINK_COLUMNS.map((column) => [
     column.key,

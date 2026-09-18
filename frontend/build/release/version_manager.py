@@ -220,7 +220,7 @@ def update_version_metadata(repo_root: Path, version: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Update ArcRho build version metadata."
+        description="Update Arco build version metadata."
     )
     parser.add_argument(
         "version",
@@ -240,7 +240,7 @@ def main() -> int:
         "--github-release-product",
         help=(
             "Product name whose GitHub Releases history defines the published baseline, "
-            "such as ArcRho or Arcode. When no explicit version is provided, the patch "
+            "such as Arco or Arcode. When no explicit version is provided, the patch "
             "bump starts from the newest package or published release version."
         ),
     )

@@ -13,7 +13,7 @@ Private needsGateway As Boolean
 
 Public Sub BeginDatasetRefresh(ByVal book As Workbook, Optional ByVal sheet As Worksheet, _
                                Optional ByVal onlyMissing As Boolean = False, Optional ByVal target As Range)
-    If Not refreshBook Is Nothing Then Err.Raise 5, , "An ArcRho refresh is already running."
+    If Not refreshBook Is Nothing Then Err.Raise 5, , "An Arco refresh is already running."
     SnapshotPrepare book
     Set refreshBook = book
     Set refreshSheet = sheet
@@ -103,11 +103,11 @@ Public Function RefreshDataset(ByVal funcArgs As String, ByVal requestKey As Str
     End If
     If Not fetchAllowed Then
         needsGateway = True
-        RefreshDataset = "(ArcRho: loading this formula's data...)"
+        RefreshDataset = "(Arco: loading this formula's data...)"
         Exit Function
     End If
     If cancelUpdate Then
-        RefreshDataset = "(ArcRho refresh cancelled.)"
+        RefreshDataset = "(Arco refresh cancelled.)"
         Exit Function
     End If
     If Len(refreshFailure) > 0 Then
@@ -122,20 +122,20 @@ Public Function RefreshDataset(ByVal funcArgs As String, ByVal requestKey As Str
             RefreshDataset = values
             Exit Function
         End If
-        message = "ArcRho Server answered without a data array."
+        message = "Arco Server answered without a data array."
     End If
     refreshFailure = message
     RefreshDataset = "(" & message & ")"
     Exit Function
 Failed:
-    refreshFailure = "ArcRho refresh failed: " & Err.Description
+    refreshFailure = "Arco refresh failed: " & Err.Description
     RefreshDataset = "(" & refreshFailure & ")"
 End Function
 
 Public Sub CommitDatasetRefresh(Optional ByVal replaceAll As Boolean = False)
     Dim number As Long, description As String
-    If refreshBook Is Nothing Then Err.Raise 5, , "No ArcRho refresh is running."
-    If cancelUpdate Or Len(refreshFailure) > 0 Then Err.Raise 5, , "The ArcRho refresh did not finish."
+    If refreshBook Is Nothing Then Err.Raise 5, , "No Arco refresh is running."
+    If cancelUpdate Or Len(refreshFailure) > 0 Then Err.Raise 5, , "The Arco refresh did not finish."
     On Error GoTo Failed
     committing = True
     SnapshotCommit refreshBook, refreshResults, replaceAll

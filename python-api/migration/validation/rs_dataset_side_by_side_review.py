@@ -153,10 +153,10 @@ def _build_rs_record(rc_path: str, name: str, arcrho_payload: dict | None, rs: A
         except Exception as exc:
             note_parts.append(f"could not read ResQ result selection: {type(exc).__name__}: {exc}")
     else:
-        note_parts.append("RS has a persisted ArcRho method JSON but was not found in ResQ")
+        note_parts.append("RS has a persisted Arco method JSON but was not found in ResQ")
 
     if arcrho_payload is None:
-        note_parts.append("RS exists in ResQ but no persisted ArcRho method JSON was found")
+        note_parts.append("RS exists in ResQ but no persisted Arco method JSON was found")
 
     both_present = arcrho_payload is not None and bool(resq_columns)
 
@@ -184,7 +184,7 @@ def _build_rs_record(rc_path: str, name: str, arcrho_payload: dict | None, rs: A
             if col_name not in arcrho_by_name:
                 note_parts.append(f'dataset "{col_name}" loaded in ResQ only')
             elif col_name not in resq_by_name:
-                note_parts.append(f'dataset "{col_name}" loaded in ArcRho only')
+                note_parts.append(f'dataset "{col_name}" loaded in Arco only')
 
     arcrho_matrix: list[list[float | None]] = []
     resq_matrix: list[list[float | None]] = []
@@ -227,7 +227,7 @@ def _build_rs_record(rc_path: str, name: str, arcrho_payload: dict | None, rs: A
         diff_matrix.append(d_row)
 
     if only_arcrho_cells:
-        note_parts.append(f"{only_arcrho_cells} cell(s) with a value present in ArcRho only")
+        note_parts.append(f"{only_arcrho_cells} cell(s) with a value present in Arco only")
     if only_resq_cells:
         note_parts.append(f"{only_resq_cells} cell(s) with a value present in ResQ only")
 
@@ -357,9 +357,9 @@ def _write_rs_block(sheet, start_row: int, record: dict, styles: dict) -> tuple[
         if column_count > 1:
             sheet.merge_cells(start_row=group_row, start_column=col, end_row=group_row, end_column=col + column_count - 1)
 
-    _group_header(arcrho_start_col, "ArcRho")
+    _group_header(arcrho_start_col, "Arco")
     _group_header(resq_start_col, "ResQ")
-    _group_header(diff_start_col, "Diff (ArcRho − ResQ)")
+    _group_header(diff_start_col, "Diff (Arco − ResQ)")
 
     sheet.cell(row=label_row, column=origin_col, value="Origin").font = styles["bold"]
     for j, col_name in enumerate(record["column_names"]):

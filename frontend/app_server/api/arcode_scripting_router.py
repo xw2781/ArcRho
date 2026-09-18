@@ -81,7 +81,7 @@ def scripting_list_notebooks() -> List[Dict[str, str]]:
 
 @router.post("/scripting/run-in-arcrho")
 def scripting_run_in_arcrho(req: ScriptMacroSourceRunRequest, request: Request) -> Dict[str, Any]:
-    require_local_client(request, "Run in ArcRho")
+    require_local_client(request, "Run in Arco")
     return scripting_macro_service.run_arcrho_macro_source(req.source, req.filename, req.source_path)
 
 

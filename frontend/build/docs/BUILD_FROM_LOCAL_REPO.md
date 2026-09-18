@@ -116,7 +116,7 @@ frontend\build\build_app_from_local_repo.bat --build-only 1.3.0
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ARCRHO_BUILD_PRODUCT` | `arcrho` | Select `arcrho` or `arcode`. |
+| `ARCRHO_BUILD_PRODUCT` | `arco` | Select `arco` or `arcode`. |
 | `ARCRHO_LOCAL_RELEASE_WORK_DIR` | `%USERPROFILE%\Documents\ArcRho Local Build` | Build logs and pending-release records, outside the repository. |
 | `PYTHON_API_PACKAGE_DIR` | `E:\ArcRho Server\packages` | Shared Python API wheel destination used at ArcRho publish time. |
 | `PYTHON_EXE` | resolved via `py -3.10` | Python 3.10 interpreter used for packaging and workflow actions. |
@@ -144,12 +144,12 @@ pushed. The build retains the Python API wheel until its matching pending releas
 
 A successful build-only run produces:
 
-- `frontend\dist\ArcRho-Setup-<version>.exe`; and
+- `frontend\dist\Arco-Setup-<version>.exe`; and
 - a matching pending-release record under the local release work directory.
 
 It does not create a GitHub Release, shared Python API wheel, or release-bookkeeping change.
 
-A successful publish additionally produces a GitHub Release tagged `ArcRho-v<version>` with
+A successful publish additionally produces a GitHub Release tagged `Arco-v<version>` with
 the installer and `.sha256` attached, the matching shared Python API wheel for ArcRho, and the
 optional local bookkeeping commit. The tag name and target repository come from
 `release_channel.json`; do not duplicate them in a script or GUI setting.

@@ -229,8 +229,8 @@ def main() -> int:
     parser.add_argument("version", help="Published version, such as 1.2.5.")
     parser.add_argument(
         "--product",
-        default="ArcRho",
-        help="Product whose release tag is verified. Defaults to ArcRho.",
+        default="Arco",
+        help="Product whose release tag is verified. Defaults to Arco.",
     )
     parser.add_argument(
         "--remote",

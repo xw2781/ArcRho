@@ -689,7 +689,7 @@ class ProjectDuplicationTests(unittest.TestCase):
         self.assertEqual(status["status"], "error")
         self.assertEqual(
             status["message"],
-            "The ArcRho Server filesystem could not complete project duplication.",
+            "The Arco Server filesystem could not complete project duplication.",
         )
 
         log_text = project_duplication._duplication_log_path(

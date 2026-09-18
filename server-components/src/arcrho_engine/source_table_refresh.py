@@ -112,7 +112,7 @@ def _safe_status_message(exc: BaseException) -> str:
     if isinstance(exc, (SourceRefreshJobError, SourceRefreshContractError)):
         return _redact_machine_paths(exc) or "The source table refresh failed."
     if isinstance(exc, OSError):
-        return "The ArcRho Server filesystem could not complete the source table refresh."
+        return "The Arco Server filesystem could not complete the source table refresh."
     return "The source table refresh failed."
 
 
@@ -353,7 +353,7 @@ def _regenerate_engine_dataset(
             _restore_dataset_cache(backup_path, data_path)
         raise SourceRefreshJobError(
             f"{dataset_name}: "
-            + str(outcome.get("message") or "the ArcRho Engine did not return values.")
+            + str(outcome.get("message") or "the Arco Engine did not return values.")
         )
     _discard_dataset_backup(backup_path)
     _log(

@@ -294,7 +294,7 @@ def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[
                     root, request_id
                 )
                 if not isinstance(response, Mapping):
-                    return 500, None, "ArcRho Engine returned no save response."
+                    return 500, None, "Arco Engine returned no save response."
                 return 200, dict(response), ""
             return (
                 int(status.get("status_code") or 500),
@@ -306,13 +306,13 @@ def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[
             request_path = save_job_request_path(root, request_id)
             if request_path.is_file():
                 discard_save_job_artifacts(root, request_id)
-                return 503, None, "ArcRho Engine did not pick up the save."
+                return 503, None, "Arco Engine did not pick up the save."
             claimed = True
         if now >= deadline:
             return (
                 504,
                 None,
-                "The save is taking longer than expected on ArcRho Engine. "
+                "The save is taking longer than expected on Arco Engine. "
                 "Reload the dataset before retrying.",
             )
         time.sleep(STATUS_POLL_SECONDS)

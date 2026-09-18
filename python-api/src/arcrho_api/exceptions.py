@@ -6,7 +6,7 @@ class ArcRhoApiError(Exception):
 
 
 class InvalidArcRhoServerError(ArcRhoApiError):
-    """Raised when a server root does not look like an ArcRho Server folder."""
+    """Raised when a server root does not look like an Arco Server folder."""
 
 
 class ProjectNotFoundError(ArcRhoApiError):

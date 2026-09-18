@@ -2,7 +2,7 @@
 ===============================================================================
 Internal Dataset Links
 Per-cell links from this dataset's editable grid into another dataset of the
-same reserving class, the ArcRho sibling of the Excel `external_links`
+same reserving class, the Arco sibling of the Excel `external_links`
 controller. A link stores its standalone reference text plus the target cells
 it owns, each mapped to a source cell of the referenced dataset:
 

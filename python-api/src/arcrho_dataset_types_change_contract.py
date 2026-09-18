@@ -1,4 +1,4 @@
-"""Canonical request and status contract for ArcRho dataset-type change jobs.
+"""Canonical request and status contract for Arco dataset-type change jobs.
 
 A project's dataset-type table is the definition every dataset instance, every
 formula and every dependency edge in that project is derived from. Changing it
@@ -9,7 +9,7 @@ datasets in any reserving class.
 
 Doing that from a Client PC meant walking every reserving class's sidecars over
 the mapped drive inside the save request, so the request answered minutes later
-or not at all. This contract moves the whole change to ArcRho Engine on the
+or not at all. This contract moves the whole change to Arco Engine on the
 machine hosting the workspace, as a durable job: the client validates the rows,
 submits the request, and polls the status while the Engine writes the table and
 rebuilds everything derived from it on local disk.
@@ -403,7 +403,7 @@ def validate_dataset_types_change_request(payload: Any) -> dict[str, Any]:
 
     The required fields are also the complete allow-list, so a machine-local
     filesystem path is impossible by construction: the Engine derives every
-    absolute path from its own configured ArcRho Server root.
+    absolute path from its own configured Arco Server root.
     """
 
     if not isinstance(payload, Mapping):
@@ -466,7 +466,7 @@ def validate_dataset_types_change_request(payload: Any) -> dict[str, Any]:
 def _root_path(server_root: str | os.PathLike[str]) -> Path:
     raw = os.fspath(server_root)
     if not str(raw).strip():
-        raise DatasetTypesChangeContractError("ArcRho Server root is required.")
+        raise DatasetTypesChangeContractError("Arco Server root is required.")
     return Path(raw).expanduser()
 
 

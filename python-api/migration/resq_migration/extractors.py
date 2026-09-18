@@ -890,7 +890,7 @@ def export_berquist_sherman(
     )
     if origin_length != 12 or development_length != 12:
         raise ValueError(
-            "ArcRho's Berquist Sherman MVP supports annual triangles only "
+            "Arco's Berquist Sherman MVP supports annual triangles only "
             f"(got origin_length={origin_length}, development_length={development_length})."
         )
 

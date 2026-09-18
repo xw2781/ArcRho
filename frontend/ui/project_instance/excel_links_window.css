@@ -254,7 +254,7 @@ body.pi-excel-links-resizing-column * {
 }
 
 /* The listing's Found/Missing verdict has no column of its own; a workbook
-   ArcRho Server cannot open is called out on its path. */
+   Arco Server cannot open is called out on its path. */
 .pi-excel-links-table tbody td.pi-excel-links-cell.workbookPath.missing {
   color: var(--ar-color-danger);
 }

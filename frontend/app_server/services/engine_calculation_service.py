@@ -1,10 +1,10 @@
-"""ArcRho Engine calculation requests: the local exchange, the dataset run, and their Gateway transport.
+"""Arco Engine calculation requests: the local exchange, the dataset run, and their Gateway transport.
 
 An ``ArcRhoTri`` / ``ArcRhoVec`` / ``ArcRhoHeaders`` calculation is a
 request file the Engine claims from the workspace ``requests`` root plus the
 CSV it writes to the caller's ``DataPath``. ``publish_and_wait`` is that
 exchange; it is the same code whether it runs on a Client PC over the mapped
-drive or inside the ArcRho Gateway on the server host against local disk.
+drive or inside the Arco Gateway on the server host against local disk.
 
 ``run_engine_calculation`` is what the runtime service calls. When the output
 CSV lives on a network drive and the Gateway advertises the Engine function, it
@@ -100,7 +100,7 @@ TRANSPORT_IN_PROCESS = "in_process"
 
 InProcessCalculator = Callable[[Mapping[str, Any]], None]
 
-# Set by an ArcRho Engine that hosts this runtime for its durable jobs. A
+# Set by an Arco Engine that hosts this runtime for its durable jobs. A
 # job on the Engine (a source refresh materialising a precedent at another
 # period, a hosted save) used to publish a request file to the shared folder
 # and wait for an Engine -- possibly itself -- to claim it, paying the
@@ -138,12 +138,12 @@ def calculate_in_process(pairs: Sequence[Sequence[str]], data_path: str) -> Dict
     try:
         calculator(payload)
     except Exception as exc:
-        outcome["message"] = f"The ArcRho Engine could not run this calculation: {exc}"
+        outcome["message"] = f"The Arco Engine could not run this calculation: {exc}"
     else:
         if os.path.isfile(data_path):
             outcome.update(ok=True, status=ENGINE_CALCULATION_STATUS_COMPLETED)
         else:
-            outcome["message"] = "The ArcRho Engine finished this calculation without writing its output."
+            outcome["message"] = "The Arco Engine finished this calculation without writing its output."
     outcome["wait_ms"] = (time.perf_counter_ns() - started_ns) / 1_000_000.0
     return outcome
 
@@ -204,7 +204,7 @@ def execute_hosted_engine_calculation(
         try:
             os.makedirs(os.path.dirname(data_path), exist_ok=True)
         except OSError as exc:
-            raise HTTPException(500, f"Failed to create the ArcRho data folder: {exc}") from exc
+            raise HTTPException(500, f"Failed to create the Arco data folder: {exc}") from exc
         result = publish_and_wait(pairs, data_path, clamp_engine_calculation_wait(timeout_sec))
         return build_engine_calculation_response(
             ok=result["ok"],
@@ -434,10 +434,10 @@ def run_engine_calculation(
                                 "request_file": None,
                                 "transport": TRANSPORT_HTTP,
                                 "message": (
-                                    "The ArcRho Server took too long to finish this calculation. "
+                                    "The Arco Server took too long to finish this calculation. "
                                     "Verify the data engine is running, then try again."
                                     if failure.timed_out
-                                    else "The ArcRho Server connection failed while waiting for "
+                                    else "The Arco Server connection failed while waiting for "
                                     "this calculation. Try again in a moment."
                                 ),
                             }
@@ -456,7 +456,7 @@ def run_engine_calculation(
                     if not _same_path(server_data_path, data_path):
                         raise HTTPException(
                             500,
-                            "The ArcRho Server resolved this calculation to a different output "
+                            "The Arco Server resolved this calculation to a different output "
                             "location than this PC. Check that both use the same workspace.",
                         )
                     result = {
@@ -472,7 +472,7 @@ def run_engine_calculation(
                             ok=False,
                             status=ENGINE_CALCULATION_STATUS_TIMEOUT,
                             message=(
-                                "The ArcRho Server finished this calculation but its output is "
+                                "The Arco Server finished this calculation but its output is "
                                 "not yet visible on this PC's network drive. Try again."
                             ),
                         )
@@ -593,7 +593,7 @@ def run_hosted_dataset_operation(
                         context["reason"] = failure.reason
                         raise HTTPException(
                             504,
-                            "The ArcRho Server took too long to finish this dataset request. "
+                            "The Arco Server took too long to finish this dataset request. "
                             "Reload the dataset before retrying.",
                         ) from failure
                     context["reason"] = failure.reason

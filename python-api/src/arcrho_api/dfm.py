@@ -335,7 +335,7 @@ def _commit_bytes_atomic(files: dict[Path, bytes], *, last_paths: Iterable[Path]
 
 
 class DfmMethod:
-    """One ArcRho DFM method JSON file."""
+    """One Arco DFM method JSON file."""
 
     def __init__(self, reserving_class: "ReservingClass", name: str, payload: dict[str, Any], file_path: Path) -> None:
         self.reserving_class_obj = reserving_class

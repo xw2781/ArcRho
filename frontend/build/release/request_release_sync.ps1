@@ -20,8 +20,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$BuildShareRoot,
 
-    [ValidateSet("ArcRho", "Arcode")]
-    [string]$ProductName = "ArcRho",
+    [ValidateSet("Arco", "Arcode")]
+    [string]$ProductName = "Arco",
 
     [string]$ReadySignal = "",
 

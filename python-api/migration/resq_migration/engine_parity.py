@@ -202,12 +202,12 @@ def describe_import_mismatch(comparison: dict[str, object]) -> str:
         resq_rows, resq_columns = comparison["resq_shape"]
         engine_rows, engine_columns = comparison["engine_shape"]
         return (
-            f"ResQ holds {resq_rows} x {resq_columns} cells but ArcRho Engine produced "
+            f"ResQ holds {resq_rows} x {resq_columns} cells but Arco Engine produced "
             f"{engine_rows} x {engine_columns}."
         )
     count = int(comparison.get("mismatch_count") or 0)
     return (
         f"{count} cell(s) differ from ResQ at {IMPORT_DECIMAL_PLACES} decimal places; "
         f"first at {comparison['first_mismatch_cell']}: ResQ {_cell_text(comparison['resq_value'])}, "
-        f"ArcRho Engine {_cell_text(comparison['engine_value'])}."
+        f"Arco Engine {_cell_text(comparison['engine_value'])}."
     )

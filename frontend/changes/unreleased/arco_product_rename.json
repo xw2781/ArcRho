@@ -1,0 +1,13 @@
+{
+  "type": "breaking",
+  "scope": "app",
+  "audience": "user",
+  "summary": "The app is now called Arco Workspace, and the Excel worksheet functions are renamed from the ArcRho prefix to Arco.",
+  "details": [
+    "The installer, the desktop shortcut, the window title, the splash screen, the About box and the user manual all carry the new name; the shortcut on your desktop reads Arco.",
+    "Excel worksheet functions are renamed: ArcoTri, ArcoTriDiag, ArcoTriCell, ArcoTriOrigin, ArcoHeaders, ArcoVec, ArcoVecCell, ArcoProjectSettings, ArcoReservingClasses and ArcoNodeContents.",
+    "The old ArcRho function names no longer work, and neither do the older ADAS names; a formula that still uses one returns #NAME? and has to be rewritten with the Arco name.",
+    "In-cell dataset formulas in the app follow the same names, so a saved cell link written with an ArcRho name has to be entered again.",
+    "The Excel add-in reads the default project name from a sheet called either Arco Settings or ResQ Settings, and Connect and Login creates the Arco Settings sheet on a workbook that has neither."
+  ]
+}

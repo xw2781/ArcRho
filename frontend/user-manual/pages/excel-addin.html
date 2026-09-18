@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ArcRho Manual - Excel Add-In</title>
+  <title>Arco Manual - Excel Add-In</title>
   <link rel="stylesheet" href="../manual.css">
 </head>
 <body data-page="excel-addin">
-  <main class="manual-page" data-page-title="Excel Add-In" data-page-intro="ArcRho 3.0.1 opens with your workbook's saved values and loads missing results when you enter or edit a formula. Use Refresh to update existing values, then save to share them.">
+  <main class="manual-page" data-page-title="Excel Add-In" data-page-intro="Arco 4.0.0 opens with your workbook's saved values and loads missing results when you enter or edit a formula. Use Refresh to update existing values, then save to share them.">
     <section class="manual-section" id="ribbon">
-      <div class="section-head"><p class="eyebrow">Ribbon</p><h2>ArcRho tab in Excel</h2></div>
+      <div class="section-head"><p class="eyebrow">Ribbon</p><h2>Arco tab in Excel</h2></div>
       <div class="excel-demo">
         <div class="excel-group"><strong>Unlimited Remote Access</strong><button class="hotspot" data-tip="Set workbook connection and login.">Connect and Login</button><button>Refresh Worksheet</button><button>Refresh Workbook</button></div>
         <div class="excel-group"><strong>Shortcuts</strong><button>Insert Function</button><button>Clear Formulas</button><button class="hotspot" data-tip="Pick reserving class path values from the user form.">Load Reserving Classes</button><button>Select Datasets</button></div>
@@ -22,22 +22,22 @@
       <div class="section-head"><p class="eyebrow">Functions</p><h2>Worksheet formulas</h2></div>
       <div class="code-tabs" data-code-tabs>
         <div class="tab-buttons"><button class="active" data-tab="tri">Triangle</button><button data-tab="vec">Vector</button><button data-tab="headers">Headers</button><button data-tab="metadata">Metadata</button></div>
-        <pre class="code-sample active" data-panel="tri"><code>=ArcRhoTri("PA\Direct Group\Collision","Paid Loss",TRUE,FALSE,FALSE,"NJ Annual Production 2026",12,12)
+        <pre class="code-sample active" data-panel="tri"><code>=ArcoTri("PA\Direct Group\Collision","Paid Loss",TRUE,FALSE,FALSE,"NJ Annual Production 2026",12,12)
 
-=ArcRhoTriDiag("PA\Direct Group\Collision","Paid Loss",0,TRUE,FALSE,"NJ Annual Production 2026",12,12)
+=ArcoTriDiag("PA\Direct Group\Collision","Paid Loss",0,TRUE,FALSE,"NJ Annual Production 2026",12,12)
 
-=ArcRhoTriCell("PA\Direct Group\Collision","Paid Loss",3,2,TRUE,"NJ Annual Production 2026",12,12)</code></pre>
-        <pre class="code-sample" data-panel="vec"><code>=ArcRhoVec("PA\Direct Group\Collision","Paid Ultimate",FALSE,"NJ Annual Production 2026",12)
+=ArcoTriCell("PA\Direct Group\Collision","Paid Loss",3,2,TRUE,"NJ Annual Production 2026",12,12)</code></pre>
+        <pre class="code-sample" data-panel="vec"><code>=ArcoVec("PA\Direct Group\Collision","Paid Ultimate",FALSE,"NJ Annual Production 2026",12)
 
-=ArcRhoVecCell("PA\Direct Group\Collision","Paid Ultimate",4,"NJ Annual Production 2026",12)</code></pre>
-        <pre class="code-sample" data-panel="headers"><code>=ArcRhoHeaders(1,FALSE,12,"NJ Annual Production 2026",-1,FALSE)
+=ArcoVecCell("PA\Direct Group\Collision","Paid Ultimate",4,"NJ Annual Production 2026",12)</code></pre>
+        <pre class="code-sample" data-panel="headers"><code>=ArcoHeaders(1,FALSE,12,"NJ Annual Production 2026",-1,FALSE)
 
 periodType examples:
 1 = origin labels
 2 = development labels</code></pre>
-        <pre class="code-sample" data-panel="metadata"><code>=ArcRhoProjectSettings("NJ Annual Production 2026")
-=ArcRhoReservingClasses(3,TRUE,"NJ Annual Production 2026")
-=ArcRhoNodeContents("PA\Direct Group","Children","NJ Annual Production 2026")</code></pre>
+        <pre class="code-sample" data-panel="metadata"><code>=ArcoProjectSettings("NJ Annual Production 2026")
+=ArcoReservingClasses(3,TRUE,"NJ Annual Production 2026")
+=ArcoNodeContents("PA\Direct Group","Children","NJ Annual Production 2026")</code></pre>
       </div>
     </section>
     <section class="manual-section" id="ribbon-actions">
@@ -46,9 +46,9 @@ periodType examples:
         <thead><tr><th>Command</th><th>Use it when</th></tr></thead>
         <tbody>
           <tr><td>Connect and Login</td><td>A workbook needs a connection or login setup.</td></tr>
-          <tr><td>Refresh Worksheet</td><td>Fetch current ArcRho results for the active sheet and update its saved snapshot.</td></tr>
-          <tr><td>Refresh Workbook</td><td>Fetch current ArcRho results throughout the active workbook. Save afterwards to share the updated values.</td></tr>
-          <tr><td>Clear Formulas</td><td>Remove ArcRho formulas during workbook cleanup.</td></tr>
+          <tr><td>Refresh Worksheet</td><td>Fetch current Arco results for the active sheet and update its saved snapshot.</td></tr>
+          <tr><td>Refresh Workbook</td><td>Fetch current Arco results throughout the active workbook. Save afterwards to share the updated values.</td></tr>
+          <tr><td>Clear Formulas</td><td>Remove Arco formulas during workbook cleanup.</td></tr>
           <tr><td>Load Reserving Classes</td><td>Use a picker to insert path components.</td></tr>
           <tr><td>Select Datasets</td><td>Pick dataset names with format/category/search filters.</td></tr>
           <tr><td>Reset Add-in References</td><td>Fix broken workbook references after moving or updating the add-in.</td></tr>
@@ -58,8 +58,8 @@ periodType examples:
     <section class="manual-section" id="formula-rules">
       <div class="section-head"><p class="eyebrow">Formula rules</p><h2>Useful formula behavior</h2></div>
       <div class="task-grid">
-        <article class="task-card"><h3>Triangle options</h3><ul><li>Cumulative TRUE returns cumulative triangle.</li><li>Transposed TRUE flips display orientation.</li><li>Calendar TRUE requests calendar view.</li><li>Origin and Development Length choose period aggregation.</li><li>Manual and generated datasets support compatible coarser periods from their published values, such as monthly exposure rolled up to annual exposure.</li><li>A generated dataset asked for at a finer period or another mode than its publication, such as quarterly exposure when the frontend shows it annually, is calculated by the ArcRho Engine from the source table. The published values are never changed.</li><li>Manual, calculated, and method outputs can only be read at their published shape or a compatible coarser one.</li></ul></article>
-        <article class="task-card"><h3>Saved workbook results</h3><ul><li>Opening and ordinary recalculation read the last saved ArcRho snapshot without contacting the server.</li><li>Typing, editing, or pasting a formula loads missing results immediately after entry, including when you change its explicit project name. A request already saved in the workbook reuses those values.</li><li>Explicit refresh fetches each distinct request once. A failed or cancelled refresh preserves the previous snapshot.</li><li>Save after adding formulas or refreshing to share the results. Older workbooks need one refresh and save for their existing formulas.</li><li>Permanent datasets are read as published. Temporary generated results are reused while their source and processing settings remain unchanged.</li></ul></article>
+        <article class="task-card"><h3>Triangle options</h3><ul><li>Cumulative TRUE returns cumulative triangle.</li><li>Transposed TRUE flips display orientation.</li><li>Calendar TRUE requests calendar view.</li><li>Origin and Development Length choose period aggregation.</li><li>Manual and generated datasets support compatible coarser periods from their published values, such as monthly exposure rolled up to annual exposure.</li><li>A generated dataset asked for at a finer period or another mode than its publication, such as quarterly exposure when the frontend shows it annually, is calculated by the Arco Engine from the source table. The published values are never changed.</li><li>Manual, calculated, and method outputs can only be read at their published shape or a compatible coarser one.</li></ul></article>
+        <article class="task-card"><h3>Saved workbook results</h3><ul><li>Opening and ordinary recalculation read the last saved Arco snapshot without contacting the server.</li><li>Typing, editing, or pasting a formula loads missing results immediately after entry, including when you change its explicit project name. A request already saved in the workbook reuses those values.</li><li>Explicit refresh fetches each distinct request once. A failed or cancelled refresh preserves the previous snapshot.</li><li>Save after adding formulas or refreshing to share the results. Older workbooks need one refresh and save for their existing formulas.</li><li>Permanent datasets are read as published. Temporary generated results are reused while their source and processing settings remain unchanged.</li></ul></article>
         <article class="task-card"><h3>Pickers</h3><ul><li>Load Reserving Classes writes path parts into active cells.</li><li>Select Datasets filters by category and format.</li><li>Settings stores paths used by the add-in.</li></ul></article>
       </div>
     </section>

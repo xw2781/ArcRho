@@ -9,7 +9,7 @@ sections for positive, negative and zero values, literal text in quotes, a
 Two deliberate departures from Excel keep the app's own stored patterns
 rendering exactly as they always have:
 
-  - The integer part is never zero-padded. ArcRho's long-standing default
+  - The integer part is never zero-padded. Arco's long-standing default
     `0,000` means "grouped thousands", not "four padded digits", so the minimum
     integer width is capped at one digit and `0,000` renders 5 as `5`.
   - Decimal Places is a control of its own on the pages that show one, so an

@@ -103,8 +103,8 @@ async function runInArcRho(code) {
   const started = performance.now();
   page.setRunning(true, "arcrho");
   page.setOutput("");
-  page.setRunInfo("Running in ArcRho");
-  page.setStatus("Running in ArcRho...");
+  page.setRunInfo("Running in Arco");
+  page.setStatus("Running in Arco...");
   let result = null;
 
   try {
@@ -123,15 +123,15 @@ async function runInArcRho(code) {
     const traceback = String(result?.traceback || "").trim();
     const output = [stdout, message, result?.success ? "" : traceback].filter(Boolean).join("\n");
     if (!response.ok || !result?.success) {
-      throw new Error(output || `Run in ArcRho failed (HTTP ${response.status}).`);
+      throw new Error(output || `Run in Arco failed (HTTP ${response.status}).`);
     }
-    page.setOutput(output || "Macro completed in ArcRho.");
-    page.setStatus(result.cancelled ? "Not applied" : (result.applied ? "Applied in ArcRho" : "Done in ArcRho"));
+    page.setOutput(output || "Macro completed in Arco.");
+    page.setStatus(result.cancelled ? "Not applied" : (result.applied ? "Applied in Arco" : "Done in Arco"));
   } catch (err) {
-    const message = String(err?.message || err || "Run in ArcRho failed.");
+    const message = String(err?.message || err || "Run in Arco failed.");
     result = { success: false, message };
     page.setOutput(message, { error: true });
-    page.setStatus("Run in ArcRho failed");
+    page.setStatus("Run in Arco failed");
   } finally {
     const elapsed = Math.max(1, Math.round(performance.now() - started));
     page.setRunInfo(`${elapsed} ms`);

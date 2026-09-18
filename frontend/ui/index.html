@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
-  <title>ArcRho</title>
+  <title>Arco Workspace</title>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/ai-assistant/assistant.css?v=20260620m"/>
   <link rel="stylesheet" href="/ui/macro/macro_window.css?v=20260908a"/>
@@ -36,7 +36,7 @@
         <path d="M 85 420 L 130 250 Q 200 180 400 120 L 85 420 Z" fill="url(#titlebarWingGrad)" opacity="0.5"/>
         <path d="M 85 420 L 180 300 Q 240 250 430 180 L 85 420 Z" fill="url(#titlebarWingGrad)" opacity="0.25"/>
       </svg>
-      <span id="titlebarAppName">ArcRho</span>
+      <span id="titlebarAppName">Arco</span>
     </div>
     <div class="titlebarControls host-nodrag">
       
@@ -330,7 +330,7 @@
         </div>
       </div>
       <div id="aboutBody">
-        <div id="aboutAppName">ArcRho</div>
+        <div id="aboutAppName">Arco Workspace</div>
         <div id="aboutVersion">Version 1.7.1</div>
         <div id="aboutDesc">Actuarial Data & Analytics System</div>
         <div id="aboutActions">
@@ -344,7 +344,7 @@
   <div id="releaseNotesOverlay" class="host-nodrag" role="dialog" aria-modal="true" aria-labelledby="releaseNotesTitle">
     <div id="releaseNotesBox">
       <div id="releaseNotesHeader">
-        <div id="releaseNotesTitle">ArcRho Update Available</div>
+        <div id="releaseNotesTitle">Arco Update Available</div>
         <button id="releaseNotesCloseBtn" type="button" aria-label="Close release notes" title="Close">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M6 6l12 12"></path>
@@ -383,7 +383,7 @@
           if (isDev) {
             for (const id of ['titlebarAppName', 'aboutAppName']) {
               const el = document.getElementById(id);
-              if (el) el.textContent = 'ArcRho Developer';
+              if (el) el.textContent = 'Arco Workspace (Preview)';
             }
           }
         } catch {

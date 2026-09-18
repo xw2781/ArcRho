@@ -1,5 +1,5 @@
 
-Sub Register_ArcRhoTri_Help_Safe()
+Sub Register_ArcoTri_Help_Safe()
     Dim wb As Workbook
     Dim wasAddin As Boolean
 
@@ -16,9 +16,9 @@ Sub Register_ArcRhoTri_Help_Safe()
 
     ' ---- register descriptions ----
     Application.MacroOptions _
-        Macro:=wb.Name & "!ArcRhoTri", _
-        Description:="Returns a triangle dataset from the ArcRho data system with optional cumulative, transpose, calendar, and dimension controls.", _
-        Category:="ArcRho Tools", _
+        Macro:=wb.Name & "!ArcoTri", _
+        Description:="Returns a triangle dataset from the Arco data system with optional cumulative, transpose, calendar, and dimension controls.", _
+        Category:="Arco Tools", _
         ArgumentDescriptions:=Array( _
             "Full path key (string). Example: ""PIC2\PA\NJ\Core Direct\PD"".", _
             "Dataset/Triangle Name (string). Example: ""Net Loss--Paid"", ""Claim Counts--Reported"", etc.", _
@@ -37,13 +37,13 @@ Sub Register_ArcRhoTri_Help_Safe()
         wb.IsAddin = True
     End If
 
-    ' MsgBox "ArcRhoTri help registered.", vbInformation
+    ' MsgBox "ArcoTri help registered.", vbInformation
 End Sub
 
 Sub SetAddinDescription()
     With ThisWorkbook.BuiltinDocumentProperties
-        .item("Title").Value = "ArcRho"
-        .item("Comments").Value = "ArcRho actuarial data and analytics system"
+        .item("Title").Value = "Arco"
+        .item("Comments").Value = "Arco actuarial data and analytics system"
         .item("Subject").Value = "Actuarial Utilities"
     End With
     ThisWorkbook.Save

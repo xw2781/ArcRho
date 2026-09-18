@@ -8,7 +8,7 @@ is one SMB round trip per sidecar inside the save request -- on a project with
 two thousand sidecars the request answered minutes later with nothing on
 screen in the meantime.
 
-This contract moves the whole save to ArcRho Engine on the machine hosting the
+This contract moves the whole save to Arco Engine on the machine hosting the
 workspace, as a durable job: the client validates the rules, submits the
 request, and polls the status while the Engine runs the canonical save on local
 disk and reports its progress. The terminal status embeds the save route's
@@ -169,7 +169,7 @@ def validate_data_processing_rules_job_request(payload: Any) -> dict[str, Any]:
 
     The required fields are also the complete allow-list, so a machine-local
     filesystem path is impossible by construction: the Engine derives every
-    absolute path from its own configured ArcRho Server root.
+    absolute path from its own configured Arco Server root.
     """
 
     if not isinstance(payload, Mapping):
@@ -230,7 +230,7 @@ def validate_data_processing_rules_job_request(payload: Any) -> dict[str, Any]:
 def _root_path(server_root: str | os.PathLike[str]) -> Path:
     raw = os.fspath(server_root)
     if not str(raw).strip():
-        raise DataProcessingRulesJobContractError("ArcRho Server root is required.")
+        raise DataProcessingRulesJobContractError("Arco Server root is required.")
     return Path(raw).expanduser()
 
 

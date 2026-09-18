@@ -261,7 +261,7 @@ def sync_exporter_path(bundle: ResQMigrationBundle) -> Path:
     path = (bundle.migration_dir.parent / _EXPORTER_RELATIVE_PATH).resolve()
     if not path.is_file():
         raise ResQMigrationBundleError(
-            "This ArcRho Bridge does not carry the canonical ResQ exporter "
+            "This Arco Bridge does not carry the canonical ResQ exporter "
             f"[{path}]. Rebuild and redeploy the Bridge."
         )
     return path
@@ -288,7 +288,7 @@ def _require_supported_session_api(module: ModuleType) -> None:
         )
     if version != SUPPORTED_SYNC_SESSION_API_VERSION:
         raise ResQMigrationBundleError(
-            f"This ArcRho Bridge supports synchronization session API "
+            f"This Arco Bridge supports synchronization session API "
             f"{SUPPORTED_SYNC_SESSION_API_VERSION}, but its bundle provides {version}. "
             "Rebuild and redeploy the Bridge."
         )

@@ -8,8 +8,8 @@ param(
 
     [string]$ReleaseNotesPath = "",
 
-    [ValidateSet("ArcRho", "Arcode")]
-    [string]$ProductName = "ArcRho",
+    [ValidateSet("Arco", "Arcode")]
+    [string]$ProductName = "Arco",
 
     [switch]$Mandatory
 )

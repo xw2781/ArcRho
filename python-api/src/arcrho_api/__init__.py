@@ -1,7 +1,7 @@
 """Public ArcRho Python API.
 
 The public objects are loaded lazily.  Small infrastructure consumers such as
-the frozen ArcRho Server deployment helper only need ``arcrho_api.io`` and must
+the frozen Arco Server deployment helper only need ``arcrho_api.io`` and must
 not have to import the client, UI automation, pandas, or the rest of the public
 API merely because Python initializes this package first.
 """

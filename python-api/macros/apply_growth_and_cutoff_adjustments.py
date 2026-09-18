@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Apply Growth and Cutoff Adjustments
-# Version: 1.5.0
-# Release Note: The adjustment now reaches the first ten development periods instead of three; a period whose vectors are 1 is still left alone, so methods adjusted within the first three periods are unchanged.
+# Version: 1.6.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Write the combined growth and accounting cutoff adjustment into the active
 #   DFM's User Entry row as a live in-cell formula, for example
 #   = ROUND("Simple - 2", 4) * [Accounting Cutoff][-1] * [Growth Adjustment--Counts][-1].
@@ -239,9 +239,9 @@ def resolve_references_via_app_server(
         from app_server.services import dfm_service
     except Exception as exc:  # pragma: no cover - depends on app runtime
         raise DfmDataError(
-            "Dataset references could not be resolved because the ArcRho app "
+            "Dataset references could not be resolved because the Arco app "
             f"server is not available in this Python session ({exc}). Run this "
-            "macro from the ArcRho Macro window."
+            "macro from the Arco Macro window."
         ) from exc
 
     if not references:

@@ -19,7 +19,7 @@ END = "// END GENERATED FORMULA METADATA"
 def addin_catalog():
     source = (ROOT / "excel-addin/src_vba/ArcRhoFunctions.bas").read_text(encoding="utf-8-sig")
     functions = {}
-    for match in re.finditer(r"Public Function (ArcRho(?:Tri(?:Diag|Cell|Origin)?|Vec(?:Cell)?))\(\s*_([\s\S]*?)\) As Variant", source):
+    for match in re.finditer(r"Public Function (Arco(?:Tri(?:Diag|Cell|Origin)?|Vec(?:Cell)?))\(\s*_([\s\S]*?)\) As Variant", source):
         arguments = []
         for raw in match[2].replace("_", "").split(","):
             part = raw.strip()

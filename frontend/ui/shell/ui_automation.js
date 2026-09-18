@@ -649,7 +649,7 @@ export function showAutomationMessageBox(args = {}) {
       <div class="uiAutomationDialogActions"></div>
     </section>
   `;
-  overlay.querySelector(".uiAutomationDialogTitle").textContent = toText(args.title) || "ArcRho";
+  overlay.querySelector(".uiAutomationDialogTitle").textContent = toText(args.title) || "Arco";
   overlay.querySelector(".uiAutomationDialogBody").textContent = String(args.message || "");
   const links = Array.isArray(args.links) ? args.links.filter((item) => toText(item?.label)) : [];
   if (links.length) {
@@ -894,7 +894,7 @@ function applyProgressWindowState(entry, args = {}) {
   const countEl = entry.overlay.querySelector(".uiAutomationProgressCount");
   const trackEl = entry.overlay.querySelector(".uiAutomationProgressTrack");
   const fillEl = entry.overlay.querySelector(".uiAutomationProgressFill");
-  if (titleEl && args.title !== undefined) titleEl.textContent = toText(args.title) || "ArcRho";
+  if (titleEl && args.title !== undefined) titleEl.textContent = toText(args.title) || "Arco";
   if (labelEl) labelEl.textContent = label;
   if (countEl) countEl.textContent = countText;
   trackEl?.classList.toggle("indeterminate", total <= 0);
@@ -1019,7 +1019,7 @@ export function openAutomationProgress(args = {}) {
     requestProgressCancel(entry);
   });
   applyProgressWindowState(entry, {
-    title: "ArcRho Progress",
+    title: "Arco Progress",
     label: "Starting...",
     detail: "",
     ...args,

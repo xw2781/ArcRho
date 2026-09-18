@@ -13,7 +13,7 @@ def is_server_process() -> bool:
 
 
 def _refuse_local() -> dict:
-    raise HTTPException(503, "Dependent propagation requires ArcRho Gateway.")
+    raise HTTPException(503, "Dependent propagation requires Arco Gateway.")
 
 
 def read(kind: str, kwargs: Mapping[str, Any]) -> dict:

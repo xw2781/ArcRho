@@ -199,7 +199,7 @@ class ProjectDuplicationJobTests(unittest.TestCase):
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
 
@@ -716,7 +716,7 @@ class ProjectDuplicationJobTests(unittest.TestCase):
                         "stage": "queued",
                         "completed": 0,
                         "total": 0,
-                        "label": "Queued for ArcRho Engine",
+                        "label": "Queued for Arco Engine",
                     },
                 }
             ),

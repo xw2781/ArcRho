@@ -348,7 +348,7 @@ def plan_dataset_sidecar_save(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
 
 @router.post("/dataset/sidecar/save")
 def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # The save runs on Arco Engine next to the data; this endpoint keeps
     # its exact response shape and error codes.
     return engine_hosted_save_service.run_hosted_save(
         "dataset_sidecar",

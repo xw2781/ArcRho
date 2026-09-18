@@ -1841,7 +1841,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const key = normalizeProjectKey(projectName);
     runningChangeJobByProject.set(key, jobId);
     renderDatasetTypesTable(projectName);
-    changeProgressPopup.show("Queued for ArcRho Engine", {
+    changeProgressPopup.show("Queued for Arco Engine", {
       progress: { completed: 0, total: 0, unit: "datasets" },
     });
     try {
@@ -2010,7 +2010,7 @@ export function createDatasetTypesFeature(deps = {}) {
     const jobId = String(out?.job?.job_id || "").trim();
     if (!jobId) {
       lastSubmissionByProject.delete(key);
-      setDatasetTypesStatus("Save error: ArcRho Engine did not return a job id.", true);
+      setDatasetTypesStatus("Save error: Arco Engine did not return a job id.", true);
       return false;
     }
     lastSubmissionByProject.set(key, { requestId, signature });

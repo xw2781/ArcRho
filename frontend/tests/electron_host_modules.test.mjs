@@ -73,7 +73,7 @@ test("update_checker reports up to date when no release asset beats the current 
     return {
       ok: true,
       json: async () => releaseFixture({
-        assets: [{ name: "ArcRho-Setup-0.0.1.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.1.exe" }],
+        assets: [{ name: "Arco-Setup-0.0.1.exe", browser_download_url: "https://dl.example/Arco-Setup-0.0.1.exe" }],
       }),
     };
   };
@@ -90,7 +90,7 @@ test("update_checker reports missing-checksum when a newer asset has no .sha256 
       return {
         ok: true,
         json: async () => releaseFixture({
-          assets: [{ name: "ArcRho-Setup-0.0.2.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe" }],
+          assets: [{ name: "Arco-Setup-0.0.2.exe", browser_download_url: "https://dl.example/Arco-Setup-0.0.2.exe" }],
         }),
       };
     }
@@ -136,13 +136,13 @@ test("update_checker shows only user-facing release notes as plain text", async 
         json: async () => releaseFixture({
           body,
           assets: [
-            { name: "ArcRho-Setup-0.0.2.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe" },
-            { name: "ArcRho-Setup-0.0.2.exe.sha256", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe.sha256" },
+            { name: "Arco-Setup-0.0.2.exe", browser_download_url: "https://dl.example/Arco-Setup-0.0.2.exe" },
+            { name: "Arco-Setup-0.0.2.exe.sha256", browser_download_url: "https://dl.example/Arco-Setup-0.0.2.exe.sha256" },
           ],
         }),
       };
     }
-    return { ok: true, text: async () => `${"a".repeat(64)}  ArcRho-Setup-0.0.2.exe` };
+    return { ok: true, text: async () => `${"a".repeat(64)}  Arco-Setup-0.0.2.exe` };
   };
 
   let detail = "";
@@ -192,14 +192,14 @@ test("update_checker downloads a newer release with progress events and rejects 
         json: async () => releaseFixture({
           body: "Release notes\nmandatory: true",
           assets: [
-            { name: "ArcRho-Setup-0.0.2.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe" },
-            { name: "ArcRho-Setup-0.0.2.exe.sha256", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.2.exe.sha256" },
+            { name: "Arco-Setup-0.0.2.exe", browser_download_url: "https://dl.example/Arco-Setup-0.0.2.exe" },
+            { name: "Arco-Setup-0.0.2.exe.sha256", browser_download_url: "https://dl.example/Arco-Setup-0.0.2.exe.sha256" },
           ],
         }),
       };
     }
     if (target.endsWith(".sha256")) {
-      return { ok: true, text: async () => `${wrongSha256}  ArcRho-Setup-0.0.2.exe` };
+      return { ok: true, text: async () => `${wrongSha256}  Arco-Setup-0.0.2.exe` };
     }
     if (target.endsWith(".exe")) {
       return {
@@ -275,10 +275,10 @@ function releaseWithInstaller(version, body, publishedAt = "2026-08-01T00:00:00Z
     published_at: publishedAt,
     body,
     assets: [
-      { name: `ArcRho-Setup-${version}.exe`, browser_download_url: `https://dl.example/ArcRho-Setup-${version}.exe` },
+      { name: `Arco-Setup-${version}.exe`, browser_download_url: `https://dl.example/Arco-Setup-${version}.exe` },
       {
-        name: `ArcRho-Setup-${version}.exe.sha256`,
-        browser_download_url: `https://dl.example/ArcRho-Setup-${version}.exe.sha256`,
+        name: `Arco-Setup-${version}.exe.sha256`,
+        browser_download_url: `https://dl.example/Arco-Setup-${version}.exe.sha256`,
       },
     ],
   };
@@ -426,14 +426,14 @@ test("update_checker reads the release notes bundled with the installed build", 
 });
 
 test("update_checker deletes the installer recorded for cleanup and legacy update downloads", async () => {
-  const installerPath = path.join(downloadsDir, "ArcRho-Setup-0.0.3.exe");
+  const installerPath = path.join(downloadsDir, "Arco-Setup-0.0.3.exe");
   fs.writeFileSync(installerPath, "completed installer");
   const markerPath = path.join(userDataDir, "pending_update_cleanup.json");
   fs.writeFileSync(markerPath, JSON.stringify({ installerPath, version: "0.0.3" }));
   const legacyDir = path.join(userDataDir, "updates");
   fs.mkdirSync(legacyDir, { recursive: true });
-  fs.writeFileSync(path.join(legacyDir, "ArcRho-Setup-0.0.2.exe"), "old installer");
-  fs.writeFileSync(path.join(legacyDir, "ArcRho-Setup-0.0.2.exe.part"), "old partial");
+  fs.writeFileSync(path.join(legacyDir, "Arco-Setup-0.0.2.exe"), "old installer");
+  fs.writeFileSync(path.join(legacyDir, "Arco-Setup-0.0.2.exe.part"), "old partial");
 
   updateChecker.initUpdateChecker({ appMode: "arcrho", getMainWindow: () => null });
   const result = await updateChecker.cleanupCompletedUpdateInstaller();
@@ -461,13 +461,13 @@ test("update_checker retries a busy installer launch and records the cleanup mar
         ok: true,
         json: async () => releaseFixture({
           assets: [
-            { name: "ArcRho-Setup-0.0.4.exe", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.4.exe" },
-            { name: "ArcRho-Setup-0.0.4.exe.sha256", browser_download_url: "https://dl.example/ArcRho-Setup-0.0.4.exe.sha256" },
+            { name: "Arco-Setup-0.0.4.exe", browser_download_url: "https://dl.example/Arco-Setup-0.0.4.exe" },
+            { name: "Arco-Setup-0.0.4.exe.sha256", browser_download_url: "https://dl.example/Arco-Setup-0.0.4.exe.sha256" },
           ],
         }),
       };
     }
-    if (target.endsWith(".sha256")) return { ok: true, text: async () => `${sha256}  ArcRho-Setup-0.0.4.exe` };
+    if (target.endsWith(".sha256")) return { ok: true, text: async () => `${sha256}  Arco-Setup-0.0.4.exe` };
     return {
       ok: true,
       headers: { get: (name) => (name === "content-length" ? String(installerContent.length) : null) },

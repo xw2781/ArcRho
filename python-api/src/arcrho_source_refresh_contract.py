@@ -1,7 +1,7 @@
 """Canonical request and status contract for ArcRho source-table refresh jobs.
 
 Importing a project's source table and refreshing everything derived from it is
-executed by ArcRho Engine on the machine hosting the ArcRho Server workspace.
+executed by Arco Engine on the machine hosting the Arco Server workspace.
 A Client PC that ran the import itself copied the external CSV *through* itself
 -- read from one share, written to another -- and then read the whole master
 copy back to count its rows. On the server every one of those hops is local
@@ -228,7 +228,7 @@ def validate_source_refresh_request(payload: Any) -> dict[str, Any]:
     The required fields plus the two optional scope fields are the complete
     allow-list, so machine-local filesystem paths are impossible by
     construction: every consumer derives absolute paths from its own configured
-    ArcRho Server root, and the external source itself is read from the
+    Arco Server root, and the external source itself is read from the
     project's own saved configuration.
     """
 
@@ -336,7 +336,7 @@ def reserving_class_matches_scope(
 def _root_path(server_root: str | os.PathLike[str]) -> Path:
     raw = os.fspath(server_root)
     if not str(raw).strip():
-        raise SourceRefreshContractError("ArcRho Server root is required.")
+        raise SourceRefreshContractError("Arco Server root is required.")
     return Path(raw).expanduser()
 
 

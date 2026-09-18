@@ -131,7 +131,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m arcrho_api.agent",
-        description="Compact DFM reads and controlled edits for ArcRho agents.",
+        description="Compact DFM reads and controlled edits for Arco agents.",
     )
     parser.add_argument("--file", required=True, help="DFM method JSON file, usually active-method.json.")
     parser.add_argument("--read-only", action="store_true", help="Block commands that save changes.")

@@ -473,7 +473,7 @@ export function createExcelLinksTable(options = {}) {
       // The listing's Found/Missing verdict has no column of its own; a
       // workbook ArcRho Server cannot open is called out on its path instead.
       td.classList.add("missing");
-      attachArcrhoTooltip(td, "ArcRho Server cannot open this workbook at this path.");
+      attachArcrhoTooltip(td, "Arco Server cannot open this workbook at this path.");
     }
     return td;
   }

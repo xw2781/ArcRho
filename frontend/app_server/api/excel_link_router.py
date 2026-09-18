@@ -69,7 +69,7 @@ def plan_excel_links_retarget(req: ExcelLinkRetargetRequest) -> Dict[str, Any]:
 
 @router.post("/excel_links/retarget")
 def excel_links_retarget(req: ExcelLinkRetargetRequest) -> Dict[str, Any]:
-    # The retarget runs on ArcRho Engine next to the data and opens the new
+    # The retarget runs on Arco Engine next to the data and opens the new
     # workbook there; this endpoint keeps the service's response shape and
     # error codes, including the 400 for a workbook the server cannot read.
     return engine_hosted_save_service.run_hosted_save(

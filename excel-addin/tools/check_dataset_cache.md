@@ -15,7 +15,7 @@ and settings controls. Both commands require Excel and trusted VBA project acces
 ## Workbook
 
 Use one array formula and twenty INDEX formulas referring to the same
-ArcRhoTri request, plus a vector, headers, and project settings. Add a second
+ArcoTri request, plus a vector, headers, and project settings. Add a second
 sheet with a different dataset and a second workbook with a different default
 project. Use synthetic data in the automated smoke test; live checks may use
 only an authorized project.
@@ -46,7 +46,7 @@ only an authorized project.
 9. Two open workbooks use their own snapshots and caller-specific default
    projects even when the other workbook is active.
 10. Round-trip 1x1 values, vectors, arrays, blanks, and header/settings text.
-    `ArcRhoVecCell` and `ADASVecCell` use the same saved vector as `ArcRhoVec`;
+    `ArcoVecCell` and `ADASVecCell` use the same saved vector as `ArcoVec`;
     check first and last 1-based indices for horizontal and vertical vectors.
 11. Settings no longer shows the old always-refresh/removeData option.
 

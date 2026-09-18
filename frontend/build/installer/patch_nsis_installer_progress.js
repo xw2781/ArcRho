@@ -126,7 +126,7 @@ function patchDetailsSource(original) {
     "${IfNot} ${Silent}",
     "  SetDetailsPrint both",
     "  SetDetailsView show",
-    "  DetailPrint \"Preparing destination and installing ArcRho files...\"",
+    "  DetailPrint \"Preparing destination and installing Arco Workspace files...\"",
     "${endif}",
   ].join("\n");
   const forcedOpenDetailBlock = [

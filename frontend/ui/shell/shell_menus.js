@@ -123,7 +123,7 @@ async function checkForUpdatesFromAbout() {
   try {
     const result = await hostApi.checkForUpdates();
     const status = String(result?.status || "");
-    if (status === "none") shell.updateStatusBar?.("ArcRho is up to date.");
+    if (status === "none") shell.updateStatusBar?.("Arco is up to date.");
     else if (status === "missing-checksum") shell.updateStatusBar?.("Newer installer found, but checksum is missing.");
     else if (status === "failed" || status === "unsupported" || status === "unavailable") shell.updateStatusBar?.("Update check unavailable.");
     else if (status === "launching") shell.updateStatusBar?.("Starting update installer...");

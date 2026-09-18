@@ -315,7 +315,7 @@ function getClaudeCommand() {
 
 function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
   const parts = [
-    "You are ArcBot, an AI assistant embedded in ArcRho, an actuarial reserving and analytics platform.",
+    "You are ArcBot, an AI assistant embedded in Arco Workspace, an actuarial reserving and analytics platform.",
     mode === "edit"
       ? "You are in Edit Mode. Provide clear, actionable guidance to help the user work with their data and models."
       : "You are in Read-Only Review Mode. Analyze and explain; do not modify any data or files.",
@@ -1139,7 +1139,7 @@ class CodexAppServerClient {
       );
     });
     await this.request("initialize", {
-      clientInfo: { name: "ArcRho ArcBot", title: "ArcRho ArcBot", version: "0.1.0" },
+      clientInfo: { name: "Arco ArcBot", title: "Arco ArcBot", version: "0.1.0" },
       capabilities: {
         experimentalApi: true,
       },
@@ -1308,7 +1308,7 @@ class CodexAppServerClient {
         id,
         error: {
           code: -32601,
-          message: `ArcRho does not handle Codex app-server request '${method}'.`,
+          message: `Arco does not handle Codex app-server request '${method}'.`,
         },
       });
     } catch {
@@ -2291,7 +2291,7 @@ function writeCodexInstallScript() {
   const script = [
     "param([string]$NpmCommand = 'npm', [Parameter(Mandatory = $true)][string]$InstallPrefix)",
     "$ErrorActionPreference = 'Stop'",
-    "Write-Output \"ArcRho is installing a per-user Codex CLI under: $InstallPrefix\"",
+    "Write-Output \"Arco is installing a per-user Codex CLI under: $InstallPrefix\"",
     "$resolvedNpm = $null",
     "if (Test-Path -LiteralPath $NpmCommand) {",
     "  $resolvedNpm = Resolve-Path -LiteralPath $NpmCommand",
@@ -2534,7 +2534,7 @@ function buildAssistantPrompt(
       EDITABLE_JSON_BASENAME: activeJsonName,
       EXCHANGE_SERVER_ROOT: exchangeRoot || "No local exchange workspace is available.",
       EDITABLE_JSON_NOTE: editSession?.jsonPath
-        ? `Editable active JSON-backed copy: ${activeJsonName}.${exchangeRoot ? ` Local ArcRho exchange server root: ${exchangeRoot}.` : ""}`
+        ? `Editable active JSON-backed copy: ${activeJsonName}.${exchangeRoot ? ` Local Arco exchange server root: ${exchangeRoot}.` : ""}`
         : "No editable active JSON-backed copy is available for this request.",
     }),
     PYTHON_API_SRC,
@@ -2544,7 +2544,7 @@ function buildAssistantPrompt(
     PYTHON_API_COMMAND: `${PYTHON_EXE} -m arcrho_api.agent --file ${quoteWindowsCmdArg(activeJsonName)}`,
     ACTIVE_CONTEXT_JSON: JSON.stringify(contextForPrompt, null, 2),
     ACTIVE_JSON_DATA: editSession?.jsonPath
-      ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the ArcRho Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public ArcRho Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
+      ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the Arco Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public Arco Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
       : (activeJson ? JSON.stringify(activeJson, null, 2) : "No active JSON-backed data was loaded."),
     SHARED_INSTRUCTIONS: readArcBotSharedInstructions(),
     ATTACHMENT_TEXT: attachmentText,
@@ -2625,7 +2625,7 @@ function describeArcRhoApiAgentAction(action) {
     "set-user-entry": "ArcBot is setting a user-entered selected factor.",
     validate: "ArcBot is checking that the proposed DFM update is valid.",
   };
-  return labels[normalized] || "ArcBot is using the ArcRho Python helper for the active DFM method.";
+  return labels[normalized] || "ArcBot is using the Arco Python helper for the active DFM method.";
 }
 
 function summarizeCodexTurnNotification(message) {
@@ -2642,7 +2642,7 @@ function summarizeCodexTurnNotification(message) {
   if (apiMatch) {
     return {
       text: describeArcRhoApiAgentAction(apiMatch[1]),
-      debugText: `ArcRho Python API helper call notification: ${message?.method || ""} ${paramsText}`.trim(),
+      debugText: `Arco Python API helper call notification: ${message?.method || ""} ${paramsText}`.trim(),
     };
   }
   if (method.includes("command") || method.includes("exec") || method.includes("shell")) return "ArcBot is running a local check.";

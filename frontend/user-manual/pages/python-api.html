@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ArcRho Manual - Python API</title>
+  <title>Arco Manual - Python API</title>
   <link rel="stylesheet" href="../manual.css">
 </head>
 <body data-page="python-api">
   <main class="manual-page" data-page-title="Python API" data-page-intro="Use arcrho_api to script project access, DFM review, dataset reads, UI automation, and compact agent helper commands.">
     <section class="manual-section" id="install">
       <div class="section-head"><p class="eyebrow">Install</p><h2>Install the first-party package</h2></div>
-      <pre class="code-sample"><code class="language-powershell">python -m pip install "&lt;ArcRho install folder&gt;\resources\python_packages\arcrho_api-0.1.0-py3-none-any.whl"
+      <pre class="code-sample"><code class="language-powershell">python -m pip install "&lt;Arco install folder&gt;\resources\python_packages\arcrho_api-0.1.0-py3-none-any.whl"
 
 # Development build from this repo
 python python-api\tools\build_wheel.py --out-dir python-api\dist
@@ -53,7 +53,7 @@ dfm.save()</code></pre>
 ui = ArcRhoUI()
 ui.wait_for_app(timeout_sec=10)
 
-ui.message_box("Starting review.", title="ArcRho Automation")
+ui.message_box("Starting review.", title="Arco Automation")
 window = ui.project_instance.open_dataset("Paid Loss")
 window.maximize()
 print(window.properties.as_dict())

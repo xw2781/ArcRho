@@ -110,7 +110,7 @@ def build_length_scoped_dataset_file_name(
 
 
 def read_dataset_csv(path: Any, **overrides: Any) -> pd.DataFrame:
-    """Read one ArcRho dataset cache CSV into an unlabelled frame.
+    """Read one Arco dataset cache CSV into an unlabelled frame.
 
     An empty line in these files is an origin with no value: every writer emits
     one for a ``None``, and a method output whose newest origin has no ultimate
@@ -407,7 +407,7 @@ def parse_method_last_modified_timestamp(value: Any) -> Optional[float]:
     """Canonical epoch parse for a method JSON ``last modified`` value.
 
     ResQ writes its ``Modified`` value as a timezone-less wall-clock string in
-    the machine's own timezone, while an ArcRho save writes an absolute ISO
+    the machine's own timezone, while an Arco save writes an absolute ISO
     value carrying ``Z`` or an offset. A timezone-less value is therefore read
     as local time, so both sides land on the same instant the sync review
     window renders for them.

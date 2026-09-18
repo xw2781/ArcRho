@@ -224,8 +224,8 @@ Do not run build tooling directly from the mapped repository. The one-click work
 
 A successful build reports exit code `0` and produces:
 
-- `%ARCRHO_LOCAL_BUILD_ROOT%\frontend\dist\ArcRho-Setup-<version>.exe`
-- A GitHub Release tagged `ArcRho-v<version>` with `ArcRho-Setup-<version>.exe` and `ArcRho-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads, and the history the next build's version number is derived from.
+- `%ARCRHO_LOCAL_BUILD_ROOT%\frontend\dist\Arco-Setup-<version>.exe`
+- A GitHub Release tagged `Arco-v<version>` with `Arco-Setup-<version>.exe` and `Arco-Setup-<version>.exe.sha256` attached — this is what the packaged app's update checker reads, and the history the next build's version number is derived from.
 - `E:\ArcRho Server\packages\arcrho_api-latest.whl`, unless `PYTHON_API_PACKAGE_DIR` overrides that destination.
 
 The tag name and target repository come from `frontend\build\release\release_channel.json`, which both `publish_github_release.ps1` and `version_manager.py` read. Change the tag shape there rather than in either script.

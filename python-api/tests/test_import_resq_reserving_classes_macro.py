@@ -454,7 +454,7 @@ class BatchImportMacroTests(unittest.TestCase):
         self.assertEqual(sent, ["Auto\\NJ"])
         self.assertEqual(len(result["results"]), 2)
         self.assertIn("silent for 30 seconds", result["results"][0]["error"])
-        self.assertIn("Skipped: the ArcRho Bridge stopped responding", result["results"][1]["error"])
+        self.assertIn("Skipped: the Arco Bridge stopped responding", result["results"][1]["error"])
 
     def test_a_request_error_does_not_skip_the_remaining_classes(self):
         self.ui = _UI(selected_ids=["Auto\\NJ", "Auto\\PA"])

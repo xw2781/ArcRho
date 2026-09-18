@@ -454,7 +454,7 @@ async function changeWorkbook(row) {
 
   const seq = ++manager.requestSeq;
   setBusy(true);
-  setManagerStatus(`Relinking ${row.workbookName} to ${picked} on ArcRho Server and recalculating affected datasets and DFM methods...`);
+  setManagerStatus(`Relinking ${row.workbookName} to ${picked} on Arco Server and recalculating affected datasets and DFM methods...`);
   // The retarget rewrites files and rebuilds index.json on the server; the
   // host suppresses its own disk-watch prompt for this window's change.
   postToParent("arcrho:excel-links-retarget-begin");

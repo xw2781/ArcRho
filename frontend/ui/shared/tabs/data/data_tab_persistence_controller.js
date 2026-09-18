@@ -864,7 +864,7 @@ export function registerDataTabPersistenceController(runtime) {
       const choice = await showPageMessageBox({
         title: "Linked Excel File Updated",
         tone: "warning",
-        message: `${workbookSummary} than the values stored in this ArcRho dataset. Keep the stored values, or refresh from Excel. Refreshed values remain unsaved until you select Save.`,
+        message: `${workbookSummary} than the values stored in this Arco dataset. Keep the stored values, or refresh from Excel. Refreshed values remain unsaved until you select Save.`,
         actions: [{ id: "refresh", label: "Refresh from Excel" }],
         okLabel: "Keep Current Values",
         balancedActions: true,

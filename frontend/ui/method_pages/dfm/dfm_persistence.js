@@ -1798,7 +1798,7 @@ async function runDfmMethodSave(forceSaveAs, options, progress) {
     if (isEngineUnavailableSaveError(error)) {
       // The save was refused before anything was written; unsaved work stays
       // in this window.
-      void showPageMessageBox({ title: "ArcRho Engine Unavailable", message, tone: "warn" });
+      void showPageMessageBox({ title: "Arco Engine Unavailable", message, tone: "warn" });
     }
     postDfmStatus(`Save failed: ${message}`, { tone: "error" });
     return { ok: false, error: message, status: error?.status };

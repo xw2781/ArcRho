@@ -88,7 +88,7 @@ silently stop the cleanup from finding anything to delete.
 The hosted-save HTTP gateway removed the Client PC's SMB traffic from the
 Engine-hosted save path and measured well for DFM. Every other interaction the
 Client PC has with the ArcRho Server workspace — reserving-class listings,
-cached-dataset and method loads, legacy `ArcRhoTri`/`ArcRhoVec`/`ArcRhoHeaders`
+cached-dataset and method loads, legacy `ArcoTri`/`ArcoVec`/`ArcoHeaders`
 calculation requests, change-watch pollers, per-user preferences, audit-log
 appends, and index rebuilds — still goes through the mapped/UNC drive from the
 bundled app server.
@@ -154,7 +154,7 @@ Roughly 10–14 network operations on a warm open:
 - the CSV read;
 - three parallel hydration reads (origin labels, development labels, dataset
   type formula). On a header-cache miss the labels are **not** a read: they are
-  an `ArcRhoHeaders` engine request written to `requests\` and polled over SMB,
+  an `ArcoHeaders` engine request written to `requests\` and polled over SMB,
   and `wait_for_file` creates and deletes a probe file inside the project data
   folder on every poll tick;
 - a final `os.stat` of the CSV.
@@ -179,8 +179,8 @@ Roughly 10–14 network operations on a warm open:
   250 ms client debounce.
 - `audit_log.json` is read-modify-written whole under a process-local lock only;
   cross-machine it is last-writer-wins.
-- Legacy engine calculations (`ArcRhoTri`/`ArcRhoVec`/`ArcRhoHeaders`/
-  `ArcRhoProjectSettings`) are the entire non-save Engine RPC and are 100 %
+- Legacy engine calculations (`ArcoTri`/`ArcoVec`/`ArcoHeaders`/
+  `ArcoProjectSettings`) are the entire non-save Engine RPC and are 100 %
   file exchange over SMB with a 15 s poll budget.
 
 ## Target Architecture
@@ -284,7 +284,7 @@ before acceptance.
   cached-dataset bundle: sidecar, hydrated origin/development labels, dataset
   type formula, CSV mtime, and the CSV body (streamed, or a second `GET` for the
   bytes when the sidecar/labels are unchanged). One call replaces the current
-  10–14 operations. Header-cache misses run the `ArcRhoHeaders` engine request
+  10–14 operations. Header-cache misses run the `ArcoHeaders` engine request
   server-side.
 - `POST /api/projects/{project}/classes/{path}/methods/{kind}/{name}/load` —
   method JSON + sidecar + precedent snapshots (sidecar + CSV per precedent,
@@ -296,7 +296,7 @@ before acceptance.
 ### Phase 2: engine calculations
 
 - `POST /api/engine/calculations` — body is the existing logical
-  `ArcRhoTri`/`ArcRhoVec`/`ArcRhoHeaders`/`ArcRhoProjectSettings` request
+  `ArcoTri`/`ArcoVec`/`ArcoHeaders`/`ArcoProjectSettings` request
   **without** `DataPath`; the server owns the output path, publishes the request
   into the local queue, waits for the CSV locally, and returns it. Removes the
   client probe-file writes and the 15 s SMB poll loop. The Engine handler is
@@ -387,7 +387,7 @@ done, as recorded in
 `arcrho_api` and the migration keep the decision below.
 
 Decision: coexist on SMB. The Engine keeps watching `requests\` for the legacy
-`ArcRhoTri`/`ArcRhoVec`/`ArcRhoHeaders`/`ArcRhoProjectSettings` contract at
+`ArcoTri`/`ArcoVec`/`ArcoHeaders`/`ArcoProjectSettings` contract at
 negligible cost.
 
 Consumers of that contract today: the Excel add-in (`excel-addin/src_vba/Core.bas`,

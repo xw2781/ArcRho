@@ -133,7 +133,7 @@ class WorkspaceReadExecutor:
         except Exception as exc:
             self._log(self.root, f"workspace read runtime unavailable: {exc!r}")
             raise WorkspaceReadHttpError(
-                503, "The ArcRho Server cannot run workspace reads right now."
+                503, "The Arco Server cannot run workspace reads right now."
             ) from exc
 
         from fastapi import HTTPException

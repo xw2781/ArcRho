@@ -235,10 +235,10 @@ def _load_project_header_labels(
                 calendar=calendar,
             )
     except HTTPException as err:
-        detail = str(err.detail or "ArcRho project headers could not be loaded")
+        detail = str(err.detail or "Arco project headers could not be loaded")
         raise HTTPException(err.status_code, f"Cannot load dataset '{ds_id}': {detail}")
     except OSError as err:
-        raise HTTPException(500, f"Cannot load dataset '{ds_id}': failed to read ArcRho project headers: {str(err)}")
+        raise HTTPException(500, f"Cannot load dataset '{ds_id}': failed to read Arco project headers: {str(err)}")
 
     if not header_result.get("ok"):
         status = str(header_result.get("status") or "unavailable").strip()
@@ -247,11 +247,11 @@ def _load_project_header_labels(
             raise HTTPException(
                 504,
                 f"Cannot load dataset '{ds_id}' for project '{project}': "
-                f"{message or 'timed out while loading ArcRho project headers. Try again.'}",
+                f"{message or 'timed out while loading Arco project headers. Try again.'}",
             )
         raise HTTPException(
             503,
-            f"Cannot load dataset '{ds_id}' for project '{project}': ArcRho project headers are {status}.",
+            f"Cannot load dataset '{ds_id}' for project '{project}': Arco project headers are {status}.",
         )
     labels = header_result.get("labels")
     return [str(item if item is not None else "").strip() for item in labels] if isinstance(labels, list) else []
@@ -689,7 +689,7 @@ def _normalize_dataset_internal_links(
     *,
     strict: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Validate the ``internal_links`` sidecar field (ArcRho dataset cell links).
+    """Validate the ``internal_links`` sidecar field (Arco dataset cell links).
 
     Mirrors ``_normalize_dataset_external_links``: strict on save, lenient on
     load. Target cells are zero-based untransposed coordinates of this dataset;
@@ -940,7 +940,7 @@ def _require_disjoint_dataset_link_targets(
                     raise HTTPException(
                         400,
                         "A dataset cell can hold only one link: an Excel workbook, "
-                        "another ArcRho dataset, or a formula.",
+                        "another Arco dataset, or a formula.",
                     )
                 owned.add(key)
 
@@ -1469,7 +1469,7 @@ def create_empty_cached_dataset(
     dataset_type: str,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    # Dependent propagation runs on ArcRho Engine; block the create before any
+    # Dependent propagation runs on Arco Engine; block the create before any
     # write when no live Engine can pick the job up or another walk is still
     # rewriting this reserving class.
     dependent_propagation_service.require_reserving_class_writable(
@@ -2814,7 +2814,7 @@ def _save_dataset_sidecar_impl(
             ),
         )
     elif method_type_value == dataset_sidecar_status_service.METHOD_TYPE_NONE:
-        # ArcRho cell links are instance-level graph edges: the datasets this
+        # Arco cell links are instance-level graph edges: the datasets this
         # save's links read gain (or lose) a dependents entry naming this
         # dataset, so the dependent-propagation walk and the delete check see
         # the link the same way they see a formula edge.
@@ -2953,7 +2953,7 @@ def save_dataset_sidecar(
     dataset_name: str,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    # Dependent propagation runs on ArcRho Engine; block the save before any
+    # Dependent propagation runs on Arco Engine; block the save before any
     # write when no live Engine can pick the job up or another walk is still
     # rewriting this reserving class.
     dependent_propagation_service.require_reserving_class_writable(
@@ -3241,7 +3241,7 @@ def patch_dataset(
     project_name = _dataset_owning_project_name(path, sidecar)
     reserving_class = str(sidecar.get("reserving_class") or "").strip()
     if not project_name or not reserving_class:
-        # Dependent propagation runs on ArcRho Engine; block the grid save
+        # Dependent propagation runs on Arco Engine; block the grid save
         # before any write when no live Engine instance can pick the job up.
         dependent_propagation_service.require_engine_available()
         return _patch_dataset_impl(ds_id, items, file_mtime)

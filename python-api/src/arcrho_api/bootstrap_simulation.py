@@ -1,4 +1,4 @@
-"""Canonical numeric engine for ArcRho Bootstrap methods.
+"""Canonical numeric engine for Arco Bootstrap methods.
 
 This module owns every Bootstrap calculation: the DFM projection the method
 bootstraps from, the Over-dispersed Poisson residual grids and scale parameters,
@@ -80,7 +80,7 @@ def observed_triangle(values: Any) -> list[list[float]]:
     """Return a ragged cumulative triangle, trimming trailing blank cells.
 
     ResQ reports absent triangle cells as ``0.0`` through ``TriangleValues`` and
-    ArcRho stores them as ``null``; both mean "no observation", and a row stops
+    Arco stores them as ``null``; both mean "no observation", and a row stops
     at its first absent cell.
     """
 

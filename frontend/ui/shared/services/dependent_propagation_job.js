@@ -84,7 +84,7 @@ export async function waitForDependentPropagationJob({
       if (consecutiveFailures > maxStatusRetries) {
         throw codedError(
           "PROPAGATION_STATUS_UNAVAILABLE",
-          `Dependent-update status is unavailable after repeated checks. Job "${jobId}" may still be running on ArcRho Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
+          `Dependent-update status is unavailable after repeated checks. Job "${jobId}" may still be running on Arco Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
         );
       }
       onProgress({ label: "Waiting for dependent-update status...", completed: 0, total: 0 });
@@ -143,7 +143,7 @@ export async function waitForDependentPropagationJob({
     } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, allowedStaleMs)) {
       throw codedError(
         "PROPAGATION_STATUS_STALE",
-        `Dependent-update status has stopped updating. Job "${jobId}" appears to have stalled on ArcRho Engine.`,
+        `Dependent-update status has stopped updating. Job "${jobId}" appears to have stalled on Arco Engine.`,
       );
     }
     await waitForPoll(pollIntervalMs);

@@ -1,6 +1,6 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} ufLoading 
-   Caption         =   "ArcRho"
+   Caption         =   "Arco"
    ClientHeight    =   1800
    ClientLeft      =   375
    ClientTop       =   1485
@@ -25,7 +25,7 @@ End Sub
 
 Private Sub CommandButton1_Click()
     skipDataProcess = True
-    Application.StatusBar = "Force stopped by user, use 'Load and Calculate' in ArcRho menu to reset."
+    Application.StatusBar = "Force stopped by user, use 'Load and Calculate' in Arco menu to reset."
     Unload Me
 End Sub
 

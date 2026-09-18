@@ -1,4 +1,4 @@
-"""ArcRho Server client entry point."""
+"""Arco Server client entry point."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .project import Project
 
 
 class ArcRhoClient:
-    """Client bound to one ArcRho Server root folder."""
+    """Client bound to one Arco Server root folder."""
 
     def __init__(self, server_root: str | Path | None = None, *, read_only: bool = False, validate: bool = True) -> None:
         resolved_root = server_root if server_root is not None else get_server_root(required=True)
@@ -24,10 +24,10 @@ class ArcRhoClient:
 
     def validate(self) -> None:
         if not self.server_root.exists() or not self.server_root.is_dir():
-            raise InvalidArcRhoServerError(f"ArcRho Server root does not exist: {self.server_root}")
+            raise InvalidArcRhoServerError(f"Arco Server root does not exist: {self.server_root}")
         if not self.projects_dir.exists() or not self.projects_dir.is_dir():
             raise InvalidArcRhoServerError(
-                f"ArcRho Server root must contain a projects folder: {self.projects_dir}"
+                f"Arco Server root must contain a projects folder: {self.projects_dir}"
             )
 
     def list_projects(self) -> list[str]:

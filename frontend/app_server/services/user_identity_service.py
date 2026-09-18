@@ -22,7 +22,7 @@ _DISPLAY_NAME_CACHE: Dict[str, Dict[str, str]] = {}
 _CURRENT_DISPLAY_NAME_CACHE: Dict[str, str] = {}
 
 # A save or a dependent walk submitted from a Client PC runs on whichever
-# ArcRho Engine instance claims the request, and those instances run under
+# Arco Engine instance claims the request, and those instances run under
 # their own service profiles. The process account is therefore the wrong
 # answer to "who is editing this": the request carries the submitting user, and
 # the Engine executor binds it here for the duration of the job so every writer

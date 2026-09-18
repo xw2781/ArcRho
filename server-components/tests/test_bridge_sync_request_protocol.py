@@ -427,7 +427,7 @@ class BridgeSyncRequestValidationTests(unittest.TestCase):
         self._assert_rejected(_sync_request(UserName=""), "Missing request field")
         self._assert_rejected(_sync_request(Phase=""), "Missing request field")
         self._assert_rejected(_sync_request(ProjectName=".."), "one logical path segment")
-        self._assert_rejected(_sync_request(Path=r"..\escape"), "relative Windows ArcRho")
+        self._assert_rejected(_sync_request(Path=r"..\escape"), "relative Windows Arco")
 
     def test_an_unknown_phase_is_refused(self):
         self._assert_rejected(_sync_request(Phase="rollback"), "Phase must be one of")

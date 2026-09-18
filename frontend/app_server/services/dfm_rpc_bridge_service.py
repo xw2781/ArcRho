@@ -734,7 +734,7 @@ def update_remote(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
 #
 # A Client PC reaches the workspace over SMB, where publishing one request file
 # costs several round trips and every wait tick writes and deletes a probe file
-# so the redirector cannot serve a cached "not found". The ArcRho Bridge that
+# so the redirector cannot serve a cached "not found". The Arco Bridge that
 # answers these requests runs on the server host, where the same folders are
 # local disk. These wrappers let the Gateway run the exchange there instead:
 # the registries in arcrho_workspace_read_contract and

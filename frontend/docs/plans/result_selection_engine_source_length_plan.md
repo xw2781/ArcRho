@@ -82,12 +82,12 @@ The engine already supports vector generation at an arbitrary period length; onl
 frontend HTTP route is missing.
 
 - Function aliases (`server-components/src/utils.py:225-230`):
-  `ArcRhoTri → ADASTri`, `ArcRhoVec → ADASVec`.
+  `ArcoTri → ADASTri`, `ArcoVec → ADASVec`.
 - Both dispatch to `UDF_ADASTri(arg)` (`server-components/src/arcrho_engine/main.py:115-116`).
 - Vector mode is detected by `is_vector_function(arg['Function'])`
   (`server-components/src/arcrho_engine/data_processing.py:877-878`); the engine builds the full
   matrix at the requested length and returns the first column for vectors.
-- The VBA `ArcRhoVec` maps a single `PeriodLength` to **both** `OriginLength` and
+- The VBA `ArcoVec` maps a single `PeriodLength` to **both** `OriginLength` and
   `DevelopmentLength` (`excel-addin/src_vba/UDF_ArcRho.bas:190-217`).
 - Output cache naming is shared/length-scoped via
   `build_length_scoped_dataset_file_name` (`frontend/app_server/helpers.py:62-76`):
@@ -146,7 +146,7 @@ class ArcRhoVecRequest(BaseModel):
 
 ### 5.2 Router — `frontend/app_server/api/arcrho_router.py`
 
-Add a `_arcrho_vec_pairs(req)` builder that sets `("Function", "ArcRhoVec")` and maps
+Add a `_arcrho_vec_pairs(req)` builder that sets `("Function", "ArcoVec")` and maps
 `PeriodLength` to both `OriginLength` and `DevelopmentLength` (matching the VBA contract):
 
 ```python
@@ -154,7 +154,7 @@ def _arcrho_vec_pairs(req: ArcRhoVecRequest) -> list:
     dataset_type = str(req.DatasetTypeName or req.VectorName or "").strip()
     instance_name = str(req.InstanceName or "").strip()
     pairs = [
-        ("Function", "ArcRhoVec"),
+        ("Function", "ArcoVec"),
         ("Path", req.Path),
         ("DatasetName", dataset_type),
     ]
@@ -176,7 +176,7 @@ Add routes mirroring the triangle ones:
 - `POST /arcrho/vec/precheck` → `resolve_local_triangle_cache(...)` (the resolver is shape
   agnostic; it works on the data path/pairs). Return the same precheck shape.
 - `POST /arcrho/vec` → `run_arcrho_tri(...)` (shared engine handler; no separate service
-  function is required because `Function = ArcRhoVec` selects vector mode in the engine).
+  function is required because `Function = ArcoVec` selects vector mode in the engine).
 - `POST /arcrho/vec/refresh` → `run_arcrho_tri(..., force_refresh=True)`.
 
 > Note: the service layer can be reused as-is because the only behavioral switch is the
@@ -338,7 +338,7 @@ them (length is `3`, not `12`). No change required beyond 6.2, but verify labels
 
 Backend:
 
-- Unit test `_arcrho_vec_pairs` builds `Function = ArcRhoVec` and maps `PeriodLength` to both
+- Unit test `_arcrho_vec_pairs` builds `Function = ArcoVec` and maps `PeriodLength` to both
   `OriginLength` and `DevelopmentLength`.
 - Route smoke test for `/arcrho/vec/precheck` and `/arcrho/vec` (mock the engine request/wait
   layer; assert length-scoped data path and `ds_id`).

@@ -84,7 +84,7 @@
       <div class="brand-block">
         <div class="brand-mark">A</div>
         <div>
-          <div class="brand-title">ArcRho Manual</div>
+          <div class="brand-title">Arco Manual</div>
           <div class="brand-subtitle">Standalone folder guide</div>
         </div>
       </div>
@@ -102,7 +102,7 @@
     top.className = "manual-top";
     top.innerHTML = `
       <div>
-        <div class="breadcrumb">ArcRho User Manual / ${pageInfo.group}</div>
+        <div class="breadcrumb">Arco User Manual / ${pageInfo.group}</div>
         <h1>${title}</h1>
         ${intro ? `<p class="manual-intro">${intro}</p>` : ""}
       </div>

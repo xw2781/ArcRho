@@ -62,7 +62,7 @@ def plan_bornhuetter_ferguson_save(req: BornhuetterFergusonSaveRequest) -> Dict[
 
 @router.post("/bornhuetter-ferguson/save")
 def save_bornhuetter_ferguson(req: BornhuetterFergusonSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # The save runs on Arco Engine next to the data; this endpoint keeps
     # its exact response shape and error codes.
     return engine_hosted_save_service.run_hosted_save(
         "bornhuetter_ferguson_method",

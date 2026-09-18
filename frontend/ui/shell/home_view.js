@@ -6,7 +6,7 @@ let homeWired = false;
 let cachedHomeBrandName = null;
 let homeBrandNamePromise = null;
 
-const DEFAULT_HOME_BRAND_NAME = "ArcRho";
+const DEFAULT_HOME_BRAND_NAME = "Arco";
 const HOME_AVATAR_TEXT = "#526071";
 
 export function getHomeBrandInitial(name) {
@@ -71,13 +71,13 @@ export function renderHomeViewOnce(homeView) {
               <div class="homeBrand">
                 <div class="homeBrandMark" aria-hidden="true">${createHomeBrandMarkSvg(DEFAULT_HOME_BRAND_NAME)}</div>
                 <div class="homeBrandText">
-                  <div class="homeBrandTitle">ArcRho</div>
+                  <div class="homeBrandTitle">Arco</div>
                   <div class="homeBrandSub">Power User</div>
                 </div>
               </div>
               <div class="homeWelcomeDivider" aria-hidden="true"></div>
               <div class="homeWelcomeMessage">
-                <div class="homeWelcomeTitle">Welcome to ArcRho</div>
+                <div class="homeWelcomeTitle">Welcome to Arco</div>
                 <div class="homeWelcomeText">Choose a workspace below to begin your work.</div>
               </div>
             </div>

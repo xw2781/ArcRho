@@ -1,4 +1,4 @@
-"""Macro engine for ArcRho scripting.
+"""Macro engine for Arco scripting.
 
 Owns macro metadata parsing, macro file storage, task-wrapper generation,
 active-DFM context binding, and sandboxed macro source execution. Shares the
@@ -1136,7 +1136,7 @@ def run_macro_source_in_arcrho(source: str, filename: str, source_path: str = ""
     if not capture.get("ok"):
         return {
             "success": False,
-            "message": capture.get("error") or "ArcRho could not read the active DFM context.",
+            "message": capture.get("error") or "Arco could not read the active DFM context.",
         }
     captured = capture.get("result") if isinstance(capture.get("result"), dict) else {}
     active_context = captured.get("activeContext") if isinstance(captured.get("activeContext"), dict) else {}
@@ -1144,7 +1144,7 @@ def run_macro_source_in_arcrho(source: str, filename: str, source_path: str = ""
     if not target.get("token"):
         return {
             "success": False,
-            "message": "ArcRho did not return a usable macro execution context.",
+            "message": "Arco did not return a usable macro execution context.",
         }
 
     execution = run_macro_source(
@@ -1184,7 +1184,7 @@ def run_macro_source_in_arcrho(source: str, filename: str, source_path: str = ""
     }
     if not review.get("ok"):
         response["success"] = False
-        response["message"] = review.get("error") or "The macro ran, but ArcRho could not review or apply its result."
+        response["message"] = review.get("error") or "The macro ran, but Arco could not review or apply its result."
         return response
 
     review_result = review.get("result") if isinstance(review.get("result"), dict) else {}
@@ -1196,13 +1196,13 @@ def run_macro_source_in_arcrho(source: str, filename: str, source_path: str = ""
 
 
 def run_arcrho_macro_source(source: str, filename: str, source_path: str = "") -> Dict[str, Any]:
-    """Proxy standalone Arcode source to the user's running ArcRho desktop app."""
+    """Proxy standalone Arcode source to the user's running Arco desktop app."""
     _ensure_arcrho_api_import_path()
     try:
         source, _compile_path, _display_name = _normalize_macro_source(source, filename, source_path)
         from arcrho_api import ArcRhoUI
 
-        # Without an explicit override, arcrho_api resolves the ArcRho desktop app
+        # Without an explicit override, arcrho_api resolves the Arco desktop app
         # URL itself (env overrides, then the per-user app_endpoint.json written by
         # the desktop host, then the default local port).
         app_url = str(os.environ.get("ARCRHO_DESKTOP_APP_URL") or "").strip() or None

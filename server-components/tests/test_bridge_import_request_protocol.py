@@ -413,7 +413,7 @@ class BridgeImportRequestProtocolTests(unittest.TestCase):
             handler._validate_resq_import_request(
                 _import_request(ProjectName="Demo*Archive")
             )
-        with self.assertRaisesRegex(ValueError, "relative Windows ArcRho"):
+        with self.assertRaisesRegex(ValueError, "relative Windows Arco"):
             handler._validate_resq_import_request(
                 _import_request(Path=r"C:\ArcRho Server\projects\Demo")
             )

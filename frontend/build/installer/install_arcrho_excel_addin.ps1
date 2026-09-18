@@ -12,7 +12,7 @@ function Release-ComObject($Object) {
 }
 
 if (-not (Test-Path -LiteralPath $AddInPath -PathType Leaf)) {
-    throw "ArcRho Excel add-in was not found: $AddInPath"
+    throw "Arco Excel add-in was not found: $AddInPath"
 }
 
 $resolvedAddInPath = [System.IO.Path]::GetFullPath($AddInPath)
@@ -21,7 +21,7 @@ if ([string]::IsNullOrWhiteSpace($UserGuidePath)) {
 }
 
 if (-not (Test-Path -LiteralPath $UserGuidePath -PathType Leaf)) {
-    throw "ArcRho Excel add-in installer workbook was not found: $UserGuidePath"
+    throw "Arco Excel add-in installer workbook was not found: $UserGuidePath"
 }
 
 $resolvedUserGuidePath = [System.IO.Path]::GetFullPath($UserGuidePath)
@@ -64,7 +64,7 @@ try {
         $excel.Run($macroName, $resolvedAddInPath) | Out-Null
     }
     catch {
-        throw "Excel could not run the ArcRho add-in installer macro from '$resolvedUserGuidePath'. Ensure the workbook is trusted and its macros are permitted. $($_.Exception.Message)"
+        throw "Excel could not run the Arco add-in installer macro from '$resolvedUserGuidePath'. Ensure the workbook is trusted and its macros are permitted. $($_.Exception.Message)"
     }
 
     $addIns = $excel.AddIns
@@ -96,12 +96,12 @@ try {
 
     if ([string]::IsNullOrWhiteSpace($installedAddInPath)) {
         if (-not [string]::IsNullOrWhiteSpace($registeredButDisabledPath)) {
-            throw "Excel registered the ArcRho add-in but did not mark it as installed: $registeredButDisabledPath"
+            throw "Excel registered the Arco add-in but did not mark it as installed: $registeredButDisabledPath"
         }
-        throw "The ArcRho installer macro completed, but Excel did not report the add-in as installed: $resolvedAddInPath"
+        throw "The Arco installer macro completed, but Excel did not report the add-in as installed: $resolvedAddInPath"
     }
 
-    Write-Host "Installed ArcRho Excel add-in through Excel VBA: $installedAddInPath"
+    Write-Host "Installed Arco Excel add-in through Excel VBA: $installedAddInPath"
 }
 finally {
     Release-ComObject $candidate
@@ -112,7 +112,7 @@ finally {
             $userGuideWorkbook.Close($false)
         }
         catch {
-            Write-Warning "Could not close the ArcRho add-in installer workbook: $($_.Exception.Message)"
+            Write-Warning "Could not close the Arco add-in installer workbook: $($_.Exception.Message)"
         }
     }
     Release-ComObject $userGuideWorkbook

@@ -1,7 +1,7 @@
 <customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui">
 	<ribbon>
 		<tabs>
-			<tab id="aTab" label="ArcRho" insertAfterMso="TabHome">   
+			<tab id="aTab" label="Arco" insertAfterMso="TabHome">   
         			<group id="Group1" label="Unlimited Remote Access">
           				<button id="G11" label="Connect and Login"  imageMso="ImportMoreMenu"  size="large" onAction="uiSetupConnection2"/>
 						<button id="G12" label="Refresh Worksheet" imageMso="CalculateSheet"  size="large" onAction="uiRefreshSheet"/>

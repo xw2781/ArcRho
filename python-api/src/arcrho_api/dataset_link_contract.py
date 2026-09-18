@@ -1,7 +1,7 @@
-"""The one grammar for ArcRho dataset cell links, and its evaluator.
+"""The one grammar for Arco dataset cell links, and its evaluator.
 
 A manual-input dataset cell can take its value from a link rather than a typed
-number: a standalone Excel reference, a standalone ArcRho dataset reference, or
+number: a standalone Excel reference, a standalone Arco dataset reference, or
 an arithmetic formula whose operands are any mix of the two plus numbers::
 
     ='C:\\Folder\\[Book.xlsx]Sheet1'!A1:A7
@@ -46,7 +46,7 @@ INTERNAL_REFERENCE_SYNTAX_HINT = (
 DATASET_FORMULA_SYNTAX_HINT = (
     "Enter an Excel link such as ='C:\\Folder\\[Book.xlsx]Sheet1'!A1:C3, a dataset "
     "link such as =[Dataset][1:6], or a formula that combines them with + - * / ^, "
-    "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, ROUND, TAKE, INDEX, TRANSPOSE, or ArcRho dataset functions."
+    "or use IF, IFERROR, SUM, MAX, MIN, MEDIAN, AVERAGE, COUNT, ABS, ROUND, TAKE, INDEX, TRANSPOSE, or Arco dataset functions."
 )
 
 _EXCEL_TOKEN_RE = re.compile(
@@ -478,7 +478,7 @@ def link_precedent_names(
     formula_links: Iterable[Mapping[str, Any]] | None,
     *, project_name: str = "", reserving_class: str = "",
 ) -> List[str]:
-    """The datasets a sidecar's ArcRho cell links read, once each, in link order.
+    """The datasets a sidecar's Arco cell links read, once each, in link order.
 
     These names are the instance-level dependency edges the persisted graph
     carries alongside the dataset-type formula graph: the linked dataset lists

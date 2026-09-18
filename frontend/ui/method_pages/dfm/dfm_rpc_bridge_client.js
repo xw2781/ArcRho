@@ -289,7 +289,7 @@ function buildAgentApprovalComparison(originalJson, proposedJson) {
     local: buildApprovalMeta(originalJson, "Current DFM tab", nowSeconds),
     remote: buildApprovalMeta(proposedJson, "Pending ArcBot edit", nowSeconds + 1),
     labels: {
-      local: "ArcRho - Current",
+      local: "Arco - Current",
       remote: "ArcBot - Proposed",
     },
     actions: {

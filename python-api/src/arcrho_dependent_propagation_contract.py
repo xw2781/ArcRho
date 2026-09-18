@@ -2,8 +2,8 @@
 dependent propagation.
 
 Dependent propagation — the "update all dependents" cascade that follows a
-dataset or method save — is executed by ArcRho Engine on the machine hosting
-the ArcRho Server workspace as a durable long-running job. Callers identify
+dataset or method save — is executed by Arco Engine on the machine hosting
+the Arco Server workspace as a durable long-running job. Callers identify
 the changed objects by logical project name, logical reserving-class path, and
 logical changed-root names; the Engine derives every absolute filesystem path
 from its own configured server root.
@@ -89,7 +89,7 @@ DEPENDENT_PROPAGATION_QUEUED_STALE_SECONDS = 180.0
 
 ENGINE_HEARTBEAT_MAX_AGE_SECONDS = 60.0
 ENGINE_UNAVAILABLE_MESSAGE = (
-    "The ArcRho Engine service is not available. "
+    "The Arco Engine service is not available. "
     "Please try again later or contact the administrator."
 )
 
@@ -104,7 +104,7 @@ class DependentPropagationContractError(ValueError):
 
 
 class EngineUnavailableError(RuntimeError):
-    """Raised when no recently active ArcRho Engine instance is available."""
+    """Raised when no recently active Arco Engine instance is available."""
 
 
 class DependentPropagationLeaseUnavailable(RuntimeError):
@@ -247,7 +247,7 @@ def validate_dependent_propagation_request(payload: Any) -> dict[str, Any]:
 
     The required fields are also the complete allow-list, so machine-local
     filesystem paths are impossible by construction: every consumer derives
-    absolute paths from its own configured ArcRho Server root.
+    absolute paths from its own configured Arco Server root.
     """
 
     if not isinstance(payload, Mapping):
@@ -306,7 +306,7 @@ def validate_dependent_propagation_request(payload: Any) -> dict[str, Any]:
 def _root_path(server_root: str | os.PathLike[str]) -> Path:
     raw = os.fspath(server_root)
     if not str(raw).strip():
-        raise DependentPropagationContractError("ArcRho Server root is required.")
+        raise DependentPropagationContractError("Arco Server root is required.")
     return Path(raw).expanduser()
 
 
@@ -628,7 +628,7 @@ def held_reserving_class_lease(
     while lease is None:
         if time.monotonic() >= deadline:
             raise DependentPropagationLeaseUnavailable(
-                "Another ArcRho dependent propagation is already running for "
+                "Another Arco dependent propagation is already running for "
                 "this reserving class."
             )
         time.sleep(max(0.05, float(poll_seconds)))
@@ -805,7 +805,7 @@ def held_project_scope_lease(
     lease = acquire_project_scope_lease(server_root, project_name)
     if lease is None:
         raise DependentPropagationLeaseUnavailable(
-            "Another project-wide ArcRho job is already running for this project."
+            "Another project-wide Arco job is already running for this project."
         )
     stop_event, thread = start_project_scope_lease_heartbeat(lease)
     try:

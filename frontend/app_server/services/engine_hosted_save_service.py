@@ -1,7 +1,7 @@
 """Client half of Engine-hosted saves.
 
 The save endpoints keep their exact HTTP shapes, but the file work runs on
-ArcRho Engine where ``E:\\ArcRho Server`` is local disk: this module
+Arco Engine where ``E:\\ArcRho Server`` is local disk: this module
 drops the request file in the requests root as the queued state (instant
 watchdog pickup), polls after an initial pickup window, and returns the
 Engine-written terminal response as if the save had run in-process. Service
@@ -70,20 +70,20 @@ _ACTIVE_LATENCY_TRACE: contextvars.ContextVar[Dict[str, Any] | None] = (
 )
 
 HOSTED_SAVE_UNAVAILABLE_MESSAGE = (
-    "ArcRho Engine did not pick up the save. Please try again; if this "
+    "Arco Engine did not pick up the save. Please try again; if this "
     "persists, ask an administrator to check the Engine service."
 )
 HOSTED_SAVE_TIMEOUT_MESSAGE = (
-    "The save is taking longer than expected on ArcRho Engine. It may still "
+    "The save is taking longer than expected on Arco Engine. It may still "
     "complete; reload the object before retrying."
 )
 HOSTED_PLAN_UNAVAILABLE_MESSAGE = (
-    "ArcRho Engine did not report which dependent objects this save would "
+    "Arco Engine did not report which dependent objects this save would "
     "update. Please try again; if this persists, ask an administrator to "
     "check the Engine service."
 )
 HOSTED_PLAN_TIMEOUT_MESSAGE = (
-    "ArcRho Engine is taking longer than expected to list the dependent "
+    "Arco Engine is taking longer than expected to list the dependent "
     "objects this save would update. Nothing was saved; please try again."
 )
 
@@ -598,7 +598,7 @@ def run_hosted_save(
     plan_fingerprint: str = "",
     client_request_id: str = "",
 ) -> Dict[str, Any]:
-    """Execute one allowlisted service save on ArcRho Engine and return its response.
+    """Execute one allowlisted service save on Arco Engine and return its response.
 
     ``plan_fingerprint`` is the fingerprint of the dependent-update plan the
     user reviewed. When present the Engine recomputes it under the
@@ -617,7 +617,7 @@ def run_hosted_save(
         client_request_id=client_request_id,
         processing_timeout_seconds=SAVE_JOB_PROCESSING_TIMEOUT_SECONDS,
         missing_result_message=(
-            "ArcRho Engine reported a successful save but its result payload "
+            "Arco Engine reported a successful save but its result payload "
             "could not be read."
         ),
         unavailable_message=HOSTED_SAVE_UNAVAILABLE_MESSAGE,
@@ -651,7 +651,7 @@ def run_hosted_save_plan(
         plan_fingerprint="",
         processing_timeout_seconds=SAVE_JOB_PLAN_TIMEOUT_SECONDS,
         missing_result_message=(
-            "ArcRho Engine reported the dependent-update plan but its payload "
+            "Arco Engine reported the dependent-update plan but its payload "
             "could not be read."
         ),
         unavailable_message=HOSTED_PLAN_UNAVAILABLE_MESSAGE,

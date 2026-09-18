@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.13.1
-# Release Note: The macro now names the Flight Deck icon a button made from it starts with, so everyone who loads it gets the same glyph; you can still change the icon on your own button.
+# Version: 1.14.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, overwriting the existing ArcRho copies after copying the existing class to a dated backup folder. Ticked items whose ArcRho copy is newer than ResQ's are listed for review, with links that open them, before the overwrite is confirmed. A DFM User Entry value explained by the notes "Generate Notes for Combined Adjustment" wrote comes back as its growth and accounting cutoff formula rather than a plain number.
 # Scope: Reserving Class
 # Icon: download
@@ -179,7 +179,7 @@ def _logical_rc_path(value: object) -> str:
         or "\x00" in normalized
         or any(part in {"", ".", ".."} for part in segments)
     ):
-        raise ValueError("Reserving-class path must be a relative logical ArcRho path.")
+        raise ValueError("Reserving-class path must be a relative logical Arco path.")
     return normalized
 
 
@@ -211,7 +211,7 @@ def require_live_bridge_workers(server_root: object, *, sleep=time.sleep) -> tup
     if workers:
         return workers
     raise BridgeUnavailableError(
-        f"No active ArcRho Bridge worker was found: {tracker.describe()}. "
+        f"No active Arco Bridge worker was found: {tracker.describe()}. "
         f"Expected a ResQ-connected heartbeat newer than {BRIDGE_WORKER_MAX_AGE_SEC:g} "
         f"seconds under [{Path(server_root) / BRIDGE_WORKER_DIR}]."
     )
@@ -295,7 +295,7 @@ def publish_import_request(
         except OSError:
             pass
         raise BridgeRequestError(
-            f"Could not publish ArcRho Bridge request [{request_id}]: {exc}"
+            f"Could not publish Arco Bridge request [{request_id}]: {exc}"
         ) from exc
     return request_path
 
@@ -331,11 +331,11 @@ def confirm_overwrite_of_newer(ui, rows, *, title: str = TITLE, scope_note: str 
     confirm = _message(
         ui,
         scope_lines
-        + f"{count} ArcRho {noun} newer than the ResQ version. The import "
-        + "replaces them with the ResQ copies, discarding the ArcRho changes. "
+        + f"{count} Arco {noun} newer than the ResQ version. The import "
+        + "replaces them with the ResQ copies, discarding the Arco changes. "
         + "This cannot be undone.\n\n"
-        + "Click an item to review it in ArcRho before deciding.\n\n"
-        + "Overwrite the newer ArcRho copies?",
+        + "Click an item to review it in Arco before deciding.\n\n"
+        + "Overwrite the newer Arco copies?",
         title=title,
         kind="warning",
         buttons=["Overwrite", "Cancel"],
@@ -356,9 +356,9 @@ def confirm_overwrite(ui, *, title: str = TITLE, scope_note: str = "") -> bool:
         ui,
         scope_lines
         + "Overwrite replaces every dataset and method output that ResQ "
-        + "provides, discarding the current ArcRho copies and any edits made "
+        + "provides, discarding the current Arco copies and any edits made "
         + "to them, even recent ones. This cannot be undone.\n\n"
-        + "Overwrite the existing ArcRho data?",
+        + "Overwrite the existing Arco data?",
         title=title,
         kind="warning",
         buttons=["Overwrite", "Cancel"],
@@ -378,7 +378,7 @@ def confirm_without_preview(ui, error) -> bool:
         "The comparison with ResQ failed, so the datasets and methods cannot be "
         f"listed for review before the import.\n\n{error}\n\n"
         "Importing without the review brings across everything ResQ offers and "
-        "overwrites the ArcRho copies, newer ones included.",
+        "overwrites the Arco copies, newer ones included.",
         kind="warning",
         buttons=["Import Anyway", "Cancel"],
     )
@@ -405,7 +405,7 @@ def review_import_plan(ui, root, project_name, rc_path, *, overwrite: bool) -> d
     progress = ui.progress_bar(
         progress_id="import-resq-reserving-class-preview",
         title=TITLE,
-        label=f"Comparing ArcRho and ResQ: {rc_path}",
+        label=f"Comparing Arco and ResQ: {rc_path}",
         total=0,
     )
     preview_result = None
@@ -419,7 +419,7 @@ def review_import_plan(ui, root, project_name, rc_path, *, overwrite: bool) -> d
             direction=DIRECTION_IMPORT,
             timeout_sec=PREVIEW_TIMEOUT_SEC,
             progress=progress,
-            progress_label=f"Comparing ArcRho and ResQ: {rc_path}",
+            progress_label=f"Comparing Arco and ResQ: {rc_path}",
             on_poll=_report_macro_activity,
         )
     except Exception as exc:
@@ -487,7 +487,7 @@ def _update_progress_from_status(progress, status: dict[str, Any]) -> None:
     state = str(status.get("status") or "").strip().casefold()
     label = str(detail.get("label") or detail.get("message") or status.get("message") or "").strip()
     if not label:
-        label = "ArcRho Bridge is importing from ResQ" if state == "processing" else "Import from ResQ"
+        label = "Arco Bridge is importing from ResQ" if state == "processing" else "Import from ResQ"
     try:
         progress.update(
             label=label,
@@ -533,38 +533,38 @@ def wait_for_import_result(
             reported_id = str(status.get("request_id") or status.get("RequestId") or "").strip()
             if reported_id != request_id:
                 raise BridgeRequestError(
-                    f"ArcRho Bridge returned a status for a different or missing request ID at "
+                    f"Arco Bridge returned a status for a different or missing request ID at "
                     f"[{status_path}]."
                 )
             version = status.get("contract_version")
             if isinstance(version, bool) or version != CONTRACT_VERSION:
                 raise BridgeRequestError(
-                    f"ArcRho Bridge returned unsupported status contract version [{version!r}]."
+                    f"Arco Bridge returned unsupported status contract version [{version!r}]."
                 )
             _update_progress_from_status(progress, status)
             state = str(status.get("status") or "").strip().casefold()
             if state == "success":
                 return status
             if state == "error":
-                detail = str(status.get("message") or "unknown ArcRho Bridge error").strip()
+                detail = str(status.get("message") or "unknown Arco Bridge error").strip()
                 raise BridgeRequestError(
-                    f"ArcRho Bridge request [{request_id}] failed: {detail}",
+                    f"Arco Bridge request [{request_id}] failed: {detail}",
                     status=status,
                 )
             if state and state not in STATUS_VALUES:
                 raise BridgeRequestError(
-                    f"ArcRho Bridge request [{request_id}] returned unsupported status [{state}]."
+                    f"Arco Bridge request [{request_id}] returned unsupported status [{state}]."
                 )
         elif time.monotonic() >= claim_deadline:
             raise BridgeRequestError(
-                f"ArcRho Bridge did not claim request [{request_id}] within "
-                f"{claim_timeout_sec:g} seconds. Restart a current ArcRho Bridge worker "
+                f"Arco Bridge did not claim request [{request_id}] within "
+                f"{claim_timeout_sec:g} seconds. Restart a current Arco Bridge worker "
                 "and try the import again."
             )
 
         if not tracker.record(observation) and tracker.exceeded:
             raise BridgeUnavailableError(
-                f"ArcRho Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
+                f"Arco Bridge request [{request_id}] was abandoned: {tracker.describe()}. "
                 "Whether the import finished is unknown; if the Bridge was only slow it may "
                 f"still complete. Check [{status_path}] before importing this reserving class "
                 "again."
@@ -575,7 +575,7 @@ def wait_for_import_result(
         time.sleep(min(float(poll_interval_sec), remaining))
 
     raise BridgeRequestError(
-        f"ArcRho Bridge request [{request_id}] timed out after {timeout_sec:g} seconds. "
+        f"Arco Bridge request [{request_id}] timed out after {timeout_sec:g} seconds. "
         "The existing reserving-class data was left unchanged."
     )
 
@@ -622,14 +622,14 @@ def _success_message(project_name: str, rc_path: str, status: dict[str, Any]) ->
     if skipped:
         lines.extend((
             "",
-            "Skipped (could not be exported from ResQ; any existing ArcRho copy is kept):",
+            "Skipped (could not be exported from ResQ; any existing Arco copy is kept):",
             *skipped,
         ))
     parity = _detail_lines(result, PARITY_WARNINGS_FIELD)
     if parity:
         lines.extend((
             "",
-            "WARNING - ArcRho Engine results that differ from ResQ at two decimal places "
+            "WARNING - Arco Engine results that differ from ResQ at two decimal places "
             "(the Engine result was kept):",
             *parity,
         ))
@@ -720,13 +720,13 @@ def run_macro(active_dfm=None, active_context=None):
         bridge_workers = require_live_bridge_workers(server_root)
     except BridgeUnavailableError as exc:
         message = (
-            "No active ArcRho Bridge worker was detected, so the import was not started.\n\n"
+            "No active Arco Bridge worker was detected, so the import was not started.\n\n"
             f"Project: {project_name}\nPath: {rc_path}\n\n{exc}"
         )
-        _message(ui, message, title="ArcRho Bridge Unavailable", kind="error")
+        _message(ui, message, title="Arco Bridge Unavailable", kind="error")
         return {"success": False, "message": message, "reason": "bridge_unavailable"}
     except Exception as exc:
-        message = f"Could not prepare the ArcRho Bridge import.\n\n{exc}"
+        message = f"Could not prepare the Arco Bridge import.\n\n{exc}"
         _message(ui, message, kind="error")
         return {"success": False, "message": message}
 
@@ -768,7 +768,7 @@ def run_macro(active_dfm=None, active_context=None):
         progress = ui.progress_bar(
             progress_id="import-resq-reserving-class",
             title=TITLE,
-            label=f"Preparing import with {len(bridge_workers)} ArcRho Bridge worker(s)",
+            label=f"Preparing import with {len(bridge_workers)} Arco Bridge worker(s)",
             total=0,
         )
     except Exception:
@@ -796,7 +796,7 @@ def run_macro(active_dfm=None, active_context=None):
         publish_import_request(server_root=server_root, request_id=request_id, payload=payload)
         if progress is not None:
             try:
-                progress.update(label="ArcRho Bridge is importing from ResQ")
+                progress.update(label="Arco Bridge is importing from ResQ")
             except Exception:
                 pass
         status = wait_for_import_result(

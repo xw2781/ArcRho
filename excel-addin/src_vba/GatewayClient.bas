@@ -105,7 +105,7 @@ Public Function GatewayPost(ByVal requestPath As String, ByVal body As String, _
     outText = ""
     EnsureGatewayConfig
     If Not gatewayEnabled Then
-        outText = "This PC has no ArcRho Gateway credential."
+        outText = "This PC has no Arco Gateway credential."
         Exit Function
     End If
 
@@ -141,7 +141,7 @@ Public Function GatewayGet(ByVal requestPath As String, ByVal timeoutSeconds As 
     outText = ""
     EnsureGatewayConfig
     If Not gatewayEnabled Then
-        outText = "This PC has no ArcRho Gateway credential."
+        outText = "This PC has no Arco Gateway credential."
         Exit Function
     End If
 
@@ -228,17 +228,17 @@ Public Function GatewayDatasetCsv(ByVal funcArgs As String, _
     If Not GatewayPost(GATEWAY_ENGINE_CALCULATION_PATH, _
                        DatasetCalculationBody(funcArgs), _
                        DATASET_HTTP_TIMEOUT_SECONDS, replyStatus, replyText) Then
-        outMessage = "ArcRho Server not reached: " & OneLine(TextOrNoAnswer(replyText))
+        outMessage = "Arco Server not reached: " & OneLine(TextOrNoAnswer(replyText))
         Exit Function
     End If
 
     Set reply = ParsedReply(replyText)
     If replyStatus <> 200 Then
-        outMessage = "ArcRho Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
+        outMessage = "Arco Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
         Exit Function
     End If
     If reply Is Nothing Then
-        outMessage = "ArcRho Server sent an answer this add-in could not read."
+        outMessage = "Arco Server sent an answer this add-in could not read."
         Exit Function
     End If
     If Not ReplyIsOk(reply) Then
@@ -246,7 +246,7 @@ Public Function GatewayDatasetCsv(ByVal funcArgs As String, _
         Exit Function
     End If
     If Not reply.Exists(GATEWAY_CSV_FIELD) Then
-        outMessage = "ArcRho Server answered without the dataset's figures."
+        outMessage = "Arco Server answered without the dataset's figures."
         Exit Function
     End If
 
@@ -268,29 +268,29 @@ Public Function GatewayProjectDatasetTypes(ByVal projectName As String, _
     outMessage = ""
     EnsureGatewayConfig
     If Not gatewayEnabled Then
-        outMessage = "This PC is not set up to read ArcRho data. " & _
-                     "Ask the ArcRho team to give you access, then restart Excel."
+        outMessage = "This PC is not set up to read Arco data. " & _
+                     "Ask the Arco team to give you access, then restart Excel."
         Exit Function
     End If
 
     If Not GatewayPost(GATEWAY_WORKSPACE_READ_PATH, _
                        DatasetTypesReadBody(projectName), _
                        GATEWAY_READ_TIMEOUT_SECONDS, replyStatus, replyText) Then
-        outMessage = "ArcRho Server not reached: " & OneLine(TextOrNoAnswer(replyText))
+        outMessage = "Arco Server not reached: " & OneLine(TextOrNoAnswer(replyText))
         Exit Function
     End If
 
     Set reply = ParsedReply(replyText)
     If replyStatus <> 200 Then
-        outMessage = "ArcRho Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
+        outMessage = "Arco Server " & replyStatus & ": " & ReplyMessage(reply, replyText)
         Exit Function
     End If
     If reply Is Nothing Then
-        outMessage = "ArcRho Server sent an answer this add-in could not read."
+        outMessage = "Arco Server sent an answer this add-in could not read."
         Exit Function
     End If
     If Not reply.Exists("columns") Or Not reply.Exists("rows") Then
-        outMessage = "ArcRho Server answered without the project's dataset types."
+        outMessage = "Arco Server answered without the project's dataset types."
         Exit Function
     End If
 
@@ -436,7 +436,7 @@ Public Function ArcRhoGatewayCheckReport() As String
     signature = GatewaySignature(VECTOR_SECRET, VECTOR_USER, VECTOR_TIMESTAMP, _
                                  VECTOR_METHOD, VECTOR_PATH, bodyBytes)
 
-    report = "ArcRho Gateway check, add-in " & ARCRHO_VERSION
+    report = "Arco Gateway check, add-in " & ARCRHO_VERSION
     report = report & vbLf & "vector digest    " & Verdict(digest = VECTOR_DIGEST) & " " & digest
     report = report & vbLf & "vector signature " & Verdict(signature = VECTOR_SIGNATURE) & " " & signature
 
@@ -518,7 +518,7 @@ Public Sub EnsureGatewayCredential()
     If Len(Dir$(helperPath)) = 0 Then Exit Sub
 
     If Not disable_ufLoading Then
-        ufLoading.UpdateText "Setting this PC up to read ArcRho data ..."
+        ufLoading.UpdateText "Setting this PC up to read Arco data ..."
         ufLoading.Show vbModeless
     End If
     DoEvents

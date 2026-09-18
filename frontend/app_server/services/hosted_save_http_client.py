@@ -58,10 +58,10 @@ def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
     except (OSError, URLError, ValueError) as exc:
         raise HTTPException(
             503,
-            "ArcRho Gateway is unavailable. The dataset remains unsaved.",
+            "Arco Gateway is unavailable. The dataset remains unsaved.",
         ) from exc
     if payload.get("hosted_save_http") is not True:
-        raise HTTPException(503, "ArcRho Gateway is not ready for dataset saves.")
+        raise HTTPException(503, "Arco Gateway is not ready for dataset saves.")
     return payload
 
 
@@ -189,6 +189,6 @@ def submit_hosted_save(
 
     raise HTTPException(
         504,
-        "The Gateway response was interrupted. ArcRho retained the same "
+        "The Gateway response was interrupted. Arco retained the same "
         "request identity while recovering; reload the dataset before saving again.",
     ) from last_error

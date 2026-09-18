@@ -1,7 +1,7 @@
-"""Canonical request and status contract for ArcRho project duplication.
+"""Canonical request and status contract for Arco project duplication.
 
-Project duplication is executed by ArcRho Engine on the machine hosting the
-ArcRho Server workspace. Callers identify projects by logical name plus a
+Project duplication is executed by Arco Engine on the machine hosting the
+Arco Server workspace. Callers identify projects by logical name plus a
 normalized, server-root-relative project-store directory; the engine derives
 every absolute filesystem path from its own configured server root.
 
@@ -167,7 +167,7 @@ def validate_projects_directory(value: Any) -> str:
     raw = _required_text(value, "ProjectsDirectory").replace("\\", "/")
     if raw.startswith("/") or re.match(r"(?i)^[a-z]:", raw):
         raise ProjectDuplicationContractError(
-            "ProjectsDirectory must be relative to the ArcRho Server root."
+            "ProjectsDirectory must be relative to the Arco Server root."
         )
     parts = [part for part in raw.split("/") if part]
     if not parts:
@@ -223,7 +223,7 @@ def validate_project_duplication_request(payload: Any) -> dict[str, Any]:
     The required fields are also the complete allow-list. Machine-local paths
     are impossible: ``ProjectsDirectory`` is a normalized relative workspace
     layout value, and every consumer derives absolute paths from its local
-    ArcRho Server root.
+    Arco Server root.
     """
 
     if not isinstance(payload, Mapping):
@@ -363,7 +363,7 @@ def validate_project_duplication_submission_receipt(
 def _root_path(server_root: str | os.PathLike[str]) -> Path:
     raw = os.fspath(server_root)
     if not str(raw).strip():
-        raise ProjectDuplicationContractError("ArcRho Server root is required.")
+        raise ProjectDuplicationContractError("Arco Server root is required.")
     return Path(raw).expanduser()
 
 

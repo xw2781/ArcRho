@@ -118,7 +118,7 @@ def scripting_run_macro(req: ScriptMacroRunRequest) -> Dict[str, Any]:
 
 @router.post("/scripting/run-in-arcrho")
 def scripting_run_in_arcrho(req: ScriptMacroSourceRunRequest, request: Request) -> Dict[str, Any]:
-    require_local_client(request, "Run in ArcRho")
+    require_local_client(request, "Run in Arco")
     return scripting_macro_service.run_macro_source_in_arcrho(
         req.source,
         req.filename,

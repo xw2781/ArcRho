@@ -576,7 +576,7 @@ export function createFileExplorerController(homeView, options = {}) {
     if (typeof host?.listFolder !== "function") {
       state.entries = [];
       state.loading = false;
-      state.error = "Folder browsing requires the ArcRho desktop app.";
+      state.error = "Folder browsing requires the Arco desktop app.";
       renderExplorerRows();
       updateExplorerChrome();
       return;
@@ -666,7 +666,7 @@ export function createFileExplorerController(homeView, options = {}) {
     if (options.readOnly && !isExcelWorkbookPath(entry.path)) return;
     const host = hostApi();
     if (typeof host?.openPath !== "function") {
-      setStatus("Opening files requires the ArcRho desktop app.", "error");
+      setStatus("Opening files requires the Arco desktop app.", "error");
       return;
     }
     const actionLabel = options.readOnly ? "Opening read-only" : "Opening";
@@ -686,7 +686,7 @@ export function createFileExplorerController(homeView, options = {}) {
   async function revealPath(pathLike) {
     const path = String(pathLike || "").trim();
     if (!path || typeof hostApi()?.showItemInFolder !== "function") {
-      setStatus("Showing files in Explorer requires the ArcRho desktop app.", "error");
+      setStatus("Showing files in Explorer requires the Arco desktop app.", "error");
       return;
     }
     try {
@@ -701,7 +701,7 @@ export function createFileExplorerController(homeView, options = {}) {
   async function openFolderInExplorer(pathLike) {
     const path = String(pathLike || "").trim();
     if (!path || typeof hostApi()?.openPath !== "function") {
-      setStatus("Opening folders requires the ArcRho desktop app.", "error");
+      setStatus("Opening folders requires the Arco desktop app.", "error");
       return;
     }
     try {
@@ -727,7 +727,7 @@ export function createFileExplorerController(homeView, options = {}) {
   async function pickFolder() {
     const host = hostApi();
     if (typeof host?.pickFolder !== "function") {
-      setStatus("Adding folders requires the ArcRho desktop app.", "error");
+      setStatus("Adding folders requires the Arco desktop app.", "error");
       return;
     }
     try {

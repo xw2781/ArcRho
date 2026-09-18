@@ -98,7 +98,10 @@ function Invoke-WorkbookMacro([object]$Excel, [object]$Workbook, [string]$Proced
 }
 
 function Get-RibbonLabelForWorkbook([string]$WorkbookPath) {
-    [System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath)
+    # The file keeps its ArcRho name so existing installs and workbook links
+    # stay valid; the tab the user sees carries the product name.
+    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath)
+    if ($fileName -match 'BETA') { 'Arco Beta' } else { 'Arco' }
 }
 
 function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
@@ -135,7 +138,7 @@ function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
             $descriptionNode = $xml.CreateElement('dc', 'description', 'http://purl.org/dc/elements/1.1/')
             [void]$xml.DocumentElement.AppendChild($descriptionNode)
         }
-        $descriptionNode.InnerText = 'ArcRho actuarial data and analytics system'
+        $descriptionNode.InnerText = 'Arco actuarial data and analytics system'
 
         $entry.Delete()
         $newEntry = $zip.CreateEntry('docProps/core.xml', [System.IO.Compression.CompressionLevel]::Optimal)
@@ -329,7 +332,7 @@ try {
             }
         }
 
-    Invoke-WorkbookMacro $excel $workbook "Register_ArcRhoTri_Help_Safe"
+    Invoke-WorkbookMacro $excel $workbook "Register_ArcoTri_Help_Safe"
 
     $workbook.IsAddin = $true
     $workbook.SaveAs($tempTargetPath, 55)

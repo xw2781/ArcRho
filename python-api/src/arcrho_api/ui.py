@@ -101,7 +101,7 @@ class ArcRhoWindowProperties:
 
 
 def _discovered_app_url() -> str:
-    """Return the ArcRho desktop app URL published in the per-user endpoint file.
+    """Return the Arco desktop app URL published in the per-user endpoint file.
 
     The Electron host writes ``%APPDATA%\\ArcRho\\app_endpoint.json`` after its app
     server is ready. When the default local port is held by another user session on
@@ -161,18 +161,18 @@ def _request_json(
             body = response.read().decode("utf-8")
     except HTTPError as err:
         detail = err.read().decode("utf-8", errors="replace")
-        raise ArcRhoApiError(f"ArcRho UI command failed ({err.code}): {detail}") from err
+        raise ArcRhoApiError(f"Arco UI command failed ({err.code}): {detail}") from err
     except URLError as err:
-        raise ArcRhoApiError(f"ArcRho app is not reachable at {_base_url(app_url)}.") from err
+        raise ArcRhoApiError(f"Arco app is not reachable at {_base_url(app_url)}.") from err
     except OSError as err:
-        raise ArcRhoApiError(f"ArcRho UI command failed: {err}") from err
+        raise ArcRhoApiError(f"Arco UI command failed: {err}") from err
 
     try:
         parsed = json.loads(body) if body else {}
     except json.JSONDecodeError as err:
-        raise ArcRhoApiError(f"ArcRho UI command returned invalid JSON: {body[:200]}") from err
+        raise ArcRhoApiError(f"Arco UI command returned invalid JSON: {body[:200]}") from err
     if not isinstance(parsed, dict):
-        raise ArcRhoApiError("ArcRho UI command returned an unexpected response.")
+        raise ArcRhoApiError("Arco UI command returned an unexpected response.")
     return parsed
 
 
@@ -220,7 +220,7 @@ def wait_for_app(
         except ArcRhoApiError as err:
             last_error = str(err)
         time.sleep(max(0.05, float(interval_sec)))
-    raise ArcRhoApiError(last_error or f"ArcRho app is not reachable at {_base_url(app_url)}.")
+    raise ArcRhoApiError(last_error or f"Arco app is not reachable at {_base_url(app_url)}.")
 
 
 def run_macro_source(
@@ -238,7 +238,7 @@ def run_macro_source(
     if app_name != "arcrho":
         connected_name = app_name or "an unsupported app"
         raise ArcRhoApiError(
-            f"Run in ArcRho requires the ArcRho desktop app on {_base_url(app_url)}; "
+            f"Run in Arco requires the Arco desktop app on {_base_url(app_url)}; "
             f"connected to {connected_name!r}."
         )
     return _post_json(
@@ -278,7 +278,7 @@ def send_command(
         command_id=str(response.get("command_id") or ""),
     )
     if not out.ok:
-        raise ArcRhoApiError(out.error or f"ArcRho UI command failed: {command}")
+        raise ArcRhoApiError(out.error or f"Arco UI command failed: {command}")
     return out
 
 
@@ -315,7 +315,7 @@ def await_review_table(
     opened_payload = _command_result(opened)
     dialog_id = str(opened_payload.get("dialogId") or opened_payload.get("dialog_id") or "").strip()
     if not dialog_id:
-        raise ArcRhoApiError("ArcRho did not return a review-table dialog ID. Update or restart the ArcRho shell.")
+        raise ArcRhoApiError("Arco did not return a review-table dialog ID. Update or restart the Arco shell.")
     try:
         while True:
             if on_poll is not None:
@@ -340,7 +340,7 @@ def await_review_table(
 def message_box(
     message: str,
     *,
-    title: str = "ArcRho",
+    title: str = "Arco",
     buttons: list[str] | tuple[str, ...] | None = None,
     kind: str = "info",
     auto_close_ms: int | float | None = None,
@@ -359,7 +359,7 @@ def message_box(
 
     args = {
         "message": str(message or ""),
-        "title": str(title or "ArcRho"),
+        "title": str(title or "Arco"),
         "buttons": list(buttons or ["OK"]),
         "kind": str(kind or "info"),
     }
@@ -380,7 +380,7 @@ def message_box(
 def progress_open(
     *,
     progress_id: str = "default",
-    title: str = "ArcRho Progress",
+    title: str = "Arco Progress",
     label: str = "Starting...",
     detail: str = "",
     total: int | float = 0,
@@ -394,7 +394,7 @@ def progress_open(
         "ui.progressOpen",
         args={
             "progressId": str(progress_id or "default"),
-            "title": str(title or "ArcRho Progress"),
+            "title": str(title or "Arco Progress"),
             "label": str(label or ""),
             "detail": str(detail or ""),
             "total": max(0, int(float(total or 0))),
@@ -465,14 +465,14 @@ class ProgressBar:
         ui: "ArcRhoUI",
         *,
         progress_id: str = "default",
-        title: str = "ArcRho Progress",
+        title: str = "Arco Progress",
         total: int = 0,
         label: str = "Starting...",
         detail: str = "",
     ) -> None:
         self._ui = ui
         self.progress_id = str(progress_id or "default")
-        self.title = str(title or "ArcRho Progress")
+        self.title = str(title or "Arco Progress")
         self.total = max(0, int(total or 0))
         self.completed = 0
         self.open(label=label, detail=detail, total=self.total, completed=0)

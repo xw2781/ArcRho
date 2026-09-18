@@ -1,4 +1,4 @@
-"""ArcRho application package.
+"""Arco application package.
 
 Importing a service (for example the canonical processing-provenance helper)
 must not also construct the full FastAPI application.  That keeps non-HTTP

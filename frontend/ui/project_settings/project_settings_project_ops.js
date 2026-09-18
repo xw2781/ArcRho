@@ -151,7 +151,7 @@ export function createProjectOpsFeature(deps) {
 
   function assertCurrentWorkspace(record) {
     if (record?.workspaceScope === workspaceScope && workspaceScope) return;
-    const error = new Error("The ArcRho Server connection changed. The recovery record remains with its original workspace.");
+    const error = new Error("The Arco Server connection changed. The recovery record remains with its original workspace.");
     error.code = "DUPLICATE_WORKSPACE_CHANGED";
     throw error;
   }
@@ -427,7 +427,7 @@ export function createProjectOpsFeature(deps) {
       return;
     }
     if (!workspaceScope) {
-      failOperation("Project duplication is unavailable until the ArcRho Server connection is resolved.");
+      failOperation("Project duplication is unavailable until the Arco Server connection is resolved.");
       return;
     }
     const existingPending = loadPendingDuplicate();

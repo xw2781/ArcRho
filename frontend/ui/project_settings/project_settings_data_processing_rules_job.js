@@ -150,7 +150,7 @@ export async function waitForDataProcessingRulesJob({
       if (consecutiveFailures > maxStatusRetries) {
         throw codedError(
           "DATA_PROCESSING_RULES_STATUS_UNAVAILABLE",
-          `The save status is unavailable after repeated checks. Job "${jobId}" may still be running on ArcRho Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
+          `The save status is unavailable after repeated checks. Job "${jobId}" may still be running on Arco Engine.${lastFailure ? ` Last error: ${lastFailure}` : ""}`,
         );
       }
       onProgress({ stage: "", label: "Waiting for the save status...", completed: 0, total: 0 });
@@ -209,7 +209,7 @@ export async function waitForDataProcessingRulesJob({
     } else if (observedAt - lastActivityAt >= Math.max(pollIntervalMs, allowedStaleMs)) {
       throw codedError(
         "DATA_PROCESSING_RULES_STATUS_STALE",
-        `The save has stopped reporting progress. Job "${jobId}" appears to have stalled on ArcRho Engine.`,
+        `The save has stopped reporting progress. Job "${jobId}" appears to have stalled on Arco Engine.`,
       );
     }
     await waitForPoll(pollIntervalMs);

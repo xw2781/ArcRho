@@ -20,11 +20,11 @@ import release_manager
 
 
 PENDING_MANIFEST = {
-    "product": "ArcRho",
+    "product": "Arco",
     "version": "1.2.13",
     "built_at": "2026-08-14T09:12:44Z",
     "status": "built",
-    "installer": {"name": "ArcRho Setup 1.2.13.exe", "path": "C:/tmp/ArcRho Setup 1.2.13.exe"},
+    "installer": {"name": "Arco Setup 1.2.13.exe", "path": "C:/tmp/Arco Setup 1.2.13.exe"},
 }
 
 
@@ -116,7 +116,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base_url}/", timeout=10) as response:
             body = response.read().decode("utf-8")
         self.assertEqual(response.status, 200)
-        self.assertIn("ArcRho Release Manager", body)
+        self.assertIn("Arco Release Manager", body)
         self.assertIn('data-theme="dark"', body)
 
     def test_api_requires_the_session_token(self) -> None:
@@ -146,12 +146,12 @@ class ReleaseManagerServerTests(unittest.TestCase):
             payload["records"],
             [
                 {
-                    "product": "ArcRho",
+                    "product": "Arco",
                     "version": "1.2.13",
                     "built_at": "2026-08-14T09:12:44Z",
                     "status": "built",
-                    "installer_name": "ArcRho Setup 1.2.13.exe",
-                    "installer_path": "C:/tmp/ArcRho Setup 1.2.13.exe",
+                    "installer_name": "Arco Setup 1.2.13.exe",
+                    "installer_path": "C:/tmp/Arco Setup 1.2.13.exe",
                 }
             ],
         )
@@ -159,14 +159,14 @@ class ReleaseManagerServerTests(unittest.TestCase):
     def test_read_failures_become_readable_errors(self) -> None:
         failure = release_manager.release_workflow.ReleaseWorkflowError("gh is not authenticated")
         with mock.patch.object(release_manager.release_workflow, "next_version", side_effect=failure):
-            status, payload = self.request("/api/suggested-version?product=ArcRho")
+            status, payload = self.request("/api/suggested-version?product=Arco")
         self.assertEqual(status, 500)
         self.assertEqual(payload["error"], "gh is not authenticated")
 
     def test_build_rejects_an_invalid_version(self) -> None:
         with mock.patch.object(release_manager.OperationRunner, "start") as start:
             status, payload = self.request(
-                "/api/build", method="POST", body={"product": "ArcRho", "version": "not-a-version"}
+                "/api/build", method="POST", body={"product": "Arco", "version": "not-a-version"}
             )
         self.assertEqual(status, 400)
         self.assertIn("Invalid version", payload["error"])
@@ -175,14 +175,14 @@ class ReleaseManagerServerTests(unittest.TestCase):
     def test_build_starts_a_build_only_run(self) -> None:
         with mock.patch.object(release_manager.OperationRunner, "start") as start:
             status, payload = self.request(
-                "/api/build", method="POST", body={"product": "arcrho", "version": "1.2.13"}
+                "/api/build", method="POST", body={"product": "arco", "version": "1.2.13"}
             )
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
         title, command, environment = start.call_args.args
-        self.assertEqual(title, "Building ArcRho 1.2.13 without publishing")
+        self.assertEqual(title, "Building Arco 1.2.13 without publishing")
         self.assertEqual(command[-2:], ["--build-only", "1.2.13"])
-        self.assertEqual(environment["ARCRHO_BUILD_PRODUCT"], "arcrho")
+        self.assertEqual(environment["ARCRHO_BUILD_PRODUCT"], "arco")
         self.assertEqual(environment["ARCRHO_NONINTERACTIVE"], "1")
 
     def test_publish_refuses_a_record_that_is_already_published(self) -> None:
@@ -191,7 +191,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
             release_manager.release_workflow, "list_pending_releases", return_value=[published]
         ), mock.patch.object(release_manager.OperationRunner, "start") as start:
             status, payload = self.request(
-                "/api/publish", method="POST", body={"product": "ArcRho", "version": "1.2.13"}
+                "/api/publish", method="POST", body={"product": "Arco", "version": "1.2.13"}
             )
         self.assertEqual(status, 409)
         self.assertIn("cannot be published", payload["error"])
@@ -204,7 +204,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
             status, _ = self.request(
                 "/api/publish",
                 method="POST",
-                body={"product": "ArcRho", "version": "1.2.13", "commit": False},
+                body={"product": "Arco", "version": "1.2.13", "commit": False},
             )
         self.assertEqual(status, 200)
         command = start.call_args.args[1]
@@ -216,7 +216,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
             release_manager.release_workflow, "list_pending_releases", return_value=[]
         ), mock.patch.object(release_manager.OperationRunner, "start") as start:
             status, payload = self.request(
-                "/api/publish", method="POST", body={"product": "ArcRho", "version": "9.9.9"}
+                "/api/publish", method="POST", body={"product": "Arco", "version": "9.9.9"}
             )
         self.assertEqual(status, 404)
         self.assertIn("No local build record", payload["error"])
@@ -227,7 +227,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
             status, payload = self.request(
                 "/api/revoke",
                 method="POST",
-                body={"product": "ArcRho", "version": "1.2.13", "confirm": "1.2.12"},
+                body={"product": "Arco", "version": "1.2.13", "confirm": "1.2.12"},
             )
         self.assertEqual(status, 400)
         self.assertIn("did not match", payload["error"])
@@ -238,7 +238,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
             status, _ = self.request(
                 "/api/revoke",
                 method="POST",
-                body={"product": "ArcRho", "version": "1.2.13", "confirm": "1.2.13"},
+                body={"product": "Arco", "version": "1.2.13", "confirm": "1.2.13"},
             )
         self.assertEqual(status, 200)
         command = start.call_args.args[1]

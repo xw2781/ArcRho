@@ -63,7 +63,7 @@ def plan_result_selection_save(req: ResultSelectionSaveRequest) -> Dict[str, Any
 
 @router.post("/result-selection/save")
 def save_result_selection(req: ResultSelectionSaveRequest) -> Dict[str, Any]:
-    # The save runs on ArcRho Engine next to the data; this endpoint keeps
+    # The save runs on Arco Engine next to the data; this endpoint keeps
     # its exact response shape and error codes.
     return engine_hosted_save_service.run_hosted_save(
         "result_selection_method",

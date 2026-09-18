@@ -15,14 +15,14 @@ DSV's persistent formula panel shows the first cell (top left) of the first sele
 <!-- MANUAL:BEGIN -->
 `TAKE(array, rows, [columns])` selects leading or trailing rows/columns; negative counts select from the end, oversized counts clamp to the available size, and zero is an error. `INDEX(array, row_num, [column_num])` uses one-based positions; zero selects an entire row or column. `TRANSPOSE(array)` swaps axes. Array constants use commas between columns and semicolons between rows. These functions compose with the existing numeric functions and dataset/workbook references.
 
-The numeric Excel add-in dataset functions are available with the same positional argument order: `ArcRhoTri`, `ArcRhoTriDiag`, `ArcRhoTriCell`, `ArcRhoTriOrigin`, `ArcRhoVec`, and `ArcRhoVecCell`. Their signatures and defaults are generated from `excel-addin/src_vba/ArcRhoFunctions.bas`. Arguments are quoted text, numbers, TRUE/FALSE, or omitted slots; calculations can wrap the calls. Blank/omitted Path and blank/omitted/Default ProjectName use the editor's current RC and project. Explicit project and RC values can name other scopes. As in the add-in, ByTypeName and SuppressWarnings are accepted compatibility slots.
+The numeric Excel add-in dataset functions are available with the same positional argument order: `ArcoTri`, `ArcoTriDiag`, `ArcoTriCell`, `ArcoTriOrigin`, `ArcoVec`, and `ArcoVecCell`. Their signatures and defaults are generated from `excel-addin/src_vba/ArcRhoFunctions.bas`. Arguments are quoted text, numbers, TRUE/FALSE, or omitted slots; calculations can wrap the calls. Blank/omitted Path and blank/omitted/Default ProjectName use the editor's current RC and project. Explicit project and RC values can name other scopes. As in the add-in, ByTypeName and SuppressWarnings are accepted compatibility slots.
 
 Examples:
 
 ```text
-=TAKE(ArcRhoTri(,"Paid Claims"),-3,2)
-=TRANSPOSE(ArcRhoVec("","Selected Ultimate"))
-=INDEX(ArcRhoTri("Other RC","Paid Claims",TRUE,FALSE,FALSE,"Other Project"),2,1)
+=TAKE(ArcoTri(,"Paid Claims"),-3,2)
+=TRANSPOSE(ArcoVec("","Selected Ultimate"))
+=INDEX(ArcoTri("Other RC","Paid Claims",TRUE,FALSE,FALSE,"Other Project"),2,1)
 ```
 
 DSV spills into its eligible target cells and saves the formula link. DFM accepts one row of positive numeric results that fits the available User Entry cells; use TAKE/INDEX/TRANSPOSE to select that shape. DFM saves each spilled cell as INDEX of the original expression, preserving its dataset references for recalculation. Existing DFM row references and decimal half-up ROUND behavior remain supported.

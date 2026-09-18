@@ -7,7 +7,7 @@ make stale -- one round trip per sidecar, inside the save request -- so the
 request came back minutes later with the editor showing nothing in between.
 
 This module replaces that with a durable job. The request is published for
-ArcRho Engine, which claims the project-scope lease and runs the canonical
+Arco Engine, which claims the project-scope lease and runs the canonical
 save on local disk while the client only polls the status; the terminal status
 carries the save route's whole response. Submission travels as a hosted
 workspace mutation and the status as a hosted read, so from a Client PC both
@@ -94,7 +94,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
     except json.JSONDecodeError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid data processing rules job status."
+            502, "Arco Engine published an invalid data processing rules job status."
         ) from error
     except OSError as error:
         raise HTTPException(
@@ -106,7 +106,7 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         )
     except DataProcessingRulesJobContractError as error:
         raise HTTPException(
-            502, "ArcRho Engine published an invalid data processing rules job status."
+            502, "Arco Engine published an invalid data processing rules job status."
         ) from error
 
 
@@ -169,7 +169,7 @@ def submit_data_processing_rules_job(
                 "stage": "queued",
                 "completed": 0,
                 "total": 0,
-                "label": "Queued for ArcRho Engine",
+                "label": "Queued for Arco Engine",
             },
         )
         write_json_atomic(request_path, request)

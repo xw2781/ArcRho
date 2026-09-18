@@ -110,7 +110,7 @@ def save_data_processing_rules(
 def submit_data_processing_rules_save_job(
     request: DataProcessingRulesSaveJobRequest,
 ) -> Dict[str, Any]:
-    """Queue the save for ArcRho Engine and answer with the job identity.
+    """Queue the save for Arco Engine and answer with the job identity.
 
     The save is the same one ``POST /data_processing_rules`` performs, run on
     the server host where the sidecar walk after the write is local disk;

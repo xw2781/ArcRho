@@ -204,7 +204,7 @@ class RefreshDatasetLinksTests(unittest.TestCase):
     def test_cross_scope_call_refreshes_and_a_missing_source_preserves_the_target(self):
         from app_server.services import arcrho_runtime_service
         target = _vector("Target", [999.0, 77.0], links={"formula_links": [{
-            "formula": '=INDEX(ArcRhoVec("Other RC","Source",,"Other"),2)',
+            "formula": '=INDEX(ArcoVec("Other RC","Source",,"Other"),2)',
             "target_cells": [{"row": 0, "column": 0, "result_row": 0, "result_column": 0}],
         }]})
         with patch.object(arcrho_runtime_service, "run_arcrho_dataset_csv", return_value={"ok": True, "csv_text": "4\n8\n"}) as read:

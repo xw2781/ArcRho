@@ -2,7 +2,7 @@ Option Private Module
 Option Explicit
 
 Public Const SNAPSHOT_SHEET As String = "_ArcRhoCache"
-Public Const SNAPSHOT_REFRESH_REQUIRED As String = "(ArcRho: Refresh Worksheet or Refresh Workbook to load saved data.)"
+Public Const SNAPSHOT_REFRESH_REQUIRED As String = "(Arco: Refresh Worksheet or Refresh Workbook to load saved data.)"
 Private Const SNAPSHOT_SIGNATURE As String = "ArcRho workbook snapshot"
 Private Const SNAPSHOT_VERSION As Long = 1
 Private snapshotBooks As Collection
@@ -81,7 +81,7 @@ End Sub
 
 Private Function EntriesForBook(ByVal book As Workbook) As Object
     Dim i As Long, entries As Object
-    If book Is Nothing Then Err.Raise 5, , "No workbook is available for the ArcRho snapshot."
+    If book Is Nothing Then Err.Raise 5, , "No workbook is available for the Arco snapshot."
     InitializeSnapshotEvents
     For i = 1 To snapshotBooks.Count
         If snapshotBooks(i) Is book Then
@@ -109,7 +109,7 @@ Private Function ReadSnapshot(ByVal book As Workbook) As Object
     Set ws = CacheSheet(book)
     If Not ws Is Nothing Then
         If ws.Cells(1, 1).Value2 <> SNAPSHOT_SIGNATURE Or ws.Cells(1, 2).Value2 <> SNAPSHOT_VERSION Then
-            Err.Raise 5, , "The workbook's ArcRho snapshot has an unsupported format."
+            Err.Raise 5, , "The workbook's Arco snapshot has an unsupported format."
         End If
         count = CLng(ws.Cells(2, 2).Value2)
         row = 4
@@ -120,7 +120,7 @@ Private Function ReadSnapshot(ByVal book As Workbook) As Object
             refreshed = CStr(block(1, 4))
             lowerRow = CLng(block(1, 5)): lowerCol = CLng(block(1, 6))
             If rows < 1 Or cols < 1 Or row + rows > ws.Rows.Count Or cols > ws.Columns.Count Then
-                Err.Raise 5, , "The workbook's ArcRho snapshot is incomplete."
+                Err.Raise 5, , "The workbook's Arco snapshot is incomplete."
             End If
             block = ws.Cells(row + 1, 1).Resize(rows, cols).Value2
             ReDim values(lowerRow To lowerRow + rows - 1, lowerCol To lowerCol + cols - 1)
@@ -143,7 +143,7 @@ End Function
 
 Private Function DecodeSnapshotValue(ByVal value As Variant) As Variant
     If VarType(value) = vbString Then
-        If Left$(value, 1) <> "~" Then Err.Raise 5, , "The workbook's ArcRho snapshot contains invalid text."
+        If Left$(value, 1) <> "~" Then Err.Raise 5, , "The workbook's Arco snapshot contains invalid text."
         DecodeSnapshotValue = Mid$(value, 2)
     Else
         DecodeSnapshotValue = value
@@ -160,7 +160,7 @@ Public Sub SnapshotCommit(ByVal book As Workbook, ByVal updates As Object, Optio
     On Error GoTo Failed
     oldAlerts = Application.DisplayAlerts
     oldEvents = Application.EnableEvents
-    If book.ProtectStructure Then Err.Raise 5, , "Unprotect the workbook structure before refreshing ArcRho."
+    If book.ProtectStructure Then Err.Raise 5, , "Unprotect the workbook structure before refreshing Arco."
     Set savedSheet = book.ActiveSheet
     Set previous = EntriesForBook(book)
     Set merged = CreateObject("Scripting.Dictionary")
@@ -230,7 +230,7 @@ Private Sub WriteSnapshot(ByVal ws As Worksheet, ByVal entries As Object, ByVal 
         rows = UBound(values, 1) - lowerRow + 1
         cols = UBound(values, 2) - lowerCol + 1
         If row + rows > ws.Rows.Count Or cols > ws.Columns.Count Or Len(key) > 32767 Then
-            Err.Raise 5, , "The ArcRho snapshot exceeds Excel's worksheet limits."
+            Err.Raise 5, , "The Arco snapshot exceeds Excel's worksheet limits."
         End If
         ws.Cells(row, 1).Value2 = key
         ws.Cells(row, 2).Value2 = rows
@@ -243,7 +243,7 @@ Private Sub WriteSnapshot(ByVal ws As Worksheet, ByVal entries As Object, ByVal 
             For c = 1 To cols
                 value = values(lowerRow + r - 1, lowerCol + c - 1)
                 If VarType(value) = vbString Then
-                    If Len(value) > 32766 Then Err.Raise 5, , "ArcRho snapshot text exceeds Excel's cell limit."
+                    If Len(value) > 32766 Then Err.Raise 5, , "Arco snapshot text exceeds Excel's cell limit."
                     encoded(r, c) = "~" & value
                 Else
                     encoded(r, c) = value

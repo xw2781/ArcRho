@@ -1,4 +1,4 @@
-"""Resolve ArcRho-internal dataset cell links.
+"""Resolve Arco-internal dataset cell links.
 
 A manual-input dataset cell can link its value to a cell or range of another
 dataset in the same reserving class with a standalone reference written in the

@@ -138,7 +138,7 @@ def _safe_status_error(exc: Exception) -> str:
     if isinstance(exc, (ProjectDuplicationError, ProjectDuplicationContractError)):
         return _redact_machine_paths(exc)
     if isinstance(exc, (OSError, shutil.Error)):
-        return "The ArcRho Server filesystem could not complete project duplication."
+        return "The Arco Server filesystem could not complete project duplication."
     return "Project duplication failed."
 
 
@@ -253,7 +253,7 @@ def _verified_projects_directory_path(
         parts = canonical.relative_to(server_root).parts
     except ValueError as exc:
         raise ProjectDuplicationError(
-            "Unsafe ArcRho Server projects directory."
+            "Unsafe Arco Server projects directory."
         ) from exc
 
     current = server_root
@@ -263,11 +263,11 @@ def _verified_projects_directory_path(
             linked = _path_is_link_or_reparse(candidate)
         except ProjectDuplicationError as exc:
             raise ProjectDuplicationError(
-                "The ArcRho Server projects directory could not be inspected safely."
+                "The Arco Server projects directory could not be inspected safely."
             ) from exc
         if linked:
             raise ProjectDuplicationError(
-                "The ArcRho Server projects directory contains a symbolic link or "
+                "The Arco Server projects directory contains a symbolic link or "
                 "reparse point."
             )
         current = candidate
@@ -727,7 +727,7 @@ def duplicate_project(
         normalized["ProjectsDirectory"],
     )
     if not projects_dir.is_dir():
-        raise ProjectDuplicationError("The ArcRho Server projects folder is unavailable.")
+        raise ProjectDuplicationError("The Arco Server projects folder is unavailable.")
 
     source_segment = encode_project_directory_segment(
         normalized["SourceProjectName"]
@@ -1124,11 +1124,11 @@ def _durable_job_paths(
         )
     except ProjectDuplicationError as exc:
         raise ProjectDuplicationRecoveryRequired(
-            "The ArcRho Server projects folder cannot be verified for recovery."
+            "The Arco Server projects folder cannot be verified for recovery."
         ) from exc
     if not projects_dir.is_dir():
         raise ProjectDuplicationRetryableRecovery(
-            "The ArcRho Server projects folder is temporarily unavailable."
+            "The Arco Server projects folder is temporarily unavailable."
         )
     target_segment = encode_project_directory_segment(
         normalized["TargetProjectName"]

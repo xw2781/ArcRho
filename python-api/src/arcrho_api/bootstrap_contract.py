@@ -5,7 +5,7 @@ snapshot, revision hashes, output variants, and the output-sidecar projection to
 this module.  The numbers themselves come from :mod:`bootstrap_simulation`, which
 is the single owner of every Bootstrap formula.
 
-A Bootstrap method is the first ArcRho method whose data precedent is another
+A Bootstrap method is the first Arco method whose data precedent is another
 *method* rather than a dataset: it bootstraps a DFM.  A current v1 payload
 embeds everything it needs from that DFM, so the Residuals, Simulation and
 Results tabs open without reading the precedent.

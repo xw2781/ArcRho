@@ -83,7 +83,7 @@ def run(excel, name: str, *args):
 
 def formula(dataset: str, project: str = "Default") -> str:
     return (
-        f"='{RUNTIME_NAME}'!ArcRhoTriCell("
+        f"='{RUNTIME_NAME}'!ArcoTriCell("
         f'"Motor","{dataset}",1,1,TRUE,"{project}",12,12)'
     )
 
@@ -161,14 +161,14 @@ def vector_report(excel):
     sheet.Name = "Vectors"
     prefix = f"='{RUNTIME_NAME}'!"
     for cell, function, dataset, index in (
-        ("A1", "ArcRhoVecCell", "Vertical", 1),
+        ("A1", "ArcoVecCell", "Vertical", 1),
         ("A2", "ADASVecCell", "Vertical", 3),
-        ("A3", "ArcRhoVecCell", "Horizontal", 2),
-        ("A4", "ArcRhoVecCell", "VectorSingle", 1),
+        ("A3", "ArcoVecCell", "Horizontal", 2),
+        ("A4", "ArcoVecCell", "VectorSingle", 1),
     ):
         sheet.Range(cell).Formula = prefix + f'{function}("Motor","{dataset}",{index},"Alpha",12)'
-    sheet.Range("C1:C3").FormulaArray = prefix + 'ArcRhoVec("Motor","Vertical",FALSE,"Alpha",12)'
-    sheet.Range("E1:G1").FormulaArray = prefix + 'ArcRhoVec("Motor","Vertical",TRUE,"Alpha",12)'
+    sheet.Range("C1:C3").FormulaArray = prefix + 'ArcoVec("Motor","Vertical",FALSE,"Alpha",12)'
+    sheet.Range("E1:G1").FormulaArray = prefix + 'ArcoVec("Motor","Vertical",TRUE,"Alpha",12)'
     sheet.Range("E2:G2").FormulaArray = prefix + 'ADASVec("Motor","Horizontal",FALSE,"Alpha",12)'
     return book
 
@@ -331,10 +331,10 @@ def formula_entry(directory: Path) -> None:
               "re-entering a failed formula retries its missing request")
         before = run(excel, "SmokeCalls")
         prefix = f"='{RUNTIME_NAME}'!"
-        sheet.Range("F1:F3").FormulaArray = prefix + 'ArcRhoVec("Motor","ProjectVector",FALSE,"Beta",12)'
-        sheet.Range("F5").Formula = prefix + 'ArcRhoVecCell("Motor","ProjectVector",2,"Beta",12)'
-        sheet.Range("G1:G3").FormulaArray = prefix + 'ArcRhoVec("Motor","ProjectVector",FALSE,"Default",12)'
-        sheet.Range("G5").Formula = prefix + 'ArcRhoVecCell("Motor","ProjectVector",2,"Alpha",12)'
+        sheet.Range("F1:F3").FormulaArray = prefix + 'ArcoVec("Motor","ProjectVector",FALSE,"Beta",12)'
+        sheet.Range("F5").Formula = prefix + 'ArcoVecCell("Motor","ProjectVector",2,"Beta",12)'
+        sheet.Range("G1:G3").FormulaArray = prefix + 'ArcoVec("Motor","ProjectVector",FALSE,"Default",12)'
+        sheet.Range("G5").Formula = prefix + 'ArcoVecCell("Motor","ProjectVector",2,"Alpha",12)'
         check(sheet.Range("F1:F3").Value2 == ((200,), (210,), (220,))
               and sheet.Range("F5").Value2 == 210
               and sheet.Range("G1:G3").Value2 == ((100,), (110,), (120,))
@@ -345,7 +345,7 @@ def formula_entry(directory: Path) -> None:
         fresh = excel.Workbooks.Add()
         fresh.Worksheets(1).Range("A1").Formula = formula("FirstFormula", "Alpha")
         check(fresh.Worksheets(1).Range("A1").Value2 == 100,
-              "the first ArcRho formula in a new workbook loads immediately")
+              "the first Arco formula in a new workbook loads immediately")
 
     with excel_session() as excel:
         owner = runtime(excel, directory)

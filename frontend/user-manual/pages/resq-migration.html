@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ArcRho Manual - ResQ Migration</title>
+  <title>Arco Manual - ResQ Migration</title>
   <link rel="stylesheet" href="../manual.css">
 </head>
 <body data-page="resq-migration">
-  <main class="manual-page" data-page-title="ResQ Migration" data-page-intro="Use the migration helpers to export ResQ reserving-class content into ArcRho dataset, sidecar, method, and index files.">
+  <main class="manual-page" data-page-title="ResQ Migration" data-page-intro="Use the migration helpers to export ResQ reserving-class content into Arco dataset, sidecar, method, and index files.">
     <section class="manual-section" id="what-exports">
       <div class="section-head"><p class="eyebrow">Exports</p><h2>What the migration writes</h2></div>
       <div class="task-grid">
         <article class="task-card"><h3>Triangles</h3><ul><li>Writes length and mode scoped CSV files.</li><li>Writes sidecars with source metadata.</li><li>Uses shared filename escaping.</li></ul></article>
         <article class="task-card"><h3>Vectors</h3><ul><li>Writes vector CSV files.</li><li>Writes sidecars.</li><li>Preserves origin labels when available.</li></ul></article>
-        <article class="task-card"><h3>DFM methods</h3><ul><li>Writes grouped ArcRho DFM JSON.</li><li>Exports output vector data.</li><li>Imports ratio selections, formulas, notes, and cell notes where available.</li></ul></article>
+        <article class="task-card"><h3>DFM methods</h3><ul><li>Writes grouped Arco DFM JSON.</li><li>Exports output vector data.</li><li>Imports ratio selections, formulas, notes, and cell notes where available.</li></ul></article>
         <article class="task-card"><h3>Result Selection</h3><ul><li>Writes canonical v2 <code>RS@Name.json</code>.</li><li>Writes selected ultimate vector CSV.</li><li>Stores source values, weights, origin labels, and named Ratio Basis values so the method can reopen without rescanning inputs.</li></ul></article>
       </div>
     </section>
@@ -56,7 +56,7 @@ print(result)</code></pre>
       </table>
     </section>
     <section class="manual-section" id="checks">
-      <div class="section-head"><p class="eyebrow">After import</p><h2>What to check in ArcRho</h2></div>
+      <div class="section-head"><p class="eyebrow">After import</p><h2>What to check in Arco</h2></div>
       <ol class="step-list">
         <li>Open Project Instance for the imported project.</li>
         <li>Select the imported reserving-class path.</li>

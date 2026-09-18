@@ -50,7 +50,7 @@ def _preview_row(
         "kind": "Dataset",
         "arcrho_timestamp": "2026-08-12T10:00:00+00:00",
         "resq_timestamp": "2026-08-12T11:00:00",
-        "status": "ArcRho is newer",
+        "status": "Arco is newer",
         "action": action,
         "detail": "Test detail",
         "selected": True,
@@ -62,7 +62,7 @@ def _preview_row(
 def _direction(action: str = "arcrho_to_resq") -> dict:
     return {
         "action": action,
-        "label": "ArcRho -> ResQ" if action == "arcrho_to_resq" else "ResQ -> ArcRho",
+        "label": "Arco -> ResQ" if action == "arcrho_to_resq" else "ResQ -> Arco",
         "arcrho_timestamp": "8/12/2026 6:00:00 AM",
         "resq_timestamp": "8/12/2026 7:00:00 AM",
     }
@@ -113,7 +113,7 @@ class SyncMacroReviewTableTests(unittest.TestCase):
 
         columns = {column["key"]: column["label"] for column in payload["columns"]}
         self.assertEqual(payload["host"], "projectInstance")
-        self.assertEqual(columns["arcrho_timestamp"], "ArcRho Timestamp")
+        self.assertEqual(columns["arcrho_timestamp"], "Arco Timestamp")
         self.assertEqual(columns["resq_timestamp"], "ResQ Timestamp")
         for row in payload["rows"]:
             with self.subTest(row=row["id"]):
@@ -137,9 +137,9 @@ class SyncMacroReviewTableTests(unittest.TestCase):
         columns = [column["key"] for column in payload["columns"]]
         self.assertNotIn("action", columns)
         self.assertIn("review", columns)
-        self.assertIn("Latest ArcRho change: 8/12/2026 6:00:00 AM", payload["summary"])
+        self.assertIn("Latest Arco change: 8/12/2026 6:00:00 AM", payload["summary"])
         self.assertIn("Latest ResQ change: 8/12/2026 7:00:00 AM", payload["summary"])
-        self.assertIn("Direction: ArcRho to ResQ", payload["summary"])
+        self.assertIn("Direction: Arco to ResQ", payload["summary"])
         self.assertIn("2 can be pushed; 2 are selected; 1 marked for review.", payload["summary"])
         self.assertEqual(payload["acceptLabel"], "Sync to ResQ")
         by_id = {row["id"]: row for row in payload["rows"]}
@@ -247,7 +247,7 @@ class SyncMacroSummaryTests(unittest.TestCase):
         self.assertFalse(payload["selectable"])
         self.assertEqual(payload["acceptLabel"], "Close")
         self.assertIn("completed with errors", payload["summary"])
-        self.assertIn("Direction: ResQ to ArcRho. Applied 2 of 3 accepted action(s); 1 failed", payload["summary"])
+        self.assertIn("Direction: ResQ to Arco. Applied 2 of 3 accepted action(s); 1 failed", payload["summary"])
         self.assertIn("1 dependent-refresh warning(s)", payload["summary"])
         self.assertEqual([row["id"] for row in payload["rows"]], ["result-1", "result-2", "result-3", "result-4"])
         cells = [row["cells"] for row in payload["rows"]]
@@ -287,7 +287,7 @@ class SyncMacroSummaryTests(unittest.TestCase):
         })
 
         self.assertIn(
-            "Direction: ArcRho to ResQ. Applied 1 of 1 accepted action(s); 0 failed; "
+            "Direction: Arco to ResQ. Applied 1 of 1 accepted action(s); 0 failed; "
             "1 recalculated item(s) re-baselined.",
             payload["summary"],
         )

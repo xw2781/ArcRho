@@ -28,15 +28,15 @@ One sheet covering every worksheet function, all against
 
 | Block | Formula |
 | :--- | :--- |
-| array triangle | `ArcRhoTri(class,"Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,project,1,1)` |
-| single cell | `ArcRhoTriCell(class,"Net Loss--Incurred Adjusted***",2,3,TRUE,project,1,1)` |
-| diagonal | `ArcRhoTriDiag(class,"Net Loss--Incurred Adjusted***",0,TRUE,FALSE,project,1,1)` |
-| origin row | `ArcRhoTriOrigin(class,"Net Loss--Incurred Adjusted***",2,TRUE,FALSE,project,1,1)` |
-| vector | `ArcRhoVec(class,"C 81 - Prior Qtr Indicated",FALSE,project,12)` |
-| vector cell | `ArcRhoVecCell(class,"C 81 - Prior Qtr Indicated",2,project,12)` |
-| period headings | `ArcRhoHeaders(0,TRUE,12,project,-1,FALSE)` and the same with `1` |
-| project settings | `ArcRhoProjectSettings(project)` |
-| coarser view | `ArcRhoTri(class,"Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,project,12,12)` |
+| array triangle | `ArcoTri(class,"Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,project,1,1)` |
+| single cell | `ArcoTriCell(class,"Net Loss--Incurred Adjusted***",2,3,TRUE,project,1,1)` |
+| diagonal | `ArcoTriDiag(class,"Net Loss--Incurred Adjusted***",0,TRUE,FALSE,project,1,1)` |
+| origin row | `ArcoTriOrigin(class,"Net Loss--Incurred Adjusted***",2,TRUE,FALSE,project,1,1)` |
+| vector | `ArcoVec(class,"C 81 - Prior Qtr Indicated",FALSE,project,12)` |
+| vector cell | `ArcoVecCell(class,"C 81 - Prior Qtr Indicated",2,project,12)` |
+| period headings | `ArcoHeaders(0,TRUE,12,project,-1,FALSE)` and the same with `1` |
+| project settings | `ArcoProjectSettings(project)` |
+| coarser view | `ArcoTri(class,"Net Loss--Incurred Adjusted***",TRUE,FALSE,FALSE,project,12,12)` |
 
 Each array block is entered over a fixed range so that the two passes can be
 compared cell by cell.
@@ -112,9 +112,9 @@ Both predate this change and appear identically on both paths:
 
 - **A calendar-period view of a hand-entered triangle is unavailable.** The
   roll-up will only build a view from a stored triangle whose own calendar mode
-  matches, so both paths refuse. `ArcRhoTriDiag` and `ArcRhoTriCell` ask for one
+  matches, so both paths refuse. `ArcoTriDiag` and `ArcoTriCell` ask for one
   without meaning to, because of the way they pass their arguments on.
-- **`ArcRhoTriDiag` asks for the transposed calendar shape** rather than the one
+- **`ArcoTriDiag` asks for the transposed calendar shape** rather than the one
   its caller asked for, so the diagonal of a hand-entered triangle fails on both
   paths.
 
@@ -208,9 +208,9 @@ case A and case B datasets: seventeen blocks, 2,224 cells.
 
 Not one figure moved. All twenty-one are cells of the two blocks the previous
 run already recorded as failing on both paths for a reason that is not about
-transport — `ArcRhoTriCell` and `ArcRhoTriDiag` asking for a calendar-period
+transport — `ArcoTriCell` and `ArcoTriDiag` asking for a calendar-period
 view of a hand-entered triangle. They used to come back as `0` and `#VALUE!`,
-because the wrappers around `ArcRhoTri` assumed an array and quietly discarded a
+because the wrappers around `ArcoTri` assumed an array and quietly discarded a
 message. They now read
 
 > (Input triangle 'Net Loss--Incurred Adjusted***' exists as a local cache that

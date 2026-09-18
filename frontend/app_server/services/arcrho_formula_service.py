@@ -24,7 +24,7 @@ def resolve_arcrho_reference(reference, project_name, reserving_class, cache=Non
     project = str(args.get("ProjectName") or "").strip()
     if not project or project.casefold() == "default": project = project_name
     rc = str(args.get("Path") or reserving_class).strip()
-    vector = name.startswith("ARCRHOVEC")
+    vector = name.startswith("ARCOVEC")
 
     def boolean(key, default=False):
         value = args.get(key, default)
@@ -71,20 +71,20 @@ def resolve_arcrho_reference(reference, project_name, reserving_class, cache=Non
         cache[key] = [row + [None] * (width - len(row)) for row in values]
     values = cache[key]
     rows, cols = len(values), len(values[0])
-    if name == "ARCRHOTRICELL":
+    if name == "ARCOTRICELL":
         r, c = positive("OriginPeriod", 1) - 1, positive("DevelopmentPeriod", 1) - 1
         if r >= rows or c >= cols: raise HTTPException(422, "Triangle cell is outside the dataset.")
         values = [[values[r][c]]]
-    elif name == "ARCRHOVECCELL":
+    elif name == "ARCOVECCELL":
         index = positive("Index", 1) - 1
         flat = [cell for row in values for cell in row]
         if index >= len(flat): raise HTTPException(422, "Vector index is outside the dataset.")
         values = [[flat[index]]]
-    elif name == "ARCRHOTRIORIGIN":
+    elif name == "ARCOTRIORIGIN":
         index = positive("OriginPeriod", 1) - 1
         if index >= rows: raise HTTPException(422, "Origin period is outside the dataset.")
         values = [values[index]]
-    elif name == "ARCRHOTRIDIAG":
+    elif name == "ARCOTRIDIAG":
         diagonal = args["DiagonalIndex"]
         if not isinstance(diagonal, (int, float)) or not math.isfinite(diagonal) or diagonal != int(diagonal):
             raise HTTPException(422, "DiagonalIndex must be an integer.")
