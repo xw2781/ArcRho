@@ -162,14 +162,14 @@ def vector_report(excel):
     prefix = f"='{RUNTIME_NAME}'!"
     for cell, function, dataset, index in (
         ("A1", "ArcoVecCell", "Vertical", 1),
-        ("A2", "ADASVecCell", "Vertical", 3),
+        ("A2", "ArcoVecCell", "Vertical", 3),
         ("A3", "ArcoVecCell", "Horizontal", 2),
         ("A4", "ArcoVecCell", "VectorSingle", 1),
     ):
         sheet.Range(cell).Formula = prefix + f'{function}("Motor","{dataset}",{index},"Alpha",12)'
     sheet.Range("C1:C3").FormulaArray = prefix + 'ArcoVec("Motor","Vertical",FALSE,"Alpha",12)'
     sheet.Range("E1:G1").FormulaArray = prefix + 'ArcoVec("Motor","Vertical",TRUE,"Alpha",12)'
-    sheet.Range("E2:G2").FormulaArray = prefix + 'ADASVec("Motor","Horizontal",FALSE,"Alpha",12)'
+    sheet.Range("E2:G2").FormulaArray = prefix + 'ArcoVec("Motor","Horizontal",FALSE,"Alpha",12)'
     return book
 
 

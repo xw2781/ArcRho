@@ -46,7 +46,7 @@ only an authorized project.
 9. Two open workbooks use their own snapshots and caller-specific default
    projects even when the other workbook is active.
 10. Round-trip 1x1 values, vectors, arrays, blanks, and header/settings text.
-    `ArcoVecCell` and `ADASVecCell` use the same saved vector as `ArcoVec`;
+    `ArcoVecCell` uses the same saved vector as `ArcoVec`;
     check first and last 1-based indices for horizontal and vertical vectors.
 11. Settings no longer shows the old always-refresh/removeData option.
 
