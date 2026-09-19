@@ -303,7 +303,13 @@ function syncSummaryFormulaPanelWidth() {
   const style = window.getComputedStyle(host);
   const padding = (Number.parseFloat(style.paddingLeft) || 0)
     + (Number.parseFloat(style.paddingRight) || 0);
-  const width = host.clientWidth - padding;
+  const visibleWidth = host.clientWidth - padding;
+  // The bar belongs to the summary table, so when that table is narrower than
+  // the scrollport it stops at the table's right edge rather than running on
+  // across empty space.
+  const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
+  const tableWidth = summaryTable ? Math.ceil(summaryTable.getBoundingClientRect().width) : 0;
+  const width = tableWidth > 0 ? Math.min(visibleWidth, tableWidth) : visibleWidth;
   if (width > 0) panel.style.setProperty("--dfm-summary-formula-panel-width", `${width}px`);
   else panel.style.removeProperty("--dfm-summary-formula-panel-width");
 }
@@ -571,6 +577,12 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     label.id = "dfmSummaryFormulaBarLabelText";
     label.className = "dfmSummaryFormulaBarLabel";
     label.textContent = "f(x)";
+    // The row name alone does not say which cell is in the bar: the ratio
+    // column it sits in is named beside it, the way the grid header names it.
+    const colLabel = document.createElement("span");
+    colLabel.id = "dfmSummaryFormulaBarColLabel";
+    colLabel.className = "dfmSummaryFormulaBarColLabel";
+    colLabel.hidden = true;
     const input = document.createElement("input");
     input.id = "dfmSummaryFormulaBarInput";
     input.className = "arFormulaBarInput dfmSummaryFormulaBarInput";
@@ -588,6 +600,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     validationState.hidden = true;
     el.appendChild(fxIcon);
     el.appendChild(label);
+    el.appendChild(colLabel);
     el.appendChild(input);
     el.appendChild(display);
     el.appendChild(summaryExcelLink.el);
@@ -763,6 +776,30 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   return el;
 }
 
+/**
+ * The development label the grid prints over a ratio column, such as `12-24`,
+ * for the column the bar is showing. An empty string when there is no model
+ * yet or the column is outside it, which hides the label rather than printing
+ * a stray number.
+ */
+function getSummaryDevLabelForCol(col) {
+  const index = Number(col);
+  if (!Number.isFinite(index) || index < 0) return "";
+  const model = state?.model;
+  if (!model) return "";
+  const labels = getRatioHeaderLabels(getEffectiveDevLabelsForModel(model));
+  return String(labels?.[index] ?? "");
+}
+
+function setSummaryFormulaBarColLabel(col, barEl = null) {
+  const el = barEl || document.getElementById("dfmSummaryFormulaBar");
+  const colLabel = el?.querySelector?.("#dfmSummaryFormulaBarColLabel");
+  if (!colLabel) return;
+  const text = getSummaryDevLabelForCol(col);
+  colLabel.textContent = text;
+  colLabel.hidden = !text;
+}
+
 function setStatusBarText(text) {
   // Status bar lives in the parent document (DFM runs in an iframe)
   const doc = window.parent?.document || document;
@@ -783,6 +820,7 @@ function showSummaryFormulaBarIdle() {
   const input = el.querySelector("#dfmSummaryFormulaBarInput");
   const label = el.querySelector("#dfmSummaryFormulaBarLabelText");
   if (label) label.textContent = "f(x)";
+  setSummaryFormulaBarColLabel(-1, el);
   if (input) {
     setSummaryFormulaBarMode("display", input);
     input.value = "";
@@ -815,6 +853,7 @@ function showSummaryFormulaBarReadOnlyValue(cell, cfg) {
   clearSummaryFormulaBarValidationError();
   const label = el.querySelector("#dfmSummaryFormulaBarLabelText");
   if (label) label.textContent = String(cfg?.label || cfg?.id || "f(x)");
+  setSummaryFormulaBarColLabel(cell?.dataset?.col, el);
   const input = el.querySelector("#dfmSummaryFormulaBarInput");
   if (input) {
     setSummaryFormulaBarMode("display", input);
@@ -870,6 +909,7 @@ registerSummaryFunctions({
   handleSummaryFormulaBarViewportResize,
   wireSummaryFormulaBarResizeWatcher,
   getSummaryFormulaBarParts,
+  setSummaryFormulaBarColLabel,
   clearSummaryFormulaBarValidationError,
   showSummaryFormulaBarValidationError,
   cancelFormulaBarDisplayRefresh,

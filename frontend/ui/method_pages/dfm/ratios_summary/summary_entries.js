@@ -56,6 +56,7 @@ const computeAutoNameWithExclude = (...args) => summaryRuntime.computeAutoNameWi
 const scrollSummaryFormulaInputToEnd = (...args) => summaryRuntime.scrollSummaryFormulaInputToEnd(...args);
 const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBarDisplayMode(...args);
 const getSummaryFormulaBarParts = (...args) => summaryRuntime.getSummaryFormulaBarParts(...args);
+const setSummaryFormulaBarColLabel = (...args) => summaryRuntime.setSummaryFormulaBarColLabel(...args);
 const collapseFormulaEquals = (...args) => summaryRuntime.collapseFormulaEquals(...args);
 const submitSummaryFormulaBarInput = (...args) => summaryRuntime.submitSummaryFormulaBarInput(...args);
 const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
@@ -485,6 +486,7 @@ function updateSummaryFormulaBarForCell(cell) {
     : String(getUserEntryDisplayInputForCol(cfg, editCol) || "").trim();
   const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
   if (labelEl) labelEl.textContent = String(cfg.label || cfg.id || "f(x)");
+  setSummaryFormulaBarColLabel(editCol, el);
   if (inputEl) {
     const inputHasFocus = document.activeElement === inputEl;
     const sameTarget =

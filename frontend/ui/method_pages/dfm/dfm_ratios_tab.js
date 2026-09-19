@@ -1208,6 +1208,9 @@ export function renderRatioTable() {
   syncSummaryFormulaPanelWidth();
   wrap.appendChild(summaryTable);
   wrap.appendChild(selectedTable);
+  // The bar also stops at the summary table's right edge, which can only be
+  // measured once that table is laid out, so measure again after this frame.
+  window.requestAnimationFrame(() => syncSummaryFormulaPanelWidth());
   // The label column's default (natural) width is measured from its text
   // rather than fixed, and always computed so it can act as the resize floor
   // even when a stored override is in play (a stale override narrower than

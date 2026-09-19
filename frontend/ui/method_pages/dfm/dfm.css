@@ -1160,6 +1160,18 @@ body {
 }
 .dfmSummaryFormulaBarLabel::before { content: '"'; }
 .dfmSummaryFormulaBarLabel::after  { content: '"'; }
+/* Nothing is selected, so there is no cell to name: the idle note stands on
+   its own rather than behind a quoted placeholder. */
+.dfmSummaryFormulaBar.isNote .dfmSummaryFormulaBarLabel { display: none; }
+/* The ratio column the cell sits in, named as the grid header names it and
+   set quieter than the row so the row still reads first. */
+.dfmSummaryFormulaBarColLabel {
+  color: var(--ar-color-text-muted, #94a3b8);
+  user-select: none;
+  flex: 0 0 auto;
+}
+.dfmSummaryFormulaBarColLabel::before { content: "@"; margin-right: 3px; }
+.dfmSummaryFormulaBarColLabel[hidden] { display: none; }
 .dfmSummaryFormulaBarDisplay :is(.fmtRowRef, .fmtDatasetRef) {
   box-sizing: border-box;
   display: inline-flex;
