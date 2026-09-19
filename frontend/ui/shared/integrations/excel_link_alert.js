@@ -7,7 +7,7 @@
 // cell stays red until the reference is fixed. The status bar is not enough
 // for this: it is where a refresh reports how many cells changed, and a link
 // the user must go and repair should not scroll past in the same line.
-import { openExcelWorkbook } from "/ui/shared/integrations/excel_api.js?v=20260819a";
+import { openExcelWorkbook } from "/ui/shared/integrations/excel_api.js?v=20260919a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 
 const MAX_LISTED_FAILURES = 6;

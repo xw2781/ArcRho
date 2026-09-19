@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Opening a Dataset or a DFM method now asks whether the linked Excel values really changed instead of whether the workbook file is newer, and the window opens without waiting for the answer.",
+  "details": [
+    "A workbook saved with no change to a linked cell no longer raises a prompt; the prompt appears only when a linked cell now holds a different number, and it names the workbooks and how many stored values they no longer match.",
+    "When every linked value still matches, the status bar reads 'Linked values are refreshed, dataset is up to date.' ('method is up to date.' on a DFM).",
+    "The stored data is shown first and the workbooks are read afterwards, so a slow workbook no longer delays the window.",
+    "Linked workbooks are opened on Arco Server whenever it can be reached, the same machine the Excel Link Manager and a link refresh already use, and only over this PC's own drive when it cannot."
+  ]
+}

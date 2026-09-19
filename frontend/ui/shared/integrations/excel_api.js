@@ -24,39 +24,19 @@ export async function readExcelCell(bookPath, sheet, cell, options = {}) {
   return parseExcelResponse(resp, options.signal);
 }
 
+/**
+ * Reads workbook cells in item order, one answer per item.
+ *
+ * Every linked-workbook read a window performs goes through here, and the app
+ * server hands it to the ArcRho Server host whenever one is reachable, so the
+ * workbook is opened on the machine a refresh and a retarget have to be able
+ * to open it on rather than over this machine's mapped drive.
+ */
 export async function readExcelCellsBatch(items, options = {}) {
   const resp = await fetch(`${config.API_BASE}/excel/read_cells_batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
-    signal: options.signal,
-  });
-  return parseExcelResponse(resp, options.signal);
-}
-
-/**
- * Validates saved link sources and reports each workbook's timestamp in one pass.
- *
- * The response carries `results` in item order, exactly as
- * `readExcelCellsBatch` does, plus `workbooks` with one `{path, ok, mtime}`
- * entry per distinct workbook, so an opening dataset or method can tell a
- * broken reference from a merely newer workbook without a second round trip.
- */
-export async function validateExcelLinksBatch(items, options = {}) {
-  const resp = await fetch(`${config.API_BASE}/excel/validate_links`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items: Array.isArray(items) ? items : [] }),
-    signal: options.signal,
-  });
-  return parseExcelResponse(resp, options.signal);
-}
-
-export async function readExcelFileMtimesBatch(bookPaths, options = {}) {
-  const resp = await fetch(`${config.API_BASE}/excel/file_mtimes_batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ book_paths: Array.isArray(bookPaths) ? bookPaths : [] }),
     signal: options.signal,
   });
   return parseExcelResponse(resp, options.signal);

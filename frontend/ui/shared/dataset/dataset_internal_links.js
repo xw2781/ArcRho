@@ -20,7 +20,7 @@ import {
   buildDatasetExternalLinkTargets,
   buildDatasetLinkOutline,
   describeTargetDestination,
-} from "/ui/shared/dataset/dataset_external_links.js?v=20260907b";
+} from "/ui/shared/dataset/dataset_external_links.js?v=20260919a";
 import {
   formatInternalDatasetReference,
   parseInternalDatasetReference,

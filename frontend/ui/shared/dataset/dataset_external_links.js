@@ -1,8 +1,4 @@
-import {
-  readExcelCellsBatch,
-  readExcelFileMtimesBatch,
-  validateExcelLinksBatch,
-} from "/ui/shared/integrations/excel_api.js?v=20260819a";
+import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260919a";
 import {
   excelColumnFromIndex,
   formatExcelReference,
@@ -388,8 +384,6 @@ function targetValuePreview(model, targets, isRange) {
 export function createDatasetExternalLinksController({
   state,
   readCellsBatch = readExcelCellsBatch,
-  validateLinksBatch = validateExcelLinksBatch,
-  readFileMtimesBatch = readExcelFileMtimesBatch,
   isReadOnly = () => false,
   isTransposed = () => false,
   isAtLinkedShape = () => true,
@@ -647,82 +641,25 @@ export function createDatasetExternalLinksController({
       ok: false,
       failures: [],
       failedCellCount: 0,
-      newerWorkbooks: [],
-      newerWorkbookCount: 0,
-      unverifiedWorkbookCount: 0,
+      linkedCellCount: 0,
+      changedCellCount: 0,
+      changedWorkbooks: [],
       ...extra,
     };
   }
 
   /**
-   * Reports which linked workbooks have been saved since this dataset's file.
+   * Reads every saved link and reports what a refresh would actually change.
    *
-   * The cheap half of `validateLinks`: the app server stats each distinct
-   * workbook instead of opening it, so a window that only changed the view it
-   * shows can tell that Excel has nothing new to say without reading a cell.
-   * A workbook that cannot be stated is counted as unverified rather than as
-   * newer, so an unreachable drive never rewrites the figures on screen.
+   * One pass answers both questions an opening dataset has about its links: is
+   * every stored reference still readable, and does any workbook cell now hold
+   * a different number from the one stored here. A file time is never
+   * consulted - a workbook saved with no change to a linked cell is not a
+   * change, and the manager's own check settles a usage the same way. Values
+   * are never applied: a dataset that opens onto a broken reference keeps its
+   * saved numbers and shows the broken cells red until the reference is fixed.
    */
-  async function findNewerWorkbooks(datasetMtime, options = {}) {
-    const bookPaths = [
-      ...new Map(
-        links
-          .map((link) => String(describeExcelReference(link.reference)?.bookPath || ""))
-          .filter(Boolean)
-          .map((bookPath) => [bookPath.toLowerCase(), bookPath]),
-      ).values(),
-    ];
-    const baseline = Number(datasetMtime);
-    if (!bookPaths.length || !Number.isFinite(baseline)) {
-      return { ok: true, newerWorkbooks: [], unverifiedWorkbookCount: bookPaths.length };
-    }
-    let response = null;
-    try {
-      response = await readFileMtimesBatch(bookPaths, { signal: options.signal });
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        return { ok: false, aborted: true, newerWorkbooks: [], unverifiedWorkbookCount: bookPaths.length };
-      }
-      return {
-        ok: false,
-        error: String(error?.message || error || "Linked workbook timestamps could not be read."),
-        newerWorkbooks: [],
-        unverifiedWorkbookCount: bookPaths.length,
-      };
-    }
-    const results = Array.isArray(response?.results) ? response.results : [];
-    if (!response?.ok || results.length !== bookPaths.length) {
-      return {
-        ok: false,
-        error: String(response?.error || "Linked workbook timestamps could not be read."),
-        newerWorkbooks: [],
-        unverifiedWorkbookCount: bookPaths.length,
-      };
-    }
-    const newerWorkbooks = [];
-    let unverifiedWorkbookCount = 0;
-    results.forEach((result, index) => {
-      const mtime = Number(result?.mtime);
-      if (!result?.ok || !Number.isFinite(mtime)) {
-        unverifiedWorkbookCount += 1;
-      } else if (mtime > baseline + 0.001) {
-        newerWorkbooks.push({ path: String(result.path || bookPaths[index]), mtime });
-      }
-    });
-    return { ok: true, newerWorkbooks, unverifiedWorkbookCount };
-  }
-
-  /**
-   * Validates every saved link and reports which workbooks are newer, in one pass.
-   *
-   * The app server reads each stored source cell where it can reach the
-   * workbook, so a renamed sheet, a moved workbook, or a deleted row that left
-   * a `#REF!` comes back as that reference's own error rather than as a count,
-   * and the workbook timestamps ride along from the same read. Values are never
-   * applied here: a dataset that opens onto a broken reference keeps its saved
-   * numbers and shows the broken cells red until the reference is fixed.
-   */
-  async function validateLinks(datasetMtime, options = {}) {
+  async function validateLinks(options = {}) {
     if (!links.length || !state?.model) {
       failuresByTargetKey = new Map();
       return emptyValidation({ ok: true });
@@ -732,7 +669,7 @@ export function createDatasetExternalLinksController({
     let response = null;
     if (items.length) {
       try {
-        response = await validateLinksBatch(items, { signal: options.signal });
+        response = await readCellsBatch(items, { signal: options.signal });
       } catch (error) {
         if (error?.name === "AbortError") return emptyValidation({ aborted: true });
         return emptyValidation({
@@ -752,31 +689,41 @@ export function createDatasetExternalLinksController({
     }
     const results = Array.isArray(response?.results) ? response.results : [];
     const failures = [];
+    const changedWorkbooks = new Map();
+    let linkedCellCount = 0;
+    let changedCellCount = 0;
     tasks.forEach((task) => {
-      failures.push(...recordTaskFailures(task, (index) => {
-        if (!task.readable) return unreadableTaskError(task);
-        const parsed = excelResultValue(results[task.start + index]);
-        return parsed.ok ? "" : parsed.error;
-      }));
-    });
-    const baseline = Number(datasetMtime);
-    const newerWorkbooks = [];
-    let unverifiedWorkbookCount = 0;
-    (Array.isArray(response?.workbooks) ? response.workbooks : []).forEach((workbook) => {
-      const mtime = Number(workbook?.mtime);
-      if (!workbook?.ok || !Number.isFinite(mtime)) {
-        unverifiedWorkbookCount += 1;
-      } else if (Number.isFinite(baseline) && mtime > baseline + 0.001) {
-        newerWorkbooks.push({ path: String(workbook.path || ""), mtime });
+      const count = task.link.target_cells.length;
+      linkedCellCount += count;
+      const cellErrors = [];
+      const nextValues = [];
+      let linkFailed = false;
+      for (let offset = 0; offset < count; offset += 1) {
+        const parsed = task.readable
+          ? excelResultValue(results[task.start + offset])
+          : { ok: false, error: unreadableTaskError(task) };
+        cellErrors.push(parsed.ok ? "" : parsed.error);
+        nextValues.push(parsed.ok ? parsed.value : null);
+        if (!parsed.ok) linkFailed = true;
       }
+      failures.push(...recordTaskFailures(task, (index) => cellErrors[index]));
+      // A refresh applies a link whole or not at all, so a link holding a
+      // broken reference is a failure to report, never a value that moved.
+      if (linkFailed) return;
+      task.link.target_cells.forEach((target, index) => {
+        if (valuesEqual(state.model.values[target.row][target.column], nextValues[index])) return;
+        changedCellCount += 1;
+        const bookPath = String(task.description?.bookPath || "");
+        if (bookPath) changedWorkbooks.set(bookPath.toLowerCase(), bookPath);
+      });
     });
     return {
       ok: true,
       failures,
       failedCellCount: failures.length,
-      newerWorkbooks,
-      newerWorkbookCount: newerWorkbooks.length,
-      unverifiedWorkbookCount,
+      linkedCellCount,
+      changedCellCount,
+      changedWorkbooks: Array.from(changedWorkbooks.values()),
     };
   }
 
@@ -1071,7 +1018,6 @@ export function createDatasetExternalLinksController({
     clear,
     commitReference,
     decorateCell,
-    findNewerWorkbooks,
     hasLinks,
     hardCodeTargetCells,
     getCellLinkInfo,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import stat
 import tempfile
 import unittest
 from concurrent.futures import Future
@@ -317,81 +316,6 @@ class ExcelBatchReadTests(unittest.TestCase):
         self.assertEqual(load.call_count, 1)
         self.assertTrue(book.closed)
 
-    def test_validate_links_answers_cells_and_workbook_times_in_one_pass(self) -> None:
-        # The open dataset asks two questions - is every reference still
-        # readable, and is any workbook newer - and pays one pass for both.
-        first = _Workbook(12.5)
-        second = _Workbook(33.0)
-        stat_calls = []
-
-        def fake_stat(path: str):
-            stat_calls.append(path)
-            return SimpleNamespace(
-                st_mtime=101.0 if "first" in path else 202.0,
-                st_mode=stat.S_IFREG,
-            )
-
-        # Keyed on the path, not an ordered side_effect list: the two workbooks
-        # are opened on separate threads, so their order is not the caller's.
-        def fake_load(path, **_kwargs):
-            return first if "first" in str(path) else second
-
-        items = [
-            self.item("first.xlsx"),
-            self.item("second.xlsx"),
-            self.item("first.xlsx", "B2"),
-        ]
-        with (
-            mock.patch.object(Path, "exists", return_value=True),
-            mock.patch.object(
-                excel_service.openpyxl, "load_workbook", side_effect=fake_load
-            ) as load,
-            mock.patch.object(excel_service.os, "stat", side_effect=fake_stat),
-        ):
-            result = excel_service.excel_validate_links(items)
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(
-            [item["value"] for item in result["results"]], [12.5, 33.0, 12.5]
-        )
-        # One open and one stat per distinct workbook, however many cells asked.
-        self.assertEqual(load.call_count, 2)
-        self.assertEqual(len(stat_calls), 2)
-        self.assertEqual(
-            sorted(workbook["mtime"] for workbook in result["workbooks"]),
-            [101.0, 202.0],
-        )
-        self.assertTrue(all(workbook["ok"] for workbook in result["workbooks"]))
-
-    def test_validate_links_reports_a_workbook_it_cannot_reach(self) -> None:
-        # A workbook that moved fails both halves of the answer, and the caller
-        # needs both: the reference is broken, and its timestamp is unknown.
-        missing = self.work_dir() / "Gone.xlsx"
-
-        result = excel_service.excel_validate_links(
-            [SimpleNamespace(book_path=str(missing), sheet="Sheet1", cell="A1")]
-        )
-
-        self.assertFalse(result["results"][0]["ok"])
-        self.assertIn("File not found", result["results"][0]["error"])
-        self.assertEqual(len(result["workbooks"]), 1)
-        self.assertFalse(result["workbooks"][0]["ok"])
-
-    def test_read_cells_batch_does_not_pay_for_workbook_timestamps(self) -> None:
-        # Only the validating read stats the workbooks; the plain batch read
-        # every commit and refresh uses must not start doing it too.
-        with (
-            mock.patch.object(Path, "exists", return_value=True),
-            mock.patch.object(
-                excel_service.openpyxl, "load_workbook", return_value=_Workbook(1.0)
-            ),
-            mock.patch.object(excel_service.os, "stat") as stat_call,
-        ):
-            result = excel_service.excel_read_cells_batch([self.item("first.xlsx")])
-
-        self.assertNotIn("workbooks", result)
-        stat_call.assert_not_called()
-
     def test_bounds_workbook_concurrency(self) -> None:
         items = [self.item(f"missing-{index}.xlsx") for index in range(8)]
         with mock.patch.object(excel_service, "ThreadPoolExecutor", _RecordingExecutor):
@@ -400,44 +324,6 @@ class ExcelBatchReadTests(unittest.TestCase):
         self.assertEqual(_RecordingExecutor.max_workers, excel_service.EXCEL_BATCH_MAX_WORKERS)
         self.assertEqual(len(result["results"]), len(items))
         self.assertTrue(all(not item["ok"] for item in result["results"]))
-
-    def test_file_mtimes_deduplicate_stat_calls_and_preserve_order(self) -> None:
-        calls = []
-
-        def fake_stat(path: str):
-            calls.append(path)
-            return SimpleNamespace(
-                st_mtime=101.0 if "first" in path else 202.0,
-                st_mode=stat.S_IFREG,
-            )
-
-        paths = ["first.xlsx", "second.xlsx", "first.xlsx", ""]
-        with (
-            mock.patch.object(excel_service.os, "stat", side_effect=fake_stat),
-            mock.patch.object(excel_service, "ThreadPoolExecutor", _RecordingExecutor),
-        ):
-            result = excel_service.excel_file_mtimes_batch(paths)
-
-        self.assertTrue(result["ok"])
-        self.assertEqual([item.get("mtime") for item in result["results"][:3]], [101.0, 202.0, 101.0])
-        self.assertFalse(result["results"][3]["ok"])
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(_RecordingExecutor.max_workers, 3)
-
-    def test_file_mtime_concurrency_is_bounded(self) -> None:
-        paths = [f"workbook-{index}.xlsx" for index in range(8)]
-        with (
-            mock.patch.object(
-                excel_service.os,
-                "stat",
-                return_value=SimpleNamespace(st_mtime=100.0, st_mode=stat.S_IFREG),
-            ),
-            mock.patch.object(excel_service, "ThreadPoolExecutor", _RecordingExecutor),
-        ):
-            result = excel_service.excel_file_mtimes_batch(paths)
-
-        self.assertEqual(_RecordingExecutor.max_workers, excel_service.EXCEL_BATCH_MAX_WORKERS)
-        self.assertEqual(len(result["results"]), len(paths))
 
     def test_workbook_properties_read_the_package_core_properties(self) -> None:
         # Created, Last Modified, and User are the workbook's own record of
@@ -474,18 +360,6 @@ class ExcelBatchReadTests(unittest.TestCase):
         self.assertFalse(blank["ok"])
         # One read per distinct path; the repeat carries the same answer.
         self.assertEqual(repeat, good)
-
-    def test_file_mtimes_batch_keeps_its_own_result_shape(self) -> None:
-        # The properties batch is the richer read; the mtimes batch every
-        # freshness check uses must not start paying for a docProps read.
-        work = self.work_dir()
-        book = work / "Book.xlsx"
-        openpyxl.Workbook().save(book)
-
-        result = excel_service.excel_file_mtimes_batch([str(book)])
-
-        self.assertEqual(sorted(result["results"][0].keys()), ["mtime", "ok", "path"])
-
 
 if __name__ == "__main__":
     unittest.main()

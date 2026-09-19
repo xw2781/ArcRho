@@ -1,6 +1,6 @@
 import { parseDatasetFormula, evaluateDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
 import { resolveFormulaDatasets } from "/ui/shared/components/formula_bar/formula_api.js?v=20260917a";
-import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260819a";
+import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260919a";
 import { excelColumnFromIndex, parseExcelCellAddress } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 
 export function substituteFormulaRowValues(raw, referenceValues) {

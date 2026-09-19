@@ -1,7 +1,7 @@
 import { FORMULA_CATALOG, quoteFormulaText } from "/ui/shared/components/formula_bar/formula_completion.js?v=20260917a";
 import { ensureFormulaAssistStyles, installFormulaAutocomplete } from "/ui/shared/components/formula_bar/formula_autocomplete.js?v=20260917a";
 import { formulaDatasetNames, formulaContextOptions, formulaPageIdentity } from "/ui/shared/components/formula_bar/formula_api.js?v=20260917a";
-import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
+import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260919a";
 
 /** A preview is read-only; Insert writes a draft, and Enter in the bar applies it. */
 export function openFormulaHelper(input, { identityProvider = formulaPageIdentity, evaluate = evaluateFormulaValues, onInsert = () => {}, onClose = () => {} } = {}) {

@@ -35,36 +35,38 @@ const linkAlert = await import(
 test("DSV validates its Excel links once after linked sidecar data loads", () => {
   assert.match(persistenceSource, /datasetExcelLinkCheckedKeys = new Set\(\)/);
   assert.match(persistenceSource, /window\.setTimeout\(async \(\) => \{/);
-  assert.match(persistenceSource, /validateLinks\(\s*state\.fileMtime/);
-  assert.match(persistenceSource, /if \(data\.exists\) scheduleDatasetExcelLinkCheck/);
+  assert.match(persistenceSource, /validateLinks\(\s*\{ signal: abortController\.signal \}/);
+  assert.match(persistenceSource, /if \(data\.exists\) \{\s*scheduleDatasetExcelLinkCheck\(\{/u);
 });
 
-test("a reload reads Excel again only where a workbook has been saved since the dataset", () => {
-  // Changing the view a dataset is shown at reloads it, and the reload used to
-  // read every linked workbook from the top. The dataset's own CSV already
-  // holds those figures, so the workbooks are stated first and read only when
-  // one is newer than that file.
+test("the check never blocks the load and no file time decides it", () => {
+  // The stored data is on screen first: the check is scheduled, never awaited,
+  // and the reload path asks the workbooks again instead of comparing times.
+  assert.doesNotMatch(persistenceSource, /await scheduleDatasetExcelLinkCheck/u);
+  assert.doesNotMatch(persistenceSource, /findNewerWorkbooks|newerWorkbook|fileMtime\)/u);
   assert.match(
     persistenceSource,
-    /if \(options\?\.forceReload === true\) \{\s*await refreshDatasetExternalLinksIfWorkbooksChanged\(\{ isCurrent \}\);/u,
+    /recheck: options\?\.forceReload === true,/u,
   );
   assert.match(
     persistenceSource,
-    /const changed = await runtime\.datasetExternalLinks\.findNewerWorkbooks\(state\.fileMtime\);/u,
-  );
-  // An unreachable workbook is not a changed one: the stored figures stand.
-  assert.match(
-    persistenceSource,
-    /if \(!changed\?\.ok \|\| !changed\.newerWorkbooks\?\.length\) \{\s*return \{ linkedCellCount: 0, changedCount: 0, failedCount: 0 \};\s*\}\s*return refreshDatasetExternalLinks\(options\);/u,
+    /if \(recheck\) datasetExcelLinkCheckedKeys\.delete\(contextKey\);\s*else if \(datasetExcelLinkCheckedKeys\.has\(contextKey\)\) return;/u,
   );
 });
 
-test("a broken reference replaces the newer-workbook prompt", () => {
-  // The alert comes first and returns, so the "Linked Excel File Updated"
-  // prompt never queues behind a reference that cannot be refreshed anyway.
+test("no value change reports an up-to-date dataset in the status bar", () => {
   assert.match(
     persistenceSource,
-    /if \(result\.failures\.length\) \{[\s\S]*?await reportDatasetExcelLinkFailures\(result\.failures, \{ isCurrent \}\);\s*return;\s*\}\s*if \(!result\.newerWorkbookCount\) return;/u,
+    /if \(!result\.changedCellCount\) \{\s*if \(result\.linkedCellCount\) \{\s*setStatus\("Linked values are refreshed, dataset is up to date\."\);/u,
+  );
+});
+
+test("a broken reference replaces the changed-value prompt", () => {
+  // The alert comes first and returns, so the changed-value prompt never
+  // queues behind a reference that cannot be refreshed anyway.
+  assert.match(
+    persistenceSource,
+    /if \(result\.failures\.length\) \{[\s\S]*?await reportDatasetExcelLinkFailures\(result\.failures, \{ isCurrent \}\);\s*return;\s*\}\s*if \(!result\.changedCellCount\) \{/u,
   );
   // The grid repaints before the alert so the red cells are already visible
   // behind it, and stay visible once it is dismissed.
@@ -108,6 +110,7 @@ test("a refresh that never came back still names what it tried and what it kept"
 });
 
 test("freshness prompt defaults to keeping values and refreshes only on request", () => {
+  assert.match(persistenceSource, /title: "Linked Excel Values Changed"/);
   assert.match(persistenceSource, /okLabel: "Keep Current Values"/);
   assert.match(persistenceSource, /actions: \[\{ id: "refresh", label: "Refresh from Excel" \}\]/);
   assert.match(persistenceSource, /balancedActions: true/);

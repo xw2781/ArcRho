@@ -258,65 +258,27 @@ def _read_workbook_cells(group: Dict[str, Any]) -> Dict[CellKey, Dict[str, Any]]
     return workbook_results
 
 
-def _run_cell_read_batch(
-    items: list,
-    with_workbook_stats: bool,
-    thread_name_prefix: str,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Run one grouped read pass and return the per-cell and per-workbook answers.
+def excel_read_cells_batch(items: list) -> Dict[str, Any]:
+    """Read every requested cell, one open per workbook, on a bounded pool.
 
-    When ``with_workbook_stats`` is set the worker that opens a workbook also
-    stats it, so a caller that needs both the cell values and the file's
-    modification time pays one pass over the (often network) share, not two.
+    This is the one cell read every caller shares: the Links-tab refresh, a
+    formula committed in a window, and the check a dataset or DFM method runs
+    when it opens. Each cell is answered on its own, so a renamed sheet, a
+    deleted row that left a ``#REF!``, or a workbook that moved comes back as
+    that reference's own error rather than as a silent count.
     """
 
     groups, result_keys = _group_cell_read_items(items)
-
-    def read_group(group: Dict[str, Any]) -> Tuple[Dict[CellKey, Dict[str, Any]], Dict[str, Any] | None]:
-        cells = _read_workbook_cells(group)
-        stats = _stat_workbook(str(group["path"])) if with_workbook_stats else None
-        return cells, stats
-
     by_key: Dict[CellKey, Dict[str, Any]] = {}
-    stats_by_key: Dict[str, Dict[str, Any]] = {}
     if groups:
         with ThreadPoolExecutor(
             max_workers=min(EXCEL_BATCH_MAX_WORKERS, len(groups)),
-            thread_name_prefix=thread_name_prefix,
+            thread_name_prefix="arcrho-excel-check",
         ) as executor:
-            futures = {
-                executor.submit(read_group, group): book_key
-                for book_key, group in groups.items()
-            }
-            for future, book_key in futures.items():
-                cells, stats = future.result()
-                by_key.update(cells)
-                if stats is not None:
-                    stats_by_key[book_key] = stats
-    results = [dict(by_key[key]) for key in result_keys]
-    workbooks = [dict(stats_by_key[book_key]) for book_key in groups if book_key in stats_by_key]
-    return results, workbooks
-
-
-def excel_read_cells_batch(items: list) -> Dict[str, Any]:
-    results, _workbooks = _run_cell_read_batch(items, False, "arcrho-excel-check")
-    return {"ok": True, "results": results}
-
-
-def excel_validate_links(items: list) -> Dict[str, Any]:
-    """Validate saved Excel link sources and report each workbook's timestamp.
-
-    This is the check a dataset or DFM method runs when it opens: every stored
-    reference is read where the app server can reach it, so a renamed sheet, a
-    deleted row that left a ``#REF!``, or a workbook that moved is reported as
-    that reference's own error rather than as a silent count. The workbook
-    timestamps ride along from the same pass, so the caller can also tell
-    whether an otherwise valid workbook is newer than the stored values
-    without a second round trip over the share.
-    """
-
-    results, workbooks = _run_cell_read_batch(items, True, "arcrho-excel-validate")
-    return {"ok": True, "results": results, "workbooks": workbooks}
+            futures = [executor.submit(_read_workbook_cells, group) for group in groups.values()]
+            for future in futures:
+                by_key.update(future.result())
+    return {"ok": True, "results": [dict(by_key[key]) for key in result_keys]}
 
 
 def _run_workbook_path_batch(
@@ -414,10 +376,6 @@ def _stat_and_describe_workbook(resolved: str) -> Dict[str, Any]:
     if result.get("ok"):
         result.update(_workbook_document_properties(resolved))
     return result
-
-
-def excel_file_mtimes_batch(book_paths: list[str]) -> Dict[str, Any]:
-    return _run_workbook_path_batch(book_paths, _stat_workbook, "arcrho-excel-stat")
 
 
 def excel_workbook_properties_batch(book_paths: list[str]) -> Dict[str, Any]:

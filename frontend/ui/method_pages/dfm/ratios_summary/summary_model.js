@@ -7,7 +7,7 @@ import {
   registerSummaryFunctions,
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
-import { substituteFormulaRowValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
+import { substituteFormulaRowValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260919a";
 import { parseDatasetFormula, evaluateDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
 
 const {

@@ -29,6 +29,7 @@ cape_cod_router = sys.modules["app_server.api.cape_cod_router"]
 dataset_router = sys.modules["app_server.api.dataset_router"]
 dfm_method_index_router = sys.modules["app_server.api.dfm_method_index_router"]
 excel_link_router = sys.modules["app_server.api.excel_link_router"]
+excel_router = sys.modules["app_server.api.excel_router"]
 dfm_method_router = sys.modules["app_server.api.dfm_method_router"]
 result_selection_router = sys.modules["app_server.api.result_selection_router"]
 table_summary_router = sys.modules["app_server.api.table_summary_router"]
@@ -38,6 +39,7 @@ from app_server.schemas.bornhuetter_ferguson import BornhuetterFergusonIdentityR
 from app_server.schemas.cape_cod import CapeCodIdentityRequest
 from app_server.schemas.dataset import DatasetCacheLoadRequest
 from app_server.schemas.dfm_method import DfmMethodIdentityRequest
+from app_server.schemas.excel import ExcelBatchReadRequest
 from app_server.schemas.excel_link import (
     ExcelLinkBreakRequest,
     ExcelLinkListRequest,
@@ -370,6 +372,41 @@ class RouteWiringTests(unittest.TestCase):
                 )["value_check"]
             )
         check.assert_called_once_with("Demo", "COL")
+
+    def test_excel_cell_reads_open_the_workbook_on_the_host(self) -> None:
+        # Every linked-workbook read a window performs - the freshness check an
+        # opening Dataset or DFM window runs, a Links-tab refresh, a formula
+        # committed in the formula bar - opens the workbook where a refresh and
+        # a retarget would; this process opens nothing when the gateway
+        # answered.
+        request = ExcelBatchReadRequest(
+            items=[{"book_path": "\\\\srv\\share\\Inputs.xlsx", "sheet": "Sheet1", "cell": "B5"}]
+        )
+        remote = _CaptureRead({"ok": True, "results": [{"ok": True, "value": 12.5}]}, remote=True)
+        with (
+            patch.object(excel_router.workspace_read_client, "run_workspace_read", remote),
+            patch.object(excel_router.excel_service, "excel_read_cells_batch") as local,
+        ):
+            response = excel_router.excel_read_cells_batch(request)
+        local.assert_not_called()
+        self.assertEqual(response["results"][0]["value"], 12.5)
+        kind, kwargs = remote.calls[0]
+        self.assertEqual(kind, "excel_cell_values")
+        self.assertEqual(kwargs["items"][0]["cell"], "B5")
+        self._assert_registered(remote)
+
+        # No item names no workbook, so there is nothing to host: the read
+        # contract would refuse a request whose only argument is empty.
+        capture = _CaptureRead()
+        with (
+            patch.object(excel_router.workspace_read_client, "run_workspace_read", capture),
+            patch.object(
+                excel_router.excel_service, "excel_read_cells_batch", return_value={"ok": True, "results": []}
+            ) as service,
+        ):
+            self.assertEqual(excel_router.excel_read_cells_batch(ExcelBatchReadRequest(items=[]))["results"], [])
+        self.assertEqual(capture.calls, [])
+        service.assert_called_once_with([])
 
     def test_excel_link_refresh_is_an_engine_hosted_save(self) -> None:
         # The refresh reads the workbooks and writes the moved values on Arco

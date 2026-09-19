@@ -47,11 +47,8 @@ import {
   BERQUIST_SHERMAN_TAB_DEFS,
   windowTabIds,
 } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
-import {
-  readExcelCellsBatch,
-  validateExcelLinksBatch,
-} from "/ui/shared/integrations/excel_api.js?v=20260819a";
-import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260919a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
 import { normalizeExcelReferenceAddressCase } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import {
   buildUserValueLinkRecords,
@@ -1881,7 +1878,7 @@ async function checkUserValueExcelLinkFreshness() {
   const items = excelReadItemsForInputs(inputs);
   let response = null;
   try {
-    response = await validateExcelLinksBatch(items.map(({ book_path, sheet, cell }) => ({ book_path, sheet, cell })));
+    response = await readExcelCellsBatch(items.map(({ book_path, sheet, cell }) => ({ book_path, sheet, cell })));
   } catch (error) {
     postStatus(`Excel links could not be checked: ${text(error?.message || error)}`, "warn");
     return;

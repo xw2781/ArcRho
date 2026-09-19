@@ -164,6 +164,18 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "check_reserving_class_excel_link_values",
         ("project_name", "reserving_class"),
     ),
+    # Every linked workbook cell a window reads: the freshness check an
+    # opening Dataset or DFM window runs, a Links-tab refresh, a formula
+    # committed in the formula bar. The workbooks open on the server host for
+    # the same reason the manager's check opens them there - that host is the
+    # one a retarget and a refresh have to be able to read them on. This kind
+    # names no project: an item carries the workbook path it asks about, and
+    # the read touches no workspace file at all.
+    "excel_cell_values": WorkspaceReadKind(
+        "excel_service",
+        "excel_read_cells_batch",
+        ("items",),
+    ),
     # The Dependency Graph window's whole diagram: the class index for its
     # nodes plus every sidecar for its edges, assembled where the files are.
     "dataset_dependency_graph": WorkspaceReadKind(

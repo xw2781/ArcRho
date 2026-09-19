@@ -3,7 +3,7 @@ import { notifyDataTabDurableDatasetState, withDataTabDatasetMutation } from "/u
 import { buildDatasetSaveStatus } from "/ui/shared/tabs/data/data_tab_propagation_report.js?v=20260830a";
 import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temporary_format.js?v=20260805a";
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260830a";
-import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
@@ -812,12 +812,13 @@ export function registerDataTabPersistenceController(runtime) {
     });
   }
 
-  function scheduleDatasetExcelLinkCheck({ contextKey, isCurrent }) {
-    if (
-      !contextKey
-      || datasetExcelLinkCheckedKeys.has(contextKey)
-      || !datasetExternalLinksLoaded
-    ) return;
+  // The stored figures are on screen before this runs and stay there unless the
+  // user asks for the refresh: opening some workbooks is slow, so the window
+  // never waits on it. Nothing here is awaited by the load.
+  function scheduleDatasetExcelLinkCheck({ contextKey, isCurrent, recheck = false }) {
+    if (!contextKey || !datasetExternalLinksLoaded) return;
+    if (recheck) datasetExcelLinkCheckedKeys.delete(contextKey);
+    else if (datasetExcelLinkCheckedKeys.has(contextKey)) return;
     window.setTimeout(async () => {
       if (!isCurrent()) return;
       // A view at other lengths holds none of the cells the saved links name,
@@ -832,10 +833,9 @@ export function registerDataTabPersistenceController(runtime) {
       const abortController = new AbortController();
       datasetExcelLinkCheckAbortController = abortController;
       // One server pass answers both questions this dataset has about its
-      // links: is every saved reference still readable, and is any workbook
-      // newer than the values stored here.
+      // links: is every saved reference still readable, and would a refresh
+      // move any of the numbers stored here.
       const result = await runtime.datasetExternalLinks.validateLinks(
-        state.fileMtime,
         { signal: abortController.signal },
       );
       if (datasetExcelLinkCheckAbortController === abortController) {
@@ -848,25 +848,31 @@ export function registerDataTabPersistenceController(runtime) {
       }
       if (result.failures.length) {
         // A reference that no longer resolves is the answer the user has to act
-        // on, so it replaces the newer-workbook prompt rather than queueing
+        // on, so it replaces the changed-value prompt rather than queueing
         // behind it: refreshing from a workbook whose reference is broken
         // cannot succeed anyway.
         await reportDatasetExcelLinkFailures(result.failures, { isCurrent });
         return;
       }
-      if (!result.newerWorkbookCount) return;
-      const workbookNames = result.newerWorkbooks
-        .map(({ path }) => String(path || "").split(/[\\/]/).pop())
+      if (!result.changedCellCount) {
+        if (result.linkedCellCount) {
+          setStatus("Linked values are refreshed, dataset is up to date.");
+        }
+        return;
+      }
+      const workbookNames = result.changedWorkbooks
+        .map((path) => String(path || "").split(/[\\/]/).pop())
         .filter(Boolean);
       // The two buttons already offer the choice, so the text only says what
-      // is out of date and that a refresh still has to be saved.
+      // moved and that a refresh still has to be saved.
       const workbookSummary = workbookNames.length === 1
-        ? `${workbookNames[0]} is newer`
-        : `${workbookNames.length} linked workbooks are newer`;
+        ? `${workbookNames[0]} no longer matches`
+        : `${workbookNames.length} linked workbooks no longer match`;
+      const cellCount = result.changedCellCount;
       const choice = await showPageMessageBox({
-        title: "Linked Excel File Updated",
+        title: "Linked Excel Values Changed",
         tone: "warning",
-        message: `${workbookSummary} than the stored values. Refreshed values stay unsaved until you select Save.`,
+        message: `${workbookSummary} ${cellCount} stored value${cellCount === 1 ? "" : "s"}. Refreshed values stay unsaved until you select Save.`,
         actions: [{ id: "refresh", label: "Refresh from Excel" }],
         okLabel: "Keep Current Values",
         balancedActions: true,
@@ -878,33 +884,6 @@ export function registerDataTabPersistenceController(runtime) {
         });
       }
     }, 0);
-  }
-
-  // A reload of the same dataset -- the window came back, or only the view it
-  // is shown at moved -- reads Excel again only when Excel has something new to
-  // say. The dataset's own CSV already holds the figures the last refresh
-  // brought over, so the workbooks are stated first and read only where one has
-  // been saved since that file. A workbook that cannot be stated counts as
-  // unchanged: the stored figures stand rather than being blanked by a drive
-  // that happened to be away.
-  async function refreshDatasetExternalLinksIfWorkbooksChanged(options = {}) {
-    const isCurrent = typeof options?.isCurrent === "function" ? options.isCurrent : () => true;
-    if (
-      isDfmDataTabHost()
-      || !datasetExternalLinksLoaded
-      || !datasetDisplayIsAtLinkedShape()
-      || !state.model
-      || !currentDatasetIsManualTriangleOrVector()
-      || !isCurrent()
-    ) {
-      return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
-    }
-    const changed = await runtime.datasetExternalLinks.findNewerWorkbooks(state.fileMtime);
-    if (!isCurrent()) return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
-    if (!changed?.ok || !changed.newerWorkbooks?.length) {
-      return { linkedCellCount: 0, changedCount: 0, failedCount: 0 };
-    }
-    return refreshDatasetExternalLinks(options);
   }
 
   async function refreshDatasetExternalLinks(options = {}) {
@@ -1098,7 +1077,16 @@ export function registerDataTabPersistenceController(runtime) {
     runtime.datasetFormulaLinks.load(
       datasetExternalLinksLoaded && data.exists ? data.formula_links : [],
     );
-    if (data.exists) scheduleDatasetExcelLinkCheck({ contextKey: key, isCurrent });
+    // A reload of the same dataset -- the window came back, or only the view it
+    // is shown at moved -- asks its workbooks again, because the answer is
+    // about the values in them rather than about this load.
+    if (data.exists) {
+      scheduleDatasetExcelLinkCheck({
+        contextKey: key,
+        isCurrent,
+        recheck: options?.forceReload === true,
+      });
+    }
     if (isProjectInstanceDraft && data.exists && !String(data.csv_file || "").trim()) {
       runtime.savedProjectInstanceDraftName = String(data.dataset_name || context.dataset_name || "").trim();
     }
@@ -1131,10 +1119,6 @@ export function registerDataTabPersistenceController(runtime) {
       setDatasetRenderNumberFormatSettings(data.exists ? settings : null);
     }
     lastSavedDatasetSettings = settings;
-    if (options?.forceReload === true) {
-      await refreshDatasetExternalLinksIfWorkbooksChanged({ isCurrent });
-      if (!isCurrent()) return false;
-    }
     if (options?.applyLengths !== false && data.exists) {
       applyDatasetSettingsToControls(settings);
       saveTriInputsToStorage();

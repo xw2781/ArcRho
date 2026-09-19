@@ -8,7 +8,7 @@ const referenceSource = await readFile(
 );
 const referenceUrl = `data:text/javascript;base64,${Buffer.from(referenceSource).toString("base64")}`;
 const excelApiStubUrl = `data:text/javascript;base64,${Buffer.from(
-  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; } export async function validateExcelLinksBatch(){ return { ok: false, results: [], workbooks: [] }; } export async function readExcelFileMtimesBatch(){ return { ok: false, results: [] }; }",
+  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; }",
 ).toString("base64")}`;
 
 let externalSource = await readFile(
@@ -16,7 +16,7 @@ let externalSource = await readFile(
   "utf8",
 );
 externalSource = externalSource
-  .replace('"/ui/shared/integrations/excel_api.js?v=20260819a"', JSON.stringify(excelApiStubUrl))
+  .replace('"/ui/shared/integrations/excel_api.js?v=20260919a"', JSON.stringify(excelApiStubUrl))
   .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(referenceUrl));
 const externalUrl = `data:text/javascript;base64,${Buffer.from(externalSource).toString("base64")}`;
 
@@ -31,7 +31,7 @@ let controllerSource = await readFile(
   "utf8",
 );
 controllerSource = controllerSource
-  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260907b"', JSON.stringify(externalUrl))
+  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260919a"', JSON.stringify(externalUrl))
   .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl));
 const internalLinks = await import(
   `data:text/javascript;base64,${Buffer.from(controllerSource).toString("base64")}`

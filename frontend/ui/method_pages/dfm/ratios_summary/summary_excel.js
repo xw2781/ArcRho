@@ -8,7 +8,7 @@ import {
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
-import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
 import {
   cancelDfmExcelFreshnessCheck,
   currentRatioHeaderLabels,

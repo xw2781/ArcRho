@@ -7,10 +7,9 @@ from fastapi import APIRouter
 from app_server.schemas.excel import (
     ExcelBatchReadRequest,
     ExcelCellReadRequest,
-    ExcelFileMtimeBatchRequest,
     ExcelOpenRequest,
 )
-from app_server.services import excel_service
+from app_server.services import excel_service, workspace_read_client
 
 router = APIRouter()
 
@@ -22,17 +21,24 @@ def excel_read_cell(req: ExcelCellReadRequest) -> Dict[str, Any]:
 
 @router.post("/excel/read_cells_batch")
 def excel_read_cells_batch(req: ExcelBatchReadRequest) -> Dict[str, Any]:
-    return excel_service.excel_read_cells_batch(req.items)
+    """Read linked workbook cells on the host that has to be able to open them.
 
+    Every workbook read a window performs - the freshness check an opening
+    Dataset or DFM window runs, a Links-tab refresh, a formula committed in
+    the formula bar - goes through here, and through the gateway whenever one
+    offers the read, because ArcRho Server is the machine a retarget and a
+    refresh open the workbook on and linked workbooks live on shares. A Client
+    PC reads them over its mapped drive only when no gateway answers.
+    """
 
-@router.post("/excel/validate_links")
-def excel_validate_links(req: ExcelBatchReadRequest) -> Dict[str, Any]:
-    return excel_service.excel_validate_links(req.items)
-
-
-@router.post("/excel/file_mtimes_batch")
-def excel_file_mtimes_batch(req: ExcelFileMtimeBatchRequest) -> Dict[str, Any]:
-    return excel_service.excel_file_mtimes_batch(req.book_paths)
+    items = [item.model_dump() for item in req.items]
+    if not items:
+        return excel_service.excel_read_cells_batch(items)
+    return workspace_read_client.run_workspace_read(
+        "excel_cell_values",
+        {"items": items},
+        local=lambda: excel_service.excel_read_cells_batch(items),
+    )
 
 
 @router.post("/excel/open_workbook")

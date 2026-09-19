@@ -7,19 +7,19 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const referenceUrl = dataUrl(await read("../ui/shared/integrations/excel_reference.js"));
 const excelApiStubUrl = dataUrl(
-  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; } export async function validateExcelLinksBatch(){ return { ok: false, results: [], workbooks: [] }; } export async function readExcelFileMtimesBatch(){ return { ok: false, results: [] }; }",
+  "export async function readExcelCellsBatch(){ return { ok: false, results: [] }; }",
 );
 const externalUrl = dataUrl((await read("../ui/shared/dataset/dataset_external_links.js"))
-  .replace('"/ui/shared/integrations/excel_api.js?v=20260819a"', JSON.stringify(excelApiStubUrl))
+  .replace('"/ui/shared/integrations/excel_api.js?v=20260919a"', JSON.stringify(excelApiStubUrl))
   .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(referenceUrl)));
 const internalReferenceUrl = dataUrl(await read("../ui/shared/dataset/dataset_internal_reference.js"));
 const formulaUrl = dataUrl((await read("../ui/shared/dataset/dataset_formula.js"))
   .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(referenceUrl))
   .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl)));
 const controllerSource = (await read("../ui/shared/dataset/dataset_formula_links.js"))
-  .replace('"/ui/shared/integrations/excel_api.js?v=20260819a"', JSON.stringify(excelApiStubUrl))
+  .replace('"/ui/shared/integrations/excel_api.js?v=20260919a"', JSON.stringify(excelApiStubUrl))
   .replace('"/ui/shared/integrations/excel_reference.js?v=20260715a"', JSON.stringify(referenceUrl))
-  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260907b"', JSON.stringify(externalUrl))
+  .replace('"/ui/shared/dataset/dataset_external_links.js?v=20260919a"', JSON.stringify(externalUrl))
   .replace('"/ui/shared/dataset/dataset_formula.js?v=20260830a"', JSON.stringify(formulaUrl))
   .replace('"/ui/shared/dataset/dataset_internal_reference.js?v=20260830a"', JSON.stringify(internalReferenceUrl));
 const formulaLinks = await import(dataUrl(controllerSource));

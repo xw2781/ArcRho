@@ -1,4 +1,4 @@
-import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260917a";
+import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260919a";
 /*
 ===============================================================================
 Dataset Formula Links
@@ -17,13 +17,13 @@ from the anchor cell exactly like a range link. Values are snapshots; the
 formula is re-evaluated only when the user asks.
 ===============================================================================
 */
-import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260819a";
+import { readExcelCellsBatch } from "/ui/shared/integrations/excel_api.js?v=20260919a";
 import {
   applyDatasetLinkOutlineClasses,
   buildDatasetExternalLinkTargets,
   buildDatasetLinkOutline,
   describeTargetDestination,
-} from "/ui/shared/dataset/dataset_external_links.js?v=20260907b";
+} from "/ui/shared/dataset/dataset_external_links.js?v=20260919a";
 import {
   classifyDatasetFormula,
   parseDatasetFormula,

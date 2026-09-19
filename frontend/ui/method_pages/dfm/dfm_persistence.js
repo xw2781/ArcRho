@@ -48,7 +48,7 @@ import {
 import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260827a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
-import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260819a";
+import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
 import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
 import {
   isEngineUnavailableSaveError,
@@ -126,6 +126,7 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
+  refreshAllExcelLinks,
 } from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
@@ -1312,11 +1313,32 @@ function scheduleDfmExcelFreshnessCheck(method) {
       }
       const staleCount = Number(result?.staleCount || 0);
       const unverifiedCount = Number(result?.unverifiedCount || 0);
-      if (staleCount || unverifiedCount) {
-        const parts = [];
-        if (staleCount) parts.push(`${staleCount} stale`);
-        if (unverifiedCount) parts.push(`${unverifiedCount} unverified`);
-        postDfmStatus(`Excel links: ${parts.join(", ")}. Stored values remain active; use Links > Refresh to update.`, { tone: "warn" });
+      if (staleCount) {
+        // The same two buttons the Dataset window offers, because the answer
+        // is the same one: the workbook holds other numbers, and taking them
+        // is a change the user still has to save.
+        const choice = await showPageMessageBox({
+          title: "Linked Excel Values Changed",
+          tone: "warning",
+          message: `The linked workbooks no longer match ${staleCount} stored ratio${staleCount === 1 ? "" : "s"}. Refreshed values stay unsaved until you select Save.`,
+          actions: [{ id: "refresh", label: "Refresh from Excel" }],
+          okLabel: "Keep Current Values",
+          balancedActions: true,
+        });
+        if (choice === "refresh") {
+          const refreshed = await refreshAllExcelLinks({ source: "freshness-check" });
+          if (refreshed?.ok !== false && !Number(refreshed?.failedCount || 0)) {
+            setDfmExcelFreshnessState(null);
+          }
+        }
+        return;
+      }
+      if (unverifiedCount) {
+        postDfmStatus(`Excel links: ${unverifiedCount} unverified. Stored values remain active; use Links > Refresh to update.`, { tone: "warn" });
+        return;
+      }
+      if (Number(result?.linkedCellCount || 0)) {
+        postDfmStatus("Linked values are refreshed, method is up to date.");
       }
     } finally {
       if (checkingExcelAppliedRevision === appliedRevision) checkingExcelAppliedRevision = "";
