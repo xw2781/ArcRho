@@ -94,3 +94,4 @@
 - [Source refresh job diagnosis](source-refresh-job-diagnosis.md) — status JSON under requests\source_table_refresh\statuses has the full failures list; "claim missed (project busy)" is the 5-worker pool polling; a 423 locked source table is really the master_table.csv swap
 - [Excel link reads go through the Gateway first](excel-link-reads-gateway-first.md) - 2026-09-18 user rule: workbook reads for the link check/refresh/retarget run on the Gateway, SMB local read is the fallback
 - [Write tool unescapes control chars](write-tool-unescapes-control-chars.md) - a \u001f in Write/Edit lands as the literal byte; repair with a Python chr(92) rewrite
+- [Concise UI message copy](concise-ui-message-copy.md) — dialogs say only what the buttons and the linked list do not; two lines at most
