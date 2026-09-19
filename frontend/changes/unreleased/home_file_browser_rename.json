@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "Renamed the Home My Workspace card and tab to File Browser, so it no longer shares a name with Arco Workspace.",
+  "details": [
+    "The Home card, the tab title, the Browsing History filter, and the browsing-history-folders label all read File Browser now; the underlying tab type and folder history are unchanged."
+  ]
+}

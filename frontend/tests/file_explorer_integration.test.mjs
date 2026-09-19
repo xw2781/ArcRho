@@ -13,12 +13,12 @@ test("Home launches File Explorer as a standard restorable ArcRho tab", async ()
   const history = await read("../ui/shell/shell_activity_history.js");
 
   assert.match(view, /id="cardFileExplorer"/u);
-  assert.match(view, /id="cardFileExplorer"[\s\S]*?<h3>My Workspace<\/h3>/u);
+  assert.match(view, /id="cardFileExplorer"[\s\S]*?<h3>File Browser<\/h3>/u);
   assert.match(view, /shell\.openFileExplorerTab/u);
   assert.doesNotMatch(view, /id="homeFoldersNav"/u);
   assert.doesNotMatch(view, /id="homeFoldersPage"/u);
   assert.match(actions, /export function openFileExplorerTab\(options = \{\}\)/u);
-  assert.match(actions, /title:\s*"My Workspace"/u);
+  assert.match(actions, /title:\s*"File Browser"/u);
   assert.match(actions, /type:\s*"file_explorer"/u);
   assert.match(actions, /const RESTORABLE_ACTIVITY_TYPES = new Set\(\[[^\]]*"file_explorer",/su);
   assert.match(host, /\/ui\/file_explorer\/file_explorer\.html/u);
@@ -76,7 +76,7 @@ test("File Explorer renders Favorites beside a persistent details-style file lis
   assert.doesNotMatch(explorer, /\(xlsx\|xlsm\|xlsb\|xls\)/u);
 });
 
-test("My Workspace is multi-instance and folder-keyed", async () => {
+test("File Browser is multi-instance and folder-keyed", async () => {
   const actions = await read("../ui/shell/tab_actions.js");
   const state = await read("../ui/shell/shell_state.js");
   const messages = await read("../ui/shell/shell_messages.js");

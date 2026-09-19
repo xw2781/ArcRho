@@ -35,7 +35,7 @@ test("a card target is a browsing-history descriptor without the activity timest
   assert.ok(!("ts" in target));
 });
 
-test("My Workspace targets keep the folder they were pinned from", () => {
+test("File Browser targets keep the folder they were pinned from", () => {
   const target = normalizeCardTarget(WORKSPACE_TARGET);
   assert.equal(target.tabType, "file_explorer");
   assert.equal(target.path, "E:\\ArcRho Server\\rates");

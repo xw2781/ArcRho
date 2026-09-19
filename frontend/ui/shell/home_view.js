@@ -84,7 +84,7 @@ export function renderHomeViewOnce(homeView) {
             <div id="homeLaunchGeneralGroup" class="homeGroup">
               <div class="groupTitle">General</div>
               <div class="cards">
-                <div class="card clickable" id="cardFileExplorer">${homeCardIcon("files")}<div><h3>My Workspace</h3><div class="muted">Browse favorite folders and open local files.</div></div></div>
+                <div class="card clickable" id="cardFileExplorer">${homeCardIcon("files")}<div><h3>File Browser</h3><div class="muted">Browse favorite folders and open local files.</div></div></div>
                 <div class="card clickable" id="cardProjectSettings">${homeCardIcon("project")}<div><h3>Project Explorer</h3><div class="muted">Browse and manage projects.</div></div></div>
                 <div class="card clickable" id="cardBrowsingHistory">${homeCardIcon("history")}<div><h3>Browsing History</h3><div class="muted">Restore recent pages and dataset views.</div></div></div>
               </div>

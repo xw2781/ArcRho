@@ -59,13 +59,13 @@
     ["collection", "A · Project Collection", "Two overlapping project tiles: several projects in one place. The simplest silhouette; my recommendation."],
     ["hierarchy", "B · Project Hierarchy", "One parent connected to two items: projects and their contents."],
     ["catalogue", "C · Project Catalogue", "A slim index with three entries: browse an organized list of projects."],
-    ["open-directory", "D · Open Directory", "An open folder: enter and explore a collection. Familiar, but closer to My Workspace."]
+    ["open-directory", "D · Open Directory", "An open folder: enter and explore a collection. Familiar, but closer to File Browser."]
   ];
   const icon = type => `<span class="tabTypeIcon" data-tab-type="${type}" aria-hidden="true"></span>`;
   const candidate = (id, extra = "") => `<span class="candidateIcon ${extra}" data-icon="${id}" aria-hidden="true"></span>`;
   const close = '<svg class="close" viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6m0-6-6 6"/></svg>';
   function strip(projectIcon) {
-    return `<div class="tab home">${icon("home")}Home</div><div class="tab explorer active">${projectIcon}Project Explorer${close}</div><div class="tab">${icon("project_instance")}Project Instance${close}</div><div class="tab">${icon("file_explorer")}My Workspace${close}</div><div class="tab">${icon("dataset")}Dataset${close}</div>`;
+    return `<div class="tab home">${icon("home")}Home</div><div class="tab explorer active">${projectIcon}Project Explorer${close}</div><div class="tab">${icon("project_instance")}Project Instance${close}</div><div class="tab">${icon("file_explorer")}File Browser${close}</div><div class="tab">${icon("dataset")}Dataset${close}</div>`;
   }
   document.getElementById("baseline").innerHTML = strip(icon("project_settings"));
   document.getElementById("options").innerHTML = choices.map(([id, name, description]) => `

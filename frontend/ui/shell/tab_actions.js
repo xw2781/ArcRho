@@ -425,7 +425,7 @@ export function openBrowsingHistoryTab() {
   return tab;
 }
 
-// My Workspace is multi-instance and folder-keyed: a request for a specific folder focuses the tab
+// File Browser is multi-instance and folder-keyed: a request for a specific folder focuses the tab
 // already showing that folder, and anything else opens a new instance. `forceNew` skips the match.
 export function openFileExplorerTab(options = {}) {
   const path = String(options.path || "").trim();
@@ -440,7 +440,7 @@ export function openFileExplorerTab(options = {}) {
   const id = `fe_${shell.state.nextId++}`;
   const tab = {
     id,
-    title: "My Workspace",
+    title: "File Browser",
     type: "file_explorer",
     fileExplorerPath: path,
     iframe: null,

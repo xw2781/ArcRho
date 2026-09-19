@@ -45,7 +45,7 @@ test("localDayKey names the local calendar day and rejects a missing timestamp",
   assert.equal(localDayKey("nope"), "");
 });
 
-test("a My Workspace folder opened again today keeps its record from yesterday", () => {
+test("a File Browser folder opened again today keeps its record from yesterday", () => {
   localStorage.clear();
   const { pushWorkspaceHistoryEntry, getWorkspaceHistoryEntries } = workspaceHistory;
   pushWorkspaceHistoryEntry({ path: "E:\\ArcRho Server\\shared\\macros", ts: YESTERDAY });

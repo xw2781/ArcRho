@@ -599,8 +599,8 @@ export function createFileExplorerController(homeView, options = {}) {
         state.error = "";
         pushWorkspaceHistoryEntry({ path: state.currentPath });
         try { window.parent?.postMessage({ type: "arcrho:browsing-history-updated", workspacePath: state.currentPath }, "*"); } catch {}
-        try { window.parent?.postMessage({ type: "arcrho:update-active-tab-title", title: folderForPath(state.currentPath)?.nickname || defaultHomeFolderNickname(state.currentPath) || "My Workspace" }, "*"); } catch {}
-        // Lets the shell keep this tab's folder for restore and for folder-keyed My Workspace matching.
+        try { window.parent?.postMessage({ type: "arcrho:update-active-tab-title", title: folderForPath(state.currentPath)?.nickname || defaultHomeFolderNickname(state.currentPath) || "File Browser" }, "*"); } catch {}
+        // Lets the shell keep this tab's folder for restore and for folder-keyed File Browser matching.
         try { window.parent?.postMessage({ type: "arcrho:file-explorer-path-changed", path: state.currentPath }, "*"); } catch {}
         if (announce) setStatus(`Refreshed ${state.currentPath}.`);
         void startFolderWatch(state.currentPath);

@@ -13,7 +13,7 @@ function toNumber(value, fallback = 0) {
 }
 
 // Canonical comparison key for a Windows folder path. Shared by the activity-history dedupe key
-// and by folder-keyed My Workspace tab matching so both agree on when two folders are the same.
+// and by folder-keyed File Browser tab matching so both agree on when two folders are the same.
 export function normalizeFolderKey(pathLike) {
   return toText(pathLike)
     .replace(/\//g, "\\")

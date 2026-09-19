@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("Browsing History merges Project Instances, My Workspace folders, and Dataset records into one timeline", async () => {
+test("Browsing History merges Project Instances, File Browser folders, and Dataset records into one timeline", async () => {
   const html = await read("../ui/shell/browsing_history.html");
   const main = await read("../ui/shell/browsing_history_main.js");
   const workspaceHistory = await read("../ui/shared/services/workspace_history.js");

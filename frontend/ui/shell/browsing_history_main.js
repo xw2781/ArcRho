@@ -123,7 +123,7 @@ const SOURCES = {
     },
   },
   file_explorer: {
-    label: "My Workspace Folders",
+    label: "File Browser Folders",
     load: () => getWorkspaceHistoryEntries({ maxEntries: MAX_ENTRIES }),
     name: (entry) => folderLeaf(entry.path),
     detailParts: (entry) => [entry.path],

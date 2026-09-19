@@ -32,7 +32,7 @@ const TAB_TYPE_LABELS = {
   project_instance: "Project Instance",
   scripting: "Arcode",
   agent_guide: "ArcBot Guide",
-  file_explorer: "My Workspace",
+  file_explorer: "File Browser",
   browsing_history: "Browsing History",
 };
 
