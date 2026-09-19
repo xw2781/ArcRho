@@ -6,7 +6,10 @@
   "details": [
     "Status compares the real cell values against the workbook instead of only comparing file times, so a workbook saved without edits no longer reads as out of date.",
     "Refresh all shows which datasets and methods hold changed values, and after you accept, loads and saves exactly those and recalculates what depends on them.",
+    "When the recalculation finishes, a short notice lists the downstream objects whose values really changed, each one a link that opens it.",
     "The list refreshes itself every few seconds and after any save in the class, so the manual refresh button is gone.",
-    "Rows now select like the dataset table, and the right-click menu, including the new Refresh links, acts on every highlighted row."
+    "Rows now select like the dataset table, and the right-click menu, including the new Refresh links, acts on every highlighted row.",
+    "The right-click menu now depends on the column: the first three columns offer the dataset's actions (open it, copy its name) and the workbook columns offer the file's (open it, open its file location, copy its path, change the link).",
+    "Break link removes an object's link to a workbook and keeps the numbers it already holds, after a confirmation that lists what will be broken."
   ]
 }

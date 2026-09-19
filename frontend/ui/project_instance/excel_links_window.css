@@ -396,6 +396,14 @@ body.pi-excel-links-resizing-column * {
 /* Change Link... is offered only for one highlighted workbook; with several it
    stays in place, muted, in both themes. */
 .pi-excel-links-menu .ctx-item:disabled { color: var(--ar-color-text-muted); background: transparent; cursor: default; }
+/* Breaking a link throws references away, so it wears the danger colour and
+   keeps it while hovered or focused, where the shared sheet would paint every
+   item the accent blue. A disabled item is muted by the rule above. */
+.pi-excel-links-menu .ctx-item.danger:not(:disabled),
+.pi-excel-links-menu .ctx-item.danger:not(:disabled):hover,
+.pi-excel-links-menu .ctx-item.danger:not(:disabled):focus-visible {
+  color: var(--ar-color-danger);
+}
 
 /* Column filter popover: the dataset table's value-checkbox pattern, sized for
    this window and positioned by openContextMenu. */

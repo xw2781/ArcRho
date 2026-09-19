@@ -5,6 +5,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app_server.schemas.excel_link import (
+    ExcelLinkBreakRequest,
     ExcelLinkListRequest,
     ExcelLinkRefreshRequest,
     ExcelLinkRetargetRequest,
@@ -80,6 +81,31 @@ def excel_links_refresh(req: ExcelLinkRefreshRequest) -> Dict[str, Any]:
     # ones whose values moved, then walks the class once.
     return engine_hosted_save_service.run_hosted_save(
         "excel_link_refresh", req.project_name, req.reserving_class, **_refresh_call(req)
+    )
+
+
+def _break_call(req: ExcelLinkBreakRequest) -> Dict[str, Any]:
+    """The one argument projection the plan and the break both run against."""
+
+    return {
+        "args": [req.project_name, req.reserving_class],
+        "kwargs": {"targets": [target.model_dump() for target in req.targets]},
+    }
+
+
+@router.post("/excel_links/break/plan")
+def plan_excel_links_break(req: ExcelLinkBreakRequest) -> Dict[str, Any]:
+    return engine_hosted_save_service.run_hosted_save_plan(
+        "excel_link_break", req.project_name, req.reserving_class, **_break_call(req)
+    )
+
+
+@router.post("/excel_links/break")
+def excel_links_break(req: ExcelLinkBreakRequest) -> Dict[str, Any]:
+    # Drops the named objects' references to the named workbooks on Arco
+    # Engine and saves them; no workbook is opened and no value moves.
+    return engine_hosted_save_service.run_hosted_save(
+        "excel_link_break", req.project_name, req.reserving_class, **_break_call(req)
     )
 
 

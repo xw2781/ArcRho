@@ -39,6 +39,7 @@ from app_server.schemas.cape_cod import CapeCodIdentityRequest
 from app_server.schemas.dataset import DatasetCacheLoadRequest
 from app_server.schemas.dfm_method import DfmMethodIdentityRequest
 from app_server.schemas.excel_link import (
+    ExcelLinkBreakRequest,
     ExcelLinkListRequest,
     ExcelLinkRefreshRequest,
     ExcelLinkRetargetRequest,
@@ -401,6 +402,36 @@ class RouteWiringTests(unittest.TestCase):
         )
         with patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save_plan", return_value={"ok": True}) as plan:
             excel_link_router.plan_excel_links_refresh(request)
+        self.assertEqual(plan.call_args.kwargs["args"], hosted.call_args.kwargs["args"])
+        self.assertEqual(plan.call_args.kwargs["kwargs"], hosted.call_args.kwargs["kwargs"])
+
+    def test_excel_link_break_is_an_engine_hosted_save(self) -> None:
+        # A break writes saved objects, so it runs on Arco Engine under the
+        # reserving-class lease even though it opens no workbook.
+        request = ExcelLinkBreakRequest(
+            project_name="Demo",
+            reserving_class="COL",
+            targets=[{"kind": "dataset", "name": "Manual Paid", "workbook_path": "Z:\\A\\Old.xlsx"}],
+        )
+        with (
+            patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save", return_value={"ok": True}) as hosted,
+            patch.object(excel_link_router.excel_link_service, "break_reserving_class_excel_links") as local,
+        ):
+            self.assertTrue(excel_link_router.excel_links_break(request)["ok"])
+        local.assert_not_called()
+        hosted.assert_called_once_with(
+            "excel_link_break",
+            "Demo",
+            "COL",
+            args=["Demo", "COL"],
+            kwargs={
+                "targets": [
+                    {"kind": "dataset", "name": "Manual Paid", "workbook_path": "Z:\\A\\Old.xlsx"},
+                ],
+            },
+        )
+        with patch.object(excel_link_router.engine_hosted_save_service, "run_hosted_save_plan", return_value={"ok": True}) as plan:
+            excel_link_router.plan_excel_links_break(request)
         self.assertEqual(plan.call_args.kwargs["args"], hosted.call_args.kwargs["args"])
         self.assertEqual(plan.call_args.kwargs["kwargs"], hosted.call_args.kwargs["kwargs"])
 

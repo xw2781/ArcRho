@@ -3,10 +3,13 @@
 // This runs inside a Project Instance nested window (pi-window). The host frame
 // in project_instance_windows.js owns the titlebar, dragging, resizing,
 // minimize/maximize/close and the dock; this page owns the inventory, the
-// Refresh all command, and the row actions reached from a right-click menu:
-// open the workbook, open it read-only, refresh the selected rows' links,
-// change what a workbook points at, and - on a Workbook Path cell - open the
-// containing folder. The window is pinned to the reserving class it was opened
+// Refresh all command, and the row actions reached from a right-click menu.
+// That menu is really two: the column under the pointer decides whether it
+// offers the object's actions (open it, copy its name) or the workbook's
+// (open it, open it read-only, open its file location, copy its path, change
+// what it points at). Refreshing and breaking the row's link sit in both,
+// because a row is one object reading one workbook. The window is pinned to
+// the reserving class it was opened
 // on, which arrives in the query string, so selecting another class in the
 // tree leaves it alone exactly like a Dataset or DFM window.
 //
@@ -28,7 +31,8 @@
 // the listing so a workbook saved in Excel shows up without a manual refresh.
 // Refresh all previews the datasets and DFM methods whose values changed and,
 // once accepted, re-reads and saves exactly those on Arco Engine, which walks
-// their dependents once. A change of link is the same kind of Engine-hosted
+// their dependents once; a second notice then names the downstream objects
+// that walk really changed. A change of link is the same kind of Engine-hosted
 // job for one workbook. Opening a workbook is the exception and runs on the
 // client machine, through the desktop host, because that is where Excel is.
 //
@@ -49,6 +53,7 @@ import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 const LIST_ENDPOINT = "/excel_links/list";
 const CHECK_ENDPOINT = "/excel_links/check";
 const REFRESH_ENDPOINT = "/excel_links/refresh";
+const BREAK_ENDPOINT = "/excel_links/break";
 const RETARGET_ENDPOINT = "/excel_links/retarget";
 // How often the listing is polled for a workbook saved outside ArcRho. The
 // listing is one hosted read that stats each workbook; the values are only
@@ -240,6 +245,42 @@ export function excelLinkRefreshSummary(payload) {
     ok: !failedRefresh && payload?.propagation_ok !== false,
     message: `${saved}${unchanged}.${failedCells}${propagationSentence(payload)}`,
   };
+}
+
+/** The status line after a break: what was dropped, and what stayed put. */
+export function excelLinkBreakSummary(payload) {
+  const failed = failureSummary(payload, "Broke links in");
+  if (failed) return failed;
+  const files = count(payload?.changed_file_count);
+  if (!files) return { ok: true, message: "No saved link named those workbooks. Nothing was changed." };
+  const broken = count(payload?.broken_link_count);
+  return {
+    ok: payload?.propagation_ok !== false,
+    message: `Broke ${plural(broken, "link")} in ${plural(files, "file")}. The stored values are unchanged.`,
+  };
+}
+
+/**
+ * The downstream objects a refresh really changed, named by the Engine walk.
+ *
+ * `propagation.review_flagged_datasets` is the walk's short list: the
+ * dependents whose values moved, which is what turned them from OK to Needs
+ * Review. Dependents the walk rewrote without a meaningful change are not in
+ * it, so this is exactly what the user has to look at. A walk that was queued
+ * rather than run on the Engine names nothing and the notice stays away.
+ */
+export function excelLinkRefreshedDependents(payload) {
+  const names = [];
+  const seen = new Set();
+  const flagged = payload?.propagation?.review_flagged_datasets;
+  for (const value of Array.isArray(flagged) ? flagged : []) {
+    const name = text(value);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
 }
 
 /**
@@ -544,6 +585,20 @@ function openUsage(row) {
   setManagerStatus(isDfm ? `Opening DFM method ${name}...` : `Opening dataset ${name}...`);
 }
 
+// A dependent the walk changed is not a row of this table, so only its name is
+// known; the host resolves what owns it and opens that page. `openMethod` lets
+// a method output land on its method rather than on the output dataset.
+function openDependent(name) {
+  const datasetName = text(name);
+  if (!datasetName) return;
+  postToParent("arcrho:project-instance-open-dependent-dataset", {
+    datasetName,
+    reservingClass,
+    projectName,
+    openMethod: true,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Row context menu
 // ---------------------------------------------------------------------------
@@ -571,6 +626,16 @@ function distinct(rows, pick) {
   return values;
 }
 
+/**
+ * The right-click menu is two menus in one element: the column under the
+ * pointer decides which half is shown. The Dataset Name, Status and Method
+ * Type cells describe the object, so they open the object's actions; the
+ * workbook columns describe the file, so they open the workbook's. The link
+ * actions sit in both, because a row is one object reading one workbook and
+ * refreshing or breaking that link belongs to neither side alone.
+ */
+const DATASET_MENU_COLUMNS = new Set(["name", "status", "methodType"]);
+
 function openMenu(rows, rowEl, event, columnKey = "") {
   closeMenu();
   if (manager.busy || manager.loading || !els.menu || !rows.length) return;
@@ -578,23 +643,43 @@ function openMenu(rows, rowEl, event, columnKey = "") {
   manager.menuRows = rows;
   manager.menuRowEl = rowEl;
   rowEl.classList.add("context-target");
+  const datasetScope = DATASET_MENU_COLUMNS.has(columnKey);
+  // A workbook row with no usage names no object, so it counts as none here.
+  const objects = distinct(rows, (row) => (text(row.name) ? `${row.kind}|${row.name}` : ""));
   const workbooks = distinct(rows, (row) => row.workbookPath);
   const folders = distinct(rows, (row) => row.folder);
   const many = workbooks.length > 1;
+  const links = rows.filter((row) => text(row.name)).length;
   const item = (action) => els.menu.querySelector(`[data-action="${action}"]`);
+  const show = (action, visible) => { item(action).hidden = !visible; };
+  const openObject = item("open-object");
+  openObject.textContent = objects.length > 1
+    ? `Open ${objects.length} objects`
+    : (rows[0]?.kind === "dfm" ? "Open DFM method" : "Open dataset");
+  openObject.disabled = !objects.length;
+  item("copy-name").textContent = objects.length > 1 ? `Copy ${objects.length} names` : "Copy name";
+  item("copy-name").disabled = !objects.length;
   item("open-workbook").textContent = many ? `Open ${workbooks.length} workbooks` : "Open workbook";
   item("open-workbook-read-only").textContent = many
     ? `Open ${workbooks.length} workbooks as Read-Only`
     : "Open workbook as Read-Only";
-  // Opening the folder belongs to the Workbook Path cell, so it appears only
-  // there rather than adding another item to every row's menu.
-  const folderItem = item("open-folder");
-  folderItem.hidden = columnKey !== "workbookPath" || !folders.length;
-  folderItem.textContent = folders.length > 1 ? `Open ${folders.length} folders in File Explorer` : "Open folder in File Explorer";
-  item("refresh-links").textContent = rows.length > 1 ? `Refresh links of ${rows.length} rows` : "Refresh links";
+  item("open-folder").textContent = folders.length > 1
+    ? `Open ${folders.length} file locations`
+    : "Open file location";
+  item("copy-path").textContent = many ? `Copy ${workbooks.length} paths` : "Copy path";
+  item("refresh-links").textContent = links > 1 ? "Refresh links" : "Refresh link";
+  item("refresh-links").disabled = !links;
+  item("break-links").textContent = links > 1 ? "Break links" : "Break link";
+  item("break-links").disabled = !links;
   // A link change repoints one workbook for every object reading it; with two
   // workbooks highlighted there is no one file to change.
   item("change-link").disabled = many;
+  for (const action of ["open-object", "copy-name"]) show(action, datasetScope);
+  for (const action of ["open-workbook", "open-workbook-read-only", "copy-path", "change-link"]) {
+    show(action, !datasetScope);
+  }
+  show("open-folder", !datasetScope && folders.length > 0);
+  els.menu.setAttribute("aria-label", datasetScope ? "Dataset actions" : "Excel link actions");
   openContextMenu(els.menu, {
     anchorEl: rowEl,
     clientX: Number(event?.clientX),
@@ -605,8 +690,22 @@ function openMenu(rows, rowEl, event, columnKey = "") {
   els.menu.querySelector(".ctx-item:not([hidden]):not(:disabled)")?.focus();
 }
 
+/** The item the keyboard would act on, so only one item is ever highlighted. */
+function focusMenuItem(item) {
+  if (!item || item.disabled || item === document.activeElement) return;
+  item.focus();
+}
+
 function wireMenu() {
   if (!els.menu) return;
+  // Opening the menu focuses its first item so the keyboard can walk it, and
+  // the stylesheet highlights both the focused item and the hovered one. The
+  // pointer therefore takes the focus with it: without this the first item
+  // stays highlighted while the pointer highlights another, and the menu shows
+  // two current items at once.
+  els.menu.addEventListener("pointerover", (event) => {
+    focusMenuItem(event.target.closest?.(".ctx-item"));
+  });
   els.menu.addEventListener("click", (event) => {
     const item = event.target.closest?.(".ctx-item");
     if (!item || item.disabled) return;
@@ -614,11 +713,15 @@ function wireMenu() {
     closeMenu();
     if (!rows.length) return;
     const action = item.dataset.action;
-    if (action === "open-workbook") void openWorkbooks(rows, false);
+    if (action === "open-object") for (const row of oneRowPerObject(rows)) openUsage(row);
+    else if (action === "copy-name") void copyText(distinct(rows, (row) => row.name), "name");
+    else if (action === "open-workbook") void openWorkbooks(rows, false);
     else if (action === "open-workbook-read-only") void openWorkbooks(rows, true);
     else if (action === "open-folder") void openFolders(rows);
+    else if (action === "copy-path") void copyText(distinct(rows, (row) => row.workbookPath), "path");
     else if (action === "refresh-links") void refreshLinks(rows, "selected");
     else if (action === "change-link") void changeWorkbook(rows[0]);
+    else if (action === "break-links") void breakLinks(rows);
   });
   document.addEventListener("mousedown", (event) => {
     if (!els.menu.contains(event.target)) closeMenu();
@@ -671,12 +774,37 @@ function openWorkbooks(rows, readOnly) {
   }, readOnly);
 }
 
+// The clipboard belongs to the machine the window runs on, so this never asks
+// the server. Several highlighted rows copy one value per line.
+async function copyText(values, what) {
+  if (!values.length) return;
+  try {
+    await navigator.clipboard.writeText(values.join("\r\n"));
+    setManagerStatus(values.length === 1 ? `Copied ${values[0]}` : `Copied ${plural(values.length, what)}.`, "success");
+  } catch (error) {
+    setManagerStatus(`Could not copy the ${what}: ${error.message}`, "error");
+  }
+}
+
+/** One row per object, so opening several rows opens each object once. */
+function oneRowPerObject(rows) {
+  const seen = new Set();
+  const picked = [];
+  for (const row of rows) {
+    const key = `${row.kind}|${text(row.name).toLowerCase()}`;
+    if (!text(row.name) || seen.has(key)) continue;
+    seen.add(key);
+    picked.push(row);
+  }
+  return picked;
+}
+
 function openFolders(rows) {
   const folders = distinct(rows, (row) => row.folder);
   return openThroughDesktopHost(folders, {
-    opening: `Opening ${folders.length === 1 ? folders[0] : plural(folders.length, "folder")}...`,
-    opened: `${folders.length === 1 ? "Folder" : "Folders"} opened in File Explorer.`,
-    failed: "The folder could not be opened.",
+    opening: `Opening ${folders.length === 1 ? folders[0] : plural(folders.length, "file location")}...`,
+    opened: `${folders.length === 1 ? "File location" : "File locations"} opened in File Explorer.`,
+    failed: "The file location could not be opened.",
   });
 }
 
@@ -708,13 +836,10 @@ async function refreshLinks(rows, scope = "all") {
   }
   const choice = await showPageMessageBox({
     title: scope === "selected" ? "Refresh selected links" : "Refresh all links",
-    message: `${plural(targets.length, "object")} in this reserving class ${targets.length === 1 ? "holds" : "hold"} linked cells whose workbook values changed. `
-      + "Accept to load the new values, save these objects, and recalculate everything that depends on them. "
-      + "Only the objects below are refreshed; their dependents are recalculated by the save.",
+    message: "Accept to load the new workbook values and save. Dependents are recalculated by the save.",
     links: targets.map((target) => ({
       label: `${target.name}${target.kind === "dfm" ? " (DFM)" : ""}`,
       ariaLabel: `Open ${target.kind === "dfm" ? "DFM method" : "dataset"} ${target.name}`,
-      note: `${plural(target.changedCellCount, "changed cell")} from ${target.workbookNames.join(", ")}`,
       row: target.row,
     })),
     onLinkClick: (item) => openUsage(item.row),
@@ -758,6 +883,95 @@ async function runRefresh(targets) {
   if (seq !== manager.requestSeq) return;
   // The saved objects now match their workbooks; reload and re-check so the
   // Status column shows that, keeping the outcome on the status line.
+  const outcome = { message: els.status?.textContent || "", tone: els.status?.className.includes("error") ? "error" : "success" };
+  await showRefreshedDependentsNotice(payload);
+  await reloadKeepingStatus(outcome);
+}
+
+/**
+ * The post-refresh notice: the downstream objects whose values the walk
+ * changed, each a link that opens it. This list is the only record the user
+ * gets of what the refresh moved downstream, so the box stays up until it is
+ * dismissed and the links stay clickable while it is. A refresh that changed
+ * nothing downstream raises no box; the status line reports the outcome.
+ */
+async function showRefreshedDependentsNotice(payload) {
+  const names = excelLinkRefreshedDependents(payload);
+  if (!names.length) return;
+  await showPageMessageBox({
+    title: "Refresh complete",
+    message: `${plural(names.length, "downstream object")} changed and ${names.length === 1 ? "needs" : "need"} review.`,
+    links: names.map((name) => ({ label: name, ariaLabel: `Open ${name}` })),
+    onLinkClick: (item) => openDependent(item?.label),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Break links
+// ---------------------------------------------------------------------------
+
+/**
+ * Confirms, then drops the highlighted rows' Excel references on Arco Engine.
+ *
+ * A row is one object reading one workbook, so only that pair's references
+ * go; every stored number stays where it is. Nothing is read from Excel, so
+ * unlike a refresh this needs no value check first.
+ */
+async function breakLinks(rows) {
+  if (manager.busy || manager.loading || manager.checking || !reservingClass) return;
+  const targets = rows
+    .filter((row) => text(row.name) && text(row.workbookPath))
+    .map((row) => ({ kind: row.kind === "dfm" ? "dfm" : "dataset", name: text(row.name), workbook_path: text(row.workbookPath) }));
+  if (!targets.length) return;
+  const objects = oneRowPerObject(rows);
+  const choice = await showPageMessageBox({
+    title: targets.length > 1 ? "Break links" : "Break link",
+    tone: "warn",
+    message: "The objects below stop reading Excel and keep their current values.",
+    links: objects.map((row) => ({
+      label: `${row.name}${row.kind === "dfm" ? " (DFM)" : ""}`,
+      ariaLabel: `Open ${row.kind === "dfm" ? "DFM method" : "dataset"} ${row.name}`,
+      row,
+    })),
+    onLinkClick: (item) => openUsage(item.row),
+    actions: [{ id: "break", label: targets.length > 1 ? "Break links" : "Break link" }],
+    okLabel: "Cancel",
+    balancedActions: true,
+  });
+  if (choice !== "break") return;
+  await runBreak(targets);
+}
+
+async function runBreak(targets) {
+  if (manager.busy || manager.loading) return;
+  const seq = ++manager.requestSeq;
+  setBusy(true);
+  const scope = busyOverlay.begin(`Removing ${plural(targets.length, "link")} on Arco Engine...`);
+  setManagerStatus(`Breaking ${plural(targets.length, "link")}...`);
+  // A break rewrites saved files and rebuilds index.json on the server, so the
+  // host is told around it exactly as it is around a refresh.
+  postToParent("arcrho:excel-links-retarget-begin");
+  let summary = { ok: false, message: "" };
+  let payload = null;
+  try {
+    payload = await postJson(BREAK_ENDPOINT, {
+      project_name: projectName,
+      reserving_class: reservingClass,
+      targets,
+    });
+    summary = excelLinkBreakSummary(payload);
+    setManagerStatus(summary.message, summary.ok ? "success" : "error");
+  } catch (error) {
+    setManagerStatus(`Could not break the links: ${error.message}`, "error");
+  } finally {
+    scope.dismiss();
+    postToParent("arcrho:excel-links-retarget-end", {
+      ok: !!summary.ok,
+      changedFileCount: count(payload?.changed_file_count),
+    });
+    setBusy(false);
+  }
+  if (seq !== manager.requestSeq) return;
   const outcome = { message: els.status?.textContent || "", tone: els.status?.className.includes("error") ? "error" : "success" };
   await reloadKeepingStatus(outcome);
 }

@@ -1594,6 +1594,196 @@ def refresh_reserving_class_excel_links(
     return _finish_class_operation(project, reserving, results, propagation)
 
 
+# ---------------------------------------------------------------------------
+# Break links
+# ---------------------------------------------------------------------------
+
+
+def _break_target_keys(targets: Any) -> Dict[Tuple[str, str], set[str]]:
+    """``{(kind, name) -> {workbook key, ...}}`` for the rows a break names.
+
+    One row of the manager is one object reading one workbook, so a break is
+    addressed the same way: only that object's references to those workbooks
+    go. A target naming no workbook breaks every link the object holds.
+    """
+
+    wanted: Dict[Tuple[str, str], set[str]] = {}
+    for target in targets if isinstance(targets, list) else []:
+        if not isinstance(target, Mapping):
+            continue
+        kind = "dfm" if _clean(target.get("kind")) == "dfm" else "dataset"
+        name = _clean(target.get("name"))
+        if not name:
+            continue
+        keys = wanted.setdefault((kind, name.casefold()), set())
+        book = workbook_key(target.get("workbook_path"))
+        if book:
+            keys.add(book)
+    return wanted
+
+
+def _breaks_workbook(text: Any, keys: set[str]) -> bool:
+    """True when this formula reads one of the workbooks a break names.
+
+    An empty set is the "every workbook" target a direct caller may send.
+    """
+
+    references = find_workbook_references(text)
+    return any(not keys or workbook_key(ref["book_path"]) in keys for ref in references)
+
+
+def _break_dataset_links(
+    path: str,
+    payload: Dict[str, Any],
+    project: str,
+    reserving: str,
+    wanted: Mapping[Tuple[str, str], set[str]],
+) -> Dict[str, Any] | None:
+    """Drop one dataset's references to the named workbooks, values untouched.
+
+    The sidecar is saved through the canonical dataset save with the surviving
+    links and no values, so the stored numbers stay exactly as they are: the
+    dataset simply stops reading Excel, which is what the Links tab's own
+    Break does in an open window.
+    """
+
+    links = payload.get("external_links")
+    if not isinstance(links, list) or not links:
+        return None
+    name = _dataset_name(path, payload)
+    keys = wanted.get(("dataset", name.casefold()))
+    if keys is None:
+        return None
+    kept = [
+        link for link in links
+        if not (isinstance(link, dict) and _breaks_workbook(link.get("reference"), keys))
+    ]
+    broken = len(links) - len(kept)
+    if not broken:
+        return None
+    _save_refreshed_dataset(
+        name, payload, kept, project, reserving, {"values": None, "linked_lengths": None}
+    )
+    return {"kind": "dataset", "name": name, "ok": True, "saved": True, "broken_link_count": broken}
+
+
+def _hard_code_dfm_cells(merged: Dict[str, Any], keys: set[str]) -> int:
+    """Replace every User Entry formula reading those workbooks with its value.
+
+    Mirrors the DFM Links tab's own break (``hardCodeDfmUserEntryTarget`` in
+    ``ratios_summary/summary_excel.js``): the cell keeps the number it already
+    shows and loses the formula that produced it. A cell whose formula also
+    names a dataset loses that reference too, exactly as it does there.
+    """
+
+    formulas = merged["ratios_tab"]["average_formulas"]
+    inputs = formulas["inputs"]
+    display_inputs = formulas["display_inputs"]
+    values = formulas["values"]
+    user_entry_flags = _dfm_user_entry_rows(formulas)
+    column_count = len(merged["ratios_tab"]["ratio_triangle"]["development_labels"])
+    broken = 0
+    for row_index, is_user_entry in enumerate(user_entry_flags):
+        if not is_user_entry or row_index >= len(inputs):
+            continue
+        for col_index in range(min(column_count, len(inputs[row_index]))):
+            if not _breaks_workbook(inputs[row_index][col_index], keys):
+                continue
+            value = canonical_number(values[row_index][col_index])
+            inputs[row_index][col_index] = "" if value is None else _js_number_text(value)
+            if row_index < len(display_inputs) and col_index < len(display_inputs[row_index]):
+                display_inputs[row_index][col_index] = ""
+            broken += 1
+    return broken
+
+
+def _break_dfm_links(
+    path: str,
+    payload: Dict[str, Any],
+    project: str,
+    reserving: str,
+    wanted: Mapping[Tuple[str, str], set[str]],
+) -> Dict[str, Any] | None:
+    """Hard-code one DFM's cells that read the named workbooks, then save it.
+
+    The saved numbers do not move, so unlike a refresh this neither flags the
+    output for review nor makes it a walk root: nothing downstream changed.
+    """
+
+    if _clean(payload.get("json_format")) != DFM_JSON_FORMAT:
+        return None
+    name = _dfm_name(path, payload)
+    keys = wanted.get(("dfm", name.casefold()))
+    if keys is None:
+        return None
+    current = _normalized_dfm(payload)
+    merged = json.loads(json.dumps(current))
+    broken = _hard_code_dfm_cells(merged, keys)
+    if not broken:
+        return None
+
+    from app_server.services import dfm_service
+
+    dfm_service.save_dfm_method(
+        project,
+        reserving,
+        merged,
+        expected_owned_revision=method_revisions(current)["owned_revision"],
+    )
+    return {"kind": "dfm", "name": name, "ok": True, "saved": True, "broken_link_count": broken}
+
+
+def break_reserving_class_excel_links(
+    project_name: str,
+    reserving_class: str,
+    targets: List[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    """Drop the named objects' references to the named workbooks and save them.
+
+    Registered as the ``excel_link_break`` hosted-save kind, so it runs on
+    Arco Engine under the reserving-class lease like the refresh and the
+    retarget. ``targets`` names the manager rows the user confirmed, as
+    ``{"kind": "dataset" | "dfm", "name": ..., "workbook_path": ...}``. No
+    workbook is opened: a break reads nothing from Excel and moves no value,
+    it only removes references, so the objects keep the numbers they already
+    hold and stop tracking the workbook.
+    """
+
+    _require_reserving_class_dirs(project_name, reserving_class)
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    wanted = _break_target_keys(targets)
+    if not wanted:
+        raise HTTPException(400, "targets must name at least one dataset or DFM method.")
+
+    dependent_propagation_service.require_reserving_class_writable(project, reserving)
+    scan = _scan_reserving_class(project, reserving)
+    keys = set(wanted)
+    sidecar_payloads = _targeted_payloads(scan["sidecar_payloads"], "dataset", _dataset_name, keys)
+    method_payloads = _targeted_payloads(scan["method_payloads"], "dfm", _dfm_name, keys)
+    with (
+        dependent_propagation_service.suspended_reserving_class_hold_check(),
+        dependent_propagation_service.deferred_save_propagation(project, reserving) as propagation,
+    ):
+        results = _collect_file_results(
+            "dataset",
+            sidecar_payloads,
+            _dataset_name,
+            lambda path, payload: _break_dataset_links(path, payload, project, reserving, wanted),
+        )
+        results += _collect_file_results(
+            "dfm",
+            method_payloads,
+            _dfm_name,
+            lambda path, payload: _break_dfm_links(path, payload, project, reserving, wanted),
+        )
+    outcome = _finish_class_operation(project, reserving, results, propagation)
+    outcome["broken_link_count"] = sum(
+        int(item.get("broken_link_count") or 0) for item in results if item.get("ok")
+    )
+    return outcome
+
+
 def save_propagation_roots(
     project_name: str,
     reserving_class: str,
@@ -1602,13 +1792,14 @@ def save_propagation_roots(
     targets: List[Mapping[str, Any]] | None = None,
     **_ignored: Any,
 ) -> List[Tuple[str, str]]:
-    """Return the roots one walk of a retarget or a refresh starts from.
+    """Return the roots one walk of a retarget, refresh, or break starts from.
 
     Mirrors what each operation collects: every dataset whose links name the
-    old workbook - or, for a refresh, every targeted dataset - (the root
-    ``save_dataset_sidecar`` submits) and the output dataset of every affected
-    DFM (added explicitly, because a DFM save whose publication did not change
-    submits none).
+    old workbook - or, for a refresh or a break, every targeted dataset - (the
+    root ``save_dataset_sidecar`` submits) and the output dataset of every
+    affected DFM (added explicitly, because a DFM save whose publication did
+    not change submits none). A break moves no value, so its walk finds
+    nothing to flag; the roots are still what the plan previews.
     """
 
     from app_server.services import dfm_service

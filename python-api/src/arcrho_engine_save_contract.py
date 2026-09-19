@@ -75,6 +75,10 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     # Re-reads the linked cells of the datasets and DFMs the user accepted and
     # saves the ones whose values moved; hosted for the same workbook reason.
     "excel_link_refresh": ("excel_link_service", "refresh_reserving_class_excel_links"),
+    # Removes the named objects' references to a workbook and saves them with
+    # their current values. It opens no workbook, but it is hosted like every
+    # other save so it runs under the same reserving-class lease.
+    "excel_link_break": ("excel_link_service", "break_reserving_class_excel_links"),
 }
 
 # Every kind's propagation roots are resolved by this function in the same

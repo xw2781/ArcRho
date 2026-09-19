@@ -858,13 +858,15 @@ export function registerDataTabPersistenceController(runtime) {
       const workbookNames = result.newerWorkbooks
         .map(({ path }) => String(path || "").split(/[\\/]/).pop())
         .filter(Boolean);
+      // The two buttons already offer the choice, so the text only says what
+      // is out of date and that a refresh still has to be saved.
       const workbookSummary = workbookNames.length === 1
-        ? `The linked workbook ${workbookNames[0]} is newer`
+        ? `${workbookNames[0]} is newer`
         : `${workbookNames.length} linked workbooks are newer`;
       const choice = await showPageMessageBox({
         title: "Linked Excel File Updated",
         tone: "warning",
-        message: `${workbookSummary} than the values stored in this Arco dataset. Keep the stored values, or refresh from Excel. Refreshed values remain unsaved until you select Save.`,
+        message: `${workbookSummary} than the stored values. Refreshed values stay unsaved until you select Save.`,
         actions: [{ id: "refresh", label: "Refresh from Excel" }],
         okLabel: "Keep Current Values",
         balancedActions: true,

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
   <link rel="stylesheet" href="/ui/shared/styles/pi_table.css?v=20260819a"/>
-  <link rel="stylesheet" href="/ui/project_instance/excel_links_window.css?v=20260918b"/>
+  <link rel="stylesheet" href="/ui/project_instance/excel_links_window.css?v=20260918c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
@@ -40,15 +40,19 @@
   </div>
   <div class="ctx-menu pi-excel-links-menu" id="excelLinksMenu" role="menu" aria-label="Excel link actions">
     <div class="ctx-menu-inner">
+      <button class="ctx-item" type="button" role="menuitem" data-action="open-object">Open dataset</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="copy-name">Copy name</button>
       <button class="ctx-item" type="button" role="menuitem" data-action="open-workbook">Open workbook</button>
       <button class="ctx-item" type="button" role="menuitem" data-action="open-workbook-read-only">Open workbook as Read-Only</button>
-      <button class="ctx-item" type="button" role="menuitem" data-action="open-folder" hidden>Open folder in File Explorer</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="open-folder">Open file location</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="copy-path">Copy path</button>
       <div class="ctx-sep"></div>
-      <button class="ctx-item" type="button" role="menuitem" data-action="refresh-links">Refresh links</button>
+      <button class="ctx-item" type="button" role="menuitem" data-action="refresh-links">Refresh link</button>
       <button class="ctx-item" type="button" role="menuitem" data-action="change-link">Change Link...</button>
+      <button class="ctx-item danger" type="button" role="menuitem" data-action="break-links">Break link</button>
     </div>
   </div>
   <div class="pi-excel-links-filter-popover" id="excelLinksFilterPopover" role="dialog" aria-label="Column filter"></div>
-  <script type="module" src="/ui/project_instance/excel_links_window.js?v=20260918a"></script>
+  <script type="module" src="/ui/project_instance/excel_links_window.js?v=20260918c"></script>
 </body>
 </html>

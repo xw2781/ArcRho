@@ -25,3 +25,17 @@ class ExcelLinkRefreshRequest(BaseModel):
     project_name: str
     reserving_class: str
     targets: List[ExcelLinkTarget]
+
+
+class ExcelLinkBreakTarget(BaseModel):
+    # One manager row: the object, and the one workbook it stops reading.
+    # A blank path breaks every link the object holds.
+    kind: str
+    name: str
+    workbook_path: str = ""
+
+
+class ExcelLinkBreakRequest(BaseModel):
+    project_name: str
+    reserving_class: str
+    targets: List[ExcelLinkBreakTarget]

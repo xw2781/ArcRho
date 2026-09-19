@@ -493,12 +493,28 @@ test("the row menu opens, relinks, and - on a Workbook Path cell - opens the fol
   }
   assert.match(windowHtmlSource, /class="pi-excel-links-toolbar"[\s\S]*id="excelLinksRefreshAll"/);
   assert.match(windowHtmlSource, /class="ctx-menu pi-excel-links-menu" id="excelLinksMenu"/);
-  for (const action of ["open-workbook", "open-workbook-read-only", "open-folder", "refresh-links", "change-link"]) {
+  for (const action of [
+    "open-object", "copy-name", "open-workbook", "open-workbook-read-only",
+    "open-folder", "copy-path", "refresh-links", "change-link",
+  ]) {
     assert.match(windowHtmlSource, new RegExp(`class="ctx-item"[^>]*data-action="${action}"`));
   }
-  // Opening the folder belongs to the Workbook Path cell only.
-  assert.match(windowHtmlSource, /data-action="open-folder"[^>]*hidden/);
-  assert.match(moduleSource, /folderItem\.hidden = columnKey !== "workbookPath"/);
+  // The column under the pointer decides which half of the menu is shown: the
+  // object's actions on the first three columns, the workbook's on the rest,
+  // with the link actions in both.
+  assert.match(moduleSource, /const DATASET_MENU_COLUMNS = new Set\(\["name", "status", "methodType"\]\)/);
+  assert.match(moduleSource, /for \(const action of \["open-object", "copy-name"\]\) show\(action, datasetScope\)/);
+  assert.match(moduleSource, /show\(action, !datasetScope\);/);
+  assert.match(moduleSource, /show\("open-folder", !datasetScope && folders\.length > 0\)/);
+  // Breaking is destructive, so it is the one red item.
+  assert.match(windowHtmlSource, /class="ctx-item danger"[^>]*data-action="break-links"/);
+  assert.match(windowCssSource, /\.pi-excel-links-menu \.ctx-item\.danger:not\(:disabled\)[\s\S]*var\(--ar-color-danger\)/);
+  // The pointer takes the keyboard focus with it, so the first item cannot
+  // stay highlighted while the pointer highlights another.
+  assert.match(moduleSource, /addEventListener\("pointerover", \(event\) => \{\s*focusMenuItem/);
+  // Both link actions read singular or plural from the rows selected.
+  assert.match(moduleSource, /item\("refresh-links"\)\.textContent = links > 1 \? "Refresh links" : "Refresh link"/);
+  assert.match(moduleSource, /item\("break-links"\)\.textContent = links > 1 \? "Break links" : "Break link"/);
   assert.match(rawModuleSource, /import \{ openPathThroughDesktopHost \} from "\/ui\/shared\/integrations\/open_path\.js\?v=\d{8}[a-z]"/);
   assert.match(moduleSource, /openPathThroughDesktopHost\(path, \{ readOnly: !!readOnly \}\)/);
   assert.match(moduleSource, /opened in File Explorer\./);
@@ -778,6 +794,71 @@ test("Refresh all previews the directly affected objects and saves only those", 
   });
   assert.equal(failedCells.ok, false);
   assert.match(failedCells.message, /1 linked cell could not be read and kept the stored values\./);
+});
+
+test("Break links confirms first, then drops only the selected rows' references", () => {
+  // The request names one row at a time - one object reading one workbook -
+  // so a second workbook the same object reads keeps its link.
+  const breakBody = moduleSource.slice(moduleSource.indexOf("async function breakLinks"), moduleSource.indexOf("async function runBreak"));
+  assert.match(breakBody, /kind: row\.kind === "dfm" \? "dfm" : "dataset", name: text\(row\.name\), workbook_path: text\(row\.workbookPath\)/);
+  assert.match(breakBody, /tone: "warn"/);
+  assert.match(breakBody, /The objects below stop reading Excel and keep their current values\./);
+  assert.match(breakBody, /if \(choice !== "break"\) return;/);
+  const runBody = moduleSource.slice(moduleSource.indexOf("async function runBreak"), moduleSource.indexOf("async function reloadKeepingStatus"));
+  assert.match(runBody, /postJson\(BREAK_ENDPOINT, \{[\s\S]*targets,\s*\}\)/);
+  assert.match(runBody, /postToParent\("arcrho:excel-links-retarget-begin"\)/);
+  assert.match(runBody, /finally \{[\s\S]*arcrho:excel-links-retarget-end/);
+  assert.match(moduleSource, /const BREAK_ENDPOINT = "\/excel_links\/break";/);
+  // No value check runs first: a break reads nothing from Excel.
+  assert.doesNotMatch(breakBody, /checkValues/);
+
+  // The status line after the commit.
+  const broke = excelLinks.excelLinkBreakSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, saved: true, broken_link_count: 2 }],
+    changed_file_count: 1, broken_link_count: 2, propagation_ok: true,
+  });
+  assert.equal(broke.ok, true);
+  assert.equal(broke.message, "Broke 2 links in 1 file. The stored values are unchanged.");
+  const nothing = excelLinks.excelLinkBreakSummary({ results: [], changed_file_count: 0, broken_link_count: 0 });
+  assert.equal(nothing.ok, true);
+  assert.match(nothing.message, /^No saved link named those workbooks\./);
+  const partial = excelLinks.excelLinkBreakSummary({
+    results: [{ kind: "dataset", name: "Manual Paid", ok: true, saved: true }, { kind: "dfm", name: "Development", ok: false, error: "locked" }],
+    changed_file_count: 1,
+  });
+  assert.equal(partial.ok, false);
+  assert.match(partial.message, /Broke links in 1 of 2 files; Development: locked/);
+});
+
+test("a finished refresh names the downstream objects its walk changed", () => {
+  // The walk's short list is what the notice shows: the dependents whose
+  // values really moved, deduplicated, with blanks dropped.
+  assert.deepEqual(
+    excelLinks.excelLinkRefreshedDependents({
+      propagation: {
+        ok: true, status: "completed",
+        review_flagged_datasets: ["Ultimate Loss", " Ultimate Loss ", "", "IBNR"],
+      },
+    }),
+    ["Ultimate Loss", "IBNR"],
+  );
+  // Dependents the walk rewrote without a value change, a queued walk, and a
+  // refresh that never answered all leave the notice away.
+  assert.deepEqual(excelLinks.excelLinkRefreshedDependents({
+    propagation: { ok: true, status: "completed", refreshed_datasets: ["Paid DFM"], review_flagged_datasets: [] },
+  }), []);
+  assert.deepEqual(excelLinks.excelLinkRefreshedDependents({ propagation: { ok: true, status: "queued", job_id: "j1" } }), []);
+  assert.deepEqual(excelLinks.excelLinkRefreshedDependents(null), []);
+
+  // The notice is raised after the refresh answers and before the reload, so
+  // the status line the reload restores is the refresh's own outcome, and each
+  // name is a link that asks the host to open it.
+  const runBody = moduleSource.slice(moduleSource.indexOf("async function runRefresh"), moduleSource.indexOf("async function reloadKeepingStatus"));
+  assert.match(runBody, /await showRefreshedDependentsNotice\(payload\);\s*await reloadKeepingStatus\(outcome\);/);
+  const noticeBody = moduleSource.slice(moduleSource.indexOf("async function showRefreshedDependentsNotice"));
+  assert.match(noticeBody, /if \(!names\.length\) return;/);
+  assert.match(noticeBody, /onLinkClick: \(item\) => openDependent\(item\?\.label\)/);
+  assert.match(moduleSource, /function openDependent[\s\S]*postToParent\("arcrho:project-instance-open-dependent-dataset", \{[\s\S]*openMethod: true,/);
 });
 
 test("rows select like the dataset table's, and the selection survives a reload", () => {

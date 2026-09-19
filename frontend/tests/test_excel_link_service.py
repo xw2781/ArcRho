@@ -1156,6 +1156,84 @@ class ExcelLinkRefreshTests(ExcelLinkSaveFixture):
         )
 
 
+class ExcelLinkBreakTests(ExcelLinkSaveFixture):
+    """A break drops references and keeps every stored value where it is."""
+
+    def run_break(self, targets: list) -> dict:
+        return self.run_class_operation(
+            lambda: excel_link_service.break_reserving_class_excel_links(
+                "Project", "Class", targets
+            )
+        )
+
+    def test_break_removes_only_the_named_workbook_and_saves_no_values(self) -> None:
+        second = f"='{self.books}\\[Second.xlsx]Sheet 1'!$C$3"
+        sidecar = self.linked_sidecar("Manual Paid")
+        sidecar["external_links"].append({
+            "reference": second,
+            "target_cells": [{"row": 1, "column": 0, "source_cell": "C3"}],
+        })
+        self.write_json(self.sidecars / "Manual Paid.json", sidecar)
+        self.write_json(self.sidecars / "Manual Other.json", self.linked_sidecar("Manual Other"))
+        untargeted = (self.sidecars / "Manual Other.json").read_bytes()
+
+        response = self.run_break([
+            {"kind": "dataset", "name": "Manual Paid", "workbook_path": str(self.old_book)},
+        ])
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["changed_file_count"], 1)
+        self.assertEqual(response["broken_link_count"], 1)
+        self.dataset_save.assert_called_once()
+        # The other workbook's link survives, and no value is written: the
+        # dataset keeps the numbers it already holds.
+        self.assertEqual(
+            [link["reference"] for link in self.dataset_save.call_args.kwargs["external_links"]],
+            [second],
+        )
+        self.assertIsNone(self.dataset_save.call_args.kwargs["values"])
+        self.load_values.assert_not_called()
+        # An untargeted dataset reading the same workbook is left alone.
+        self.assertEqual((self.sidecars / "Manual Other.json").read_bytes(), untargeted)
+
+    def test_break_hard_codes_a_dfm_cell_and_leaves_its_value_alone(self) -> None:
+        # A break opens no workbook, so the reference may name one this host
+        # could not even read.
+        self.write_dfm_method(f"'{self.books}\\[Book.xlsx]Sheet 1'!$A$1 * 2")
+
+        response = self.run_break([
+            {"kind": "dfm", "name": "Development", "workbook_path": str(self.old_book)},
+        ])
+
+        self.assertEqual(response["changed_file_count"], 1)
+        self.assertEqual(response["broken_link_count"], 1)
+        formulas = self.dfm_save.call_args.args[2]["ratios_tab"]["average_formulas"]
+        self.assertEqual(formulas["inputs"][0][0], "1.5")
+        self.assertEqual(formulas["display_inputs"][0][0], "")
+        self.assertEqual(formulas["values"][0][0], 1.5)
+        # Nothing downstream moved, so the output is neither flagged nor walked.
+        self.mark_review.assert_not_called()
+        self.submitted.assert_not_called()
+
+    def test_break_writes_nothing_when_no_object_reads_that_workbook(self) -> None:
+        self.write_json(self.sidecars / "Manual Paid.json", self.linked_sidecar("Manual Paid"))
+        before = (self.sidecars / "Manual Paid.json").read_bytes()
+
+        response = self.run_break([
+            {"kind": "dataset", "name": "Manual Paid", "workbook_path": str(self.books / "Other.xlsx")},
+        ])
+
+        self.assertEqual(response["changed_file_count"], 0)
+        self.assertEqual(response["broken_link_count"], 0)
+        self.dataset_save.assert_not_called()
+        self.assertEqual((self.sidecars / "Manual Paid.json").read_bytes(), before)
+
+    def test_break_refuses_a_request_naming_no_object(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            excel_link_service.break_reserving_class_excel_links("Project", "Class", [])
+        self.assertEqual(ctx.exception.status_code, 400)
+
+
 class ExcelLinkHostedSaveRegistrationTests(unittest.TestCase):
     def test_the_retarget_is_a_hosted_save_kind_owned_by_this_service(self) -> None:
         from arcrho_engine_save_contract import SAVE_JOB_KINDS
@@ -1171,6 +1249,14 @@ class ExcelLinkHostedSaveRegistrationTests(unittest.TestCase):
         self.assertEqual(
             SAVE_JOB_KINDS["excel_link_refresh"],
             ("excel_link_service", "refresh_reserving_class_excel_links"),
+        )
+
+    def test_the_break_is_a_hosted_save_kind_owned_by_this_service(self) -> None:
+        from arcrho_engine_save_contract import SAVE_JOB_KINDS
+
+        self.assertEqual(
+            SAVE_JOB_KINDS["excel_link_break"],
+            ("excel_link_service", "break_reserving_class_excel_links"),
         )
 
     def test_the_value_check_is_a_workspace_read_kind_owned_by_this_service(self) -> None:
