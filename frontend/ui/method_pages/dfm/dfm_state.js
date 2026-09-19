@@ -230,9 +230,27 @@ function notifyDfmDirtyState(dirty, options = {}) {
   window.parent.postMessage({ type: "arcrho:dfm-dirty", inst, dirty: nextDirty }, "*");
 }
 
+// A user edit does not set the flag itself. It asks the owner of the clean
+// baseline (dfm_persistence.js registers the checker) to compare the window
+// against what it last loaded or saved, and the flag follows that verdict, so
+// the marker never shows for an edit that changed nothing. Until a checker is
+// registered an edit counts as a change.
+let dfmDirtyChecker = null;
+export function setDfmDirtyChecker(fn) {
+  dfmDirtyChecker = typeof fn === "function" ? fn : null;
+}
+
 export function markDfmDirty() {
   if (dfmProgrammaticDepth > 0) return;
-  if (dfmIsDirty) {
+  if (dfmDirtyChecker) dfmDirtyChecker();
+  else applyDfmDirtyCheckResult(true);
+}
+
+// The comparison's verdict. A difference re-dispatches the window event even
+// when the flag already stood, so the previews follow every edit; equality
+// only notifies when it turns a dirty window clean.
+export function applyDfmDirtyCheckResult(differs) {
+  if (differs && dfmIsDirty) {
     try {
       window.dispatchEvent(new CustomEvent("arcrho:dfm-dirty-state", { detail: { dirty: true } }));
     } catch {
@@ -240,7 +258,7 @@ export function markDfmDirty() {
     }
     return;
   }
-  notifyDfmDirtyState(true);
+  notifyDfmDirtyState(!!differs);
 }
 
 export function markDfmClean(options = {}) {

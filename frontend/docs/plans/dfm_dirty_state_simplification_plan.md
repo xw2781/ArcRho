@@ -2,8 +2,18 @@
 
 ## Status
 
-Proposed — not yet implemented. Accepted trade-off: we drop the
+Implemented. Accepted trade-off at the time: we dropped the
 "edit a value then change it back ⇒ clean again" behavior.
+
+**2026-09-18 follow-up:** that behavior is back, without the flash this plan
+removed. `dfm_persistence.js` records a clean-state key (the user-owned choices of the
+save payload, plus the Notes text; no derived or stored values, so the
+computed-field coupling this plan describes cannot return) with every clean snapshot, and
+`scheduleDfmCleanStateCheck()` compares the rebuilt key against it 200 ms after
+a user edit. The flag follows the verdict: a user edit no longer sets it
+directly, so a click that changes nothing never shows the marker, and nothing
+but a user edit reaches the comparison, so an async load or recompute can
+still never dirty an untouched window. See `docs/ui/dfm.md`.
 
 ## Background
 

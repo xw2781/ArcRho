@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM window shows unsaved changes only when an edit really changed something, and no longer asks to discard changes that were undone.",
+  "details": [
+    "After each edit the window compares its values, selections, and notes with the last loaded or saved state; the unsaved-changes marker shows only when they differ, so a click that changes nothing never shows it.",
+    "When later edits bring the window back to its saved state, the marker clears, Save is disabled again, and closing asks nothing.",
+    "Opening or refreshing a method still never marks it as edited."
+  ]
+}

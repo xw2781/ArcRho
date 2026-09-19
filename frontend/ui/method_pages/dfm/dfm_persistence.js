@@ -24,6 +24,8 @@ import {
   getCurrentDfmTab,
   buildSummaryRows,
   markDfmClean,
+  setDfmDirtyChecker,
+  applyDfmDirtyCheckResult,
   setDfmNeedsReview,
   runDfmProgrammatic,
   isRatiosTabVisible,
@@ -129,6 +131,7 @@ import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_re
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";
 import { refreshDfmDetailsDependencies } from "/ui/method_pages/dfm/dfm_details_dependencies.js?v=20260820b";
+import { buildDfmCleanStateKey } from "/ui/method_pages/dfm/dfm_clean_state.js?v=20260918b";
 
 let ratioLoadTimer = null;
 let ratioLoadPendingReason = "";
@@ -139,6 +142,8 @@ let ratioFileWatchRevisionToken = "";
 let ratioFileWatchDirtyWarnToken = "";
 let lastCleanDfmMethodPayload = null;
 let lastCleanDfmNotesText = "";
+let lastCleanDfmStateKey = "";
+let cleanStateCheckTimer = 0;
 let normalDfmMethodSavePath = "";
 let normalDfmMethodSaveName = "";
 let currentDfmOutputDataset = "";
@@ -975,12 +980,37 @@ function recordCleanDfmMethodPayload(payload = null) {
     lastCleanDfmMethodPayload = cleanPayload;
   }
   lastCleanDfmNotesText = getDfmNotesText();
+  // Built by the same builder the check below uses, whatever copy Cancel
+  // keeps, so an untouched window compares equal to itself.
+  lastCleanDfmStateKey = buildDfmCleanStateKey(buildDfmMethodPayload(), lastCleanDfmNotesText);
 }
 
 export function recordCurrentDfmCleanState() {
   recordCleanDfmMethodPayload();
   markDfmClean({ force: true });
 }
+
+// Every user edit lands here through markDfmDirty. Once the edits settle, the
+// window is compared with what it last loaded or saved and the flag follows
+// the verdict: the marker shows only for a real difference, so a click that
+// changed nothing or an edit that was undone never shows it, and an edit that
+// was undone later clears it. A comparison that cannot run counts as changed.
+// Only a user edit reaches this, so a load or recompute can never set the flag.
+export function scheduleDfmCleanStateCheck() {
+  window.clearTimeout(cleanStateCheckTimer);
+  cleanStateCheckTimer = window.setTimeout(() => {
+    cleanStateCheckTimer = 0;
+    let differs = true;
+    try {
+      differs = !lastCleanDfmStateKey
+        || buildDfmCleanStateKey(buildDfmMethodPayload(), getDfmNotesText()) !== lastCleanDfmStateKey;
+    } catch {
+      // a payload that cannot be built is treated as changed
+    }
+    applyDfmDirtyCheckResult(differs);
+  }, 200);
+}
+setDfmDirtyChecker(scheduleDfmCleanStateCheck);
 
 export async function buildDfmAssistantContextPayload(options = {}) {
   const payload = await buildDfmMethodPayloadWithPaths(options);
