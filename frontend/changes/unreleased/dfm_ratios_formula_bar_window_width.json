@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The Ratios formula bar now keeps its place in the window when the tables are scrolled sideways.",
+  "details": [
+    "The bar takes the width of the visible area instead of the full table width, so the row label and the workbook button no longer sit off screen on a wide window with a long table.",
+    "Dragging to select part of a formula no longer scrolls the tables sideways."
+  ]
+}

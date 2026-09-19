@@ -69,6 +69,7 @@ const dfmSummaryExports = [
   "scheduleRatioSummaryUpdate",
   "selectSummaryCell",
   "setSummaryTableCallbacks",
+  "syncSummaryFormulaPanelWidth",
   "updateRatioSummary",
   "wireSummaryContextMenu",
   "wireSummaryRowDrag",

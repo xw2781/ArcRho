@@ -52,7 +52,6 @@ const isUserEntryFormulaClipboardText = (...args) => summaryRuntime.isUserEntryF
 const pasteFormulaIntoSummaryFormulaBar = (...args) => summaryRuntime.pasteFormulaIntoSummaryFormulaBar(...args);
 const isSummaryFormulaCommitPending = (...args) => summaryRuntime.isSummaryFormulaCommitPending(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
-const wireSummaryFormulaBarPointer = (...args) => summaryRuntime.wireSummaryFormulaBarPointer(...args);
 const handleSummaryTableSelectionChange = (...args) => summaryRuntime.handleSummaryTableSelectionChange(...args);
 const clearSummaryReferenceUi = (...args) => summaryRuntime.clearSummaryReferenceUi(...args);
 const buildSummaryReferenceValues = (...args) => summaryRuntime.buildSummaryReferenceValues(...args);
@@ -792,8 +791,6 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     updateReferenceHoverUi(null);
   });
 
-  wireSummaryFormulaBarPointer(summaryTable, listen);
-
   listen(document, "keydown", (e) => {
     if (!document.body.contains(summaryTable)) return;
     const target = e.target;
@@ -819,9 +816,6 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       const cfg = summaryRowMap.get(rowId);
       if (!cfg || !isUserEntryConfig(cfg)) return;
       e.preventDefault();
-      // Starting a formula asks for the bar outright, so it lifts a bar the
-      // user pressed away and brings it back over the cell being typed into.
-      summaryRuntime.summaryFormulaBarSuppressedKey = "";
       updateSummaryFormulaBarForCell(cell);
       const barEl = document.getElementById("dfmSummaryFormulaBar");
       const barInput = barEl?.querySelector("#dfmSummaryFormulaBarInput");

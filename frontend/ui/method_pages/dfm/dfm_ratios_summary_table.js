@@ -9,9 +9,7 @@ import {
   summaryRuntime,
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260914b";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260914b";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_anchor.js?v=20260914b";
-import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar_drag.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260919c";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260914b";
 import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260914b";
 import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260914b";
@@ -77,12 +75,6 @@ export function resetSummaryFormulaEditState() {
   summaryRuntime.summarySelectionDestroy?.();
   summaryRuntime.summarySelectionDestroy = null;
   summaryRuntime.summaryFormulaEditState = null;
-  summaryRuntime.summaryFormulaBarHoverCell = null;
-  summaryRuntime.summaryFormulaBarHoverKey = "";
-  summaryRuntime.summaryFormulaBarVisibleKey = "";
-  // summaryFormulaBarSuppressedKey deliberately survives: a re-render is not the
-  // user changing their mind about a bar they pressed away, and Edit mode
-  // re-renders on the same click that toggles.
   summaryRuntime.summaryFormulaBarState = {
     mode: "display",
     input: null,
@@ -236,6 +228,7 @@ export const selectSummaryCell = delegate("selectSummaryCell");
 export const clearSummaryActiveCell = delegate("clearSummaryActiveCell");
 export const initDefaultSummarySelection = delegate("initDefaultSummarySelection");
 export const wireSummarySelection = delegate("wireSummarySelection");
+export const syncSummaryFormulaPanelWidth = delegate("syncSummaryFormulaPanelWidth");
 
 Object.assign(summaryRuntime, {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,

@@ -49,7 +49,6 @@ const normalizeUserEntryDisplayInputs = (...args) => summaryRuntime.normalizeUse
 const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
 const getUserEntryInputForCol = (...args) => summaryRuntime.getUserEntryInputForCol(...args);
 const getUserEntryDisplayInputForCol = (...args) => summaryRuntime.getUserEntryDisplayInputForCol(...args);
-const summaryTableHasUserEntryRows = (...args) => summaryRuntime.summaryTableHasUserEntryRows(...args);
 const setModalValidationError = (...args) => summaryRuntime.setModalValidationError(...args);
 const clearModalValidationError = (...args) => summaryRuntime.clearModalValidationError(...args);
 const hideAvgModal = (...args) => summaryRuntime.hideAvgModal(...args);
@@ -59,16 +58,16 @@ const updateFormulaBarDisplayMode = (...args) => summaryRuntime.updateFormulaBar
 const getSummaryFormulaBarParts = (...args) => summaryRuntime.getSummaryFormulaBarParts(...args);
 const collapseFormulaEquals = (...args) => summaryRuntime.collapseFormulaEquals(...args);
 const submitSummaryFormulaBarInput = (...args) => summaryRuntime.submitSummaryFormulaBarInput(...args);
-const positionSummaryFormulaBar = (...args) => summaryRuntime.positionSummaryFormulaBar(...args);
 const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
 const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
 const isSummaryFormulaBarInputEditing = (...args) => summaryRuntime.isSummaryFormulaBarInputEditing(...args);
-const summaryFormulaBarTargetKey = (...args) => summaryRuntime.summaryFormulaBarTargetKey(...args);
 const ensureSummaryFormulaBarEl = (...args) => summaryRuntime.ensureSummaryFormulaBarEl(...args);
 const setStatusBarText = (...args) => summaryRuntime.setStatusBarText(...args);
 const invalidateDfmExcelRefresh = (...args) => summaryRuntime.invalidateDfmExcelRefresh(...args);
 const commitExcelFormulaAsync = (...args) => summaryRuntime.commitExcelFormulaAsync(...args);
 const hideSummaryFormulaBar = (...args) => summaryRuntime.hideSummaryFormulaBar(...args);
+const showSummaryFormulaBarIdle = (...args) => summaryRuntime.showSummaryFormulaBarIdle(...args);
+const showSummaryFormulaBarReadOnlyValue = (...args) => summaryRuntime.showSummaryFormulaBarReadOnlyValue(...args);
 const setUserEntryCellDisplayValue = (...args) => summaryRuntime.setUserEntryCellDisplayValue(...args);
 const restoreSupersededExcelRange = (...args) => summaryRuntime.restoreSupersededExcelRange(...args);
 const getSummaryArrayFormulaDestination = (...args) => summaryRuntime.getSummaryArrayFormulaDestination(...args);
@@ -288,9 +287,6 @@ function pasteFormulaIntoSummaryFormulaBar(summaryTable, startCell, rawText) {
   if (!rowId || !Number.isFinite(col) || col < 0) return false;
   if (!isUserEntryConfig(summaryRowMap.get(rowId))) return false;
 
-  // Editing asks for the bar outright, so it lifts a bar the user pressed away
-  // — the pasted formula, and any refusal, are only readable there.
-  summaryRuntime.summaryFormulaBarSuppressedKey = "";
   updateSummaryFormulaBarForCell(startCell);
   const { bar, input } = getSummaryFormulaBarParts();
   if (!bar || !input || input.disabled || input.readOnly) return false;
@@ -431,6 +427,13 @@ async function commitSummaryFormulaInput(inputEl) {
   }
 }
 
+/**
+ * Sync the docked formula bar to a cell: `cell` when the caller has one (a
+ * click or a selection change), or null to fall back to the last active cell
+ * on record. The bar itself never hides once the summary table is on the
+ * page -- a User Entry cell shows its editable formula, another summary row's
+ * cell shows its unrounded value read-only, and anything else leaves it idle.
+ */
 function updateSummaryFormulaBarForCell(cell) {
   const summaryTable =
     cell?.closest?.("table.ratioSummaryTable") ||
@@ -439,99 +442,77 @@ function updateSummaryFormulaBarForCell(cell) {
     hideSummaryFormulaBar();
     return;
   }
-  if (!summaryTableHasUserEntryRows(summaryTable)) {
-    hideSummaryFormulaBar();
+
+  let targetCell = cell;
+  if (!targetCell || !summaryTable.contains(targetCell)) {
+    targetCell = summaryTable.querySelector(
+      `td.summaryCell[data-r="${summaryRuntime.summaryActiveCellState.rowId}"][data-col="${summaryRuntime.summaryActiveCellState.col}"]`
+    ) || null;
+  }
+
+  let cfg = null;
+  let editRowId = "";
+  let editCol = -1;
+  let isExcelRangeCell = false;
+  if (targetCell) {
+    const rowId = String(targetCell.dataset.r || "");
+    const col = Number(targetCell.dataset.col);
+    if (rowId && Number.isFinite(col) && col >= 0) {
+      isExcelRangeCell = !!targetCell.dataset.excelRangeFormula;
+      const anchorCol = Number(targetCell.dataset.excelRangeAnchorCol);
+      editRowId = isExcelRangeCell ? String(targetCell.dataset.excelRangeAnchorRowId || rowId) : rowId;
+      editCol = isExcelRangeCell && Number.isFinite(anchorCol) && anchorCol >= 0 ? anchorCol : col;
+      cfg = summaryRowMap.get(editRowId);
+    }
+  }
+
+  if (!cfg) {
+    showSummaryFormulaBarIdle();
+    return;
+  }
+  if (!isUserEntryConfig(cfg)) {
+    showSummaryFormulaBarReadOnlyValue(targetCell, cfg);
     return;
   }
 
   const el = ensureSummaryFormulaBarEl(summaryTable);
   const inputEl = el.querySelector("#dfmSummaryFormulaBarInput");
-  let inputRaw = "";
-  let targetCell = cell;
-  if (!targetCell || !summaryTable.contains(targetCell)) {
-    const stateCell = summaryTable.querySelector(
-      `td.summaryCell[data-r="${summaryRuntime.summaryActiveCellState.rowId}"][data-col="${summaryRuntime.summaryActiveCellState.col}"]`
-    );
-    targetCell = stateCell || null;
-  }
-  if (targetCell) {
-    const rowId = String(targetCell.dataset.r || "");
-    const col = Number(targetCell.dataset.col);
-    if (rowId && Number.isFinite(col) && col >= 0) {
-      const isExcelRangeCell = !!targetCell.dataset.excelRangeFormula;
-      const anchorCol = Number(targetCell.dataset.excelRangeAnchorCol);
-      const editRowId = isExcelRangeCell
-        ? String(targetCell.dataset.excelRangeAnchorRowId || rowId)
-        : rowId;
-      const editCol = isExcelRangeCell && Number.isFinite(anchorCol) && anchorCol >= 0
-        ? anchorCol
-        : col;
-      const cfg = summaryRowMap.get(editRowId);
-      if (cfg && isUserEntryConfig(cfg)) {
-        inputRaw = isExcelRangeCell
-          ? String(targetCell.dataset.excelRangeFormula || "").trim()
-          : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
-        const displayInputRaw = isExcelRangeCell
-          ? ""
-          : String(getUserEntryDisplayInputForCol(cfg, editCol) || "").trim();
-        const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
-        if (labelEl) {
-          const rowLabel = String(cfg.label || cfg.id || "f(x)");
-          labelEl.textContent = rowLabel;
-        }
-        if (inputEl) {
-          const inputHasFocus = document.activeElement === inputEl;
-          const sameTarget =
-            String(inputEl.dataset.rowId || "") === editRowId &&
-            Number(inputEl.dataset.col) === editCol;
-          const editingSameTarget = sameTarget && isSummaryFormulaBarInputEditing(inputEl);
-          if ((!inputHasFocus && !editingSameTarget) || !sameTarget) {
-            const body = (inputRaw || "").replace(/^=\s*/, "");
-            inputEl.value = "= " + body;
-            scrollSummaryFormulaInputToEnd(inputEl);
-          }
-          if (!sameTarget) clearSummaryFormulaBarValidationError();
-          inputEl.dataset.rowId = editRowId;
-          inputEl.dataset.col = String(editCol);
-          if (displayInputRaw) inputEl.dataset.displayFormula = displayInputRaw;
-          else delete inputEl.dataset.displayFormula;
-          inputEl.disabled = false;
-          inputEl.placeholder = "Enter value or formula";
-        }
-
-      } else {
-        hideSummaryFormulaBar();
-        return;
-      }
+  const inputRaw = isExcelRangeCell
+    ? String(targetCell.dataset.excelRangeFormula || "").trim()
+    : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
+  const displayInputRaw = isExcelRangeCell
+    ? ""
+    : String(getUserEntryDisplayInputForCol(cfg, editCol) || "").trim();
+  const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
+  if (labelEl) labelEl.textContent = String(cfg.label || cfg.id || "f(x)");
+  if (inputEl) {
+    const inputHasFocus = document.activeElement === inputEl;
+    const sameTarget =
+      String(inputEl.dataset.rowId || "") === editRowId &&
+      Number(inputEl.dataset.col) === editCol;
+    const editingSameTarget = sameTarget && isSummaryFormulaBarInputEditing(inputEl);
+    if ((!inputHasFocus && !editingSameTarget) || !sameTarget) {
+      const body = (inputRaw || "").replace(/^=\s*/, "");
+      inputEl.value = "= " + body;
+      scrollSummaryFormulaInputToEnd(inputEl);
     }
-  } else {
-    hideSummaryFormulaBar();
-    return;
+    if (!sameTarget) clearSummaryFormulaBarValidationError();
+    inputEl.dataset.rowId = editRowId;
+    inputEl.dataset.col = String(editCol);
+    if (displayInputRaw) inputEl.dataset.displayFormula = displayInputRaw;
+    else delete inputEl.dataset.displayFormula;
+    inputEl.disabled = false;
+    inputEl.placeholder = "Enter value or formula";
   }
 
-  // A bar the user pressed away stays away over every cell, until they press
-  // once more the cell they have landed on or start editing one.
-  const targetKey = summaryFormulaBarTargetKey(targetCell);
-  if (summaryRuntime.summaryFormulaBarSuppressedKey) {
-    hideSummaryFormulaBar({ keepHoverTarget: true });
-    return;
-  }
-  summaryRuntime.summaryFormulaBarVisibleKey = targetKey;
-  // Showing the bar for any other target ends a hand-placed position, so moving
-  // to another cell and coming back both restore the anchored one.
-  summaryRuntime.syncSummaryFormulaBarDragPlacementTarget?.(el, targetKey);
-
+  el.classList.remove("isNote");
   el.classList.add("isOpen");
   const isEditing = isSummaryFormulaBarInputEditing(inputEl);
   updateFormulaBarDisplayMode(el, isEditing);
-  positionSummaryFormulaBar(el, summaryTable, targetCell);
-  window.requestAnimationFrame(() => positionSummaryFormulaBar(el, summaryTable, targetCell));
 }
 
 function refreshSummaryFormulaBar() {
-  // A hovered dynamic array outranks the active cell, so keep the bar on it.
-  const hoverCell = summaryRuntime.summaryFormulaBarHoverCell;
-  updateSummaryFormulaBarForCell(hoverCell?.isConnected ? hoverCell : null);
+  updateSummaryFormulaBarForCell(null);
 }
 
 function handleSummaryTableSelectionChange(summaryTable, selection) {
@@ -545,18 +526,11 @@ function handleSummaryTableSelectionChange(summaryTable, selection) {
       `td.summaryCell[data-copy-r="${active.r}"][data-copy-c="${active.c}"]`,
     )
     : null;
-  if (!cell) {
-    summaryRuntime.summaryActiveCellState = { rowId: "", col: -1 };
-    hideSummaryFormulaBar();
-    return;
-  }
-  const rowId = String(cell.dataset.r || "");
-  const col = Number(cell.dataset.col);
-  if (!rowId || !Number.isFinite(col) || col < 0) {
-    hideSummaryFormulaBar();
-    return;
-  }
-  summaryRuntime.summaryActiveCellState = { rowId, col };
+  const rowId = cell ? String(cell.dataset.r || "") : "";
+  const col = cell ? Number(cell.dataset.col) : NaN;
+  summaryRuntime.summaryActiveCellState = (rowId && Number.isFinite(col) && col >= 0)
+    ? { rowId, col }
+    : { rowId: "", col: -1 };
   updateSummaryFormulaBarForCell(cell);
 }
 

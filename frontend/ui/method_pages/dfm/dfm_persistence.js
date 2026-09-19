@@ -74,7 +74,7 @@ import {
   applyPersistedRatioDerivedSnapshot,
   renderRatioTable,
   queueDfmExternalChangeHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260919a";
 import {
   applyPersistedResultsSnapshot,
   ensureResultsRatioBasisAligned,
@@ -126,7 +126,7 @@ import {
 import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";

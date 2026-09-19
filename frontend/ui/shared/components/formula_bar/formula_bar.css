@@ -129,6 +129,12 @@ lives here.
   text-overflow: ellipsis;
   white-space: pre;
   cursor: text;
+  /* The workspace turns text selection off for the page as a whole and gives it
+     back to inputs only, so a bar showing a read-only value would hand a reader
+     a number they cannot copy. The rendered formula is text meant to be taken,
+     so it asks for selection back. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 /* A reference is written in the color of where its values come from, matching
    the outline the linked cells themselves wear in the grid. */

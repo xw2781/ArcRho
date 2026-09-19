@@ -31,7 +31,7 @@ import {
   getUserEntryValueForCol,
   scheduleRatioSummaryUpdate,
   selectSummaryCell,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 import {
   beginRatioHistoryAction,
   cancelRatioHistoryAction,

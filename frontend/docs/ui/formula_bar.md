@@ -6,9 +6,11 @@ Both editors offer function-name completion, argument names with the active argu
 
 Path offers the current RC shortcut; enter other RC paths as quoted text. Formula dataset lists and value reads require the Gateway. Other legacy dataset-router reads (including index-signature polling) retain their existing SMB paths and should be migrated separately.
 
-Click **fx** to open Insert Formula inside the current window. Select a function, enter arguments, choose available values, and preview the result. Text arguments use double quotes. Preview shows up to 20 rows and 12 columns and reports the full result dimensions. Insert is enabled only for a successful preview of the current draft; it writes the formula bar draft. Enter in the bar applies it. Cancel keeps the original draft. Dragging fx retains the existing bar movement gesture.
+Click **fx** to open Insert Formula inside the current window. Select a function, enter arguments, choose available values, and preview the result. Text arguments use double quotes. Preview shows up to 20 rows and 12 columns and reports the full result dimensions. Insert is enabled only for a successful preview of the current draft; it writes the formula bar draft. Enter in the bar applies it. Cancel keeps the original draft.
 
 DSV's persistent formula panel shows the first cell (top left) of the first selected range, including a multi-cell selection. Read-only cells retain their existing restrictions.
+
+DFM Ratios' formula bar is likewise a fixed, always-visible panel docked directly above the average-formula summary table rather than a floating overlay: it does not anchor to, follow, or drag away from the cell it edits. It takes the width of the visible area rather than the width of the tables, which are usually wider, and holds the left edge of that area, so its row label and its workbook button stay where the window puts them no matter how far the tables are scrolled sideways. Selecting a User Entry cell shows its editable formula there; selecting another summary row's cell (an average or benchmark row) shows that cell's unrounded value read-only, written after an `=` so the bar reads as an equation, and selectable and copyable but not editable; selecting anything else leaves the bar in an idle note.
 <!-- MANUAL:END -->
 
 ## Functions and dataset calls

@@ -51,9 +51,7 @@ const normalizeUserEntryInputs = (...args) => summaryRuntime.normalizeUserEntryI
 const normalizeUserEntryDisplayInputs = (...args) => summaryRuntime.normalizeUserEntryDisplayInputs(...args);
 const getUserEntryValueForCol = (...args) => summaryRuntime.getUserEntryValueForCol(...args);
 const getUserEntryInputForCol = (...args) => summaryRuntime.getUserEntryInputForCol(...args);
-const clearSummaryFormulaBarValidationError = (...args) => summaryRuntime.clearSummaryFormulaBarValidationError(...args);
 const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
-const setSummaryFormulaBarMode = (...args) => summaryRuntime.setSummaryFormulaBarMode(...args);
 const setStatusBarText = (...args) => summaryRuntime.setStatusBarText(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
 const clearSummaryReferenceUi = (...args) => summaryRuntime.clearSummaryReferenceUi(...args);
@@ -565,24 +563,6 @@ export function breakDfmExternalLink(id) {
   return breakDfmExternalLinks([id]);
 }
 
-function hideSummaryFormulaBar({ keepHoverTarget = false } = {}) {
-  summaryRuntime.summaryFormulaBarVisibleKey = "";
-  // Drop the hover anchor too, so the next pointer move re-evaluates from
-  // scratch. A bar hidden because its target is toggled off keeps that anchor,
-  // or every pointer move over the same array would redo the same work.
-  if (!keepHoverTarget) {
-    summaryRuntime.summaryFormulaBarHoverCell = null;
-    summaryRuntime.summaryFormulaBarHoverKey = "";
-  }
-  const el = document.getElementById("dfmSummaryFormulaBar");
-  if (el) {
-    summaryRuntime.clearSummaryFormulaBarDragPlacement?.(el);
-    clearSummaryFormulaBarValidationError();
-    setSummaryFormulaBarMode("display", el.querySelector("#dfmSummaryFormulaBarInput"));
-    el.classList.remove("isOpen");
-  }
-}
-
 function setUserEntryCellDisplayValue(cell, value) {
   if (!cell) return;
   cell.textContent = formatUserEntryFormulaEvaluationValue(value);
@@ -877,7 +857,6 @@ registerSummaryFunctions({
   hardCodeDfmUserEntryTarget,
   breakDfmExternalLinks,
   breakDfmExternalLink,
-  hideSummaryFormulaBar,
   setUserEntryCellDisplayValue,
   getExcelRangeDestination,
   resetExcelRangeDestination,

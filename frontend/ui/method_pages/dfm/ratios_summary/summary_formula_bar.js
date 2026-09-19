@@ -228,9 +228,6 @@ function updateFormulaBarDisplayMode(barEl, isEditing) {
     display.style.display = "";
     renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value, input.value);
   }
-  // The two modes need different widths, so the bar is re-measured on every swap.
-  // Optional: this module is also loaded standalone, without the anchor module.
-  summaryRuntime.repositionSummaryFormulaBar?.(barEl);
 }
 
 function positionSummaryFormulaBarValidationTooltip() {
@@ -291,48 +288,87 @@ function scheduleSummaryFormulaBarValidationTooltipPosition() {
   });
 }
 
+/**
+ * The panel lives between two tables that are as wide as their data, inside a
+ * box that scrolls sideways, so its natural width is the width of the widest
+ * table rather than the width of the window. The stylesheet pins it to the
+ * left edge of the scrollport; this gives it the visible width to match, so
+ * the label at one end and the Excel link at the other always sit where the
+ * window puts them instead of drifting off screen with the grid.
+ */
+function syncSummaryFormulaPanelWidth() {
+  const panel = document.getElementById("dfmSummaryFormulaPanel");
+  const host = document.getElementById("ratioWrapHost");
+  if (!panel || !host) return;
+  const style = window.getComputedStyle(host);
+  const padding = (Number.parseFloat(style.paddingLeft) || 0)
+    + (Number.parseFloat(style.paddingRight) || 0);
+  const width = host.clientWidth - padding;
+  if (width > 0) panel.style.setProperty("--dfm-summary-formula-panel-width", `${width}px`);
+  else panel.style.removeProperty("--dfm-summary-formula-panel-width");
+}
+
+/**
+ * Dragging across the formula text must not take the grid with it. The bar
+ * sits inside the box that scrolls the tables, so a selection running past the
+ * end of the input makes the browser scroll that box to follow it, and the
+ * tables slide under a reader who only meant to select part of a formula. The
+ * box is therefore held at the offsets it had when the drag started, until the
+ * drag ends.
+ */
+function holdRatioScrollDuringBarSelection(barEl) {
+  barEl.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const host = document.getElementById("ratioWrapHost");
+    if (!host) return;
+    const { scrollLeft, scrollTop } = host;
+    const hold = () => {
+      if (host.scrollLeft !== scrollLeft) host.scrollLeft = scrollLeft;
+      if (host.scrollTop !== scrollTop) host.scrollTop = scrollTop;
+    };
+    const release = () => {
+      host.removeEventListener("scroll", hold);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+    };
+    host.addEventListener("scroll", hold);
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+  });
+}
+
 function scheduleSummaryFormulaBarResizeRefresh() {
   if (summaryRuntime.formulaBarResizeRaf) return;
   summaryRuntime.formulaBarResizeRaf = window.requestAnimationFrame(() => {
     summaryRuntime.formulaBarResizeRaf = 0;
-    refreshSummaryFormulaBar();
+    syncSummaryFormulaPanelWidth();
     scheduleSummaryFormulaBarValidationTooltipPosition();
   });
 }
 
-// A resize can also be a zoom change, so the measured text width is re-taken;
-// a scroll leaves it valid and keeps the cheap path.
+// The bar itself no longer moves with the grid, so only a window resize (or a
+// zoom change) can move it relative to the viewport; its own width and the
+// validation tooltip are the only things left that need to notice.
 function handleSummaryFormulaBarViewportResize() {
-  summaryRuntime.invalidateSummaryFormulaBarWidthCache();
   scheduleSummaryFormulaBarResizeRefresh();
 }
 
-function wireSummaryFormulaBarResizeWatcher(summaryTable) {
-  const host = summaryTable?.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
-  if (summaryRuntime.formulaBarScrollHost && summaryRuntime.formulaBarScrollHost !== host) {
-    summaryRuntime.formulaBarScrollHost.removeEventListener("scroll", scheduleSummaryFormulaBarResizeRefresh);
-    summaryRuntime.formulaBarScrollHost = null;
-  }
-  if (host && summaryRuntime.formulaBarScrollHost !== host) {
-    host.addEventListener("scroll", scheduleSummaryFormulaBarResizeRefresh, { passive: true });
-    summaryRuntime.formulaBarScrollHost = host;
-  }
-  if (host && window.ResizeObserver) {
-    if (summaryRuntime.formulaBarResizeObserver?.target !== host) {
-      summaryRuntime.formulaBarResizeObserver?.observer?.disconnect?.();
-      const observer = new ResizeObserver(handleSummaryFormulaBarViewportResize);
-      observer.observe(host);
-      summaryRuntime.formulaBarResizeObserver = { observer, target: host };
-    }
-  }
-  if (!summaryRuntime.formulaBarResizeWired) {
-    summaryRuntime.formulaBarResizeWired = true;
-    window.addEventListener("resize", handleSummaryFormulaBarViewportResize);
-    window.addEventListener(
-      "pointerdown",
-      scheduleSummaryFormulaBarValidationTooltipPosition,
-      { capture: true, passive: true },
-    );
+function wireSummaryFormulaBarResizeWatcher() {
+  syncSummaryFormulaPanelWidth();
+  if (summaryRuntime.formulaBarResizeWired) return;
+  summaryRuntime.formulaBarResizeWired = true;
+  window.addEventListener("resize", handleSummaryFormulaBarViewportResize);
+  window.addEventListener(
+    "pointerdown",
+    scheduleSummaryFormulaBarValidationTooltipPosition,
+    { capture: true, passive: true },
+  );
+  // A window resize is not the only thing that changes the visible width: the
+  // side panel, the tab strip and the scrollbar gutter all move that edge
+  // without the window moving at all.
+  const host = document.getElementById("ratioWrapHost");
+  if (host && typeof window.ResizeObserver === "function") {
+    new window.ResizeObserver(scheduleSummaryFormulaBarResizeRefresh).observe(host);
   }
 }
 
@@ -414,9 +450,6 @@ function setSummaryFormulaBarMode(mode, inputEl = null) {
   if (state) {
     state.hidden = nextMode !== "validating";
     state.textContent = nextMode === "validating" ? "Validating…" : "";
-    // The chip takes room of its own: make space for it rather than squeezing
-    // the formula while a commit is in flight.
-    summaryRuntime.repositionSummaryFormulaBar?.(bar);
   }
 }
 
@@ -562,6 +595,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
   }
   if (el.dataset.wired !== "1") {
     const input = el.querySelector("#dfmSummaryFormulaBarInput");
+    holdRatioScrollDuringBarSelection(el);
     installDfmDatasetAutocomplete(input);
     wireFormulaHelper(el.querySelector(".arFormulaBarFxIcon"), input, {
       onOpen: () => { updateFormulaBarDisplayMode(el, true); input.focus(); },
@@ -579,9 +613,6 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         return result;
       },
     });
-    // The badge is the bar's drag handle; it carries no tooltip of its own so a
-    // bubble cannot sit under the pointer that is about to move the bar.
-    summaryRuntime.wireSummaryFormulaBarDragHandle?.(el, el.querySelector(".arFormulaBarFxIcon"));
     const FORMULA_PREFIX = "= ";
     const PREFIX_LEN = FORMULA_PREFIX.length; // 2
     input?.addEventListener("focus", () => {
@@ -722,13 +753,13 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     });
     el.dataset.wired = "1";
   }
-  // The bar floats over the grid, so it lives in the scrolling host rather than
-  // in the table's flow: absolute children of the host scroll with the tables.
-  const host = summaryTable?.closest?.("#ratioWrapHost") || document.getElementById("ratioWrapHost");
+  // Docked above the grid rather than floating over it, so it lives in that
+  // fixed panel and stays in the page's own flow.
+  const host = document.getElementById("dfmSummaryFormulaPanel");
   if (host && el.parentElement !== host) {
     host.appendChild(el);
   }
-  wireSummaryFormulaBarResizeWatcher(summaryTable);
+  wireSummaryFormulaBarResizeWatcher();
   return el;
 }
 
@@ -737,6 +768,91 @@ function setStatusBarText(text) {
   const doc = window.parent?.document || document;
   const el = doc.getElementById("statusText") || doc.getElementById("statusBar");
   if (el) el.textContent = text || "";
+}
+
+/**
+ * Idle state: the panel stays in place at all times, docked above the ratio
+ * summary table, so an eligible-but-unselected moment shows a quiet note
+ * rather than the bar disappearing.
+ */
+function showSummaryFormulaBarIdle() {
+  const panel = document.getElementById("dfmSummaryFormulaPanel");
+  if (panel) panel.hidden = false;
+  const el = ensureSummaryFormulaBarEl();
+  clearSummaryFormulaBarValidationError();
+  const input = el.querySelector("#dfmSummaryFormulaBarInput");
+  const label = el.querySelector("#dfmSummaryFormulaBarLabelText");
+  if (label) label.textContent = "f(x)";
+  if (input) {
+    setSummaryFormulaBarMode("display", input);
+    input.value = "";
+    input.disabled = true;
+    delete input.dataset.rowId;
+    delete input.dataset.col;
+    delete input.dataset.displayFormula;
+  }
+  el.classList.remove("isOpen");
+  el.classList.add("isNote");
+  const display = el.querySelector("#dfmSummaryFormulaBarDisplay");
+  if (display) {
+    display.textContent = "Select a cell to see its value or formula.";
+    display.style.display = "";
+  }
+  if (input) input.style.display = "none";
+  summaryExcelLink?.update("");
+}
+
+/**
+ * A summary row that isn't User Entry (an average, a benchmark row, ...) has
+ * no formula of its own to edit, but the bar still names what it shows: the
+ * cell's own unrounded factor, read-only text a reader can select and copy
+ * -- never an input, so there is nothing to type into.
+ */
+function showSummaryFormulaBarReadOnlyValue(cell, cfg) {
+  const panel = document.getElementById("dfmSummaryFormulaPanel");
+  if (panel) panel.hidden = false;
+  const el = ensureSummaryFormulaBarEl();
+  clearSummaryFormulaBarValidationError();
+  const label = el.querySelector("#dfmSummaryFormulaBarLabelText");
+  if (label) label.textContent = String(cfg?.label || cfg?.id || "f(x)");
+  const input = el.querySelector("#dfmSummaryFormulaBarInput");
+  if (input) {
+    setSummaryFormulaBarMode("display", input);
+    input.value = "";
+    input.disabled = true;
+    delete input.dataset.rowId;
+    delete input.dataset.col;
+    delete input.dataset.displayFormula;
+  }
+  el.classList.remove("isNote");
+  el.classList.add("isOpen");
+  const rawValue = cell?.dataset?.copyValue;
+  const numericValue = rawValue === "" || rawValue == null ? NaN : Number(rawValue);
+  const display = el.querySelector("#dfmSummaryFormulaBarDisplay");
+  if (display) {
+    // Written as an equation, the way a User Entry formula is: the row name on
+    // the left of the bar, then `=`, then what that row is worth here.
+    display.textContent = Number.isFinite(numericValue) ? `= ${numericValue}` : "";
+    display.style.display = "";
+  }
+  if (input) input.style.display = "none";
+  summaryExcelLink?.update("");
+}
+
+/**
+ * True hide: nothing is rendered for the bar to describe (no summary table on
+ * the page at all), so the whole docked panel steps out of the layout rather
+ * than sitting there with permanently idle controls.
+ */
+function hideSummaryFormulaBar() {
+  const panel = document.getElementById("dfmSummaryFormulaPanel");
+  if (panel) panel.hidden = true;
+  clearSummaryFormulaBarValidationError();
+  const el = document.getElementById("dfmSummaryFormulaBar");
+  if (el) {
+    setSummaryFormulaBarMode("display", el.querySelector("#dfmSummaryFormulaBarInput"));
+    el.classList.remove("isOpen");
+  }
 }
 
 registerSummaryFunctions({
@@ -750,6 +866,7 @@ registerSummaryFunctions({
   positionSummaryFormulaBarValidationTooltip,
   scheduleSummaryFormulaBarValidationTooltipPosition,
   scheduleSummaryFormulaBarResizeRefresh,
+  syncSummaryFormulaPanelWidth,
   handleSummaryFormulaBarViewportResize,
   wireSummaryFormulaBarResizeWatcher,
   getSummaryFormulaBarParts,
@@ -768,4 +885,7 @@ registerSummaryFunctions({
   setStatusBarText,
   collapseFormulaEquals,
   submitSummaryFormulaBarInput,
+  showSummaryFormulaBarIdle,
+  showSummaryFormulaBarReadOnlyValue,
+  hideSummaryFormulaBar,
 });

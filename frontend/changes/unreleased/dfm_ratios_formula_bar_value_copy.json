@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A Ratios cell that is not User Entry now reads as an equation in the formula bar, and its value can be selected and copied.",
+  "details": [
+    "The bar shows the row name, an equals sign, and the cell's unrounded value.",
+    "Text in the formula bar can be selected with the mouse and copied, which the page-wide selection lock previously prevented."
+  ]
+}

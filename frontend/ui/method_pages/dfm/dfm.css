@@ -539,6 +539,29 @@ body {
   overflow-wrap: anywhere;
 }
 .dfmRatiosNotice[hidden] { display: none; }
+/* Docked directly above the ratio summary table, like DSV's persistent
+   formula panel: a fixed slot in the page's own flow (not a floating overlay
+   over the grid), rebuilt with the tables it sits between on every render.
+
+   The tables around it are as wide as their data, so the scrolling box is
+   wider than the window; a panel that took that whole width would push its
+   own two ends — the cell label at the left, the Excel link and the state at
+   the right — off screen, and slide them as the grid scrolls sideways. It is
+   therefore held to the visible width and pinned to the left edge of the
+   scrollport, so both ends sit where the window puts them whatever the
+   sideways scroll is. The width is measured in summary_formula_bar.js. */
+.dfmSummaryFormulaPanel {
+  position: sticky;
+  left: 0;
+  /* Above the sticky label column, below the sticky table headers, so the
+     panel scrolls up under a frozen header rather than over it. */
+  z-index: 4;
+  width: var(--dfm-summary-formula-panel-width, 100%);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px 0;
+}
 #ratioWrap table {
   margin-bottom: 3px;
 }
@@ -1116,25 +1139,19 @@ body {
   cursor: move !important;
 }
 /* Visuals come from the shared .arFormulaBar; the Ratios bar owns only where it sits. */
+/* A fixed component of dfmSummaryFormulaPanel rather than a floating overlay:
+   full width, square corners against the panel's edges, always shown (empty
+   with an isNote message when nothing eligible is selected). */
 .dfmSummaryFormulaBar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 9;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
 }
-/* The `fx` badge drags the bar off its anchor; while it is hand-placed the bar
-   leaves the grid's scroll frame for the page, staying above the tables and
-   below its own validation tooltip and dataset list. */
-.dfmSummaryFormulaBar .arFormulaBarFxIcon {
-  cursor: grab;
-  touch-action: none;
-}
-.dfmSummaryFormulaBar.isDragging .arFormulaBarFxIcon {
-  cursor: grabbing;
-}
-.dfmSummaryFormulaBar.isDragPlaced {
-  position: fixed;
-  z-index: 1600;
+.dfmSummaryFormulaBar:not(:focus-within):not(.hasValidationError) {
+  border-color: var(--ar-workspace-frame-border);
 }
 .dfmSummaryFormulaBarLabel {
   color: #6b7280;

@@ -58,7 +58,8 @@ import {
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
   applyUserEntryReferenceHighlights,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
+  syncSummaryFormulaPanelWidth,
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 import {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -259,7 +260,7 @@ export {
   updateRatioSummary,
   scheduleRatioSummaryUpdate,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 export {
   wireRatioChartModal,
   isRatioChartOpen,
@@ -977,8 +978,6 @@ export function renderRatioTable() {
   selectedRowsTableHighlight?.destroy?.();
   selectedRowsTableHighlight = null;
   wrap.innerHTML = "";
-  const formulaBar = document.getElementById("dfmSummaryFormulaBar");
-  if (formulaBar) formulaBar.remove();
   const summaryRows = buildSummaryRows();
   window.dispatchEvent(new CustomEvent("arcrho:dfm-links-changed"));
 
@@ -1196,6 +1195,17 @@ export function renderRatioTable() {
   selectedTable.appendChild(selectedBody);
 
   wrap.appendChild(table);
+  // Docked directly above the summary table it edits, rebuilt fresh on every
+  // render along with the tables around it.
+  const formulaPanel = document.createElement("div");
+  formulaPanel.id = "dfmSummaryFormulaPanel";
+  formulaPanel.className = "dfmSummaryFormulaPanel";
+  formulaPanel.setAttribute("aria-label", "Ratios Formula");
+  wrap.appendChild(formulaPanel);
+  // The panel is as wide as the window, not as wide as the tables it sits
+  // between, so a freshly built one is measured against the visible area at
+  // once rather than waiting for the first selection.
+  syncSummaryFormulaPanelWidth();
   wrap.appendChild(summaryTable);
   wrap.appendChild(selectedTable);
   // The label column's default (natural) width is measured from its text
