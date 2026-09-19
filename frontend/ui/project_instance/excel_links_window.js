@@ -41,13 +41,23 @@
 //   arcrho:excel-links-retarget-begin  - suppress the host's index-change prompt
 //   arcrho:excel-links-retarget-end    - restore it, report status, and reload
 //                                        the cached dataset table when files changed
-// and one comes in: arcrho:excel-links-datasets-changed, sent by the host when
+// and a third after every value check, arcrho:excel-links-status, which hands
+// the host the answer for the dataset table's own Status column so that table
+// does not read every workbook a second time.
+// One comes in: arcrho:excel-links-datasets-changed, sent by the host when
 // a nested window saved something in this class, which reloads the inventory.
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260907b";
 import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260918a";
+import {
+  LISTING_POLL_MS,
+  STATUS_NEEDS_REVIEW,
+  excelLinkListingSignature,
+  normalizeExcelLinkWorkbooks,
+  pendingExcelLinkWorkbooks,
+} from "/ui/shared/dataset/excel_link_inventory.js?v=20260919a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const LIST_ENDPOINT = "/excel_links/list";
@@ -55,15 +65,10 @@ const CHECK_ENDPOINT = "/excel_links/check";
 const REFRESH_ENDPOINT = "/excel_links/refresh";
 const BREAK_ENDPOINT = "/excel_links/break";
 const RETARGET_ENDPOINT = "/excel_links/retarget";
-// How often the listing is polled for a workbook saved outside ArcRho. The
-// listing is one hosted read that stats each workbook; the values are only
-// re-compared when the listing itself moved.
-export const LISTING_POLL_MS = 15000;
 const EXCEL_FILE_FILTERS = [
   { name: "Excel Workbooks", extensions: ["xlsx", "xlsm", "xlsb", "xls"] },
   { name: "All Files", extensions: ["*"] },
 ];
-const STATUS_NEEDS_REVIEW = "needs_review";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -83,78 +88,6 @@ function detailMessage(payload, fallback) {
   if (typeof detail === "string" && detail.trim()) return detail.trim();
   if (Array.isArray(detail) && detail.length) return detail.map((item) => item?.msg || String(item)).join("; ");
   return fallback;
-}
-
-/**
- * The listing's workbooks in the shape the table reads. `valueCheck` marks
- * every usage's status as the value comparison (`checkedValues`) rather than
- * the listing's file-time verdict.
- */
-export function normalizeExcelLinkWorkbooks(value, { valueCheck = false } = {}) {
-  const source = Array.isArray(value) ? value : [];
-  return source
-    .map((item) => ({
-      workbookPath: text(item?.workbook_path),
-      workbookName: text(item?.workbook_name) || text(item?.workbook_path),
-      folder: text(item?.folder),
-      exists: item?.exists === true,
-      // The server's stat of the file; part of the poll's change signature.
-      mtime: Number.isFinite(Number(item?.mtime)) && item?.mtime !== null ? Number(item.mtime) : null,
-      // The workbook's own Created/Modified/Last saved by, the workbook-side
-      // answer to the dataset table's Created, Last Modified, and User. A
-      // workbook that carries none - a legacy .xls, an encrypted package -
-      // leaves them blank.
-      created: text(item?.created),
-      modified: text(item?.modified),
-      lastModifiedBy: text(item?.last_modified_by),
-      datasetCount: count(item?.dataset_count),
-      methodCount: count(item?.method_count),
-      linkCount: count(item?.link_count),
-      cellCount: count(item?.cell_count),
-      usages: (Array.isArray(item?.usages) ? item.usages : [])
-        .map((usage) => ({
-          kind: usage?.kind === "dfm" ? "dfm" : "dataset",
-          name: text(usage?.name),
-          datasetType: text(usage?.dataset_type),
-          methodType: text(usage?.method_type),
-          // needs_review / updated, or blank when the server could not settle it.
-          status: text(usage?.status),
-          statusPending: false,
-          checkedValues: valueCheck === true,
-          changedCellCount: count(usage?.changed_cell_count),
-          checkError: text(usage?.check_error),
-          linkCount: count(usage?.link_count),
-          cellCount: count(usage?.cell_count),
-        }))
-        .filter((usage) => usage.name),
-    }))
-    .filter((item) => item.workbookPath);
-}
-
-/** The same workbooks with every status blanked and marked as being checked. */
-export function pendingExcelLinkWorkbooks(workbooks) {
-  return (Array.isArray(workbooks) ? workbooks : []).map((workbook) => ({
-    ...workbook,
-    usages: workbook.usages.map((usage) => ({
-      ...usage, status: "", statusPending: true, checkedValues: false, changedCellCount: 0, checkError: "",
-    })),
-  }));
-}
-
-/**
- * What the poll compares one listing with the last: each workbook's path,
- * file time, and reachability, and each usage with its file-time verdict. A
- * workbook saved in Excel moves its file time; a dataset saved in ArcRho
- * moves its verdict; a link added or removed changes the usages.
- */
-export function excelLinkListingSignature(workbooks) {
-  return JSON.stringify((Array.isArray(workbooks) ? workbooks : []).map((workbook) => [
-    text(workbook?.workbookPath).toLowerCase(),
-    workbook?.mtime ?? null,
-    workbook?.exists === true,
-    text(workbook?.modified),
-    (Array.isArray(workbook?.usages) ? workbook.usages : []).map((usage) => [usage.kind, usage.name, usage.status]),
-  ]));
 }
 
 export function excelLinkInventorySummary({ workbookCount, visibleRows, totalRows, needsReviewCount, scanErrorCount }) {
@@ -474,6 +407,13 @@ async function checkValues(seq) {
     if (seq !== manager.requestSeq) return;
     setRows(normalizeExcelLinkWorkbooks(payload?.workbooks, { valueCheck: true }), { autoFit: false });
     syncInventoryStatus();
+    // The dataset table behind this window folds the same verdict into its own
+    // Status column, so it takes this answer rather than paying for a second
+    // read of every workbook.
+    postToParent("arcrho:excel-links-status", {
+      reservingClass,
+      workbooks: Array.isArray(payload?.workbooks) ? payload.workbooks : [],
+    });
   } catch (error) {
     if (seq !== manager.requestSeq) return;
     setRows(manager.listing, { autoFit: false });

@@ -1422,7 +1422,9 @@ window.addEventListener("message", (event) => {
     api.handleReviewTableWindowMessage(msg, event.source);
     return;
   }
-  if (msg.type === "arcrho:excel-links-retarget-begin" || msg.type === "arcrho:excel-links-retarget-end") {
+  if (msg.type === "arcrho:excel-links-retarget-begin"
+    || msg.type === "arcrho:excel-links-retarget-end"
+    || msg.type === "arcrho:excel-links-status") {
     api.handleExcelLinksWindowMessage(msg, event.source);
     return;
   }

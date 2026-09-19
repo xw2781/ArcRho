@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dataset table's Status column now also turns yellow when a linked Excel workbook holds different numbers, so a link that needs refreshing is visible without opening Manage Excel Links.",
+  "details": [
+    "The check runs on its own for the selected reserving class: the linked cells are read on Arco Server when the class opens, after a save in it, and whenever a workbook is saved outside ArcRho, which a 15-second file check notices.",
+    "Hovering the Status cell says which of the two reasons applies - an input dependency or an Excel workbook - and names the workbook and how many linked values differ.",
+    "Nothing is stored by the check: marking a row for review still reflects only the stored flag.",
+    "A class with no Excel links is not re-scanned on the timer, and a class whose Excel Link Manager is open is read once for both, not twice."
+  ]
+}

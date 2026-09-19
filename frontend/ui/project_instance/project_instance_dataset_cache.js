@@ -504,6 +504,9 @@ function applyCachedDatasetSnapshot(payload, path = state.selectedPath) {
     ? toText(payload?.index_warning) || "Dataset table loaded, but index.json could not be updated."
     : "";
   void startDatasetIndexWatchForSnapshot(payload, normalizedPath);
+  // The Status column also reports a linked workbook that now holds different
+  // numbers, which is a question about files the index knows nothing about.
+  api.startExcelLinkStatusWatch?.(normalizedPath);
   // The disk-backed inventory moved on, so any open graph of this class redraws.
   api.notifyDependencyGraphWindows?.(normalizedPath);
 }
@@ -537,6 +540,7 @@ async function loadCachedDatasetFilterForSelectedPath(options = {}) {
   }
 
   if (!projectName || !path) {
+    api.stopExcelLinkStatusWatch?.();
     cachedDatasetFilter.loading = false;
     syncCachedDatasetToolbar();
     renderDatasetTable();

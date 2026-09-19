@@ -33,6 +33,8 @@ export function installProjectInstanceDatasetTable(ctx) {
   const finishPageLoading = (...args) => api.finishPageLoading(...args);
   const focusProjectInstancePage = (...args) => api.focusProjectInstancePage(...args);
   const getCachedDatasetKey = (...args) => api.getCachedDatasetKey(...args);
+  const getExcelLinkStatus = (...args) => api.getExcelLinkStatus?.(...args) || null;
+  const getExcelLinkStatusSentence = (...args) => api.getExcelLinkStatusSentence?.(...args) || "";
   const hasCachedDatasetMetadataForSelectedPath = (...args) => api.hasCachedDatasetMetadataForSelectedPath(...args);
   const isDatasetRecordCached = (...args) => api.isDatasetRecordCached(...args);
   const isTemporaryDatasetView = (...args) => api.isTemporaryDatasetView(...args);
@@ -915,14 +917,30 @@ function getMethodType(row) {
   return cachedDatasetFilter.methodTypesByName.get(normalizeLookupKey(getDatasetName(row))) || "None";
 }
 
-function getDatasetStatusLabel(status) {
-  return statusNeedsReview(status) ? "Needs review" : "Updated";
+function getDatasetStatusLabel(needsReview) {
+  return needsReview ? "Needs review" : "Updated";
 }
 
 function getDatasetStatus(record, instanceName = "") {
   const name = instanceName || record?.datasetName || getDatasetName(record?.row);
   const meta = record?.meta || getCachedDatasetMetadataByName(name) || getCachedDatasetMetadata(record?.row);
   return normalizeReviewStatus(meta?.status ?? record?.instance?.status ?? record?.status);
+}
+
+/**
+ * Whether a row's Status reads Needs Review. Two things say so: the flag the
+ * sidecar stores, and a linked Excel workbook that now holds numbers this
+ * object has not loaded. The second is an observation of files no index
+ * describes, so it only paints the column - nothing about it is stored, and
+ * the row menu's Mark for review still reads the stored flag alone.
+ */
+function datasetNeedsReview(record, instanceName = "") {
+  if (statusNeedsReview(getDatasetStatus(record, instanceName))) return true;
+  // Temporary view's Status column answers a different question - whether the
+  // type is in the index - so a link verdict has no place in it.
+  if (isTemporaryViewActive()) return false;
+  const name = instanceName || record?.datasetName || getDatasetName(record?.row);
+  return !!getExcelLinkStatus(name)?.needsReview;
 }
 
 function getCachedDatasetMetadata(row) {
@@ -1017,7 +1035,7 @@ function getDatasetCellValue(row, key) {
     case "datasetTypeName":
       return datasetName;
     case "status":
-      return getDatasetStatusLabel(getDatasetStatus({ row }));
+      return getDatasetStatusLabel(datasetNeedsReview({ row }));
     case "dataFormat":
       return toText(row?.[1]);
     case "formula":
@@ -1050,7 +1068,7 @@ function getDatasetRecordCellValue(row, key, instance = null) {
     case "datasetTypeName":
       return datasetTypeName;
     case "status":
-      return getDatasetStatusLabel(getDatasetStatus({ row, instance }, instanceName));
+      return getDatasetStatusLabel(datasetNeedsReview({ row, instance }, instanceName));
     case "dataFormat":
       return instance ? (toText(instance?.data_format) || toText(row?.[1])) : toText(row?.[1]);
     case "formula":
@@ -1813,9 +1831,9 @@ function createDatasetTableHeaderCell(col, colIndex, context = null) {
   return th;
 }
 
-function getDatasetStatusIconSvg(status) {
+function getDatasetStatusIconSvg(needsReview) {
   // The shared glyphs, so the Excel Link Manager's Status column reads the same.
-  return reviewStatusIconSvg(statusNeedsReview(status));
+  return reviewStatusIconSvg(needsReview === true);
 }
 
 function getTemporaryDatasetStatusIconSvg(isIndexed) {
@@ -1843,14 +1861,19 @@ function appendDatasetStatusCell(td, item) {
     return;
   }
   const status = getDatasetStatus(item);
-  const label = getDatasetStatusLabel(status);
+  const needsReview = datasetNeedsReview(item);
+  const label = getDatasetStatusLabel(needsReview);
+  const excelSentence = getExcelLinkStatusSentence(item?.datasetName || getDatasetName(item?.row));
   const wrap = document.createElement("span");
-  wrap.className = `pi-status-cell ${statusNeedsReview(status) ? "warning" : "updated"}`;
-  wrap.title = statusNeedsReview(status)
-    ? "Needs review because an input dependency was updated after this method output, or because it was marked for review."
-    : "Dataset is updated.";
+  wrap.className = `pi-status-cell ${needsReview ? "warning" : "updated"}`;
+  wrap.title = [
+    statusNeedsReview(status)
+      ? "Needs review because an input dependency was updated after this method output, or because it was marked for review."
+      : excelSentence ? "" : "Dataset is updated.",
+    excelSentence,
+  ].filter(Boolean).join("\n");
   wrap.setAttribute("aria-label", label);
-  wrap.innerHTML = getDatasetStatusIconSvg(status);
+  wrap.innerHTML = getDatasetStatusIconSvg(needsReview);
   td.appendChild(wrap);
 }
 
