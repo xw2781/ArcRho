@@ -23,9 +23,11 @@ No new browser-facing route. This existing route selects the transport per reque
 | (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
 
 The review-status set is the Project Instance `Mark For Review` / `Set
-Reviewed` action. It rewrites one sidecar per selected method output, which
-from a Client PC is a read and a write per object over the share, so hosting it
-puts the whole selection on local disk. It is a human sign-off on values nobody
+Reviewed` action, shared by the dataset table and Dependency Graph context
+menu. It requires the Gateway on Client PCs and never falls back to SMB when
+the Gateway is disabled, unsupported, or unavailable. Server processes retain
+the canonical local service. It rewrites one sidecar per selected method output
+on the server's local disk. It is a human sign-off on values nobody
 touched: it writes `status`, `updated_at` and `modified_by`, appends the one
 audit record naming the decision, and does nothing else -- it marks no
 dependent and enqueues no propagation walk, exactly as a notes edit does. The

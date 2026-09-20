@@ -35,13 +35,14 @@
   overflow: hidden;
 }
 
-/* One compact command row: a search box, the Show all switch, the
-   interaction cue, the family legend, and the four icon buttons the diagram
+/* One compact command row: a search box, chain filters, the family legend,
+   and the four icon buttons the diagram
    is steered with. */
 .pi-dependency-graph-toolbar {
   min-height: 28px;
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   user-select: none;
@@ -67,36 +68,17 @@
 }
 
 .pi-dependency-graph-check {
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  min-height: 28px;
   color: var(--ar-color-text-muted);
   white-space: nowrap;
   cursor: pointer;
 }
 
-.pi-dependency-graph-check input {
-  width: 13px;
-  height: 13px;
-  margin: 0;
-  accent-color: var(--ar-color-accent);
-  cursor: pointer;
-}
-
-.pi-dependency-graph-check:hover { color: var(--ar-color-text-strong); }
-.pi-dependency-graph-check input:disabled { cursor: default; }
+.pi-dependency-graph-check input { margin: 0; accent-color: var(--ar-color-accent); }
 .pi-dependency-graph-check input:disabled + span { opacity: 0.55; }
-
-.pi-dependency-graph-cue {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--ar-color-text-muted);
-  line-height: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .pi-dependency-graph-legend {
   flex: 0 0 auto;
@@ -242,6 +224,7 @@
 
 /* A back edge closes a cycle the layering had to leave out. */
 .dg-edge.is-back { stroke-dasharray: 4 3; }
+.dg-edge.is-indirect { stroke-dasharray: 5 4; }
 
 .dg-edge.is-upstream { stroke: var(--ar-color-accent); marker-end: url(#dgArrowUpstream); }
 .dg-edge.is-downstream { stroke: var(--ar-color-success); marker-end: url(#dgArrowDownstream); }
@@ -403,10 +386,6 @@
 
 .dg-node-review {
   flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ar-color-warning);
 }
 
 /* ---- Ports ------------------------------------------------------------- */

@@ -483,10 +483,11 @@ function setSelectedPath(path, options = {}) {
   markPathTreeActive(state.selectedPath);
   syncDatasetWindowChrome();
   api.refreshReservingClassBusyNow?.();
-  void loadCachedDatasetFilterForSelectedPath();
+  const loading = loadCachedDatasetFilterForSelectedPath();
   renderDatasetTable();
   if (options?.persist !== false) saveLastSelectedPath(state.selectedPath);
   notifyProjectInstanceStateChanged();
+  return loading;
 }
 
 function waitForPathTreeRender() {

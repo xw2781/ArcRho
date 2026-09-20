@@ -5,6 +5,19 @@ Set lightweight app-server and domain behavior guardrails for the current pre-pr
 
 Prefer clean coordinated refactors over compatibility shims unless the user explicitly asks for migration support.
 
+The Dependency Graph response projects stored `dataset_category` and project-owned
+`dataset_type_category` for the shared PI category resolver, without changing the
+persisted index. Its registered workspace read requires the Gateway on Client PCs;
+transport failures must not invoke the local SMB read. Review-status writes
+also require the Gateway on Client PCs, retaining the canonical method-output
+sign-off rules without SMB fallback. Status, Category, and Method
+Type filters use same-dataset AND across fields and OR within each field.
+Show matched items only defaults on: keep indexed matches and project indirect
+paths through hidden nodes as dashed links, stopping at the next visible match.
+Turning it off restores their upstream/downstream context. Nodes with neither
+precedents nor dependents are always excluded from the graph and filter
+option counts, including method outputs.
+
 ## Scope
 This contract applies when changing app-server routes, schemas, services, runtime path config, workflow persistence, project settings persistence, cache/refresh behavior, reserving-class data, dataset behavior, or frontend consumers that depend on those contracts.
 

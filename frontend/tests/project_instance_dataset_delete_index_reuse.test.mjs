@@ -9,6 +9,7 @@ const tableSource = await readFile(
 // The module is imported from a data: URL, which cannot resolve the app's
 // absolute "/ui/..." specifiers, so every browser-only import is stubbed here.
 const testableSource = tableSource
+  .replace("/ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a", new URL("../ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a", import.meta.url).href)
   .replace(
     /^import \{ openDatasetNamePicker \} from .*;\s*/mu,
     "const openDatasetNamePicker = async () => null;\n",

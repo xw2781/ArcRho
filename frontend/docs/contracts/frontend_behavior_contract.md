@@ -34,6 +34,17 @@ The manual Data formula panel provides a compact formula field with Enter to app
 
 DSV and DFM share formula completion and an fx dialog for function selection, argument choices, and read-only result previews. Inserting a validated formula changes only the draft; the editor's normal Enter command applies it. Typing `[` offers dataset names in both editors. DSV's formula panel shows the top-left cell of the first selected range. A DSV grid and a DFM Ratios summary each open on a cell rather than on an instruction to pick one. A DSV grid opens on the first cell holding a formula, or on the grid's first cell when none does, and may still move onto a formula cell whose links arrive after the first paint. A DFM Ratios summary opens on the selected average cell of the first development column, or on that column's first row while nothing is selected, and follows the selection as a method's saved selections settle. Neither overrides a selection the reader has made. The [formula-bar guide](../ui/formula_bar.md) defines the supported dataset calls and scope defaults.
 
+Dependency Graph card actions use the shared `dependency_graph_contract.js`
+request/result messages. PI accepts them only from an owned graph frame and
+uses that frame's pinned class. Review delegates to the existing review-status
+action; table navigation selects the exact dataset instance and reports a
+failed reveal without minimizing the graph. See [PI](../ui/project_instance.md).
+
+Dependency Graph filters use the PI dataset table's shared searchable value menu.
+The last Status, Category, Method Type, and matched-only choices are local-user
+preferences restored on graph open, independent of PI table filters and project
+data. Already-open graphs retain their own state.
+
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.

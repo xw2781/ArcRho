@@ -7,6 +7,10 @@
 // ordering, and reach rules are pinned by
 // frontend/tests/project_instance_dependency_graph.test.mjs.
 
+import { datasetInstanceCategory } from "../shared/dataset/dataset_category.js?v=20260920a";
+import { normalizeReviewStatus } from "../shared/dataset/review_status.js";
+import { berquistShermanDisplayLabel } from "../shared/dataset/berquist_sherman_contract.js";
+
 export const DEPENDENCY_GRAPH_NODE_WIDTH = 188;
 export const DEPENDENCY_GRAPH_NODE_HEIGHT = 40;
 export const DEPENDENCY_GRAPH_COLUMN_GAP = 64;
@@ -46,7 +50,7 @@ export function dependencyGraphKey(name) {
 export function dependencyNodeKind(node = {}) {
   const methodType = text(node.method_type ?? node.methodType);
   if (methodType && methodType.toLowerCase() !== "none") {
-    return { family: "method", label: methodType };
+    return { family: "method", label: berquistShermanDisplayLabel(methodType) };
   }
   const sourceKind = text(node.source_kind ?? node.sourceKind).toLowerCase();
   if (sourceKind === "engine") {
@@ -62,7 +66,7 @@ export function dependencyNodeKind(node = {}) {
 /**
  * Normalizes indexed nodes and their deduplicated edges for the window.
  *
- * References outside the index are excluded before layout and Show all.
+ * References outside the index are excluded before filtering and layout.
  * Edges with an excluded or unknown endpoint, and self edges, are dropped.
  */
 export function buildDependencyGraph(payload = {}) {
@@ -77,10 +81,11 @@ export function buildDependencyGraph(payload = {}) {
       key,
       name,
       datasetType: text(raw.dataset_type) || name,
+      category: datasetInstanceCategory(raw, raw.dataset_type_category),
       sourceKind: text(raw.source_kind).toLowerCase(),
       methodType: methodType.toLowerCase() === "none" ? "" : methodType,
       methodName: text(raw.method_name),
-      status: Number(raw.status) === 2 ? 2 : 0,
+      status: normalizeReviewStatus(raw.status),
       formula: text(raw.formula),
       kind: dependencyNodeKind(raw),
       precedents: [],
@@ -125,17 +130,11 @@ export function dependencyGraphReach(graph, key) {
   return { upstream: walk(key, "precedents"), downstream: walk(key, "dependents") };
 }
 
-/**
- * The boxes the diagram leaves out until Show all is ticked: a dataset that
- * nothing reads. A method output is always drawn, because the end of a chain
- * - a Result Selection, or a DFM nobody has picked yet - is what the diagram
- * is for.
- */
-export function dependencyGraphHiddenByDefault(graph) {
+/** Indexed nodes without any valid connection, including method outputs. */
+export function dependencyGraphIsolatedKeys(graph) {
   const hidden = new Set();
   for (const node of graph.nodes) {
-    if (node.kind.family === "method") continue;
-    if (!node.dependents.length) hidden.add(node.key);
+    if (!node.precedents.length && !node.dependents.length) hidden.add(node.key);
   }
   return hidden;
 }

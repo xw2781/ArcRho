@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dependency graph can now filter by status, category, and method type, showing matching datasets and their surrounding chain.",
+  "details": [
+    "Status, Category, and Method Type filters replace the old graph toolbar cue.",
+    "Show matched items only narrows the graph to matches; unchecking it adds their upstream and downstream context.",
+    "Filter and Show matched items only choices are remembered per Windows user and restored the next time a graph opens."
+  ]
+}

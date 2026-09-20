@@ -1648,13 +1648,16 @@ def _read_dataset_sidecar(path: str) -> Dict[str, Any]:
     return expand_sidecar_links(payload) if isinstance(payload, dict) else {}
 
 
-def _dataset_type_calculation_map(project_name: str) -> Dict[str, tuple[bool, str]]:
-    try:
-        from app_server.services import calculated_dataset_service
+def _dataset_type_calculation_map(
+    project_name: str, *, rows: List[Dict[str, Any]] | None = None,
+) -> Dict[str, tuple[bool, str]]:
+    if rows is None:
+        try:
+            from app_server.services import calculated_dataset_service
 
-        rows = calculated_dataset_service._dataset_type_rows(project_name)
-    except Exception:
-        return {}
+            rows = calculated_dataset_service._dataset_type_rows(project_name)
+        except Exception:
+            return {}
     known_keys = dataset_type_keys(rows)
     out: Dict[str, tuple[bool, str]] = {}
     for row in rows:

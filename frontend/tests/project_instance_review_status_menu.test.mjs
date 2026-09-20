@@ -15,6 +15,8 @@ const pageHtml = await readFile(
 // whole decision is about those two values.
 const reviewStatusUrl = new URL("../ui/shared/dataset/review_status.js", import.meta.url).href;
 const testableSource = tableSource
+  .replace("/ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a", new URL("../ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a", import.meta.url).href)
+  .replace("/ui/shared/dataset/dataset_category.js?v=20260920a", new URL("../ui/shared/dataset/dataset_category.js?v=20260920a", import.meta.url).href)
   .replace(
     /^import \{ openDatasetNamePicker \} from .*;\s*/mu,
     "const openDatasetNamePicker = async () => null;\n",
@@ -314,6 +316,36 @@ test("setting reviewed sends the current status code", async () => {
 test("both items are in the row context menu, worded as the user asked", () => {
   assert.match(pageHtml, /data-row-action="mark-for-review" hidden>Mark For Review</u);
   assert.match(pageHtml, /data-row-action="set-reviewed" hidden>Set Reviewed</u);
+});
+
+test("graph review targets its pinned class without reloading another class's table", async () => {
+  const records = [makeRecord(0, "Flagged DFM", "DFM", 2)];
+  const { api, calls, state } = createHarness(records);
+  const notified = [];
+  api.notifyDependencyGraphWindows = path => notified.push(path);
+  globalThis.fetch = async (url, options) => {
+    assert.equal(JSON.parse(options.body).reserving_class, "Graph Class");
+    return { ok: true, json: async () => ({ ok: true, updated: ["Flagged DFM"] }) };
+  };
+  try {
+    const result = await api.setDatasetRowsReviewStatus(records, false, { reservingClass: "Graph Class" });
+    assert.equal(result.ok, true);
+  } finally { delete globalThis.fetch; }
+  assert.equal(calls.reloads, 0);
+  assert.equal(state.selectedPath, "Direct Group/COLL");
+  assert.deepEqual(notified, ["Graph Class"]);
+});
+
+test("review failures return their message without reloading or changing selection", async () => {
+  const records = [makeRecord(0, "Flagged DFM", "DFM", 2)];
+  const { api, calls, state } = createHarness(records);
+  selectAll(state, records);
+  globalThis.fetch = async () => ({ ok: false, status: 503, json: async () => ({ detail: "Gateway unavailable" }) });
+  try {
+    assert.deepEqual(await api.setDatasetRowsReviewStatus(records, false), { ok: false, message: "Gateway unavailable" });
+  } finally { delete globalThis.fetch; }
+  assert.equal(calls.reloads, 0);
+  assert.deepEqual([...state.datasetTableSelection.selectedKeys], ["row-0"]);
 });
 
 test("the Project Instance status column reads the shared review-status codes", () => {

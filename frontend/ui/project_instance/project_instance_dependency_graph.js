@@ -11,6 +11,7 @@
 // other nested window: selecting another class in the tree leaves it alone and
 // opens a second window for that class instead.
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { DEPENDENCY_GRAPH_ACTION_MESSAGE, DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE } from "./dependency_graph_contract.js?v=20260920a";
 
 export const DEPENDENCY_GRAPH_WINDOW_KIND = "dependency_graph";
 export const DEPENDENCY_GRAPH_REFRESH_MESSAGE = "arcrho:dependency-graph-refresh";
@@ -79,8 +80,51 @@ export function installProjectInstanceDependencyGraph(ctx) {
     els.dependencyGraphBtn.addEventListener("click", () => void openDependencyGraph());
   }
 
+  async function handleDependencyGraphAction(event) {
+    const message = event.data;
+    if (message?.type !== DEPENDENCY_GRAPH_ACTION_MESSAGE) return;
+    const frame = api.findWindowByMessageSource(event.source);
+    if (!isDependencyGraphWindow(frame)) return;
+    const path = normalizePath(api.getWindowPath(frame));
+    const name = String(message.datasetName || "").trim();
+    if (!path || !name) return;
+    let result;
+    try {
+      if (message.action === "set-reviewed") {
+        if (normalizePath(state.selectedPath) === path && api.isReservingClassBusy?.()) {
+          throw new Error("Dependent updates are running for this reserving class. Try again when they finish.");
+        }
+        result = await api.setDatasetRowsReviewStatus([
+          { datasetName: name, values: { methodType: message.methodType } },
+        ], false, { reservingClass: path });
+      } else if (message.action === "view-in-table") {
+        if (api.isTemporaryDatasetView() && !await api.toggleDatasetViewMode()) {
+          throw new Error("Could not leave temporary dataset view.");
+        }
+        if (normalizePath(state.selectedPath) !== path) await api.setSelectedPath(path);
+        else if (!api.hasCachedDatasetSnapshotForSelectedPath()) await api.loadCachedDatasetFilterForSelectedPath();
+        if (normalizePath(state.selectedPath) !== path) throw new Error("The selected class changed. Try View in Dataset Table again.");
+        if (state.cachedDatasetFilter.error) throw new Error(state.cachedDatasetFilter.error);
+        if (!api.selectDatasetRecordByName(name, { reveal: true })) throw new Error(`${name} is no longer in the dataset table.`);
+        await api.hideDatasetWindow(frame);
+        api.focusProjectInstancePage();
+        api.focusDatasetTableSurface();
+        await api.revealPathTreeSelection(path);
+        result = { ok: true, message: `Selected ${name} in the dataset table.` };
+        setStatus(result.message);
+      } else return;
+    } catch (error) {
+      result = { ok: false, message: error.message || "The graph action failed." };
+      setStatus(result.message, true);
+    }
+    event.source.postMessage({ type: DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE, ...result }, "*");
+  }
+
+  window.addEventListener("message", (event) => { void handleDependencyGraphAction(event); });
+
   Object.assign(api, {
     initDependencyGraph,
+    handleDependencyGraphAction,
     isDependencyGraphWindow,
     notifyDependencyGraphWindows,
     openDependencyGraph,

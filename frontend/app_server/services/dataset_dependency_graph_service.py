@@ -11,9 +11,10 @@ walk follows.
 
 An Engine-built dataset is the one node whose formula the index cannot carry:
 an Engine sidecar holds none by contract, and the project Dataset Types own
-it. The graph reads those types once and hydrates the engine nodes from them,
-so the window can tell a dataset the Engine filled from one source column
-apart from one it evaluated as a formula over other types.
+it. For a nonempty class the graph reads those types once for category
+presentation and engine formula hydration. The window can then tell a dataset
+the Engine filled from one source column apart from one it evaluated as a
+formula over other types. These presentation fields never enrich the index.
 """
 from __future__ import annotations
 
@@ -30,8 +31,8 @@ def _clean_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
 
-def _engine_formulas(project: str, nodes: List[Dict[str, Any]]) -> None:
-    """Fill in the formula of every Engine-built node, in one Dataset Types read.
+def _dataset_type_metadata(project: str, nodes: List[Dict[str, Any]]) -> None:
+    """Read type categories and Engine formulas from one Dataset Types snapshot.
 
     ``_dataset_type_calculation_map`` is the one place that decides which
     formula a dataset type shows, so the box and the Details page read the same
@@ -41,11 +42,15 @@ def _engine_formulas(project: str, nodes: List[Dict[str, Any]]) -> None:
 
     if not nodes:
         return
-    from app_server.services import dataset_service
+    from app_server.services import calculated_dataset_service, dataset_service
 
-    calculation = dataset_service._dataset_type_calculation_map(project)
+    rows = calculated_dataset_service._dataset_type_rows(project)
+    calculation = dataset_service._dataset_type_calculation_map(project, rows=rows)
+    categories = {_canon_dataset_name(row["name"]): _clean_text(row.get("category")) for row in rows}
     for node in nodes:
-        node["formula"] = calculation.get(str(node["dataset_type"]).lower(), (False, ""))[1]
+        node["dataset_type_category"] = categories.get(_canon_dataset_name(node["dataset_type"]), "")
+        if node["source_kind"].lower() == "engine":
+            node["formula"] = calculation.get(str(node["dataset_type"]).lower(), (False, ""))[1]
 
 
 def build_reserving_class_dependency_graph(project_name: str, reserving_class: str) -> Dict[str, Any]:
@@ -53,7 +58,7 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
 
     A precedent the index does not list - a name a sidecar still carries after
     its dataset was deleted - keeps its edge and becomes a node with no
-    metadata, so the diagram shows the dangling reference instead of hiding it.
+    metadata. The window excludes these nodes before filtering and layout.
     """
 
     project = _clean_text(project_name)
@@ -64,7 +69,6 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
     index = dataset_instance_index_service.get_index(project, rc)
     rows = index.get("files") if isinstance(index, dict) else None
     nodes: List[Dict[str, Any]] = []
-    engine_nodes: List[Dict[str, Any]] = []
     display_names: Dict[str, str] = {}
     for row in rows or []:
         name = _clean_text(row.get("name")) if isinstance(row, dict) else ""
@@ -75,6 +79,7 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
         node = {
             "name": name,
             "dataset_type": _clean_text(row.get("dataset_type")) or name,
+            "dataset_category": _clean_text(row.get("dataset_category")),
             "source_kind": _clean_text(row.get("source_kind")),
             "method_type": status_service.normalize_method_type(
                 row.get("method_type"), row.get("source_kind")
@@ -85,10 +90,8 @@ def build_reserving_class_dependency_graph(project_name: str, reserving_class: s
             "in_index": True,
         }
         nodes.append(node)
-        if node["source_kind"].lower() == "engine":
-            engine_nodes.append(node)
 
-    _engine_formulas(project, engine_nodes)
+    _dataset_type_metadata(project, nodes)
 
     sidecars = status_service.read_sidecars(project, rc, list(display_names.values()))
     edge_keys: Dict[tuple, Dict[str, str]] = {}

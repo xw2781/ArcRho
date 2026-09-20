@@ -1,4 +1,5 @@
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
+import { datasetInstanceCategory } from "/ui/shared/dataset/dataset_category.js?v=20260920a";
 import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
 import {
   STATUS_CURRENT,
@@ -21,6 +22,8 @@ import {
   readSettingsFile,
   saveSettingsFile,
 } from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
+
+import { allFilterValuesSelected as isDatasetFilterAllValuesSelected, renderValueFilterMenu } from "/ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a";
 
 export function installProjectInstanceDatasetTable(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -105,16 +108,6 @@ function getDatasetFilterActiveValues(key, context = null) {
         .filter((keyValue) => !optionLabels.has(keyValue))
         .map((keyValue) => String(keyValue))
     );
-}
-
-function isDatasetFilterAllValuesSelected(selected, options) {
-  return (
-    selected instanceof Set
-    && Array.isArray(options)
-    && options.length > 0
-    && selected.size === options.length
-    && options.every((opt) => selected.has(opt.key))
-  );
 }
 
 function isDatasetExplicitAllFilter(key, context = null) {
@@ -523,9 +516,28 @@ function selectDatasetRecordAtIndex(index) {
   return true;
 }
 
-function selectDatasetRecordByName(datasetName) {
+function selectDatasetRecordByName(datasetName, { reveal = false } = {}) {
   const targetKey = normalizeLookupKey(datasetName);
   if (!targetKey) return false;
+  if (reveal) {
+    const context = buildDatasetTableRenderContext();
+    const record = context.records.find((item) => normalizeLookupKey(item.datasetName) === targetKey);
+    if (!record) return false;
+    for (const [key, selected] of context.selectionsByKey) {
+      if (isDatasetColumnFilterActive(key, context) && !selected.has(getDatasetFilterKey(getDatasetRecordValue(record, key)))) {
+        datasetTableView.filters.delete(key);
+        state.datasetTableExplicitAllFilterKeys?.delete(key);
+      }
+    }
+    const path = [];
+    for (const key of getDatasetGroupByKeys()) {
+      path.push({ key, valueKey: getDatasetFilterKey(getDatasetRecordValue(record, key)) });
+      datasetTableView.collapsedGroups.delete(getDatasetGroupId(path));
+    }
+    closeDatasetTableFilterPopover();
+    renderDatasetTable();
+    saveDatasetTablePreferences();
+  }
   const record = state.datasetTableVisibleRecords.find((item) => normalizeLookupKey(item?.datasetName) === targetKey);
   const key = getDatasetRecordKey(record);
   if (!key) return false;
@@ -1001,10 +1013,6 @@ function getInstanceDatasetTypeName(item, instanceName = "") {
   return toText(item?.dataset_type) || instanceName;
 }
 
-function getInstanceDatasetCategory(item) {
-  return toText(item?.dataset_category || item?.category);
-}
-
 function parseDatasetGeneratedFlag(value) {
   if (typeof value === "boolean") return value;
   const text = toText(value).toLowerCase();
@@ -1186,7 +1194,7 @@ function getDatasetRecordCellValue(row, key, instance = null) {
         ? (meta?.formula || toText(instance?.formula) || toText(row?.[4]))
         : toText(row?.[4]));
     case "category":
-      return instance ? (getInstanceDatasetCategory(instance) || toText(row?.[2])) : toText(row?.[2]);
+      return datasetInstanceCategory(instance, row?.[2]);
     case "methodType":
       return berquistShermanDisplayLabel(
         instance?.method_type
@@ -3014,7 +3022,7 @@ async function deleteSelectedDatasetRows(records) {
   }
 }
 
-async function setDatasetRowsReviewStatus(records, needsReview) {
+async function setDatasetRowsReviewStatus(records, needsReview, { reservingClass = state.selectedPath } = {}) {
   // A row no method wrote has no review flag; the menu already hides the
   // items for such a selection, and this keeps a mixed selection acting only
   // on the method outputs inside it.
@@ -3022,7 +3030,9 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
     .filter(isMethodDatasetRecord)
     .map((record) => toText(record?.datasetName))
     .filter(Boolean);
-  if (!projectName || !state.selectedPath || !names.length) return;
+  const path = normalizePath(reservingClass);
+  if (!projectName || !path || !names.length) return { ok: false, message: "Select a method-output dataset to update its review status." };
+  const isSelectedPath = () => normalizePath(state.selectedPath).toLowerCase() === path.toLowerCase();
   const label = names.length === 1 ? names[0] : `${names.length} objects`;
   const title = needsReview ? "Marking for review" : "Setting reviewed";
   // The reload below rebuilds every row, so the rows the user picked and the
@@ -3031,6 +3041,7 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
   // class.
   const scrollState = captureDatasetTableScroll();
   const selectionState = captureDatasetTableSelection();
+  const selectionPath = normalizePath(state.selectedPath);
   setStatus(`${needsReview ? "Marking" : "Clearing"} the review flag for ${label}...`);
   beginPageLoading("review-status", {
     title,
@@ -3042,7 +3053,7 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         project_name: projectName,
-        reserving_class: state.selectedPath,
+        reserving_class: path,
         dataset_names: names,
         status: needsReview ? STATUS_REVIEW_NEEDED : STATUS_CURRENT,
       }),
@@ -3057,24 +3068,33 @@ async function setDatasetRowsReviewStatus(records, needsReview) {
     // The sidecar writes changed the reserving-class folder, so the index the
     // reload asks for is rebuilt; the suppression window keeps the poll from
     // offering a Refresh Table prompt for the write the user just made.
-    state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
-    await loadCachedDatasetFilterForSelectedPath();
-    state.datasetIndexWatch.pending = false;
-    syncCachedDatasetToolbar();
-    renderDatasetTable();
-    restoreDatasetTableSelection(selectionState);
-    restoreDatasetTableScroll(scrollState);
+    if (isSelectedPath()) {
+      state.datasetIndexWatch.suppressUntil = Date.now() + 1500;
+      await loadCachedDatasetFilterForSelectedPath();
+      if (isSelectedPath()) {
+        state.datasetIndexWatch.pending = false;
+        syncCachedDatasetToolbar();
+        renderDatasetTable();
+        if (selectionPath.toLowerCase() === path.toLowerCase()) {
+          restoreDatasetTableSelection(selectionState);
+          restoreDatasetTableScroll(scrollState);
+        }
+      }
+    }
+    if (!isSelectedPath()) api.notifyDependencyGraphWindows?.(path);
     const updated = Array.isArray(payload?.updated) ? payload.updated.length : 0;
     const noun = updated === 1 ? "object" : "objects";
-    setStatus(
-      updated
+    const message = updated
         ? (needsReview
           ? `Marked ${updated} ${noun} for review.`
           : `Set ${updated} ${noun} to reviewed.`)
-        : "No review status changes were needed."
-    );
+        : "No review status changes were needed.";
+    setStatus(message);
+    return { ok: true, message };
   } catch (err) {
-    setStatus(toText(err?.message) || "Failed to update the review status.", true);
+    const message = toText(err?.message) || "Failed to update the review status.";
+    setStatus(message, true);
+    return { ok: false, message };
   } finally {
     finishPageLoading("review-status");
   }
@@ -3206,98 +3226,23 @@ function openDatasetTableFilterPopover(key, anchor, popoverOptions = {}) {
   const context = buildDatasetTableRenderContext();
   const options = getDatasetColumnOptions(key, context);
   const selected = getDatasetFilterSelection(key, options);
-  pop.innerHTML = "";
-
-  const title = document.createElement("div");
-  title.className = "pi-table-filter-title";
-  title.textContent = `${col.label} Filter`;
-  pop.appendChild(title);
-
-  const search = document.createElement("input");
-  search.className = "pi-table-filter-search";
-  search.type = "search";
-  search.autocomplete = "off";
-  search.placeholder = "Type to search";
-  search.setAttribute("aria-label", `Search ${col.label} filter values`);
-  search.value = toText(popoverOptions.searchText ?? state.datasetTableFilterSearchText);
-  pop.appendChild(search);
-
-  const list = document.createElement("div");
-  list.className = "pi-table-filter-list";
-  pop.appendChild(list);
-
-  const renderOptions = () => {
-    list.replaceChildren();
-    const searchText = toText(search.value).toLocaleLowerCase();
-    const visibleOptions = searchText
-      ? options.filter((opt) => toText(opt.label).toLocaleLowerCase().includes(searchText))
-      : options;
-
-    const allRow = document.createElement("label");
-    allRow.className = "pi-table-filter-option";
-    const allCb = document.createElement("input");
-    allCb.type = "checkbox";
-    allCb.checked = selected.size === 0 || isDatasetFilterAllValuesSelected(selected, options);
-    allCb.addEventListener("change", () => {
-      selected.clear();
-      state.datasetTableExplicitAllFilterKeys?.add?.(key);
+  const { search } = renderValueFilterMenu(pop, {
+    label: col.label,
+    options,
+    selected,
+    searchText: toText(popoverOptions.searchText ?? state.datasetTableFilterSearchText),
+    onSearch(value) { state.datasetTableFilterSearchText = value; },
+    onChange({ action, allSelected }) {
+      if (action === "all" || (action === "value" && allSelected)) {
+        state.datasetTableExplicitAllFilterKeys?.add?.(key);
+      } else {
+        state.datasetTableExplicitAllFilterKeys?.delete?.(key);
+      }
       saveDatasetTablePreferences();
       renderDatasetTable();
       reopenDatasetTableFilterPopoverAfterChange(key);
-    });
-    const allText = document.createElement("span");
-    allText.textContent = "All";
-    allRow.append(allCb, allText);
-    list.appendChild(allRow);
-
-    for (const opt of visibleOptions) {
-      const row = document.createElement("label");
-      row.className = "pi-table-filter-option";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = selected.has(opt.key);
-      cb.addEventListener("change", () => {
-        if (cb.checked) selected.add(opt.key);
-        else selected.delete(opt.key);
-        if (isDatasetFilterAllValuesSelected(selected, options)) {
-          state.datasetTableExplicitAllFilterKeys?.add?.(key);
-        } else {
-          state.datasetTableExplicitAllFilterKeys?.delete?.(key);
-        }
-        saveDatasetTablePreferences();
-        renderDatasetTable();
-        reopenDatasetTableFilterPopoverAfterChange(key);
-      });
-      row.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        state.datasetTableExplicitAllFilterKeys?.delete?.(key);
-        selected.clear();
-        for (const item of options) {
-          if (item.key !== opt.key) selected.add(item.key);
-        }
-        saveDatasetTablePreferences();
-        renderDatasetTable();
-        reopenDatasetTableFilterPopoverAfterChange(key);
-      });
-      const text = document.createElement("span");
-      text.textContent = opt.label;
-      row.append(cb, text);
-      list.appendChild(row);
-    }
-
-    if (!visibleOptions.length) {
-      const empty = document.createElement("div");
-      empty.className = "pi-table-filter-empty";
-      empty.textContent = options.length ? "No matching values" : "No values";
-      list.appendChild(empty);
-    }
-  };
-  search.addEventListener("input", () => {
-    state.datasetTableFilterSearchText = search.value;
-    renderOptions();
+    },
   });
-  renderOptions();
 
   state.datasetTableFilterColumn = key;
   state.datasetTableFilterAnchor = anchor || findDatasetFilterButton(key);

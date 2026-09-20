@@ -9,7 +9,7 @@ const contextMenuStubUrl = stubUrl("export function openContextMenu() {}");
 const layoutUrl = new URL("../ui/project_instance/dependency_graph_layout.js", import.meta.url).href;
 const {
   buildDependencyGraph,
-  dependencyGraphHiddenByDefault,
+  dependencyGraphIsolatedKeys,
   dependencyGraphReach,
   dependencyNodeKind,
   layoutDependencyGraph,
@@ -28,6 +28,7 @@ const windowModule = await import(stubUrl(
     .replace(/"\/ui\/shared\/components\/tooltip\/tooltip\.js\?v=\d{8}[a-z]"/, JSON.stringify(tooltipStubUrl))
     .replace(/"\/ui\/project_instance\/dependency_graph_layout\.js\?v=\d{8}[a-z]"/, JSON.stringify(layoutUrl))
     .replace(/^import "\/ui\/shared\/integrations\/zoom_bridge\.js[^"]*";$/m, "")
+    .replace(/"\/ui\/([^"]+)"/g, (_, path) => JSON.stringify(new URL(`../ui/${path}`, import.meta.url).href))
     .replace(/^const params = new URLSearchParams[\s\S]*$/m, ""),
 ));
 const {
@@ -127,7 +128,7 @@ test("a generated formula is drawn between its inputs and the methods that read 
 
   // Both inputs now have a dependent, so the default view draws them: nothing
   // in the class is hidden.
-  assert.deepEqual([...dependencyGraphHiddenByDefault(graph)], []);
+  assert.deepEqual([...dependencyGraphIsolatedKeys(graph)], []);
 
   // The left port of the formula lists what it is made from, the right port of
   // an input lists the formula that reads it.
@@ -258,7 +259,7 @@ test("the status line reads the graph in plain words, hidden datasets included",
   assert.equal(dependencyGraphSummary({ nodeCount: 0 }), "");
 });
 
-test("Show all restores unused indexed datasets; methods stay and non-indexed names never appear", () => {
+test("isolated datasets and methods are hidden while connected chain endpoints remain", () => {
   const graph = buildDependencyGraph({
     ...PAYLOAD,
     nodes: [
@@ -269,19 +270,18 @@ test("Show all restores unused indexed datasets; methods stay and non-indexed na
     ],
     edges: [...PAYLOAD.edges, { source: "Orphan Vector", target: "Gone Vector" }],
   });
-  const hidden = dependencyGraphHiddenByDefault(graph);
-  assert.deepEqual([...hidden].sort(), ["idle engine table", "orphan vector"]);
+  const hidden = dependencyGraphIsolatedKeys(graph);
+  assert.deepEqual([...hidden].sort(), ["idle engine table", "orphan vector", "unused dfm"]);
 
   const pruned = pruneDependencyGraph(graph, hidden);
   assert.deepEqual(pruned.nodes.map((node) => node.name), [
-    "Paid", "Incurred", "Paid Vector", "Paid DFM", "Incurred DFM", "Selected Ultimate", "Unused DFM",
+    "Paid", "Incurred", "Paid Vector", "Paid DFM", "Incurred DFM", "Selected Ultimate",
   ]);
   assert.equal(pruned.edges.length, graph.edges.length, "no edge touched a hidden dataset");
   assert.equal(pruneDependencyGraph(graph, new Set()), graph, "nothing hidden is the same graph");
-  assert.equal(graph.byKey.has("gone vector"), false, "Show all still excludes names outside the index");
-  assert.ok(graph.byKey.has("orphan vector"), "Show all restores unused indexed datasets");
+  assert.equal(graph.byKey.has("gone vector"), false, "names outside the index stay excluded");
 
-  // Hiding a dataset also drops it from the lists of what remains.
+  // A non-method endpoint with inputs remains part of its dependency chain.
   const withEdge = buildDependencyGraph({
     nodes: [
       { name: "Paid", source_kind: "input", method_type: "None" },
@@ -290,9 +290,9 @@ test("Show all restores unused indexed datasets; methods stay and non-indexed na
     ],
     edges: [{ source: "Paid", target: "Paid Copy" }, { source: "Paid", target: "Paid DFM" }],
   });
-  const trimmed = pruneDependencyGraph(withEdge, dependencyGraphHiddenByDefault(withEdge));
-  assert.deepEqual(trimmed.byKey.get("paid").dependents, ["paid dfm"]);
-  assert.deepEqual(trimmed.edges, [{ source: "paid", target: "paid dfm" }]);
+  const trimmed = pruneDependencyGraph(withEdge, dependencyGraphIsolatedKeys(withEdge));
+  assert.deepEqual(trimmed.byKey.get("paid").dependents, ["paid copy", "paid dfm"]);
+  assert.deepEqual(trimmed.edges, withEdge.edges);
   assert.ok(!withEdge.byKey.get("paid").dependents.includes(undefined), "the full graph is left untouched");
   assert.deepEqual(withEdge.byKey.get("paid").dependents, ["paid copy", "paid dfm"]);
 });
@@ -397,9 +397,11 @@ test("the graph page and its read are registered end to end", async () => {
   const pageHtml = await read("../ui/project_instance/dependency_graph_window.html");
   assert.match(pageHtml, /dependency_graph_window\.css\?v=\d{8}[a-z]/);
   assert.match(pageHtml, /dependency_graph_window\.js\?v=\d{8}[a-z]/);
-  for (const id of ["dependencyGraphSearch", "dependencyGraphShowAll", "dependencyGraphZoomOut", "dependencyGraphZoomIn", "dependencyGraphFit", "dependencyGraphRefresh", "dependencyGraphCanvas", "dependencyGraphSvg", "dependencyGraphState", "dependencyGraphStatus"]) {
+  for (const id of ["dependencyGraphSearch", "dependencyGraphMatchedOnly", "dependencyGraphZoomOut", "dependencyGraphZoomIn", "dependencyGraphFit", "dependencyGraphRefresh", "dependencyGraphCanvas", "dependencyGraphSvg", "dependencyGraphState", "dependencyGraphStatus"]) {
     assert.ok(pageHtml.includes(`id="${id}"`), id);
   }
+  assert.ok(!pageHtml.includes("dependencyGraphShowAll"));
+  assert.match(pageHtml, /id="dependencyGraphMatchedOnly"[^>]*checked/);
   // Each legend swatch spells the same label the boxes of that family show,
   // the Engine's two included.
   for (const node of [{ source_kind: "input" }, { source_kind: "calculated" }, { source_kind: "engine" }, { source_kind: "engine", formula: "A + B" }]) {
@@ -449,7 +451,8 @@ test("the graph page and its read are registered end to end", async () => {
   for (const selector of [".dg-port.is-in", ".dg-port.is-out", ".dg-port-popover", ".dg-port-popover-row", ".dg-node.is-upstream", ".dg-node.is-downstream", ".dg-node.is-target", ".dg-node.is-context-target"]) {
     assert.ok(css.includes(selector), selector);
   }
-  assert.match(pageHtml, /Click a box to light its chain, double-click or right-click to open it\./);
+  assert.match(pageHtml, /id="dependencyGraphFilters"/);
+  assert.doesNotMatch(pageHtml, /pi-dependency-graph-cue/);
 
   // A hovered box walks a name too long to fit from end to end: the page
   // measures that one name's overflow and times the turns, the stylesheet

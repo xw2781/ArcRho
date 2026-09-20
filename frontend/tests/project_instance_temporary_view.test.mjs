@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const filterMenuSource = await readFile(new URL("../ui/shared/components/value_filter_menu/value_filter_menu.js", import.meta.url), "utf8");
+
 const [projectInstanceHtml, projectInstanceCss, tableCss, contextSource, cacheSource, tableSource, windowsSource, dataTabSource, datasetApiSource] = await Promise.all([
   readFile(new URL("../ui/project_instance/project_instance.html", import.meta.url), "utf8"),
   readFile(new URL("../ui/project_instance/project_instance.css", import.meta.url), "utf8"),
@@ -55,12 +57,13 @@ test("temporary view uses index membership for its status without cleanup", () =
 });
 
 test("Project Instance table filter menus support type-to-search without changing All semantics", () => {
-  assert.match(tableSource, /className = "pi-table-filter-search"/);
-  assert.match(tableSource, /placeholder = "Type to search"/);
-  assert.match(tableSource, /options\.filter\(\(opt\) => toText\(opt\.label\)\.toLocaleLowerCase\(\)\.includes\(searchText\)\)/);
+  assert.match(tableSource, /renderValueFilterMenu\(pop,/);
+  assert.match(filterMenuSource, /className = "pi-table-filter-search"/);
+  assert.match(filterMenuSource, /placeholder = "Type to search"/);
+  assert.match(filterMenuSource, /option\.label\.toLocaleLowerCase\(\)\.includes\(needle\)/);
   assert.match(tableSource, /const searchText = state\.datasetTableFilterSearchText;/);
-  assert.match(tableSource, /allCb\.checked = selected\.size === 0 \|\| isDatasetFilterAllValuesSelected\(selected, options\)/);
-  assert.match(tableSource, /empty\.textContent = options\.length \? "No matching values" : "No values"/);
+  assert.match(filterMenuSource, /allBox\.checked = !selected\.size \|\| allFilterValuesSelected\(selected, options\)/);
+  assert.match(filterMenuSource, /empty\.textContent = options\.length \? "No matching values" : "No values"/);
   assert.match(tableCss, /\.pi-table-filter-search\s*\{/);
   assert.match(tableCss, /\.pi-table-filter-list\s*\{[\s\S]*?overflow-x: hidden;/);
 });

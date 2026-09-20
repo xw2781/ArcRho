@@ -73,6 +73,7 @@ def get_dataset_dependency_graph(project_name: str, reserving_class: str) -> Dic
         local=lambda: dataset_dependency_graph_service.build_reserving_class_dependency_graph(
             project_name, reserving_class
         ),
+        gateway_required=True,
     )
 
 
@@ -122,6 +123,7 @@ def set_dataset_review_status(req: DatasetReviewStatusRequest) -> Dict[str, Any]
             req.dataset_names,
             status=req.status,
         ),
+        gateway_required=True,
     )
 
 

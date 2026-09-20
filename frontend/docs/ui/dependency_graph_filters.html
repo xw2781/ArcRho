@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dependency Graph — Filter Design</title>
+  <link rel="stylesheet" href="../../ui/shared/styles/pi_table.css?v=20260819a">
+  <link rel="stylesheet" href="../../ui/project_instance/dependency_graph_filters.css?v=20260920d">
   <style>
     :root { color-scheme: light; font: 12px Arial, "Segoe UI", sans-serif; color: #263442; background: #e9edf2; --line: #d8dde3; --muted: #64748b; --accent: #2b6df6; }
     * { box-sizing: border-box; }
@@ -27,56 +29,33 @@
     .toolbar, .filters, .legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     .toolbar { padding-bottom: 9px; }
     .toolbar input[type="search"] { width: 190px; height: 28px; border: 1px solid #c5ced9; border-radius: 4px; padding: 0 8px; color: inherit; background: white; }
-    .check { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .check { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; white-space: nowrap; cursor: pointer; }
     input[type="checkbox"] { accent-color: var(--accent); }
-    .check.disabled { color: #94a3b8; }
-    .toolbar .hint { margin-left: auto; color: var(--muted); }
-    .filters { padding: 9px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    .filters > span { color: var(--muted); margin-right: 2px; }
-    #filter-fields { padding: 0; border: 0; }
-    .filter { position: relative; }
-    .filter summary { height: 30px; max-width: 245px; display: flex; align-items: center; gap: 6px; border: 1px solid #c5ced9; border-radius: 4px; padding: 0 10px; background: white; list-style: none; }
-    .filter summary::-webkit-details-marker { display: none; }
-    .filter summary::after { content: ""; border: 4px solid transparent; border-top-color: #64748b; margin: 5px 0 0 7px; }
-    .filter.active summary { background: #edf4ff; border-color: #9bb9ef; }
-    .filter .value { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .popup { position: fixed; z-index: 10; width: 270px; max-width: calc(100vw - 20px); background: white; border: 1px solid #c5ced9; border-radius: 4px; box-shadow: 0 8px 20px #0f172a1a; padding: 8px; }
-    .popup header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
-    .popup button { min-height: 24px; border: none; color: #2458a7; }
-    .options { max-height: 200px; overflow-y: auto; overflow-x: hidden; }
-    .options label { min-height: 30px; padding: 5px 4px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 3px; }
-    .options label:hover { background: #f1f5f9; }
-    .options label span { overflow-wrap: anywhere; }
-    .options small { margin-left: auto; color: var(--muted); }
-    .popup p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 6px 4px 2px; }
     .legend { padding: 9px 1px; min-height: 34px; color: var(--muted); gap: 16px; }
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
-    .sample { width: 11px; height: 11px; border: 1px solid #bac7d6; border-radius: 2px; background: white; }
-    .sample.match { background: #edf4ff; border-color: var(--accent); }
     .legend .explanation { margin-left: auto; font-size: 11px; }
     .canvas { position: relative; min-height: 350px; border: 1px solid var(--line); border-radius: 3px; background: #fff; overflow: auto; }
     .graph { position: relative; margin: 0 auto; }
     .edges { position: absolute; inset: 0; overflow: visible; }
     .edges path.link { fill: none; stroke: #b4c2d2; stroke-width: 1.4; }
+    .edges path.is-indirect { stroke-dasharray: 5 4; }
     .edges marker path { fill: #a3b3c6; }
     .node { position: absolute; width: 192px; height: 74px; text-align: left; padding: 9px 10px; border: 1px solid #cbd5e1; border-left: 3px solid #94a3b8; background: white; border-radius: 4px; box-shadow: 0 1px 2px #0f172a08; }
     .node[data-method="true"] { border-left-color: var(--accent); }
-    .node.is-match { border-color: #88aced; border-left-color: var(--accent); background: #f2f7ff; }
     .node.selected { outline: 2px solid #385b90; outline-offset: 3px; }
     .node.search-hit { outline: 2px solid #0f766e; outline-offset: 3px; }
     .node.search-dim { opacity: .38; }
-    .node strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 37px; font-size: 12px; }
+    .node strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
     .node .meta { display: block; margin-top: 5px; font-size: 11px; color: #526478; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .node .note { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
-    .node .match-tag { position: absolute; right: 7px; top: 10px; font-size: 10px; color: #2458a7; }
-    .review { color: #a15a08; margin-right: 4px; }
+    .review { margin-right: 4px; vertical-align: middle; }
     .empty { min-height: 350px; display: grid; place-content: center; gap: 12px; text-align: center; }
     .empty[hidden], .graph[hidden] { display: none; }
     .empty strong { font-size: 14px; font-weight: 500; }
     .empty button { justify-self: center; }
     .status { min-height: 26px; padding: 9px 1px 0; color: #526478; }
     .selection { padding: 8px 10px; border-top: 1px solid var(--line); background: #f1f4f7; min-height: 33px; line-height: 1.5; }
-    @media (max-width: 680px) { body { padding: 10px; } .intro { display: block; } .intro a { display: inline-block; margin-top: 8px; } .toolbar .hint, .legend .explanation { width: 100%; margin-left: 0; } .titlebar .muted { display: none; } }
+    @media (max-width: 680px) { body { padding: 10px; } .intro { display: block; } .intro a { display: inline-block; margin-top: 8px; } .legend .explanation { width: 100%; margin-left: 0; } .titlebar .muted { display: none; } }
   </style>
 </head>
 <body>
@@ -89,17 +68,23 @@
     <div class="workspace">
       <div class="toolbar">
         <input id="find" type="search" placeholder="Find in view" aria-label="Find a dataset in this view">
-        <label class="check" id="show-label"><input id="show" type="checkbox">Show all</label>
-        <span class="hint">Click a dataset to inspect its role in this view.</span>
+        <div class="pi-dependency-graph-filter-group">
+          <div id="filter-fields" class="pi-dependency-graph-filters" aria-label="Chain filters"></div>
+          <label class="check"><input id="matched-only" type="checkbox" checked>Show matched items only</label>
+        </div>
       </div>
-      <div class="filters" aria-label="Chain filters"><span>Focus On</span><div id="filter-fields" class="filters"></div><button id="clear">Clear filters</button></div>
-      <div class="legend"><span><i class="sample match"></i>Match</span><span><i class="sample"></i>Chain Context</span><span class="explanation">Matches and their inputs and dependents stay visible.</span></div>
+      <div class="legend"><span><span id="review-legend" class="pi-status-cell warning" aria-hidden="true"></span>Needs Review</span><span class="explanation">Dashed arrows connect matches through hidden datasets.</span></div>
       <div class="canvas" id="canvas"><div class="graph" id="graph"></div><div class="empty" id="empty" hidden><strong>No datasets match these filters</strong><span class="muted">Choose another value or clear the filters.</span><button id="empty-clear">Clear filters</button></div></div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </div>
     <div class="selection" id="selection">Select a dataset to see its status, category, and method type.</div>
   </main>
-  <script>
+  <script type="module">
+    import { reviewStatusIconSvg } from '../../ui/shared/components/status_icon/status_icon.js?v=20260911a';
+    import { buildDependencyGraph } from '../../ui/project_instance/dependency_graph_layout.js?v=20260920c';
+    import { createDependencyFilters, filterDependencyGraph } from '../../ui/project_instance/dependency_graph_filters.js?v=20260920e';
+    import { createDependencyGraphFilterControls } from '../../ui/project_instance/dependency_graph_filter_controls.js?v=20260920f';
+    document.getElementById('review-legend').innerHTML = reviewStatusIconSvg(true);
     // Synthetic presentation data only. Production metadata comes from the hosted graph read.
     const nodes = [
       { id: 'paid', name: 'Paid Loss', category: 'Loss', method: 'None', status: 'Updated', column: 0 },
@@ -117,59 +102,22 @@
       { id: 'uncategorized', name: 'Manual Assumption', category: 'Uncategorized', method: 'None', status: 'Updated', column: 0 },
     ];
     const edges = [['paid','latest'], ['latest','paid-dfm'], ['incurred','incurred-dfm'], ['premium','bf'], ['latest','bf'], ['paid-dfm','selected'], ['incurred-dfm','selected'], ['bf','selected'], ['expenses','expense-dfm'], ['expense-dfm','expense-selected']];
-    const fields = { status: 'Status', category: 'Category', method: 'Method Type' };
-    const chosen = { status: new Set(['Needs Review']), category: new Set(), method: new Set(['DFM']) };
+    const sourceGraph = buildDependencyGraph({
+      nodes: nodes.map(node => ({ name: node.id, method_type: node.method, dataset_category: node.category, status: node.status === 'Needs Review' ? 2 : 0 })),
+      edges: edges.map(([source, target]) => ({ source, target })),
+    });
+    const chosen = createDependencyFilters();
+    chosen.status.add('2'); chosen.methodType.add('dfm');
     let selected = '';
     const el = id => document.getElementById(id);
-    function model(filters, showAll) {
-      const active = Object.values(filters).some(values => values.size);
-      const matches = new Set(active ? nodes.filter(node => Object.keys(fields).every(field => !filters[field].size || filters[field].has(node[field]))).map(node => node.id) : []);
-      const visible = new Set(matches);
-      if (active) {
-        for (const reverse of [false, true]) {
-          const visited = new Set(matches), stack = [...matches];
-          while (stack.length) {
-            const current = stack.pop();
-            for (const [from, to] of edges) {
-              const source = reverse ? to : from, target = reverse ? from : to;
-              if (source !== current || visited.has(target)) continue;
-              visited.add(target); visible.add(target); stack.push(target);
-            }
-          }
-        }
-      } else {
-        nodes.filter(node => showAll || node.method !== 'None' || edges.some(([from]) => from === node.id)).forEach(node => visible.add(node.id));
-      }
-      return { active, matches, visible, links: edges.filter(([from,to]) => visible.has(from) && visible.has(to)) };
-    }
-    function clearFilters() { Object.values(chosen).forEach(values => values.clear()); syncFilters(); render(); }
-    function positionPopup(details) {
-      if (!details.open) return;
-      const popup = details.querySelector('.popup'), rect = details.querySelector('summary').getBoundingClientRect();
-      popup.style.left = Math.max(10, Math.min(rect.left, innerWidth - popup.offsetWidth - 10)) + 'px';
-      popup.style.top = Math.max(10, Math.min(rect.bottom + 4, innerHeight - popup.offsetHeight - 10)) + 'px';
-    }
-    function syncFilters() {
-      document.querySelectorAll('.filter').forEach(details => {
-        const values = chosen[details.dataset.field];
-        details.classList.toggle('active', !!values.size);
-        details.querySelector('.value').textContent = values.size === 1 ? [...values][0] : values.size ? values.size + ' selected' : 'All';
-        details.querySelectorAll('input').forEach(input => input.checked = values.has(input.value));
-        positionPopup(details);
-      });
-    }
-    for (const [field, label] of Object.entries(fields)) {
-      const details = document.createElement('details'); details.className = 'filter'; details.dataset.field = field;
-      details.innerHTML = `<summary><span>${label}:</span><span class="value"></span></summary><div class="popup"><header><strong>${label}</strong><button type="button">Clear</button></header><div class="options" role="group" aria-label="${label}"></div><p>${field === 'status' ? 'Saved review status. Excel-link freshness is separate.' : 'Select any values. No selection means All.'}</p></div>`;
-      for (const value of [...new Set(nodes.map(node => node[field]))].sort()) {
-        const row = document.createElement('label'), input = document.createElement('input'), text = document.createElement('span'), count = document.createElement('small');
-        input.type = 'checkbox'; input.value = value; text.textContent = value; count.textContent = nodes.filter(node => node[field] === value).length;
-        input.addEventListener('change', () => { input.checked ? chosen[field].add(value) : chosen[field].delete(value); syncFilters(); render(); });
-        row.append(input, text, count); details.querySelector('.options').append(row);
-      }
-      details.querySelector('button').addEventListener('click', () => { chosen[field].clear(); syncFilters(); render(); });
-      details.addEventListener('toggle', () => { if (details.open) { document.querySelectorAll('.filter').forEach(other => { if (other !== details) other.open = false; }); positionPopup(details); } });
-      el('filter-fields').append(details);
+    const controls = createDependencyGraphFilterControls(el('filter-fields'), {
+      filters: chosen, onChange: render, onOpen() {},
+    });
+    controls.setGraph(sourceGraph);
+    controls.setDisabled(false);
+    function model(filters, matchedOnly) {
+      const result = filterDependencyGraph(sourceGraph, filters, { matchedOnly });
+      return { active: result.active, matches: result.matches, visible: new Set(result.graph.byKey.keys()), links: result.graph.edges.map(edge => [edge.source, edge.target, edge.indirect]) };
     }
     function inspectNode(node, result) {
       selected = node.id;
@@ -183,8 +131,7 @@
       document.querySelectorAll('.node').forEach(box => { const match = query && box.dataset.name.includes(query); box.classList.toggle('search-hit', !!match); box.classList.toggle('search-dim', !!query && !match); });
     }
     function render() {
-      const result = model(chosen, el('show').checked), visibleNodes = nodes.filter(node => result.visible.has(node.id));
-      el('show').disabled = result.active; el('show-label').classList.toggle('disabled', result.active); el('clear').disabled = !result.active;
+      const result = model(chosen, el('matched-only').checked), visibleNodes = nodes.filter(node => result.visible.has(node.id));
       el('empty').hidden = !!visibleNodes.length; el('graph').hidden = !visibleNodes.length; el('graph').replaceChildren();
       const columns = [...new Set(visibleNodes.map(node => node.column))].sort(), maxRows = Math.max(1, ...columns.map(column => visibleNodes.filter(node => node.column === column).length));
       const width = Math.max(240, columns.length * 244 + 16), height = Math.max(350, maxRows * 106 + 60), positions = new Map();
@@ -192,30 +139,29 @@
       columns.forEach((column, index) => { const group = visibleNodes.filter(node => node.column === column); group.forEach((node, row) => positions.set(node.id, { x: 32 + index * 244, y: (height - group.length * 106) / 2 + row * 106 + 16 })); });
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.classList.add('edges'); svg.setAttribute('width', width); svg.setAttribute('height', height);
       svg.innerHTML = '<defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8Z"/></marker></defs>';
-      for (const [from,to] of result.links) {
+      for (const [from,to,indirect] of result.links) {
         const a = positions.get(from), b = positions.get(to), x = a.x + 192, y = a.y + 37, mid = (x + b.x) / 2;
         const path = document.createElementNS(svg.namespaceURI, 'path'); path.classList.add('link'); path.setAttribute('d', `M${x} ${y} C${mid} ${y},${mid} ${b.y + 37},${b.x - 2} ${b.y + 37}`); path.setAttribute('marker-end', 'url(#arrow)'); svg.append(path);
+        path.classList.toggle('is-indirect', !!indirect);
       }
       el('graph').append(svg);
       for (const node of visibleNodes) {
         const position = positions.get(node.id), box = document.createElement('button'), outside = edges.filter(([from,to]) => (from === node.id && !result.visible.has(to)) || (to === node.id && !result.visible.has(from))).length;
-        box.className = 'node'; box.dataset.id = node.id; box.dataset.name = node.name.toLowerCase(); box.dataset.method = node.method !== 'None'; box.style.left = position.x + 'px'; box.style.top = position.y + 'px'; box.classList.toggle('is-match', result.matches.has(node.id));
-        box.innerHTML = `<strong>${node.name}</strong>${result.matches.has(node.id) ? '<span class="match-tag">Match</span>' : ''}<span class="meta">${node.status === 'Needs Review' ? '<span class="review">●</span>' : ''}${node.method === 'None' ? 'Dataset' : node.method} · ${node.category}</span><span class="note">${node.status}${outside ? ` · ${outside} hidden link${outside === 1 ? '' : 's'}` : ''}</span>`;
+        box.className = 'node'; box.dataset.id = node.id; box.dataset.name = node.name.toLowerCase(); box.dataset.method = node.method !== 'None'; box.style.left = position.x + 'px'; box.style.top = position.y + 'px';
+        box.innerHTML = `<strong>${node.name}</strong><span class="meta">${node.status === 'Needs Review' ? `<span class="review pi-status-cell warning" role="img" aria-label="Needs Review">${reviewStatusIconSvg(true)}</span>` : ''}${node.method === 'None' ? 'Dataset' : node.method} · ${node.category}</span><span class="note">${outside ? `${outside} hidden link${outside === 1 ? '' : 's'}` : ''}</span>`;
         box.setAttribute('aria-label', `${node.name}, ${node.status}, ${node.category}, ${node.method}${result.matches.has(node.id) ? ', filter match' : ''}${outside ? `, ${outside} links outside focus` : ''}`);
         box.addEventListener('click', () => inspectNode(node, result)); el('graph').append(box);
       }
       if (result.visible.has(selected)) inspectNode(nodes.find(node => node.id === selected), result);
       else { selected = ''; el('selection').textContent = 'Select a dataset to see its status, category, and method type.'; }
       const matchLabel = result.matches.size === 1 ? 'match' : 'matches';
-      el('status').textContent = result.active ? `${result.matches.size} ${matchLabel} · ${result.visible.size - result.matches.size} context datasets · ${nodes.length - result.visible.size} hidden · ${result.links.length} links` : `${result.visible.size} datasets · ${result.links.length} links · ${nodes.length - result.visible.size} unused datasets hidden`;
+      el('status').textContent = result.active ? `${result.matches.size} ${matchLabel} · ${result.visible.size - result.matches.size} context datasets · ${nodes.length - result.visible.size} hidden · ${result.links.length} links` : `${result.visible.size} datasets · ${result.links.length} links · ${nodes.length - result.visible.size} isolated datasets hidden`;
       highlight();
     }
-    el('clear').addEventListener('click', clearFilters); el('empty-clear').addEventListener('click', clearFilters);
-    el('find').addEventListener('input', highlight); el('show').addEventListener('change', render);
-    document.addEventListener('click', event => document.querySelectorAll('.filter[open]').forEach(details => { if (!details.contains(event.target)) details.open = false; }));
-    document.addEventListener('keydown', event => { if (event.key === 'Escape') { const opened = document.querySelector('.filter[open]'); if (opened) { opened.open = false; opened.querySelector('summary').focus(); event.preventDefault(); } } });
-    addEventListener('resize', () => document.querySelectorAll('.filter[open]').forEach(positionPopup));
-    syncFilters(); render();
+    el('empty-clear').addEventListener('click', () => controls.clear());
+    el('find').addEventListener('input', highlight);
+    el('matched-only').addEventListener('change', render);
+    render();
   </script>
 </body>
 </html>

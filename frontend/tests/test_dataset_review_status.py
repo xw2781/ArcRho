@@ -16,7 +16,11 @@ TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
 TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 from app_server import config
+from fastapi import HTTPException
+from app_server.api.dataset_router import set_dataset_review_status
+from app_server.schemas.dataset import DatasetReviewStatusRequest
 from app_server.services import dataset_service
+from app_server.services import workspace_read_client
 from app_server.services import dataset_sidecar_status_service as status_service
 
 
@@ -183,6 +187,30 @@ class DatasetReviewStatusTests(unittest.TestCase):
             self.set_status(["Selected Ultimate"], status_service.STATUS_REVIEW_NEEDED)
         refresh.assert_not_called()
         enqueue.assert_not_called()
+
+
+class ReviewStatusTransportTests(unittest.TestCase):
+    def test_client_gateway_failures_never_write_over_the_share(self):
+        request = DatasetReviewStatusRequest(project_name="Project", reserving_class="Class", dataset_names=["DFM"], status=0)
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), patch.object(workspace_read_client, "_log"), \
+                patch.object(workspace_read_client, "_is_server_process", return_value=False), \
+                patch.object(config, "load_gateway_config", return_value={"enabled": enabled, "user": "tester"}), \
+                patch.object(workspace_read_client, "cached_gateway_capabilities", return_value={"workspace_mutation_kinds": ["dataset_review_status_set"]}), \
+                patch.object(workspace_read_client, "post_signed_json", side_effect=workspace_read_client.GatewayTransportFailure("offline")), \
+                patch.object(dataset_service, "set_dataset_review_status") as local:
+                with self.assertRaises(HTTPException) as caught:
+                    set_dataset_review_status(request)
+                self.assertEqual(caught.exception.status_code, 503)
+                local.assert_not_called()
+
+    def test_server_process_uses_the_canonical_review_service(self):
+        request = DatasetReviewStatusRequest(project_name="Project", reserving_class="Class", dataset_names=["DFM"], status=0)
+        with patch.object(workspace_read_client, "_log"), \
+            patch.object(workspace_read_client, "_is_server_process", return_value=True), \
+            patch.object(dataset_service, "set_dataset_review_status", return_value={"ok": True}) as local:
+            self.assertEqual(set_dataset_review_status(request), {"ok": True})
+            local.assert_called_once_with("Project", "Class", ["DFM"], status=0)
 
 
 if __name__ == "__main__":

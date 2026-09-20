@@ -9,8 +9,8 @@
 // class in the tree leaves it alone exactly like a Dataset or DFM window.
 //
 // The whole graph is one hosted read (/datasets/dependency-graph); the layout
-// is computed here from dependency_graph_layout.js. A dataset nothing depends
-// on is left out by default and comes back with the Show all box. A single
+// is computed here from dependency_graph_layout.js. Datasets with no precedents
+// or dependents stay hidden, regardless of active filters. A single
 // click selects a box and keeps its chain lit - inputs in blue, what depends
 // on it in green, everything else dimmed - until another box is selected or
 // the background is clicked; a double click, and the right-click menu, ask the
@@ -36,12 +36,16 @@ import { openContextMenu } from "/ui/shared/components/context_menu/context_menu
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 import {
   buildDependencyGraph,
-  dependencyGraphHiddenByDefault,
   dependencyGraphKey,
   dependencyGraphReach,
   layoutDependencyGraph,
-  pruneDependencyGraph,
-} from "/ui/project_instance/dependency_graph_layout.js?v=20260920a";
+} from "/ui/project_instance/dependency_graph_layout.js?v=20260920c";
+import { createDependencyGraphFilterControls } from "/ui/project_instance/dependency_graph_filter_controls.js?v=20260920f";
+import { dependencyFilterSummary, filterDependencyGraph, hiddenDependencyLinks } from "/ui/project_instance/dependency_graph_filters.js?v=20260920e";
+import { readDependencyGraphPreferences, writeDependencyGraphPreferences } from "/ui/project_instance/dependency_graph_preferences.js?v=20260920a";
+import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
+import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
+import { DEPENDENCY_GRAPH_ACTION_MESSAGE, DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE } from "/ui/project_instance/dependency_graph_contract.js?v=20260920a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const GRAPH_ENDPOINT = "/datasets/dependency-graph";
@@ -122,16 +126,20 @@ export function dependencyGraphOpenRequest(node, { projectName, reservingClass }
 }
 
 /**
- * What one port of a box lists: the direct precedents of the left port, the
- * direct dependents of the right one, each with the label its own box shows.
+ * What one port lists: visible precedents or dependents, marking indirect
+ * paths through hidden nodes in a simplified graph.
  * The names keep the graph's order, which the server sorted.
  */
 export function dependencyGraphPortList(node, graph, side) {
   const spec = PORT_SIDES[side] || PORT_SIDES.in;
+  const indirect = new Set((graph?.edges || []).filter(edge => edge.indirect
+    && (spec.field === "precedents" ? edge.target : edge.source) === node?.key)
+    .map(edge => spec.field === "precedents" ? edge.source : edge.target));
   const entries = (node?.[spec.field] || [])
     .map((key) => graph?.byKey?.get(key))
     .filter(Boolean)
-    .map((other) => ({ key: other.key, name: other.name, label: other.kind.label, family: other.kind.family }));
+    .map((other) => ({ key: other.key, name: other.name,
+      label: indirect.has(other.key) ? `${other.kind.label} · Indirect` : other.kind.label, family: other.kind.family }));
   return {
     title: entries.length ? `${spec.title} (${entries.length})` : spec.title,
     empty: entries.length ? "" : spec.empty,
@@ -189,10 +197,12 @@ const params = new URLSearchParams(window.location.search);
 const inst = text(params.get("inst"));
 const projectName = text(params.get("project"));
 const reservingClass = text(params.get("class"));
+const preferences = readDependencyGraphPreferences();
 
 const els = {
   search: document.getElementById("dependencyGraphSearch"),
-  showAll: document.getElementById("dependencyGraphShowAll"),
+  filters: document.getElementById("dependencyGraphFilters"),
+  matchedOnly: document.getElementById("dependencyGraphMatchedOnly"),
   zoomOut: document.getElementById("dependencyGraphZoomOut"),
   zoomIn: document.getElementById("dependencyGraphZoomIn"),
   fit: document.getElementById("dependencyGraphFit"),
@@ -210,7 +220,9 @@ const view = {
   graph: null,
   layout: null,
   hiddenCount: 0,
-  showAll: false,
+  filterResult: null,
+  matchedOnly: preferences.matchedOnly,
+  actionPending: false,
   viewport: null,
   nodeEls: new Map(),
   placedNodes: new Map(),
@@ -228,6 +240,21 @@ const view = {
   userSteered: false,
   flashTimer: 0,
 };
+
+const filterControls = createDependencyGraphFilterControls(els.filters, {
+  filters: preferences.filters,
+  onChange() { view.userSteered = false; applyGraph(); saveFilterPreferences(); },
+  onOpen() { closeNodeMenu(); closePortPopover(); },
+});
+els.matchedOnly.checked = view.matchedOnly;
+
+function saveFilterPreferences() {
+  try {
+    writeDependencyGraphPreferences({ filters: filterControls.filters, matchedOnly: view.matchedOnly });
+  } catch {
+    setStatus("Filter choices could not be remembered on this PC.", "error");
+  }
+}
 
 function postToParent(type, payload = {}) {
   try {
@@ -251,7 +278,8 @@ function syncControls() {
   const busy = view.loading;
   const empty = !view.layout?.nodes.length;
   if (els.refresh) els.refresh.disabled = busy;
-  if (els.showAll) els.showAll.disabled = busy || !view.loaded;
+  filterControls.setDisabled(busy || !view.loaded);
+  els.matchedOnly.disabled = busy || !view.loaded;
   for (const button of [els.zoomIn, els.fit]) {
     if (button) button.disabled = busy || empty;
   }
@@ -527,6 +555,8 @@ function openPortPopover(node, side, portEl) {
   popover.port?.classList.remove("is-open");
   const el = ensurePortPopover();
   const list = dependencyGraphPortList(node, view.graph, side);
+  const outside = view.filterResult?.active
+    ? hiddenDependencyLinks(node, view.fullGraph, view.graph, PORT_SIDES[side].field) : 0;
   el.replaceChildren();
   el.dataset.side = side;
 
@@ -538,7 +568,7 @@ function openPortPopover(node, side, portEl) {
   if (!list.entries.length) {
     const empty = document.createElement("div");
     empty.className = "dg-port-popover-empty";
-    empty.textContent = list.empty;
+    empty.textContent = outside ? "No links in this view" : list.empty;
     el.appendChild(empty);
   } else {
     const rows = document.createElement("div");
@@ -566,6 +596,13 @@ function openPortPopover(node, side, portEl) {
     el.appendChild(rows);
   }
 
+  if (outside) {
+    const note = document.createElement("div");
+    note.className = "dg-port-filter-note";
+    note.textContent = `${outside} ${outside === 1 ? "link" : "links"} outside the filter focus.`;
+    el.appendChild(note);
+  }
+
   popover.port = portEl;
   portEl.classList.add("is-open");
   el.hidden = false;
@@ -589,7 +626,8 @@ function buildPortElement(node, side) {
   port.className = `dg-port is-${side}`;
   port.tabIndex = -1;
   port.dataset.side = side;
-  const total = node[spec.field].length;
+  const outside = view.filterResult?.active ? hiddenDependencyLinks(node, view.fullGraph, view.graph, spec.field) : 0;
+  const total = node[spec.field].length + outside;
   port.classList.toggle("is-empty", !total);
   port.setAttribute("aria-label", `${spec.title} of ${node.name}${total ? ` (${total})` : ""}`);
   port.addEventListener("pointerenter", () => schedulePortOpen(node, side, port));
@@ -634,6 +672,8 @@ function openNodeMenu(node, box, event) {
   if (item) {
     item.textContent = node.methodType ? "Show Method" : "Show Dataset";
   }
+  els.menu.querySelector('[data-action="set-reviewed"]').disabled = view.actionPending || !node.methodType || !statusNeedsReview(node.status);
+  els.menu.querySelector('[data-action="view-in-table"]').disabled = view.actionPending;
   openContextMenu(els.menu, {
     anchorEl: box,
     clientX: Number(event?.clientX),
@@ -649,10 +689,17 @@ function wireNodeMenu() {
   if (!menu) return;
   menu.addEventListener("click", (event) => {
     const item = event.target.closest?.(".ctx-item");
-    if (!item) return;
+    if (!item || item.disabled) return;
     const node = nodeMenu.node;
     closeNodeMenu();
     if (node && item.dataset.action === "open") openNode(node);
+    else if (node && ["set-reviewed", "view-in-table"].includes(item.dataset.action)) {
+      view.actionPending = true;
+      setStatus(item.dataset.action === "set-reviewed" ? `Setting ${node.name} to reviewed...` : `Finding ${node.name} in the dataset table...`);
+      postToParent(DEPENDENCY_GRAPH_ACTION_MESSAGE, {
+        action: item.dataset.action, datasetName: node.name, methodType: node.methodType,
+      });
+    }
   });
   document.addEventListener("mousedown", (event) => {
     if (!menu.contains(event.target)) closeNodeMenu();
@@ -769,12 +816,25 @@ function buildNodeElement(node) {
   const label = document.createElement("span");
   label.className = "dg-node-kind-label";
   label.textContent = node.kind.label;
-  kind.appendChild(label);
-  if (node.status === 2) {
+  if (statusNeedsReview(node.status)) {
     const review = document.createElement("span");
-    review.className = "dg-node-review";
-    review.setAttribute("title", "Needs review");
+    review.className = "dg-node-review pi-status-cell warning";
+    review.setAttribute("role", "img");
+    review.setAttribute("aria-label", "Needs Review");
+    review.innerHTML = reviewStatusIconSvg(true);
+    attachArcrhoTooltip(review, "Needs Review");
     kind.appendChild(review);
+  }
+  kind.appendChild(label);
+  if (view.filterResult?.active) {
+    const outside = ["precedents", "dependents"].reduce((total, field) => total + hiddenDependencyLinks(node, view.fullGraph, view.graph, field), 0);
+    if (outside) {
+      const note = document.createElement("span");
+      note.className = "dg-node-hidden-links";
+      note.textContent = `+${outside} hidden`;
+      note.setAttribute("aria-label", `${outside} links outside the filter focus`);
+      kind.appendChild(note);
+    }
   }
   box.appendChild(kind);
 
@@ -852,6 +912,10 @@ function render() {
   for (const edge of layout.edges) {
     const path = svgEl("path", { d: edge.path });
     path.setAttribute("class", edge.back ? "dg-edge is-back" : "dg-edge");
+    if (edge.indirect) {
+      path.classList.add("is-indirect");
+      attachArcrhoTooltip(path, "Dependency through hidden datasets");
+    }
     viewport.appendChild(path);
     view.edgeEls.push({ edge, el: path });
   }
@@ -919,27 +983,36 @@ function applyHighlight() {
 // Loading
 // ---------------------------------------------------------------------------
 
-/** Lays out the loaded class, leaving out the boxes the Show all box hides. */
+/** Filters matches and their chains before laying out the visible graph. */
 function applyGraph({ keepViewport = false } = {}) {
   const full = view.fullGraph;
   if (!full) return;
-  const hidden = view.showAll ? new Set() : dependencyGraphHiddenByDefault(full);
-  view.hiddenCount = hidden.size;
-  view.graph = pruneDependencyGraph(full, hidden);
+  view.filterResult = filterDependencyGraph(full, filterControls.filters, { matchedOnly: view.matchedOnly });
+  view.hiddenCount = view.filterResult.hiddenCount;
+  view.graph = view.filterResult.graph;
+  els.search.placeholder = view.filterResult.active ? "Find in view" : "Find a dataset";
   view.layout = layoutDependencyGraph(view.graph);
   render();
   if (!view.layout.nodes.length) {
-    showState(view.hiddenCount
-      ? "Every dataset in this reserving class is hidden. Tick Show all to see them."
+    if (view.filterResult.active && full.nodes.length) {
+      showState("No datasets match these filters.");
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "dg-filter-empty-clear";
+      clear.textContent = "Clear filters";
+      clear.addEventListener("click", () => filterControls.clear());
+      els.state.appendChild(clear);
+    } else showState(view.hiddenCount
+      ? "This reserving class has no dataset dependency connections."
       : "This reserving class has no datasets yet.");
   } else {
     showState("");
     if (!keepViewport) fitGraph();
   }
-  setStatus(dependencyGraphSummary({
+  setStatus(view.filterResult.active ? dependencyFilterSummary(view.filterResult) : dependencyGraphSummary({
     nodeCount: view.layout.nodes.length,
     edgeCount: view.layout.edges.length,
-    reviewCount: view.layout.nodes.filter((node) => node.status === 2).length,
+    reviewCount: view.layout.nodes.filter((node) => statusNeedsReview(node.status)).length,
     hiddenCount: view.hiddenCount,
   }));
   syncControls();
@@ -966,6 +1039,7 @@ async function loadGraph({ keepViewport = false } = {}) {
       throw new Error(typeof detail === "string" && detail.trim() ? detail.trim() : `HTTP ${response.status}`);
     }
     view.fullGraph = buildDependencyGraph(payload);
+    filterControls.setGraph(view.fullGraph);
     view.loading = false;
     view.loaded = true;
     applyGraph({ keepViewport });
@@ -991,19 +1065,23 @@ function init() {
     view.query = dependencyGraphKey(els.search.value);
     applyHighlight();
   });
-  els.showAll?.addEventListener("change", () => {
-    view.showAll = !!els.showAll.checked;
-    // Showing or hiding boxes reshapes the whole diagram, so it is refitted.
+  els.matchedOnly.addEventListener("change", () => {
+    view.matchedOnly = els.matchedOnly.checked;
     view.userSteered = false;
     applyGraph();
+    saveFilterPreferences();
   });
+  attachArcrhoTooltip(els.matchedOnly.closest("label"), "Show only datasets matching the active filters. Uncheck to include their inputs and dependents.");
   attachArcrhoTooltip(els.zoomOut, "Zoom out");
   attachArcrhoTooltip(els.zoomIn, "Zoom in");
   attachArcrhoTooltip(els.fit, "Fit to window");
   attachArcrhoTooltip(els.refresh, "Refresh");
-  attachArcrhoTooltip(els.showAll?.closest("label") || els.showAll, "Also show the datasets nothing depends on");
   window.addEventListener("message", (event) => {
     if (event.data?.type === "arcrho:dependency-graph-refresh") void loadGraph({ keepViewport: true });
+    if (event.source === window.parent && event.data?.type === DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE) {
+      view.actionPending = false;
+      setStatus(event.data.message || "", event.data.ok ? "" : "error");
+    }
   });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;

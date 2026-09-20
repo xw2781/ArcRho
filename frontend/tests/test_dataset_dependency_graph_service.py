@@ -8,6 +8,7 @@ still appears, flagged as absent from the index.
 from __future__ import annotations
 
 import sys
+import importlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,9 @@ from app_server.services import calculated_dataset_service
 from app_server.services import dataset_dependency_graph_service as graph_service
 from app_server.services import dataset_instance_index_service
 from app_server.services import dataset_sidecar_status_service as status_service
+from app_server.services import workspace_read_client
+
+dataset_router = importlib.import_module("app_server.api.dataset_router")
 
 TEST_TEMP_ROOT = REPO_ROOT / "test"
 TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -58,6 +62,7 @@ class DependencyGraphTests(unittest.TestCase):
         self.index_rows: list = []
         self.patchers = [
             patch.object(config, "get_project_dataset_sidecar_dir", return_value=str(self.sidecars)),
+            patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]),
             patch.object(
                 dataset_instance_index_service,
                 "get_index",
@@ -190,21 +195,80 @@ class DependencyGraphTests(unittest.TestCase):
             ],
         )
 
-    def test_a_class_without_an_engine_dataset_reads_no_dataset_types(self) -> None:
+    def test_a_class_without_engine_datasets_reads_type_categories_once(self) -> None:
         self.index_rows = [_index_row("Paid"), _index_row("Paid Vector", source_kind="calculated")]
         self.write_sidecar("Paid", dependents=("Paid Vector",))
         self.write_sidecar("Paid Vector", precedents=("Paid",))
 
-        with patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[]) as read_types:
+        with patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[
+            {"name": "paid", "category": "Loss"},
+        ]) as read_types:
             graph = graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
 
-        self.assertEqual(read_types.call_count, 0)
+        self.assertEqual(read_types.call_count, 1)
+        self.assertEqual(graph["nodes"][0]["dataset_type_category"], "Loss")
         self.assertEqual(graph["edges"], [{"source": "Paid", "target": "Paid Vector"}])
+
+    def test_stored_and_type_categories_are_projected_without_changing_the_index(self) -> None:
+        row = _index_row("Paid DFM", dataset_type="Paid Ultimate", dataset_category="Stored Category", source_kind="dfm")
+        self.index_rows = [dict(row)]
+        with patch.object(calculated_dataset_service, "_dataset_type_rows", return_value=[
+            {"name": "Paid Ultimate", "category": "Type Category"},
+        ]):
+            graph = graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
+        self.assertEqual(graph["nodes"][0]["dataset_category"], "Stored Category")
+        self.assertEqual(graph["nodes"][0]["dataset_type_category"], "Type Category")
+        self.assertEqual(self.index_rows, [row])
+
+    def test_a_type_read_failure_does_not_return_a_graph_with_incomplete_categories(self) -> None:
+        self.index_rows = [_index_row("Paid")]
+        with patch.object(calculated_dataset_service, "_dataset_type_rows", side_effect=PermissionError("unavailable")):
+            with self.assertRaises(PermissionError):
+                graph_service.build_reserving_class_dependency_graph(PROJECT, RESERVING)
 
     def test_blank_identifiers_are_refused(self) -> None:
         with self.assertRaises(HTTPException) as caught:
             graph_service.build_reserving_class_dependency_graph(" ", RESERVING)
         self.assertEqual(caught.exception.status_code, 400)
+
+
+class DependencyGraphTransportTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.log_patch = patch.object(workspace_read_client, "_log")
+        self.log_patch.start()
+        self.addCleanup(self.log_patch.stop)
+
+    def test_client_without_gateway_never_reads_the_share(self) -> None:
+        with (
+            patch.object(workspace_read_client, "_is_server_process", return_value=False),
+            patch.object(config, "load_gateway_config", return_value={"enabled": False}),
+            patch.object(graph_service, "build_reserving_class_dependency_graph") as local,
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                dataset_router.get_dataset_dependency_graph(PROJECT, RESERVING)
+        self.assertEqual(caught.exception.status_code, 503)
+        local.assert_not_called()
+
+    def test_gateway_transport_failure_never_falls_back_to_the_share(self) -> None:
+        with (
+            patch.object(workspace_read_client, "_is_server_process", return_value=False),
+            patch.object(config, "load_gateway_config", return_value={"enabled": True, "user": "tester"}),
+            patch.object(workspace_read_client, "cached_gateway_capabilities", return_value={"workspace_read_kinds": ["dataset_dependency_graph"]}),
+            patch.object(workspace_read_client, "post_signed_json", side_effect=workspace_read_client.GatewayTransportFailure("offline")),
+            patch.object(graph_service, "build_reserving_class_dependency_graph") as local,
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                dataset_router.get_dataset_dependency_graph(PROJECT, RESERVING)
+        self.assertEqual(caught.exception.status_code, 503)
+        local.assert_not_called()
+
+    def test_server_executes_the_canonical_graph_service_locally(self) -> None:
+        with (
+            patch.object(workspace_read_client, "_is_server_process", return_value=True),
+            patch.object(graph_service, "build_reserving_class_dependency_graph", return_value={"ok": True, "nodes": []}) as local,
+        ):
+            self.assertEqual(dataset_router.get_dataset_dependency_graph(PROJECT, RESERVING), {"ok": True, "nodes": []})
+        local.assert_called_once_with(PROJECT, RESERVING)
 
 
 if __name__ == "__main__":

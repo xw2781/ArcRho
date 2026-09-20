@@ -1,0 +1,25 @@
+.pi-dependency-graph-filter-group { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.pi-dependency-graph-filters { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.dg-filter-trigger, .dg-filter-clear, .dg-filter-empty-clear {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ar-color-border-strong);
+  border-radius: 4px;
+  background: var(--ar-color-input);
+  color: var(--ar-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.dg-filter-trigger { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; white-space: nowrap; }
+.dg-filter-trigger::after { content: ""; flex: 0 0 auto; border: 4px solid transparent; border-top-color: var(--ar-color-text-muted); margin-top: 5px; }
+.dg-filter-value { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.dg-filter-trigger.is-active { border-color: var(--ar-color-accent); background: var(--ar-color-surface); }
+.dg-filter-trigger:hover, .dg-filter-clear:hover, .dg-filter-empty-clear:hover { background: var(--ar-color-surface); }
+.dg-filter-trigger:focus-visible, .dg-filter-clear:focus-visible, .dg-filter-popover :focus-visible, .dg-filter-empty-clear:focus-visible { outline: 2px solid var(--ar-color-border-focus); outline-offset: 2px; }
+.dg-filter-trigger:disabled, .dg-filter-clear:disabled { opacity: .55; cursor: default; }
+.dg-filter-popover { box-sizing: border-box; max-width: min(320px, calc(100vw - 16px)); }
+.dg-filter-popover[hidden] { display: none; }
+.dg-filter-empty-clear { display: block; margin: 10px auto 0; }
+.pi-dependency-graph-state:has(.dg-filter-empty-clear) { flex-direction: column; }
+.dg-node-hidden-links { flex: 0 0 auto; font-size: 10px; color: var(--ar-color-text-muted); }
+.dg-port-filter-note { padding: 7px 10px; font-size: 11px; color: var(--ar-color-text-muted); }
