@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Simplify filtered dependency graphs with Show matched items only enabled by default and always hide isolated datasets.",
+  "details": [
+    "Remove Show all; datasets and method outputs with no precedents or dependents stay hidden.",
+    "Uncheck Show matched items only to include surrounding chain context; dashed arrows connect matches through hidden datasets."
+  ]
+}

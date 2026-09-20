@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Use the dataset table's filter menu in the dependency graph and remember the user's last filter choices.",
+  "details": [
+    "Search values, select All, or right-click to exclude a value using the same menu as the PI dataset table.",
+    "Remember Status, Category, Method Type, and Show matched items only on this PC; keep the checkbox beside Clear filters."
+  ]
+}

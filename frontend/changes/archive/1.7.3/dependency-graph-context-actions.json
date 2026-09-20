@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Set method outputs to Reviewed or reveal their dataset-table rows directly from the dependency graph context menu."
+}

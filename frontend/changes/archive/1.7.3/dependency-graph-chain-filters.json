@@ -1,0 +1,7 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Filter dependency chains by Status, Category, and Method Type directly in the graph toolbar.",
+  "details": ["Matching datasets keep their inputs and dependents visible; unrelated branches are hidden."]
+}

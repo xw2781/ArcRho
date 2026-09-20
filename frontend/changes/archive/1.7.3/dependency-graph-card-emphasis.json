@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "Show the shared yellow Needs Review triangle before the method label, remove filter-value labels, and keep nonmatching chain cards at normal emphasis."
+}
