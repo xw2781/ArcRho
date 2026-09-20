@@ -33,6 +33,7 @@
   Var ArcRhoPreferredInstallDirectory
   Var ArcRhoInstallLocationIsOwned
   Var ArcRhoIsUpdate
+  Var ArcRhoStartAppArgs
 
   !macro ArcRho_PrintInstallDetail MSG
     ; Keep action-level output in the details list so it cannot replace the
@@ -560,10 +561,19 @@ ShowUninstDetails show
   ; electron-builder's finish page, with one difference: a setup the app started
   ; for an update relaunches the app and closes on its own instead of waiting
   ; for a click on Finish. Expanded at the page-definition point, after
-  ; $launchLink and the StartApp macro from common.nsh exist.
+  ; $launchLink from common.nsh exists.
+  ;
+  ; The relaunch repeats what common.nsh's StartApp macro does instead of
+  ; expanding it. That macro declares a variable of its own and the install
+  ; section already expands it once, so a second expansion ends the build with
+  ; 'variable "startAppArgs" already declared'.
   !macro customFinishPage
     Function ArcRho_StartApp
-      !insertmacro StartApp
+      StrCpy $ArcRhoStartAppArgs ""
+      ${If} ${isUpdated}
+        StrCpy $ArcRhoStartAppArgs "--updated"
+      ${EndIf}
+      ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$ArcRhoStartAppArgs"
     FunctionEnd
 
     Function ArcRho_FinishPage_Pre

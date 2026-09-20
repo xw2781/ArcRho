@@ -109,6 +109,14 @@ test("a setup the app starts for an update shows only the file progress page", (
     /!macro customFinishPage[\s\S]*Function ArcRho_FinishPage_Pre[\s\S]*Call ArcRho_StartApp\n\s*Abort/
   );
   assert.match(nsh, /MUI_PAGE_CUSTOMFUNCTION_PRE ArcRho_FinishPage_Pre/);
+  assert.match(
+    nsh,
+    /Function ArcRho_StartApp[\s\S]*\$\{StdUtils\.ExecShellAsUser\} \$0 "\$launchLink" "open" "\$ArcRhoStartAppArgs"/
+  );
+  // electron-builder's install section already expands common.nsh's StartApp
+  // macro, and it declares a variable, so a second expansion here would end
+  // every build with 'variable "startAppArgs" already declared'.
+  assert.doesNotMatch(nsh, /!insertmacro StartApp/);
 });
 
 
