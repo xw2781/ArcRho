@@ -42,12 +42,17 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 ACTIVITY_BUFFER_LINES = 4000
 PUBLISHABLE_STATUSES = frozenset({"built", "remote_published"})
 
+# One step of an operation: the title shown while it runs, its command, and its environment.
+Step = tuple[str, list[str], dict[str, str]]
+
 
 class OperationRunner:
-    """Runs one build, publish, or revoke subprocess at a time and buffers output.
+    """Runs one build, publish, or revoke operation at a time and buffers output.
 
-    The browser polls the buffer, so a reload or a second tab still sees the
-    activity of an operation that is already running.
+    An operation is a list of steps run in order, so "build and publish" is one
+    operation that stops at the first failing step.  The browser polls the
+    buffer, so a reload or a second tab still sees the activity of an operation
+    that is already running.
     """
 
     def __init__(self) -> None:
@@ -60,19 +65,15 @@ class OperationRunner:
         self._completed = 0
         self._result: dict[str, Any] | None = None
 
-    def start(self, title: str, command: list[str], environment: dict[str, str]) -> None:
+    def start(self, steps: list[Step]) -> None:
+        title = steps[0][0]
         with self._lock:
             if self._running:
                 raise RuntimeError("Wait for the current build or release operation to finish.")
             self._running = True
             self._title = title
             self._status = title
-        self.append(f"[{title}] {subprocess.list2cmdline(command)}")
-        threading.Thread(
-            target=self._run,
-            args=(title, command, environment),
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._run, args=(steps,), daemon=True).start()
 
     def append(self, message: str) -> None:
         if not message:
@@ -100,7 +101,22 @@ class OperationRunner:
                 "result": self._result,
             }
 
-    def _run(self, title: str, command: list[str], environment: dict[str, str]) -> None:
+    def _run(self, steps: list[Step]) -> None:
+        title, exit_code, detail = "", 0, ""
+        for title, command, environment in steps:
+            with self._lock:
+                self._title = title
+                self._status = title
+            self.append(f"[{title}] {subprocess.list2cmdline(command)}")
+            exit_code, detail = self._run_step(command, environment)
+            if exit_code == 0:
+                self.append(f"[{title}] completed successfully.")
+            else:
+                self.append(f"[{title}] failed with exit code {exit_code}. {detail}".strip())
+                break
+        self._finish(title, exit_code, detail)
+
+    def _run_step(self, command: list[str], environment: dict[str, str]) -> tuple[int, str]:
         detail = ""
         try:
             with subprocess.Popen(
@@ -122,12 +138,7 @@ class OperationRunner:
         except OSError as exc:
             exit_code = 1
             detail = str(exc)
-
-        if exit_code == 0:
-            self.append(f"[{title}] completed successfully.")
-        else:
-            self.append(f"[{title}] failed with exit code {exit_code}. {detail}".strip())
-        self._finish(title, exit_code, detail)
+        return exit_code, detail
 
     def _finish(self, title: str, exit_code: int, detail: str) -> None:
         with self._lock:
@@ -275,8 +286,17 @@ class ReleaseManagerHandler(BaseHTTPRequestHandler):
         except release_workflow.ReleaseWorkflowError as exc:
             self._send_json({"error": str(exc)}, status=400)
             return
-        command, environment = build_command(product, version)
-        self._launch(f"Building {product} {version} without publishing", command, environment)
+        publish = bool(payload.get("publish", False))
+        title = f"Building {product} {version}" if publish else f"Building {product} {version} without publishing"
+        steps: list[Step] = [(title, *build_command(product, version))]
+        if publish:
+            steps.append(
+                (
+                    f"Publishing {product} {version}",
+                    *publish_command(product, version, bool(payload.get("commit", True))),
+                )
+            )
+        self._launch(*steps)
 
     def _start_publish(self, payload: dict[str, Any]) -> None:
         record = self._requested_record(payload)
@@ -289,10 +309,12 @@ class ReleaseManagerHandler(BaseHTTPRequestHandler):
                 status=409,
             )
             return
-        command, environment = publish_command(
-            record["product"], record["version"], bool(payload.get("commit", True))
+        self._launch(
+            (
+                f"Publishing {record['product']} {record['version']}",
+                *publish_command(record["product"], record["version"], bool(payload.get("commit", True))),
+            )
         )
-        self._launch(f"Publishing {record['product']} {record['version']}", command, environment)
 
     def _start_revoke(self, payload: dict[str, Any]) -> None:
         try:
@@ -307,8 +329,7 @@ class ReleaseManagerHandler(BaseHTTPRequestHandler):
                 status=400,
             )
             return
-        command, environment = revoke_command(product, version)
-        self._launch(f"Revoking {product} {version}", command, environment)
+        self._launch((f"Revoking {product} {version}", *revoke_command(product, version)))
 
     def _open_installer(self, payload: dict[str, Any]) -> None:
         record = self._requested_record(payload)
@@ -341,13 +362,13 @@ class ReleaseManagerHandler(BaseHTTPRequestHandler):
             return None
         return record
 
-    def _launch(self, title: str, command: list[str], environment: dict[str, str]) -> None:
+    def _launch(self, *steps: Step) -> None:
         try:
-            self.runner.start(title, command, environment)
+            self.runner.start(list(steps))
         except RuntimeError as exc:
             self._send_json({"error": str(exc)}, status=409)
             return
-        self._send_json({"ok": True, "title": title})
+        self._send_json({"ok": True, "title": steps[0][0]})
 
     def _guarded(self, produce: Callable[[], dict[str, Any]]) -> None:
         """Answer a read request, turning workflow and tooling failures into 500s."""

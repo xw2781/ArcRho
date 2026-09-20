@@ -26,15 +26,22 @@ browser cannot drive a build or a publication. Opening the URL without that toke
 shows the UI but no data. `--port` pins a port and `--no-browser` prints the URL
 instead of launching a browser.
 
-Only one build, publish, or revoke runs at a time. Its output streams into the
-**Activity** panel; the panel is served from the server's buffer, so reloading the page
-or opening it in a second tab still shows the operation in progress.
+Only one build, publish, or revoke runs at a time; a build that publishes afterwards is
+one such operation of two steps. Its output streams into the **Activity** panel; the
+panel is served from the server's buffer, so reloading the page or opening it in a
+second tab still shows the operation in progress.
 
 ## Build And Test
 
-Choose ArcRho or Arcode, enter a semantic version, and select **Build installer**. The
+Choose ArcRho or Arcode, enter a semantic version, and select the build button. The
 suggested version is the next patch after the newest relevant GitHub Release; selecting
 it fills the Version field, but any valid custom version can be entered instead.
+
+**Publish after build** is enabled by default: the build button reads **Build and
+publish**, one dialog confirms both steps, and a successful build is published straight
+away with the same workflow, checks, and **Commit bookkeeping** setting that
+**Publish selected** uses. A failed build publishes nothing. Clear the checkbox to build
+only, test the installer, and publish later from panel 2.
 
 The build-only workflow:
 

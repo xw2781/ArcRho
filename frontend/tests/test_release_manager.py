@@ -37,10 +37,14 @@ def wait_for(predicate, timeout: float = 20.0) -> bool:
     return False
 
 
+def echo_step(title: str, message: str) -> tuple[str, list[str], dict[str, str]]:
+    return title, ["cmd.exe", "/d", "/c", f"echo {message}"], os.environ.copy()
+
+
 class OperationRunnerTests(unittest.TestCase):
     def test_streams_output_and_reports_success(self) -> None:
         runner = release_manager.OperationRunner()
-        runner.start("Echo", ["cmd.exe", "/d", "/c", "echo streamed line"], os.environ.copy())
+        runner.start([echo_step("Echo", "streamed line")])
         self.assertTrue(wait_for(lambda: runner.snapshot(0)["completed"] == 1))
 
         snapshot = runner.snapshot(0)
@@ -55,7 +59,7 @@ class OperationRunnerTests(unittest.TestCase):
 
     def test_reports_failure_exit_code(self) -> None:
         runner = release_manager.OperationRunner()
-        runner.start("Failing", ["cmd.exe", "/d", "/c", "exit 3"], os.environ.copy())
+        runner.start([("Failing", ["cmd.exe", "/d", "/c", "exit 3"], os.environ.copy())])
         self.assertTrue(wait_for(lambda: runner.snapshot(0)["completed"] == 1))
 
         snapshot = runner.snapshot(0)
@@ -65,10 +69,35 @@ class OperationRunnerTests(unittest.TestCase):
 
     def test_refuses_a_second_concurrent_operation(self) -> None:
         runner = release_manager.OperationRunner()
-        runner.start("First", ["cmd.exe", "/d", "/c", "echo first"], os.environ.copy())
+        runner.start([echo_step("First", "first")])
         with self.assertRaises(RuntimeError):
-            runner.start("Second", ["cmd.exe", "/d", "/c", "echo second"], os.environ.copy())
+            runner.start([echo_step("Second", "second")])
         self.assertTrue(wait_for(lambda: not runner.snapshot(0)["running"]))
+
+    def test_runs_the_steps_of_one_operation_in_order(self) -> None:
+        runner = release_manager.OperationRunner()
+        runner.start([echo_step("Build", "built it"), echo_step("Publish", "published it")])
+        self.assertTrue(wait_for(lambda: runner.snapshot(0)["completed"] == 1))
+
+        snapshot = runner.snapshot(0)
+        self.assertLess(snapshot["lines"].index("built it"), snapshot["lines"].index("published it"))
+        self.assertEqual(snapshot["result"]["title"], "Publish")
+        self.assertTrue(snapshot["result"]["ok"])
+
+    def test_a_failed_step_skips_the_rest_of_the_operation(self) -> None:
+        runner = release_manager.OperationRunner()
+        runner.start(
+            [
+                ("Build", ["cmd.exe", "/d", "/c", "exit 3"], os.environ.copy()),
+                echo_step("Publish", "published it"),
+            ]
+        )
+        self.assertTrue(wait_for(lambda: runner.snapshot(0)["completed"] == 1))
+
+        snapshot = runner.snapshot(0)
+        self.assertNotIn("published it", snapshot["lines"])
+        self.assertEqual(snapshot["result"]["title"], "Build")
+        self.assertEqual(snapshot["result"]["exit_code"], 3)
 
     def test_trims_the_buffer_and_flags_truncation(self) -> None:
         runner = release_manager.OperationRunner()
@@ -179,11 +208,27 @@ class ReleaseManagerServerTests(unittest.TestCase):
             )
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
-        title, command, environment = start.call_args.args
+        steps = start.call_args.args[0]
+        self.assertEqual(len(steps), 1)
+        title, command, environment = steps[0]
         self.assertEqual(title, "Building Arco 1.2.13 without publishing")
         self.assertEqual(command[-2:], ["--build-only", "1.2.13"])
         self.assertEqual(environment["ARCRHO_BUILD_PRODUCT"], "arco")
         self.assertEqual(environment["ARCRHO_NONINTERACTIVE"], "1")
+
+    def test_build_can_publish_the_successful_build(self) -> None:
+        with mock.patch.object(release_manager.OperationRunner, "start") as start:
+            status, _ = self.request(
+                "/api/build",
+                method="POST",
+                body={"product": "arco", "version": "1.2.13", "publish": True, "commit": False},
+            )
+        self.assertEqual(status, 200)
+        steps = start.call_args.args[0]
+        self.assertEqual([title for title, _command, _environment in steps], ["Building Arco 1.2.13", "Publishing Arco 1.2.13"])
+        self.assertEqual(steps[0][1][-2:], ["--build-only", "1.2.13"])
+        self.assertIn("publish", steps[1][1])
+        self.assertIn("--no-commit", steps[1][1])
 
     def test_publish_refuses_a_record_that_is_already_published(self) -> None:
         published = dict(PENDING_MANIFEST, status="published")
@@ -207,7 +252,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
                 body={"product": "Arco", "version": "1.2.13", "commit": False},
             )
         self.assertEqual(status, 200)
-        command = start.call_args.args[1]
+        command = start.call_args.args[0][0][1]
         self.assertIn("publish", command)
         self.assertIn("--no-commit", command)
 
@@ -241,7 +286,7 @@ class ReleaseManagerServerTests(unittest.TestCase):
                 body={"product": "Arco", "version": "1.2.13", "confirm": "1.2.13"},
             )
         self.assertEqual(status, 200)
-        command = start.call_args.args[1]
+        command = start.call_args.args[0][0][1]
         self.assertIn("revoke", command)
         self.assertEqual(command[-2:], ["--confirm-version", "1.2.13"])
 

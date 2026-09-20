@@ -141,6 +141,10 @@
       overflow: auto;
     }
 
+    /* A card keeps its own height in a short window, so the page scrolls
+       instead of squashing a card until its content spills under the next. */
+    main > .card { flex: 0 0 auto; }
+
     .card {
       background: var(--bg-panel);
       border: 1px solid var(--border);
@@ -202,7 +206,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 12px;
-      min-height: 260px;
+      min-height: clamp(170px, 34vh, 260px);
     }
 
     /* Build strip -------------------------------------------------------- */
@@ -316,6 +320,8 @@
       user-select: none;
     }
 
+    .fields .check { height: 28px; }
+
     .check input {
       width: 15px;
       height: 15px;
@@ -414,16 +420,12 @@
 
     /* Activity panel ----------------------------------------------------- */
 
-    .activity {
-      flex: 0 0 auto;
-    }
-
     .activity .card-body {
       padding: 0;
     }
 
     #activityLog {
-      height: 190px;
+      height: clamp(110px, 20vh, 190px);
       overflow: auto;
       margin: 0;
       padding: 8px 12px;
@@ -543,7 +545,7 @@
     <section class="card">
       <header>
         <h2>1 &middot; Build and test locally</h2>
-        <span class="hint">The build records an installer for testing; it does not create a GitHub Release.</span>
+        <span class="hint" id="buildHint"></span>
       </header>
       <div class="card-body">
         <div class="fields">
@@ -557,7 +559,11 @@
           </div>
           <button type="button" id="suggestedButton" class="suggested">Suggested version: loading…</button>
           <button type="button" id="checkVersionButton">Check next version</button>
-          <button type="button" id="buildButton" class="primary">Build installer</button>
+          <button type="button" id="buildButton" class="primary">Build and publish</button>
+          <label class="check" title="Publish to GitHub Releases as soon as the build succeeds">
+            <input type="checkbox" id="publishAfterBuildCheckbox" checked>
+            Publish after build
+          </label>
         </div>
       </div>
     </section>
@@ -693,6 +699,8 @@
       suggested: el("suggestedButton"),
       checkVersion: el("checkVersionButton"),
       build: el("buildButton"),
+      buildHint: el("buildHint"),
+      publishAfterBuild: el("publishAfterBuildCheckbox"),
       commit: el("commitCheckbox"),
       openInstaller: el("openInstallerButton"),
       publish: el("publishButton"),
@@ -919,6 +927,14 @@
       return state.history.find((record) => `${record.product}@${record.version}` === state.selectedHistory) || null;
     }
 
+    function applyPublishAfterBuild() {
+      const publish = dom.publishAfterBuild.checked;
+      dom.build.textContent = publish ? "Build and publish" : "Build installer";
+      dom.buildHint.textContent = publish
+        ? "A successful build is published to GitHub Releases straight away."
+        : "The build records an installer for testing; it does not create a GitHub Release.";
+    }
+
     function updateActions() {
       const busy = state.running;
       dom.build.disabled = busy;
@@ -1015,7 +1031,22 @@
         dom.version.focus();
         return;
       }
-      await startOperation("/api/build", { product: dom.product.value, version }, "Invalid build request");
+      const publish = dom.publishAfterBuild.checked;
+      if (publish) {
+        const confirmed = await showModal({
+          title: "Build and publish",
+          message:
+            `Build ${dom.product.value} ${version} and publish it to GitHub Releases if the build succeeds?\n\n` +
+            "The installer and its checksum will become the update source for users without a further prompt.",
+          confirmLabel: "Build and publish",
+        });
+        if (!confirmed) return;
+      }
+      await startOperation(
+        "/api/build",
+        { product: dom.product.value, version, publish, commit: dom.commit.checked },
+        "Invalid build request",
+      );
     }
 
     async function openInstaller() {
@@ -1147,6 +1178,8 @@
       if (version) dom.version.value = version;
     });
     dom.checkVersion.addEventListener("click", refreshSuggestedVersion);
+    dom.publishAfterBuild.addEventListener("change", applyPublishAfterBuild);
+    applyPublishAfterBuild();
     dom.build.addEventListener("click", build);
     dom.version.addEventListener("keydown", (event) => {
       if (event.key === "Enter") build();
