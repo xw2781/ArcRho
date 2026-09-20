@@ -59,6 +59,7 @@ const PAYLOAD = {
     { source: "Paid DFM", target: "Selected Ultimate" },
     { source: "Incurred DFM", target: "Selected Ultimate" },
     { source: "Gone Vector", target: "Incurred DFM" },
+    { source: "Paid", target: "Gone Vector" },
     { source: "paid", target: "PAID VECTOR" },
     { source: "Paid", target: "Nobody" },
     { source: "Paid", target: "Paid" },
@@ -87,17 +88,20 @@ const GENERATED_PAYLOAD = {
   ],
 };
 
-test("the graph keeps one node per name and one edge per pair, dropping unknown and self edges", () => {
+test("the graph keeps indexed nodes and their links, dropping non-indexed, unknown and self edges", () => {
   const graph = buildDependencyGraph(PAYLOAD);
-  assert.equal(graph.nodes.length, 7);
-  assert.equal(graph.edges.length, 6);
+  assert.equal(graph.nodes.length, 6);
+  assert.equal(graph.edges.length, 5);
+  assert.equal(graph.byKey.has("gone vector"), false);
+  assert.deepEqual(graph.byKey.get("paid").dependents, ["paid vector"]);
+  assert.deepEqual(graph.byKey.get("incurred dfm").precedents, ["incurred"]);
   assert.deepEqual(graph.byKey.get("paid dfm").precedents, ["paid vector"]);
   assert.deepEqual(graph.byKey.get("paid dfm").dependents, ["selected ultimate"]);
   assert.equal(graph.byKey.get("paid dfm").methodName, "Paid DFM Method");
   assert.equal(graph.byKey.get("paid").methodType, "");
 });
 
-test("node families come from the method type, then the source kind, and a missing node is its own family", () => {
+test("node families come from the method type, then the source kind", () => {
   assert.deepEqual(dependencyNodeKind({ source_kind: "input", method_type: "None" }), { family: "dataset", label: "Dataset" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "calculated" }), { family: "calculated", label: "Calculated" });
   // An engine-built dataset reads as where its numbers came from: one source
@@ -109,11 +113,9 @@ test("node families come from the method type, then the source kind, and a missi
     dependencyNodeKind({ source_kind: "engine", formula: '"Earned Premium" + "Remaining Budget Premium"' }),
     { family: "generated", label: "Generated" },
   );
-  // A formula never overrides a method output or a name gone from the index.
+  // A formula never overrides a method output.
   assert.deepEqual(dependencyNodeKind({ source_kind: "dfm", method_type: "DFM", formula: "A + B" }), { family: "method", label: "DFM" });
-  assert.deepEqual(dependencyNodeKind({ source_kind: "engine", formula: "A + B", in_index: false }), { family: "missing", label: "Not In Index" });
   assert.deepEqual(dependencyNodeKind({ source_kind: "dfm", method_type: "DFM" }), { family: "method", label: "DFM" });
-  assert.deepEqual(dependencyNodeKind({ source_kind: "input", in_index: false }), { family: "missing", label: "Not In Index" });
 });
 
 test("a generated formula is drawn between its inputs and the methods that read it", () => {
@@ -159,7 +161,7 @@ test("a generated formula is drawn between its inputs and the methods that read 
   // A class with no generated formula type draws exactly as before.
   const plain = buildDependencyGraph(PAYLOAD);
   assert.deepEqual(plain.nodes.map((node) => node.kind.family), [
-    "dataset", "dataset", "calculated", "method", "method", "method", "missing",
+    "dataset", "dataset", "calculated", "method", "method", "method",
   ]);
 });
 
@@ -169,7 +171,7 @@ test("layers follow the longest chain of inputs and every edge runs left to righ
   const layer = Object.fromEntries(layout.nodes.map((node) => [node.name, node.layer]));
   assert.equal(layer.Paid, 0);
   assert.equal(layer.Incurred, 0);
-  assert.equal(layer["Gone Vector"], 0);
+  assert.equal(layer["Gone Vector"], undefined);
   assert.equal(layer["Paid Vector"], 1);
   assert.equal(layer["Incurred DFM"], 1);
   assert.equal(layer["Paid DFM"], 2);
@@ -222,7 +224,7 @@ test("reach walks precedents and dependents transitively without the node itself
   assert.deepEqual([...reach.upstream].sort(), ["paid", "paid vector"]);
   assert.deepEqual([...reach.downstream].sort(), ["selected ultimate"]);
   const top = dependencyGraphReach(graph, "selected ultimate");
-  assert.deepEqual([...top.upstream].sort(), ["gone vector", "incurred", "incurred dfm", "paid", "paid dfm", "paid vector"]);
+  assert.deepEqual([...top.upstream].sort(), ["incurred", "incurred dfm", "paid", "paid dfm", "paid vector"]);
   assert.equal(top.downstream.size, 0);
 });
 
@@ -256,7 +258,7 @@ test("the status line reads the graph in plain words, hidden datasets included",
   assert.equal(dependencyGraphSummary({ nodeCount: 0 }), "");
 });
 
-test("a dataset nothing depends on is hidden by default; methods and missing names stay", () => {
+test("Show all restores unused indexed datasets; methods stay and non-indexed names never appear", () => {
   const graph = buildDependencyGraph({
     ...PAYLOAD,
     nodes: [
@@ -265,16 +267,19 @@ test("a dataset nothing depends on is hidden by default; methods and missing nam
       { name: "Idle Engine Table", dataset_type: "Idle Engine Table", source_kind: "engine", method_type: "None", status: 0 },
       { name: "Unused DFM", dataset_type: "Unused Ultimate", source_kind: "dfm", method_type: "DFM", status: 0 },
     ],
+    edges: [...PAYLOAD.edges, { source: "Orphan Vector", target: "Gone Vector" }],
   });
   const hidden = dependencyGraphHiddenByDefault(graph);
   assert.deepEqual([...hidden].sort(), ["idle engine table", "orphan vector"]);
 
   const pruned = pruneDependencyGraph(graph, hidden);
   assert.deepEqual(pruned.nodes.map((node) => node.name), [
-    "Paid", "Incurred", "Paid Vector", "Paid DFM", "Incurred DFM", "Selected Ultimate", "Gone Vector", "Unused DFM",
+    "Paid", "Incurred", "Paid Vector", "Paid DFM", "Incurred DFM", "Selected Ultimate", "Unused DFM",
   ]);
   assert.equal(pruned.edges.length, graph.edges.length, "no edge touched a hidden dataset");
   assert.equal(pruneDependencyGraph(graph, new Set()), graph, "nothing hidden is the same graph");
+  assert.equal(graph.byKey.has("gone vector"), false, "Show all still excludes names outside the index");
+  assert.ok(graph.byKey.has("orphan vector"), "Show all restores unused indexed datasets");
 
   // Hiding a dataset also drops it from the lists of what remains.
   const withEdge = buildDependencyGraph({
@@ -302,7 +307,7 @@ test("each port lists the direct precedents or dependents with the label their b
       { key: "incurred dfm", name: "Incurred DFM", label: "DFM", family: "method" },
     ],
   });
-  assert.deepEqual(dependencyGraphPortList(graph.byKey.get("incurred dfm"), graph, "in").entries.map((e) => e.name), ["Incurred", "Gone Vector"]);
+  assert.deepEqual(dependencyGraphPortList(graph.byKey.get("incurred dfm"), graph, "in").entries.map((e) => e.name), ["Incurred"]);
   assert.deepEqual(dependencyGraphPortList(graph.byKey.get("selected ultimate"), graph, "out"), {
     title: "Dependents",
     empty: "No dependents",
@@ -481,7 +486,6 @@ test("the graph page and its read are registered end to end", async () => {
   assert.match(css, /\.pi-dependency-graph-menu \{ display: none;/);
   assert.match(rawWindowSource, /box\.addEventListener\("contextmenu", \(event\) => \{\n\s+event\.preventDefault\(\);\n\s+openNodeMenu\(node, box, event\);/);
   assert.match(rawWindowSource, /item\.textContent = node\.methodType \? "Show Method" : "Show Dataset";/);
-  assert.match(rawWindowSource, /item\.disabled = node\.inIndex === false;/);
   // The menu marks its box instead of selecting it, so the chain survives.
   assert.match(rawWindowSource, /box\.classList\.add\("is-context-target"\);/);
 

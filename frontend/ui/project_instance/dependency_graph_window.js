@@ -41,7 +41,7 @@ import {
   dependencyGraphReach,
   layoutDependencyGraph,
   pruneDependencyGraph,
-} from "/ui/project_instance/dependency_graph_layout.js?v=20260912a";
+} from "/ui/project_instance/dependency_graph_layout.js?v=20260920a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 const GRAPH_ENDPOINT = "/datasets/dependency-graph";
@@ -103,11 +103,10 @@ export function dependencyGraphSummary({ nodeCount, edgeCount, reviewCount, hidd
  * The open request one box sends the Project Instance page.
  *
  * A method output opens as its method, by the method name the index recorded,
- * so a DFM whose method name differs from its output dataset still opens. A
- * name the index no longer lists cannot be opened at all.
+ * so a DFM whose method name differs from its output dataset still opens.
  */
 export function dependencyGraphOpenRequest(node, { projectName, reservingClass } = {}) {
-  if (!node || node.inIndex === false) return null;
+  if (!node) return null;
   const request = {
     datasetName: node.name,
     datasetTypeName: node.datasetType || node.name,
@@ -634,7 +633,6 @@ function openNodeMenu(node, box, event) {
   const item = els.menu.querySelector('[data-action="open"]');
   if (item) {
     item.textContent = node.methodType ? "Show Method" : "Show Dataset";
-    item.disabled = node.inIndex === false;
   }
   openContextMenu(els.menu, {
     anchorEl: box,
@@ -692,10 +690,7 @@ function arrowMarker(id, className) {
 
 function openNode(node) {
   const request = dependencyGraphOpenRequest(node, { projectName, reservingClass });
-  if (!request) {
-    setStatus(`${node.name} is not in the class index and cannot be opened.`, "error");
-    return;
-  }
+  if (!request) return;
   postToParent("arcrho:project-instance-open-dependent-dataset", request);
   setStatus(request.openMethod
     ? `Opening ${node.methodType} method ${node.name}...`

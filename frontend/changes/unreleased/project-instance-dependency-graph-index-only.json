@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Dependency Graph window now shows only datasets listed in the reserving class index, including when Show all is enabled."
+}

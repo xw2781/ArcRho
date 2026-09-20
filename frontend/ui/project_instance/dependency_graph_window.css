@@ -533,16 +533,8 @@
 }
 
 /* The box's right-click menu. Hidden until openContextMenu shows it; closeNodeMenu
-   clears that inline display. A box the class index no longer lists cannot be
-   opened, so its one item is offered greyed out rather than left out. */
+   clears that inline display. */
 .pi-dependency-graph-menu { display: none; width: 148px; max-width: min(148px, calc(100vw - 16px)); }
-
-.pi-dependency-graph-menu .ctx-item:disabled { cursor: default; color: var(--ar-color-text-muted); }
-
-.pi-dependency-graph-menu .ctx-item:disabled:hover {
-  background: transparent;
-  color: var(--ar-color-text-muted);
-}
 
 /* One accent per family, shared by the node stripe, the popover rows, and
    the legend swatch. */
@@ -552,7 +544,6 @@
   --dg-family-engine: #475569;
   --dg-family-generated: #0891b2;
   --dg-family-method: var(--ar-color-accent);
-  --dg-family-missing: var(--ar-color-danger);
 }
 
 .dg-node[data-family="calculated"], .dg-port-popover-row[data-family="calculated"], .pi-dependency-graph-legend [data-family="calculated"] { --dg-node-accent: var(--dg-family-calculated); --dg-family-accent: var(--dg-family-calculated); }
@@ -560,5 +551,3 @@
 .dg-node[data-family="generated"], .dg-port-popover-row[data-family="generated"], .pi-dependency-graph-legend [data-family="generated"] { --dg-node-accent: var(--dg-family-generated); --dg-family-accent: var(--dg-family-generated); }
 .dg-node[data-family="method"], .dg-port-popover-row[data-family="method"], .pi-dependency-graph-legend [data-family="method"] { --dg-node-accent: var(--dg-family-method); --dg-family-accent: var(--dg-family-method); }
 .dg-node[data-family="dataset"], .dg-port-popover-row[data-family="dataset"], .pi-dependency-graph-legend [data-family="dataset"] { --dg-node-accent: var(--dg-family-dataset); --dg-family-accent: var(--dg-family-dataset); }
-.dg-node[data-family="missing"], .dg-port-popover-row[data-family="missing"] { --dg-node-accent: var(--dg-family-missing); }
-.dg-node[data-family="missing"] { border-style: dashed; border-left-style: solid; }
