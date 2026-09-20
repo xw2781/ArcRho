@@ -89,6 +89,11 @@ export function registerDataTabPersistenceController(runtime) {
   const notifyLinksInventoryChanged = () => {
     getDataTabLinksController()?.refresh?.();
     updateDatasetSaveUi();
+    // The links of a dataset can land after its grid is painted, and the cell
+    // a window opens on is the first one holding a formula, so the selection
+    // is offered the new inventory rather than left on the cell it fell back
+    // to. It moves only while the window is still on that fallback.
+    applyGridSelectionFromState();
   };
   // One cell holds at most one link, so the controller that takes a cell over
   // releases it from the other two.

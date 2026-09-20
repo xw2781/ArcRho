@@ -61,7 +61,7 @@ const interactionSource = (await readFile(
     JSON.stringify(spreadsheetStubUrl),
   )
   .replace(
-    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a"',
+    '"/ui/shared/tabs/data/dataset_grid_view.js?v=20260919a"',
     JSON.stringify(viewStubUrl),
   )
   .replace(

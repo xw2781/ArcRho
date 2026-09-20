@@ -425,6 +425,47 @@ export function initDefaultSummarySelection(summaryTable) {
   }
 }
 
+// The cell the Ratios tab opens on, and whether the reader has taken the
+// marker over. A method's saved selections arrive after the first paint, so
+// the opening cell follows the selected row until someone moves or gives up
+// the marker themselves, after which it stays where they put it.
+let openingSummaryCell = null;
+let openingSummaryCellSettled = false;
+
+/**
+ * The cell a freshly opened Ratios tab starts on: the selected average cell of
+ * the first development column — the green one — so the formula bar opens on
+ * the factor the method actually uses rather than on an instruction to pick a
+ * cell. A column with nothing selected yet starts on its first row.
+ */
+export function pickSummaryOpeningCell(summaryTable) {
+  const firstColumn = Array.from(summaryTable?.querySelectorAll?.("td.summaryCell[data-col]") || [])
+    .filter((cell) => Number(cell?.dataset?.col) === 0 && String(cell?.dataset?.r || ""));
+  if (!firstColumn.length) return null;
+  const selectedRowId = String(selectedSummaryByCol.get(0) || "");
+  const selected = selectedRowId
+    && firstColumn.find((cell) => String(cell.dataset.r) === selectedRowId);
+  return { rowId: selected ? selectedRowId : String(firstColumn[0].dataset.r), col: 0 };
+}
+
+/** Name the opening cell as the active one, for a tab that has just opened. */
+function applyOpeningSummaryCell(summaryTable) {
+  if (openingSummaryCellSettled) return;
+  const active = summaryRuntime.summaryActiveCellState;
+  const activeRowId = String(active?.rowId || "");
+  const isOwnCell = !!(openingSummaryCell
+    && activeRowId === openingSummaryCell.rowId
+    && Number(active?.col) === openingSummaryCell.col);
+  if (openingSummaryCell ? !isOwnCell : !!activeRowId) {
+    openingSummaryCellSettled = true;
+    return;
+  }
+  const target = pickSummaryOpeningCell(summaryTable);
+  if (!target) return;
+  openingSummaryCell = target;
+  summaryRuntime.summaryActiveCellState = { rowId: target.rowId, col: target.col };
+}
+
 export function wireSummarySelection(summaryTable, selectedTable) {
   if (!summaryTable || summaryTable.dataset.selectionWired === "1") return;
   summaryRuntime.summarySelectionDestroy?.();
@@ -863,6 +904,7 @@ export function wireSummarySelection(summaryTable, selectedTable) {
     pasteUserEntryClipboardGrid(summaryTable, selectedTable, cell, text);
   });
 
+  applyOpeningSummaryCell(summaryTable);
   const initCell = summaryTable.querySelector(
     `td.summaryCell[data-r="${summaryRuntime.summaryActiveCellState.rowId}"][data-col="${summaryRuntime.summaryActiveCellState.col}"]`
   );
@@ -886,5 +928,6 @@ registerSummaryFunctions({
   selectSummaryCell,
   clearSummaryActiveCell,
   initDefaultSummarySelection,
+  pickSummaryOpeningCell,
   wireSummarySelection,
 });

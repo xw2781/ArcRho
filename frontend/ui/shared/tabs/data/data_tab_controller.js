@@ -19,7 +19,7 @@ import {
   renderTable,
   setDatasetRenderNumberFormatSettings,
   setDatasetRenderVectorColumnLabel,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260919a";
 import {
   beginDatasetGridLoading,
   endDatasetGridLoading,
@@ -37,7 +37,7 @@ import {
 import { createDatasetDependencyGuard } from "/ui/shared/dataset/dataset_dependency_service.js";
 import { createDatasetHeadersService } from "/ui/shared/dataset/dataset_headers_service.js";
 import { validateDatasetOriginLabels } from "/ui/shared/dataset/dataset_origin_labels.js";
-import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260917a";
+import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_interactions.js?v=20260919a";
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
@@ -95,7 +95,7 @@ import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260906b";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260916a";
 import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260907b";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260919a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260919b";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";

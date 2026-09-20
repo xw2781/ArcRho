@@ -12,7 +12,7 @@ import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260914b";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260919e";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260914b";
 import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260919a";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260914b";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260919a";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",

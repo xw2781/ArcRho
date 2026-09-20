@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A Dataset window and a DFM Ratios tab now open with a cell already selected, so the formula bar shows a formula or a value instead of asking you to pick a cell.",
+  "details": [
+    "A Dataset window opens on the first cell holding a formula, read across each row in turn; a table with no formula opens on its first cell.",
+    "A Ratios tab opens on the green selected average of the first column, showing its formula when that row is User Entry and its value otherwise.",
+    "Once you move or clear the selection yourself, the window leaves it where you put it."
+  ]
+}

@@ -7,7 +7,7 @@ import {
   getDatasetGridSelectionLayout,
   getDisplayDatasetModel,
   setDatasetGridEditConfig,
-} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a";
+} from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260919a";
 import { parseExcelReference } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { createFormulaHoverEditor } from "/ui/shared/components/formula_hover/formula_hover.js?v=20260908b";
 import {
@@ -17,6 +17,22 @@ import {
 } from "/ui/shared/dataset/dataset_internal_reference.js?v=20260830a";
 import { classifyDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260830a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+
+/**
+ * The cell a freshly opened grid starts on: the first cell carrying a formula,
+ * read across each row in turn, so the formula panel opens with that formula
+ * in it rather than with an instruction to pick a cell. A grid with no formula
+ * on it starts on its first cell, and one with no cells at all starts nowhere.
+ */
+export function pickDatasetOpeningCell({ maxRow, maxCol, getCellFormula }) {
+  if (!(maxRow >= 0) || !(maxCol >= 0)) return null;
+  for (let r = 0; r <= maxRow; r++) {
+    for (let c = 0; c <= maxCol; c++) {
+      if (getCellFormula(r, c)) return { r, c, hasFormula: true };
+    }
+  }
+  return { r: 0, c: 0, hasFormula: false };
+}
 
 export function wireDatasetGridInteractions(deps) {
   const {
@@ -64,6 +80,14 @@ export function wireDatasetGridInteractions(deps) {
   // Whether a refusal is already on screen. A locked grid refuses every
   // keystroke of a typed number, and the reader has to be told only once.
   let readOnlyNoticeOpen = false;
+  // The dataset whose opening cell has been chosen, the cell that was chosen
+  // for it, and whether the choice is final. The formulas of a dataset can
+  // arrive after its first paint, so a fallback first cell is kept open to a
+  // later move onto the first cell that does hold a formula; a reader who has
+  // moved or cleared the selection since settles it where it is.
+  let openingCellModel = null;
+  let openingCell = null;
+  let openingCellSettled = false;
 
   // Why an edit was refused belongs in the window the reader is looking at:
   // the status line lives in the shell, below every page, where a notice about
@@ -928,9 +952,44 @@ export function wireDatasetGridInteractions(deps) {
   }
 
   function applySelectionFromState() {
+    applyOpeningCell();
     spreadsheetTable.applyDom();
     applyReferencePickDecoration();
     syncFormulaPanel();
+  }
+
+  /**
+   * Put the selection on the cell a newly loaded dataset opens on, so its
+   * formula panel has a formula in it from the start. Only a window that shows
+   * that panel opens on a cell, and only until the reader takes the selection
+   * over.
+   */
+  function applyOpeningCell() {
+    if (state.model !== openingCellModel) {
+      openingCellModel = state.model;
+      openingCell = null;
+      openingCellSettled = false;
+    }
+    if (openingCellSettled || !state.model || state.editingCell || !getFormulaPanel()) return;
+    const current = state.activeCell;
+    const isOwnCell = !!(openingCell && current && current.r === openingCell.r && current.c === openingCell.c);
+    if (openingCell ? !isOwnCell : !!current) {
+      openingCellSettled = true;
+      return;
+    }
+    const { maxRow, maxCol } = getDatasetGridSelectionLayout();
+    const target = pickDatasetOpeningCell({
+      maxRow,
+      maxCol,
+      getCellFormula: (r, c) => getExternalLinkCellInfo(r, c)?.reference || "",
+    });
+    if (!target) return;
+    if (target.hasFormula) openingCellSettled = true;
+    if (isOwnCell && target.r === openingCell.r && target.c === openingCell.c) return;
+    openingCell = { r: target.r, c: target.c };
+    state.activeCell = { ...openingCell };
+    state.selectionAnchor = { ...openingCell };
+    state.selRanges = [normalizeRange(target.r, target.c, target.r, target.c)];
   }
 
   /**
