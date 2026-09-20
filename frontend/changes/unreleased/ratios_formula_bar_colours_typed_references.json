@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Reference names in a Ratios formula are now written in colour while you type them, matching the fills on the rows they name.",
+  "details": [
+    "Each reference keeps one colour across the formula bar and the table, so a formula and its sources can be read against each other while it is being edited.",
+    "Selecting the text keeps the colours readable, and Dark mode uses a lighter shade of the same colours."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The Ratios summary table now colours a User Entry formula's source cells only while that formula is being edited in the formula bar.",
+  "details": [
+    "Selecting or highlighting a User Entry cell no longer fills the rows its formula names, so the table keeps its ordinary colours until you start editing.",
+    "The colours clear as soon as the edit ends, whether it is committed, cancelled, or abandoned by clicking away."
+  ]
+}

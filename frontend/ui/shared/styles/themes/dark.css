@@ -1618,6 +1618,16 @@
   text-decoration-color: #c58bd8;
 }
 
+/* Each reference colour is a pair: a pale fill and a strong line drawn on it.
+   A reference typed into the formula bar has no fill behind it, so the line
+   colour alone goes too dark on the input while the pale one goes so light the
+   six colours stop being told apart. Mixing a pair with itself keeps the hue
+   and lands between them. The idle pill still takes the line colour, which it
+   draws on its own fill. */
+:root[data-arcrho-theme="dark"] .dfmSummaryFormulaBarOverlay .fmtEditRowRef {
+  color: color-mix(in srgb, var(--dfm-formula-ref-line) 42%, var(--dfm-formula-ref-fill));
+}
+
 /* The Curves grid strikes an excluded factor in the same lighter purple, since
    the Ratios strike colour goes unreadable on the dark table surface. */
 :root[data-arcrho-theme="dark"] :is(

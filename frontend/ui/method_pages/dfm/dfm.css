@@ -1197,6 +1197,13 @@ body {
   background: var(--dfm-formula-ref-fill);
   color: var(--dfm-formula-ref-line);
 }
+/* The same colour while the formula is being typed, written on the characters
+   themselves. A pill cannot be drawn here: the layer has to keep every glyph
+   over the one the input puts in the same place, so it takes no border, no
+   background and no weight of its own — only the colour. */
+.dfmSummaryFormulaBarOverlay .fmtEditRowRef {
+  color: var(--dfm-formula-ref-line);
+}
 .dfmSummaryFormulaBarDisplay .fmtDatasetRef {
   appearance: none;
   cursor: pointer;

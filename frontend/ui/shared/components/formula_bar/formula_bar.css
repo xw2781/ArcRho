@@ -114,6 +114,51 @@ lives here.
   color: #9ca3af;
 }
 
+/* The input, the read-only rendering and the colour layer share one box, so the
+   layer's characters land exactly where the input's own do. The wrapper takes
+   the sizing the input and the display already ask for and passes it straight
+   through to them. */
+.arFormulaBarField {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 40px;
+  min-width: 40px;
+}
+
+/* The colour layer read through the input in front of it: the same characters,
+   in the same font and padding, so a reference can be written in the colour of
+   the cell it names while the formula is still being typed. It never takes a
+   pointer or a screen reader, both of which belong to the input. */
+.arFormulaBarOverlay {
+  position: absolute;
+  inset: 0;
+  padding: 0 20px 0 0;
+  font: inherit;
+  line-height: 20px;
+  color: inherit;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.arFormulaBarOverlay[hidden] {
+  display: none;
+}
+/* Only while that layer is shown: the input keeps its caret, its selection and
+   its behaviour, and gives up nothing but its own glyphs. */
+.arFormulaBarField.hasColorOverlay > .arFormulaBarInput {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--ar-color-text, #111827);
+}
+/* Selected text stays readable, because the highlight is a wash over the
+   coloured characters rather than a block covering them. */
+.arFormulaBarField.hasColorOverlay > .arFormulaBarInput::selection {
+  background: color-mix(in srgb, var(--ar-color-accent, #2b6df6) 28%, transparent);
+}
+
 /* The read-only rendering shown whenever the input is not being typed into. It
    sizes like the input above, so the bar keeps its width when the two swap, and
    its right-hand padding is what a click past the end of the formula lands on. */

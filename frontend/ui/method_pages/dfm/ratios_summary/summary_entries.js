@@ -160,9 +160,8 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
     }
   }
 
-  clearSummaryReferenceUi(summaryTable);
   clearSummaryFormulaBarValidationError();
-  summaryRuntime.summaryFormulaEditState = null;
+  endSummaryFormulaEditSession(summaryTable);
   entries.forEach((entry) => {
     restoreSupersededExcelRange(summaryTable, entry.rowId, entry.col, entry.input);
     setUserEntryCellEntry(entry.rowId, entry.col, entry.input, entry.value, { persist: false });
@@ -170,7 +169,6 @@ function pasteUserEntryClipboardGrid(summaryTable, selectedTable, startCell, raw
   });
   persistUserEntryRowsFromState();
   ensureSelectedRowValues(summaryTable, selectedTable);
-  applyUserEntryReferenceHighlights(summaryTable);
   applyExcelRangeHighlights(summaryTable);
   summaryRuntime.summaryCopyHighlight?.selectCell?.(startCell, false);
   summaryRuntime.summaryActiveCellState = { rowId: startRowId, col: startCol };
@@ -246,10 +244,8 @@ function commitUserEntryArrayFormula(summaryTable, selectedTable, rowId, startCo
     summaryRuntime.summaryActiveCellState = { rowId: String(rowId), col: nextEntries[0].col };
   }
   if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
-  applyUserEntryReferenceHighlights(summaryTable);
   applyExcelRangeHighlights(summaryTable);
-  clearSummaryReferenceUi(summaryTable);
-  summaryRuntime.summaryFormulaEditState = null;
+  endSummaryFormulaEditSession(summaryTable);
   updateSummaryFormulaBarForCell(firstCell);
   summaryRuntime._onRatioStateMutated();
   return { handled: true, ok: true };
@@ -375,10 +371,8 @@ async function commitSummaryFormulaInput(inputEl) {
       });
       persistUserEntryRowsFromState();
       if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
-      applyUserEntryReferenceHighlights(summaryTable);
       applyExcelRangeHighlights(summaryTable);
-      clearSummaryReferenceUi(summaryTable);
-      summaryRuntime.summaryFormulaEditState = null;
+      endSummaryFormulaEditSession(summaryTable);
       updateSummaryFormulaBarForCell(targets[0].cell);
       summaryRuntime._onRatioStateMutated();
       return true;
@@ -401,10 +395,8 @@ async function commitSummaryFormulaInput(inputEl) {
     const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
     if (cell) setUserEntryCellDisplayValue(cell, parsed);
     if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
-    applyUserEntryReferenceHighlights(summaryTable);
     applyExcelRangeHighlights(summaryTable);
-    clearSummaryReferenceUi(summaryTable);
-    summaryRuntime.summaryFormulaEditState = null;
+    endSummaryFormulaEditSession(summaryTable);
     clearSummaryFormulaBarValidationError();
     updateSummaryFormulaBarForCell(cell);
     summaryRuntime._onRatioStateMutated();
@@ -519,7 +511,8 @@ function refreshSummaryFormulaBar() {
 
 function handleSummaryTableSelectionChange(summaryTable, selection) {
   refreshRatioHighlightHeaders();
-  // The reference colours belong to the highlighted cell, so they move with it.
+  // Moving the highlight cannot leave a reference colour behind: they belong to
+  // the formula open in the formula bar, not to the cell under the cursor.
   applyUserEntryReferenceHighlights(summaryTable);
   if (isRatioEditMode() || isSummaryFormulaEditSessionActive(summaryTable)) return;
   const active = selection?.activeCell;
@@ -618,6 +611,19 @@ function beginSummaryFormulaEditSession(summaryTable, cell, input, col) {
   applyUserEntryReferenceHighlights(summaryTable);
 }
 
+/**
+ * Close the formula bar's edit session. The reference marks and the colours the
+ * draft formula put on the table go away with it, because they belong to the
+ * formula being typed rather than to the cell that holds it. Every way of
+ * leaving the bar — committing, cancelling, or an Excel link resolving — ends
+ * here, so no path can leave a colour behind.
+ */
+function endSummaryFormulaEditSession(summaryTable) {
+  clearSummaryReferenceUi(summaryTable);
+  summaryRuntime.summaryFormulaEditState = null;
+  applyUserEntryReferenceHighlights(summaryTable);
+}
+
 function cancelSummaryFormulaEditSession() {
   const state = summaryRuntime.summaryFormulaEditState;
   if (!state) return;
@@ -625,9 +631,7 @@ function cancelSummaryFormulaEditSession() {
   if (input && document.body.contains(input)) {
     input.value = String(originalInput ?? "");
   }
-  clearSummaryReferenceUi(summaryTable);
-  summaryRuntime.summaryFormulaEditState = null;
-  applyUserEntryReferenceHighlights(summaryTable);
+  endSummaryFormulaEditSession(summaryTable);
   updateSummaryFormulaBarForCell(cell);
 }
 
@@ -1035,6 +1039,7 @@ registerSummaryFunctions({
   insertAtInputCursor,
   beginSummaryFormulaEditSession,
   cancelSummaryFormulaEditSession,
+  endSummaryFormulaEditSession,
   setUserEntryCellEntry,
   persistUserEntryRowsFromState,
   computeSummaryRowValueForColumn,

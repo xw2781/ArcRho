@@ -54,7 +54,7 @@ const getUserEntryInputForCol = (...args) => summaryRuntime.getUserEntryInputFor
 const showSummaryFormulaBarValidationError = (...args) => summaryRuntime.showSummaryFormulaBarValidationError(...args);
 const setStatusBarText = (...args) => summaryRuntime.setStatusBarText(...args);
 const updateSummaryFormulaBarForCell = (...args) => summaryRuntime.updateSummaryFormulaBarForCell(...args);
-const clearSummaryReferenceUi = (...args) => summaryRuntime.clearSummaryReferenceUi(...args);
+const endSummaryFormulaEditSession = (...args) => summaryRuntime.endSummaryFormulaEditSession(...args);
 const buildSummaryReferenceValues = (...args) => summaryRuntime.buildSummaryReferenceValues(...args);
 const setUserEntryCellEntry = (...args) => summaryRuntime.setUserEntryCellEntry(...args);
 const persistUserEntryRowsFromState = (...args) => summaryRuntime.persistUserEntryRowsFromState(...args);
@@ -147,10 +147,8 @@ async function commitExcelFormulaAsync(rowId, col, raw, options = {}) {
       cell.title = raw;
     }
     if (selectedTable && summaryTable) ensureSelectedRowValues(summaryTable, selectedTable);
-    applyUserEntryReferenceHighlights(summaryTable);
     applyExcelRangeHighlights(summaryTable);
-    clearSummaryReferenceUi(summaryTable);
-    summaryRuntime.summaryFormulaEditState = null;
+    endSummaryFormulaEditSession(summaryTable);
     updateSummaryFormulaBarForCell(cell);
     summaryRuntime._onRatioStateMutated();
     return true;
@@ -833,8 +831,7 @@ async function commitExcelRangeFormulaAsync(rowId, col, raw, range, options = {}
       anchor.classList.add("excelLinked");
       anchor.title = "";
     }
-    clearSummaryReferenceUi(summaryTable);
-    summaryRuntime.summaryFormulaEditState = null;
+    endSummaryFormulaEditSession(summaryTable);
     updateSummaryFormulaBarForCell(anchor);
     summaryRuntime._onRatioStateMutated();
     setStatusBarText(`Excel range linked: ${destination.entries.length} cells refreshed.`);

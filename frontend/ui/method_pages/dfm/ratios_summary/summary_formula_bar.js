@@ -192,6 +192,73 @@ function renderFormulaBarDisplay(displayEl, rawText, sourceText = rawText) {
   }
 }
 
+/**
+ * The colour layer behind the editable formula. An input cannot paint one
+ * reference differently from another, so its own glyphs are made transparent
+ * and this layer — the same characters, in the same font, in the same place —
+ * is read through it. Only the quoted average-formula names are coloured, in
+ * the palette the cells they name are filled with, so a formula and the rows it
+ * reads can be matched up while it is being typed.
+ *
+ * The characters are sliced out of the raw text by each reference's own offsets
+ * rather than rebuilt from the tokens, so the layer cannot drift from the input
+ * by a single space.
+ */
+function renderSummaryFormulaEditOverlay(overlayEl, rawText) {
+  if (!overlayEl) return;
+  const text = String(rawText ?? "");
+  overlayEl.textContent = "";
+  if (!text) return;
+  // Optional: this module is also loaded standalone, without the model module.
+  const referenceColors = summaryRuntime.buildSummaryFormulaReferenceColorsByLabel?.(text) || new Map();
+  if (!referenceColors.size) {
+    overlayEl.textContent = text;
+    return;
+  }
+  let cursor = 0;
+  for (const tok of tokenizeFormula(text)) {
+    if (tok.type !== "ref" || tok.start < cursor) continue;
+    const colorClass = referenceColors.get(tok.text.slice(1, -1).trim().toLowerCase());
+    if (!colorClass) continue;
+    if (tok.start > cursor) {
+      overlayEl.appendChild(document.createTextNode(text.slice(cursor, tok.start)));
+    }
+    const span = document.createElement("span");
+    span.className = `fmtEditRowRef ${colorClass}`;
+    span.textContent = text.slice(tok.start, tok.end);
+    overlayEl.appendChild(span);
+    cursor = tok.end;
+  }
+  overlayEl.appendChild(document.createTextNode(text.slice(cursor)));
+}
+
+/** Hold the colour layer under the same part of a formula too long to fit. */
+function syncSummaryFormulaEditOverlay(barEl) {
+  const input = barEl?.querySelector?.("#dfmSummaryFormulaBarInput");
+  const overlay = barEl?.querySelector?.("#dfmSummaryFormulaBarOverlay");
+  if (input && overlay) overlay.scrollLeft = input.scrollLeft;
+}
+
+/**
+ * Show the colour layer while the formula is being typed and put it away the
+ * rest of the time, when the rendered display carries the colours instead.
+ */
+function updateSummaryFormulaEditOverlay(barEl, isEditing) {
+  const field = barEl?.querySelector?.(".arFormulaBarField");
+  const input = barEl?.querySelector?.("#dfmSummaryFormulaBarInput");
+  const overlay = barEl?.querySelector?.("#dfmSummaryFormulaBarOverlay");
+  if (!field || !input || !overlay) return;
+  const showColors = !!isEditing && !input.disabled && !input.readOnly;
+  field.classList.toggle("hasColorOverlay", showColors);
+  overlay.hidden = !showColors;
+  if (!showColors) {
+    overlay.textContent = "";
+    return;
+  }
+  renderSummaryFormulaEditOverlay(overlay, input.value);
+  syncSummaryFormulaEditOverlay(barEl);
+}
+
 // The bar is a singleton on the page, so its workbook button is one too.
 let summaryExcelLink = null;
 
@@ -228,6 +295,7 @@ function updateFormulaBarDisplayMode(barEl, isEditing) {
     display.style.display = "";
     renderFormulaBarDisplay(display, input.dataset.displayFormula || input.value, input.value);
   }
+  updateSummaryFormulaEditOverlay(barEl, isEditing);
 }
 
 function positionSummaryFormulaBarValidationTooltip() {
@@ -592,6 +660,18 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     const display = document.createElement("div");
     display.id = "dfmSummaryFormulaBarDisplay";
     display.className = "arFormulaBarDisplay dfmSummaryFormulaBarDisplay";
+    // The colour layer sits in the input's own box, so one wrapper holds the
+    // three of them and gives the layer something to be positioned against.
+    const field = document.createElement("span");
+    field.className = "arFormulaBarField dfmSummaryFormulaBarField";
+    const overlay = document.createElement("div");
+    overlay.id = "dfmSummaryFormulaBarOverlay";
+    overlay.className = "arFormulaBarOverlay dfmSummaryFormulaBarOverlay";
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+    field.appendChild(overlay);
+    field.appendChild(input);
+    field.appendChild(display);
     summaryExcelLink = createFormulaBarExcelLinkButton({ onStatus: setStatusBarText });
     const validationState = document.createElement("span");
     validationState.id = "dfmSummaryFormulaBarState";
@@ -601,8 +681,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
     el.appendChild(fxIcon);
     el.appendChild(label);
     el.appendChild(colLabel);
-    el.appendChild(input);
-    el.appendChild(display);
+    el.appendChild(field);
     el.appendChild(summaryExcelLink.el);
     el.appendChild(validationState);
   }
@@ -636,6 +715,7 @@ function ensureSummaryFormulaBarEl(summaryTable) {
         const body = input.value.replace(/^=\s*/, "");
         input.value = FORMULA_PREFIX + body;
       }
+      updateSummaryFormulaEditOverlay(el, true);
       const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
       const rowId = String(input.dataset.rowId || "");
       const col = Number(input.dataset.col);
@@ -645,10 +725,17 @@ function ensureSummaryFormulaBarEl(summaryTable) {
       beginSummaryFormulaEditSession(summaryTableEl, cell, input, col);
       updateActiveSummaryFormulaReferenceUi(summaryTableEl);
       scrollSummaryFormulaInputToEnd(input);
+      syncSummaryFormulaEditOverlay(el);
     });
+    // A formula too long for the bar scrolls inside the input; the colour layer
+    // behind it has to travel exactly as far, whether the caret moved it or the
+    // reader did.
+    input?.addEventListener("scroll", () => syncSummaryFormulaEditOverlay(el));
+    input?.addEventListener("keyup", () => syncSummaryFormulaEditOverlay(el));
     // Prevent cursor from moving before the prefix
     input?.addEventListener("click", () => {
       if (input.selectionStart < PREFIX_LEN) input.setSelectionRange(PREFIX_LEN, PREFIX_LEN);
+      syncSummaryFormulaEditOverlay(el);
     });
     input?.addEventListener("input", () => {
       delete input.dataset.skipFormulaBlurCommit;
@@ -679,6 +766,9 @@ function ensureSummaryFormulaBarEl(summaryTable) {
           input.setSelectionRange(selectionStart, selectionEnd);
         }
       }
+      // The draft decides which references are coloured, so the layer behind
+      // the text is redrawn from it on every keystroke, as the cells are.
+      updateSummaryFormulaEditOverlay(el, true);
       const summaryTableEl = document.querySelector("#ratioWrap table.ratioSummaryTable");
       const rowId = String(input.dataset.rowId || "");
       const col = Number(input.dataset.col);
@@ -901,6 +991,9 @@ registerSummaryFunctions({
   stripRoundWrappers,
   openDfmFormulaDataset,
   renderFormulaBarDisplay,
+  renderSummaryFormulaEditOverlay,
+  updateSummaryFormulaEditOverlay,
+  syncSummaryFormulaEditOverlay,
   updateFormulaBarDisplayMode,
   positionSummaryFormulaBarValidationTooltip,
   scheduleSummaryFormulaBarValidationTooltipPosition,

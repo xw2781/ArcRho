@@ -10,6 +10,10 @@ const entriesSource = await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_entries.js", import.meta.url),
   "utf8",
 );
+const excelSource = await readFile(
+  new URL("../ui/method_pages/dfm/ratios_summary/summary_excel.js", import.meta.url),
+  "utf8",
+);
 const dfmCss = await readFile(new URL("../ui/method_pages/dfm/dfm.css", import.meta.url), "utf8");
 const formulaBarSource = await readFile(
   new URL("../ui/method_pages/dfm/ratios_summary/summary_formula_bar.js", import.meta.url),
@@ -104,10 +108,6 @@ const colorOf = (table, rowId) => {
 test("the referenced fill follows the formula being dragged, not the saved one", () => {
   const summaryTable = buildSummaryTable();
   summaryTable.cells.get("r_ue").classList.add("summaryActiveCell");
-  modelRuntime.summaryFormulaEditState = null;
-  modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
-  assert.equal(isFilled(summaryTable, "r_simple5"), true, "the saved formula fills the row it names");
-  assert.equal(isFilled(summaryTable, "r_bench"), false);
 
   // Dragging the reference onto Benchmark rewrites the formula bar's draft; the
   // saved formula still names the row the drag started from.
@@ -122,28 +122,39 @@ test("the referenced fill follows the formula being dragged, not the saved one",
   assert.equal(isFilled(summaryTable, "r_simple5"), false, "the row the reference left loses its fill");
   assert.equal(isFilled(summaryTable, "r_bench"), true);
 
-  // Abandoning the edit hands the fill back to the saved formula.
-  modelRuntime.summaryFormulaEditState = null;
+  // Dragging it back moves the fill with it.
   liveInput.value = '="Simple - 5 Ex hi/lo" * 1';
   modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
   assert.equal(isFilled(summaryTable, "r_simple5"), true);
   assert.equal(isFilled(summaryTable, "r_bench"), false);
+  modelRuntime.summaryFormulaEditState = null;
 });
 
-test("nothing is filled while the User Entry cell that names it is not the one in view", () => {
+test("nothing is filled unless the formula that names it is open for editing", () => {
   const summaryTable = buildSummaryTable();
   modelRuntime.summaryFormulaEditState = null;
   modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
-  assert.equal(isFilled(summaryTable, "r_simple5"), false, "a saved formula alone no longer fills anything");
+  assert.equal(isFilled(summaryTable, "r_simple5"), false, "a saved formula alone fills nothing");
 
-  // Putting the cursor on the User Entry cell brings its references back.
+  // Nor does the spreadsheet cursor resting on the User Entry cell: selecting a
+  // cell is not editing it, so the table keeps its ordinary colours.
   summaryTable.cells.get("r_ue").classList.add("summaryActiveCell");
+  modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
+  assert.equal(isFilled(summaryTable, "r_simple5"), false, "a selected cell fills nothing");
+
+  // Opening the formula bar on that cell brings the references out.
+  modelRuntime.summaryFormulaEditState = {
+    summaryTable,
+    input: liveInput,
+    rowId: "r_ue",
+    col: 0,
+  };
+  liveInput.value = '="Simple - 5 Ex hi/lo" * 1';
   modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
   assert.equal(isFilled(summaryTable, "r_simple5"), true);
 
-  // Moving it onto a row with no formula of its own clears them again.
-  summaryTable.cells.get("r_ue").classList.remove("summaryActiveCell");
-  summaryTable.cells.get("r_bench").classList.add("summaryActiveCell");
+  // Leaving the formula bar puts them away again.
+  modelRuntime.summaryFormulaEditState = null;
   modelRuntime.applyUserEntryReferenceHighlights(summaryTable);
   assert.equal(isFilled(summaryTable, "r_simple5"), false);
 });
@@ -205,10 +216,20 @@ test("the fill is refreshed wherever the draft formula can change", () => {
     entriesSource,
     /function beginSummaryFormulaEditSession[\s\S]*?applyUserEntryReferenceHighlights\(summaryTable\);/u,
   );
+  // One exit from the edit session, so no way of leaving the formula bar can
+  // keep a colour on the table after the formula stops being edited.
   assert.match(
     entriesSource,
-    /function cancelSummaryFormulaEditSession[\s\S]*?applyUserEntryReferenceHighlights\(summaryTable\);/u,
+    /function endSummaryFormulaEditSession\(summaryTable\) \{\s*clearSummaryReferenceUi\(summaryTable\);\s*summaryRuntime\.summaryFormulaEditState = null;\s*applyUserEntryReferenceHighlights\(summaryTable\);/u,
   );
+  assert.match(
+    entriesSource,
+    /function cancelSummaryFormulaEditSession[\s\S]*?endSummaryFormulaEditSession\(summaryTable\);/u,
+  );
+  // Nothing clears the session on its own any more: the helper holds the only
+  // assignment in the two modules that end an edit.
+  assert.equal((entriesSource.match(/summaryFormulaEditState = null/gu) || []).length, 1);
+  assert.equal((excelSource.match(/summaryFormulaEditState = null/gu) || []).length, 0);
 });
 
 test("the drag hot zone is marked from the same border test that starts the drag", () => {

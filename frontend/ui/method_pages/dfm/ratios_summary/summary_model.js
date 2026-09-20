@@ -616,12 +616,17 @@ function updateActiveSummaryFormulaReferenceUi(summaryTable) {
 }
 
 /**
- * The one cell being edited is read from the formula bar rather than from the
- * saved formula: while a reference is retyped or dragged onto another row, the
- * saved formula still names the row it came from, and reading it would leave
- * the fill behind on a row the formula no longer uses.
+ * The one User Entry formula whose references are worth colouring: the one
+ * open in the formula bar for editing, and nothing else. A cell merely sitting
+ * under the spreadsheet cursor keeps its ordinary colours, so the reference
+ * palette appears only while the text that owns it is being changed.
+ *
+ * The text is read from the formula bar rather than from the saved formula:
+ * while a reference is retyped or dragged onto another row, the saved formula
+ * still names the row it came from, and reading it would leave the fill behind
+ * on a row the formula no longer uses.
  */
-function getLiveUserEntryFormulaEdit(summaryTable) {
+function getEditedUserEntryFormula(summaryTable) {
   const state = summaryRuntime.summaryFormulaEditState;
   if (!state || state.summaryTable !== summaryTable) return null;
   const input = state.input;
@@ -629,34 +634,7 @@ function getLiveUserEntryFormulaEdit(summaryTable) {
   const rowId = String(state.rowId || "");
   const col = Number(state.col);
   if (!rowId || !Number.isFinite(col) || col < 0) return null;
-  return { rowId, col, input };
-}
-
-/**
- * The one User Entry cell whose references are worth colouring: the formula
- * being typed while the formula bar is open, otherwise the cell the spreadsheet
- * cursor sits on. Each mode keeps its own marker on that cell — Edit mode the
- * active cell, Select mode the highlight anchor — so the colours appear only
- * while the formula that owns them is the one in view.
- */
-function getFocusedUserEntryFormula(summaryTable) {
-  const liveEdit = getLiveUserEntryFormulaEdit(summaryTable);
-  if (liveEdit) {
-    return {
-      rowId: liveEdit.rowId,
-      col: liveEdit.col,
-      raw: String(liveEdit.input.value || "").trim(),
-    };
-  }
-  const cell = isRatioEditMode()
-    ? summaryTable.querySelector("td.summaryCell.summaryActiveCell")
-    : summaryTable.querySelector("td.summaryCell.dfmTableActive");
-  const rowId = String(cell?.dataset?.r || "");
-  const col = Number(cell?.dataset?.col);
-  if (!rowId || !Number.isFinite(col) || col < 0) return null;
-  const cfg = summaryRowMap.get(rowId);
-  if (!isUserEntryConfig(cfg)) return null;
-  return { rowId, col, raw: String(getUserEntryInputForCol(cfg, col) || "").trim() };
+  return { rowId, col, raw: String(input.value || "").trim() };
 }
 
 function applyUserEntryReferenceHighlights(summaryTable) {
@@ -668,7 +646,7 @@ function applyUserEntryReferenceHighlights(summaryTable) {
       .forEach((el) => el.classList.remove(colorClass));
   });
 
-  const focus = getFocusedUserEntryFormula(summaryTable);
+  const focus = getEditedUserEntryFormula(summaryTable);
   if (!focus || !focus.raw) return;
   buildSummaryFormulaReferenceColors(focus.raw).forEach((colorClass, refRowId) => {
     if (refRowId === focus.rowId) return;

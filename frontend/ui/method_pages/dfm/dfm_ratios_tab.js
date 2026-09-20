@@ -26,7 +26,7 @@ import {
   invalidatePersistedResultsDerivations,
   renderResultsTable,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
-import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260917a";
+import { formatCellValue } from "/ui/shared/tabs/data/dataset_grid_view.js?v=20260919a";
 import { renderDatasetGridPlaceholder } from "/ui/shared/tabs/data/dataset_grid_placeholder.js?v=20260809a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
 import {
@@ -57,7 +57,6 @@ import {
   DFM_RATIO_HIGHLIGHT_EDGE_CLASSES,
   refreshRatioHighlightHeaders,
   clearSummaryTableHighlight,
-  applyUserEntryReferenceHighlights,
   syncSummaryFormulaPanelWidth,
 } from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260919a";
 import {
@@ -373,10 +372,6 @@ function applyRatioInteractionMode(mode, options = {}) {
   wrap.dataset.interactionMode = nextMode;
   if (options.persist !== false) saveRatioInteractionMode(nextMode);
   updateRatioMenuLabel();
-  // Each mode marks the cell in view its own way, so the formula reference
-  // colours are repainted from the marker the new mode uses.
-  const summaryTable = wrap.querySelector("table.ratioSummaryTable");
-  if (summaryTable) applyUserEntryReferenceHighlights(summaryTable);
 }
 
 function toggleRatioInteractionMode() {
