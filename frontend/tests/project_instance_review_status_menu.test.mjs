@@ -20,6 +20,20 @@ const testableSource = tableSource
     "const openDatasetNamePicker = async () => null;\n",
   )
   .replace(
+    // [^}]* rather than [\s\S]*?, so the block cannot start at an earlier
+    // import and swallow this one's neighbours on its way here.
+    /^import \{[^}]*\} from "\/ui\/shared\/components\/settings_file\/settings_file\.js[^"]*";\s*/mu,
+    [
+      "const attachSettingsFileDropZone = () => () => {};",
+      "const buildSettingsFile = (payload) => payload;",
+      "const openSettingsFile = async () => ({ ok: false, reason: \"no-host\" });",
+      "const openSettingsFileMenu = () => null;",
+      "const readSettingsFile = async () => ({});",
+      "const saveSettingsFile = async () => ({ ok: false, reason: \"no-host\" });",
+      "",
+    ].join("\n"),
+  )
+  .replace(
     /^import \{ reviewStatusIconSvg \} from .*;\s*/mu,
     "const reviewStatusIconSvg = () => \"\";\n",
   )

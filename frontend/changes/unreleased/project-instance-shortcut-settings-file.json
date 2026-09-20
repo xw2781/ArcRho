@@ -2,9 +2,9 @@
   "type": "feature",
   "scope": "project instance",
   "audience": "user",
-  "summary": "Shortcuts in the project instance path panel can be saved to a file and loaded back by dropping the file on the panel.",
+  "summary": "Shortcuts in the project instance path panel can be saved to a file and loaded back into any project.",
   "details": [
-    "A save button in the Shortcut section header writes the current shortcut paths, nicknames, and favorite folders to a settings file.",
-    "Dropping that file anywhere on the path panel loads the shortcuts, keeping only the paths the open project has and asking before replacing shortcuts already there."
+    "Right-clicking the Shortcut section header offers Save Shortcut Config and Load Shortcut Config; the file holds the shortcut paths, their nicknames, and the folders they sit in.",
+    "Dropping that file anywhere on the path panel loads the shortcuts too, keeping only the paths the open project has and asking before replacing shortcuts already there."
   ]
 }

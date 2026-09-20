@@ -1,5 +1,6 @@
 const STYLE_ID = "arcrho-path-tree-picker-style";
 import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachSettingsFileDropZone } from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
 
 const SHARED_SCROLLBAR_STYLE_ID = "arcrho-shared-scrollbar-style";
 const TREE_INDENT_PX = 10;
@@ -10,10 +11,6 @@ const PATH_TOOLTIP_ID = "arcrho-path-tree-tooltip";
 const PATH_TOOLTIP_DELAY_MS = 320;
 const PATH_TOOLTIP_STATE = new WeakMap();
 const FAVORITE_FOLDER_DRAG_TYPE = "application/x-arcrho-favorite-folder";
-// The drawing stays in the shared icon library and reaches this button as a CSS mask
-// (see `.ptree-action-glyph` in ensureStyles), so resting, hover, and the dark theme
-// are all served by one colour token rather than a second recoloured copy.
-const SHORTCUT_SAVE_GLYPH = '<span class="ptree-action-glyph" data-glyph="save" aria-hidden="true"></span>';
 let activePicker = null;
 let activeFavoriteContextMenu = null;
 
@@ -220,38 +217,6 @@ function ensureStyles(doc) {
       opacity: 0;
       pointer-events: none;
     }
-    .ptree-drop-hint {
-      position: absolute;
-      inset: 6px;
-      z-index: 4;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 14px;
-      border: 2px dashed var(--ar-color-border-focus, #93c5fd);
-      border-radius: 6px;
-      color: var(--ar-color-accent-strong, #1d4ed8);
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 1.4;
-      text-align: center;
-      pointer-events: none;
-    }
-    /* The wash sits in its own layer so the tree stays faintly readable behind
-       it; the tokens carry no alpha of their own. */
-    .ptree-drop-hint::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: var(--ar-color-accent-soft, #eaf2ff);
-      opacity: 0.82;
-    }
-    .ptree-drop-hint-label {
-      position: relative;
-    }
-    .ptree-window.ptree-file-drop .ptree-drop-hint {
-      display: flex;
-    }
     .ptree-titlebar {
       display: flex;
       align-items: center;
@@ -450,17 +415,6 @@ function ensureStyles(doc) {
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
-    }
-    .ptree-section-action .ptree-action-glyph {
-      width: 14px;
-      height: 14px;
-      background-color: currentColor;
-      -webkit-mask: url("/ui/shared/icons/library/file.svg?v=20260908a") no-repeat center / contain;
-      mask: url("/ui/shared/icons/library/file.svg?v=20260908a") no-repeat center / contain;
-    }
-    .ptree-section-action .ptree-action-glyph[data-glyph="save"] {
-      -webkit-mask-image: url("/ui/shared/icons/library/save.svg?v=20260908a");
-      mask-image: url("/ui/shared/icons/library/save.svg?v=20260908a");
     }
     .ptree-favorite-list {
       display: flex;
@@ -2326,27 +2280,21 @@ export function openFloatingPathTreePicker(options = {}) {
     if (!favoriteItems.length && !shortcutRootNodes.length && !options?.showFavoriteSection) return null;
     const section = doc.createElement("div");
     section.className = "ptree-section ptree-section-favorites";
-    const favoriteActions = [{
+    const favoriteHeader = appendCollapsibleSectionTitle(section, options?.favoriteSectionTitle || "Shortcut", [{
       title: "Add Favorite Folder",
       onClick: () => {
         if (typeof options?.onCreateFavoriteFolder === "function") {
           options.onCreateFavoriteFolder({ favoriteItems, folders });
         }
       },
-    }];
-    if (typeof options?.onExportShortcutConfig === "function") {
-      favoriteActions.push({
-        title: "Save Shortcut Settings To A File",
-        className: "ptree-export-shortcuts",
-        icon: SHORTCUT_SAVE_GLYPH,
-        onClick: (ctx) => options.onExportShortcutConfig({ ...ctx, favoriteItems, folders }),
+    }]);
+    if (typeof options?.onShortcutConfigMenu === "function") {
+      favoriteHeader.header.addEventListener("contextmenu", (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        options.onShortcutConfigMenu({ event: evt, headerElement: favoriteHeader.header, pickerElement: win });
       });
     }
-    const favoriteHeader = appendCollapsibleSectionTitle(
-      section,
-      options?.favoriteSectionTitle || "Shortcut",
-      favoriteActions,
-    );
     const content = doc.createElement("div");
     content.className = "ptree-section-content";
     const list = doc.createElement("div");
@@ -2700,46 +2648,14 @@ export function openFloatingPathTreePicker(options = {}) {
   setActivePath(initialActivePath, null, false);
   win.appendChild(body);
 
-  // A settings file dropped anywhere on the panel loads it. `data-file-drop-zone`
-  // tells the shell's own window-wide file drop to leave this panel alone, so the
-  // drop lands here instead of being read as a scripting file to open.
+  // A settings file dropped anywhere on the panel loads it.
   if (typeof options?.onDropConfigFile === "function") {
-    win.dataset.fileDropZone = "path-tree-config";
-    const dropHint = doc.createElement("div");
-    dropHint.className = "ptree-drop-hint";
-    const dropHintLabel = doc.createElement("span");
-    dropHintLabel.className = "ptree-drop-hint-label";
-    dropHintLabel.textContent = String(options?.configDropHint || "Drop a settings file to load it");
-    dropHint.appendChild(dropHintLabel);
-    win.appendChild(dropHint);
-
-    const hasDraggedFiles = (evt) => Array.from(evt?.dataTransfer?.types || []).includes("Files");
-    const showDropHint = (evt) => {
-      if (!hasDraggedFiles(evt)) return false;
-      evt.preventDefault();
-      evt.stopPropagation();
-      win.classList.add("ptree-file-drop");
-      return true;
-    };
-    win.addEventListener("dragenter", showDropHint, true);
-    win.addEventListener("dragover", (evt) => {
-      if (!showDropHint(evt)) return;
-      if (evt.dataTransfer) evt.dataTransfer.dropEffect = "copy";
-    }, true);
-    win.addEventListener("dragleave", (evt) => {
-      const next = evt?.relatedTarget;
-      if (next && typeof win.contains === "function" && win.contains(next)) return;
-      win.classList.remove("ptree-file-drop");
-    }, true);
-    win.addEventListener("drop", (evt) => {
-      win.classList.remove("ptree-file-drop");
-      if (!hasDraggedFiles(evt)) return;
-      evt.preventDefault();
-      evt.stopPropagation();
-      const file = Array.from(evt.dataTransfer?.files || [])[0] || null;
-      if (!file) return;
-      try { options.onDropConfigFile(file, { event: evt, pickerElement: win }); } catch {}
-    }, true);
+    attachSettingsFileDropZone(win, {
+      name: "path-tree-config",
+      hint: options?.configDropHint,
+      documentRef: doc,
+      onFile: (file, ctx) => options.onDropConfigFile(file, { ...ctx, pickerElement: win }),
+    });
   }
 
   // Level tags hide all at once: a host stylesheet may wrap a tag that no longer

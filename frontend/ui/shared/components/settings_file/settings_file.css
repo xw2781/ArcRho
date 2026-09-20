@@ -1,0 +1,74 @@
+/* The hint a panel shows while a settings file is dragged over it. One element
+   serves every drop zone in a document: it is fixed and moved over whichever
+   panel the pointer is in, so a panel needs no positioning of its own and a
+   panel that is torn down mid-drag cannot leave an overlay behind. */
+.arcrho-settings-drop-hint {
+  position: fixed;
+  z-index: 9200;
+  box-sizing: border-box;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border: 2px dashed var(--ar-color-border-focus, #93c5fd);
+  border-radius: 6px;
+  color: var(--ar-color-accent-strong, #1d4ed8);
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+.arcrho-settings-drop-hint.open {
+  display: flex;
+}
+/* The wash sits in its own layer so the panel stays faintly readable behind it;
+   the theme tokens carry no alpha of their own. */
+.arcrho-settings-drop-hint::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ar-color-accent-soft, #eaf2ff);
+  opacity: 0.82;
+}
+.arcrho-settings-drop-hint-label {
+  position: relative;
+}
+
+/* The menu a panel opens on a right-click, offering the same save and load its
+   button and its drop zone do. Theme tokens with light fallbacks, so the two
+   themes are served without a second copy of the rules. */
+.arcrho-settings-menu {
+  position: fixed;
+  z-index: 9300;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 7px;
+  background: var(--ar-color-surface, #ffffff);
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+.arcrho-settings-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ar-color-text, #1f2937);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.arcrho-settings-menu button:hover {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+.arcrho-settings-menu button:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  background: transparent;
+  cursor: default;
+}

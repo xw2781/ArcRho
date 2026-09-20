@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dataset table's grouping and filters can be saved to a file and loaded back.",
+  "details": [
+    "Right-clicking the dataset toolbar offers Save Group And Filter Config and Load Group And Filter Config.",
+    "Dropping that file anywhere on the dataset panel loads it as well."
+  ]
+}

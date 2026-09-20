@@ -37,16 +37,18 @@ test("a file dropped anywhere else is still the shell's scripting-file drop", ()
   assert.equal(drop.calls.prevented, 1);
 });
 
-test("the path tree panel marks itself as a local file drop zone", async () => {
+test("a panel that reads settings files marks itself with the attribute the shell looks for", async () => {
+  const settingsFile = await read("../ui/shared/components/settings_file/settings_file.js");
+  assert.match(
+    settingsFile,
+    /target\.dataset\.fileDropZone = String\(options\?\.name \|\| "settings-file"\);/u,
+    "the shared drop zone must carry the attribute the shell looks for",
+  );
+
+  // Both panels reach the shell through that one helper, so neither can drift
+  // into its own drop wiring and lose the shell's yield.
   const picker = await read("../ui/shared/components/pickers/path_tree_picker.js");
-  assert.match(
-    picker,
-    /win\.dataset\.fileDropZone = "path-tree-config";/u,
-    "the picker window must carry the attribute the shell looks for",
-  );
-  assert.match(
-    picker,
-    /typeof options\?\.onDropConfigFile === "function"/u,
-    "the drop wiring must only exist when a host handles the file",
-  );
+  assert.match(picker, /attachSettingsFileDropZone\(win, \{/u);
+  const datasetTable = await read("../ui/project_instance/project_instance_dataset_table.js");
+  assert.match(datasetTable, /attachSettingsFileDropZone\(els\.rightPanel, \{/u);
 });

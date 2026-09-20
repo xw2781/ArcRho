@@ -1,6 +1,13 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920a";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920b";
 import { buildWorkflowPathRootNode } from "/ui/shared/integrations/workflow_picker_options.js";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+import {
+  buildSettingsFile,
+  openSettingsFile,
+  openSettingsFileMenu,
+  readSettingsFile,
+  saveSettingsFile,
+} from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
 
 const LOOKUP_MODEL_CACHE = new Map();
 const HIDDEN_PATHS_CACHE = new Map();
@@ -16,6 +23,9 @@ const FILTER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h1
 const SETTINGS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="/ui/shared/icons/gear.svg?v=20260823b#gear"></use></svg>';
 const SHORTCUT_CONFIG_KIND = "arcrho.reserving_class_shortcuts";
 const SHORTCUT_CONFIG_VERSION = 1;
+const SHORTCUT_CONFIG_LABEL = "shortcut settings";
+const SHORTCUT_CONFIG_FILTER_NAME = "Shortcut Settings";
+const SHORTCUT_CONFIG_MENU_LABEL = "Shortcut Config";
 
 function toText(value) {
   return String(value || "").trim();
@@ -1289,24 +1299,22 @@ function isDefaultReservingClassFilterPreferences(rawPrefs) {
 // exactly as the preference store would read it.
 function buildShortcutConfigPayload(projectName, rawPreferences) {
   const prefs = normalizeReservingClassFilterPreferences(rawPreferences || {});
-  return {
+  return buildSettingsFile({
     kind: SHORTCUT_CONFIG_KIND,
     version: SHORTCUT_CONFIG_VERSION,
-    project_name: toText(projectName),
-    favorite_paths: prefs.favoritePaths,
-    favorite_nicknames: prefs.favoriteNicknames,
-    favorite_folders: prefs.favoriteFolders,
-  };
+    projectName,
+    data: {
+      favorite_paths: prefs.favoritePaths,
+      favorite_nicknames: prefs.favoriteNicknames,
+      favorite_folders: prefs.favoriteFolders,
+    },
+  });
 }
 
-function readShortcutConfigPayload(rawText) {
-  const parsed = JSON.parse(String(rawText || ""));
-  if (!parsed || typeof parsed !== "object" || toText(parsed.kind) !== SHORTCUT_CONFIG_KIND) {
-    throw makeError("This is not an ArcRho shortcut settings file.");
-  }
+function readShortcutConfigPayload(parsed) {
   const prefs = normalizeReservingClassFilterPreferences(parsed);
   return {
-    projectName: toText(parsed.project_name),
+    projectName: toText(parsed?.project_name),
     favoritePaths: prefs.favoritePaths,
     favoriteNicknames: prefs.favoriteNicknames,
     favoriteFolders: prefs.favoriteFolders,
@@ -3629,13 +3637,7 @@ export async function openReservingClassPicker(options = {}) {
       openTreeWindow({ smoothReplaceExisting: true });
     };
 
-    const getShortcutHostApi = () => window.ADAHost || window.top?.ADAHost || null;
     const exportShortcutConfig = async () => {
-      const hostApi = getShortcutHostApi();
-      if (typeof hostApi?.saveJsonFile !== "function") {
-        setStatus("Saving a shortcut settings file needs the desktop app.");
-        return;
-      }
       const payload = buildShortcutConfigPayload(projectName, {
         favoritePaths: typeof model.getFavoritePaths === "function" ? model.getFavoritePaths() : [],
         favoriteNicknames: typeof model.getFavoriteNicknames === "function" ? model.getFavoriteNicknames() : {},
@@ -3645,37 +3647,55 @@ export async function openReservingClassPicker(options = {}) {
         setStatus("There are no shortcuts to save yet.");
         return;
       }
-      let result = null;
-      try {
-        result = await hostApi.saveJsonFile({
-          data: payload,
-          suggestedName: `${projectName} Shortcuts.json`,
-          filters: [{ name: "Shortcut Settings", extensions: ["json"] }],
-        });
-      } catch (err) {
-        setStatus(toText(err?.message) || "Failed to save the shortcut settings file.");
+      const result = await saveSettingsFile({
+        data: payload,
+        suggestedName: `${projectName} Shortcuts.json`,
+        filterName: SHORTCUT_CONFIG_FILTER_NAME,
+      });
+      if (result.reason === "canceled") return;
+      if (result.reason === "no-host") {
+        setStatus("Saving a shortcut settings file needs the desktop app.");
         return;
       }
-      if (result?.canceled) return;
-      if (result?.error) {
+      if (!result.ok) {
         setStatus(`Failed to save shortcut settings: ${result.error}`);
         return;
       }
-      setStatus(`Saved shortcut settings to ${toText(result?.path) || "the chosen file"}.`);
+      setStatus(`Saved shortcut settings to ${toText(result.path) || "the chosen file"}.`);
+    };
+    const pickShortcutConfig = async () => {
+      const result = await openSettingsFile({
+        kind: SHORTCUT_CONFIG_KIND,
+        label: SHORTCUT_CONFIG_LABEL,
+        filterName: SHORTCUT_CONFIG_FILTER_NAME,
+      });
+      if (result.reason === "canceled") return;
+      if (result.reason === "no-host") {
+        setStatus("Choosing a shortcut settings file needs the desktop app; drag the file onto the tree instead.");
+        return;
+      }
+      if (!result.ok) {
+        setStatus(result.error);
+        return;
+      }
+      await applyShortcutConfig(readShortcutConfigPayload(result.data), toText(result.path).split(/[\\/]/).pop());
     };
     const loadShortcutConfigFile = async (file) => {
       const fileName = toText(file?.name);
-      if (!/\.json$/i.test(fileName) || typeof file?.text !== "function") {
-        setStatus("Drop a shortcut settings .json file to load it.");
-        return;
-      }
       let config = null;
       try {
-        config = readShortcutConfigPayload(await file.text());
+        config = readShortcutConfigPayload(await readSettingsFile(file, {
+          kind: SHORTCUT_CONFIG_KIND,
+          label: SHORTCUT_CONFIG_LABEL,
+        }));
       } catch (err) {
-        setStatus(`${fileName}: ${toText(err?.message) || "could not be read."}`);
+        setStatus(toText(err?.message) || `${fileName} could not be read.`);
         return;
       }
+      await applyShortcutConfig(config, fileName);
+    };
+    const applyShortcutConfig = async (config, rawFileName) => {
+      const fileName = toText(rawFileName) || "the settings file";
 
       // A file written from another project keeps only the paths this project has.
       const canonicalByConfigPath = new Map();
@@ -3919,9 +3939,16 @@ export async function openReservingClassPicker(options = {}) {
           persistModelFavorites();
           refreshFavoritesInTreeWindow();
         },
-        onExportShortcutConfig: () => { void exportShortcutConfig(); },
         onDropConfigFile: (file) => { void loadShortcutConfigFile(file); },
         configDropHint: "Drop a shortcut settings file to load it",
+        onShortcutConfigMenu: (ctx) => {
+          openSettingsFileMenu({
+            event: ctx?.event,
+            label: SHORTCUT_CONFIG_MENU_LABEL,
+            onSave: () => { void exportShortcutConfig(); },
+            onLoad: () => { void pickShortcutConfig(); },
+          });
+        },
         allowBranchSelect: !!options?.allowBranchSelect,
         showFilterButton: true,
         filterButtonTitle: "Filter",

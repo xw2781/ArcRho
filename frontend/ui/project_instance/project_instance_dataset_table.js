@@ -13,6 +13,14 @@ import {
   getBerquistShermanContract,
   normalizeBerquistShermanVariant,
 } from "/ui/shared/dataset/berquist_sherman_contract.js";
+import {
+  attachSettingsFileDropZone,
+  buildSettingsFile,
+  openSettingsFile,
+  openSettingsFileMenu,
+  readSettingsFile,
+  saveSettingsFile,
+} from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
 
 export function installProjectInstanceDatasetTable(ctx) {
   const { api, els, projectName, state } = ctx;
@@ -27,6 +35,11 @@ export function installProjectInstanceDatasetTable(ctx) {
   const DATASET_GROUP_DRAG_TYPE = "text/x-pi-group-key";
   const DATASET_FILTER_DRAG_TYPE = "text/x-pi-filter-key";
   const DATASET_TABLE_PREFERENCES_LOAD_TIMEOUT_MS = 5000;
+  const DATASET_VIEW_CONFIG_KIND = "arcrho.project_instance_dataset_view";
+  const DATASET_VIEW_CONFIG_VERSION = 1;
+  const DATASET_VIEW_CONFIG_LABEL = "group and filter settings";
+  const DATASET_VIEW_CONFIG_FILTER_NAME = "Group And Filter Settings";
+  const DATASET_VIEW_CONFIG_MENU_LABEL = "Group And Filter Config";
   const applyCachedDatasetSnapshot = (...args) => api.applyCachedDatasetSnapshot(...args);
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const captureDatasetTableScroll = (...args) => api.captureDatasetTableScroll(...args);
@@ -617,14 +630,11 @@ function updateDatasetSelectionStatusBar() {
 }
 
 
-function getDatasetTablePreferencePayload() {
+// The grouping and filtering the user can save to a settings file. The stored table
+// preferences carry the same two fields, built here, so a file and the preference store
+// can never describe the same view differently.
+function getDatasetViewSettingsPayload() {
   const known = new Set(DATASET_TABLE_COLUMNS.map((col) => col.key));
-  const columns = datasetTableView.columns.filter((key) => known.has(key));
-  const widths = {};
-  for (const col of DATASET_TABLE_COLUMNS) {
-    const width = Number(datasetTableView.widths[col.key]);
-    if (Number.isFinite(width)) widths[col.key] = Math.round(Math.max(col.minWidth || 80, width));
-  }
   const filters = {};
   for (const col of DATASET_TABLE_COLUMNS) {
     const key = col.key;
@@ -644,7 +654,18 @@ function getDatasetTablePreferencePayload() {
     }
     filters[key] = Array.from(selected).map((value) => String(value)).sort();
   }
-  const groupBy = getDatasetGroupByKeys();
+  return { filters, groupBy: getDatasetGroupByKeys() };
+}
+
+function getDatasetTablePreferencePayload() {
+  const known = new Set(DATASET_TABLE_COLUMNS.map((col) => col.key));
+  const columns = datasetTableView.columns.filter((key) => known.has(key));
+  const widths = {};
+  for (const col of DATASET_TABLE_COLUMNS) {
+    const width = Number(datasetTableView.widths[col.key]);
+    if (Number.isFinite(width)) widths[col.key] = Math.round(Math.max(col.minWidth || 80, width));
+  }
+  const { filters, groupBy } = getDatasetViewSettingsPayload();
   const collapsedGroups = Array.from(datasetTableView.collapsedGroups || [])
     .map((id) => String(id || ""))
     .filter(Boolean)
@@ -675,9 +696,26 @@ function getDatasetTablePreferencesSource(prefs) {
   return candidates.find((item) => item && typeof item === "object" && !Array.isArray(item)) || null;
 }
 
+// The other half of the pair above: the grouping and filtering a stored preference or a
+// settings file describes, applied to the live view.
+function applyDatasetViewSettings(prefs) {
+  const known = new Set(DATASET_TABLE_COLUMNS.map((col) => col.key));
+  state.datasetTableExplicitAllFilterKeys?.clear?.();
+  datasetTableView.filters.clear();
+  const filters = prefs.filters && typeof prefs.filters === "object" && !Array.isArray(prefs.filters) ? prefs.filters : {};
+  Object.entries(filters).forEach(([key, values]) => {
+    const normalized = toText(key);
+    if (!known.has(normalized) || !isDatasetColumnFilterable(normalized) || !Array.isArray(values)) return;
+    const selected = new Set(values.map((value) => String(value)).filter(Boolean));
+    if (selected.size) datasetTableView.filters.set(normalized, selected);
+  });
+  if (Array.isArray(prefs.groupBy)) {
+    datasetTableView.groupBy = prefs.groupBy.map(toText).filter((key, index, list) => known.has(key) && list.indexOf(key) === index);
+  }
+}
+
 function applyDatasetTablePreferences(source) {
   datasetTablePreferenceWidthKeys.clear();
-  state.datasetTableExplicitAllFilterKeys?.clear?.();
   const prefs = source && typeof source === "object" && !Array.isArray(source) ? source : {};
   const known = new Set(DATASET_TABLE_COLUMNS.map((col) => col.key));
   if (Array.isArray(prefs.columns)) {
@@ -698,17 +736,7 @@ function applyDatasetTablePreferences(source) {
     datasetTableView.widths[col.key] = Math.max(col.minWidth || 80, Math.round(width));
     datasetTablePreferenceWidthKeys.add(col.key);
   }
-  datasetTableView.filters.clear();
-  const filters = prefs.filters && typeof prefs.filters === "object" && !Array.isArray(prefs.filters) ? prefs.filters : {};
-  Object.entries(filters).forEach(([key, values]) => {
-    const normalized = toText(key);
-    if (!known.has(normalized) || !isDatasetColumnFilterable(normalized) || !Array.isArray(values)) return;
-    const selected = new Set(values.map((value) => String(value)).filter(Boolean));
-    if (selected.size) datasetTableView.filters.set(normalized, selected);
-  });
-  if (Array.isArray(prefs.groupBy)) {
-    datasetTableView.groupBy = prefs.groupBy.map(toText).filter((key, index, list) => known.has(key) && list.indexOf(key) === index);
-  }
+  applyDatasetViewSettings(prefs);
   datasetTableView.collapsedGroups = new Set(
     Array.isArray(prefs.collapsedGroups)
       ? prefs.collapsedGroups.map((id) => String(id || "")).filter(Boolean)
@@ -749,6 +777,88 @@ async function loadDatasetTablePreferences() {
     state.datasetTablePreferencesLoaded = true;
     finishPageLoading("preferences");
   }
+}
+
+function describeDatasetViewSettings(settings) {
+  const filterCount = Object.values(settings?.filters || {})
+    .filter((values) => Array.isArray(values) && values.length).length;
+  const groupCount = Array.isArray(settings?.groupBy) ? settings.groupBy.length : 0;
+  const parts = [];
+  if (groupCount) parts.push(`${groupCount} grouping ${groupCount === 1 ? "column" : "columns"}`);
+  if (filterCount) parts.push(`${filterCount} filtered ${filterCount === 1 ? "column" : "columns"}`);
+  return { filterCount, groupCount, text: parts.join(" and ") || "no grouping or filters" };
+}
+
+async function saveDatasetViewSettingsFile() {
+  const settings = getDatasetViewSettingsPayload();
+  const described = describeDatasetViewSettings(settings);
+  if (!described.filterCount && !described.groupCount) {
+    setStatus("There is no grouping or filtering to save yet.");
+    return;
+  }
+  const result = await saveSettingsFile({
+    data: buildSettingsFile({
+      kind: DATASET_VIEW_CONFIG_KIND,
+      version: DATASET_VIEW_CONFIG_VERSION,
+      projectName,
+      data: settings,
+    }),
+    suggestedName: `${projectName} Group And Filter.json`,
+    filterName: DATASET_VIEW_CONFIG_FILTER_NAME,
+  });
+  if (result.reason === "canceled") return;
+  if (result.reason === "no-host") {
+    setStatus("Saving a group and filter settings file needs the desktop app.", true);
+    return;
+  }
+  if (!result.ok) {
+    setStatus(`Failed to save group and filter settings: ${result.error}`, true);
+    return;
+  }
+  setStatus(`Saved group and filter settings to ${result.path || "the chosen file"}.`);
+}
+
+// A file written from another project keeps only the columns this table has, and a
+// filter value the column no longer offers drops itself on the next render.
+function applyDatasetViewSettingsFile(config, fileName) {
+  applyDatasetViewSettings(config);
+  datasetTableView.collapsedGroups.clear();
+  saveDatasetTablePreferences();
+  renderDatasetTable();
+  setStatus(`Loaded ${describeDatasetViewSettings(getDatasetViewSettingsPayload()).text} from ${fileName}.`);
+}
+
+async function loadDatasetViewSettingsFile(file) {
+  const fileName = toText(file?.name);
+  let config = null;
+  try {
+    config = await readSettingsFile(file, {
+      kind: DATASET_VIEW_CONFIG_KIND,
+      label: DATASET_VIEW_CONFIG_LABEL,
+    });
+  } catch (err) {
+    setStatus(toText(err?.message) || `${fileName} could not be read.`, true);
+    return;
+  }
+  applyDatasetViewSettingsFile(config, fileName);
+}
+
+async function pickDatasetViewSettingsFile() {
+  const result = await openSettingsFile({
+    kind: DATASET_VIEW_CONFIG_KIND,
+    label: DATASET_VIEW_CONFIG_LABEL,
+    filterName: DATASET_VIEW_CONFIG_FILTER_NAME,
+  });
+  if (result.reason === "canceled") return;
+  if (result.reason === "no-host") {
+    setStatus("Choosing a settings file needs the desktop app; drag the file onto the table instead.", true);
+    return;
+  }
+  if (!result.ok) {
+    setStatus(result.error, true);
+    return;
+  }
+  applyDatasetViewSettingsFile(result.data, result.path.split(/[\\/]/).pop() || result.path);
 }
 
 
@@ -3364,6 +3474,23 @@ function initDatasetTableInteractions() {
     els.datasetTableSurface.addEventListener("keydown", handleDatasetTableKeyDown);
   }
   els.datasetTableWrap?.addEventListener("mousedown", () => focusProjectInstancePage(), true);
+  // The whole right panel takes the drop, so the file can be let go over the table
+  // itself rather than aimed at the toolbar.
+  attachSettingsFileDropZone(els.rightPanel, {
+    name: "dataset-view-config",
+    hint: "Drop a group and filter settings file to load it",
+    onFile: (file) => void loadDatasetViewSettingsFile(file),
+  });
+  els.datasetToolbar?.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openSettingsFileMenu({
+      event,
+      label: DATASET_VIEW_CONFIG_MENU_LABEL,
+      onSave: () => void saveDatasetViewSettingsFile(),
+      onLoad: () => void pickDatasetViewSettingsFile(),
+    });
+  });
   els.datasetGroupByStatus?.addEventListener("dragover", handleDatasetGroupZoneDragOver);
   els.datasetGroupByStatus?.addEventListener("dragleave", (event) => {
     if (els.datasetGroupByStatus?.contains(event.relatedTarget)) return;

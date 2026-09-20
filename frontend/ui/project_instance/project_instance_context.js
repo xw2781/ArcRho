@@ -95,6 +95,7 @@ export function createProjectInstanceContext(deps = {}) {
     datasetIndexUpdateBtn: document.getElementById("datasetIndexUpdateBtn"),
     datasetGroupByStatus: document.getElementById("datasetGroupByStatus"),
     datasetActiveFilters: document.getElementById("datasetActiveFilters"),
+    datasetToolbar: document.getElementById("datasetToolbar"),
     cachedDatasetStatus: document.getElementById("cachedDatasetStatus"),
     pageLoadingOverlay: document.getElementById("pageLoadingOverlay"),
     pageLoadingTitle: document.getElementById("pageLoadingTitle"),
