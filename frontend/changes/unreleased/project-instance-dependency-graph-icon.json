@@ -1,0 +1,9 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The dependency graph button in the dataset toolbar has a new branching icon.",
+  "details": [
+    "It shows a trunk with one line branching away from it, so it no longer looks like the generic org-chart icon used elsewhere."
+  ]
+}
