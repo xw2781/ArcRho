@@ -1149,6 +1149,12 @@ body {
   opacity: 1;
   visibility: visible;
   transform: none;
+  /* Sits flush in the panel rather than floating over the grid, so it carries
+     no drop shadow — not even the shared component's focus ring shadow. */
+  box-shadow: none;
+}
+.dfmSummaryFormulaBar:focus-within {
+  box-shadow: none;
 }
 .dfmSummaryFormulaBar:not(:focus-within):not(.hasValidationError) {
   border-color: var(--ar-workspace-frame-border);
@@ -1170,7 +1176,6 @@ body {
   user-select: none;
   flex: 0 0 auto;
 }
-.dfmSummaryFormulaBarColLabel::before { content: "@"; margin-right: 3px; }
 .dfmSummaryFormulaBarColLabel[hidden] { display: none; }
 .dfmSummaryFormulaBarDisplay :is(.fmtRowRef, .fmtDatasetRef) {
   box-sizing: border-box;

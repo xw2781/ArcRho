@@ -878,7 +878,8 @@ function getSummaryDevLabelForCol(col) {
   const model = state?.model;
   if (!model) return "";
   const labels = getRatioHeaderLabels(getEffectiveDevLabelsForModel(model));
-  return String(labels?.[index] ?? "");
+  const label = String(labels?.[index] ?? "");
+  return label ? `(${index + 1}) ${label}` : "";
 }
 
 function setSummaryFormulaBarColLabel(col, barEl = null) {
