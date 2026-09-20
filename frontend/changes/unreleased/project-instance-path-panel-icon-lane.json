@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The icon buttons in the path panel's Shortcut and All Paths headers now line up with the star column beneath them."
+}

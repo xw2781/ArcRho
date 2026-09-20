@@ -658,6 +658,16 @@ body.resizing-left-panel .pi-table-wrap {
   z-index: 1;
   margin-left: 0;
 }
+/* The Shortcut and All Paths header buttons finish on that same vertical line,
+   so every icon down the right edge reads as one lane. The star is an 18px
+   button holding a 14px glyph 4px in from the row edge, which puts the glyph
+   6px in; a header button is 20px around the same 14px glyph, so it has to end
+   3px in for the two glyphs to share an edge. Only the last button in each
+   header matters - the rest follow it - and it wins over the base right margins,
+   which are set for the floating picker's wider gutter. */
+.pi-path-tree .ptree-section-header .ptree-section-action:last-child {
+  margin-right: 3px;
+}
 /* The star sits on a strip that repeats the row's own background (normal,
    hover, or selected, in every theme) so a label running underneath is covered
    rather than showing through the glyph. The strip also repeats the selected
