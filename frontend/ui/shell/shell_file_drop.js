@@ -63,6 +63,15 @@ function ensureDragOverlay() {
   return dragOverlayEl;
 }
 
+// A panel that reads a dropped file itself marks its root with this attribute.
+// The shell's drop is window-wide and would otherwise consume the event before
+// the panel ever sees it.
+function isLocalFileDropZone(event) {
+  const target = event?.target;
+  if (!target || typeof target.closest !== "function") return false;
+  return !!target.closest("[data-file-drop-zone]");
+}
+
 function hasExternalFiles(event) {
   const transfer = event?.dataTransfer;
   if (!transfer) return false;
@@ -167,6 +176,7 @@ function getDroppedNotebookPaths(event) {
 }
 
 export function handleShellFileDragOver(event) {
+  if (isLocalFileDropZone(event)) return false;
   if (!hasExternalFiles(event)) return false;
   event.preventDefault();
   event.stopPropagation();
@@ -176,6 +186,10 @@ export function handleShellFileDragOver(event) {
 }
 
 export function handleShellFileDrop(event) {
+  if (isLocalFileDropZone(event)) {
+    hideDragOverlay();
+    return false;
+  }
   if (!hasExternalFiles(event)) return false;
   event.preventDefault();
   event.stopPropagation();

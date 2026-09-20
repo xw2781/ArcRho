@@ -12,7 +12,7 @@ import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDeta
 import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260831a";
 import { initShellMessages } from "./shell_messages.js?v=20260913a";
 import { initUiAutomation } from "./ui_automation.js?v=20260904resize2";
-import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260612a";
+import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260920a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initFullscreenChrome, setFullscreenChrome, syncFullscreenChromeFromHost } from "./fullscreen_chrome.js?v=20260913b";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";

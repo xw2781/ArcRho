@@ -1,5 +1,6 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260911a";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920a";
 import { buildWorkflowPathRootNode } from "/ui/shared/integrations/workflow_picker_options.js";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 
 const LOOKUP_MODEL_CACHE = new Map();
 const HIDDEN_PATHS_CACHE = new Map();
@@ -13,6 +14,8 @@ const WINDOW_FRAME_MARGIN_PX = 8;
 const COLLAPSE_DEEPEST_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="12" x2="18" y2="12"/></svg>';
 const FILTER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>';
 const SETTINGS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="/ui/shared/icons/gear.svg?v=20260823b#gear"></use></svg>';
+const SHORTCUT_CONFIG_KIND = "arcrho.reserving_class_shortcuts";
+const SHORTCUT_CONFIG_VERSION = 1;
 
 function toText(value) {
   return String(value || "").trim();
@@ -1279,6 +1282,35 @@ function isDefaultReservingClassFilterPreferences(rawPrefs) {
     && (!prefs.favoriteNicknames || !Object.keys(prefs.favoriteNicknames).length)
     && (!Array.isArray(prefs.favoriteFolders) || prefs.favoriteFolders.length === 0)
   );
+}
+
+// The shortcut settings file carries the same three favourite fields the saved tree
+// preferences carry, normalized by the same function, so a file written here reads back
+// exactly as the preference store would read it.
+function buildShortcutConfigPayload(projectName, rawPreferences) {
+  const prefs = normalizeReservingClassFilterPreferences(rawPreferences || {});
+  return {
+    kind: SHORTCUT_CONFIG_KIND,
+    version: SHORTCUT_CONFIG_VERSION,
+    project_name: toText(projectName),
+    favorite_paths: prefs.favoritePaths,
+    favorite_nicknames: prefs.favoriteNicknames,
+    favorite_folders: prefs.favoriteFolders,
+  };
+}
+
+function readShortcutConfigPayload(rawText) {
+  const parsed = JSON.parse(String(rawText || ""));
+  if (!parsed || typeof parsed !== "object" || toText(parsed.kind) !== SHORTCUT_CONFIG_KIND) {
+    throw makeError("This is not an ArcRho shortcut settings file.");
+  }
+  const prefs = normalizeReservingClassFilterPreferences(parsed);
+  return {
+    projectName: toText(parsed.project_name),
+    favoritePaths: prefs.favoritePaths,
+    favoriteNicknames: prefs.favoriteNicknames,
+    favoriteFolders: prefs.favoriteFolders,
+  };
 }
 
 async function fetchReservingClassFilterSpec(projectName) {
@@ -3597,6 +3629,98 @@ export async function openReservingClassPicker(options = {}) {
       openTreeWindow({ smoothReplaceExisting: true });
     };
 
+    const getShortcutHostApi = () => window.ADAHost || window.top?.ADAHost || null;
+    const exportShortcutConfig = async () => {
+      const hostApi = getShortcutHostApi();
+      if (typeof hostApi?.saveJsonFile !== "function") {
+        setStatus("Saving a shortcut settings file needs the desktop app.");
+        return;
+      }
+      const payload = buildShortcutConfigPayload(projectName, {
+        favoritePaths: typeof model.getFavoritePaths === "function" ? model.getFavoritePaths() : [],
+        favoriteNicknames: typeof model.getFavoriteNicknames === "function" ? model.getFavoriteNicknames() : {},
+        favoriteFolders: typeof model.getFavoriteFolders === "function" ? model.getFavoriteFolders() : [],
+      });
+      if (!payload.favorite_paths.length && !payload.favorite_folders.length) {
+        setStatus("There are no shortcuts to save yet.");
+        return;
+      }
+      let result = null;
+      try {
+        result = await hostApi.saveJsonFile({
+          data: payload,
+          suggestedName: `${projectName} Shortcuts.json`,
+          filters: [{ name: "Shortcut Settings", extensions: ["json"] }],
+        });
+      } catch (err) {
+        setStatus(toText(err?.message) || "Failed to save the shortcut settings file.");
+        return;
+      }
+      if (result?.canceled) return;
+      if (result?.error) {
+        setStatus(`Failed to save shortcut settings: ${result.error}`);
+        return;
+      }
+      setStatus(`Saved shortcut settings to ${toText(result?.path) || "the chosen file"}.`);
+    };
+    const loadShortcutConfigFile = async (file) => {
+      const fileName = toText(file?.name);
+      if (!/\.json$/i.test(fileName) || typeof file?.text !== "function") {
+        setStatus("Drop a shortcut settings .json file to load it.");
+        return;
+      }
+      let config = null;
+      try {
+        config = readShortcutConfigPayload(await file.text());
+      } catch (err) {
+        setStatus(`${fileName}: ${toText(err?.message) || "could not be read."}`);
+        return;
+      }
+
+      // A file written from another project keeps only the paths this project has.
+      const canonicalByConfigPath = new Map();
+      let missingCount = 0;
+      for (const path of config.favoritePaths) {
+        const node = typeof model.getPathNode === "function" ? model.getPathNode(path) : null;
+        if (node?.path) canonicalByConfigPath.set(path, node.path);
+        else missingCount += 1;
+      }
+      if (!canonicalByConfigPath.size) {
+        setStatus(`${fileName} holds no path this project has.`);
+        return;
+      }
+
+      const hasCurrentShortcuts = (typeof model.getFavoritePaths === "function" && model.getFavoritePaths().length > 0)
+        || (typeof model.getFavoriteFolders === "function" && model.getFavoriteFolders().length > 0);
+      if (hasCurrentShortcuts) {
+        const answer = await showPageMessageBox({
+          title: "Load Shortcut Settings",
+          message: `Replace the current shortcuts with the ${canonicalByConfigPath.size} from ${fileName}?`,
+          actions: [{ id: "replace", label: "Replace" }],
+          okLabel: "Cancel",
+        });
+        if (answer !== "replace") return;
+      }
+
+      const nextNicknames = {};
+      for (const [configPath, canonicalPath] of canonicalByConfigPath.entries()) {
+        const nickname = toText(config.favoriteNicknames[configPath]);
+        if (nickname) nextNicknames[canonicalPath] = nickname;
+      }
+      const nextFolders = config.favoriteFolders.map((folder) => ({
+        ...folder,
+        paths: folder.paths.map((path) => canonicalByConfigPath.get(path)).filter(Boolean),
+      }));
+
+      model.setFavoritePaths(Array.from(canonicalByConfigPath.values()));
+      model.setFavoriteNicknames(nextNicknames);
+      model.setFavoriteFolders(nextFolders);
+      persistModelFavorites();
+      refreshFavoritesInTreeWindow();
+      const skipped = missingCount ? ` ${missingCount} not in this project were left out.` : "";
+      setStatus(`Loaded ${canonicalByConfigPath.size} shortcuts from ${fileName}.${skipped}`);
+    };
+
     const openTreeWindow = (refreshOptions = {}) => {
       const rootChildrenRaw = model.getRootNodes();
       const workflowRootNode = buildWorkflowPathRootNode(options);
@@ -3795,6 +3919,9 @@ export async function openReservingClassPicker(options = {}) {
           persistModelFavorites();
           refreshFavoritesInTreeWindow();
         },
+        onExportShortcutConfig: () => { void exportShortcutConfig(); },
+        onDropConfigFile: (file) => { void loadShortcutConfigFile(file); },
+        configDropHint: "Drop a shortcut settings file to load it",
         allowBranchSelect: !!options?.allowBranchSelect,
         showFilterButton: true,
         filterButtonTitle: "Filter",
