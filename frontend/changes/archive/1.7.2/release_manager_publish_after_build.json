@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Release Manager can publish a successful build straight away, and a short window no longer hides its panels.",
+  "details": [
+    "Publish after build is on by default, so one confirmation covers the build and the GitHub Release that follows it; the publication is skipped when the build fails.",
+    "A window too short for every panel now scrolls instead of squashing the build panel under the one below it."
+  ]
+}
