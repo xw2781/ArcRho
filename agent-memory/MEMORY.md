@@ -16,6 +16,7 @@
 - [Dev PC and Client PC identity](dev-pc-and-client-pc-identity.md) — run hostname first: L-H2MQ6280FVP is the Client PC (E:\ mapped), NE7SASWPN02 is the Server PC with ResQ
 - [Client PC as primary workstation](client-pc-primary-workstation.md) — Engine, Bridge, Gateway deploy from the Client PC because the share maps to the same E: letter
 - [Deploy without asking](deploy-without-asking.md) — after editing a component's bundled sources run the deploy yourself; only another session's uncommitted work stops you
+- [Deploy only when the released app is safe](deploy-only-when-released-app-is-safe.md) — 2026-09-20 rule: no-ask deploy only when latest-release users cannot break; plans open with a ship-impact statement
 - [Remote component deploy](remote-component-deploy.md) — server-components/deploy.py hands the build to the server Build Listener; check its heartbeat Repository; one failure skips later components; --ref <sha> when the tree holds others' work
 - [Prefer the built-in edit tool](prefer-built-in-edit-tool.md) — use Edit/Write so VS Code shows a diff panel; shell rewrites only for bulk work
 - [Bash tool heredoc pitfalls](bash-tool-heredoc-pitfalls.md) — heredocs choke on backticks and doubled backslashes; write scripts with Write and run by path; keep CRLF
