@@ -8,6 +8,19 @@ The user pre-authorizes agents to rebuild, redeploy, and relaunch any component 
 
 The authorization is per component. Stopping one never authorizes stopping another, and it never authorizes stopping ResQ.
 
+**The authorization covers only a deploy that cannot break users on the latest released app.** Every user runs the latest released desktop app, so before rebuilding decide whether that released app keeps working against the new server component. It does when the change is confined to the server side: a fix inside a job, a new job kind nothing released calls yet, a new optional field a released reader ignores. It does not when the server starts to require something the released app does not send, changes a response shape or persisted JSON the released app reads, or removes or renames a route or request kind. In that second case stop before building and tell the user explicitly what breaks and that the fix needs a frontend release, a coordinated release plus deploy, or a compatibility step; do not deploy until they answer.
+
+## Ship impact statement (MUST, before code changes)
+
+Before changing code for a feature or fix, state in one short block how it ships, so the user can weigh it before any work starts:
+
+- **Frontend release only** — the change lives in `frontend/ui`, the Electron host, or app-server code that runs only inside the desktop app, and no server component bundles it.
+- **Server component redeploy only** — the change lives in code bundled by Engine, Gateway, Bridge, Orchestrator, Admin Control, or Launcher (read the bundle owner named in the table below; `frontend/app_server` is bundled by the Engine and Gateway, so a hosted save or read fix is a server deploy), and the released app already sends and reads what it needs.
+- **Both, in this order** — say which side must go first and why the released app is safe in between. When no order is safe, say so; the user decides how to sequence the release.
+- **Risk to the released app** — "none", or the concrete request, response, or file the released app would no longer handle.
+
+Give the same statement again in the final response when the implementation changed the answer.
+
 ## Rules that apply to every component
 
 - **A frozen component runs its bundled copy**, so an edit to a bundled tree has no effect until that component is rebuilt. Never trust a restated bundle list — read the owner module named in the table. Many changes that look unrelated to a component still require its rebuild.
