@@ -115,6 +115,13 @@ test("BF output calculation keeps the ultimate's fraction at six decimals", () =
   assert.doesNotMatch(calculate, /WholeNumber|Math\.round/u);
 });
 
+test("BF output calculation gives an unobserved origin its whole Selected Prior", () => {
+  // A quarter beyond the valuation has no Latest yet; the contract gives it the
+  // Selected Prior so a quarterly BF covers the full year, and the page mirrors it.
+  const calculate = functionSlice(mainSource, "function calculateOutputs()", "function renderBfChart");
+  assert.match(calculate, /if \(latest === null\) \{[\s\S]*?ultimate = selectedPrior;/u);
+});
+
 test("BF aggregate API sends identity and revision-aware save requests", async () => {
   const requests = [];
   const previousFetch = globalThis.fetch;

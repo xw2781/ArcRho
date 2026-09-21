@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "bornhuetter ferguson",
+  "audience": "user",
+  "summary": "A Bornhuetter Ferguson origin with no Latest value yet, such as a quarter beyond the current quarter, now takes its Selected Prior as New Ultimate instead of showing null.",
+  "details": [
+    "A quarterly method therefore produces an estimate for the full year.",
+    "Saved methods keep their old column until recalculated; tools/restate_bf_unobserved_origin_ultimates.py republishes a whole project and walks its dependents."
+  ]
+}

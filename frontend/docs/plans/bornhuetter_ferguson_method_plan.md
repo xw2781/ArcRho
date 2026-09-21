@@ -109,7 +109,9 @@ Only prior values with positive weights participate. Selected Prior is blank whe
 Output:
 
 ```text
-If Selected Prior is blank:
+If Latest is blank:
+  New Ultimate = Selected Prior
+Else if Selected Prior is blank:
   New Ultimate = Latest
 Otherwise:
   New Ultimate = Latest + (1 - Percentage Developed) * Selected Prior
@@ -117,7 +119,7 @@ Otherwise:
 
 New Ultimate keeps the same six decimals as every other BF vector. It is never rounded to a whole number: ResQ keeps the fraction, and a rounded ultimate drifts everything that reads the BF output.
 
-New Ultimate is blank when Latest is blank/non-numeric. When Selected Prior is available, New Ultimate is also blank if Percentage Developed is blank/non-numeric.
+A blank Latest is an origin with nothing observed yet, such as a quarter beyond the valuation in a quarterly class; its New Ultimate is the whole Selected Prior so the method covers the full year. When both Latest and Selected Prior are available, New Ultimate is blank if Percentage Developed is blank/non-numeric.
 
 ## Method Table
 
@@ -131,7 +133,7 @@ V2 Method table columns:
 | Prior Ultimate | One dynamic column per selected prior vector. |
 | Weight | One optional dynamic column per prior vector, shown when Show Weights is enabled. |
 | Selected Prior | Weighted average of the available prior vectors. |
-| New Ultimate | Latest when Selected Prior is blank; otherwise the BF ultimate output at six decimals. |
+| New Ultimate | Selected Prior when Latest is blank; Latest when Selected Prior is blank; otherwise the BF ultimate output at six decimals. |
 
 The Method toolbar contains Formatting controls only: Show Weights, Index/Effective % display mode, and decimal places. Prior and Weight cells reuse Result Selection selection, double-click toggle, keyboard entry, paste, Delete-to-zero, and highlight behavior.
 

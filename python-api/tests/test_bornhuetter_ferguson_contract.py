@@ -249,6 +249,35 @@ class BornhuetterFergusonContractTests(unittest.TestCase):
             second["method_tab"]["dfm_source_revision"],
         )
 
+    def test_unobserved_origin_takes_its_whole_selected_prior(self) -> None:
+        """A quarter beyond the valuation has no Latest and no pattern yet.
+
+        Its ultimate is the Selected Prior rather than blank, so a quarterly BF
+        still produces an estimate for the full year.
+        """
+
+        payload = owned_payload(origin_length=3)
+        payload["method_tab"]["origin_labels"] = ["2026 Q2", "2026 Q3", "2026 Q4"]
+        payload["method_tab"]["prior_datasets"] = [
+            {"name": "Plan A", "values": [], "weights": [1, 1, 0]}
+        ]
+        labels = payload["method_tab"]["origin_labels"]
+        source_data = {
+            "latest": {"name": "Paid Loss", "origin_labels": labels, "values": [40, None, None]},
+            "dfm": {
+                "name": "Paid DFM Ultimate",
+                "origin_labels": labels,
+                "values": [80, None, None],
+                "percentage_developed": [0.5, None, None],
+            },
+            "priors": [{"name": "Plan A", "origin_labels": labels, "values": [90, 85, 70]}],
+        }
+
+        method = recalculate_bornhuetter_ferguson_method(payload, source_snapshots=source_data)
+
+        self.assertEqual(method["method_tab"]["selected_prior_values"], [90, 85, None])
+        self.assertEqual(method["method_tab"]["new_ultimate"], [85, 85, None])
+
     def test_null_submitted_weight_uses_ui_default_of_one(self) -> None:
         method = complete_method()
         method["method_tab"]["prior_datasets"][0]["weights"][0] = None

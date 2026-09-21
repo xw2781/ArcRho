@@ -162,7 +162,10 @@ def _calculate_vectors(method_tab: Mapping[str, Any]) -> tuple[list[Any], list[A
         selected_raw = numerator / denominator if denominator > 0 else None
         selected_value = _number(selected_raw)
         if latest_value is None:
-            ultimate = None
+            # An origin with nothing observed yet -- a quarter beyond the
+            # valuation in a quarterly class -- still expects its whole prior,
+            # so the method covers the full year.
+            ultimate = selected_value
         elif selected_value is None:
             ultimate = latest_value
         elif percentage_raw is None:

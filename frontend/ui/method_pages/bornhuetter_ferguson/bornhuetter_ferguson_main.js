@@ -796,15 +796,19 @@ function calculateOutputs() {
       priorDenominator += weight;
     }
     const selectedPrior = priorDenominator > 0 ? priorNumerator / priorDenominator : null;
-    let ultimate = null;
-    if (latest !== null) {
-      ultimate = selectedPrior === null
-        ? latest
-        : pct !== null
-          // Six decimals like every other BF vector: a whole-number ultimate
-          // drifts from ResQ in everything that reads the BF output.
-          ? roundBornhuetterFergusonNumber(latest + (1 - pct) * selectedPrior)
-          : null;
+    let ultimate;
+    if (latest === null) {
+      // Nothing observed yet -- a quarter beyond the valuation in a quarterly
+      // class -- still expects its whole prior, so the method covers the year.
+      ultimate = selectedPrior;
+    } else if (selectedPrior === null) {
+      ultimate = latest;
+    } else {
+      ultimate = pct !== null
+        // Six decimals like every other BF vector: a whole-number ultimate
+        // drifts from ResQ in everything that reads the BF output.
+        ? roundBornhuetterFergusonNumber(latest + (1 - pct) * selectedPrior)
+        : null;
     }
     state.selectedPriorValues.push(selectedPrior);
     state.newUltimateValues.push(ultimate);
