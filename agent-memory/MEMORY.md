@@ -97,3 +97,4 @@
 - [Write tool unescapes control chars](write-tool-unescapes-control-chars.md) - a \u001f in Write/Edit lands as the literal byte; repair with a Python chr(92) rewrite
 - [Concise UI message copy](concise-ui-message-copy.md) — dialogs say only what the buttons and the linked list do not; two lines at most
 - [Update asset name strands old clients](update-asset-name-strands-old-clients.md) — the updater matches the installer file name; a rename needs an old-name copy plus its .sha256 in the same release
+- [Calculated walk reads stale sibling views](calculated-walk-reads-stale-sibling-views.md) — 2026-09-21: `_candidate_csvs` takes an unvalidated `@<period>` sibling of an Engine/input precedent; the refresh regenerates a vector at 12 months
