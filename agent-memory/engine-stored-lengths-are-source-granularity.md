@@ -45,5 +45,10 @@ H 02 and F 91 in the NJ Legacy HOL class.
   (`_engine_cache_at_target_shape` + `materialize_engine_source`); needs an
   Engine + Gateway deploy. Before 2026-09-15 the same walk stopped
   earlier at "Ambiguous dependency", so this is the next layer, not a regression.
+  Committed as 0e9c28a5 and live on the Engine and Gateway since 2026-09-20 16:41 UTC
+  (verified 2026-09-21: deployed copy identical, NY BI Total F 63 walks succeed).
+  The client still shows no reason for a failed walk (owner decision 2026-08-07 in
+  `docs/app_server/domains/dependent_propagation.md`); the reason is only in
+  `hosted_saves.log` and the completed payload's `message`.
   Still unaudited: the `dataset_service` stored-shape reads.
 - Related: [[origin-length-is-not-row-count]], [[hosted-save-fix-needs-engine-deploy]].
