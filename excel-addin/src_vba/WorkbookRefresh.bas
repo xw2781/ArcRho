@@ -99,7 +99,8 @@ Finish:
             block.Dirty
             block.Calculate
         Next block
-        CalculateRefreshScope book, sheet
+        RefreshProgress showProgress, "Recalculating workbook formulas ...", book.Name, "", 97
+        RecalculateWorkbookFormulas book
         On Error GoTo 0
     End If
     If cancelUpdate And Not completed Then message = "Refresh cancelled; the previous snapshot is unchanged."
@@ -261,4 +262,25 @@ Private Sub CalculateRefreshScope(ByVal book As Workbook, ByVal onlySheet As Wor
             If ws.Name <> SNAPSHOT_SHEET Then ws.Calculate
         Next ws
     End If
+End Sub
+
+' Worksheet.Calculate revisits only the cells Excel marked dirty on that one
+' sheet, so a formula fed through a chain that crosses sheets more than once
+' keeps its old value, and in Manual calculation mode it stays stale until the
+' user presses F9. Once the Arco cells hold their final values, mark every
+' formula in the refreshed workbook and let Excel recalculate them in one
+' dependency-ordered pass. Application.Calculate handles dirty cells only, so
+' another open workbook is touched no more than F9 would touch it, and its
+' Arco formulas are not re-evaluated unless they were already pending.
+Private Sub RecalculateWorkbookFormulas(ByVal book As Workbook)
+    Dim ws As Worksheet, formulas As Range
+    On Error Resume Next
+    For Each ws In book.Worksheets
+        If ws.Name <> SNAPSHOT_SHEET Then
+            Set formulas = Nothing
+            Set formulas = ws.UsedRange.SpecialCells(xlCellTypeFormulas)
+            If Not formulas Is Nothing Then formulas.Dirty
+        End If
+    Next ws
+    Application.Calculate
 End Sub

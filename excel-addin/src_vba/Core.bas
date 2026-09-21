@@ -2,7 +2,14 @@
 Option Private Module
 Option Explicit
 
-Public Const ARCRHO_VERSION As String = "4.0.0"
+Public Const ARCRHO_VERSION As String = "4.0.2"
+
+' The workbook sheet that carries the default project name. A workbook set up
+' by an earlier version, or by ResQ itself, holds the ResQ spelling instead.
+' VBA honours module-level declarations only above the first procedure, so
+' these stay here rather than beside SettingsSheet.
+Public Const SETTINGS_SHEET_NAME As String = "Arco Settings"
+Public Const LEGACY_SETTINGS_SHEET_NAME As String = "ResQ Settings"
 
 ' User-specific config (C:\Users\...\AppData\Local\ArcRho\config.txt)
 Public configDir As String
@@ -240,11 +247,6 @@ Public Function ReadUtf8TextFile(ByVal filePath As String) As String
     ReadUtf8TextFile = stream.ReadText(-1)
     stream.Close
 End Function
-
-' The workbook sheet that carries the default project name. A workbook set up
-' by an earlier version, or by ResQ itself, holds the ResQ spelling instead.
-Public Const SETTINGS_SHEET_NAME As String = "Arco Settings"
-Public Const LEGACY_SETTINGS_SHEET_NAME As String = "ResQ Settings"
 
 ' The workbook's settings sheet under either spelling, or Nothing when it has neither.
 Public Function SettingsSheet(ByVal book As Workbook) As Worksheet

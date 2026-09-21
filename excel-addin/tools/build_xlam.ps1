@@ -108,7 +108,11 @@ function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-    $zip = [System.IO.Compression.ZipFile]::Open($WorkbookPath, [System.IO.Compression.ZipArchiveMode]::Update)
+    # The share can refuse the second open for a few seconds after the first
+    # update was written; retry the file-in-use failure instead of stopping.
+    $zip = Invoke-FileOperationWithRetry "Open package for update: $WorkbookPath" {
+        [System.IO.Compression.ZipFile]::Open($WorkbookPath, [System.IO.Compression.ZipArchiveMode]::Update)
+    }
     try {
         $entry = $zip.Entries | Where-Object { ($_.FullName -replace '\\', '/') -ieq 'docProps/core.xml' } | Select-Object -First 1
         if ($null -eq $entry) {
@@ -209,7 +213,11 @@ function Update-CustomUIXml([string]$WorkbookPath, [string]$RibbonXmlPath) {
 
     $workbookDirectory = [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($WorkbookPath))
     $tempRibbonXmlPath = New-CustomUIXmlForWorkbook $RibbonXmlPath $WorkbookPath $workbookDirectory
-    $zip = [System.IO.Compression.ZipFile]::Open($WorkbookPath, [System.IO.Compression.ZipArchiveMode]::Update)
+    # The share can refuse the second open for a few seconds after the first
+    # update was written; retry the file-in-use failure instead of stopping.
+    $zip = Invoke-FileOperationWithRetry "Open package for update: $WorkbookPath" {
+        [System.IO.Compression.ZipFile]::Open($WorkbookPath, [System.IO.Compression.ZipArchiveMode]::Update)
+    }
     try {
         $entryPath = "customUI/customUI.xml"
         $entriesToDelete = @($zip.Entries | Where-Object { ($_.FullName -replace '\\', '/') -ieq $entryPath })

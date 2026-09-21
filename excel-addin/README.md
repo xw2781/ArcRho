@@ -33,6 +33,12 @@ requests while retaining saved requests used elsewhere in the workbook. Save
 the workbook after refreshing or adding formulas to share the new values.
 Snapshot data contains no credentials or raw source tables.
 
+Either Refresh command ends by recalculating every formula in the refreshed
+workbook, so ordinary formulas that depend on Arco results show the new values
+as well, whichever calculation mode the workbook uses. This costs the same as
+pressing F9 with that workbook open; other open workbooks are not recalculated
+beyond what F9 would already do.
+
 ## Server refresh policy
 
 - A dataset with a sidecar is read as published from the CSV named by the

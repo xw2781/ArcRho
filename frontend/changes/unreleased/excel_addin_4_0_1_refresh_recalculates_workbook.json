@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel add-in 4.0.2 recalculates the whole workbook after Refresh Workbook or Refresh Worksheet, so formulas that depend on Arco results no longer keep stale values.",
+  "details": [
+    "The 4.0.1 file released earlier the same day failed to compile on every Arco formula because two constants were declared below the first procedure of their module; 4.0.2 replaces it, and the build check now compiles the whole VBA project.",
+    "A refresh used to recalculate each sheet once in order, which left formulas fed through more than one sheet, or any dependent formula in Manual calculation mode, showing values from before the refresh.",
+    "Every formula in the refreshed workbook is now marked and recalculated in one dependency-ordered pass once the Arco cells hold their new values.",
+    "Other open workbooks are recalculated no further than pressing F9 would."
+  ]
+}
