@@ -98,3 +98,4 @@
 - [Concise UI message copy](concise-ui-message-copy.md) — dialogs say only what the buttons and the linked list do not; two lines at most
 - [Update asset name strands old clients](update-asset-name-strands-old-clients.md) — the updater matches the installer file name; a rename needs an old-name copy plus its .sha256 in the same release
 - [Calculated walk reads stale sibling views](calculated-walk-reads-stale-sibling-views.md) — 2026-09-21: `_candidate_csvs` takes an unvalidated `@<period>` sibling of an Engine/input precedent; the refresh regenerates a vector at 12 months
+- [BF/CC formula change needs republish](bf-cc-formula-change-needs-republish.md) — 2026-09-21: changing how BF/CC derive their calculated columns makes every stored method unopenable (validate_complete + sidecar publication revision); ship with a republish or an approved tolerance, never alone
