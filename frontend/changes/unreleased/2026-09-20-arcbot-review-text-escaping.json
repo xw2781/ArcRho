@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot replies no longer show stray backslashes and HTML codes in place of ordinary punctuation.",
+  "details": [
+    "SQL Format Validation review findings read as plain sentences, so hyphens, underscores, periods, and comparison operators appear as written.",
+    "Escaped text still cannot turn itself into headings, bold, code, or links in the chat."
+  ]
+}

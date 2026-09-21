@@ -82,22 +82,46 @@ function createAssistantMarkdownLink(label, href) {
   return link;
 }
 
+const ASSISTANT_TEXT_ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">" };
+
+/**
+ * Undo the escaping a caller applied before handing untrusted text to this renderer. A skill
+ * that neutralizes model output entity-encodes the HTML trio and backslash-escapes Markdown
+ * punctuation; this renderer builds text nodes, so both have to come back as plain characters
+ * or the reader sees the escaping instead of the sentence.
+ */
+function decodeAssistantText(raw) {
+  return String(raw).replace(/&(?:amp|lt|gt);/g, (entity) => ASSISTANT_TEXT_ENTITIES[entity]);
+}
+
 export function appendAssistantInlineMarkdown(parent, text) {
   const raw = String(text || "");
-  const pattern = /(\[[^\]\n]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g;
+  // The escape branch leads the alternation so escaped punctuation is consumed as a plain
+  // character and can never go on to open a bold, code, or link token.
+  const pattern = /\\([!-\/:-@\[-`{-~])|\[[^\]\n]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`/g;
+  let pending = "";
   let lastIndex = 0;
+  const flushText = () => {
+    if (pending) parent.appendChild(document.createTextNode(decodeAssistantText(pending)));
+    pending = "";
+  };
   for (const match of raw.matchAll(pattern)) {
-    if (match.index > lastIndex) parent.appendChild(document.createTextNode(raw.slice(lastIndex, match.index)));
+    pending += raw.slice(lastIndex, match.index);
+    lastIndex = match.index + match[0].length;
+    if (match[1] !== undefined) {
+      pending += match[1];
+      continue;
+    }
+    flushText();
     const token = match[0];
     if (token.startsWith("[")) {
       const linkMatch = token.match(/^\[([^\]\n]+)\]\(([^)]+)\)$/);
-      const el = createAssistantMarkdownLink(linkMatch?.[1] || "", linkMatch?.[2] || "");
+      const el = createAssistantMarkdownLink(decodeAssistantText(linkMatch?.[1] || ""), linkMatch?.[2] || "");
       parent.appendChild(el);
-      lastIndex = match.index + token.length;
       continue;
     }
     const el = token.startsWith("**") ? document.createElement("strong") : document.createElement("code");
-    const content = token.startsWith("**") ? token.slice(2, -2) : token.slice(1, -1);
+    const content = decodeAssistantText(token.startsWith("**") ? token.slice(2, -2) : token.slice(1, -1));
     if (token.startsWith("**")) {
       el.textContent = content;
     } else if (shouldHighlightAssistantInlineSql(content)) {
@@ -107,9 +131,9 @@ export function appendAssistantInlineMarkdown(parent, text) {
       el.textContent = content;
     }
     parent.appendChild(el);
-    lastIndex = match.index + token.length;
   }
-  if (lastIndex < raw.length) parent.appendChild(document.createTextNode(raw.slice(lastIndex)));
+  pending += raw.slice(lastIndex);
+  flushText();
 }
 
 function isAssistantSqlLanguage(language) {
