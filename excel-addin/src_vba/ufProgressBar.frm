@@ -20,6 +20,13 @@ Private Sub cmd_Cancel_Click()
     cancelUpdate = True
 End Sub
 
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    If CloseMode = vbFormControlMenu Then
+        Cancel = True
+        cmd_Cancel_Click
+    End If
+End Sub
+
 Private Sub UserForm_Initialize()
     Me.Caption = "Refreshing Arco"
     Me.LabelProgress.Width = 0

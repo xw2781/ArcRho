@@ -52,9 +52,11 @@ End Sub
 '|  Group 3 |
 '+----------+
 
-' Reset References
+' Reset References: retarget add-in links and rename old formulas to Arco names.
 Sub uiResetAddinReferences(control As IRibbonControl)
-    ResetAddinReferences
+    If ActiveWorkbook Is Nothing Then Exit Sub
+    If ActiveWorkbook.IsAddin Then Exit Sub
+    ufAddinReferences.ShowDialog
 End Sub
 
 ' Load Add-in

@@ -39,6 +39,44 @@ as well, whichever calculation mode the workbook uses. This costs the same as
 pressing F9 with that workbook open; other open workbooks are not recalculated
 beyond what F9 would already do.
 
+## Repairing workbook references
+
+The **Reset Add-in References** ribbon button opens a compact form for the active
+workbook. Choose the target add-in from the dropdown, then **Update workbook**.
+**Arco Excel add-in** is always the default and uses the mapped-drive release
+location. **64-bit ResQ add-in** changes both the path and supported function
+names to ResQ, using `C:\Program Files\Willis Towers Watson\ResQ\Addins\ResQ.xlam`.
+ResQ is enabled only on `NE7SASWPN02`. On other PCs the option is muted with
+"Only available on NE7SASWPN02", and the update routine rejects ResQ conversion.
+
+The repair covers formulas on visible and hidden sheets and workbook- and
+sheet-scoped defined names. It replaces supported `ResQ`, `ArcRho`, and `ADAS`
+function names with `Arco` names, and retargets ResQ's 32/64-bit installation
+paths, old UNC links, and beta links. Arguments, quoted text, table columns,
+unrelated workbook links, and unsupported function names stay intact.
+`ReferenceFormulaRepair.bas` owns the supported rename mapping;
+`ReferenceRepair.bas` owns the default target and workbook update flow.
+
+The existing progress window shows the sheet name and number, cells checked,
+formula ranges found, and update progress. Formula discovery reads cells in
+batches and handles each legacy array once. Cancel during scanning leaves all
+formulas unchanged; cancel during updating reports how many changes were made.
+The form has no preview or separate Close button; use its window X to dismiss it.
+Protected sheets/names and legacy array formulas whose replacement exceeds
+Excel's 255-character `FormulaArray` limit are reported without changing them.
+Legacy array rectangles and dynamic spills are preserved. If an add-in with
+the target filename is already loaded from a different location, load it from
+the desired location first; Excel otherwise binds the formula to the open copy.
+
+Updating recalculates the workbook from its saved data without starting a
+server refresh. Use **Refresh Workbook** if the repaired formulas need data,
+then save. The form does not save the workbook or install an add-in. Excel may
+display a loaded add-in's formulas without a path; the chosen file remains in
+the saved workbook's links.
+
+The simplified form and ResQ target are available in add-in 4.1.1, released on September 21, 2026.
+Restart Excel to load the shared release.
+
 ## Server refresh policy
 
 - A dataset with a sidecar is read as published from the CSV named by the
@@ -187,6 +225,10 @@ PC with Excel, pywin32, and trusted VBA project access. The harness uses
 synthetic Gateway responses and disposable workbooks under repository `test/`.
 After building, `py -3.10 -B excel-addin/tools/verify_built_addin.py
 excel-addin/beta/ARCRHO_BETA.xlam` checks the compiled add-in against its source.
+`py -3.10 -B excel-addin/tools/verify_reference_repair.py` checks reference
+rewrites in both directions, arrays, named formulas, protected sheets,
+recalculation, saved links, target availability, and large-workbook progress and
+cancellation using synthetic add-ins and disposable workbooks in the same test root.
 
 | Check | What it proves |
 | :--- | :--- |

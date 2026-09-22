@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Reset Add-in References updates add-in paths and supported function names using a simple Arco or 64-bit ResQ target selector.",
+  "details": [
+    "Arco is always the default. ResQ is disabled with an explanation on PCs other than NE7SASWPN02, and conversion is rejected there.",
+    "Old 32-bit ResQ paths are recognized. Choose Update workbook to apply the selected target without a preview step.",
+    "The existing progress window reports each sheet, cells checked, and update progress, with cancellation for large workbooks.",
+    "Legacy arrays and dynamic spills retain their shape; protected content and formulas Excel cannot update are reported.",
+    "The workbook recalculates after repair. Refresh if data is missing, then save to retain the changes."
+  ]
+}

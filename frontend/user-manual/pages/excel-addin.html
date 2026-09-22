@@ -51,9 +51,16 @@ periodType examples:
           <tr><td>Clear Formulas</td><td>Remove Arco formulas during workbook cleanup.</td></tr>
           <tr><td>Load Reserving Classes</td><td>Use a picker to insert path components.</td></tr>
           <tr><td>Select Datasets</td><td>Pick dataset names with format/category/search filters.</td></tr>
-          <tr><td>Reset Add-in References</td><td>Fix broken workbook references after moving or updating the add-in.</td></tr>
+          <tr><td>Reset Add-in References</td><td>Choose Arco or 64-bit ResQ, then Update workbook to change both add-in paths and supported formula names. Arco is always the default; ResQ is available only on NE7SASWPN02. Available in add-in 4.1.1.</td></tr>
         </tbody>
       </table>
+    </section>
+    <section class="manual-section" id="reference-repair">
+      <div class="section-head"><p class="eyebrow">Workbook repair</p><h2>Update old add-in links and formula names</h2></div>
+      <p>Open the workbook to repair and choose <strong>Reset Add-in References</strong>. <strong>Arco Excel add-in</strong> is always selected by default. The dropdown also offers <strong>64-bit ResQ add-in</strong>, which changes Arco formula names to ResQ and points them to the 64-bit ResQ installation. On PCs other than NE7SASWPN02, this option is disabled with the explanation <strong>Only available on NE7SASWPN02</strong>.</p>
+      <p>Choose <strong>Update workbook</strong> to change both paths and formula names across visible and hidden sheets and defined names. Old 32-bit and 64-bit ResQ paths, UNC links, and beta links are recognized; formula arguments and quoted text are preserved. The 32-bit installation is not offered as a target.</p>
+      <p>The progress window shows each sheet, cells checked, formula ranges found, and update progress. Cancel during scanning leaves the workbook unchanged. Cancel during updating stops further changes and reports what was updated. Close the repair form with its window X.</p>
+      <p>The results identify protected content and legacy array formulas that exceed Excel's editing limit. If the same add-in filename is loaded from another location, load the desired copy first. After repair, use <strong>Refresh Workbook</strong> if data is missing, then save. Repair itself does not fetch data or save the workbook.</p>
     </section>
     <section class="manual-section" id="formula-rules">
       <div class="section-head"><p class="eyebrow">Formula rules</p><h2>Useful formula behavior</h2></div>

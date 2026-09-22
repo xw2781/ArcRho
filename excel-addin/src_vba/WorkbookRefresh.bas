@@ -146,24 +146,33 @@ End Function
 ' result cell; record its rectangle once instead of resolving CurrentArray for
 ' every output cell (which becomes quadratic for large worksheet arrays).
 Public Function FindArcRhoFormulaBlocks(ByVal scope As Range, Optional ByVal showProgress As Boolean = False, _
-                                       Optional ByVal percentStart As Double = 0, Optional ByVal percentSpan As Double = 15) As Collection
+                                       Optional ByVal percentStart As Double = 0, Optional ByVal percentSpan As Double = 15, _
+                                       Optional ByVal includeLegacy As Boolean = False, Optional ByVal progressBody As String = "") As Collection
     Const BATCH_CELLS As Long = 8192
     Dim result As New Collection, formulas As Range, area As Range, batch As Range
     Dim cell As Range, block As Range, seen As Object, skipRows As Object, spans As Collection
     Dim texts As Variant, span As Variant, text As String, key As String
     Dim firstRow As Long, rowsPerBatch As Long, rowCount As Long, width As Long, batchRow As Long, batchCol As Long
     Dim r As Long, c As Long, sheetRow As Long, sheetCol As Long, lastRow As Long, lastCol As Long
-    Dim scanned As Double, total As Double, sinceProgress As Double
+    Dim scanned As Double, total As Double, sinceProgress As Double, matched As Boolean, title As String
     Set seen = CreateObject("Scripting.Dictionary")
     Set skipRows = CreateObject("Scripting.Dictionary")
-    On Error Resume Next
-    Set formulas = Application.Intersect(scope, scope.SpecialCells(xlCellTypeFormulas))
-    On Error GoTo 0
+    If includeLegacy And scope.Worksheet.ProtectContents Then
+        ' Reference repair reports protected formulas; SpecialCells cannot find them.
+        Set formulas = scope
+    Else
+        On Error Resume Next
+        Set formulas = Application.Intersect(scope, scope.SpecialCells(xlCellTypeFormulas))
+        On Error GoTo 0
+    End If
     If formulas Is Nothing Then
         Set FindArcRhoFormulaBlocks = result
         Exit Function
     End If
     total = formulas.CountLarge
+    title = "Finding Arco formulas ..."
+    If includeLegacy Then title = "Finding add-in formulas ..."
+    If Len(progressBody) = 0 Then progressBody = scope.Worksheet.Name
     For Each area In formulas.Areas
         width = area.Columns.Count
         rowsPerBatch = BATCH_CELLS \ width
@@ -195,10 +204,17 @@ Public Function FindArcRhoFormulaBlocks(ByVal scope As Range, Optional ByVal sho
                     If c > width Then Exit Do
                     If sheetCol <> batchCol + c - 1 Then GoTo NextCell
                     text = CStr(texts(r, c))
-                    If InStr(1, text, "Arco", vbTextCompare) > 0 Then
+                    matched = InStr(1, text, "Arco", vbTextCompare) > 0
+                    If includeLegacy Then matched = matched Or InStr(1, text, "ArcRho", vbTextCompare) > 0 Or _
+                        InStr(1, text, "ResQ", vbTextCompare) > 0 Or InStr(1, text, "ADAS", vbTextCompare) > 0
+                    If matched Then
                         Set cell = batch.Cells(r, c)
+                        If Not cell.HasFormula Then GoTo AdvanceCell
                         Set block = cell
                         If cell.HasArray Then Set block = cell.CurrentArray
+                        If includeLegacy And Not cell.HasArray Then
+                            If cell.HasSpill Then Set block = cell.SpillParent
+                        End If
                         key = block.Address
                         If Not seen.Exists(key) Then
                             seen.Add key, True
@@ -218,6 +234,7 @@ Public Function FindArcRhoFormulaBlocks(ByVal scope As Range, Optional ByVal sho
                             End If
                         End If
                     End If
+AdvanceCell:
                     c = c + 1
 NextCell:
                 Loop
@@ -226,8 +243,9 @@ NextCell:
             sinceProgress = sinceProgress + batch.CountLarge
             If sinceProgress >= BATCH_CELLS Or scanned = total Then
                 If showProgress Then
-                    RefreshProgress True, "Finding Arco formulas ...", scope.Worksheet.Name, _
-                        result.Count & " Arco range(s) found", percentStart + scanned / total * percentSpan
+                    RefreshProgress True, title, progressBody, _
+                        Format$(scanned, "#,##0") & " / " & Format$(total, "#,##0") & " cells checked; " & _
+                        result.Count & " formula range(s) found", percentStart + scanned / total * percentSpan
                 Else
                     DoEvents
                 End If
@@ -240,7 +258,7 @@ NextCell:
     Set FindArcRhoFormulaBlocks = result
 End Function
 
-Private Sub RefreshProgress(ByVal showProgress As Boolean, ByVal title As String, _
+Public Sub RefreshProgress(ByVal showProgress As Boolean, ByVal title As String, _
                             ByVal body As String, ByVal details As String, ByVal percent As Double)
     Application.StatusBar = "Arco: " & title & " " & body & " " & details
     If showProgress Then
@@ -272,7 +290,8 @@ End Sub
 ' dependency-ordered pass. Application.Calculate handles dirty cells only, so
 ' another open workbook is touched no more than F9 would touch it, and its
 ' Arco formulas are not re-evaluated unless they were already pending.
-Private Sub RecalculateWorkbookFormulas(ByVal book As Workbook)
+' ReferenceRepair also ends with this pass after rewriting formulas.
+Public Sub RecalculateWorkbookFormulas(ByVal book As Workbook)
     Dim ws As Worksheet, formulas As Range
     On Error Resume Next
     For Each ws In book.Worksheets
