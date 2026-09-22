@@ -35,11 +35,16 @@ from typing import Any
 
 _VALIDATION_DIR = Path(__file__).resolve().parent
 _MIGRATION_DIR = _VALIDATION_DIR.parent
-if str(_MIGRATION_DIR) not in sys.path:
-    sys.path.insert(0, str(_MIGRATION_DIR))
+for _import_root in (_MIGRATION_DIR, _VALIDATION_DIR):
+    if str(_import_root) not in sys.path:
+        sys.path.insert(0, str(_import_root))
 
 import resq_data_migration as migration  # noqa: E402
 from resq_migration.core import _encode_rc_folder, _normalize_import_name, _safe_attr  # noqa: E402
+
+# The account every review in this folder connects with is written once, beside
+# the plain-dataset review.
+from dataset_side_by_side_review import resq_credentials  # noqa: E402
 
 
 TARGET_PROJECT_NAME = "NJ_Annual_Prod_2026 Q3-Aug"
@@ -153,10 +158,10 @@ def _build_rs_record(rc_path: str, name: str, arcrho_payload: dict | None, rs: A
         except Exception as exc:
             note_parts.append(f"could not read ResQ result selection: {type(exc).__name__}: {exc}")
     else:
-        note_parts.append("RS has a persisted Arco method JSON but was not found in ResQ")
+        note_parts.append("Result Selection exists in Arco only")
 
     if arcrho_payload is None:
-        note_parts.append("RS exists in ResQ but no persisted Arco method JSON was found")
+        note_parts.append("Result Selection exists in ResQ only")
 
     both_present = arcrho_payload is not None and bool(resq_columns)
 
@@ -256,6 +261,7 @@ def run_comparison(
     project_name: str = TARGET_PROJECT_NAME,
     rc_paths: list[str] | None = None,
     app_factory=None,
+    credentials: dict[str, str] | None = None,
     progress=print,
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """Compare every Result Selection method in scope.
@@ -272,11 +278,12 @@ def run_comparison(
 
     rc_paths = list(rc_paths if rc_paths is not None else RC_PATHS)
     previous_scope = migration._apply_runtime_scope(project_name, migration.SERVER_ROOT)
+    account = resq_credentials(credentials)
     app = app_factory() if app_factory is not None else win32com.client.Dispatch("ResQ3Automation.ResQApplication")
     records: list[dict] = []
     rc_errors: list[tuple[str, str]] = []
     try:
-        app.ConnectByName(migration.CONNECTION_NAME, migration.USER_NAME, migration.PASSWORD)
+        app.ConnectByName(account["connection_name"], account["user_name"], account["password"])
         project = app.Projects().Item(project_name)
 
         for rc_index, rc_path in enumerate(rc_paths, start=1):

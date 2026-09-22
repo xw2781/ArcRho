@@ -56,9 +56,9 @@ py -3.10 python-api/migration/validation/dfm_side_by_side_review.py --project "N
 ### Result Selections
 py -3.10 python-api/migration/validation/rs_dataset_side_by_side_review.py
 
-py -3.10 python-api/migration/validation/rs_dataset_side_by_side_review.py --project "NJ_Annual_Prod_2026 Q2-May"
+py -3.10 python-api/migration/validation/rs_dataset_side_by_side_review.py --project "NJ_Annual_Prod_2026 Q3-Aug"
 
-### Datasets (no method)
+### Datasets (Engine)
 py -3.10 python-api/migration/validation/dataset_side_by_side_review.py
 - Checked at 1:46 PM, 9/8/2026. 0 dataset(s) need review.
 
@@ -68,8 +68,18 @@ py -3.10 python-api/migration/validation/dataset_side_by_side_review.py --projec
 
 py -3.10 python-api/migration/validation/dataset_side_by_side_review.py --source-kind all --rc "Legacy\HOL"
 
-### Datasets + RS
+### Datasets + RS + DFM notes
 py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "HPPREF\HO+DF\NJ\Legacy\HOL"
+
+py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\NY\Direct Group\BI Total"
+
+py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\All States\Direct Group\COL"
+
+py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\All States\Direct Group\CMPxCAT"
+
+py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\NY\Direct Group\MP+PIP"
+
+py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\NY\Direct Group\BI Total"
 
 
 

@@ -371,9 +371,9 @@ def _build_record(
     if arcrho is not None and arcrho.get("error"):
         note_parts.append(arcrho["error"])
     if arcrho is None:
-        note_parts.append(f"{kind.lower()} exists in ResQ but Arco holds no sidecar for it")
+        note_parts.append("dataset exists in ResQ only")
     if resq_payload is None:
-        note_parts.append(f"{kind.lower()} is persisted in Arco but was not found in ResQ")
+        note_parts.append("dataset exists in Arco only")
 
     resq_values = resq_payload.get("values") if resq_payload else None
     origin_labels = [str(label) for label in (resq_payload or {}).get("origin_labels", []) or []]
@@ -475,12 +475,31 @@ def _build_record(
     }
 
 
+def resq_credentials(credentials: dict[str, str] | None = None) -> dict[str, str]:
+    """The ResQ account a review connects with, for every reviewer of this folder.
+
+    Left unnamed, the migration module's own constants apply, which with an
+    empty user and password means the process's Windows identity -- right for
+    a person running the script directly, wrong for a Bridge worker, whose
+    identity is whichever user's session claimed the request.
+    """
+
+    if credentials:
+        return dict(credentials)
+    return {
+        "connection_name": migration.CONNECTION_NAME,
+        "user_name": migration.USER_NAME,
+        "password": migration.PASSWORD,
+    }
+
+
 def run_comparison(
     *,
     project_name: str = TARGET_PROJECT_NAME,
     rc_paths: list[str] | None = None,
     source_kinds: tuple[str, ...] = DEFAULT_SOURCE_KINDS,
     app_factory=None,
+    credentials: dict[str, str] | None = None,
     progress=print,
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """Compare every in-scope plain dataset.
@@ -498,11 +517,12 @@ def run_comparison(
     rc_paths = list(rc_paths if rc_paths is not None else RC_PATHS)
     previous_scope = migration._apply_runtime_scope(project_name, migration.SERVER_ROOT)
     valuation_months = _valuation_months(project_name)
+    account = resq_credentials(credentials)
     app = app_factory() if app_factory is not None else win32com.client.Dispatch("ResQ3Automation.ResQApplication")
     records: list[dict] = []
     rc_errors: list[tuple[str, str]] = []
     try:
-        app.ConnectByName(migration.CONNECTION_NAME, migration.USER_NAME, migration.PASSWORD)
+        app.ConnectByName(account["connection_name"], account["user_name"], account["password"])
         project = app.Projects().Item(project_name)
 
         for rc_index, rc_path in enumerate(rc_paths, start=1):

@@ -1,16 +1,22 @@
-"""Combined ArcRho vs ResQ review for one reserving class: plain datasets + Result Selections.
+"""Combined ArcRho vs ResQ review for one reserving class: datasets, Result Selections, DFM notes.
 
-Wraps ``dataset_side_by_side_review.py`` (plain triangles/vectors) and
+Wraps ``dataset_side_by_side_review.py`` (plain triangles/vectors),
 ``rs_dataset_side_by_side_review.py`` (Result Selection loaded datasets and
-Selected Ultimate output) so a single target reserving class can be checked
-in one run, with one combined workbook, instead of running both scripts and
-opening two separate reports.
+Selected Ultimate output) and ``dfm_notes_side_by_side_review.py`` (the
+Method Notes on every DFM) so a single target reserving class can be checked
+in one run, with one combined workbook, instead of running each script and
+opening three separate reports.
 
 Nothing is written back to ArcRho or ResQ.
 
 Run with Python 3.10 from the repository root, on a machine that can reach ResQ:
 
     py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "Legacy\\HOL"
+
+``run_review`` is the same run as one call: it compares, writes the workbook,
+and reports what it found. The command line above and the Arco Bridge, which
+runs this review for the "Review Reserving Class against ResQ" macro on a
+Client PC, both go through it, so neither owns a second version of the run.
 """
 
 from __future__ import annotations
@@ -26,7 +32,15 @@ if str(_VALIDATION_DIR) not in sys.path:
     sys.path.insert(0, str(_VALIDATION_DIR))
 
 import dataset_side_by_side_review as dsbs  # noqa: E402
+import dfm_notes_side_by_side_review as dfmnotes  # noqa: E402
 import rs_dataset_side_by_side_review as rssbs  # noqa: E402
+
+# The shape ``run_review`` returns. A Bridge built against one version must not
+# be handed a bundle that answers with another.
+#
+# 2: the DFM Method Notes comparison, which adds its own counts, its own
+# reserving-class errors and its own flagged rows to the result.
+REVIEW_API_VERSION = 2
 
 # Dataset/Result Selection names to leave out of the review entirely. A name is skipped
 # if it CONTAINS any of these substrings (case-insensitive). Add more here as needed.
@@ -73,6 +87,8 @@ def write_combined_workbook(
     dataset_rc_errors: list[tuple[str, str]],
     rs_records: list[dict],
     rs_rc_errors: list[tuple[str, str]],
+    notes_records: list[dict],
+    notes_rc_errors: list[tuple[str, str]],
 ) -> None:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -99,9 +115,13 @@ def write_combined_workbook(
     rs_records_by_rc: dict[str, list[dict]] = {}
     for record in rs_records:
         rs_records_by_rc.setdefault(record["rc_path"], []).append(record)
+    notes_records_by_rc: dict[str, list[dict]] = {}
+    for record in notes_records:
+        notes_records_by_rc.setdefault(record["rc_path"], []).append(record)
 
     dataset_anchors: dict[tuple[str, str, str], tuple[str, int]] = {}
     rs_anchors: dict[tuple[str, str], tuple[str, int]] = {}
+    notes_anchors: dict[tuple[str, str], tuple[str, int]] = {}
 
     for rc_path in rc_paths:
         ds_records = sorted(
@@ -132,12 +152,25 @@ def write_combined_workbook(
             sheet.column_dimensions["A"].width = 26
             sheet.freeze_panes = "A3"
 
+        note_recs = sorted(notes_records_by_rc.get(rc_path, []), key=lambda r: r["name"].casefold())
+        if note_recs:
+            sheet = workbook.create_sheet(_sheet_title(rc_path, "Notes", used_titles))
+            sheet.cell(row=1, column=1, value=rc_path).font = styles["bold"]
+            row = 3
+            for record in note_recs:
+                header_row, next_row = dfmnotes._write_notes_block(sheet, row, record, styles)
+                notes_anchors[(rc_path, record["name"])] = (sheet.title, header_row)
+                row = next_row + 2
+            dfmnotes.size_notes_sheet(sheet)
+            sheet.freeze_panes = "A3"
+
     summary_sheet.cell(
         row=1,
         column=1,
         value=(
             f"Project: {project_name}    Reserving class(es): {', '.join(rc_paths)}    "
-            f"Plain-dataset scope: {', '.join(source_kinds)}"
+            f"Plain-dataset scope: {', '.join(source_kinds)}    "
+            "DFM Method Notes are compared line by line, ignoring line endings and trailing blank lines"
         ),
     ).font = styles["bold"]
     headers = ["Type", "RC Path", "Kind", "Name", "Max Abs Diff", "Flagged Cells", "Note"]
@@ -182,6 +215,24 @@ def write_combined_workbook(
         summary_sheet.cell(row=row, column=7, value=record["note"])
         row += 1
 
+    for record in sorted(
+        (r for r in notes_records if r["needs_review"]), key=lambda r: (r["rc_path"], r["name"].casefold())
+    ):
+        summary_sheet.cell(row=row, column=1, value=dfmnotes.NOTES_TYPE_LABEL)
+        summary_sheet.cell(row=row, column=2, value=record["rc_path"])
+        summary_sheet.cell(row=row, column=3, value=record["kind"])
+        name_cell = summary_sheet.cell(row=row, column=4, value=record["name"])
+        anchor = notes_anchors.get((record["rc_path"], record["name"]))
+        if anchor:
+            anchor_sheet_title, anchor_row = anchor
+            name_cell.hyperlink = f"#'{anchor_sheet_title}'!A{anchor_row}"
+            name_cell.font = styles["link"]
+        # Notes are prose, so there is no difference to measure -- only the
+        # count of lines that disagree.
+        summary_sheet.cell(row=row, column=6, value=record["differing_lines"] or None)
+        summary_sheet.cell(row=row, column=7, value=record["note"])
+        row += 1
+
     for rc_path, note in dataset_rc_errors:
         summary_sheet.cell(row=row, column=1, value="Dataset")
         summary_sheet.cell(row=row, column=2, value=rc_path)
@@ -190,6 +241,12 @@ def write_combined_workbook(
         row += 1
     for rc_path, note in rs_rc_errors:
         summary_sheet.cell(row=row, column=1, value="Result Selection")
+        summary_sheet.cell(row=row, column=2, value=rc_path)
+        summary_sheet.cell(row=row, column=3, value="(reserving class)")
+        summary_sheet.cell(row=row, column=7, value=note)
+        row += 1
+    for rc_path, note in notes_rc_errors:
+        summary_sheet.cell(row=row, column=1, value=dfmnotes.NOTES_TYPE_LABEL)
         summary_sheet.cell(row=row, column=2, value=rc_path)
         summary_sheet.cell(row=row, column=3, value="(reserving class)")
         summary_sheet.cell(row=row, column=7, value=note)
@@ -210,6 +267,151 @@ def write_combined_workbook(
         workbook.close()
         if temporary_path.exists():
             temporary_path.unlink()
+
+
+def _flagged_rows(
+    dataset_records: list[dict], rs_records: list[dict], notes_records: list[dict]
+) -> list[dict]:
+    """Every block the workbook's Summary links to, as plain JSON values.
+
+    The caller that cannot open the workbook -- a macro reporting the run in a
+    dialog -- shows this instead, so what needs attention is named in both
+    places from one list. A notes row carries no difference to measure, so its
+    count of disagreeing lines stands in for the flagged-cell count.
+    """
+
+    rows: list[dict] = []
+    for kind_label, records, sort_key in (
+        ("Dataset", dataset_records, lambda r: (r["rc_path"], r["kind"], r["name"].casefold())),
+        ("Result Selection", rs_records, lambda r: (r["rc_path"], r["name"].casefold())),
+        (dfmnotes.NOTES_TYPE_LABEL, notes_records, lambda r: (r["rc_path"], r["name"].casefold())),
+    ):
+        for record in sorted((r for r in records if r["needs_review"]), key=sort_key):
+            rows.append({
+                "type": kind_label,
+                "rc_path": record["rc_path"],
+                "kind": str(record.get("kind") or kind_label),
+                "name": record["name"],
+                "max_abs_diff": record.get("max_abs_diff"),
+                "flagged_cells": record.get("flagged_cells", record.get("differing_lines", 0)),
+                "note": record["note"],
+            })
+    return rows
+
+
+def run_review(
+    *,
+    project_name: str,
+    rc_paths: list[str],
+    source_kinds: tuple[str, ...] = dsbs.SOURCE_KINDS,
+    skip_substrings: set[str] | None = None,
+    output_path: Path | None = None,
+    credentials: dict[str, str] | None = None,
+    progress=print,
+) -> dict:
+    """Compare one or more reserving classes, write the workbook, and report.
+
+    This is the whole run: the command line below and the Arco Bridge both
+    call it, so the scope rules, the skip list, and the workbook are defined
+    once. Three comparisons make it up -- plain datasets, Result Selections
+    and the Method Notes on every DFM. Nothing is written back to ArcRho or
+    ResQ.
+    """
+
+    rc_paths = [str(path).strip() for path in rc_paths if str(path).strip()]
+    if not rc_paths:
+        raise ValueError("At least one reserving-class path is required.")
+    skipped = SKIP_DATASET_NAME_SUBSTRINGS if skip_substrings is None else set(skip_substrings)
+
+    progress("Comparing plain datasets...")
+    dataset_records, dataset_rc_errors = dsbs.run_comparison(
+        project_name=project_name,
+        rc_paths=rc_paths,
+        source_kinds=source_kinds,
+        credentials=credentials,
+        progress=progress,
+    )
+
+    progress("Comparing Result Selections...")
+    rs_records, rs_rc_errors = rssbs.run_comparison(
+        project_name=project_name,
+        rc_paths=rc_paths,
+        credentials=credentials,
+        progress=progress,
+    )
+
+    progress("Comparing DFM Method Notes...")
+    notes_records, notes_rc_errors = dfmnotes.run_comparison(
+        project_name=project_name,
+        rc_paths=rc_paths,
+        credentials=credentials,
+        progress=progress,
+    )
+
+    skipped_datasets = 0
+    skipped_result_selections = 0
+    skipped_dfm_notes = 0
+    if skipped:
+        skipped_datasets = sum(1 for r in dataset_records if _is_skipped_name(r["name"], skipped))
+        skipped_result_selections = sum(1 for r in rs_records if _is_skipped_name(r["name"], skipped))
+        skipped_dfm_notes = sum(1 for r in notes_records if _is_skipped_name(r["name"], skipped))
+        dataset_records = [r for r in dataset_records if not _is_skipped_name(r["name"], skipped)]
+        rs_records = [r for r in rs_records if not _is_skipped_name(r["name"], skipped)]
+        notes_records = [r for r in notes_records if not _is_skipped_name(r["name"], skipped)]
+        progress(
+            f"Skipping {skipped_datasets} dataset(s), "
+            f"{skipped_result_selections} Result Selection(s) and "
+            f"{skipped_dfm_notes} DFM(s) by name."
+        )
+
+    workbook_path = Path(output_path) if output_path is not None else _output_path(project_name, rc_paths)
+    write_combined_workbook(
+        workbook_path,
+        project_name=project_name,
+        rc_paths=rc_paths,
+        source_kinds=source_kinds,
+        dataset_records=dataset_records,
+        dataset_rc_errors=dataset_rc_errors,
+        rs_records=rs_records,
+        rs_rc_errors=rs_rc_errors,
+        notes_records=notes_records,
+        notes_rc_errors=notes_rc_errors,
+    )
+
+    dataset_needs_review = [r for r in dataset_records if r["needs_review"]]
+    rs_needs_review = [r for r in rs_records if r["needs_review"]]
+    notes_needs_review = [r for r in notes_records if r["needs_review"]]
+    rc_errors = [
+        {"rc_path": rc_path, "type": label, "note": note}
+        for label, entries in (
+            ("Dataset", dataset_rc_errors),
+            ("Result Selection", rs_rc_errors),
+            (dfmnotes.NOTES_TYPE_LABEL, notes_rc_errors),
+        )
+        for rc_path, note in entries
+    ]
+    return {
+        "review_api_version": REVIEW_API_VERSION,
+        "project_name": project_name,
+        "rc_paths": list(rc_paths),
+        "source_kinds": list(source_kinds),
+        "workbook_path": str(workbook_path),
+        "workbook_name": workbook_path.name,
+        "datasets_compared": len(dataset_records),
+        "datasets_needing_review": len(dataset_needs_review),
+        "result_selections_compared": len(rs_records),
+        "result_selections_needing_review": len(rs_needs_review),
+        "dfm_notes_compared": len(notes_records),
+        "dfm_notes_needing_review": len(notes_needs_review),
+        "skipped_datasets": skipped_datasets,
+        "skipped_result_selections": skipped_result_selections,
+        "skipped_dfm_notes": skipped_dfm_notes,
+        "reserving_class_errors": rc_errors,
+        "flagged": _flagged_rows(dataset_records, rs_records, notes_records),
+        "needs_attention": bool(
+            dataset_needs_review or rs_needs_review or notes_needs_review or rc_errors
+        ),
+    }
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -244,52 +446,32 @@ def main(argv: list[str] | None = None) -> int:
     source_kinds = dsbs.SOURCE_KINDS if "all" in selected else tuple(dict.fromkeys(selected))
 
     print(f"Reserving class(es): {', '.join(rc_paths)}")
-    print("Comparing plain datasets...")
-    dataset_records, dataset_rc_errors = dsbs.run_comparison(
-        project_name=args.project, rc_paths=rc_paths, source_kinds=source_kinds
-    )
-
-    print("Comparing Result Selections...")
-    rs_records, rs_rc_errors = rssbs.run_comparison(project_name=args.project, rc_paths=rc_paths)
-
-    if SKIP_DATASET_NAME_SUBSTRINGS:
-        skipped_dataset_count = sum(
-            1 for r in dataset_records if _is_skipped_name(r["name"], SKIP_DATASET_NAME_SUBSTRINGS)
-        )
-        skipped_rs_count = sum(1 for r in rs_records if _is_skipped_name(r["name"], SKIP_DATASET_NAME_SUBSTRINGS))
-        dataset_records = [
-            r for r in dataset_records if not _is_skipped_name(r["name"], SKIP_DATASET_NAME_SUBSTRINGS)
-        ]
-        rs_records = [r for r in rs_records if not _is_skipped_name(r["name"], SKIP_DATASET_NAME_SUBSTRINGS)]
-        print(f"Skipping {skipped_dataset_count} dataset(s) and {skipped_rs_count} Result Selection(s) by name.")
-
-    output_path = _output_path(args.project, rc_paths)
-    write_combined_workbook(
-        output_path,
+    result = run_review(
         project_name=args.project,
         rc_paths=rc_paths,
         source_kinds=source_kinds,
-        dataset_records=dataset_records,
-        dataset_rc_errors=dataset_rc_errors,
-        rs_records=rs_records,
-        rs_rc_errors=rs_rc_errors,
     )
 
-    dataset_needs_review = [r for r in dataset_records if r["needs_review"]]
-    rs_needs_review = [r for r in rs_records if r["needs_review"]]
-    needs_attention = (
-        bool(dataset_needs_review) or bool(rs_needs_review) or bool(dataset_rc_errors) or bool(rs_rc_errors)
+    output_path = Path(result["workbook_path"])
+    print(
+        f"Plain datasets: {result['datasets_compared']} compared, "
+        f"{result['datasets_needing_review']} need review."
     )
-
-    print(f"Plain datasets: {len(dataset_records)} compared, {len(dataset_needs_review)} need review.")
-    print(f"Result Selections: {len(rs_records)} compared, {len(rs_needs_review)} need review.")
+    print(
+        f"Result Selections: {result['result_selections_compared']} compared, "
+        f"{result['result_selections_needing_review']} need review."
+    )
+    print(
+        f"DFM Method Notes: {result['dfm_notes_compared']} compared, "
+        f"{result['dfm_notes_needing_review']} need review."
+    )
     print(f"Excel report: {output_path}")
-    if needs_attention and not args.no_open:
+    if result["needs_attention"] and not args.no_open:
         try:
             os.startfile(output_path)  # noqa: S606 - opening the report just written, for the operator running this script
         except Exception as exc:
             print(f"Could not open the report automatically: {type(exc).__name__}: {exc}")
-    return 0 if not needs_attention else 1
+    return 0 if not result["needs_attention"] else 1
 
 
 if __name__ == "__main__":
