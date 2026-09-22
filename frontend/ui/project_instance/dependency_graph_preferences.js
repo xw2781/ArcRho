@@ -1,4 +1,4 @@
-import { createDependencyFilters, DEPENDENCY_FILTER_FIELDS } from "./dependency_graph_filters.js?v=20260920e";
+import { createDependencyFilters, DEPENDENCY_FILTER_FIELDS } from "./dependency_graph_filters.js?v=20260921a";
 import { STATUS_CURRENT, STATUS_REVIEW_NEEDED } from "../shared/dataset/review_status.js";
 
 // Local-user state, shared by graph windows across projects on this PC.

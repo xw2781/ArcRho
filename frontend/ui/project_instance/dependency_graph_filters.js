@@ -21,10 +21,20 @@ function nodeValue(node, field) {
   return dependencyGraphKey(node[field]);
 }
 
+function statusLabel(status) {
+  return statusNeedsReview(status) ? "Needs Review" : "Updated";
+}
+
 function valueLabel(node, field) {
-  if (field === "status") return statusNeedsReview(node.status) ? "Needs Review" : "Updated";
+  if (field === "status") return statusLabel(node.status);
   if (field === "methodType") return berquistShermanDisplayLabel(node.methodType) || "None";
   return node.category || "Uncategorized";
+}
+
+/** Labels a retained selection no node carries; status reads from its own code. */
+function retainedLabel(field, value, previous) {
+  if (field === "status") return statusLabel(value);
+  return previous?.find(option => option.value === value)?.label ?? value;
 }
 
 /** Counts describe connected indexed nodes, independent of selections. */
@@ -39,10 +49,7 @@ export function dependencyFilterOptions(graph, filters, previous = {}) {
       values.get(value).count++;
     }
     for (const value of filters[key]) {
-      if (!values.has(value)) {
-        const old = previous[key]?.find(option => option.value === value);
-        values.set(value, { value, label: old?.label ?? value, count: 0 });
-      }
+      if (!values.has(value)) values.set(value, { value, label: retainedLabel(key, value, previous[key]), count: 0 });
     }
     return [key, [...values.values()].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base", numeric: true }))];
   }));

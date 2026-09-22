@@ -40,9 +40,9 @@ import {
   dependencyGraphReach,
   layoutDependencyGraph,
 } from "/ui/project_instance/dependency_graph_layout.js?v=20260920c";
-import { createDependencyGraphFilterControls } from "/ui/project_instance/dependency_graph_filter_controls.js?v=20260920f";
-import { dependencyFilterSummary, filterDependencyGraph, hiddenDependencyLinks } from "/ui/project_instance/dependency_graph_filters.js?v=20260920e";
-import { readDependencyGraphPreferences, writeDependencyGraphPreferences } from "/ui/project_instance/dependency_graph_preferences.js?v=20260920a";
+import { createDependencyGraphFilterControls } from "/ui/project_instance/dependency_graph_filter_controls.js?v=20260921a";
+import { dependencyFilterSummary, filterDependencyGraph, hiddenDependencyLinks } from "/ui/project_instance/dependency_graph_filters.js?v=20260921a";
+import { readDependencyGraphPreferences, writeDependencyGraphPreferences } from "/ui/project_instance/dependency_graph_preferences.js?v=20260921a";
 import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
 import { DEPENDENCY_GRAPH_ACTION_MESSAGE, DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE } from "/ui/project_instance/dependency_graph_contract.js?v=20260920a";

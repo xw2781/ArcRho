@@ -167,3 +167,10 @@ test("method options retain routing identity and show the shared Berquist-Sherma
   filters.methodType.add(option.value);
   assert.equal(filterDependencyGraph(graph, filters).matches.size, 1);
 });
+
+test("a retained status selection keeps its name when no node carries the code", () => {
+  const filters = createDependencyFilters(); filters.status.add("2");
+  const graph = buildDependencyGraph({ nodes: [{ name: "Paid", status: 0 }, { name: "Ultimate", status: 0 }], edges: [{ source: "Paid", target: "Ultimate" }] });
+  assert.deepEqual(dependencyFilterOptions(graph, filters).status.find(option => option.value === "2"), { value: "2", label: "Needs Review", count: 0 });
+  assert.deepEqual(dependencyFilterOptions(buildDependencyGraph({ nodes: [] }), filters).status, [{ value: "2", label: "Needs Review", count: 0 }]);
+});

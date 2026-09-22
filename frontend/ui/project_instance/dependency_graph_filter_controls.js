@@ -1,4 +1,4 @@
-import { createDependencyFilters, dependencyFilterOptions, dependencyFiltersActive, DEPENDENCY_FILTER_FIELDS } from "./dependency_graph_filters.js?v=20260920e";
+import { createDependencyFilters, dependencyFilterOptions, dependencyFiltersActive, DEPENDENCY_FILTER_FIELDS } from "./dependency_graph_filters.js?v=20260921a";
 
 import { renderValueFilterMenu } from "../shared/components/value_filter_menu/value_filter_menu.js?v=20260920a";
 
