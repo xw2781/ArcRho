@@ -1,0 +1,24 @@
+{
+  "contract_version": 1,
+  "function": "ReviewResQReservingClass",
+  "request_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_sync",
+    "requests"
+  ],
+  "status_relative_dir": [
+    "requests",
+    "RPC bridge",
+    "resq_reserving_class_sync",
+    "statuses"
+  ],
+  "required_request_fields": [
+    "Function",
+    "ContractVersion",
+    "RequestId",
+    "ProjectName",
+    "Path",
+    "UserName"
+  ]
+}

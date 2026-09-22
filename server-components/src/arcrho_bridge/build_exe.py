@@ -39,8 +39,13 @@ APP_NAME = component_app_name("bridge")
 ICON = PROJECT_ROOT.parent / "assets" / "icons" / "ArcRho Engine.ico"
 RESQ_IMPORT_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_import_contract.json"
 RESQ_SYNC_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_sync_contract.json"
+RESQ_REVIEW_CONTRACT_FILE = BASE_DIR / "resq_reserving_class_review_contract.json"
 RESQ_CONTRACT_BUNDLE_TARGET = "arcrho_bridge"
-RESQ_CONTRACT_FILES = (RESQ_IMPORT_CONTRACT_FILE, RESQ_SYNC_CONTRACT_FILE)
+RESQ_CONTRACT_FILES = (
+    RESQ_IMPORT_CONTRACT_FILE,
+    RESQ_SYNC_CONTRACT_FILE,
+    RESQ_REVIEW_CONTRACT_FILE,
+)
 
 BUILD_DIR = BUILD_ROOT / "build"
 SPEC_DIR = BUILD_ROOT / "spec"
@@ -162,6 +167,13 @@ def build_exe():
         "arcrho_bridge.resq_import_runner",
         "--hidden-import",
         "arcrho_bridge.resq_sync_runner",
+        "--hidden-import",
+        "arcrho_bridge.resq_review_runner",
+        # The review writes its workbook from the bundled validation module,
+        # which PyInstaller carries as data and therefore never analyses, so
+        # its Excel writer has to be named here.
+        "--hidden-import",
+        "openpyxl",
         f"--icon={ICON}",
         "--add-data",
         f"{ICON};.",

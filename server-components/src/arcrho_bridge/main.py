@@ -44,6 +44,9 @@ try:
     from src.arcrho_bridge.resq_sync_contract import (
         load_resq_reserving_class_sync_contract,
     )
+    from src.arcrho_bridge.resq_review_contract import (
+        load_resq_reserving_class_review_contract,
+    )
     from src.arcrho_bridge.resq_client import ResQClient
     from src.utils import get_config_value, get_project_root, normalize_function_name, resolve_app_path
 except ModuleNotFoundError:
@@ -63,6 +66,9 @@ except ModuleNotFoundError:
     )
     from arcrho_bridge.resq_sync_contract import (
         load_resq_reserving_class_sync_contract,
+    )
+    from arcrho_bridge.resq_review_contract import (
+        load_resq_reserving_class_review_contract,
     )
     from arcrho_bridge.resq_client import ResQClient
     from utils import get_config_value, get_project_root, normalize_function_name, resolve_app_path
@@ -125,6 +131,16 @@ RESQ_SYNC_ORPHANED_STATUS_MESSAGE = (
     "The Arco Bridge stopped before this synchronization finished. Compare the "
     "reserving class again to see what was applied."
 )
+
+# The side-by-side review is read-only and is served from the synchronization
+# queue's own folders, so the app's hosted liveness poll -- which knows the
+# import and sync queues and no others -- can carry its status without the app
+# itself being rebuilt. The worker tells the two apart by the request's
+# Function; a status file is named by its request id, so nothing collides.
+RESQ_REVIEW_CONTRACT = load_resq_reserving_class_review_contract()
+RESQ_REVIEW_FUNCTION = RESQ_REVIEW_CONTRACT["function"]
+RESQ_REVIEW_CONTRACT_VERSION = RESQ_REVIEW_CONTRACT["contract_version"]
+_RESQ_REVIEW_REQUIRED_FIELDS = RESQ_REVIEW_CONTRACT["required_request_fields"]
 
 
 def normalize_method_name(method_name):
@@ -487,6 +503,20 @@ def _write_resq_sync_status(request, status, *, message="", progress=None, resul
     )
 
 
+def _write_resq_review_status(request, status, *, message="", progress=None, result=None):
+    """Atomically publish the deterministic review status for ``request``."""
+
+    return _write_queue_status(
+        request,
+        status,
+        publish=_publish_resq_review_status,
+        label="review",
+        message=message,
+        progress=progress,
+        result=result,
+    )
+
+
 def _write_queue_status(request, status, *, publish, label, message="", progress=None, result=None):
     try:
         request_id = _validate_resq_import_request_id(request.get("RequestId"))
@@ -543,6 +573,35 @@ def _publish_resq_sync_status(
         status_path_of=resq_sync_status_path,
         contract_version=RESQ_SYNC_CONTRACT_VERSION,
         label="sync",
+        message=message,
+        progress=progress,
+        result=result,
+        server_root=server_root,
+    )
+
+
+def _publish_resq_review_status(
+    request_id,
+    status,
+    *,
+    message="",
+    progress=None,
+    result=None,
+    server_root=None,
+):
+    """Atomically publish one status document for an accepted review request id.
+
+    The review shares the synchronization queue's status folder but not its
+    contract: the document carries the review's own version, so a client
+    cannot mistake one queue's payload for the other's.
+    """
+
+    return _publish_queue_status(
+        request_id,
+        status,
+        status_path_of=resq_sync_status_path,
+        contract_version=RESQ_REVIEW_CONTRACT_VERSION,
+        label="review",
         message=message,
         progress=progress,
         result=result,
@@ -838,6 +897,9 @@ class BridgeRequestHandler(FileSystemEventHandler):
         if function_name == RESQ_SYNC_FUNCTION:
             self._process_resq_sync_request(request)
             return True
+        if function_name == RESQ_REVIEW_FUNCTION:
+            self._process_resq_review_request(request)
+            return True
 
         try:
             if function_name == "DFM":
@@ -951,6 +1013,53 @@ class BridgeRequestHandler(FileSystemEventHandler):
                 heartbeat_thread.join(timeout=IMPORT_HEARTBEAT_INTERVAL_SECONDS)
 
         _write_resq_sync_status(request, "success", result=result)
+
+    def _process_resq_review_request(self, request):
+        """Run one queued Arco/ResQ side-by-side review for a client macro.
+
+        The claim, status, and heartbeat protocol is the import queue's. The
+        review only reads, so it takes no reserving-class lease: it must never
+        block an import, and an import that runs beside it only means the
+        workbook describes the class as it was read.
+        """
+
+        try:
+            _validate_resq_import_request_id(request.get("RequestId"))
+        except Exception:
+            return
+
+        if not _write_resq_review_status(request, "processing"):
+            return
+
+        try:
+            self._validate_resq_review_request(request)
+        except Exception as exc:
+            _write_resq_review_status(request, "error", message=exc)
+            return
+
+        def publish_progress(progress):
+            _write_resq_review_status(request, "processing", progress=progress)
+
+        heartbeat_stop, heartbeat_thread = self._start_import_heartbeat(
+            request,
+            status_path_of=resq_sync_status_path,
+        )
+        try:
+            try:
+                result = self.client.write_resq_reserving_class_review(
+                    request,
+                    progress_callback=publish_progress,
+                )
+            except Exception as exc:
+                _write_resq_review_status(request, "error", message=exc)
+                return
+        finally:
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(timeout=IMPORT_HEARTBEAT_INTERVAL_SECONDS)
+
+        _write_resq_review_status(request, "success", result=result)
 
     def _start_import_heartbeat(self, request, *, status_path_of=None):
         """Keep the worker and its queued status alive during ResQ COM work."""
@@ -1104,6 +1213,48 @@ class BridgeRequestHandler(FileSystemEventHandler):
         if supplied_paths:
             raise ValueError(
                 "ResQ synchronization request must not supply path field(s): "
+                + ", ".join(supplied_paths)
+            )
+
+    def _validate_resq_review_request(self, request):
+        if str(request.get("Function") or "").strip() != RESQ_REVIEW_FUNCTION:
+            raise ValueError(f"Function must be {RESQ_REVIEW_FUNCTION}.")
+
+        version = request.get("ContractVersion")
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError(
+                f"ContractVersion must be the integer {RESQ_REVIEW_CONTRACT_VERSION}."
+            )
+        if version != RESQ_REVIEW_CONTRACT_VERSION:
+            raise ValueError(
+                f"Unsupported ContractVersion {version!r}; expected "
+                f"{RESQ_REVIEW_CONTRACT_VERSION}."
+            )
+
+        _validate_resq_import_request_id(request.get("RequestId"))
+        missing = []
+        for key in _RESQ_REVIEW_REQUIRED_FIELDS:
+            if key in {"Function", "ContractVersion", "RequestId"}:
+                continue
+            value = request.get(key)
+            if not isinstance(value, str) or not value.strip():
+                missing.append(key)
+            else:
+                request[key] = value.strip()
+        if missing:
+            raise ValueError("Missing request field(s): " + ", ".join(missing))
+
+        request["ProjectName"] = _validate_resq_import_project_name(
+            request["ProjectName"]
+        )
+        request["Path"] = _validate_resq_import_rc_path(request["Path"])
+
+        supplied_paths = [
+            key for key in _RESQ_IMPORT_FORBIDDEN_PATH_FIELDS if request.get(key)
+        ]
+        if supplied_paths:
+            raise ValueError(
+                "ResQ review request must not supply path field(s): "
                 + ", ".join(supplied_paths)
             )
 

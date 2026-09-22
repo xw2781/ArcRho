@@ -165,6 +165,26 @@ class ResQClient:
             resq_credentials=shared_resq_credentials(),
         )
 
+    def write_resq_reserving_class_review(self, request, *, progress_callback=None):
+        """Run one canonical Arco/ResQ side-by-side review from this worker.
+
+        The review opens its own full-reserving-class COM connection, exactly
+        as the importer and the synchronization session do, and reads both
+        sides without writing to either.
+        """
+
+        # The canonical review creates its own COM objects, so initialize COM
+        # on this worker-owned thread before delegating to it.
+        self._ensure_com_initialized()
+
+        from arcrho_bridge.resq_review_runner import run_reserving_class_review
+
+        return run_reserving_class_review(
+            request,
+            progress_callback=progress_callback,
+            resq_credentials=shared_resq_credentials(),
+        )
+
     def write_dfm_payload(self, request):
         self._connect()
         try:
