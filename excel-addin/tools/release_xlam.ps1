@@ -43,10 +43,6 @@ function Copy-SignatureFiles([string]$SourceDir, [string]$TargetDir) {
     }
 }
 
-function Get-RibbonLabelForWorkbook([string]$WorkbookPath) {
-    [System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath)
-}
-
 function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -104,7 +100,7 @@ function New-CustomUIXmlForWorkbook([string]$RibbonXmlPath, [string]$WorkbookPat
         New-Item -ItemType Directory -Path $WorkingDir | Out-Null
     }
 
-    $label = Get-RibbonLabelForWorkbook $WorkbookPath
+    $label = Get-RibbonLabelForWorkbook $WorkbookPath $RibbonXmlPath
     [xml]$xml = Get-Content -LiteralPath $RibbonXmlPath -Raw
 
     $namespaceUri = $xml.DocumentElement.NamespaceURI
@@ -244,7 +240,7 @@ New-Item -ItemType Directory -Path $stageDirFull | Out-Null
 try {
     Copy-Item -LiteralPath $betaPathFull -Destination $stagePathFull -Force
     Update-XlamPackageFromUnpackedFiles $stagePathFull $customUIPathFull $signatureDirFull $extractDirFull $stagePathFull
-    Update-WorkbookCoreProperties $stagePathFull (Get-RibbonLabelForWorkbook $stagePathFull)
+    Update-WorkbookCoreProperties $stagePathFull (Get-RibbonLabelForWorkbook $stagePathFull $customUIPathFull)
     Assert-XlamPackage $stagePathFull
 
     $archivePath = $null

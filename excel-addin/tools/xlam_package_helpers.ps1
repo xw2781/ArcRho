@@ -152,3 +152,13 @@ function Set-FileReadOnlyWithRetry([string]$Path) {
         $item.Attributes = $item.Attributes -bor [System.IO.FileAttributes]::ReadOnly
     } | Out-Null
 }
+function Get-RibbonLabelForWorkbook([string]$WorkbookPath, [string]$RibbonXmlPath) {
+    [xml]$ribbon = Get-Content -LiteralPath $RibbonXmlPath -Raw
+    $label = $ribbon.SelectSingleNode("//*[local-name()='tab']").GetAttribute('label')
+    if ([System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath) -match 'BETA') {
+        "$label Beta"
+    }
+    else {
+        $label
+    }
+}

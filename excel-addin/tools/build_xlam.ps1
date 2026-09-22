@@ -97,13 +97,6 @@ function Invoke-WorkbookMacro([object]$Excel, [object]$Workbook, [string]$Proced
     $Excel.Run($macroName) | Out-Null
 }
 
-function Get-RibbonLabelForWorkbook([string]$WorkbookPath) {
-    # The file keeps its ArcRho name so existing installs and workbook links
-    # stay valid; the tab the user sees carries the product name.
-    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath)
-    if ($fileName -match 'BETA') { 'Arco Beta' } else { 'Arco' }
-}
-
 function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -165,7 +158,7 @@ function New-CustomUIXmlForWorkbook([string]$RibbonXmlPath, [string]$WorkbookPat
         New-Item -ItemType Directory -Path $WorkingDir | Out-Null
     }
 
-    $label = Get-RibbonLabelForWorkbook $WorkbookPath
+    $label = Get-RibbonLabelForWorkbook $WorkbookPath $RibbonXmlPath
     [xml]$xml = Get-Content -LiteralPath $RibbonXmlPath -Raw
 
     $namespaceUri = $xml.DocumentElement.NamespaceURI
@@ -262,7 +255,7 @@ if ([string]::Compare($targetName, "ArcRho.xlam", $true) -eq 0) {
 $targetDir = Split-Path -Parent $targetPathFull
 Remove-ExcelTempFiles $targetDir
 Update-CustomUIXml $targetPathFull $customUIPathFull
-Update-WorkbookCoreProperties $targetPathFull (Get-RibbonLabelForWorkbook $targetPathFull)
+Update-WorkbookCoreProperties $targetPathFull (Get-RibbonLabelForWorkbook $targetPathFull $customUIPathFull)
 
 $excel = $null
 $workbook = $null

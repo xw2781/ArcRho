@@ -23,10 +23,6 @@ function Clear-ReadOnly([string]$Path) {
     }
 }
 
-function Get-RibbonLabelForWorkbook([string]$WorkbookPath) {
-    [System.IO.Path]::GetFileNameWithoutExtension($WorkbookPath)
-}
-
 function Update-WorkbookCoreProperties([string]$WorkbookPath, [string]$Title) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -84,7 +80,7 @@ function New-CustomUIXmlForWorkbook([string]$RibbonXmlPath, [string]$WorkbookPat
         New-Item -ItemType Directory -Path $WorkingDir | Out-Null
     }
 
-    $label = Get-RibbonLabelForWorkbook $WorkbookPath
+    $label = Get-RibbonLabelForWorkbook $WorkbookPath $RibbonXmlPath
     [xml]$xml = Get-Content -LiteralPath $RibbonXmlPath -Raw
 
     $namespaceUri = $xml.DocumentElement.NamespaceURI
@@ -194,7 +190,7 @@ if (-not (Test-Path -LiteralPath $archiveDirFull -PathType Container)) {
 }
 
 Update-XlamPackageFromUnpackedFiles $betaPathFull $customUIPathFull $extractDirFull $betaPathFull
-Update-WorkbookCoreProperties $betaPathFull (Get-RibbonLabelForWorkbook $betaPathFull)
+Update-WorkbookCoreProperties $betaPathFull (Get-RibbonLabelForWorkbook $betaPathFull $customUIPathFull)
 Assert-XlamPackage $betaPathFull
 
 # Build the finished release package locally, next to the beta add-in, so the
@@ -213,7 +209,7 @@ New-Item -ItemType Directory -Path $stageDirFull | Out-Null
 try {
     Copy-Item -LiteralPath $betaPathFull -Destination $stagePathFull -Force
     Update-XlamPackageFromUnpackedFiles $stagePathFull $customUIPathFull $extractDirFull $stagePathFull
-    Update-WorkbookCoreProperties $stagePathFull (Get-RibbonLabelForWorkbook $stagePathFull)
+    Update-WorkbookCoreProperties $stagePathFull (Get-RibbonLabelForWorkbook $stagePathFull $customUIPathFull)
     Assert-XlamPackage $stagePathFull
 
     $archivePath = $null
