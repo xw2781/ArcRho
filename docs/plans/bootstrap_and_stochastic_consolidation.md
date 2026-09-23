@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; none started. Step 3 depends on what step 2 finds and may be dropped.
+Status: Broken into 15 session-sized steps on 2026-09-23; none done. Step 1 is blocked on open decision 1 (the segments' target makes every scaled result negative). Step 3 depends on what step 2 finds and may be dropped.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -150,7 +150,30 @@ Deferred from both pages: discounting, cashflow views, Igloo and CSV export, the
 
 ## Open decisions
 
-None. A step that meets one records it here and stops.
+A step that meets one records it here and stops.
+
+**1. Step 1: every segment fails the plausibility test because of its target, not its triangle** (recorded 2026-09-23 by step 1; no ResQ data was changed).
+
+What was found, over COM, simulating each `F 72 A` in memory only (never saved):
+
+| Segment | Unscaled mean / sd | Scaled mean | Target ultimate against latest |
+| :--- | :--- | :--- | :--- |
+| BI Total | 275,741 / 56,987 | -759,273 | about 0.42x |
+| CMPxCAT | 33,885 / 5,922 | -264,948 | about 0.43x |
+| COL | 58,820 / 9,304 | -773,150 | about 0.42x |
+| MP+PIP | 57,911 / 33,140 | -700,795 | about 0.44x |
+| PD+UMPD | 84,793 / 16,379 | -440,895 | about 0.50x |
+
+- The unscaled runs are plausible (total CV 16%-57%). Every scaled total is negative because the target, `F 92 - Current Qtr Selected `, sits at roughly 40-50% of the latest incurred diagonal for every mature origin, so the target reserves are large and negative.
+- The plan's remedy does not fit. All five segment classes are calculated classes, and each one's `Net Loss--Incurred` is an aggregation formula over child classes (for example BI Total = BI + BIR51 + UMBI + UMBIR51). `F 92` is a Result Selection output in each class. A synthetic triangle would have to drop five aggregation formulas in ResQ and in Arco, and would have to be shrunk to about 0.4x of today's values just to sit under a target that is itself the inconsistent piece.
+
+Options:
+
+- **A (recommended). Drop the target on the five `F 72 A` bootstraps** (target ultimate none, in ResQ and in step 10's Arco copy), so scaled equals unscaled. Least invasive, keeps the real aggregated triangles, and all five then pass (positive means, CV 16%-57%). Additive scaling stays covered by the existing COL fixture. The reference-model table would say "no target" instead of `F 92`.
+- **B. Keep the target and accept negative scaled reserves.** The consolidation arithmetic and ranks do not care about sign, but the CV check and realistic percentiles lose meaning; waive the plausibility test.
+- **C. Follow the plan literally.** Replace each segment's `Net Loss--Incurred` with a synthetic triangle whose ultimates sit near `F 92`, removing the five aggregation formulas in both apps.
+
+Step 1 resumes once one is chosen. Also learnt: `Simulate` takes about 0.4 s per 10,000-simulation segment; `IncludedMethods`, `Factors`, `ConsolidationRanks` and the correlation getters are 1-based on the method index (index 0 access-violates), and `ConsolidationRanks` answers without saved reserves.
 
 ## Plan
 
