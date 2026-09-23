@@ -80,9 +80,11 @@ import {
   clearRatioHistoryTempSession,
   getRatioHistoryState,
   initRatioHistory,
+  peekRatioHistoryStepKind,
   runRatioRedo,
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
+import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260923a";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
@@ -195,6 +197,14 @@ function handleDfmPropagationReport(report) {
   }
   scheduleRatioSelectionLoad("upstream-refresh");
   return true;
+}
+
+// Ratio steps are undone on the Ratios tab only; a whole-method step, such as
+// Load Settings From Another Method, from any tab.
+function isRatioHistoryReachable(direction) {
+  if (peekRatioHistoryStepKind(direction) === "method") return true;
+  const ratiosPage = document.getElementById("dfmRatiosPage");
+  return !!ratiosPage && ratiosPage.style.display !== "none";
 }
 
 function refreshDfmTabContent(reason = "") {
@@ -563,6 +573,7 @@ function initDfmTabs() {
   initDfmLinks();
   wireDfmSaveControls();
   wireDetailsThresholdReset();
+  wireDfmLoadSettingsButton();
   wireRatioStrikeToggle();
   wireRatioChartModal();
   wireRatioContextMenu();
@@ -834,14 +845,12 @@ export function initDfmRatios() {
       return;
     }
     if (e?.data?.type === "arcrho:dfm-undo") {
-      const ratiosPage = document.getElementById("dfmRatiosPage");
-      if (!ratiosPage || ratiosPage.style.display === "none") return;
+      if (!isRatioHistoryReachable("undo")) return;
       runRatioUndo();
       return;
     }
     if (e?.data?.type === "arcrho:dfm-redo") {
-      const ratiosPage = document.getElementById("dfmRatiosPage");
-      if (!ratiosPage || ratiosPage.style.display === "none") return;
+      if (!isRatioHistoryReachable("redo")) return;
       runRatioRedo();
       return;
     }
@@ -876,7 +885,11 @@ export function initDfmRatios() {
     const tag = e.target?.tagName?.toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable) return;
     const ratiosPage = document.getElementById("dfmRatiosPage");
-    if (!ratiosPage || ratiosPage.style.display === "none") return;
+    const ratiosVisible = !!ratiosPage && ratiosPage.style.display !== "none";
+    // Undoing a whole-method step (Load Settings) works from any tab.
+    const methodStep = (key === "z" && peekRatioHistoryStepKind("undo") === "method")
+      || (key === "y" && peekRatioHistoryStepKind("redo") === "method");
+    if (!ratiosVisible && !methodStep) return;
     e.preventDefault();
     if (key === "h") excludeExtremeInActiveCol("high");
     if (key === "l") excludeExtremeInActiveCol("low");

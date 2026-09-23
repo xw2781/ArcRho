@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A DFM can copy every setting from another DFM with Load Settings From Another Method on the Details tab.",
+  "details": [
+    "Pick a reserving class and one of its DFMs; the lengths, average rows, selections, matching exclusions and Curves choices are copied.",
+    "The name, output type, input triangle, decimal places and Notes stay, the copy stays unsaved until Save, and Undo steps back over it."
+  ]
+}

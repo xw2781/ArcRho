@@ -1,6 +1,11 @@
 /*
 ===============================================================================
 DFM Ratio History - Ratios-tab undo/redo snapshots
+
+Most steps are Ratios-tab snapshots (strikes, selections, active columns). A
+whole-method edit such as Load Settings From Another Method records a method
+step instead: the full payload from before the edit, restored through the
+handlers the page registers with `setMethodHistoryHandlers`.
 ===============================================================================
 */
 import {
@@ -26,6 +31,14 @@ let tempDir = "";
 let tempStepIndex = 0;
 let saveChain = Promise.resolve();
 let afterRestoreCallback = () => {};
+let captureMethodSnapshot = null;
+let restoreMethodSnapshot = null;
+
+const METHOD_STEP_KIND = "method";
+
+function isMethodStep(snapshot) {
+  return !!snapshot && snapshot.kind === METHOD_STEP_KIND;
+}
 
 function sortedStrings(values) {
   return Array.from(values || []).map((value) => String(value)).sort();
@@ -70,7 +83,7 @@ function notifyHistoryState() {
 }
 
 function queueTempStep(snapshot, reason) {
-  if (!tempDir) return;
+  if (!tempDir || isMethodStep(snapshot)) return;
   const hostApi = getHostApi();
   if (typeof hostApi?.saveDfmRatioUndoStep !== "function") return;
   const payload = {
@@ -184,10 +197,71 @@ export function cancelRatioHistoryAction() {
   notifyHistoryState();
 }
 
+/**
+ * Registers how the page captures and restores a whole method for method
+ * steps: `capture()` returns the current payload, `restore(payload)` puts it
+ * back (it may be async) and resolves truthy on success.
+ */
+export function setMethodHistoryHandlers({ capture, restore } = {}) {
+  captureMethodSnapshot = typeof capture === "function" ? capture : null;
+  restoreMethodSnapshot = typeof restore === "function" ? restore : null;
+}
+
+/**
+ * Records a whole-method edit that has already been applied, so one undo
+ * returns the window to `beforePayload`.
+ */
+export function recordMethodHistoryStep(beforePayload, source = "") {
+  if (applyingHistory || !beforePayload) return;
+  if (pendingBefore) commitRatioHistoryAction(`${pendingSource || source || "ratio-change"}:auto-commit`);
+  pushLimited(undoStack, { kind: METHOD_STEP_KIND, payload: beforePayload, source: String(source || "") });
+  redoStack = [];
+  notifyHistoryState();
+}
+
+/** "method" when the next undo (or redo) restores a whole method, else "ratio" or "". */
+export function peekRatioHistoryStepKind(direction = "undo") {
+  const stack = direction === "redo" ? redoStack : undoStack;
+  const top = stack[stack.length - 1];
+  if (!top) return "";
+  return isMethodStep(top) ? METHOD_STEP_KIND : "ratio";
+}
+
+// A method step swaps the whole method, so the step pushed the other way
+// holds the whole current method too.
+async function runMethodHistoryStep(fromStack, toStack, reason) {
+  const target = fromStack[fromStack.length - 1];
+  if (!captureMethodSnapshot || !restoreMethodSnapshot) return false;
+  const current = captureMethodSnapshot();
+  if (!current) return false;
+  fromStack.pop();
+  applyingHistory = true;
+  notifyHistoryState();
+  let restored = false;
+  try {
+    restored = !!(await restoreMethodSnapshot(target.payload, reason));
+  } catch {
+    restored = false;
+  } finally {
+    applyingHistory = false;
+  }
+  if (restored) {
+    pushLimited(toStack, { kind: METHOD_STEP_KIND, payload: current, source: target.source });
+    markDfmDirty();
+  } else {
+    fromStack.push(target);
+  }
+  notifyHistoryState();
+  return restored;
+}
+
 export function runRatioUndo() {
   if (!undoStack.length || applyingHistory) {
     notifyHistoryState();
     return false;
+  }
+  if (isMethodStep(undoStack[undoStack.length - 1])) {
+    return runMethodHistoryStep(undoStack, redoStack, "undo");
   }
   const current = snapshotRatioState();
   const previous = undoStack.pop();
@@ -209,6 +283,9 @@ export function runRatioRedo() {
   if (!redoStack.length || applyingHistory) {
     notifyHistoryState();
     return false;
+  }
+  if (isMethodStep(redoStack[redoStack.length - 1])) {
+    return runMethodHistoryStep(redoStack, undoStack, "redo");
   }
   const current = snapshotRatioState();
   const next = redoStack.pop();

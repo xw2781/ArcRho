@@ -136,6 +136,11 @@
               </div>
             </div>
           </div>
+          <!-- ResQ puts its copy button below the lengths too. -->
+          <span class="arDetailsLabel" aria-hidden="true"></span>
+          <div class="arDetailsField">
+            <button id="dfmLoadSettingsBtn" type="button" class="dfmActionBtn dfmLoadSettingsBtn">Load Settings From Another Method</button>
+          </div>
         </div>
       </div>
       <input id="cumulativeChk" type="checkbox" checked style="display:none;" />
@@ -456,7 +461,7 @@
         } catch (err) {
           console.error("Dataset boot failed before DFM initialization:", err);
         }
-        await import("/ui/method_pages/dfm/dfm_main.js?v=20260914b");
+        await import("/ui/method_pages/dfm/dfm_main.js?v=20260923a");
       } finally {
         window.arcrhoRevealPage?.();
       }

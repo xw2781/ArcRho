@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Steps 3-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 3, 4 and 6-8 not started.
 
 Last updated: 2026-09-23
 
@@ -14,12 +14,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [x] | 2026-09-23 | 60 min | 20 min | Exporting a DFM that ResQ already has now also gives it Arco's input triangle, lengths, output type and average rows, and the results window says what changed; it reaches users with the step 6 update. |
 | 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [ ] | | 50 min | | |
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [ ] | | 65 min | | |
-| 5 | A DFM can copy every setting from another DFM in one click | [ ] | | 70 min | | |
+| 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
 | 6 | The new export reaches every user | [ ] | | 30 min | | |
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 2 of 8 steps done. Estimated 455 min, actual so far 42 min.
+Overall: 3 of 8 steps done. Estimated 455 min, actual so far 75 min.
 
 ## How agents work this plan
 
@@ -274,7 +274,8 @@ Estimate: code edit 45 min, test/validation 20 min, total 65 min.
 - The `arcrho-ui-design` skill.
 - [dfm.html](../../frontend/ui/method_pages/dfm/dfm.html#L39-L144), `dfm_details.js`, `dfm_method_api.js`, and the parts of `dfm_persistence.js` that build the payload and `saveDfmTemplate`.
 - `openReservingClassPicker` in `frontend/ui/shared/components/pickers/reserving_class_picker.js`.
-- The DFM page's undo and dirty-state helpers.
+- The DFM page's undo and dirty-state helpers: `dfm_ratio_history.js` (the undo stack, Ratios-tab only until this step) and the undo routing in `dfm_tabs_orchestrator.js`; `applyDfmOwnedPatchPayload` and the preview scheduling in `dfm_persistence.js`.
+- The method-index response shape: rows are named by output dataset in `name`, `method_name` appears only when it differs, `status` is 0 or 2 (`shared/dataset/review_status.js`).
 - Memories: `frontend-node-test-suite`, `arcrho-dev-ui-cache-restart`, `concise-ui-message-copy`.
 
 **Do.**
@@ -288,7 +289,7 @@ Estimate: code edit 45 min, test/validation 20 min, total 65 min.
 
 **Done when.** The tests pass and the button, picker and copy work in a mock render or dev-mode check. The full GUI check is step 8.
 
-Estimate: code edit 50 min, test/validation 20 min, total 70 min.
+Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code edit 21 min, test/validation 12 min, total 33 min; under half because the owned-patch preview and the embedded reserving-class tree already did the heavy lifting, so the step was one small projection module, a dialog and a method-level undo step.
 
 ### Step 6 — The new export reaches every user
 
