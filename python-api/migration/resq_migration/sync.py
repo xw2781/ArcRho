@@ -40,6 +40,11 @@ _DIRECTION_ACTIONS = {
     DIRECTION_IMPORT: ACTION_RESQ_TO_ARCRHO,
     DIRECTION_EXPORT: ACTION_ARCRHO_TO_RESQ,
 }
+# The method kinds the Export macro creates in ResQ when ResQ holds none by
+# that name, spelled as ``sync_session``'s inventory kinds. Nothing else is
+# ever created: a plain dataset, a Cape Cod or any other method ResQ lacks
+# stays untickable in the export review.
+EXPORT_CREATABLE_METHOD_KINDS = frozenset({"DFM", "Bornhuetter Ferguson", "Result Selection"})
 
 # Which sides carry an edit made since the recorded baseline. A blank answer is
 # not "nothing changed": it means no usable baseline exists to measure from.
@@ -199,8 +204,11 @@ def transfer_support(
 
     The review table shows every item either side holds, so an item the other
     side does not have at all reaches this with one side missing. An import
-    can create it; an export cannot, because ResQ objects are written, never
-    created.
+    can create it. An export creates only a DFM, Bornhuetter Ferguson or
+    Result Selection (``EXPORT_CREATABLE_METHOD_KINDS``); any other item ResQ
+    lacks -- a plain dataset, a Cape Cod -- is never created, so it stays
+    refused. A supported creation comes back with its reason, which the
+    review shows as the row's detail.
     """
 
     normalized = transfer_direction(direction)
@@ -209,7 +217,10 @@ def transfer_support(
     if normalized == DIRECTION_IMPORT and not resq:
         return False, "ResQ has no copy of this item to import."
     if normalized == DIRECTION_EXPORT and not resq:
-        return False, "ResQ has no matching dataset or method to overwrite."
+        if str(arcrho.get("kind") or "") not in EXPORT_CREATABLE_METHOD_KINDS:
+            return False, "ResQ has no matching dataset or method to overwrite."
+        supported, reason = _support_for_action(ACTION_ARCRHO_TO_RESQ, arcrho, None)
+        return (True, "Creates the method in ResQ.") if supported else (False, reason)
     return _support_for_action(_DIRECTION_ACTIONS[normalized], arcrho, resq)
 
 

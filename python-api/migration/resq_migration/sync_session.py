@@ -949,6 +949,15 @@ def _written_details(exporter) -> list:
     return details if isinstance(details, list) else []
 
 
+def _created_count(exporter) -> int:
+    """How many methods the exporter has created in ResQ so far."""
+    return int(exporter.counts.get("methods_created") or 0)
+
+
+def _created_since(exporter, before: Mapping[str, Any]) -> bool:
+    return _created_count(exporter) > int(before.get("methods_created") or 0)
+
+
 def _export_result_delta(exporter, before: Mapping[str, Any], count_field: str) -> tuple[str, str]:
     """What the exporter did since ``before`` -- written, skipped, or failed -- and why."""
 
@@ -962,13 +971,15 @@ def _export_result_delta(exporter, before: Mapping[str, Any], count_field: str) 
             return OUTCOME_SKIPPED, str(detail.get("message") or str(reason).replace("_", " "))
     if count_field and int(exporter.counts.get(count_field) or 0) > int(before.get(count_field) or 0):
         # A writer that changed more than values -- a DFM's rows, input or
-        # lengths -- says what, and the results window shows it.
+        # lengths -- says what, and the results window shows it. A method the
+        # export created says so instead, with anything else it had to create.
+        verb = "Created in ResQ" if _created_since(exporter, before) else "Written to ResQ"
         details = _written_details(exporter)
         if len(details) > int(before.get("_written_details") or 0):
             message = str(details[-1].get("message") or "").strip()
             if message:
-                return OUTCOME_WRITTEN, f"Written to ResQ: {message}."
-        return OUTCOME_WRITTEN, "Written to ResQ."
+                return OUTCOME_WRITTEN, f"{verb}: {message}."
+        return OUTCOME_WRITTEN, f"{verb}."
     return OUTCOME_FAILED, "ResQ did not report the item as written."
 
 
@@ -1069,8 +1080,10 @@ def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
     Adequacy methods go through the exporter's writers; every other supported method
     has its Notes written and is then saved, so ResQ recalculates it from the
     inputs written before it. Notes reach ResQ for every kind either way.
-    There is no preflight and no read-back: an export is a push, not a
-    reconciliation.
+    A DFM, BF or Result Selection ResQ does not hold is created by its writer
+    when the exporter was told to (``create_missing_methods``), and its row
+    then reads "Created in ResQ". There is no preflight and no read-back: an
+    export is a push, not a reconciliation.
     """
 
     item = row.get("arcrho") if isinstance(row.get("arcrho"), Mapping) else {}
@@ -2401,11 +2414,18 @@ def _transfer_row(
         # item: an ambiguous name. Nothing can be written either way, and the
         # caller's own sentence explains it better than a missing-copy reason.
         supported, block_reason = False, detail
-    elif not supported and direction == sync_contract.DIRECTION_EXPORT and arcrho and kind in _EXPORT_PHASE_METHOD_KINDS:
+    elif (
+        not supported
+        and direction == sync_contract.DIRECTION_EXPORT
+        and arcrho
+        and resq
+        and kind in _EXPORT_PHASE_METHOD_KINDS
+    ):
         # The export saves these methods so ResQ recalculates each from the
         # datasets written before it, and writes the B&S Case Reserve Adequacy
         # selections on the way. That is a real export, so the row is offered
-        # rather than greyed out.
+        # rather than greyed out -- but only where ResQ holds the method: the
+        # export never creates a Cape Cod or a Berquist Sherman method.
         supported, block_reason = True, ""
     return {
         "id": key,
@@ -2424,7 +2444,10 @@ def _transfer_row(
             sync_contract.export_review(arcrho, resq, baseline) if arcrho and resq else {}
         ),
         "transfer_supported": supported,
-        "transfer_block_reason": block_reason,
+        # A supported row can still carry a reason -- "Creates the method in
+        # ResQ." for an Arco-only DFM, BF or Result Selection -- which is its
+        # detail, not a block.
+        "transfer_block_reason": "" if supported else block_reason,
         "selected": False,
         "disabled": not supported,
         "detail": block_reason or detail,
@@ -2853,12 +2876,13 @@ def export_reserving_class(
 ) -> dict[str, Any]:
     """Push one reserving class from ArcRho into ResQ, in ArcRho's dependency order.
 
-    Every input dataset with a CSV cache is written with its Notes, every DFM
-    and Result Selection has its selections and Notes written, and every
-    Bornhuetter Ferguson, Cape Cod, and Berquist Sherman method has its Notes
-    written and is then saved so ResQ recalculates it from those writes.
-    Notes reach ResQ for every exported kind. Calculated and engine datasets
-    are left out, as is Bootstrap.
+    Every input dataset with a CSV cache is written with its Notes; every
+    DFM, Bornhuetter Ferguson and Result Selection has its settings, inputs,
+    selections and Notes written, and is created first when ResQ does not
+    hold it; every Cape Cod and Berquist Sherman method has its Notes written
+    and is then saved so ResQ recalculates it from those writes. Notes reach
+    ResQ for every exported kind. Calculated and engine datasets are left
+    out, as is Bootstrap, and no dataset is ever created.
 
     ``selected_names`` narrows that to the rows a person ticked in the review
     table; without it the whole class is pushed. A selection is remembered for
@@ -2906,6 +2930,10 @@ def export_reserving_class(
             "message": f"Connecting to ResQ: {base['connection_name']}",
         })
         exporter = _new_exporter(runtime, project_name, rc_path, root)
+        # Only the export creates the DFMs, BFs and Result Selections ResQ
+        # lacks; the Sync macro's apply phase drives the same writers and
+        # never does.
+        exporter.create_missing_methods = True
         exporter.connect()
         opening = None
         baseline = {"recorded": 0, "absorbed": 0, "path": "", "error": ""}
@@ -2915,6 +2943,7 @@ def export_reserving_class(
             baseline["error"] = f"The saved baseline could not be read: {exc}"
         results: list[dict[str, Any]] = []
         for index, row in enumerate(rows, start=1):
+            created_before = _created_count(exporter)
             try:
                 outcome, message = _push_row_to_resq(exporter, row)
             except Exception as exc:
@@ -2925,6 +2954,10 @@ def export_reserving_class(
                 "kind": row["kind"],
                 "outcome": outcome,
                 "message": message,
+                # A created method is baselined like any written one: the
+                # closing inventory reads it on the same connection, so the
+                # next review pairs it instead of calling it new again.
+                "created": _created_count(exporter) > created_before,
             })
             _emit_progress(progress_callback, {
                 "event": "write",

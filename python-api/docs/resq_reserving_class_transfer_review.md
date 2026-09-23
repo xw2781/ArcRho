@@ -26,9 +26,12 @@ items only one side holds, which the plan deliberately never contains.
 
 An item only one side holds matters here in a way it does not for a sync. A
 ResQ dataset ArcRho has never seen is precisely what an import brings across,
-so it is a row, tickable, and shown as `ResQ only`. The same item can never be
-exported, because the export writes ResQ objects and never creates them, so
-in the export direction it is a row too — greyed out, with the reason.
+so it is a row, tickable, and shown as `ResQ only`. The other way round, an
+item only ArcRho holds is a row in the export direction. A DFM, Bornhuetter
+Ferguson or Result Selection is tickable there, because the export creates it
+in ResQ (`sync.EXPORT_CREATABLE_METHOD_KINDS`); anything else ArcRho alone
+holds — a plain dataset, a Cape Cod, a Berquist Sherman method — is never
+created, so it is greyed out with the reason.
 
 `arcrho_api.resq_transfer_review` projects those rows into the review-table
 contract and reads the ticked names back out. Both macros call it, so the two
@@ -49,6 +52,10 @@ cannot drift into describing one comparison two different ways.
 
 **This Run**, exporting:
 
+- `Created in ResQ` — an `ArcRho only` DFM, Bornhuetter Ferguson or Result
+  Selection, which the export creates; its detail reads `Creates the method in
+  ResQ.` A released app built before this label existed shows `Overwrites
+  ResQ copy` for such a row until its next update.
 - `Overwrites ResQ copy`
 - `Overwrites newer ResQ copy` — the warning, raised only when `ResQ` or
   `Both` changed since the saved pair.
@@ -80,13 +87,18 @@ A row is tickable when the direction can actually carry it
 (`sync.transfer_support`). Everything else is shown disabled with its reason,
 so an item that cannot move is visible rather than missing.
 
-Two kinds are worth naming:
+Three kinds are worth naming:
 
+- **Methods ResQ lacks, exporting.** An `ArcRho only` DFM, Bornhuetter
+  Ferguson or Result Selection is tickable, and the export creates it with
+  ArcRho's settings; a method whose input ResQ does not hold is skipped at
+  write time with that input named. Every other `ArcRho only` item stays
+  greyed out.
 - **Berquist Sherman methods, exporting.** The sync's own write-back does not
   cover them, but the export saves each so ResQ recalculates it from the
   datasets and DFMs written before it, and writes a Case Reserve Adequacy
   method's `Avg. Selections` on the way. That is a real export, so they are
-  tickable.
+  tickable where ResQ holds them.
 - **Calculated and engine-generated datasets.** Both systems recompute them
   from their inputs, so neither inventory lists them and neither direction
   offers them. An import still carries every one of them, ticked or not: the

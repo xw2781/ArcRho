@@ -353,6 +353,43 @@ class SyncSessionTransferPreviewTests(unittest.TestCase):
         self.assertFalse(exporting["Arco Only"]["transfer_supported"])
         self.assertIn("no matching dataset", exporting["Arco Only"]["transfer_block_reason"])
 
+    def test_an_export_can_create_a_missing_dfm_bf_or_result_selection_and_nothing_else(self):
+        creatable = (sync_session.KIND_DFM, sync_session.KIND_BF, sync_session.KIND_RS)
+        arcrho = [self._arcrho(f"{kind} only", kind=kind) for kind in creatable] + [
+            self._arcrho("Dataset only"),
+            self._arcrho("CC only", kind=sync_session.KIND_CC),
+        ]
+
+        exporting = {row["name"]: row for row in self._preview("export", arcrho, [])["preview"]}
+        importing = {row["name"]: row for row in self._preview("import", arcrho, [])["preview"]}
+
+        for kind in creatable:
+            with self.subTest(kind=kind):
+                row = exporting[f"{kind} only"]
+                self.assertTrue(row["transfer_supported"])
+                self.assertTrue(row["selected"])
+                self.assertEqual(row["presence"], "arcrho")
+                self.assertEqual(row["transfer_block_reason"], "")
+                self.assertEqual(row["detail"], "Creates the method in ResQ.")
+                # The import direction is unchanged: ResQ has nothing to bring across.
+                self.assertFalse(importing[f"{kind} only"]["transfer_supported"])
+        for name in ("Dataset only", "CC only"):
+            with self.subTest(name=name):
+                self.assertFalse(exporting[name]["transfer_supported"])
+                self.assertIn("no matching dataset", exporting[name]["transfer_block_reason"])
+        # The contract names the session's own kinds.
+        self.assertEqual(self.sync_contract.EXPORT_CREATABLE_METHOD_KINDS, set(creatable))
+
+    def test_a_missing_method_arcrho_cannot_export_is_not_created(self):
+        blocked = self._arcrho(
+            "DFM only", kind=sync_session.KIND_DFM, can_export_to_resq=False, export_block_reason="No method JSON."
+        )
+
+        row = self._preview("export", [blocked], [])["preview"][0]
+
+        self.assertFalse(row["transfer_supported"])
+        self.assertEqual(row["transfer_block_reason"], "No method JSON.")
+
     def test_a_berquist_sherman_method_is_exportable_because_the_export_saves_it(self):
         for kind in (sync_session.KIND_BS_SR, sync_session.KIND_BS_CRA):
             with self.subTest(kind=kind):
@@ -1383,7 +1420,7 @@ class SyncSessionExportTests(unittest.TestCase):
         }])
         exporter.save_method.assert_not_called()
 
-    def test_an_arcrho_only_bf_keeps_the_export_review_override(self):
+    def test_an_arcrho_only_bf_is_offered_because_the_export_creates_it(self):
         from resq_migration import sync as sync_contract
 
         bf = _export_item("BF Ult", kind=sync_session.KIND_BF, can_export_to_resq=True)
@@ -1392,6 +1429,14 @@ class SyncSessionExportTests(unittest.TestCase):
         )
 
         self.assertTrue(row["transfer_supported"])
+        self.assertEqual(row["detail"], "Creates the method in ResQ.")
+        # A Cape Cod ResQ lacks is never created, so the save-only override
+        # does not offer it either.
+        cc = _export_item("CC Ult", kind=sync_session.KIND_CC, can_export_to_resq=True)
+        cc_row = sync_session._transfer_row(
+            sync_contract, sync_contract.DIRECTION_EXPORT, "cc ult", cc, None, None, ""
+        )
+        self.assertFalse(cc_row["transfer_supported"])
         self.assertIn(sync_session.KIND_BF, sync_session._EXPORT_PHASE_METHOD_KINDS)
         self.assertNotIn(sync_session.KIND_BF, sync_session._SAVE_ONLY_METHOD_CODES)
 
@@ -1568,6 +1613,107 @@ class SyncSessionExportTests(unittest.TestCase):
         writes = [event for event in events if event.get("event") == "write"]
         self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
         self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")
+
+    def test_methods_created_in_one_run_follow_the_methods_they_read(self):
+        """A BF created in the same run finds the DFM created just before it."""
+
+        import tempfile
+
+        exporter = _push_exporter()
+        exporter.counts["methods_created"] = 0
+        exporter.written_details = []
+        exporter.create_missing_methods = False
+        order = []
+
+        def creator(field, kind):
+            def writer(entries):
+                # The flag is set before the first write, so every writer creates.
+                self.assertTrue(exporter.create_missing_methods)
+                order.append(entries[0]["name"])
+                exporter.counts["methods_created"] += 1
+                exporter.counts[field] += 1
+                message = "new output type D 99" if kind == "DFM" else ""
+                exporter.written_details.append({"kind": kind, "name": entries[0]["name"], "created": True, "message": message})
+            return writer
+
+        exporter.export_dfms.side_effect = creator("dfms_written", "DFM")
+        exporter.export_bfs.side_effect = creator("bfs_written", "BF")
+        exporter.export_result_selections.side_effect = creator("result_selections_written", "Result Selection")
+        inventory = [
+            _export_item("ZZ RS", kind=sync_session.KIND_RS, payload={"method_tab": {"loaded_datasets": [{"name": "ZZ DFM"}, {"name": "ZZ BF"}]}}),
+            _export_item("ZZ BF", kind=sync_session.KIND_BF, payload={"method_tab": {"latest_dataset": "Paid Loss", "dfm_dataset": "ZZ DFM"}}),
+            _export_item("ZZ DFM", kind=sync_session.KIND_DFM, payload={"details_tab": {"input_triangle": "Paid Loss"}}),
+            _export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"}),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=inventory),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    self._runtime(self._export_scope(root)),
+                    "Demo",
+                    r"Auto\PP",
+                    server_root=root,
+                    selected_names=["ZZ RS", "ZZ BF", "ZZ DFM"],
+                )
+
+        self.assertEqual(order, ["ZZ DFM", "ZZ BF", "ZZ RS"])
+        self.assertEqual(
+            [(item["name"], item["outcome"], item["message"], item["created"]) for item in result["results"]],
+            [
+                ("ZZ DFM", "exported", "Created in ResQ: new output type D 99.", True),
+                ("ZZ BF", "exported", "Created in ResQ.", True),
+                ("ZZ RS", "exported", "Created in ResQ.", True),
+            ],
+        )
+
+    def test_a_created_method_is_baselined_like_any_written_one(self):
+        import tempfile
+
+        from resq_migration import sync as sync_contract
+
+        exporter = _push_exporter()
+        exporter.counts["methods_created"] = 0
+
+        def create(_entries):
+            exporter.counts["methods_created"] += 1
+            exporter.counts["dfms_written"] += 1
+
+        exporter.export_dfms.side_effect = create
+        dfm = {
+            "name": "ZZ DFM",
+            "kind": sync_session.KIND_DFM,
+            "modified_timestamp": 100.0,
+            "can_export_to_resq": True,
+            "export_block_reason": "",
+            "method_name": "ZZ DFM",
+            "payload": {"details_tab": {"name": "ZZ DFM"}},
+        }
+        created = {"name": "ZZ DFM", "kind": sync_session.KIND_DFM, "modified_timestamp": 500.0}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with (
+                patch.object(sync_session, "collect_arcrho_inventory", return_value=[dfm]),
+                # ResQ holds nothing before the run and the created DFM after it.
+                patch.object(sync_session, "collect_resq_inventory", side_effect=[[], [created]]),
+                patch.object(sync_session, "_new_exporter", return_value=exporter),
+            ):
+                result = sync_session.export_reserving_class(
+                    self._runtime(self._export_scope(root)), "Demo", r"Auto\PP", server_root=root
+                )
+            state_path = sync_contract.sync_state_path(root, "Demo", r"Auto\PP", "ResQ Test")
+            saved = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["results"][0]["message"], "Created in ResQ.")
+        self.assertEqual(result["baseline"]["recorded"], 1)
+        entry = saved["items"]["zz dfm"]
+        self.assertEqual((entry["arcrho_timestamp"], entry["resq_timestamp"]), (100.0, 500.0))
+        # The next review pairs the two copies and finds nothing changed.
+        settled = sync_contract.build_sync_plan([dfm], [created], saved)[0]
+        review = sync_contract.export_review(settled["arcrho"], settled["resq"], settled["state_signature"])
+        self.assertEqual(review["changed"], sync_contract.CHANGED_NEITHER)
 
     def test_a_selection_narrows_what_is_written_and_becomes_the_next_default(self):
         import tempfile

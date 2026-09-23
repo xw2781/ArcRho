@@ -112,6 +112,10 @@ def open_item_args(row: Mapping[str, Any]) -> dict[str, Any]:
 def _export_plan_cell(row: Mapping[str, Any]) -> tuple[str, str]:
     if not row.get("transfer_supported"):
         return "Not exported", "muted"
+    if str(row.get("presence") or "") == "arcrho":
+        # Only a DFM, Bornhuetter Ferguson or Result Selection ResQ lacks is
+        # tickable here: the export creates it (``sync.transfer_support``).
+        return "Created in ResQ", "info"
     if _edited_side(row, "resq"):
         return "Overwrites newer ResQ copy", "warn"
     return "Overwrites ResQ copy", "info"

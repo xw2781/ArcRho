@@ -141,12 +141,51 @@ Left out, and not shown in the results:
 - **Method output datasets** — they are written through their method, never
   as datasets.
 
-**The export never creates anything in ResQ.** A dataset or method that
-exists in ArcRho but not in ResQ is shown as `Skipped` (a warning) and left
-alone; a new object reaches ResQ through ResQ itself. Datasets that exist in
-ResQ but not in ArcRho are never touched, because only ArcRho's inventory is
-walked. A dataset without a CSV cache, or a method-owned output sidecar whose
-method JSON is missing, is shown as `Skipped` with the reason as well.
+**Methods ResQ does not hold.** A DFM, Bornhuetter Ferguson or Result
+Selection that exists in ArcRho but not in ResQ is created, then written
+exactly as an existing one is. Nothing else is ever created: a plain dataset,
+a Cape Cod, a Berquist Sherman method or a Bootstrap that ResQ lacks is shown
+as `Skipped` (a warning) and left alone, and reaches ResQ through ResQ
+itself. The creation follows the sequence the probe confirmed (C1-C4 below):
+
+- **Inputs first.** Every input is looked up before anything is created —
+  a DFM's input triangle, a BF's latest, percentage-developed and prior
+  datasets, every dataset a Result Selection loads. A method whose input
+  ResQ lacks is skipped with that input named (`missing_input`). Because the
+  export writes in dependency order, a BF created in the same run finds the
+  DFM created just before it: ResQ lists a created object on the writing
+  connection straight away.
+- **The output type.** The output vector takes the ResQ dataset type named
+  by ArcRho's `output_type`. When ResQ has none by that name, it is created
+  from ArcRho's dataset-type definition (`dataset_types.json`): its name and
+  category, the method's decimal places, as a unique, not aggregated origin
+  vector (`DatasetTypes().Add()` starts aggregated). A category ResQ lacks
+  skips the method (`missing_category`), as does a type neither side defines
+  (`missing_output_type`) or a unique type another vector of the class
+  already holds (`output_type_in_use`), which ResQ would otherwise refuse
+  with a misleading text.
+- **Create and save.** `AddMethod` (1 DFM, 2 BF, 4 Result Selection), the
+  method `Name` (ArcRho's `details_tab.name`), the output vector's `Name`
+  (ArcRho's output dataset name, the same name unless a DFM's differs), its
+  `DatasetType`, then what a save needs — a DFM's input triangle, a BF's
+  latest, percentage developed and priors, a Result Selection's datasets —
+  and `Save`. A save ResQ refuses fails the method with ResQ's reason, told
+  as a category mismatch where ResQ's own text names an unrelated vector, and
+  the unsaved method and any type made for it are deleted.
+- **Then the rest.** The writer carries on down the existing method's path:
+  lengths and average rows, values, selections, Curves, weights, overrides,
+  Notes, save.
+
+The results window reads `Created in ResQ.` for such a row (with `new output
+type <name>` when the type had to be created too), its header counts the
+created methods, and the method is baselined like any written item, so the
+next review pairs it with ArcRho's copy instead of calling it new again. The
+Sync macro's apply phase uses the same writers but never creates anything.
+
+Datasets that exist in ResQ but not in ArcRho are never touched, because only
+ArcRho's inventory is walked. A dataset without a CSV cache, or a
+method-owned output sidecar whose method JSON is missing, is shown as
+`Skipped` with the reason as well.
 
 ## Write order
 
@@ -187,11 +226,14 @@ What is specific to the export:
 
 - The table is opened with **Export Selected to ResQ** and **Cancel**. It is
   the only confirmation asked for; accepting it starts the write.
-- The **This Run** column reads `Overwrites ResQ copy`, `Overwrites newer
-  ResQ copy` (the warning, raised only when `ResQ` or `Both` changed since
-  the saved pair), or `Not exported`.
-- An ArcRho item ResQ does not hold is listed as `ArcRho only` and cannot be
-  ticked, because the export creates nothing in ResQ.
+- The **This Run** column reads `Created in ResQ`, `Overwrites ResQ copy`,
+  `Overwrites newer ResQ copy` (the warning, raised only when `ResQ` or
+  `Both` changed since the saved pair), or `Not exported`.
+- An ArcRho item ResQ does not hold is listed as `ArcRho only`. A DFM,
+  Bornhuetter Ferguson or Result Selection can be ticked, reads `Created in
+  ResQ`, and is created by the export (see "Methods ResQ does not hold"
+  below); anything else cannot be ticked, because the export creates no
+  other object in ResQ.
 - The ticked names go on the `export` request as `SelectedNames`, narrow the
   rows before the dependency walk orders them, and are saved as the default
   for the next export once the writes are done.
@@ -303,8 +345,9 @@ the writer relies on:
   back identical to the ArcRho sources for
   `PRNJ - PA\PA\NY\Direct Group\BI Total`.
 - Dataset creation was exercised end to end when the writer was built and
-  removed on 2026-08-28: the export never creates a dataset, Dataset Type, or
-  method in ResQ any more.
+  removed on 2026-08-28: the export never creates a dataset in ResQ. Since
+  2026-09-23 it creates a missing DFM, BF or Result Selection, and the output
+  Dataset Type one needs (see "Creating and reconfiguring methods").
 - The pywin32 write convention for parameterized VBA property puts is
   `Set<Property>(indices..., value)` (e.g. `SetValuesByIndex`,
   `SetSelectedRatios`); it appears nowhere in the ResQ documentation but is
@@ -345,8 +388,11 @@ the writer relies on:
   before exporting.
 - **COM collection state is cached per connection.** After `Delete()` the
   item still appears in the same session's collection; a fresh connection
-  sees the truth. The exporter uses one connection and neither creates nor
-  deletes.
+  sees the truth. A created and saved object, on the other hand, is listed
+  on the same connection at once (`Item(name)` and a scan both find it, with
+  a `Modified` stamp), which is what lets one export create a DFM and then a
+  BF and Result Selection that read it, and baseline all three. The exporter
+  deletes only an unsaved method whose creation ResQ refused.
 
 ## Creating and reconfiguring methods
 
@@ -370,7 +416,16 @@ percentage developed (type 3), and priors had been changed in ResQ, and a
 ArcRho payloads (a triangle latest, type 2, priors `D 82` and `D 91` at 0.25
 and 0.75, and the three loaded datasets with their weights), read back
 equal through the import and through COM; a second export wrote nothing
-structural. The create calls are not used by the export yet.
+structural. The create calls (C1-C4) are what the export's create path uses;
+a live run on 2026-09-23 created a `ZZ Probe` DFM (six rows of every kind
+including a User Calculation), a BF on it with two priors at 0.25 / 0.75,
+and a Result Selection loading both at 0.4 / 0.6, each on an output type
+made from an ArcRho definition, all read back equal through the import in a
+fresh connection and listed with timestamps by the session's closing
+inventory on the writing connection. A D-category input with a C-category
+output type was refused with the category message and left nothing behind,
+and a Result Selection loading a dataset ResQ lacks was skipped before
+anything was created.
 
 ### Creating a method (C1-C4)
 

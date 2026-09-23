@@ -147,6 +147,22 @@ class ExportPlanColumnTests(unittest.TestCase):
 
         self.assertEqual(payload["rows"][0]["cells"]["plan"], {"text": "Not exported", "tone": "muted"})
 
+    def test_a_method_only_arcrho_holds_is_created_in_resq(self):
+        payload = _payload(
+            [
+                _row("Paid CDF", kind="DFM", presence="arcrho", resq_timestamp="", newer_side="",
+                     detail="Creates the method in ResQ."),
+                _row("Paid Loss", presence="arcrho", resq_timestamp="", newer_side="",
+                     transfer_supported=False, selected=False),
+            ],
+            "export",
+        )
+
+        cells = [row["cells"] for row in payload["rows"]]
+        self.assertEqual(cells[0]["plan"], {"text": "Created in ResQ", "tone": "info"})
+        self.assertEqual(cells[0]["detail"], "Creates the method in ResQ.")
+        self.assertEqual(cells[1]["plan"], {"text": "Not exported", "tone": "muted"})
+
 
 class ImportPlanColumnTests(unittest.TestCase):
     def test_a_resq_only_item_is_added_rather_than_overwritten(self):

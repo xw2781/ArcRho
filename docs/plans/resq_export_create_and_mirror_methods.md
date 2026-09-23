@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 4 and 6-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 6-8 not started.
 
 Last updated: 2026-09-23
 
@@ -13,13 +13,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | Learn how ResQ creates and reconfigures these three methods | [x] | 2026-09-23 | 60 min | 22 min | ResQ was shown to accept creating, reshaping and copying these three methods, and the rules and pitfalls it follows are written down for the next steps. |
 | 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [x] | 2026-09-23 | 60 min | 20 min | Exporting a DFM that ResQ already has now also gives it Arco's input triangle, lengths, output type and average rows, and the results window says what changed; it reaches users with the step 6 update. |
 | 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [x] | 2026-09-23 | 50 min | 17 min | Exporting a BF that ResQ already has now also gives it Arco's latest, percentage developed and every prior with its weights, and a Result Selection loses the datasets Arco does not load; the results window says what changed, and it reaches users with the step 6 update. |
-| 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [ ] | | 65 min | | |
+| 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [x] | 2026-09-23 | 65 min | 16 min | A DFM, BF or Result Selection that only Arco has can now be ticked in the export review and is created in ResQ with Arco's settings, making its output type too when ResQ lacks it; one whose inputs ResQ lacks is skipped with the missing input named, and it reaches users with the step 6 update. |
 | 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
 | 6 | The new export reaches every user | [ ] | | 30 min | | |
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 4 of 8 steps done. Estimated 455 min, actual so far 92 min.
+Overall: 5 of 8 steps done. Estimated 455 min, actual so far 108 min.
 
 ## How agents work this plan
 
@@ -241,19 +241,26 @@ Estimate: code edit 35 min, test/validation 15 min, total 50 min. Actual: code e
 - [resq_transfer_review.py](../../python-api/src/arcrho_api/resq_transfer_review.py#L100-L140).
 - [resq_reserving_class_transfer_review.md](../../python-api/docs/resq_reserving_class_transfer_review.md).
 - How Arco's dataset-type definitions are read (grep `dataset_types.json` under `python-api/migration/resq_migration`).
+- Added during the step: the export-review override in `_transfer_row` of [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around line 2404), which offered every Arco-only save-only method (a Cape Cod too) and had to be limited to methods ResQ holds; `_export_result_delta` (around line 960) and the `export_reserving_class` result loop, which carry the "Created in ResQ" message; and `export_result_table_payload` in the macro, whose header now counts created methods.
 
 **Do.**
-- [ ] `transfer_support`: for the export direction, an Arco-only DFM, BF or Result Selection is supported with the reason "Creates the method in ResQ." Everything else ResQ lacks stays refused. The import direction and the Sync macro are unchanged.
-- [ ] The macro gains one create path used by the three writers when the lookup finds nothing:
+- [x] `transfer_support`: for the export direction, an Arco-only DFM, BF or Result Selection is supported with the reason "Creates the method in ResQ." Everything else ResQ lacks stays refused. The import direction and the Sync macro are unchanged.
+- [x] The macro gains one create path used by the three writers when the lookup finds nothing:
   - check the required inputs exist (else skip, naming the missing input);
   - find or create the output dataset type (Decision 3);
   - `AddMethod`, name the method and its output, set the required inputs, `Save`;
   - clear the name caches, then continue into the step 2 / step 3 update path so the rest of the settings are written the same way.
-- [ ] Rewrite `_missing_in_resq` and its comment so plain datasets are still never created.
-- [ ] The result row for a created method says "Created in ResQ" and the counts gain a `methods_created`.
-- [ ] Check the export baseline records a created method, so the next review compares timestamps for it instead of calling it new again.
-- [ ] `resq_transfer_review._export_plan_cell`: `presence == "arcrho"` with support reads "Created in ResQ" (tone info).
-- [ ] Update the export doc and the transfer-review doc ("Arco only" rows for these three kinds can now be ticked).
+- [x] Rewrite `_missing_in_resq` and its comment so plain datasets are still never created.
+- [x] The result row for a created method says "Created in ResQ" and the counts gain a `methods_created`.
+- [x] Check the export baseline records a created method, so the next review compares timestamps for it instead of calling it new again.
+- [x] `resq_transfer_review._export_plan_cell`: `presence == "arcrho"` with support reads "Created in ResQ" (tone info).
+- [x] Update the export doc and the transfer-review doc ("Arco only" rows for these three kinds can now be ticked).
+
+Notes from the step:
+- Creating is switched on by the export session only (`create_missing_methods` on the exporter); the Sync macro's apply phase drives the same writers and still creates nothing.
+- The output vector is named by Arco's output dataset name (`details_tab.output_dataset`, falling back to `details_tab.name`), so a DFM whose output name differs from its method name pairs with Arco's row at the next review. For BF and Result Selection the two names are always the same, as Decision 4 says.
+- A new dataset type takes the method's `decimal_places` (0 when the method has none), because Arco's dataset-type library holds no decimal places.
+- The result outcome stays `exported` with the message "Created in ResQ." and a `created` flag, rather than a new outcome, so the released macro, which shows an unknown outcome as a failure, renders it correctly in the gap between the Bridge deploy and the macro publish.
 
 **Tests.**
 - A sync test: the three kinds are tickable when ResQ lacks them, and a dataset and a CC are not.
@@ -263,7 +270,7 @@ Estimate: code edit 35 min, test/validation 15 min, total 50 min. Actual: code e
 
 **Done when.** The tests pass, and a probe run creates a DFM, a BF on it and a Result Selection loading both from hand-built Arco payloads in the Fake project, reads them back equal through the import, then deletes them.
 
-Estimate: code edit 45 min, test/validation 20 min, total 65 min.
+Estimate: code edit 45 min, test/validation 20 min, total 65 min. Actual: code edit 11 min, test/validation 5 min, total 16 min; a quarter of the estimate because steps 2 and 3 had already built every setting write, so creating a method was one small path in front of them, and the live ResQ check passed on its first run.
 
 ### Step 5 — A DFM can copy every setting from another DFM in one click
 

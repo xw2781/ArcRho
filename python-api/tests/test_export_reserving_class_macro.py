@@ -1699,6 +1699,335 @@ class ExportMacroResultsTableTests(unittest.TestCase):
         self.assertTrue(payload["summary"].startswith("Export to ResQ completed.\n"))
         self.assertIn("Exported 1 dataset/method item(s); saved 0 method(s); skipped 0; failed 0.", payload["summary"])
 
+    def test_the_header_counts_the_methods_the_export_created(self):
+        payload = self.module.export_result_table_payload({
+            "status": "completed",
+            "results": [
+                {"id": "a", "name": "A", "kind": "Dataset", "outcome": "exported", "message": "Written to ResQ."},
+                {"id": "d", "name": "D 99", "kind": "DFM", "outcome": "exported", "message": "Created in ResQ.", "created": True},
+            ],
+        })
+
+        self.assertIn("Exported 2 dataset/method item(s), 1 of them created in ResQ; saved 0 method(s)", payload["summary"])
+        self.assertEqual(payload["rows"][1]["cells"]["outcome"], {"text": "Exported", "tone": "ok"})
+        self.assertEqual(payload["rows"][1]["cells"]["detail"], "Created in ResQ.")
+
+
+class _FakeCollection:
+    """A 1-based ResQ collection: ``Count`` and ``Item(i)``."""
+
+    def __init__(self, items):
+        self.items = list(items)
+
+    @property
+    def Count(self):
+        return len(self.items)
+
+    def Item(self, index):
+        return self.items[index - 1]
+
+
+class _FakeDatasetType:
+    def __init__(self, name="", category="", unique=True):
+        self.Name = name
+        self.Category = _FakeNamed(category) if category else None
+        self.Unique = unique
+        self.Aggregated = True  # what DatasetTypes().Add() starts with
+        self.DataFormat = 0
+        self.DecimalPlaces = -1
+        self.saved = 0
+        self.deleted = False
+
+    def Save(self):
+        self.saved += 1
+
+    def Delete(self):
+        self.deleted = True
+
+
+class _FakeInputTriangle:
+    def __init__(self, name, category="D Gross Loss"):
+        self.Name = name
+        self.DatasetType = _FakeDatasetType(name, category)
+
+
+class ExportMacroCreateTests(unittest.TestCase):
+    """A DFM, BF or Result Selection ResQ lacks is created, then written the way an existing one is."""
+
+    DFM_ROWS = ExportMacroDfmStructureTests.ARCRHO_ROWS
+
+    def setUp(self):
+        self.module = _load_macro()
+
+    def _exporter(self, *, methods=(), triangles=(), vectors=(), dataset_types=(), categories=("D Gross Loss",),
+                  arcrho_types=(), class_vectors=()):
+        """An exporter over a fake class whose ``AddMethod`` hands out ``methods`` in turn."""
+
+        exporter = self.module.ResQReservingClassExporter(
+            _migration(_dataset_type_rows=lambda: [dict(row) for row in arcrho_types]),
+            arcrho_project_name="Project",
+            rc_path="Line/Class",
+            server_root=Path("."),
+        )
+        exporter.create_missing_methods = True
+        self.added_methods = []
+        self.added_types = []
+        pending = list(methods)
+        known_types = {item.Name: item for item in dataset_types}
+        known = {
+            "triangles": {item.Name: item for item in triangles},
+            "vectors": {item.Name: item for item in vectors},
+            "categories": {name: _FakeNamed(name) for name in categories},
+            "dataset_types": known_types,
+        }
+
+        def add_method(code):
+            method = pending.pop(0)
+            self.added_methods.append((code, method))
+            return method
+
+        def add_type():
+            dataset_type = _FakeDatasetType()
+            self.added_types.append(dataset_type)
+            return dataset_type
+
+        def find_in(key, _factory, name):
+            if key in ("dfm_methods",):
+                return None
+            if key == "dataset_types":
+                return next((item for item in list(known_types.values()) + self.added_types if item.Name == name), None)
+            return known.get(key, {}).get(name)
+
+        exporter._find_in = find_in
+        exporter._find_method_by_output = lambda _collection, _name: None
+        exporter.reserving_class = types.SimpleNamespace(
+            AddMethod=add_method,
+            DFMMethods=lambda: [],
+            BFMethods=lambda: [],
+            ResultSelections=lambda: [],
+            Triangles=lambda: [],
+            Vectors=lambda: _FakeCollection(class_vectors),
+        )
+        exporter.project = types.SimpleNamespace(
+            DatasetTypes=lambda: types.SimpleNamespace(Add=add_type),
+            Categories=lambda: [],
+        )
+        return exporter
+
+    @staticmethod
+    def _new_dfm():
+        dfm = _FakeResqDfm([(f"Volume - {n}", 0, 1, n, 0) for n in range(1, 6)], input_name="", output_type="")
+        dfm.Name = ""
+        dfm.Delete = Mock()
+        return dfm
+
+    def _dfm_entry(self, **details):
+        details.setdefault("input_triangle", "Paid Loss")
+        details.setdefault("output_type", "D 50")
+        payload = ExportMacroDfmStructureTests._payload(self.DFM_ROWS, origin_length=12, development_length=12, **details)
+        return {"name": "D 50", "payload": payload}
+
+    def test_a_missing_dfm_is_created_with_its_input_and_then_takes_arcrhos_rows(self):
+        dfm = self._new_dfm()
+        paid = _FakeInputTriangle("Paid Loss")
+        exporter = self._exporter(methods=[dfm], triangles=[paid], dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")])
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(exporter.skipped, {}, exporter.skip_details)
+        self.assertEqual([code for code, _method in self.added_methods], [self.module.RESQ_METHOD_TYPE_DFM])
+        self.assertEqual((dfm.Name, dfm.OutputVector.Name, dfm.OutputVector.DatasetType.Name), ("D 50", "D 50", "D 50"))
+        self.assertIs(dfm.InputTriangle, paid)
+        # One save creates it; the second writes the rest the way an existing DFM is written.
+        self.assertEqual(dfm.saved, 2)
+        self.assertEqual([average.Name for average in dfm.averages], [row[0] for row in self.DFM_ROWS])
+        self.assertEqual((exporter.counts["methods_created"], exporter.counts["dfms_written"]), (1, 1))
+        self.assertEqual(exporter.written_details, [{"kind": "DFM", "name": "D 50", "created": True, "message": ""}])
+        self.assertEqual(self.added_types, [])
+
+    def test_the_output_is_named_after_the_arcrho_output_dataset_when_it_differs(self):
+        dfm = self._new_dfm()
+        exporter = self._exporter(methods=[dfm], triangles=[_FakeInputTriangle("Paid Loss")],
+                                  dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")])
+
+        exporter.export_dfms([self._dfm_entry(output_dataset="D 50 - Paid CDF")])
+
+        self.assertEqual((dfm.Name, dfm.OutputVector.Name), ("D 50", "D 50 - Paid CDF"))
+
+    def test_a_dfm_whose_input_resq_lacks_is_skipped_before_anything_is_created(self):
+        exporter = self._exporter(methods=[self._new_dfm()], dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")])
+
+        exporter.export_dfms([self._dfm_entry(input_triangle="Nowhere")])
+
+        self.assertEqual(exporter.skipped, {"missing_input": 1})
+        self.assertIn("input triangle Nowhere not found in ResQ", exporter.skip_details[-1]["message"])
+        self.assertEqual((self.added_methods, exporter.counts["methods_created"]), ([], 0))
+
+    def test_a_missing_output_type_is_created_from_the_arcrho_definition(self):
+        dfm = self._new_dfm()
+        exporter = self._exporter(
+            methods=[dfm],
+            triangles=[_FakeInputTriangle("Paid Loss")],
+            arcrho_types=[{"name": "D 50", "data_format": "Vector", "category": "D Gross Loss"}],
+        )
+
+        exporter.export_dfms([self._dfm_entry(decimal_places=2)])
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        [dataset_type] = self.added_types
+        self.assertEqual(
+            (dataset_type.Name, dataset_type.Category.Name, dataset_type.DataFormat, dataset_type.DecimalPlaces,
+             dataset_type.Unique, dataset_type.Aggregated, dataset_type.saved),
+            ("D 50", "D Gross Loss", self.module.RESQ_DATA_FORMAT_ORIGIN_VECTOR, 2, True, False, 1),
+        )
+        self.assertIs(dfm.OutputVector.DatasetType, dataset_type)
+        self.assertEqual(exporter.written_details[-1]["message"], "new output type D 50")
+
+    def test_an_output_type_whose_category_resq_lacks_skips_the_method(self):
+        exporter = self._exporter(
+            methods=[self._new_dfm()],
+            triangles=[_FakeInputTriangle("Paid Loss")],
+            arcrho_types=[{"name": "D 50", "data_format": "Vector", "category": "Z Nowhere"}],
+        )
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.skipped, {"missing_category": 1})
+        self.assertIn("needs the category Z Nowhere", exporter.skip_details[-1]["message"])
+        self.assertEqual((self.added_methods, self.added_types), ([], []))
+
+    def test_an_output_type_neither_side_defines_skips_the_method(self):
+        exporter = self._exporter(methods=[self._new_dfm()], triangles=[_FakeInputTriangle("Paid Loss")])
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.skipped, {"missing_output_type": 1})
+        self.assertEqual(self.added_methods, [])
+
+    def test_an_output_type_another_vector_holds_skips_the_method(self):
+        holder = types.SimpleNamespace(Name="D 50 - Old CDF", DatasetType=_FakeNamed("D 50"))
+        exporter = self._exporter(
+            methods=[self._new_dfm()],
+            triangles=[_FakeInputTriangle("Paid Loss")],
+            dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")],
+            class_vectors=[holder],
+        )
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.skipped, {"output_type_in_use": 1})
+        self.assertIn("already used by D 50 - Old CDF", exporter.skip_details[-1]["message"])
+        self.assertEqual(self.added_methods, [])
+
+    def test_a_refused_creation_names_the_categories_and_leaves_nothing_behind(self):
+        dfm = self._new_dfm()
+
+        def refuse():
+            raise RuntimeError('There cannot be more than one "C 52 - CWOP DFM" Vector in a Reserving Class')
+
+        dfm.Save = refuse
+        exporter = self._exporter(
+            methods=[dfm],
+            triangles=[_FakeInputTriangle("Claim Counts", category="C Claim Count")],
+            arcrho_types=[{"name": "D 50", "data_format": "Vector", "category": "D Gross Loss"}],
+        )
+
+        exporter.export_dfms([self._dfm_entry(input_triangle="Claim Counts")])
+
+        self.assertEqual(exporter.counts["errors"], 1)
+        self.assertEqual(
+            exporter.error_details[-1]["message"],
+            "ResQ refused to create the DFM: its output type is in category D Gross Loss, "
+            "but its input Claim Counts is in C Claim Count",
+        )
+        dfm.Delete.assert_called_once_with()
+        self.assertTrue(self.added_types[0].deleted)
+        self.assertEqual(exporter.counts["methods_created"], 0)
+
+    def test_a_missing_bf_is_created_with_its_inputs_and_priors(self):
+        bf = _FakeResqBf(latest="", developed="", developed_type=0, priors=(), output_type="")
+        bf.Name = ""
+        exporter = self._exporter(methods=[bf], dataset_types=[_FakeDatasetType("D 41", "D Gross Loss")])
+        exporter._find_triangle = lambda name: _FakeInputTriangle(name) if name == "Paid Loss" else None
+        exporter._find_vector = lambda name: _FakeNamed(name) if name in ("D 50 out", "D 82", "D 91") else None
+        payload = ExportMacroBfTests._payload(priors=(("D 82", [0.25, 0.25, 0.25]), ("D 91", [0.75, 0.75, 0.75])))
+
+        exporter.export_bfs([{"name": "D 41 out", "payload": payload, "notes": "New."}])
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(self.added_methods[0][0], self.module.RESQ_METHOD_TYPE_BF)
+        self.assertEqual((bf.Name, bf.OutputVector.Name, bf.OutputVector.DatasetType.Name), ("D 41 out", "D 41 out", "D 41"))
+        self.assertEqual((bf.Latest.Name, bf.LatestType), ("Paid Loss", 0))
+        self.assertEqual((bf.PercentageDeveloped.Name, bf.PercentageDevelopedType), ("D 50 out", 2))
+        self.assertEqual([prior.Vector.Name for prior in bf.priors], ["D 82", "D 91"])
+        self.assertEqual([prior.weights for prior in bf.priors], [[0.25] * 3, [0.75] * 3])
+        # The inputs go in before the first save, the way the probe created one.
+        self.assertEqual(bf.saved, 2)
+        self.assertEqual(bf.Notes, "New.")
+        self.assertEqual(exporter.counts["methods_created"], 1)
+        self.assertTrue(exporter.written_details[-1]["created"])
+
+    def test_a_bf_whose_prior_resq_lacks_is_skipped_before_anything_is_created(self):
+        exporter = self._exporter(methods=[], dataset_types=[_FakeDatasetType("D 41", "D Gross Loss")])
+        exporter._find_triangle = lambda name: _FakeInputTriangle(name) if name == "Paid Loss" else None
+        exporter._find_vector = lambda name: _FakeNamed(name) if name == "D 50 out" else None
+
+        exporter.export_bfs([{"name": "D 41 out", "payload": ExportMacroBfTests._payload()}])
+
+        self.assertEqual(exporter.skipped, {"missing_input": 1})
+        self.assertIn("prior dataset D 82 not found in ResQ", exporter.skip_details[-1]["message"])
+        self.assertEqual(self.added_methods, [])
+
+    def test_a_missing_result_selection_is_created_loading_every_arcrho_dataset(self):
+        rs = _FakeResqResultSelection([], output_type="")
+        rs.Name = ""
+        exporter = self._exporter(methods=[rs], dataset_types=[_FakeDatasetType("D 99", "D Gross Loss")])
+        exporter._find_dataset = lambda name: _FakeNamed(name) if name in ("A", "B") else None
+        payload = ExportMacroResultSelectionTests._payload([("A", [0.4, 0.4, 0.4]), ("B", [0.6, 0.6, 0.6])])
+
+        exporter.export_result_selections([{"name": "D 99 out", "payload": payload}])
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(self.added_methods[0][0], self.module.RESQ_METHOD_TYPE_RESULT_SELECTION)
+        self.assertEqual((rs.Name, rs.OutputVector.Name, rs.OutputVector.DatasetType.Name), ("D 99 out", "D 99 out", "D 99"))
+        self.assertEqual(sorted(dataset.Name for dataset in rs.datasets), ["A", "B"])
+        self.assertEqual(rs.weights, {"A": [0.4] * 3, "B": [0.6] * 3})
+        self.assertEqual(exporter.counts["methods_created"], 1)
+
+    def test_a_result_selection_loading_a_dataset_resq_lacks_is_not_created(self):
+        exporter = self._exporter(methods=[], dataset_types=[_FakeDatasetType("D 99", "D Gross Loss")])
+        exporter._find_dataset = lambda name: _FakeNamed(name) if name == "A" else None
+        payload = ExportMacroResultSelectionTests._payload([("A", [1, 1, 1]), ("Gone", [0, 0, 0])])
+
+        exporter.export_result_selections([{"name": "D 99 out", "payload": payload}])
+
+        self.assertEqual(exporter.skipped, {"missing_input": 1})
+        self.assertIn("loaded dataset Gone not found in ResQ", exporter.skip_details[-1]["message"])
+        self.assertEqual(self.added_methods, [])
+
+    def test_the_sync_apply_path_still_creates_nothing(self):
+        exporter = self._exporter(methods=[self._new_dfm()], triangles=[_FakeInputTriangle("Paid Loss")],
+                                  dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")])
+        exporter.create_missing_methods = False
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.skipped, {"missing_in_resq": 1})
+        self.assertEqual(self.added_methods, [])
+
+    def test_a_failure_after_the_creation_says_the_method_is_in_resq(self):
+        dfm = self._new_dfm()
+        dfm.locked = False
+        exporter = self._exporter(methods=[dfm], triangles=[_FakeInputTriangle("Paid Loss")],
+                                  dataset_types=[_FakeDatasetType("D 50", "D Gross Loss")])
+        exporter._sync_dfm_selected_ratios = Mock(side_effect=RuntimeError("Invalid index"))
+
+        exporter.export_dfms([self._dfm_entry()])
+
+        self.assertEqual(exporter.error_details[-1]["message"], "created in ResQ, then Invalid index")
+        self.assertEqual(exporter.counts["methods_created"], 1)
+
 
 class _Button:
     def __init__(self, button):
