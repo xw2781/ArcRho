@@ -56,6 +56,12 @@ MAX_AVERAGE_FORMULA_PROBE = 30
 RESQ_CURVE_FIXED_COLUMNS = 5
 RESQ_CURVE_COLUMN_TYPE_USER_ENTRY = 3
 
+# CustomAverages(i).AverageType ordinals the export writes; resq_migration.dfm
+# owns the full list.
+RESQ_AVERAGE_TYPE_CUSTOM = 0
+RESQ_AVERAGE_TYPE_USER_ENTRY = 5
+RESQ_AVERAGE_TYPE_CALCULATED = 6
+
 # A v4 sidecar names its owning method in ``method_type``; the numeric twin is
 # gone from the file, so the ResQ code is derived here from that name.
 _SIDECAR_METHOD_TYPE_CODES = {
@@ -224,6 +230,9 @@ class ResQReservingClassExporter:
         self.skipped = {}
         self.skip_details = []
         self.error_details = []
+        # Items written with more to say than "written" -- the structure
+        # changes of a DFM -- which the session puts in the results window.
+        self.written_details = []
         self._completed = 0
         self._total = 0
 
@@ -538,6 +547,10 @@ class ResQReservingClassExporter:
         dfm = self._find_in("dfm_methods", self.reserving_class.DFMMethods, name)
         if dfm is None:
             raise self._missing_in_resq("DFM")
+        # The structure goes first: a length change resets ResQ's selections,
+        # exclusions and Curves values, which the writes below then restore,
+        # and a formula this step fixes must not skip the DFM in the probe.
+        structure = self._sync_dfm_structure(dfm, details, payload)
         self._probe_dfm_averages(dfm)
         excluded = self._sync_dfm_excluded_ratios(dfm, payload)
         user_values = self._sync_dfm_user_entry_values(dfm, payload)
@@ -547,11 +560,204 @@ class ResQReservingClassExporter:
         notes = self._sync_notes(dfm, entry)
         dfm.Save()
         self.counts["dfms_written"] += 1
+        if structure:
+            self.written_details.append({"kind": "DFM", "name": name, "message": ", ".join(structure)})
         self._emit(
-            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, tails {tails}, "
+            f"Exported DFM: {name} ("
+            + (f"{', '.join(structure)}; " if structure else "")
+            + f"excluded {excluded}, user values {user_values}, tails {tails}, "
             f"selected {selected}, curves {curves}, notes {notes})",
             status="success",
         )
+
+    # ----- DFM structure ----------------------------------------------------------
+    #
+    # Exporting an existing DFM makes its ResQ output type, input triangle,
+    # lengths and average rows match ArcRho before the value writes run. The
+    # row definitions come from ``resq_migration.dfm.arcrho_average_rows_as_resq``,
+    # the inverse of the import's own reading, so a row read back through the
+    # import is the row ArcRho holds. Only what differs is written.
+
+    def _sync_dfm_structure(self, dfm, details, payload):
+        """Write the DFM's output type, input, lengths and rows; say what changed."""
+
+        changes = []
+        try:
+            changes += self._sync_dfm_output_type(dfm, details)
+            changes += self._sync_dfm_input_triangle(dfm, details)
+            changes += self._sync_dfm_lengths(dfm, details)
+            changes += self._sync_dfm_average_rows(dfm, payload)
+        except ExportSkipped:
+            raise
+        except Exception as exc:
+            done = f" after {', '.join(changes)}" if changes else ""
+            raise RuntimeError(f"ResQ refused a change to the DFM's structure{done}: {exc}") from exc
+        return changes
+
+    def _find_dataset_type(self, name):
+        return self._find_in("dataset_types", self.project.DatasetTypes, name)
+
+    def _sync_dfm_output_type(self, dfm, details):
+        wanted = _clean_label(details.get("output_type"))
+        if not wanted:
+            return []
+        output = dfm.OutputVector
+        current = _clean_label(getattr(getattr(output, "DatasetType", None), "Name", ""))
+        if _label_key(current) == _label_key(wanted):
+            return []
+        dataset_type = self._find_dataset_type(wanted)
+        if dataset_type is None:
+            return [f"output type {wanted} is not in ResQ, kept {current}"]
+        output.DatasetType = dataset_type
+        return [f"output type {current} -> {wanted}"]
+
+    def _sync_dfm_input_triangle(self, dfm, details):
+        wanted = _clean_label(details.get("input_triangle"))
+        if not wanted:
+            return []
+        current = _clean_label(getattr(dfm.InputTriangle, "Name", ""))
+        if _label_key(current) == _label_key(wanted):
+            return []
+        triangle = self._find_triangle(wanted)
+        if triangle is None:
+            raise ExportSkipped("missing_input", f"input triangle {wanted} not found in ResQ")
+        dfm.InputTriangle = triangle
+        return [f"input {current} -> {wanted}"]
+
+    def _sync_dfm_lengths(self, dfm, details):
+        """Put ArcRho's origin and development lengths, origin first.
+
+        ResQ refuses a development length that does not divide the origin
+        length and pulls the development length down with a shorter origin,
+        so the origin goes first and the development length follows. Should
+        ResQ refuse the origin while the old development length is still set,
+        the development length goes first instead.
+        """
+
+        try:
+            origin = int(details.get("origin_length") or 0)
+            development = int(details.get("development_length") or 0)
+        except (TypeError, ValueError):
+            return []
+        before = (_safe_length(dfm, "OriginLength"), _safe_length(dfm, "DevelopmentLength"))
+        if not origin or not development or before == (origin, development):
+            return []
+        try:
+            if before[0] != origin:
+                dfm.OriginLength = origin
+            if _safe_length(dfm, "DevelopmentLength") != development:
+                dfm.DevelopmentLength = development
+        except Exception:
+            dfm.DevelopmentLength = development
+            dfm.OriginLength = origin
+        return [f"lengths {before[0]}/{before[1]} -> {origin}/{development}"]
+
+    def _read_average_rows(self, dfm):
+        """Each ResQ average row's name and fields, in ResQ order."""
+
+        rows = []
+        for index in range(1, self._average_formula_count(dfm) + 1):
+            average = dfm.CustomAverages(index)
+            average_type = int(average.AverageType)
+            rows.append(
+                {
+                    "raw_name": str(dfm.AverageFormula(index) or ""),
+                    "average_type": average_type,
+                    "weight_type": int(average.WeightType),
+                    "periods_included": int(average.PeriodsIncluded),
+                    "exclude_flag": bool(average.ExcludeHighLow),
+                    "exclude_high_low": int(average.ExcludeHighLow2),
+                    "formula": str(average.Formula or "").strip(),
+                }
+            )
+        return rows
+
+    def _average_row_is_current(self, current, reading, wanted):
+        """True when a ResQ row already holds what ArcRho asks for.
+
+        Either the import would read the ResQ row back as ArcRho's row -- which
+        keeps a ResQ median, pattern or prior-analysis row ArcRho carries as
+        copied values -- or ResQ holds exactly the definition the export
+        would write.
+        """
+
+        arcrho = wanted["arcrho"]
+        key = self.migration.average_formula_key
+        if (
+            _label_key(reading["label"]) == _label_key(arcrho["label"])
+            and reading["settings"] == arcrho["settings"]
+            and key(reading["formula"]) == key(arcrho["formula"])
+        ):
+            return True
+        if current["average_type"] != wanted["average_type"]:
+            return False
+        if _label_key(_strip_formula_index(current["raw_name"])) != _label_key(wanted["name"]):
+            return False
+        if wanted["average_type"] == RESQ_AVERAGE_TYPE_CUSTOM:
+            return (
+                current["weight_type"] == wanted["weight_type"]
+                and current["periods_included"] == wanted["periods_included"]
+                and current["exclude_high_low"] == wanted["exclude_high_low"]
+                and current["exclude_flag"] == (wanted["exclude_high_low"] > 0)
+            )
+        if wanted["average_type"] == RESQ_AVERAGE_TYPE_CALCULATED:
+            return key(current["formula"]) == key(wanted["formula"])
+        return True
+
+    def _write_average_row(self, dfm, index, current, wanted):
+        """Write one row's fields, then its name.
+
+        ResQ renames a row from its fields until it is named explicitly, and
+        the import reads a custom row's weighting, periods and exclusion from
+        that name, so the name always goes last.
+        """
+
+        average = dfm.CustomAverages(index)
+        average_type = wanted["average_type"]
+        if current["average_type"] != average_type:
+            average.AverageType = average_type
+        if average_type == RESQ_AVERAGE_TYPE_CUSTOM:
+            if current["weight_type"] != wanted["weight_type"]:
+                average.WeightType = wanted["weight_type"]
+            if current["periods_included"] != wanted["periods_included"]:
+                average.PeriodsIncluded = wanted["periods_included"]
+            exclude = wanted["exclude_high_low"]
+            if current["exclude_flag"] != (exclude > 0):
+                average.ExcludeHighLow = exclude > 0
+            if current["exclude_high_low"] != exclude:
+                average.ExcludeHighLow2 = exclude
+        elif average_type == RESQ_AVERAGE_TYPE_CALCULATED:
+            if self.migration.average_formula_key(current["formula"]) != self.migration.average_formula_key(
+                wanted["formula"]
+            ):
+                average.Formula = wanted["formula"]
+        average.Name = wanted["name"]
+
+    def _sync_dfm_average_rows(self, dfm, payload):
+        """Give the ResQ DFM ArcRho's average rows: their count, then each row."""
+
+        average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))
+        wanted_rows = self.migration.arcrho_average_rows_as_resq(average_formulas)
+        if not wanted_rows:
+            return []
+        changes = []
+        count = self._average_formula_count(dfm)
+        if count != len(wanted_rows):
+            dfm.RatioAverageCount = len(wanted_rows)
+            changes.append(f"rows {count} -> {len(wanted_rows)}")
+        current_rows = self._read_average_rows(dfm)
+        readings = self.migration.resq_average_rows_as_arcrho(
+            [row["raw_name"] for row in current_rows], current_rows
+        )
+        redefined = 0
+        for index, (current, reading, wanted) in enumerate(zip(current_rows, readings, wanted_rows), start=1):
+            if self._average_row_is_current(current, reading, wanted):
+                continue
+            self._write_average_row(dfm, index, current, wanted)
+            redefined += 1
+        if redefined:
+            changes.append(f"{redefined} row{'s' if redefined != 1 else ''} redefined")
+        return changes
 
     def _resq_notes_text(self, notes):
         # ResQ Notes need \r\n line breaks; a \n-only value renders as one line.
@@ -588,6 +794,14 @@ class ResQReservingClassExporter:
             return max(int(dfm.RatioAverageCount), 0)
         except Exception:
             return 0
+
+    @staticmethod
+    def _average_type_at(dfm, index):
+        """ResQ's AverageType of one average row, ``None`` when it cannot be read."""
+        try:
+            return int(dfm.CustomAverages(index).AverageType)
+        except Exception:
+            return None
 
     def _probe_dfm_averages(self, dfm):
         """Skip a DFM whose ResQ average formulas cannot be evaluated.
@@ -735,18 +949,28 @@ class ResQReservingClassExporter:
             for label, display_index in display_indexes.items()
             if _is_user_entry_label(label)
         }
-        if not user_entry_indexes:
+        # A ResQ User Entry row ArcRho names otherwise -- one the structure
+        # step just defined from an ArcRho User Entry row -- takes the values
+        # of the ArcRho row of its own label.
+        typed_indexes = {
+            label: display_index
+            for label, display_index in display_indexes.items()
+            if label not in user_entry_indexes
+            and self._average_type_at(dfm, display_index) == RESQ_AVERAGE_TYPE_USER_ENTRY
+        }
+        if not user_entry_indexes and not typed_indexes:
             return 0
         # ResQ's own User Entry row takes the row ArcRho holds as such, even
         # when that row was renamed; every further User Entry row of the DFM
         # is matched to its own ArcRho row by the label the import gave it.
         rows = {}
         primary_row = self._user_entry_payload_row_index(average_formulas)
-        if primary_row is not None:
+        if primary_row is not None and user_entry_indexes:
             rows[primary_row] = next(iter(user_entry_indexes.values()))
         labels = average_formulas.get("label") if isinstance(average_formulas.get("label"), list) else []
+        label_indexes = {**user_entry_indexes, **typed_indexes}
         for row_index, label in enumerate(labels):
-            display_index = user_entry_indexes.get(str(label))
+            display_index = label_indexes.get(str(label))
             if display_index is not None and row_index not in rows and display_index not in rows.values():
                 rows[row_index] = display_index
         # The last column is the "- Ult" tail, which is the row's TailFactor

@@ -27,7 +27,12 @@ for _path in (_SRC_DIR, _MIGRATION_DIR):
 
 import arcrho_api  # noqa: E402
 from arcrho_api import resq_sync_queue, ui as ui_module  # noqa: E402
-from resq_migration.dfm import resq_average_row_labels  # noqa: E402
+from resq_migration.dfm import (  # noqa: E402
+    arcrho_average_rows_as_resq,
+    average_formula_key,
+    resq_average_row_labels,
+    resq_average_rows_as_arcrho,
+)
 
 
 def _load_macro():
@@ -43,6 +48,9 @@ def _migration(**fields):
         "USER_NAME": "user",
         "PASSWORD": "secret",
         "resq_average_row_labels": resq_average_row_labels,
+        "resq_average_rows_as_arcrho": resq_average_rows_as_arcrho,
+        "arcrho_average_rows_as_resq": arcrho_average_rows_as_resq,
+        "average_formula_key": average_formula_key,
     }
     values.update(fields)
     return types.SimpleNamespace(**values)
@@ -707,6 +715,348 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
 
         self.assertEqual(indexes["User Entry"], 10)
         self.assertNotIn("Aug 2024", indexes)
+
+
+class _FakeAverage:
+    """One ResQ ``CustomAverages(i)`` row.
+
+    ResQ renames a row from its fields until it is named explicitly, and an
+    explicit name sticks; the probe of 2026-09-23 confirmed both.
+    """
+
+    def __init__(self, name, average_type=0, weight_type=1, periods=0, exclude=0, formula=""):
+        self.__dict__.update(
+            _name=name, _explicit=True, AverageType=average_type, WeightType=weight_type,
+            PeriodsIncluded=periods, ExcludeHighLow=exclude > 0, ExcludeHighLow2=exclude,
+            Formula=formula, TailFactor=1.0, puts=[],
+        )
+
+    def _derived_name(self):
+        if self.AverageType == 5:
+            return "User Entry"
+        if self.AverageType == 6:
+            return "Calculated"
+        if self.AverageType == 9:
+            return "Benchmark Pattern"
+        base = "Volume" if self.WeightType == 1 else "Simple"
+        periods = "all" if self.PeriodsIncluded == 0 else str(self.PeriodsIncluded)
+        exclude = ""
+        if self.ExcludeHighLow and self.ExcludeHighLow2:
+            exclude = " Ex hi/lo" + (f" x{self.ExcludeHighLow2}" if self.ExcludeHighLow2 > 1 else "")
+        return f"{base} - {periods}{exclude}"
+
+    def __setattr__(self, key, value):
+        self.__dict__["puts"].append(key)
+        if key == "Name":
+            self.__dict__.update(_name=value, _explicit=True)
+            return
+        self.__dict__[key] = value
+        if not self._explicit:
+            self.__dict__["_name"] = self._derived_name()
+
+    @property
+    def Name(self):
+        return self._name
+
+
+class _FakeNamed:
+    def __init__(self, name):
+        self.Name = name
+
+
+class _FakeResqDfm:
+    """A ResQ DFM with the structure members the export writes."""
+
+    def __init__(self, rows, *, origin_length=12, development_length=12, input_name="Paid Loss", output_type="D 50"):
+        self.averages = [_FakeAverage(*row) for row in rows]
+        self._origin = origin_length
+        self._development = development_length
+        self.InputTriangle = _FakeNamed(input_name)
+        self.OutputVector = types.SimpleNamespace(Name="D 50 out", DatasetType=_FakeNamed(output_type))
+        self.length_puts = []
+        self.saved = 0
+        self.Notes = ""
+        self.locked = False  # a template implementation refuses structural changes
+
+    @property
+    def RatioAverageCount(self):
+        return len(self.averages)
+
+    @RatioAverageCount.setter
+    def RatioAverageCount(self, value):
+        if self.locked:
+            raise RuntimeError("it is part of the template implementation")
+        if value < len(self.averages):
+            del self.averages[value:]
+        while len(self.averages) < value:
+            # ResQ appends its own default rows, then User Entry rows.
+            average = _FakeAverage("User Entry", average_type=5)
+            average.__dict__["_explicit"] = False
+            self.averages.append(average)
+
+    @property
+    def OriginLength(self):
+        return self._origin
+
+    @OriginLength.setter
+    def OriginLength(self, value):
+        self.length_puts.append(("OriginLength", value))
+        self._origin = value
+        if value % self._development:
+            self._development = value  # a shorter origin pulls the development length down
+
+    @property
+    def DevelopmentLength(self):
+        return self._development
+
+    @DevelopmentLength.setter
+    def DevelopmentLength(self, value):
+        if self._origin % value:
+            raise RuntimeError("The development length is incompatible with the origin length")
+        self.length_puts.append(("DevelopmentLength", value))
+        self._development = value
+
+    def CustomAverages(self, index):
+        return self.averages[index - 1]
+
+    def AverageFormula(self, index):
+        if index <= len(self.averages):
+            return f"{index}: {self.averages[index - 1].Name}"
+        return f"{index}: User Entry"
+
+    def AverageRatioValues(self, _column, index):
+        if index > len(self.averages):
+            raise RuntimeError("Access violation in module 'ResQ3Automation.dll'")
+        return 1.5
+
+    OriginCount = 0
+
+    def Save(self):
+        self.saved += 1
+
+
+class ExportMacroDfmStructureTests(unittest.TestCase):
+    """Exporting an existing DFM gives ResQ ArcRho's output type, input, lengths and average rows first."""
+
+    RESQ_ROWS = [
+        ("Volume - all", 0, 1, 0, 0),
+        ("Simple - 5", 0, 0, 5, 0),
+        ("Simple - 3", 0, 0, 3, 0),
+        ("Benchmark", 9, 0, 0, 0),
+        ("User Entry", 5, 0, 0, 0),
+        ("Aug 2024", 7, 0, 0, 0),  # a prior-analysis row ArcRho holds as copied values
+    ]
+    # The rows the import gives ArcRho for RESQ_ROWS.
+    ARCRHO_ROWS = [
+        ("Volume - all", "custom", "volume", "all", 0),
+        ("Simple - 5", "custom", "simple", 5, 0),
+        ("Simple - 3", "custom", "simple", 3, 0),
+        ("Benchmark", "custom", "benchmark", "all", 0),
+        ("User Entry", "user_entry", "simple", "all", 0),
+        ("Aug 2024", "user_entry", "simple", "all", 0),
+    ]
+
+    def setUp(self):
+        self.module = _load_macro()
+
+    def _exporter(self, dfm, triangles=(), dataset_types=()):
+        exporter = self.module.ResQReservingClassExporter(
+            _migration(), arcrho_project_name="Project", rc_path="Line/Class", server_root=Path(".")
+        )
+        found = {"dfm_methods": dfm}
+        exporter._find_in = lambda key, _factory, name: (
+            found.get(key)
+            if key == "dfm_methods"
+            else next((item for item in (triangles if key == "triangles" else dataset_types) if item.Name == name), None)
+        )
+        exporter.reserving_class = types.SimpleNamespace(DFMMethods=lambda: [], Triangles=lambda: [])
+        exporter.project = types.SimpleNamespace(DatasetTypes=lambda: [])
+        return exporter
+
+    @staticmethod
+    def _payload(rows, *, formulas=None, dev_count=3, **details):
+        block = {
+            "label": [row[0] for row in rows],
+            "custom_average_formula_settings": {
+                "average_type": [row[1] for row in rows],
+                "base": [row[2] for row in rows],
+                "periods": [row[3] for row in rows],
+                "exclude": [row[4] for row in rows],
+            },
+            "inputs": [[""] * dev_count for _ in rows],
+        }
+        for index, formula in (formulas or {}).items():
+            block["inputs"][index] = [formula] * (dev_count - 1) + [""]
+        details.setdefault("name", "D 50")
+        return {"details_tab": details, "ratios_tab": {"average_formulas": block}}
+
+    def _export(self, exporter, payload):
+        exporter.export_dfms([{"name": "D 50", "payload": payload}])
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(exporter.skipped, {}, exporter.skip_details)
+
+    def _read_back(self, dfm):
+        """The rows as the import would read them from the fake ResQ DFM."""
+        raw = [dfm.AverageFormula(i) for i in range(1, dfm.RatioAverageCount + 1)]
+        stored = [{"average_type": a.AverageType, "formula": a.Formula} for a in dfm.averages]
+        return resq_average_rows_as_arcrho(raw, stored)
+
+    def test_an_unchanged_dfm_has_nothing_structural_written(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, origin_length=12, development_length=12,
+                                             input_triangle="Paid Loss", output_type="D 50"))
+
+        self.assertTrue(all(average.puts == [] for average in dfm.averages))
+        self.assertEqual(dfm.length_puts, [])
+        self.assertEqual(exporter.written_details, [])
+        self.assertEqual(dfm.saved, 1)
+        # The prior-analysis row ArcRho carries as copied values keeps its ResQ type.
+        self.assertEqual(dfm.averages[5].AverageType, 7)
+
+    def test_too_many_resq_rows_are_dropped_to_the_arcrho_count(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS + [("User Entry", 5, 0, 0, 0), ("Simple - 2", 0, 0, 2, 0)])
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS))
+
+        self.assertEqual(dfm.RatioAverageCount, 6)
+        self.assertEqual(exporter.written_details[-1]["message"], "rows 8 -> 6")
+
+    def test_too_few_resq_rows_grow_and_the_new_rows_take_the_arcrho_definitions(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS[:3])
+        exporter = self._exporter(dfm)
+        rows = self.ARCRHO_ROWS[:3] + [
+            ("Volume - 4 Ex hi/lo", "custom", "volume", 4, 1),
+            ("Simple - 6 Ex hi/lo x2", "custom", "simple", 6, 2),
+        ]
+
+        self._export(exporter, self._payload(rows))
+
+        self.assertEqual(dfm.RatioAverageCount, 5)
+        read_back = self._read_back(dfm)
+        self.assertEqual([row["label"] for row in read_back], [row[0] for row in rows])
+        self.assertEqual(read_back[3]["settings"], {"average_type": "custom", "base": "volume", "periods": 4, "exclude": 1})
+        self.assertEqual(read_back[4]["settings"], {"average_type": "custom", "base": "simple", "periods": 6, "exclude": 2})
+        self.assertEqual(exporter.written_details[-1]["message"], "rows 3 -> 5, 2 rows redefined")
+        # The name is always the last put, after the fields ResQ derives a name from.
+        self.assertEqual(dfm.averages[3].puts[-1], "Name")
+
+    def test_a_changed_row_type_is_rewritten(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+        rows = list(self.ARCRHO_ROWS)
+        rows[1] = ("Volume - 5", "custom", "volume", 5, 0)
+        rows[3] = ("Simple - 8", "custom", "simple", 8, 0)
+
+        self._export(exporter, self._payload(rows))
+
+        self.assertEqual((dfm.averages[1].WeightType, dfm.averages[1].PeriodsIncluded, dfm.averages[1].Name), (1, 5, "Volume - 5"))
+        self.assertEqual((dfm.averages[3].AverageType, dfm.averages[3].PeriodsIncluded, dfm.averages[3].Name), (0, 8, "Simple - 8"))
+        self.assertEqual([row["label"] for row in self._read_back(dfm)], [row[0] for row in rows])
+        self.assertEqual(exporter.written_details[-1]["message"], "2 rows redefined")
+
+    def test_a_calculated_formula_naming_other_rows_becomes_a_resq_user_calculation(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+        rows = list(self.ARCRHO_ROWS)
+        rows[3] = ("Avg 5 and 3", "user_entry", "simple", "all", 0)
+        formula = '=("Simple - 5"+"Simple - 3")/2'
+
+        self._export(exporter, self._payload(rows, formulas={3: formula}))
+
+        average = dfm.averages[3]
+        self.assertEqual((average.AverageType, average.Formula, average.Name), (6, "(Average(2)+Average(3))/2", "Avg 5 and 3"))
+        read_back = self._read_back(dfm)
+        self.assertEqual(read_back[3]["formula"], formula)
+        self.assertEqual(read_back[3]["settings"]["average_type"], "user_entry")
+
+        # Exporting again finds the row current and writes nothing more.
+        average.puts.clear()
+        exporter.written_details.clear()
+        self._export(exporter, self._payload(rows, formulas={3: formula}))
+        self.assertEqual(average.puts, [])
+        self.assertEqual(exporter.written_details, [])
+
+    def test_a_changed_input_triangle_and_output_type_are_written(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        incurred = _FakeNamed("Incurred Loss")
+        new_type = _FakeNamed("D 60")
+        exporter = self._exporter(dfm, triangles=[incurred], dataset_types=[new_type])
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, input_triangle="Incurred Loss", output_type="D 60"))
+
+        self.assertIs(dfm.InputTriangle, incurred)
+        self.assertIs(dfm.OutputVector.DatasetType, new_type)
+        self.assertEqual(
+            exporter.written_details[-1]["message"],
+            "output type D 50 -> D 60, input Paid Loss -> Incurred Loss",
+        )
+
+    def test_an_input_triangle_resq_lacks_skips_the_dfm_before_any_write(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+
+        exporter.export_dfms([{"name": "D 50", "payload": self._payload(self.ARCRHO_ROWS, input_triangle="Nowhere")}])
+
+        self.assertEqual(exporter.skipped, {"missing_input": 1})
+        self.assertIn("input triangle Nowhere not found in ResQ", exporter.skip_details[-1]["message"])
+        self.assertEqual(dfm.saved, 0)
+
+    def test_shorter_lengths_put_the_origin_first(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS, origin_length=12, development_length=12)
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, origin_length=3, development_length=3))
+
+        self.assertEqual((dfm.OriginLength, dfm.DevelopmentLength), (3, 3))
+        self.assertEqual(dfm.length_puts, [("OriginLength", 3)])
+        self.assertEqual(exporter.written_details[-1]["message"], "lengths 12/12 -> 3/3")
+
+    def test_longer_lengths_put_the_origin_then_the_development_length(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS, origin_length=3, development_length=3)
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, origin_length=12, development_length=12))
+
+        self.assertEqual((dfm.OriginLength, dfm.DevelopmentLength), (12, 12))
+        self.assertEqual(dfm.length_puts, [("OriginLength", 12), ("DevelopmentLength", 12)])
+
+    def test_a_refused_structure_change_is_an_error_naming_what_was_done(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        dfm.locked = True
+        exporter = self._exporter(dfm)
+
+        exporter.export_dfms([{"name": "D 50", "payload": self._payload(self.ARCRHO_ROWS[:4], origin_length=6, development_length=6)}])
+
+        self.assertEqual(exporter.counts["errors"], 1)
+        self.assertEqual(
+            exporter.error_details[-1]["message"],
+            "ResQ refused a change to the DFM's structure after lengths 12/12 -> 6/6: "
+            "it is part of the template implementation",
+        )
+        self.assertEqual(dfm.saved, 0)
+
+    def test_a_plain_user_entry_row_arcrho_names_otherwise_takes_its_values(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        dfm.OriginCount = 2
+        dfm.DevelopmentCount = lambda _origin: 3
+        calls = []
+        dfm.SetUserRatios = lambda **kwargs: calls.append(kwargs)
+        exporter = self._exporter(dfm)
+        rows = list(self.ARCRHO_ROWS)
+        rows[3] = ("Selected", "user_entry", "simple", "all", 0)
+        payload = self._payload(rows)
+        payload["ratios_tab"]["average_formulas"]["values"] = [[1.0, 1.0, 1.0]] * 3 + [[1.4, 1.2, 1.0], [1.3, 1.1, 1.0], [1.0, 1.0, 1.0]]
+
+        self.assertEqual(exporter._sync_dfm_structure(dfm, payload["details_tab"], payload), ["1 row redefined"])
+        exporter._sync_dfm_user_entry_values(dfm, payload)
+
+        self.assertEqual((dfm.averages[3].AverageType, dfm.averages[3].Name), (5, "Selected"))
+        self.assertIn({"DevIndex": 1, "AvgIndex": 4, "arg2": 1.4}, calls)
+        self.assertIn({"DevIndex": 2, "AvgIndex": 4, "arg2": 1.2}, calls)
+        self.assertIn({"DevIndex": 1, "AvgIndex": 5, "arg2": 1.3}, calls)
 
 
 class ExportMacroSaveOnlyTests(unittest.TestCase):

@@ -936,7 +936,13 @@ OUTCOME_FAILED = "failed"
 def _exporter_snapshot(exporter) -> dict[str, Any]:
     before = dict(exporter.counts)
     before["_skipped"] = dict(exporter.skipped)
+    before["_written_details"] = len(_written_details(exporter))
     return before
+
+
+def _written_details(exporter) -> list:
+    details = getattr(exporter, "written_details", None)
+    return details if isinstance(details, list) else []
 
 
 def _export_result_delta(exporter, before: Mapping[str, Any], count_field: str) -> tuple[str, str]:
@@ -951,6 +957,13 @@ def _export_result_delta(exporter, before: Mapping[str, Any], count_field: str) 
             detail = exporter.skip_details[-1] if exporter.skip_details else {}
             return OUTCOME_SKIPPED, str(detail.get("message") or str(reason).replace("_", " "))
     if count_field and int(exporter.counts.get(count_field) or 0) > int(before.get(count_field) or 0):
+        # A writer that changed more than values -- a DFM's rows, input or
+        # lengths -- says what, and the results window shows it.
+        details = _written_details(exporter)
+        if len(details) > int(before.get("_written_details") or 0):
+            message = str(details[-1].get("message") or "").strip()
+            if message:
+                return OUTCOME_WRITTEN, f"Written to ResQ: {message}."
         return OUTCOME_WRITTEN, "Written to ResQ."
     return OUTCOME_FAILED, "ResQ did not report the item as written."
 

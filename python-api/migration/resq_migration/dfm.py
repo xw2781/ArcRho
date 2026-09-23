@@ -605,6 +605,203 @@ def _average_row_settings(average_type: int | None, label: str) -> dict:
         return _infer_avg_settings(label) or _copied_value_settings()
     return _copied_value_settings()
 
+
+_BENCHMARK_SETTINGS = {"average_type": "custom", "base": "benchmark", "periods": "all", "exclude": 0}
+
+
+def resq_average_rows_as_arcrho(raw_names: list, definitions: list) -> list[dict]:
+    """How the import holds each ResQ average row: its label, settings and formula.
+
+    *raw_names* are the rows as ``AverageFormula`` names them and
+    *definitions* what ``_read_resq_average_definition`` read for each. A
+    translated User Calculation row becomes a User Entry row carrying its
+    formula; one that cannot be translated keeps ResQ's numbers under the
+    benchmark settings. The export compares a ResQ row with ArcRho's through
+    this reading, so the two directions share one rule.
+    """
+
+    labels = resq_average_row_labels(raw_names)
+    rows: list[dict] = []
+    for row, label in enumerate(labels):
+        definition = definitions[row] if row < len(definitions) and isinstance(definitions[row], dict) else {}
+        average_type = definition.get("average_type")
+        formula = ""
+        if average_type == RESQ_AVERAGE_TYPE_CALCULATED:
+            formula = _translate_resq_average_formula(definition.get("formula") or "", labels, row) or ""
+            settings = _copied_value_settings() if formula else dict(_BENCHMARK_SETTINGS)
+        else:
+            settings = _average_row_settings(average_type, label)
+        rows.append({"label": label, "settings": settings, "formula": formula})
+    return rows
+
+
+# An ArcRho in-cell formula names another summary row by quoting its label.
+_ARCRHO_LABEL_REFERENCE_RE = re.compile(r'"([^"]*)"')
+
+
+def _average_label_key(label) -> str:
+    return " ".join(str(label if label is not None else "").split()).casefold()
+
+
+def _arcrho_row_formula(row_inputs) -> str:
+    """The one formula an ArcRho row applies in every ratio column, else ``""``.
+
+    The import writes a User Calculation row's formula into every ratio
+    column and leaves the last ("- Ult") cell empty, so only a row that holds
+    the same formula naming another row in all of those columns is one ResQ
+    can hold as a calculated average. Anything else is a User Entry row.
+    """
+
+    if not isinstance(row_inputs, list) or not row_inputs:
+        return ""
+    cells = row_inputs[:-1] if len(row_inputs) > 1 else row_inputs
+    texts = {" ".join(str(cell if cell is not None else "").split()) for cell in cells}
+    if len(texts) != 1:
+        return ""
+    text = texts.pop()
+    return text if text.startswith("=") and '"' in text else ""
+
+
+def _arcrho_formula_as_resq(formula: str, labels: list[str], own_row: int) -> str | None:
+    """Rewrite an ArcRho row formula as a ResQ ``Average(n)`` formula.
+
+    The inverse of ``_translate_resq_average_formula``:
+    ``=("Simple - 5"+"Simple - 3")/2`` becomes ``(Average(5)+Average(6))/2``
+    where row 5 and row 6 are those labels' positions counting from one.
+    ``None`` when a label is unknown, shared by two rows or the row itself,
+    or anything but arithmetic is left over.
+    """
+
+    text = " ".join(str(formula or "").split())
+    if text.startswith("="):
+        text = text[1:].strip()
+    if not text:
+        return None
+    keys = [_average_label_key(label) for label in labels]
+    counts = Counter(keys)
+    failed = False
+
+    def replace(match: re.Match) -> str:
+        nonlocal failed
+        key = _average_label_key(match.group(1))
+        if not key or counts[key] != 1:
+            failed = True
+            return ""
+        row = keys.index(key)
+        if row == own_row:
+            failed = True
+            return ""
+        return f"Average({row + 1})"
+
+    translated = _ARCRHO_LABEL_REFERENCE_RE.sub(replace, text)
+    if failed or translated == text:
+        return None
+    if not _ARCRHO_FORMULA_RESIDUE_RE.match(_RESQ_AVERAGE_REFERENCE_RE.sub("", translated)):
+        return None
+    return translated
+
+
+def _arcrho_row_settings(settings: dict, row: int) -> dict:
+    def pick(key, default):
+        values = settings.get(key) if isinstance(settings, dict) else None
+        return values[row] if isinstance(values, list) and row < len(values) else default
+
+    average_type = str(pick("average_type", "custom") or "").strip().lower()
+    base = str(pick("base", "simple") or "").strip().lower()
+    periods = pick("periods", "all")
+    if isinstance(periods, str) and periods.strip().lower() == "all":
+        periods = "all"
+    else:
+        try:
+            periods = int(float(periods))
+        except (TypeError, ValueError):
+            periods = 0
+        periods = periods if periods > 0 else "all"
+    try:
+        exclude = max(int(float(pick("exclude", 0) or 0)), 0)
+    except (TypeError, ValueError):
+        exclude = 0
+    return {
+        "average_type": "user_entry" if average_type == "user_entry" else "custom",
+        "base": base if base in {"simple", "volume", "benchmark"} else "simple",
+        "periods": periods,
+        "exclude": exclude,
+    }
+
+
+def arcrho_average_rows_as_resq(average_formulas: dict) -> list[dict]:
+    """The ResQ definition of each ArcRho average row, the inverse of the import.
+
+    Each entry holds what the export writes into ``CustomAverages(i)`` --
+    ``name``, ``average_type``, and for a custom row ``weight_type``,
+    ``periods_included`` (0 = all) and ``exclude_high_low`` (the high/low
+    count), for a calculated row ``formula`` -- and, under ``arcrho``, the
+    label, settings and formula the import reads back from that definition:
+
+    - a volume or simple average is a custom row (type 0) named by its label,
+      because the import reads its weighting, periods and exclusion from the
+      name;
+    - a benchmark row is type 9;
+    - a User Entry row whose ratio columns all hold one formula naming other
+      rows is a calculated row (type 6) with that formula as ``Average(n)``;
+      every other User Entry row, and every row named User Entry, is ResQ's
+      User Entry (type 5), named plainly ``User Entry`` since the import
+      numbers the repeats itself.
+    """
+
+    if not isinstance(average_formulas, dict):
+        return []
+    raw_labels = average_formulas.get("label")
+    labels = [" ".join(str(label or "").split()) for label in raw_labels] if isinstance(raw_labels, list) else []
+    settings = average_formulas.get("custom_average_formula_settings")
+    settings = settings if isinstance(settings, dict) else {}
+    inputs = average_formulas.get("inputs")
+    if not isinstance(inputs, list):
+        inputs = average_formulas.get("formulas") if isinstance(average_formulas.get("formulas"), list) else []
+    rows: list[dict] = []
+    for row, label in enumerate(labels):
+        s = _arcrho_row_settings(settings, row)
+        user_named = _is_resq_user_entry_name(label)
+        entry = {
+            "label": label,
+            "name": "User Entry" if user_named else label,
+            "average_type": RESQ_AVERAGE_TYPE_CUSTOM,
+            "weight_type": None,
+            "periods_included": None,
+            "exclude_high_low": None,
+            "formula": "",
+        }
+        formula = ""
+        if s["average_type"] == "user_entry":
+            arcrho_formula = "" if user_named else _arcrho_row_formula(inputs[row] if row < len(inputs) else None)
+            resq_formula = _arcrho_formula_as_resq(arcrho_formula, labels, row) if arcrho_formula else None
+            if resq_formula:
+                entry["average_type"] = RESQ_AVERAGE_TYPE_CALCULATED
+                entry["formula"] = resq_formula
+                formula = arcrho_formula
+            else:
+                entry["average_type"] = RESQ_AVERAGE_TYPE_USER_ENTRY
+            reading = _copied_value_settings()
+        elif s["base"] == "benchmark":
+            entry["average_type"] = RESQ_AVERAGE_TYPE_BENCHMARK
+            reading = dict(_BENCHMARK_SETTINGS)
+        else:
+            entry["weight_type"] = 1 if s["base"] == "volume" else 0
+            entry["periods_included"] = 0 if s["periods"] == "all" else int(s["periods"])
+            entry["exclude_high_low"] = int(s["exclude"])
+            reading = dict(s)
+        entry["arcrho"] = {"label": label, "settings": reading, "formula": formula}
+        rows.append(entry)
+    return rows
+
+
+def average_formula_key(formula) -> str:
+    """A formula compared without its spacing, case or leading ``=``."""
+
+    text = "".join(str(formula or "").split()).casefold()
+    return text[1:] if text.startswith("=") else text
+
+
 def _recreate_adjustment_formulas(
     notes: str,
     ratio_dev_labels: list[str],
@@ -898,29 +1095,19 @@ def export_dfm(
         excluded.append(ex_row)
 
     # Every real average row, in ResQ order; row k is ResQ's formula k + 1.
-    formula_labels = resq_average_row_labels(
-        _resq_average_formula_names(dfm, strict, max_average_formula_probe)
-    )
+    raw_formula_names = _resq_average_formula_names(dfm, strict, max_average_formula_probe)
+    formula_labels = resq_average_row_labels(raw_formula_names)
     n_formulas = len(formula_labels)
 
     # ResQ's "User Calculation" rows: an average defined as arithmetic over the
     # other average rows rather than over the ratio triangle. ArcRho has no such
     # row type, but its User Entry row accepts exactly the same kind of in-cell
     # formula, so each one is imported as a User Entry row under its ResQ name
-    # with the formula rewritten into ArcRho's own reference syntax.
-    calculated_formulas: dict[int, str] = {}
+    # with the formula rewritten into ArcRho's own reference syntax. One that
+    # cannot be carried across keeps the numbers ResQ computed and stops moving
+    # with the triangle, the same treatment a loaded benchmark row gets.
     definitions = [_read_resq_average_definition(dfm, row + 1) for row in range(n_formulas)]
-    for row, definition in enumerate(definitions):
-        if definition["average_type"] != RESQ_AVERAGE_TYPE_CALCULATED:
-            continue
-        translated = _translate_resq_average_formula(definition["formula"], formula_labels, row)
-        if translated:
-            calculated_formulas[row] = translated
-        else:
-            # Nothing portable to carry across, so the row keeps the numbers
-            # ResQ computed and stops moving with the triangle, the same
-            # treatment a loaded benchmark row gets.
-            calculated_formulas[row] = ""
+    arcrho_rows = resq_average_rows_as_arcrho(raw_formula_names, definitions)
 
     # selected[formula_row][dev_col] = 1 when that formula is selected
     selected = [[0] * dev_count for _ in range(n_formulas)]
@@ -971,15 +1158,8 @@ def export_dfm(
 
     # Custom average formula settings
     avg_settings: dict = {"average_type": [], "base": [], "periods": [], "exclude": []}
-    for row, label in enumerate(formula_labels):
-        if row in calculated_formulas:
-            s = (
-                _copied_value_settings()
-                if calculated_formulas[row]
-                else {"average_type": "custom", "base": "benchmark", "periods": "all", "exclude": 0}
-            )
-        else:
-            s = _average_row_settings(definitions[row]["average_type"], label)
+    for arcrho_row in arcrho_rows:
+        s = arcrho_row["settings"]
         avg_settings["average_type"].append(s["average_type"])
         avg_settings["base"].append(s["base"])
         avg_settings["periods"].append(s["periods"])
@@ -989,7 +1169,8 @@ def export_dfm(
     # column, the way ResQ applies one definition across the whole row; the
     # tail column is the row's own entered tail factor, never the formula.
     avg_inputs = [[""] * dev_count for _ in range(n_formulas)]
-    for row, formula in calculated_formulas.items():
+    for row, arcrho_row in enumerate(arcrho_rows):
+        formula = arcrho_row["formula"]
         if formula:
             avg_inputs[row] = [formula] * max(dev_count - 1, 0) + [""] * min(dev_count, 1)
     _recreate_adjustment_formulas(

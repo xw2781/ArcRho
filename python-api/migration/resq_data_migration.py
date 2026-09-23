@@ -127,7 +127,10 @@ from resq_migration.dfm import (  # noqa: E402
     configure_dfm,
     dfm_methods_by_output_name as _dfm_methods_by_output_name,
     export_dfm_output_dataset as _export_dfm_output_dataset,
+    arcrho_average_rows_as_resq,
+    average_formula_key,
     resq_average_row_labels,
+    resq_average_rows_as_arcrho,
 )
 from resq_migration.extractors import (  # noqa: E402
     BS_CRA_AVERAGE_CASE_RESERVE_TYPES,

@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7); steps 2-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Steps 3-8 not started.
 
 Last updated: 2026-09-23
 
@@ -11,7 +11,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Learn how ResQ creates and reconfigures these three methods | [x] | 2026-09-23 | 60 min | 22 min | ResQ was shown to accept creating, reshaping and copying these three methods, and the rules and pitfalls it follows are written down for the next steps. |
-| 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [ ] | | 60 min | | |
+| 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [x] | 2026-09-23 | 60 min | 20 min | Exporting a DFM that ResQ already has now also gives it Arco's input triangle, lengths, output type and average rows, and the results window says what changed; it reaches users with the step 6 update. |
 | 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [ ] | | 50 min | | |
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [ ] | | 65 min | | |
 | 5 | A DFM can copy every setting from another DFM in one click | [ ] | | 70 min | | |
@@ -19,7 +19,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 1 of 8 steps done. Estimated 455 min, actual so far 22 min.
+Overall: 2 of 8 steps done. Estimated 455 min, actual so far 42 min.
 
 ## How agents work this plan
 
@@ -186,12 +186,13 @@ Estimate: code edit 30 min, test/validation 30 min, total 60 min. Actual: code e
 - [test_export_reserving_class_macro.py](../../python-api/tests/test_export_reserving_class_macro.py): its fake COM classes and `ExportMacroAverageFormulaTests`.
 - The tests that cover `dfm.py`'s average translation (grep `python-api/tests` for `_translate_resq_average_formula`).
 - Memories: `python-test-runner`, `macro-must-not-depend-on-app-arcrho-api`.
+- Added during the step: `_export_result_delta` in [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around line 942), which decides the results-window message, and the `resq_migration.dfm` import list in [resq_data_migration.py](../../python-api/migration/resq_data_migration.py), since the exporter reaches the migration helpers through that module.
 
 **Do.**
-- [ ] In `dfm.py`, add the inverse of the import translation. Given Arco's average-formula block, it returns per row the ResQ definition: name, AverageType, WeightType, PeriodsIncluded, ExcludeHighLow2, and a Formula whose quoted row labels become `Average(<row>)`. Map benchmark and User Entry rows exactly as the import reads them back.
-- [ ] In the macro, add one step that runs first in `_export_dfm`. It writes the output type, input triangle and lengths, sets `RatioAverageCount` to Arco's row count, and writes each row's definition. It writes only what differs, and the row-label map is rebuilt afterwards. Move `_probe_dfm_averages` after it, so a formula this step fixes no longer skips the DFM.
-- [ ] Report the structure changes in the DFM's success message, for example "rows 13 → 12, input changed".
-- [ ] Update the DFM paragraph of the export doc.
+- [x] In `dfm.py`, add the inverse of the import translation. Given Arco's average-formula block, it returns per row the ResQ definition: name, AverageType, WeightType, PeriodsIncluded, ExcludeHighLow2, and a Formula whose quoted row labels become `Average(<row>)`. Map benchmark and User Entry rows exactly as the import reads them back.
+- [x] In the macro, add one step that runs first in `_export_dfm`. It writes the output type, input triangle and lengths, sets `RatioAverageCount` to Arco's row count, and writes each row's definition. It writes only what differs, and the row-label map is rebuilt afterwards. Move `_probe_dfm_averages` after it, so a formula this step fixes no longer skips the DFM.
+- [x] Report the structure changes in the DFM's success message, for example "rows 13 → 12, input changed".
+- [x] Update the DFM paragraph of the export doc.
 
 **Tests.**
 - A round-trip test in `python-api/tests`: Arco rows → ResQ definitions → the import's reader → the same Arco settings, for every row kind in the step 1 findings.
@@ -200,7 +201,7 @@ Estimate: code edit 30 min, test/validation 30 min, total 60 min. Actual: code e
 
 **Done when.** Those tests pass, and a probe-style check against a `ZZ Probe` DFM in the Fake project (created and then deleted inside the step) shows its rows read back through the import equal to the Arco rows it was given.
 
-Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 16 min, test/validation 4 min, total 20 min; a third of the estimate because the import's own row reading could serve as the "already current" test, and the step 1 probe's helpers made the live ResQ check one script that passed on its first run.
 
 ### Step 3 — The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco
 

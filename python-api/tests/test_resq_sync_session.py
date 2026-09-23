@@ -1374,6 +1374,29 @@ class SyncSessionExportTests(unittest.TestCase):
         }])
         exporter.save_method.assert_not_called()
 
+    def test_a_dfm_whose_structure_changed_says_what_in_its_result(self):
+        exporter = _push_exporter()
+        exporter.written_details = []
+
+        def export_dfms(_entries):
+            exporter.counts["dfms_written"] += 1
+            exporter.written_details.append({"kind": "DFM", "name": "Paid DFM", "message": "rows 13 -> 12, input A -> B"})
+
+        exporter.export_dfms.side_effect = export_dfms
+        row = {
+            "kind": sync_session.KIND_DFM,
+            "name": "Paid CDF",
+            "arcrho": _export_item("Paid CDF", kind=sync_session.KIND_DFM, method_name="Paid DFM"),
+        }
+
+        self.assertEqual(
+            sync_session._push_row_to_resq(exporter, row),
+            ("exported", "Written to ResQ: rows 13 -> 12, input A -> B."),
+        )
+        # A later write that changed only values says plainly that it was written.
+        exporter.export_dfms.side_effect = lambda _entries: exporter.counts.__setitem__("dfms_written", 2)
+        self.assertEqual(sync_session._push_row_to_resq(exporter, row), ("exported", "Written to ResQ."))
+
     def test_a_dataset_and_a_dfm_go_through_the_writers_with_their_notes(self):
         exporter = _push_exporter()
         dataset = {"kind": "Dataset", "name": "Paid Loss", "arcrho": _export_item("Paid Loss", payload={"csv_file": "Paid Loss.csv"})}

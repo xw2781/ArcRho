@@ -34,19 +34,44 @@ every item below is written, each after the items it reads:
   A dataset that is `Calculated` in ResQ is skipped,
   because ResQ recomputes it, even when ArcRho's library treats the type as an
   editable input.
-- **DFM methods** — ratio exclusions (`SetExcludedRatios`), User Entry factors
+- **DFM methods** — first the structure, so the ResQ DFM matches ArcRho's
+  before any value is written: the output vector's dataset type, the input
+  triangle, the origin and development lengths (`OriginLength` first, then
+  `DevelopmentLength`, keeping ResQ's rule that the development length
+  divides the origin length), the number of average rows
+  (`RatioAverageCount`), and each row's definition (`AverageType`,
+  `WeightType`, `PeriodsIncluded`, `ExcludeHighLow`/`ExcludeHighLow2`,
+  `Formula` for a User Calculation row, then `Name`). The rows come from
+  `resq_migration.dfm.arcrho_average_rows_as_resq`, the inverse of the
+  import's own reading (`resq_average_rows_as_arcrho`): a volume or simple
+  row is a custom row named by its label, a benchmark row is type 9, a User
+  Entry row holding one formula that names other rows in every ratio column
+  is a User Calculation row with that formula as `Average(n)`, and every
+  other User Entry row is ResQ's User Entry. Only what differs is written: a
+  row is left alone when the import would already read it as ArcRho's row
+  (which keeps a ResQ median, pattern or prior-analysis row that ArcRho
+  carries as copied values) or when it already holds the definition. An
+  output type ResQ does not have is left as it is and named in the result;
+  an input triangle ResQ does not have skips the DFM (`missing_input`); a
+  structure change ResQ refuses, such as one on a template-implementation
+  method, fails the DFM with ResQ's reason and nothing is saved. The
+  results window lists the structure changes beside the row, for example
+  `Written to ResQ: rows 13 -> 12, input Paid -> Incurred.` Then ratio
+  exclusions (`SetExcludedRatios`), User Entry factors
   (`SetUserRatios`, up to the last ratio column), each average row's `- Ult`
   tail factor (`CustomAverages(i).TailFactor`), the selected average per
   column including the tail column (`SetSelectedRatios`), the Curves tab
   (`FutureDevelopmentPeriods`, `FreeFitC`, `SetIncludedRatios`, the User
   Entry columns through `SetCurveColumnDescription` and `SetCurveValues`
   with `DevIndex = 0` for a column's tail, `SetSelectedEstimates` per period,
-  `SelectedTailFactor` and `SelectedTailCurve`), and Notes, the writer the
-  sync's apply phase uses too. `FittingMethod` is never written: ArcRho fits
+  `SelectedTailFactor` and `SelectedTailCurve`), and Notes. The sync's
+  apply phase uses the same writer, structure step included. `FittingMethod` is never written: ArcRho fits
   by log regression only, so a ResQ method fitted by least squares keeps that
   setting; a prior-analysis, pattern or benchmark user column keeps ResQ's
-  own values. Before anything is
-  written, the first column of every ResQ average formula is read; a DFM with
+  own values. The User Entry factors reach every ResQ User Entry row, those
+  named User Entry and those ArcRho names otherwise. After the structure
+  and before the values, the first column of every ResQ average formula is
+  read; a DFM with
   a formula ResQ cannot evaluate is skipped with that formula named. The read
   covers the `RatioAverageCount` rows the DFM really has, never the phantom
   rows ResQ reports past them.
@@ -303,7 +328,13 @@ against `NJ_Annual_Prod_202605_Fake`, class
 `Calculated` are both true). Early binding, every result re-read through a
 fresh connection (`Disconnect` + `ConnectByName`). The case ids (C1, D2, ...)
 are the probe's. These are the calls the export's create and mirror paths
-rely on; nothing here is used by the export yet.
+rely on. The DFM calls (D1-D4) are what the export's DFM structure step
+writes; a live export of a `ZZ Probe` DFM on 2026-09-23 took it from ResQ's
+five default rows to eight ArcRho rows of every kind, then to five with the
+lengths 12/12 -> 3/3 and back, changing the input triangle and output type
+each way, and every row read back through the import equal to ArcRho's; a
+second export of the same payload wrote nothing structural. The BF, Result
+Selection and create calls are not used by the export yet.
 
 ### Creating a method (C1-C4)
 
