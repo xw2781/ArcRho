@@ -576,12 +576,22 @@ anything was created.
 This matches Decision 9 of the plan closely: ResQ keeps the ratio decimal
 places and writes a Notes line, which Decision 9 does not.
 
-**Not yet confirmed in the ResQ window.** The same comparison through the
-Details tab's "Load Settings From Another Method" button could not run on
-2026-09-23 because the Remote Desktop session was not drawing. The probe's
-`--gui-setup` / `--gui-compare` modes set up a source and target DFM and
-compare them afterwards; the check is carried into step 7 of
-`docs/plans/resq_export_create_and_mirror_methods.md`.
+**Confirmed in the ResQ window (2026-09-23, plan step 7).** The Details
+tab's "Load Settings From Another Method" button opens "Select an item" (a
+class tree, and the chosen class's DFMs by output name). Loading `D 13`'s
+copy `ZZ E2E DFM` from `D 23 - Incurred DFM w/ Selected LDFs` and pressing
+OK (ResQ then lists the dependents it updates and asks to confirm) copied
+what `LoadMethod` copies: every average row, the User Entry values, the
+selections, the ratio exclusions and the Curves user values (a User Entry
+column took the source's prior-analysis values too). It kept the name,
+output, input triangle and `RatioDecimalPlaces` (source 4, target stayed
+5), and appended the same `Method settings loaded from ...` line to the
+empty Notes. The curve-fit Include flags came out as neither the source's
+nor the target's old ones, so ResQ recomputes them for the target's own
+triangle. The ResQ window lists only the methods it has loaded: DFMs the
+probe's `--gui-setup` had just made through COM did not appear in the
+Project Explorer or in "Select an item" until ResQ reloaded, so the check
+used an existing DFM as the source instead.
 
 ### Probe summary (run 5 of 5, 2026-09-23)
 

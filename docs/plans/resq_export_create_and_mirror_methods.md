@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Step 6 done 2026-09-23: the Bridge runs the new export and the shared library offers the Export macro at 3.0.0; three other users' Bridges stayed down after the deploy until they relaunch. Steps 7-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Step 6 done 2026-09-23: the Bridge runs the new export and the shared library offers the Export macro at 3.0.0; three other users' Bridges stayed down after the deploy until they relaunch. Step 7 done 2026-09-23: one export run from Arco created a new DFM, BF and Result Selection in ResQ and put back three methods changed in ResQ; a defect with prior-period Curves columns on a created DFM was fixed and shipped as macro 3.0.1 with a Bridge redeploy; one question about ResQ's read-only prior-period rows is open. Step 8 not started.
 
 Last updated: 2026-09-23
 
@@ -16,10 +16,10 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [x] | 2026-09-23 | 65 min | 16 min | A DFM, BF or Result Selection that only Arco has can now be ticked in the export review and is created in ResQ with Arco's settings, making its output type too when ResQ lacks it; one whose inputs ResQ lacks is skipped with the missing input named, and it reaches users with the step 6 update. |
 | 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
 | 6 | The new export reaches every user | [x] | 2026-09-23 | 30 min | 12 min | The server now runs the new export and the macro library offers Export Reserving Class to ResQ 3.0.0; three other users' ResQ connections did not restart on their own and need them to reopen Arco. |
-| 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
+| 7 | The export is checked end to end in Arco and ResQ | [x] | 2026-09-23 | 80 min | 54 min | One export from Arco created a new DFM, BF and Result Selection in ResQ and put back three methods changed in ResQ, with no failures; one defect was fixed (a newly created DFM lost the prior-period column on its Curves tab) and reaches users through the server and macro 3.0.1; ResQ's own prior-period rows cannot be written, which is left as an open question. |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 6 of 8 steps done. Estimated 455 min, actual so far 120 min.
+Overall: 7 of 8 steps done. Estimated 455 min, actual so far 174 min.
 
 ## How agents work this plan
 
@@ -137,7 +137,7 @@ These are settled for this plan so that no workflow step has to ask.
 
 ## Open decisions
 
-None.
+1. **A ResQ prior-analysis row or Curves column whose values differ from Arco's** (found in step 7; does not block step 8). ResQ refuses any write to a prior-analysis average row ("You cannot set a user value for a read-only average") or a prior-analysis Curves column ("You may not set user entry values on a non-user entry curve"), and a length change clears both to 1.0. The import reads such a row as a User Entry row with ResQ's numbers, so after a length change (made in ResQ or by the export) Arco and ResQ disagree and the export cannot put them back. Should the export turn such a row or column into User Entry and write Arco's values when they differ (losing ResQ's link to the prior analysis), or leave it and name it in the results? Recommendation: turn it into User Entry only when the values differ, since that is how the import already holds it, and say so in the results row. Until then `D 13 - Paid DFM w/ Selected LDFs` in the Fake project's COL class keeps 1.0 in its "Aug 2024" ratio row and Curves column in ResQ, left by step 7's length-change test.
 
 ## Plan
 
@@ -337,26 +337,35 @@ Estimate: code edit 10 min, test/validation 20 min, total 30 min. Actual: code e
 - [GUI Verification](../../agent-instructions/gui-verification.md) and the screen tool [README](../../tools/agent_screen_control/README.md).
 - Memories: `arcrho-launch-electron-detached`, `desktop-input-control-works`, `bridge-worker-claim-identity`, `resq-export-order-diagnosis`.
 - The step 1 doc section.
+- Added during the step: the method save and load routes (`frontend/app_server/api/dfm_method_router.py`, `bornhuetter_ferguson_router.py`, `result_selection_router.py`, each a plan then a save carrying its fingerprint) and `/datasets/cached/delete`, used to make and remove the `ZZ E2E` methods; the exporter's `_sync_dfm_curves` and `_sync_dfm_average_rows`, to judge what the comparison found.
 
 **Do.**
-- [ ] Launch Arco in dev mode detached and open the Fake project in a Project Instance window on class `PRNJ - PA\PA\All States\Direct Group\COL`.
-- [ ] Create in Arco a new DFM on a triangle ResQ holds (Project Instance "Add DFM"), a BF on that DFM with a prior, and a Result Selection loading the new DFM and BF. Give them `ZZ E2E` names. The screen tool cannot type yet, so set a name or a value through the app-server routes when the GUI needs typing, and say so in the report.
-- [ ] In ResQ, change an existing DFM's average rows and lengths, an existing BF's latest or prior, and an existing Result Selection's loaded datasets, through the GUI where it needs no typing and through COM otherwise.
-- [ ] Run the Export macro from the Arco GUI, tick the new and changed methods, and export.
+- [x] Launch Arco in dev mode detached and open the Fake project in a Project Instance window on class `PRNJ - PA\PA\All States\Direct Group\COL`.
+- [x] Create in Arco a new DFM on a triangle ResQ holds (Project Instance "Add DFM"), a BF on that DFM with a prior, and a Result Selection loading the new DFM and BF. Give them `ZZ E2E` names. The screen tool cannot type yet, so set a name or a value through the app-server routes when the GUI needs typing, and say so in the report.
+- [x] In ResQ, change an existing DFM's average rows and lengths, an existing BF's latest or prior, and an existing Result Selection's loaded datasets, through the GUI where it needs no typing and through COM otherwise.
+- [x] Run the Export macro from the Arco GUI, tick the new and changed methods, and export.
   - Confirm the review shows the new rows as tickable.
   - Confirm the results window lists them as created or exported, with no failure.
-- [ ] In the ResQ GUI, open each new and changed method and screenshot its Details, Ratios or Method tab to compare with Arco.
-- [ ] Carried over from step 1: run `py -3.10 tools/resq_method_config_probe.py --gui-setup`, use the ResQ Details tab's "Load Settings From Another Method" on `ZZ Probe GUI Target` from `ZZ Probe GUI Source`, save it in ResQ, then run `--gui-compare` and `--cleanup`. Record in the export doc's "Load Settings From Another Method" section whether the button copies what `LoadMethod` copies.
-- [ ] Confirm through COM that every setting matches Arco's JSON.
-- [ ] Run the Review macro (or the import preview) to confirm no remaining setting differences for these methods.
-- [ ] Fix any defect found, with a test, commit it, and redeploy as in step 6 (patch-bump the macro and republish if it changed). Record each defect in this step's user note.
-- [ ] Clean up: delete the `ZZ E2E` methods in both Arco and ResQ, confirm the changed ResQ methods match Arco again, and delete screenshots under `temp/`.
+- [x] In the ResQ GUI, open each new and changed method and screenshot its Details, Ratios or Method tab to compare with Arco.
+- [x] Carried over from step 1: run `py -3.10 tools/resq_method_config_probe.py --gui-setup`, use the ResQ Details tab's "Load Settings From Another Method" on `ZZ Probe GUI Target` from `ZZ Probe GUI Source`, save it in ResQ, then run `--gui-compare` and `--cleanup`. Record in the export doc's "Load Settings From Another Method" section whether the button copies what `LoadMethod` copies.
+- [x] Confirm through COM that every setting matches Arco's JSON.
+- [x] Run the Review macro (or the import preview) to confirm no remaining setting differences for these methods.
+- [x] Fix any defect found, with a test, commit it, and redeploy as in step 6 (patch-bump the macro and republish if it changed). Record each defect in this step's user note.
+- [x] Clean up: delete the `ZZ E2E` methods in both Arco and ResQ, confirm the changed ResQ methods match Arco again, and delete screenshots under `temp/`.
 
 **Tests.** The GUI run itself, and any regression test added for a defect.
 
 **Done when.** One clean export run creates all three methods and restores all three changed ones, confirmed in the ResQ GUI and through COM, with no failure rows.
 
-Estimate: code edit 20 min, test/validation 60 min, total 80 min.
+Estimate: code edit 20 min, test/validation 60 min, total 80 min. Actual: code edit 18 min, test/validation 36 min, total 54 min.
+
+Notes from the step:
+- The three `ZZ E2E` methods were made through the app-server save routes (loaded from D 13, D 41 and D 91 and saved under new names on output types no COL vector held), because the screen tool cannot type a name. The ResQ changes (D 13 rows +2, row 2 redefined, lengths 12/12 -> 3/3; D 41 latest to Paid and a second prior D 82; D 91 without D 53) were made through COM. Everything else ran in the GUIs: the Export macro from the Arco Macros panel, the review (the three new rows tickable as "Created in ResQ", the three changed ones "Overwrites newer ResQ copy"), the results window, and each method's tab in ResQ.
+- Two clean runs, each "Exported 6, 3 of them created in ResQ; failed 0". D 41 and D 91 came back exactly as before the test. D 13 came back except its prior-analysis "Aug 2024" ratio row and Curves column, which ResQ cleared on the length change and refuses to write; see Open decision 1.
+- Defect fixed (`abf9a1cb`, macro 3.0.1, Bridge redeployed from that commit, library republished): the Curves writer skipped every Arco column not typed User Entry, so the created DFM's third Curves column stayed at 1.0 instead of Arco's "Aug 2024" values. The second run carried them.
+- The settings check read all six methods back through the import and compared them with Arco's method JSON instead of running the Review macro, which compares values, not settings. What remained is expected: ultimates follow `D 42 - Prior for BF Incurred`, whose Arco values (all 0, changed in Arco on 2026-09-16 and not exported) differ from ResQ's; the import reads only a BF's first prior; ResQ cannot create a prior-analysis Curves column, so the created DFM's reads back as User Entry with Arco's values.
+- ResQ's Load Settings button was checked on `ZZ E2E DFM` from `D 23`, because DFMs made through COM do not show in the ResQ window until it reloads; it copies what `LoadMethod` copies (export doc, "Load Settings From Another Method").
+- Clean-up: the `ZZ E2E` methods are gone from both sides (Arco COL back to 120 items; ResQ back to 17 DFM, 4 BF, 11 RS, 74 vectors, 260 types), the probe left no `ZZ Probe` object, and `D 92 - Current Qtr Selected`, flagged for review in ResQ after its precedent D 91 changed, was re-saved unchanged and reads OK. The dev-mode Arco window opened for the test is still running.
 
 ### Step 8 — Copying DFM settings is checked in the running app
 
