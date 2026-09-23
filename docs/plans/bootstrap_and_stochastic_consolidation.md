@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; none done. Open decision 1 (the segments' unrealistic target) was settled the same day: the model stays as built and the data is made realistic.
+Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 is next.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -15,7 +15,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | ResQ's own bootstrap and consolidation results are captured as the reference to match | [ ] | | 70 min | | |
+| 1 | ResQ's own bootstrap and consolidation results are captured as the reference to match | [x] | 2026-09-23 | 70 min | 11 min | The five segment ranges and the total range in ResQ are now realistic, saved, and kept as the reference Arco must match. |
 | 2 | We know whether ResQ's random numbers can be reproduced, and how it builds correlated rankings | [ ] | | 90 min | | |
 | 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | |
 | 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [ ] | | 55 min | | |
@@ -31,7 +31,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | The server components carry the new calculations and imports | [ ] | | 30 min | | |
 | 15 | The whole flow is checked by hand in both ResQ and Arco | [ ] | | 80 min | | |
 
-Overall: 0 of 15 steps done. Estimated 1,095 min, actual so far 0 min.
+Overall: 1 of 15 steps done. Estimated 1,095 min, actual so far 11 min.
 
 ## How agents work this plan
 
@@ -80,6 +80,31 @@ The adjusted values are exactly `2·sin(π·ρ/6)`, the standard conversion from
 
 **ResQ does not keep simulated results unless the method is saved after simulating.** On 2026-09-23 none of the ten bootstraps had saved reserves, and pressing Consolidate in the GUI stopped with "Cannot consolidate because ...BI Total\F 72 A... has no saved scaled reserves." The consolidation ranks, however, are available without any saved reserves, so ResQ regenerates them from the seed on demand.
 
+**Data made realistic, and results saved (step 1, 2026-09-23).** Only `F 92 - Current Qtr Selected ` changed; no triangle was touched, so every `Net Loss--Incurred` keeps its aggregation formula and no model setting moved. In each segment the Result Selection that writes `F 92` had every origin overridden by hand (BI Total, CMPxCAT, COL, MP+PIP) or selected `F 91 - Current Qtr Indicated` (PD+UMPD). `tools/resq_bootstrap_capture.py targets` cleared the overrides, added `F 25 - Incurred DFM Bootstrap` to PD+UMPD's selection, gave `F 25` weight 1 and every other dataset weight 0 for all origins, and saved. So `F 92` now equals the `F 25` DFM ultimate in every segment (full precision in the fixture's `target_ultimates`):
+
+| Segment | `F 92` by origin 2017 → 2026, rounded |
+| :--- | :--- |
+| BI Total | 145,246 · 160,759 · 154,928 · 155,250 · 187,389 · 181,094 · 216,799 · 237,302 · 206,716 · 189,472 |
+| CMPxCAT | 31,856 · 43,879 · 41,169 · 47,437 · 62,935 · 67,756 · 69,540 · 60,682 · 48,190 · 44,451 |
+| COL | 110,677 · 129,394 · 122,939 · 123,085 · 173,289 · 195,136 · 185,380 · 160,449 · 120,635 · 122,641 |
+| MP+PIP | 119,992 · 127,583 · 127,276 · 157,650 · 167,325 · 151,618 · 141,612 · 135,441 · 112,906 · 102,880 |
+| PD+UMPD | 101,379 · 103,700 · 109,822 · 99,170 · 128,565 · 134,458 · 137,822 · 139,638 · 104,893 · 105,836 |
+
+Then `run` simulated and saved the five `F 72 A` bootstraps and consolidated and saved the Total. Every segment passes the plausibility test. Scaled total reserve, as saved in ResQ:
+
+| Segment | Mean | Std. dev. | CV | 99.5% |
+| :--- | :--- | :--- | :--- | :--- |
+| BI Total | 273,917 | 56,987 | 20.8% | 452,639 |
+| CMPxCAT | 33,708 | 5,922 | 17.6% | 51,783 |
+| COL | 58,886 | 9,304 | 15.8% | 84,353 |
+| MP+PIP | 57,372 | 33,140 | 57.8% | 160,310 |
+| PD+UMPD | 84,560 | 16,379 | 19.4% | 134,286 |
+| Total consolidation | 508,444 | 74,529 | 14.7% | 724,130 |
+
+MP+PIP sits close to the 60% CV bound because its older origins carry small negative DFM reserves against a large 2026 one; it passes and was left as is. COL's unscaled results are identical to the older `resq_bootstrap_f72a.json` fixture (same seed, same triangle), so that fixture stays valid.
+
+**COM conventions** (pinned in step 1): simulation indices run 1..n, and 0 or n+1 return garbage instead of raising; `TotalRank` is a permutation of 1..n with rank 1 the smallest total; reserve summaries use origin 0 for the total; `PercentileValue` takes a fraction (0.995); a bootstrap's origin and development indices are 1-based except `DevelopmentCount`, which takes the 0-based origin; residual cells with no value read -99,000,000,000; the consolidation's method index is 1-based; `SimulatedReservesByClass` takes origins 1..n with n+1 as the total (origin 0 access-violates). A consolidation reloaded from the database keeps its ranks and consolidated reserves, but its achieved correlations and reserves by class read as zero until it is consolidated again in memory, which reproduces the saved run exactly.
+
 **The editor** (GUI walk, 2026-09-23) has tabs Details, Included Methods, Correlation, Simulation, Results, Output, Notes, Audit Log. Details holds name, base triangle type, output type, the two read-only lengths, "Consolidate based on Scaled (recommended) / Discounted-Inflated", and "Consolidate reserve cashflows where possible". Included Methods is a grid of index, reserving class, method (with a picker), factor, and Move Up/Down. Correlation holds the four correlation options, the four dependency types, degrees of freedom, and a symmetric matrix with Target (Rank) and Adjusted sub-tabs. Simulation holds only the (read-only) simulation count and the seed with New Seed. Results is empty until Consolidate. Output lists export checkboxes.
 
 **Arco's copy of the fake project** has BI Total, CMPxCAT, COL and PD+UMPD under `All States\Direct Group`, each with `F 25` and `F 92`, but no bootstrap methods, and it has neither `MP+PIP` nor `Total` for All States.
@@ -93,6 +118,8 @@ From the ResQ manual (pages `correlations_tab.htm`, `included_methods_tab.htm`, 
 3. Consolidated simulation `s` takes, from each method `c`, the simulation whose total-reserve rank is `ConsolidationRanks(c, s)`, multiplies its reserves by the method's factor, and adds them origin by origin. The whole origin vector of a simulation moves together.
 4. A method whose base triangle type differs from the consolidation's is adjusted by the difference between the two latest diagonals; in the reference model every method's base equals the consolidation's, so no adjustment applies.
 5. "0% correlated" means independent, "100% correlated" fully rank-correlated, "As it comes" pairs simulations in the order they were generated (not recommended).
+
+**Rule 3 confirmed exactly (step 1).** For all 10,000 simulations, the consolidated scaled total equals the sum over segments of factor × the segment's scaled total from the simulation whose `TotalRank` equals `ConsolidationRanks(c, s)`; the worst relative difference is 4e-16. Ranks run 1..n with rank 1 the smallest total reserve, and each segment's ranks are a permutation, so there are no ties. The origin vector travels with the rank: each segment's reserves by origin in the consolidation are exactly that simulation's reserves by origin. The achieved rank correlation between two segments is the Pearson correlation of their `ConsolidationRanks` rows (0.3918 and 0.3370 against targets 0.38 and 0.34), and the achieved linear correlation is the Pearson correlation of their combined scaled totals (0.4036 and 0.3440). [test_resq_consolidation_fixture.py](../../python-api/tests/test_resq_consolidation_fixture.py) pins all of this.
 
 Step 1 confirms rule 3 exactly against ResQ's numbers; step 2 establishes how rule 2 generates ranks for each dependency type and how a non-positive-definite target is adjusted.
 
@@ -165,19 +192,19 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 **Read first.** This plan's [reference model](#the-reference-model-in-resq) and [how ResQ consolidates](#how-resq-consolidates); [agent-instructions/resq-api-reference.md](../../agent-instructions/resq-api-reference.md); memories `resq-com-probe`, `resq-com-probe-dont-call-blindly`; [tools/resq_stored_length_probe.py](../../tools/resq_stored_length_probe.py) for the connection and write pattern; [python-api/tests/fixtures/resq_bootstrap_f72a.json](../../python-api/tests/fixtures/resq_bootstrap_f72a.json) for the existing fixture shape. Early binding (`gencache.EnsureDispatch`), `py -3.10`, run outside the sandbox. The getter for a consolidation is spelled `GetBootStrapConsolidation`, for a bootstrap `GetBootStrapMethod`.
 
 **Do.**
-- [ ] Add `tools/resq_bootstrap_capture.py`, a reusable script with two modes: `run` (Simulate and Save each named bootstrap, then Consolidate and Save the consolidation) and `capture` (read only). Mutating calls are limited to `Simulate`, `Consolidate`, `Save`, and in the realistic-data case the triangle writes below.
-- [ ] Before simulating, make each segment's data realistic per the decision "The model stays as built; the data is made realistic": keep target `F 92` and Additive scaling, fix `F 92` first and a triangle only if still needed, save those changes in ResQ, and record what was changed (with the values) in the reference-model section so step 10 can reproduce it in Arco.
-- [ ] Capture per segment: the settings listed in the reference-model table, the observed triangle, the DFM's selected ratios, fitted values, residuals, scale values, the unscaled and scaled `Mean`, `StandardError` and `PercentileValue` (5% steps plus 99 and 99.5) by origin and total, the target reserves, `TotalRank(s)` for every simulation, and `SimulatedValue(0, s)` (the total) for every simulation, plus `SimulatedValue(o, s)` by origin for the first 500 simulations.
-- [ ] Capture for the consolidation: settings, target, adjusted and achieved matrices, `ConsolidationRanks(c, s)` for all simulations, the consolidated scaled total per simulation, the consolidated summary by origin and total, and `SimulatedReservesByClass` for the first 500 simulations.
-- [ ] Plausibility test per segment, after the data changes and before accepting it: the total mean scaled reserve is positive, the total CV lies between 2% and 60%, each origin's target reserve is within half to double of the DFM reserve, and the run raises no error. A segment that still fails gets the next change the decision lists; record the numbers in the fixture so step 10 writes the same data into Arco.
-- [ ] Write `python-api/tests/fixtures/resq_bootstrap_consolidation_total.json.gz` (gzip keeps the per-simulation arrays near 1 MB) and extend the existing F 72 A fixture only if a field is missing.
-- [ ] Check rule 3 of [how ResQ consolidates](#how-resq-consolidates) against the capture in a throwaway script: for every simulation, the consolidated total equals the sum over segments of the segment total at the rank ResQ assigned. Record the exact rule (rank direction, ties) in that section. If it does not hold, record what does.
+- [x] Add `tools/resq_bootstrap_capture.py`, a reusable script with two modes: `run` (Simulate and Save each named bootstrap, then Consolidate and Save the consolidation) and `capture` (read only). Mutating calls are limited to `Simulate`, `Consolidate`, `Save`, and in the realistic-data case the triangle writes below.
+- [x] Before simulating, make each segment's data realistic per the decision "The model stays as built; the data is made realistic": keep target `F 92` and Additive scaling, fix `F 92` first and a triangle only if still needed, save those changes in ResQ, and record what was changed (with the values) in the reference-model section so step 10 can reproduce it in Arco.
+- [x] Capture per segment: the settings listed in the reference-model table, the observed triangle, the DFM's selected ratios, fitted values, residuals, scale values, the unscaled and scaled `Mean`, `StandardError` and `PercentileValue` (5% steps plus 99 and 99.5) by origin and total, the target reserves, `TotalRank(s)` for every simulation, and `SimulatedValue(0, s)` (the total) for every simulation, plus `SimulatedValue(o, s)` by origin for the first 500 simulations.
+- [x] Capture for the consolidation: settings, target, adjusted and achieved matrices, `ConsolidationRanks(c, s)` for all simulations, the consolidated scaled total per simulation, the consolidated summary by origin and total, and `SimulatedReservesByClass` for the first 500 simulations.
+- [x] Plausibility test per segment, after the data changes and before accepting it: the total mean scaled reserve is positive, the total CV lies between 2% and 60%, each origin's target reserve is within half to double of the DFM reserve, and the run raises no error. A segment that still fails gets the next change the decision lists; record the numbers in the fixture so step 10 writes the same data into Arco.
+- [x] Write `python-api/tests/fixtures/resq_bootstrap_consolidation_total.json.gz` (gzip keeps the per-simulation arrays near 1 MB; it came out at 1.8 MB) and extend the existing F 72 A fixture only if a field is missing.
+- [x] Check rule 3 of [how ResQ consolidates](#how-resq-consolidates) against the capture in a throwaway script: for every simulation, the consolidated total equals the sum over segments of the segment total at the rank ResQ assigned. Record the exact rule (rank direction, ties) in that section. If it does not hold, record what does.
 
 **Tests.** A small test in `python-api/tests/test_resq_consolidation_fixture.py` that loads the fixture and asserts rule 3 on all 10,000 simulations to 1e-9 relative, so the rule is pinned before any Arco code exists.
 
 **Done when.** ResQ holds saved results for the five bootstraps and the consolidation; the fixture is committed; the rule-3 test passes; the tool is committed with a short module docstring saying what it writes.
 
-**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min.
+**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min. Actual: code edit 9 min, test/validation 2 min, total 11 min; far under because the earlier attempts had already mapped the COM calls and every ResQ run takes under a second.
 
 ### Step 2 — Research ResQ's random stream and rank generation
 
@@ -298,7 +325,7 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Done when.** The migration tests pass, and a local run of the import for COL (Server PC, outside the sandbox) writes `BST@F 72 A - Bootstrap Net incurred with PV.json` whose residual grid matches ResQ.
 
-**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min.
+**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min. Actual: code edit 9 min, test/validation 2 min, total 11 min; far under because the earlier attempts had already mapped the COM calls and every ResQ run takes under a second.
 
 ### Step 9 — Import consolidations and the total class from ResQ
 
