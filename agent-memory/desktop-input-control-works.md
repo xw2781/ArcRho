@@ -17,6 +17,6 @@ What works: `SetCursorPos`, left/right/double click, wheel, key taps, and modifi
 **How to apply:**
 - Declare `INPUT` as `uint type` plus an explicit-layout union of `MOUSEINPUT`/`KEYBDINPUT`, with no trailing padding, and assert `Marshal.SizeOf` is 40 before trusting a run.
 - Call `SetProcessDpiAwarenessContext(-4)` (per-monitor v2) first, not `SetProcessDPIAware`. On 2026-09-22, after an RDP reconnect at another scale, a system-aware process saw a 2560x1920 screen while the real pixels (and every BitBlt screenshot) were 2048x1536, so clicks drifted 25%. `GetDeviceCaps` HORZRES vs DESKTOPHORZRES differing is the tell.
-- Prefer `tools/agent_screen_control/agent_screen_control.ps1 click -X -Y -Window <title>` over hand-rolled SendInput: it draws the agent pointer, checks the window under the target, and hands the real pointer back.
+- Use `tools/agent_screen_control/agent_screen_control.ps1` (windows / screenshot / click / drag) instead of hand-rolled SendInput; the workflow and rules are in `agent-instructions/gui-verification.md`.
 - Guard every injected click: after moving the cursor, check `WindowFromPoint` equals the handle you meant to hit, and abort otherwise. A `TopMost` test window still ended up behind ResQ, and the first round of clicks went into the live ResQ main window instead.
 - Another agent may be driving the same desktop at the same time. Check the screenshot before assuming a failure is yours.
