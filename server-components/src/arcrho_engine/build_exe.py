@@ -127,6 +127,7 @@ def validate_canonical_runtime_environment():
         "import arcrho_source_refresh_contract; "
         "import arcrho_dataset_types_change_contract; "
         "import arcrho_data_processing_rules_job_contract; "
+        "import arcrho_reserving_class_type_contract; "
         "import arcrho_engine_job_lease"
     )
     print("\n>>> Validating canonical dependent-propagation dependencies")
@@ -141,6 +142,7 @@ def build_exe():
         "arcrho_source_refresh_contract.py",
         "arcrho_dataset_types_change_contract.py",
         "arcrho_data_processing_rules_job_contract.py",
+        "arcrho_reserving_class_type_contract.py",
         "arcrho_engine_job_lease.py",
     ):
         contract_module = CANONICAL_SOURCE_ROOT / module_name
@@ -171,6 +173,7 @@ def build_exe():
         "--hidden-import", "arcrho_source_refresh_contract",
         "--hidden-import", "arcrho_dataset_types_change_contract",
         "--hidden-import", "arcrho_data_processing_rules_job_contract",
+        "--hidden-import", "arcrho_reserving_class_type_contract",
         "--hidden-import", "arcrho_engine_job_lease",
         *[
             argument

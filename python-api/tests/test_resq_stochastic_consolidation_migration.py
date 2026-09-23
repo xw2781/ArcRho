@@ -568,8 +568,8 @@ class ResQStochasticConsolidationVectorLoopTests(unittest.TestCase):
         self.assertEqual(sidecar["source_kind"], "input")
 
 
-class ResQCalculatedClassTests(unittest.TestCase):
-    """A ResQ calculated class (the Total) imports as an ordinary class with ResQ's values."""
+class EngineScopeTests(unittest.TestCase):
+    """A class the Engine cannot build (the Total) imports as an ordinary class with ResQ's values."""
 
     def setUp(self) -> None:
         tmp_root = REPO_ROOT / "test"
@@ -599,23 +599,23 @@ class ResQCalculatedClassTests(unittest.TestCase):
             patcher.stop()
         self.tmp.cleanup()
 
-    def test_nothing_is_handed_to_the_engine_inside_a_calculated_class(self) -> None:
+    def test_nothing_is_handed_to_the_engine_inside_a_class_it_cannot_build(self) -> None:
         payload = {"name": "Net Loss--Incurred", "dataset_type": "Net Loss--Incurred"}
         self.assertTrue(catalog._is_engine_generated_instance(payload))
         self.assertEqual(catalog._triangle_source_kind(payload["name"], payload["dataset_type"]), "engine")
-        with catalog.resq_class_scope(calculated=True):
+        with catalog.resq_class_scope(engine_builds=False):
             self.assertFalse(catalog._is_engine_generated_instance(payload))
             self.assertEqual(catalog._triangle_source_kind(payload["name"], payload["dataset_type"]), "input")
-        with catalog.resq_class_scope(calculated=False):
+        with catalog.resq_class_scope(engine_builds=True):
             self.assertTrue(catalog._is_engine_generated_instance(payload))
         self.assertTrue(catalog._is_engine_generated_instance(payload))
 
-    def test_a_calculated_class_vector_keeps_resqs_values_as_input(self) -> None:
+    def test_a_vector_of_a_class_the_engine_cannot_build_keeps_resqs_values_as_input(self) -> None:
         from test_resq_bootstrap_migration import _Vector
 
         vector = _Vector("Earned Premium", ["2025", "2026"], [10.0, 20.0])
         vector.Formula = '"A\\Earned Premium" + "B\\Earned Premium"'
-        with catalog.resq_class_scope(calculated=True):
+        with catalog.resq_class_scope(engine_builds=False):
             payload = extractors.export_vector(vector)
             extractors.write_vector_export(payload, HOST_CLASS, self.rc_dir)
         sidecar = json.loads((self.rc_dir / "sidecars" / "Earned Premium.json").read_text(encoding="utf-8"))
@@ -623,12 +623,36 @@ class ResQCalculatedClassTests(unittest.TestCase):
         self.assertFalse(sidecar["calculated"])
         self.assertEqual(sidecar["precedents"], [])
 
-    def test_the_import_reads_resqs_calculated_flag(self) -> None:
-        import resq_data_migration
-
-        self.assertTrue(resq_data_migration._resq_class_is_calculated(_Named("Total", Calculated=True)))
-        self.assertFalse(resq_data_migration._resq_class_is_calculated(_Named("COL", Calculated=False)))
-        self.assertFalse(resq_data_migration._resq_class_is_calculated(_Named("COL")))
+    def test_the_engine_builds_a_class_only_when_every_level_is_a_known_type(self) -> None:
+        project_dir = Path(self.tmp.name) / "projects" / PROJECT
+        project_dir.mkdir(parents=True)
+        (project_dir / "field_mapping.json").write_text(json.dumps({"rows": [
+            {"field_name": field, "significance": "Reserving Class", "level": level}
+            for level, field in enumerate(("CO_CD", "PROD_CD", "STATE_CD", "CHANNEL", "IBNRCAT"), start=1)
+        ]}), encoding="utf-8")
+        (project_dir / "reserving_class_types.json").write_text(json.dumps({
+            "columns": ["Name", "Level", "Formula", "Source"],
+            "rows": [
+                ["PRNJ - PA", "1", "", ""],
+                ["PA", "2", "", ""],
+                ["All States", "3", "", ""],
+                ["Direct Group", "4", "", ""],
+                ["BI Total", "5", "", ""],
+                ["COL", "5", "", ""],
+            ],
+        }), encoding="utf-8")
+        with mock.patch.object(catalog, "SERVER_ROOT", Path(self.tmp.name)), \
+                mock.patch.object(catalog, "PROJECT_NAME", PROJECT):
+            knows = catalog.engine_knows_reserving_class
+            self.assertTrue(knows("\\".join((GROUP, "BI Total"))))
+            self.assertTrue(knows("\\".join((GROUP, "COL"))))
+            # ResQ's spelling may double a space or change case; the key ignores both.
+            self.assertTrue(knows("\\".join(("prnj -  PA", "PA", "All States", "Direct  Group", "BI Total"))))
+            # The Total's last level is not a type; nor is an unknown intermediate level.
+            self.assertFalse(knows(HOST_CLASS))
+            self.assertFalse(knows("\\".join(("PRNJ - PA", "PA", "Some States", "Direct Group", "COL"))))
+            # A path deeper than the project's levels cannot be built either.
+            self.assertFalse(knows("\\".join((GROUP, "COL", "Extra"))))
 
 
 if __name__ == "__main__":

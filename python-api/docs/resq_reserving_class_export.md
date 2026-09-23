@@ -153,9 +153,12 @@ Left out, and not shown in the results:
   settings and seed, rebuilt from the imported DFM and simulated once), and a
   Stochastic Consolidation (its segments by class path, factors, correlation
   settings, target matrix and seed, consolidated once when every segment
-  bootstrap is already in ArcRho), but nothing flows back. A ResQ calculated
-  class, such as a Total, imports as an ordinary class: its datasets arrive as
-  ResQ's values and none is rebuilt by the Engine.
+  bootstrap is already in ArcRho), but nothing flows back. A class whose path
+  has a level the project's reserving-class types do not define, such as a
+  ResQ Total, imports as an ordinary class: its datasets arrive as ResQ's
+  values and none is rebuilt by the Engine. Every other class hands its
+  generated datasets to the Engine; ResQ's `Calculated` flag on the class is
+  not consulted.
 - **Method output datasets** — they are written through their method, never
   as datasets.
 

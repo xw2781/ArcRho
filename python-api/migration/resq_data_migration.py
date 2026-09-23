@@ -84,6 +84,7 @@ from resq_migration.catalog import (  # noqa: E402
     configure_catalog,
     rebuild_dataset_instance_index,
     refresh_sidecar_graphs_for_rc,
+    engine_knows_reserving_class,
     resq_class_scope,
 )
 from resq_migration.engine_parity import (  # noqa: E402
@@ -706,12 +707,6 @@ def _bootstrap_export_names(
             discovered=len(names),
         )
     return names
-
-
-def _resq_class_is_calculated(reserving_class) -> bool:
-    """True for a ResQ calculated class: a formula over other classes, with no source rows."""
-
-    return _bool_value(_safe_attr(reserving_class, "Calculated", False))
 
 
 def _stochastic_consolidation_export_names(
@@ -2351,7 +2346,7 @@ def _import_reserving_class_as_acting_user(
             rc_written = 0
 
             with defer_sidecar_graph_enrichment(), resq_class_scope(
-                calculated=_resq_class_is_calculated(reserving_class)
+                engine_builds=engine_knows_reserving_class(rc_path)
             ):
                 if run_triangles:
                     written, errors = export_triangles_for_rc(
@@ -2612,7 +2607,7 @@ def main(argv: list[str] | None = None) -> None:
             }
 
             with defer_sidecar_graph_enrichment(), resq_class_scope(
-                calculated=_resq_class_is_calculated(reserving_class)
+                engine_builds=engine_knows_reserving_class(rc_path)
             ):
                 if run_triangles:
                     written, errors = export_triangles_for_rc(

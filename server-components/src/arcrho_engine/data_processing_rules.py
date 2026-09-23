@@ -7,6 +7,8 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 import pandas as pd
 
+from arcrho_reserving_class_type_contract import reserving_class_type_key
+
 
 SUPPORTED_RULES_FORMAT = "arcrho-data-processing-rules-v1"
 
@@ -182,7 +184,7 @@ class ReservingClassCatalog:
                 f"Reserving-class field [{field_info.field}] is level "
                 f"{field_info.level}, not level {normalized_level}."
             )
-        key = (field_info.field, field_info.level, _canonical_name(type_name))
+        key = (field_info.field, field_info.level, reserving_class_type_key(type_name))
         resolved = self.types.get(key)
         if resolved is None:
             raise ReservingClassConfigurationError(
@@ -198,7 +200,7 @@ class ReservingClassCatalog:
         type_name: Any,
     ) -> Dict[str, int]:
         resolved = self.resolve_type(field_name, level, type_name)
-        key = (resolved.field, resolved.level, _canonical_name(resolved.name))
+        key = (resolved.field, resolved.level, reserving_class_type_key(resolved.name))
         return dict(self._resolve_coefficients(key, ()))
 
     def membership_coefficients_for(
@@ -219,7 +221,7 @@ class ReservingClassCatalog:
         whichever granularity the data uses, with the correct +/- sign.
         """
         resolved = self.resolve_type(field_name, level, type_name)
-        key = (resolved.field, resolved.level, _canonical_name(resolved.name))
+        key = (resolved.field, resolved.level, reserving_class_type_key(resolved.name))
         return dict(self._resolve_membership(key, ()))
 
     def _resolve_membership(
@@ -252,7 +254,7 @@ class ReservingClassCatalog:
                 not formula
                 and len(source_tokens) == 1
                 and source_tokens[0][0] == "NAME"
-                and _canonical_name(source_tokens[0][1]) == _canonical_name(row.name)
+                and reserving_class_type_key(source_tokens[0][1]) == reserving_class_type_key(row.name)
             )
         )
         if is_leaf:
@@ -262,7 +264,7 @@ class ReservingClassCatalog:
         next_stack = stack + (key,)
 
         def resolve_component(component_name: str) -> Dict[str, int]:
-            component_key = (row.field, row.level, _canonical_name(component_name))
+            component_key = (row.field, row.level, reserving_class_type_key(component_name))
             if component_key in self.types:
                 return self._resolve_membership(component_key, next_stack)
             # A Formula may reference a display-only label that is not itself a
@@ -309,7 +311,7 @@ class ReservingClassCatalog:
             not formula
             and len(source_tokens) == 1
             and source_tokens[0][0] == "NAME"
-            and _canonical_name(source_tokens[0][1]) == _canonical_name(row.name)
+            and reserving_class_type_key(source_tokens[0][1]) == reserving_class_type_key(row.name)
         ):
             coefficients = {row.name: 1}
             self._coefficients[key] = coefficients
@@ -318,7 +320,7 @@ class ReservingClassCatalog:
         next_stack = stack + (key,)
 
         def resolve_component(component_name: str) -> Dict[str, int]:
-            component_key = (row.field, row.level, _canonical_name(component_name))
+            component_key = (row.field, row.level, reserving_class_type_key(component_name))
             if component_key not in self.types:
                 raise ReservingClassConfigurationError(
                     f"Resolved Source for [{row.name}] references unknown member "
@@ -421,7 +423,7 @@ def build_reserving_class_catalog(
             raise ReservingClassConfigurationError(
                 f"Reserving-class type [{name}] uses unmapped level {level}."
             )
-        key = (field_info.field, level, _canonical_name(name))
+        key = (field_info.field, level, reserving_class_type_key(name))
         if key in types:
             raise ReservingClassConfigurationError(
                 f"Duplicate reserving-class type [{name}] for "

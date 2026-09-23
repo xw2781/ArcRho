@@ -68,6 +68,7 @@ from .core import (
     _write_sidecar_json,
 )
 from arcrho_api.sidecar_core_contract import finalize_sidecar
+from arcrho_reserving_class_type_contract import reserving_class_path_is_known
 
 
 SERVER_ROOT = Path(r"E:\ArcRho Server")
@@ -188,22 +189,37 @@ def _is_calculated_dataset_type(dataset_type_name: object, rows: list[dict] | No
     row = _dataset_type_row(dataset_type_name, rows)
     return bool(row) and is_app_calculated_dataset_type(row, dataset_type_keys(rows))
 
-# False while a ResQ calculated reserving class is imported. Such a class is
-# ResQ's sum of other classes: the Engine has no source rows for it, so every
-# dataset it would generate imports ResQ's values instead.
+# False while a reserving class the Engine cannot build is imported: one with
+# a path level the project's reserving-class types do not define, such as a
+# ResQ total class. Every dataset it would generate imports ResQ's values.
 _ENGINE_BUILDS_CLASS: ContextVar[bool] = ContextVar("resq_engine_builds_class", default=True)
 
 
-@contextmanager
-def resq_class_scope(*, calculated: bool):
-    """Import one ResQ reserving class; a calculated class keeps ResQ's values.
+def engine_knows_reserving_class(rc_path: str) -> bool:
+    """True when the project's reserving-class types define every level of *rc_path*.
 
-    A ResQ calculated class adds other classes' datasets through cross-class
-    formulas that Arco neither stores nor evaluates. It imports as an ordinary
-    Arco class: its datasets arrive as values, and none is handed to the Engine.
+    Arco's own configuration decides; ResQ's ``Calculated`` flag on the class
+    is never consulted.
     """
 
-    token = _ENGINE_BUILDS_CLASS.set(not calculated)
+    project_dir = SERVER_ROOT / "projects" / PROJECT_NAME
+    return reserving_class_path_is_known(
+        rc_path,
+        _safe_read_json(project_dir / "field_mapping.json"),
+        _safe_read_json(project_dir / "reserving_class_types.json"),
+    )
+
+
+@contextmanager
+def resq_class_scope(*, engine_builds: bool):
+    """Import one ResQ reserving class; a class the Engine cannot build keeps ResQ's values.
+
+    Such a class imports as an ordinary Arco class: its datasets arrive as
+    values, none is handed to the Engine, and ResQ's cross-class formulas are
+    ignored.
+    """
+
+    token = _ENGINE_BUILDS_CLASS.set(engine_builds)
     try:
         yield
     finally:
@@ -211,7 +227,7 @@ def resq_class_scope(*, calculated: bool):
 
 
 def engine_builds_class() -> bool:
-    """False inside the import of a ResQ calculated class (see ``resq_class_scope``)."""
+    """False inside the import of a class the Engine cannot build (see ``resq_class_scope``)."""
 
     return _ENGINE_BUILDS_CLASS.get()
 
@@ -223,7 +239,7 @@ def _is_engine_generated_instance(payload: dict) -> bool:
     instance name equals its dataset type (matching the app's single-instance
     generated behavior). Method outputs (DFM/RS/BF), manual, and non-generated
     calculated datasets are excluded and continue to import from ResQ, and so
-    does every dataset of a ResQ calculated class.
+    does every dataset of a class the Engine cannot build.
     """
     if not engine_builds_class():
         return False

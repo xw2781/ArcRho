@@ -690,6 +690,68 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         self.assertEqual(result["error_details"][0]["kind"], "engine_preflight")
         application.Disconnect.assert_called_once_with()
 
+    def _engine_scope_during_import(self, rc_path: str, *, resq_calculated: bool) -> bool:
+        """Import *rc_path* and report whether its datasets were handed to the Engine."""
+
+        reserving_class = types.SimpleNamespace(Calculated=resq_calculated)
+        project = types.SimpleNamespace(
+            ReservingClasses=lambda: types.SimpleNamespace(Item=lambda _path: reserving_class)
+        )
+        application = types.SimpleNamespace(
+            ConnectByName=Mock(),
+            Projects=lambda: types.SimpleNamespace(Item=lambda _name: project),
+            Disconnect=Mock(),
+        )
+        client_module = types.ModuleType("win32com.client")
+        client_module.Dispatch = Mock(return_value=application)
+        win32com_module = types.ModuleType("win32com")
+        win32com_module.client = client_module
+        seen: list[bool] = []
+
+        def export_triangles(*_args, **_kwargs):
+            seen.append(self.catalog.engine_builds_class())
+            return 0, 0
+
+        with (
+            patch.dict("sys.modules", {"win32com": win32com_module, "win32com.client": client_module}),
+            patch.object(self.module, "require_running_engine_instances", return_value=(Path("worker.json"),)),
+            patch.object(self.module, "get_engine_processing_provenance", return_value=self.provenance),
+            patch.object(self.module, "_selected_exports", return_value=(True, False, False)),
+            patch.object(
+                self.module,
+                "resq_export_dataset_counts",
+                return_value={"total": 0, "triangles": 0, "vectors": 0, "dfms": 0, "methods": 0},
+            ),
+            patch.object(self.module, "export_triangles_for_rc", side_effect=export_triangles),
+            patch.object(self.module, "rebuild_dataset_instance_index", Mock()),
+        ):
+            self.module.import_reserving_class_from_resq(
+                "Demo",
+                rc_path,
+                server_root=self.root,
+                export_mode="triangles",
+                cleanup_target=False,
+                verbose=False,
+            )
+        self.assertEqual(len(seen), 1)
+        return seen[0]
+
+    def test_engine_scope_follows_the_projects_reserving_class_types_not_resqs_flag(self) -> None:
+        (self.project_dir / "field_mapping.json").write_text(json.dumps({"rows": [
+            {"field_name": "LOB", "significance": "Reserving Class", "level": 1},
+            {"field_name": "SUBLINE", "significance": "Reserving Class", "level": 2},
+        ]}), encoding="utf-8")
+        (self.project_dir / "reserving_class_types.json").write_text(json.dumps({
+            "columns": ["Name", "Level", "Formula", "Source"],
+            "rows": [["Auto", "1", "", "\"Auto\""], ["PP", "2", "", "\"PP\""]],
+        }), encoding="utf-8")
+
+        # ResQ calls nearly every class calculated; a class Arco can resolve still goes to the Engine.
+        self.assertTrue(self._engine_scope_during_import(r"Auto\PP", resq_calculated=True))
+        # A level Arco does not define (ResQ's Total) keeps ResQ's values, whatever ResQ says.
+        self.assertFalse(self._engine_scope_during_import(r"Auto\Total", resq_calculated=False))
+        self.assertFalse(self._engine_scope_during_import(r"Motor\PP", resq_calculated=False))
+
     def test_interrupted_import_rebuilds_index_after_mutation_started(self) -> None:
         reserving_class = object()
         project = types.SimpleNamespace(

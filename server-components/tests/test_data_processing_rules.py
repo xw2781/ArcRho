@@ -11,8 +11,10 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 
 
 ENGINE_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(ENGINE_SRC) not in sys.path:
-    sys.path.insert(0, str(ENGINE_SRC))
+PYTHON_API_SRC = Path(__file__).resolve().parents[2] / "python-api" / "src"
+for _path in (ENGINE_SRC, PYTHON_API_SRC):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 from arcrho_engine.data_processing_rules import (  # noqa: E402
     CompiledCondition,
