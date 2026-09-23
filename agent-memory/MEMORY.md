@@ -100,4 +100,4 @@
 - [Update asset name strands old clients](update-asset-name-strands-old-clients.md) — the updater matches the installer file name; a rename needs an old-name copy plus its .sha256 in the same release
 - [Calculated walk reads stale sibling views](calculated-walk-reads-stale-sibling-views.md) — 2026-09-21: `_candidate_csvs` takes an unvalidated `@<period>` sibling of an Engine/input precedent; the refresh regenerates a vector at 12 months
 - [BF/CC formula change needs republish](bf-cc-formula-change-needs-republish.md) — 2026-09-21: changing how BF/CC derive their calculated columns makes every stored method unopenable (validate_complete + sidecar publication revision); ship with a republish or an approved tolerance, never alone
-- [Desktop input control works](desktop-input-control-works.md) — mouse/keyboard drive the live RDP desktop via SendInput; the x64 INPUT struct must be exactly 40 bytes or every call silently returns 0
+- [Desktop input control works](desktop-input-control-works.md) — for GUI verification use tools/agent_screen_control (click/drag with -Window guard, agent pointer); per-monitor DPI or clicks drift 25%; INPUT must be 40 bytes

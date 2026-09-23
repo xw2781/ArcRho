@@ -1,6 +1,6 @@
 ---
 name: desktop-input-control-works
-description: Mouse and keyboard can be driven on the RDP desktop via SendInput; the x64 INPUT struct must be exactly 40 bytes or every call silently returns 0
+description: GUI verification on the RDP desktop - use tools/agent_screen_control; it drives the mouse via SendInput (INPUT must be 40 bytes) in per-monitor DPI real pixels
 metadata: 
   node_type: memory
   type: reference
