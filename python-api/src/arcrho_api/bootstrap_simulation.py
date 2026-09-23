@@ -40,8 +40,13 @@ BST_SCALING_METHODS = ("unscaled", "additive", "multiplicative", "user_defined",
 BST_NEGATIVE_MEAN_ACTIONS = ("value_0_01", "normal")
 BST_ODP_NEGATIVE_MEAN_ACTIONS = ("odp", "gamma_or_log_normal", "negative_mean")
 
-#: Percentile ladder persisted with a simulation summary, in percent.
-BST_SUMMARY_PERCENTILES = tuple(range(0, 101, 5))
+#: Percentile ladder persisted with a simulation summary, in percent: every half
+#: percent from 0 to 100, so the full-ladder view and the 99.5% capital
+#: percentile both come from the stored summary without re-simulating.
+BST_SUMMARY_PERCENTILES = tuple(step / 2 for step in range(0, 201))
+
+#: Bins in the persisted histogram of the total reserve.
+BST_HISTOGRAM_BINS = 40
 
 #: Mean forced onto a non-positive Gamma/LogNormal mean under ``value_0_01``.
 _MIN_POSITIVE_MEAN = 0.01
@@ -776,33 +781,92 @@ def scale_simulated_reserves(
 
 
 def percentile(sorted_values: Sequence[float], fraction: float) -> float:
-    """Linear-interpolated percentile of an already sorted sample."""
+    """ResQ's percentile of an already sorted sample: no interpolation.
+
+    ResQ's ``PercentileValue(p)`` is the sorted sample at 0-based position
+    ``floor(p * n)``, capped at the maximum, so 0 is the minimum and 1 the
+    maximum.  This matched all 253 percentiles captured from the reference
+    segment and consolidation runs exactly (plan step 4).  The small guard keeps
+    a fraction such as 0.29, whose product with n lands a hair under an
+    integer, on the order statistic it names.
+    """
 
     if not sorted_values:
         return 0.0
-    if len(sorted_values) == 1:
-        return float(sorted_values[0])
-    position = max(0.0, min(1.0, fraction)) * (len(sorted_values) - 1)
-    lower = int(math.floor(position))
-    upper = min(lower + 1, len(sorted_values) - 1)
-    weight = position - lower
-    return float(sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight)
+    count = len(sorted_values)
+    position = int(math.floor(max(0.0, min(1.0, fraction)) * count + 1e-9))
+    return float(sorted_values[min(position, count - 1)])
+
+
+def percentile_key(step: float) -> str:
+    """The summary key of a percentile given in percent: 5 -> "5", 99.5 -> "99.5"."""
+
+    value = float(step)
+    return str(int(value)) if value.is_integer() else f"{value:g}"
+
+
+def total_reserve_ranks(totals: Sequence[float]) -> list[int]:
+    """Rank every simulation by its total reserve, 1 for the smallest.
+
+    ResQ's ``TotalRank`` convention: the ranks are a permutation of 1..n, so a
+    tie goes to the earlier simulation rather than sharing a rank.
+    """
+
+    order = sorted(range(len(totals)), key=lambda index: (totals[index], index))
+    ranks = [0] * len(totals)
+    for rank, index in enumerate(order, start=1):
+        ranks[index] = rank
+    return ranks
+
+
+def reserve_histogram(values: Sequence[float], bins: int = BST_HISTOGRAM_BINS) -> dict[str, Any]:
+    """Count a simulated sample into ``bins`` equal-width bins from its minimum to its maximum.
+
+    The last bin is closed, so the maximum is counted; a sample with no spread
+    puts every simulation in the first bin.
+    """
+
+    bins = max(1, int(bins))
+    if not values:
+        return {"lower": 0.0, "upper": 0.0, "counts": []}
+    lower = float(min(values))
+    upper = float(max(values))
+    counts = [0] * bins
+    width = (upper - lower) / bins
+    for value in values:
+        index = int((value - lower) / width) if width > 0.0 else 0
+        counts[min(max(index, 0), bins - 1)] += 1
+    return {"lower": lower, "upper": upper, "counts": counts}
 
 
 def summarize_reserves(
     reserves: Sequence[Sequence[float]],
     *,
-    percentiles: Iterable[int] = BST_SUMMARY_PERCENTILES,
+    percentiles: Iterable[float] = BST_SUMMARY_PERCENTILES,
+    latest_values: Sequence[float] | None = None,
+    histogram_bins: int = BST_HISTOGRAM_BINS,
 ) -> dict[str, Any]:
     """Reduce a simulated reserve array to the persisted summary.
 
     Index 0 of every returned vector is the all-origin total, matching ResQ's
     ``xStochasticReserves`` convention where origin index 0 means "Total".
+    Percentile keys are percent text (``percentile_key``).  With
+    ``latest_values`` the summary also carries the mean and standard deviation
+    of the simulated ultimates (latest plus reserve); the histogram is of the
+    total reserve.
     """
 
     if not reserves:
-        return {"mean": [], "standard_error": [], "minimum": [], "maximum": [], "percentiles": {}}
-    count = len(reserves)
+        return {
+            "mean": [],
+            "standard_error": [],
+            "minimum": [],
+            "maximum": [],
+            "percentiles": {},
+            "ultimate_mean": [],
+            "ultimate_standard_error": [],
+            "histogram": reserve_histogram([], histogram_bins),
+        }
     origins = len(reserves[0])
     columns: list[list[float]] = [[sum(row) for row in reserves]]
     for w in range(origins):
@@ -815,19 +879,34 @@ def summarize_reserves(
     ladders: dict[str, list[float]] = {}
     sorted_columns = [sorted(column) for column in columns]
     for index, column in enumerate(columns):
-        mean, sd = _moments(column, ddof=1)
+        # ResQ reports the population standard deviation (divisor n).
+        mean, sd = _moments(column)
         means.append(mean)
         errors.append(sd)
         minima.append(sorted_columns[index][0])
         maxima.append(sorted_columns[index][-1])
     for step in percentiles:
-        ladders[str(int(step))] = [
-            percentile(column, int(step) / 100.0) for column in sorted_columns
+        ladders[percentile_key(step)] = [
+            percentile(column, float(step) / 100.0) for column in sorted_columns
         ]
+
+    ultimate_means: list[float] = []
+    ultimate_errors: list[float] = []
+    if latest_values is not None:
+        latest = [float(_finite(value) or 0.0) for value in latest_values][:origins]
+        latest.extend([0.0] * (origins - len(latest)))
+        offsets = [math.fsum(latest)] + latest
+        for index, column in enumerate(columns):
+            mean, sd = _moments([offsets[index] + value for value in column])
+            ultimate_means.append(mean)
+            ultimate_errors.append(sd)
     return {
         "mean": means,
         "standard_error": errors,
         "minimum": minima,
         "maximum": maxima,
         "percentiles": ladders,
+        "ultimate_mean": ultimate_means,
+        "ultimate_standard_error": ultimate_errors,
+        "histogram": reserve_histogram(columns[0], histogram_bins),
     }

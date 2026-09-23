@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -21,9 +22,11 @@ from arcrho_api.bootstrap_contract import (
     apply_owned_patch,
     bootstrap_output_variants,
     bootstrap_precedent_names,
+    bootstrap_simulated_reserves,
     build_bootstrap_output_sidecar,
     normalize_bootstrap_method,
     recalculate_bootstrap_method,
+    summarize_bootstrap_simulations,
 )
 from arcrho_api.bootstrap_simulation import (
     BootstrapCalculationError,
@@ -31,9 +34,12 @@ from arcrho_api.bootstrap_simulation import (
     calculate_residuals,
     fit_dfm_projection,
     observed_triangle,
+    percentile_key,
+    reserve_histogram,
     scale_simulated_reserves,
     simulate_bootstrap,
     summarize_reserves,
+    total_reserve_ranks,
 )
 from arcrho_api.io import persisted_json_text
 
@@ -472,8 +478,18 @@ def test_persisted_payload_stays_small_enough_for_a_network_drive(method):
     text = persisted_json_text(method)
     assert len(text) < 200 * 1024
     assert "simulation_summary" in text
-    # The simulated reserve array itself must never be persisted.
-    assert len(text.splitlines()) < 2000
+    # The simulated reserve array itself must never be persisted: no stored
+    # list is as long as the simulation count.
+    count = method["simulation_tab"]["simulation_count"]
+
+    def _longest(node) -> int:
+        if isinstance(node, dict):
+            return max((_longest(value) for value in node.values()), default=0)
+        if isinstance(node, list):
+            return max([len(node)] + [_longest(value) for value in node])
+        return 0
+
+    assert _longest(method) < count
 
 
 def test_changing_the_dfm_clears_the_embedded_snapshot(method):
@@ -505,3 +521,105 @@ def test_unknown_json_format_is_rejected(method):
     bad["json_format"] = "arcrho-bootstrap-method-by-tab-v0"
     with pytest.raises(BootstrapContractError):
         normalize_bootstrap_method(bad)
+
+
+# ---------------------------------------------------------------------------
+# Summary for every Results view, and the per-simulation output
+# ---------------------------------------------------------------------------
+
+
+HALF_PERCENT_KEYS = [percentile_key(step / 2) for step in range(0, 201)]
+
+
+def test_percentile_keys_are_percent_text():
+    assert HALF_PERCENT_KEYS[:3] == ["0", "0.5", "1"]
+    assert "99.5" in HALF_PERCENT_KEYS
+    assert HALF_PERCENT_KEYS[-1] == "100"
+    assert len(HALF_PERCENT_KEYS) == 201
+
+
+def test_summary_carries_the_half_percent_ladder_ultimates_and_histogram(method):
+    results = method["results_tab"]
+    summary = results["simulation_summary"]
+    count = summary["simulation_count"]
+    latest = results["latest_values"]
+    width = len(results["origin_labels"]) + 1
+    for block_name in ("unscaled", "scaled"):
+        block = summary[block_name]
+        assert list(block["percentiles"]) == HALF_PERCENT_KEYS
+        for key in HALF_PERCENT_KEYS:
+            assert len(block["percentiles"][key]) == width
+        total_ladder = [block["percentiles"][key][0] for key in HALF_PERCENT_KEYS]
+        assert total_ladder == sorted(total_ladder)
+        assert block["percentiles"]["0"] == block["minimum"]
+        assert block["percentiles"]["100"] == block["maximum"]
+        # Ultimate = latest + reserve, so its mean shifts and its spread does not.
+        assert block["ultimate_mean"][0] == pytest.approx(sum(latest) + block["mean"][0], abs=1e-5)
+        for origin, value in enumerate(latest):
+            assert block["ultimate_mean"][origin + 1] == pytest.approx(
+                value + block["mean"][origin + 1], abs=1e-5
+            )
+        for got, want in zip(block["ultimate_standard_error"], block["standard_error"]):
+            assert got == pytest.approx(want, abs=1e-5)
+        histogram = block["histogram"]
+        assert len(histogram["counts"]) == 40
+        assert sum(histogram["counts"]) == count
+        assert histogram["lower"] == block["minimum"][0]
+        assert histogram["upper"] == block["maximum"][0]
+
+
+def test_simulated_reserves_carry_totals_and_a_rank_permutation(method):
+    simulations = bootstrap_simulated_reserves(method)
+    count = method["simulation_tab"]["simulation_count"]
+    origins = len(method["results_tab"]["origin_labels"])
+    assert simulations["simulation_count"] == count
+    assert simulations["random_seed"] == method["simulation_tab"]["random_seed"]
+    assert simulations["origin_labels"] == method["results_tab"]["origin_labels"]
+    for block_name in ("unscaled", "scaled"):
+        block = simulations[block_name]
+        assert len(block["reserves"]) == count
+        assert all(len(row) == origins for row in block["reserves"])
+        assert block["totals"] == [sum(row) for row in block["reserves"]]
+        assert sorted(block["total_ranks"]) == list(range(1, count + 1))
+        by_rank = sorted(range(count), key=lambda sim: block["total_ranks"][sim])
+        ordered = [block["totals"][sim] for sim in by_rank]
+        assert ordered == sorted(ordered)
+    # Deterministic: a consolidation rebuilding the run gets the same simulations.
+    assert bootstrap_simulated_reserves(method) == simulations
+
+
+def test_stored_summary_equals_one_recomputed_from_the_simulations(method):
+    summary = summarize_bootstrap_simulations(bootstrap_simulated_reserves(method))
+    patch = deepcopy(method)
+    patch["results_tab"]["simulation_summary"] = summary
+    recomputed = normalize_bootstrap_method(patch)["results_tab"]["simulation_summary"]
+    assert persisted_json_text(recomputed) == persisted_json_text(
+        method["results_tab"]["simulation_summary"]
+    )
+
+
+def test_a_summary_saved_before_the_half_percent_ladder_still_opens(method):
+    patch = deepcopy(method)
+    old = patch["results_tab"]["simulation_summary"]
+    for block_name in ("unscaled", "scaled"):
+        block = old[block_name]
+        block["percentiles"] = {str(step): block["percentiles"][str(step)] for step in range(0, 101, 5)}
+        for key in ("ultimate_mean", "ultimate_standard_error", "histogram"):
+            block.pop(key)
+    normalized = normalize_bootstrap_method(patch)["results_tab"]["simulation_summary"]
+    for block_name in ("unscaled", "scaled"):
+        block = normalized[block_name]
+        assert list(block["percentiles"]) == [str(step) for step in range(0, 101, 5)]
+        assert block["ultimate_mean"] == []
+        assert block["histogram"] == {"lower": 0, "upper": 0, "counts": []}
+
+
+def test_histogram_closes_its_last_bin_and_handles_a_degenerate_sample():
+    histogram = reserve_histogram([0.0, 1.0, 2.0, 4.0], bins=4)
+    assert histogram == {"lower": 0.0, "upper": 4.0, "counts": [1, 1, 1, 1]}
+    flat = reserve_histogram([5.0, 5.0, 5.0], bins=40)
+    assert flat["counts"][0] == 3 and sum(flat["counts"]) == 3
+
+
+def test_tied_totals_rank_by_simulation_order():
+    assert total_reserve_ranks([3.0, 1.0, 3.0, 2.0]) == [3, 1, 4, 2]

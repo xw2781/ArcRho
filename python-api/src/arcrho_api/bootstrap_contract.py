@@ -39,8 +39,10 @@ from .bootstrap_simulation import (
     observed_triangle,
     scale_simulated_reserves,
     selected_scale_values,
+    percentile_key,
     simulate_bootstrap,
     summarize_reserves,
+    total_reserve_ranks,
 )
 from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number, selected_ratio_values
@@ -352,12 +354,23 @@ def _simulation_options(simulation: Mapping[str, Any]) -> BootstrapSimulationOpt
     )
 
 
-def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Run the simulation a normalized payload describes and return its summary.
+def bootstrap_simulated_reserves(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Regenerate every simulation a stored Bootstrap payload describes.
 
-    Deterministic for a given ``random_seed``: the same payload always produces
-    the same summary, which is what lets the method persist a seed instead of a
-    multi-megabyte reserve array.
+    This is the one place a consumer (a Stochastic Consolidation) gets a
+    bootstrap's simulations from; nothing else re-implements the run.  The
+    result is plain JSON-shaped data, never persisted:
+
+    * ``scaled`` and ``unscaled`` each hold ``reserves`` (simulation x origin),
+      ``totals`` (the all-origin reserve of every simulation, the plain sum of
+      its origins) and ``total_ranks`` (the rank of every simulation's total,
+      1 for the smallest, a permutation of 1..n as ResQ's ``TotalRank``);
+    * list position ``s`` is simulation ``s + 1`` in ResQ's numbering;
+    * the seed, count, origin labels, latest diagonal, DFM reserves and the
+      run's diagnostics come along so ``summarize_bootstrap_simulations`` can
+      rebuild the stored summary exactly.
+
+    Deterministic for a given ``random_seed``.
     """
 
     method = normalize_bootstrap_method(payload, require_complete=False)
@@ -378,20 +391,26 @@ def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
         forecast_scale=residuals_tab["scale_values_forecasting"]["selected"],
         refit_rules=_refit_rules(snapshot),
     )
-    unscaled = summarize_reserves(run.reserves)
     scaled_reserves = scale_simulated_reserves(
         run.reserves,
         target_means=results_tab["target_reserve_values"],
         scaling_methods=results_tab["target_scaling_methods"],
         target_cvs=results_tab["target_cvs"],
     )
-    scaled = summarize_reserves(scaled_reserves)
+
+    def _block(reserves: list[list[float]]) -> dict[str, Any]:
+        totals = [sum(row) for row in reserves]
+        return {"reserves": reserves, "totals": totals, "total_ranks": total_reserve_ranks(totals)}
+
     return {
         "simulation_count": options.simulation_count,
         "random_seed": options.random_seed,
         "model_type": details["model_type"],
-        "unscaled": unscaled,
-        "scaled": scaled,
+        "origin_labels": list(snapshot["origin_labels"]),
+        "latest_values": list(fit.latest_values),
+        "dfm_reserves": list(fit.dfm_reserves),
+        "unscaled": _block([list(row) for row in run.reserves]),
+        "scaled": _block(scaled_reserves),
         "diagnostics": {
             "data_point_count": residuals.data_point_count,
             "parameter_count": residuals.parameter_count,
@@ -401,9 +420,40 @@ def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
             "negative_mean_pseudo": run.negative_mean_pseudo,
             "negative_mean_forecast": run.negative_mean_forecast,
         },
-        "dfm_reserves": fit.dfm_reserves,
-        "latest_values": fit.latest_values,
     }
+
+
+def summarize_bootstrap_simulations(simulations: Mapping[str, Any]) -> dict[str, Any]:
+    """Reduce ``bootstrap_simulated_reserves`` output to the simulation summary.
+
+    The summary serves every Results view: mean, standard deviation, minimum
+    and maximum of the reserves, the half-percent percentile ladder, the mean
+    and standard deviation of the ultimates, and a histogram of the total
+    reserve, scaled and unscaled, with index 0 the all-origin total.
+    """
+
+    latest = list(simulations.get("latest_values") or [])
+    return {
+        "simulation_count": simulations.get("simulation_count", 0),
+        "random_seed": simulations.get("random_seed", 0),
+        "model_type": simulations.get("model_type", ""),
+        "unscaled": summarize_reserves(simulations["unscaled"]["reserves"], latest_values=latest),
+        "scaled": summarize_reserves(simulations["scaled"]["reserves"], latest_values=latest),
+        "diagnostics": dict(simulations.get("diagnostics") or {}),
+        "dfm_reserves": list(simulations.get("dfm_reserves") or []),
+        "latest_values": latest,
+    }
+
+
+def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Run the simulation a normalized payload describes and return its summary.
+
+    Deterministic for a given ``random_seed``: the same payload always produces
+    the same summary, which is what lets the method persist a seed instead of a
+    multi-megabyte reserve array.
+    """
+
+    return summarize_bootstrap_simulations(bootstrap_simulated_reserves(payload))
 
 
 def _empty_summary() -> dict[str, Any]:
@@ -419,34 +469,53 @@ def _empty_summary() -> dict[str, Any]:
     }
 
 
+def _normalize_histogram(value: Any) -> dict[str, Any]:
+    raw = dict(value) if isinstance(value, Mapping) else {}
+    counts = raw.get("counts")
+    return {
+        "lower": _number(raw.get("lower")) or 0,
+        "upper": _number(raw.get("upper")) or 0,
+        "counts": [_integer(item, 0, minimum=0) for item in counts] if isinstance(counts, list) else [],
+    }
+
+
+def _normalize_summary_block(value: Any) -> dict[str, Any]:
+    """One scaled or unscaled summary block; index 0 of every vector is the total.
+
+    A summary saved before the half-percent ladder keeps the 5% steps it has,
+    and its missing ultimate statistics and histogram read as empty.  A missing
+    block stays an empty object, as an unsimulated method has always stored it.
+    """
+
+    if not isinstance(value, Mapping):
+        return {}
+    source = dict(value)
+    ladder = source.get("percentiles")
+    ladder = dict(ladder) if isinstance(ladder, Mapping) else {}
+    keys = [percentile_key(step) for step in BST_SUMMARY_PERCENTILES]
+    return {
+        "mean": _numbers(source.get("mean")),
+        "standard_error": _numbers(source.get("standard_error")),
+        "minimum": _numbers(source.get("minimum")),
+        "maximum": _numbers(source.get("maximum")),
+        "percentiles": {key: _numbers(ladder.get(key)) for key in keys if key in ladder},
+        "ultimate_mean": _numbers(source.get("ultimate_mean")),
+        "ultimate_standard_error": _numbers(source.get("ultimate_standard_error")),
+        "histogram": _normalize_histogram(source.get("histogram")),
+    }
+
+
 def _normalize_summary(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         return _empty_summary()
-
-    def _block(value: Any) -> dict[str, Any]:
-        if not isinstance(value, Mapping):
-            return {}
-        ladder = value.get("percentiles")
-        ladder = dict(ladder) if isinstance(ladder, Mapping) else {}
-        return {
-            "mean": _numbers(value.get("mean")),
-            "standard_error": _numbers(value.get("standard_error")),
-            "minimum": _numbers(value.get("minimum")),
-            "maximum": _numbers(value.get("maximum")),
-            "percentiles": {
-                str(int(step)): _numbers(ladder.get(str(int(step))))
-                for step in BST_SUMMARY_PERCENTILES
-                if str(int(step)) in ladder
-            },
-        }
 
     diagnostics = raw.get("diagnostics")
     return {
         "simulation_count": _integer(raw.get("simulation_count"), 0, minimum=0),
         "random_seed": _integer(raw.get("random_seed"), 0, minimum=0),
         "model_type": _choice(raw.get("model_type"), BST_MODEL_TYPES, ""),
-        "unscaled": _block(raw.get("unscaled")),
-        "scaled": _block(raw.get("scaled")),
+        "unscaled": _normalize_summary_block(raw.get("unscaled")),
+        "scaled": _normalize_summary_block(raw.get("scaled")),
         "diagnostics": {
             key: _integer(value, 0, minimum=0)
             for key, value in (dict(diagnostics) if isinstance(diagnostics, Mapping) else {}).items()
@@ -1062,6 +1131,7 @@ __all__ = [
     "apply_owned_patch",
     "bootstrap_output_variants",
     "bootstrap_precedent_names",
+    "bootstrap_simulated_reserves",
     "build_bootstrap_output_sidecar",
     "derived_projection",
     "dfm_snapshot_from_method",
@@ -1072,4 +1142,5 @@ __all__ = [
     "recalculate_bootstrap_method",
     "run_bootstrap_simulation",
     "snapshot_revision",
+    "summarize_bootstrap_simulations",
 ]

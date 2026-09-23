@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 is next.
+Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 done the same day: a bootstrap's stored summary now carries the half-percent percentile ladder, ultimate statistics and a total-reserve histogram, it hands a consolidation its individual simulations and ranks, all five segments match ResQ within sampling error, and the summary statistics follow ResQ's own definitions exactly. Step 5 is next.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -18,7 +18,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | ResQ's own bootstrap and consolidation results are captured as the reference to match | [x] | 2026-09-23 | 70 min | 11 min | The five segment ranges and the total range in ResQ are now realistic, saved, and kept as the reference Arco must match. |
 | 2 | We know whether ResQ's random numbers can be reproduced, and how it builds correlated rankings | [x] | 2026-09-23 | 90 min | 34 min | ResQ's way of pairing up segment simulations is now known exactly; its random numbers themselves could not be reproduced, so Arco's ranges will match ResQ's within sampling error rather than to the last digit. |
 | 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | Dropped: ResQ's random stream could not be identified. |
-| 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [ ] | | 55 min | | |
+| 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [x] | 2026-09-23 | 55 min | 12 min | A bootstrap now keeps every half-percent of its range, its ultimates and a histogram, and all five segments agree with ResQ within sampling error. |
 | 5 | Arco can combine several segments' simulations with chosen correlations, matching ResQ | [ ] | | 70 min | | |
 | 6 | A consolidation can be saved and reopened as its own method with its own output | [ ] | | 60 min | | |
 | 7 | A consolidation can be opened, run and saved through the server, reading bootstraps from other classes | [ ] | | 75 min | | |
@@ -31,7 +31,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | The server components carry the new calculations and imports | [ ] | | 30 min | | |
 | 15 | The whole flow is checked by hand in both ResQ and Arco | [ ] | | 80 min | | |
 
-Overall: 2 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 45 min.
+Overall: 3 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 57 min.
 
 ## How agents work this plan
 
@@ -120,6 +120,8 @@ From the ResQ manual (pages `correlations_tab.htm`, `included_methods_tab.htm`, 
 5. "0% correlated" means independent, "100% correlated" fully rank-correlated, "As it comes" pairs simulations in the order they were generated (not recommended).
 
 **Rule 3 confirmed exactly (step 1).** For all 10,000 simulations, the consolidated scaled total equals the sum over segments of factor × the segment's scaled total from the simulation whose `TotalRank` equals `ConsolidationRanks(c, s)`; the worst relative difference is 4e-16. Ranks run 1..n with rank 1 the smallest total reserve, and each segment's ranks are a permutation, so there are no ties. The origin vector travels with the rank: each segment's reserves by origin in the consolidation are exactly that simulation's reserves by origin. The achieved rank correlation between two segments is the Pearson correlation of their `ConsolidationRanks` rows (0.3918 and 0.3370 against targets 0.38 and 0.34), and the achieved linear correlation is the Pearson correlation of their combined scaled totals (0.4036 and 0.3440). [test_resq_consolidation_fixture.py](../../python-api/tests/test_resq_consolidation_fixture.py) pins all of this.
+
+**ResQ's summary statistics (step 4, 2026-09-23).** A reported standard deviation divides by n, not n − 1, and `PercentileValue(p)` is the sorted sample at 0-based position floor(p·n), capped at the maximum, with no interpolation (so 0 is the minimum and 1 the maximum). Recomputed from the captured totals this way, all 253 captured percentiles (five segments scaled and unscaled, and the consolidation) and every total standard deviation match exactly. Arco's bootstrap summary now uses the same definitions, so a consolidation fed ResQ's simulations reproduces ResQ's statistics exactly; [test_bootstrap_segment_parity.py](../../python-api/tests/test_bootstrap_segment_parity.py) pins it.
 
 Step 1 confirms rule 3 exactly against ResQ's numbers; step 2 establishes how rule 2 generates ranks for each dependency type and how a non-positive-definite target is adjusted.
 
@@ -266,19 +268,19 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Goal.** A bootstrap's stored summary serves every Results view without re-simulating, and the bootstrap can hand a consolidation its simulated reserves by origin and its total-reserve ranks.
 
-**Read first.** [bootstrap_contract.py](../../python-api/src/arcrho_api/bootstrap_contract.py) lines 355–465 (`run_bootstrap_simulation`, summary normalisation); [bootstrap_simulation.py](../../python-api/src/arcrho_api/bootstrap_simulation.py) lines 438–470 and 725–833; [frontend/tests/test_bootstrap_service.py](../../frontend/tests/test_bootstrap_service.py) around line 336; the [page design](#page-design) Results description.
+**Read first.** [bootstrap_contract.py](../../python-api/src/arcrho_api/bootstrap_contract.py) lines 355–465 (`run_bootstrap_simulation`, summary normalisation); [bootstrap_simulation.py](../../python-api/src/arcrho_api/bootstrap_simulation.py) lines 438–470 and 725–833; [frontend/tests/test_bootstrap_service.py](../../frontend/tests/test_bootstrap_service.py) around line 336; the [page design](#page-design) Results description; [test_resq_consolidation_fixture.py](../../python-api/tests/test_resq_consolidation_fixture.py) for how step 1's fixture is laid out (each segment carries its settings, triangle, selected ratios, targets and all 10,000 totals).
 
 **Do.**
-- [ ] Extend the summary: percentiles at 0.5% steps from 0 to 100 (plus exactly 99.5), mean and standard deviation of ultimates, and a 40-bin histogram of the total reserve, scaled and unscaled.
-- [ ] Add one public function that returns the per-simulation scaled (and unscaled) reserves by origin with totals, and the total-reserve rank of every simulation, from a stored method payload. The consolidation calls this; nothing else re-implements it.
-- [ ] Fix the stale six-decimal expectation in the service test.
-- [ ] Update the Bootstrap persisted-JSON description in [bootstrap.md](../../frontend/docs/app_server/domains/bootstrap.md).
+- [x] Extend the summary: percentiles at 0.5% steps from 0 to 100 (plus exactly 99.5), mean and standard deviation of ultimates, and a 40-bin histogram of the total reserve, scaled and unscaled.
+- [x] Add one public function that returns the per-simulation scaled (and unscaled) reserves by origin with totals, and the total-reserve rank of every simulation, from a stored method payload. The consolidation calls this; nothing else re-implements it.
+- [x] Fix the stale six-decimal expectation in the service test.
+- [x] Update the Bootstrap persisted-JSON description in [bootstrap.md](../../frontend/docs/app_server/domains/bootstrap.md).
 
 **Tests.** Contract tests for the new summary fields and for the per-simulation function (totals equal the sum of origins; ranks are a permutation; a stored summary equals one recomputed from the per-simulation output). A statistical parity test for all five segments against step 1's fixture at the [parity bar](#decisions). The service suite passes in full.
 
 **Done when.** All bootstrap contract and service tests pass, and the five-segment parity test passes.
 
-**Estimate.** Estimate: code edit 35 min, test/validation 20 min, total 55 min.
+**Estimate.** Estimate: code edit 35 min, test/validation 20 min, total 55 min. Actual: code edit 8 min, test/validation 4 min, total 12 min (under half: step 1's fixture already held every input the parity test needed, and each suite ran in seconds).
 
 ### Step 5 — Consolidation calculation
 

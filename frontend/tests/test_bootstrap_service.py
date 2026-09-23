@@ -332,10 +332,11 @@ class BootstrapServiceTests(unittest.TestCase):
 
         details = response["method"]["details_tab"]
         results = response["method"]["results_tab"]
-        # Triangle values are persisted at ArcRho's canonical six decimals.
+        # Triangle values keep the precision they were observed at: methods
+        # stopped rounding their inputs to six decimals on 2026-09-08.
         self.assertEqual(
             details["dfm_snapshot"]["observed_triangle"][0],
-            [round(value, 6) for value in self.case["observed_triangle"][0]],
+            self.case["observed_triangle"][0],
         )
         self.assertTrue(details["dfm_source_revision"].startswith("sha256:"))
         self.assertEqual(results["origin_labels"], self.origin_labels)
