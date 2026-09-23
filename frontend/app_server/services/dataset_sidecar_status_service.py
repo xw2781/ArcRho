@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Set
 from arcrho_api.dataset_link_contract import expand_sidecar_links
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_core_contract import dependency_entries, dependency_names, finalize_sidecar
+from arcrho_api.stochastic_consolidation_contract import SCON_FILE_PREFIX, SCON_METHOD_TYPE, SCON_SOURCE_KIND
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import _canon_dataset_name, sanitize_dataset_file_name
@@ -24,6 +25,7 @@ METHOD_TYPE_RESULT_SELECTION = "Result Selection"
 METHOD_TYPE_BORN_HUETTER_FERGUSON = "Bornhuetter Ferguson"
 METHOD_TYPE_CAPE_COD = "Cape Cod"
 METHOD_TYPE_BOOTSTRAP = "Bootstrap"
+METHOD_TYPE_STOCHASTIC_CONSOLIDATION = SCON_METHOD_TYPE
 METHOD_TYPE_BERQUIST_SHERMAN_SR = "B&S Settlement Rate Adjustment"
 METHOD_TYPE_BERQUIST_SHERMAN_CRA = "B&S Case Reserve Adequacy Adjustment"
 SOURCE_KIND_BERQUIST_SHERMAN_SR = "berquist_sherman_sr"
@@ -42,6 +44,7 @@ _CANONICAL_METHOD_TYPES = {
     METHOD_TYPE_BORN_HUETTER_FERGUSON.lower(): METHOD_TYPE_BORN_HUETTER_FERGUSON,
     METHOD_TYPE_CAPE_COD.lower(): METHOD_TYPE_CAPE_COD,
     METHOD_TYPE_BOOTSTRAP.lower(): METHOD_TYPE_BOOTSTRAP,
+    METHOD_TYPE_STOCHASTIC_CONSOLIDATION.lower(): METHOD_TYPE_STOCHASTIC_CONSOLIDATION,
     METHOD_TYPE_BERQUIST_SHERMAN_SR.lower(): METHOD_TYPE_BERQUIST_SHERMAN_SR,
     METHOD_TYPE_BERQUIST_SHERMAN_CRA.lower(): METHOD_TYPE_BERQUIST_SHERMAN_CRA,
 }
@@ -51,6 +54,7 @@ _METHOD_TYPE_BY_SOURCE_KIND = {
     "bornhuetter_ferguson": METHOD_TYPE_BORN_HUETTER_FERGUSON,
     "cape_cod": METHOD_TYPE_CAPE_COD,
     "bootstrap": METHOD_TYPE_BOOTSTRAP,
+    SCON_SOURCE_KIND: METHOD_TYPE_STOCHASTIC_CONSOLIDATION,
     SOURCE_KIND_BERQUIST_SHERMAN_SR: METHOD_TYPE_BERQUIST_SHERMAN_SR,
     SOURCE_KIND_BERQUIST_SHERMAN_CRA: METHOD_TYPE_BERQUIST_SHERMAN_CRA,
 }
@@ -60,6 +64,7 @@ METHOD_JSON_FILENAME_PREFIX_BY_TYPE = {
     METHOD_TYPE_BORN_HUETTER_FERGUSON: "BF@",
     METHOD_TYPE_CAPE_COD: "CC@",
     METHOD_TYPE_BOOTSTRAP: "BST@",
+    METHOD_TYPE_STOCHASTIC_CONSOLIDATION: SCON_FILE_PREFIX,
     METHOD_TYPE_BERQUIST_SHERMAN_SR: "BSSR@",
     METHOD_TYPE_BERQUIST_SHERMAN_CRA: "BSCRA@",
 }

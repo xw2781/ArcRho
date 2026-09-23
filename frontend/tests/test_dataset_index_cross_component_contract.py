@@ -130,6 +130,7 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 ["BF Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["CC Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["BST Ultimate", "Vector", "Ultimate", False, "", "", False],
+                ["SCON Ultimate", "Vector", "Ultimate", False, "", "", False],
                 ["Adjusted Paid", "Triangle", "Loss", False, "", "", False],
             ],
         }
@@ -304,6 +305,25 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
             },
         )
         self._write_json(
+            self.methods_dir / "SCON@SCON Ultimate.json",
+            {
+                "json_format": "arcrho-stochastic-consolidation-v4",
+                "details_tab": {
+                    "name": "SCON Ultimate",
+                    "output_type": "SCON Ultimate",
+                    "dataset_category": "Ultimate",
+                },
+                "segments_tab": {
+                    "segments": [
+                        {"reserving_class": "Other\\Class", "method_name": "BST Ultimate", "factor": 1},
+                    ],
+                },
+                "results_tab": {
+                    "origin_labels": ["2024", "2025"],
+                },
+            },
+        )
+        self._write_json(
             self.methods_dir / "BSSR@Adjusted Paid.json",
             {
                 "json_format": "arcrho-berquist-sherman-sr-v4",
@@ -352,10 +372,15 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
                 "Paid DFM Ultimate",
                 "Paid Loss",
                 "Projected Premium",
+                "SCON Ultimate",
                 "Selected Ultimate",
             },
         )
         self.assertNotIn("Paid Development Method", {row["name"] for row in rows})
+        scon_row = next(row for row in rows if row["name"] == "SCON Ultimate")
+        self.assertEqual(scon_row["method_type"], "Stochastic Consolidation")
+        self.assertEqual(scon_row["source_kind"], "stochastic_consolidation")
+        self.assertEqual(scon_row["data_format"], "Vector")
         dfm_row = next(
             row for row in rows if row["name"] == "Paid DFM Ultimate"
         )

@@ -77,6 +77,8 @@ class DatasetMethodCalculatedSidecarTests(unittest.TestCase):
             ("Bornhuetter Ferguson", "bornhuetter_ferguson"),
             ("Cape Cod", "cape_cod"),
             ("Bootstrap", "bootstrap"),
+            ("Stochastic Consolidation", "stochastic_consolidation"),
+            ("", "stochastic_consolidation"),
             ("B&S Settlement Rate Adjustment", "berquist_sherman_sr"),
             ("B&S Case Reserve Adequacy Adjustment", "berquist_sherman_cra"),
             ("", "berquist_sherman_sr"),

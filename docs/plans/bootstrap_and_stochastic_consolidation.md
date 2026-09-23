@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 done the same day: a bootstrap's stored summary now carries the half-percent percentile ladder, ultimate statistics and a total-reserve histogram, it hands a consolidation its individual simulations and ranks, all five segments match ResQ within sampling error, and the summary statistics follow ResQ's own definitions exactly. Step 5 done the same day: the consolidation calculation reproduces ResQ's Total consolidation exactly when fed ResQ's segment simulations and ranks, and with Arco's own ranks its total standard deviation is 74,498 against ResQ's 74,529 (0.04 standard errors). Step 6 is next.
+Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 done the same day: a bootstrap's stored summary now carries the half-percent percentile ladder, ultimate statistics and a total-reserve histogram, it hands a consolidation its individual simulations and ranks, all five segments match ResQ within sampling error, and the summary statistics follow ResQ's own definitions exactly. Step 5 done the same day: the consolidation calculation reproduces ResQ's Total consolidation exactly when fed ResQ's segment simulations and ranks, and with Arco's own ranks its total standard deviation is 74,498 against ResQ's 74,529 (0.04 standard errors). Step 6 done the same day: a Stochastic Consolidation has its own method file, output vector and sidecar with cross-class links to its segment bootstraps, it appears in a class's index as its own method type, and it records which bootstrap revisions it consumed so a changed segment can be reported. Step 7 is next.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -20,7 +20,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | Dropped: ResQ's random stream could not be identified. |
 | 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [x] | 2026-09-23 | 55 min | 12 min | A bootstrap now keeps every half-percent of its range, its ultimates and a histogram, and all five segments agree with ResQ within sampling error. |
 | 5 | Arco can combine several segments' simulations with chosen correlations, matching ResQ | [x] | 2026-09-23 | 70 min | 7 min | Arco can now combine the five segment ranges into one total range with chosen correlations, and it lands where ResQ's does. |
-| 6 | A consolidation can be saved and reopened as its own method with its own output | [ ] | | 60 min | | |
+| 6 | A consolidation can be saved and reopened as its own method with its own output | [x] | 2026-09-23 | 60 min | 24 min | A consolidation now has its own saved form: its segments, correlations and combined range, an output vector, and a place in the project list, and it can tell when a segment has changed. |
 | 7 | A consolidation can be opened, run and saved through the server, reading bootstraps from other classes | [ ] | | 75 min | | |
 | 8 | Importing a class from ResQ brings its bootstrap methods across | [ ] | | 70 min | | |
 | 9 | Importing a total class from ResQ brings its consolidation across | [ ] | | 65 min | | |
@@ -31,7 +31,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | The server components carry the new calculations and imports | [ ] | | 30 min | | |
 | 15 | The whole flow is checked by hand in both ResQ and Arco | [ ] | | 80 min | | |
 
-Overall: 4 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 64 min.
+Overall: 5 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 88 min.
 
 ## How agents work this plan
 
@@ -304,17 +304,23 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Goal.** A Stochastic Consolidation has its own method JSON, output vector and sidecar, following the same contract patterns as the bootstrap, and appears correctly in a reserving class's index.
 
-**Read first.** `$arcrho-json-contract` skill; [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md) sections Persisted JSON Producer Parity and Persisted JSON Text Format; [bootstrap_contract.py](../../python-api/src/arcrho_api/bootstrap_contract.py) lines 464–1075 as the pattern; [dataset_index_contract.py](../../python-api/src/arcrho_api/dataset_index_contract.py) for method-type registration; `sidecar_core_contract.py` for the reserved cross-class link fields.
+**Read first.** `$arcrho-json-contract` skill; [AGENT_GUIDELINES.md](../../AGENT_GUIDELINES.md) sections Persisted JSON Producer Parity and Persisted JSON Text Format; [bootstrap_contract.py](../../python-api/src/arcrho_api/bootstrap_contract.py) lines 464–1075 as the pattern; [dataset_index_contract.py](../../python-api/src/arcrho_api/dataset_index_contract.py) for method-type registration; `sidecar_core_contract.py` for the reserved cross-class link fields; the app server's own method-type lists in [dataset_sidecar_status_service.py](../../frontend/app_server/services/dataset_sidecar_status_service.py) (top), [dataset_instance_index_service.py](../../frontend/app_server/services/dataset_instance_index_service.py) (top and `_method_entry_from_payload`) and `_METHOD_CALCULATED_TYPES` in [dataset_service.py](../../frontend/app_server/services/dataset_service.py), with their tests `test_dataset_index_cross_component_contract.py` and `test_dataset_method_calculated_sidecar.py`; the fixture helpers in [test_bootstrap_segment_parity.py](../../python-api/tests/test_bootstrap_segment_parity.py).
 
 **Do.**
-- [ ] Add `python-api/src/arcrho_api/stochastic_consolidation_contract.py` with the [canonical labels](#decisions): normalisation, `details`, `segments` (reserving class path, method name, factor, the consumed bootstrap's revision), `correlation` (option, dependency structure, degrees of freedom, target matrix, used matrix), `results` (seed, simulation count, summary, achieved matrices, segment statistics), notes/audit; owned/derived/publication projections and revisions; the output vector (consolidated mean ultimate by origin: sum of each segment's latest times factor, plus the consolidated mean reserve) and its aggregated variants; the output sidecar with cross-class precedents in the reserved link fields.
-- [ ] Register `Stochastic Consolidation` as a method type wherever the index contract and the method-type label list need it, with the parity coverage the guidelines require.
+- [x] Add `python-api/src/arcrho_api/stochastic_consolidation_contract.py` with the [canonical labels](#decisions): normalisation, `details`, `segments` (reserving class path, method name, factor, the consumed bootstrap's revision), `correlation` (option, dependency structure, degrees of freedom, target matrix, used matrix), `results` (seed, simulation count, summary, achieved matrices, segment statistics), notes/audit; owned/derived/publication projections and revisions; the output vector (consolidated mean ultimate by origin: sum of each segment's latest times factor, plus the consolidated mean reserve) and its aggregated variants; the output sidecar with cross-class precedents in the reserved link fields.
+- [x] Register `Stochastic Consolidation` as a method type wherever the index contract and the method-type label list need it, with the parity coverage the guidelines require.
+
+**Step 6 result (2026-09-23).** The method JSON has `details_tab` (name, output and base triangle types, lengths, the seed as an owned input, and the simulation count taken from the segments), `segments_tab.segments` (class path, method name, factor, consumed `bootstrap_revision`), `correlation_tab` (option, dependency type, degrees of freedom, the target matrix stored full and mirrored from its upper triangle, and the adjusted matrix actually used), `results_tab` (`input_revision`, origin labels, combined latest diagonal, summary, `consolidation_ultimate`) and `method_metadata`. Notes and the audit log live in the output sidecar, as for every method. What step 7 needs to know:
+- **One run function.** `consolidate_stochastic_method(payload, segment_inputs)` takes each segment's stored bootstrap payload and, optionally, the input type of the DFM it bootstraps (the DFM's `details_tab.input_triangle`; the bootstrap does not record it). It refuses a mismatched base type, simulation count or method name, naming the segment as `class / method`. It re-simulates every segment and stores the summary and output.
+- **Freshness.** A segment's recorded revision covers the bootstrap's simulation settings, model and derived state, but not display-only toggles. `stale_segments` reports each segment as `changed`, `missing` or `not_consolidated`. `input_revision` is the fingerprint of the run's own inputs at the last consolidation, so "inputs changed, run again" is `run_input_revision(method) != results_tab.input_revision`.
+- **Cross-class precedents.** The output sidecar lists each segment as `{dataset_name, method_type: "Bootstrap", reserving_class}`, and drops `reserving_class` for a segment in the host's own class. Shared dependency entries used to be deduplicated by name alone, which would have collapsed the five same-named `F 72 A` segments into one. They are now deduplicated by name, class and project. Every same-class entry behaves as before.
+- **Not changed.** The ResQ migration keeps its own `Stochastic Consolidation` label. Its support bundle ships with the macro library and runs against the installed app's older `arcrho_api`, so it must not import the new constant.
 
 **Tests.** `python-api/tests/test_stochastic_consolidation_contract.py`: normalisation round trip, revisions stable under reformatting, a mismatched base type or simulation count refused with the method named, sidecar and index projections, and the full-payload index parity test.
 
 **Done when.** The new tests and the existing index parity tests pass.
 
-**Estimate.** Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+**Estimate.** Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 8 min, test/validation 16 min, total 24 min (under half: the bootstrap contract was a direct pattern and step 1's fixture supplied realistic segments; most of the validation time was a whole python-api suite run that outlasted its 10-minute limit, so targeted suites were run instead).
 
 ### Step 7 — Consolidation server service
 
@@ -348,7 +354,7 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Done when.** The migration tests pass, and a local run of the import for COL (Server PC, outside the sandbox) writes `BST@F 72 A - Bootstrap Net incurred with PV.json` whose residual grid matches ResQ.
 
-**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min. Actual: code edit 9 min, test/validation 2 min, total 11 min; far under because the earlier attempts had already mapped the COM calls and every ResQ run takes under a second.
+**Estimate.** Estimate: code edit 40 min, test/validation 30 min, total 70 min.
 
 ### Step 9 — Import consolidations and the total class from ResQ
 

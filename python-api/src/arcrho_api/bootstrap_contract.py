@@ -479,7 +479,7 @@ def _normalize_histogram(value: Any) -> dict[str, Any]:
     }
 
 
-def _normalize_summary_block(value: Any) -> dict[str, Any]:
+def normalize_summary_block(value: Any) -> dict[str, Any]:
     """One scaled or unscaled summary block; index 0 of every vector is the total.
 
     A summary saved before the half-percent ladder keeps the 5% steps it has,
@@ -514,8 +514,8 @@ def _normalize_summary(raw: Any) -> dict[str, Any]:
         "simulation_count": _integer(raw.get("simulation_count"), 0, minimum=0),
         "random_seed": _integer(raw.get("random_seed"), 0, minimum=0),
         "model_type": _choice(raw.get("model_type"), BST_MODEL_TYPES, ""),
-        "unscaled": _normalize_summary_block(raw.get("unscaled")),
-        "scaled": _normalize_summary_block(raw.get("scaled")),
+        "unscaled": normalize_summary_block(raw.get("unscaled")),
+        "scaled": normalize_summary_block(raw.get("scaled")),
         "diagnostics": {
             key: _integer(value, 0, minimum=0)
             for key, value in (dict(diagnostics) if isinstance(diagnostics, Mapping) else {}).items()
@@ -1137,6 +1137,7 @@ __all__ = [
     "dfm_snapshot_from_method",
     "method_revisions",
     "normalize_bootstrap_method",
+    "normalize_summary_block",
     "owned_projection",
     "publication_projection",
     "recalculate_bootstrap_method",

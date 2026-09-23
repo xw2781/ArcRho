@@ -331,6 +331,8 @@ def dependency_entries(
     from an entry that carries one and may be supplied through *method_types*
     (name -> method type); ``reserving_class`` / ``project`` are kept only
     when present and non-empty, which is what makes a same-class link small.
+    An entry is a duplicate only when its name, class and project all match,
+    so same-named datasets in different classes stay separate links.
     """
 
     lookup = {
@@ -344,7 +346,9 @@ def dependency_entries(
     for item in items:
         source = item if isinstance(item, Mapping) else {"dataset_name": item}
         name = _clean(source.get("dataset_name"))
-        key = name.casefold()
+        key = "\n".join(
+            _clean(source.get(field)).casefold() for field in ("dataset_name", "reserving_class", "project")
+        )
         if not name or key in seen:
             continue
         seen.add(key)
@@ -352,7 +356,7 @@ def dependency_entries(
         method_type = _clean(source.get("method_type"))
         if method_type.casefold() == "none":
             method_type = ""
-        method_type = method_type or lookup.get(key, "")
+        method_type = method_type or lookup.get(name.casefold(), "")
         if method_type and method_type.casefold() != "none":
             entry["method_type"] = method_type
         for scope in ("reserving_class", "project"):
