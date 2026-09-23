@@ -20,14 +20,15 @@ Note: The ResQ COM API method and property names may not be intuitive sometimes,
 
 # Methods to be added in ArcRho
 
-Status as of 2026-09-04 — four of the five have shipped; only Bootstrap
-Consolidation is still open, so this file stays an open plan.
+Status as of 2026-09-23 — all five are built; the Bootstrap and Stochastic
+Consolidation pages reach users with the next app release. This file stays
+open for the ResQ API and sample-project reference notes below.
 
 - B&S Case Reserve Adequacy Adjustment (berquistshermancra) — **done**
 - B&S Settlement Rate Adjustment (berquistshermansr) — **done**
 - Cape Cod(capecodmethod) — **done** (`frontend/docs/plans/cape_cod_method_plan.md`)
-- Bootstrap Consolidation (bootstrapconsolidation) — **planned** in [bootstrap_and_stochastic_consolidation.md](bootstrap_and_stochastic_consolidation.md)
-- BootstrapMethod (bootstrapmethod) — calculation and server layer **done** (`frontend/docs/plans/bootstrap_method_plan.md`); page and ResQ import planned in [bootstrap_and_stochastic_consolidation.md](bootstrap_and_stochastic_consolidation.md)
+- Bootstrap Consolidation (bootstrapconsolidation) — **done** as Stochastic Consolidation ([completed/bootstrap_and_stochastic_consolidation.md](completed/bootstrap_and_stochastic_consolidation.md)); its page reaches users with the next app release
+- BootstrapMethod (bootstrapmethod) — calculation and server layer **done** (`frontend/docs/plans/bootstrap_method_plan.md`); page and ResQ import **done** in [completed/bootstrap_and_stochastic_consolidation.md](completed/bootstrap_and_stochastic_consolidation.md)
 
 # Phase 1 - B&S MVP (delivered)
 

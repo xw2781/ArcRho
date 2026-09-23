@@ -1,6 +1,6 @@
 """Probe ResQ's random numbers and consolidation ranks over COM, black-box.
 
-Research tool for step 2 of docs/plans/bootstrap_and_stochastic_consolidation.md.
+Research tool for step 2 of docs/plans/completed/bootstrap_and_stochastic_consolidation.md.
 It compares inputs with outputs only; it never inspects ResQ's binaries.
 
 NOTHING IS SAVED. Every setting this tool changes is made on a method loaded in
