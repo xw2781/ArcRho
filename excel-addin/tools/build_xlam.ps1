@@ -333,7 +333,7 @@ try {
             }
         }
 
-    Invoke-WorkbookMacro $excel $workbook "Register_ArcoTri_Help_Safe"
+    Invoke-WorkbookMacro $excel $workbook "RegisterArcoFunctionHelp"
 
     $workbook.IsAddin = $true
     $workbook.SaveAs($tempTargetPath, 55)

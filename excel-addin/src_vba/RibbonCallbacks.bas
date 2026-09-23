@@ -23,9 +23,11 @@ End Sub
 '|  Group 2 |
 '+----------+
 
-' Insert Function
+' Insert Function: the Arco function panel, which also edits the Arco formula
+' in the selected cell.
 Sub uiInsertFunction(control As IRibbonControl)
-    Application.Dialogs(xlDialogFunctionWizard).Show
+    If ActiveWorkbook Is Nothing Then Exit Sub
+    ufInsertFunction.Show vbModeless
 End Sub
 
 ' Clear Formulas
@@ -35,11 +37,19 @@ End Sub
 
 ' Load Reserving Classes
 Sub uiLoadReservingClasses2(control As IRibbonControl)
+    If Len(WorkbookDefaultProject(ActiveWorkbook)) = 0 Then
+        WarnNoDefaultProject "Load Reserving Classes"
+        Exit Sub
+    End If
     ufLoadReservingClasses.Show vbModeless
 End Sub
 
 ' Select Dataset
 Sub uiSelectDatasets(control As IRibbonControl)
+    If Len(WorkbookDefaultProject(ActiveWorkbook)) = 0 Then
+        WarnNoDefaultProject "Select Datasets"
+        Exit Sub
+    End If
     ufSelectDataset.Show vbModeless
 End Sub
 

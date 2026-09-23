@@ -2,7 +2,7 @@
 Private Sub Workbook_Open()
 
     ' UDF help metadata is registered during the XLAM build.
-    ' Register_ArcoTri_Help_Safe
+    ' RegisterArcoFunctionHelp
     
     InitializeSnapshotEvents
     LoadConfig

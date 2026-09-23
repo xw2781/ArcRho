@@ -39,6 +39,35 @@ as well, whichever calculation mode the workbook uses. This costs the same as
 pressing F9 with that workbook open; other open workbooks are not recalculated
 beyond what F9 would already do.
 
+## Writing Arco formulas
+
+**Insert Function** on the ribbon opens a panel for writing any Arco formula.
+Pick a function on the left; its arguments appear on the right, required ones
+in bold, each with a one-line description and its default. Reserving-class
+paths, dataset names (triangles or vectors, as the function needs), projects,
+TRUE/FALSE, and period lengths are chosen from lists; typing into a list box
+narrows it. Any argument can instead take a cell: type its address, or choose
+**Select a cell...** at the top of its list. Start an entry with `=` to write
+any other expression. The panel shows the finished formula and inserts it into
+the selected cell, where it loads like a typed formula. Opened on a cell holding
+an Arco formula, or on its spilled results, the panel loads that formula for
+editing; **Load from cell** does the same for whichever cell is selected while
+the panel is open, replacing what the panel holds. Excel's own function
+dialog (fx) shows the same descriptions under **Arco Tools**.
+
+The panel, **Select Datasets**, and **Load Reserving Classes** share one set of
+lists read from the Arco Server in a single request: the project names, and
+for a project its reserving classes that hold data and its dataset types. They
+are kept for the Excel session, so a picker opened again fills at once; the
+panel's **Refresh lists** reads them again. Load Reserving Classes offers, at
+each level, only the values found under the levels chosen above it. **Connect
+and Login** lists the server's projects on the settings sheet and turns
+**Default Project Name** into a dropdown of them. A blank Default Project Name
+becomes the latest project: the one with the newest Development End Date, and
+among those the first registered, so an original wins over its later copies. Select Datasets and Load
+Reserving Classes also update an `ArcoTriCell`, `ArcoTriDiag`, `ArcoTriOrigin`,
+or `ArcoVecCell` formula in the selected cell, not only `ArcoTri` and `ArcoVec`.
+
 ## Repairing workbook references
 
 The **Reset Add-in References** ribbon button opens a compact form for the active
@@ -193,15 +222,15 @@ recalculation displays
 A failure the server itself reports includes its reason, such as a missing
 publication or a class currently being refreshed by the frontend.
 
-### In the Select Datasets window
+### In Insert Function, Select Datasets, and Load Reserving Classes
 
 | Message | Cause and what to do |
 | :--- | :--- |
 | `This PC is not set up to read Arco data. Ask the Arco team to give you access, then restart Excel.` | The same missing credential, said without brackets because it is shown in a box rather than a cell. |
-| `Unable to load dataset list:` followed by a reason | The list could not be fetched. The reason beneath it is one of the cell messages above, or one of the two below. |
-| `Arco Server answered without the project's dataset types.` | The server answered but not with the table the picker lists. |
+| `Unable to load dataset list:`, `Unable to load reserving classes:`, or `Lists unavailable:` followed by a reason | The lists could not be fetched. The reason is one of the cell messages above, or one of the two below. |
+| `Ask the Arco team to update the Arco Server.` | The server does not yet answer the pickers' list request. |
 | `This project defines no dataset types.` | The project was read and has no dataset types configured. |
-| `Please connect and log in, then select a default project before using Select Datasets.` | Nothing is wrong with the server; the workbook has no default project selected yet. |
+| `Please connect and log in, then select a default project before using Select Datasets.` (or `Load Reserving Classes`) | Nothing is wrong with the server; the workbook has no default project selected yet. |
 
 ## What still comes from the share
 
@@ -210,8 +239,6 @@ still opened directly, so a PC that cannot reach the share loses them:
 
 - the add-in itself, `Excel Add-ins\ArcRho.xlam` and the beta beside it;
 - `apps\Arco Credential\Arco Credential.exe`, the first-run helper;
-- `library\INDEX_RSV_CLS_INPUT.csv`, the reserving-class list the Load Reserving
-  Classes window offers;
 - `library\Version Track.docx`, opened by the About window;
 - `Team Profile\Actuarial_NJ.xlsm`, the default team profile in Settings.
 

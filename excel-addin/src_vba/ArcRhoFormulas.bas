@@ -1,87 +1,13 @@
 Option Private Module
 Option Explicit
 
-' Read Category/Name columns (by header text) into arrays.
-' Returns the number of rows loaded; arrays are 1-based.
-Public Function LoadDatasetTypes( _
-        ByVal Path As String, _
-        ByVal sheetName As String, _
-        ByRef names() As String, _
-        ByRef cats() As String) As Long
-
-    Dim wb As Workbook, ws As Worksheet
-    Dim ur As Range, v As Variant
-    Dim r As Long, cName As Long, cCat As Long
-    Dim n As Long, lastRow As Long
-
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-
-    ' Open invisibly to keep UI calm
-    Set wb = Application.Workbooks.Open(Path, ReadOnly:=True, UpdateLinks:=False, AddToMru:=False)
-    Set ws = wb.Worksheets(sheetName)
-    Set ur = ws.UsedRange
-    v = ur.Value
-
-    ' Find headers in the first row of UsedRange
-    cName = FindHeaderCol(v, "Name")
-    cCat = FindHeaderCol(v, "Category")
-    If cName = 0 Or cCat = 0 Then Err.Raise 5, , "Could not find 'Name' and/or 'Category' headers."
-
-    lastRow = UBound(v, 1)
-    ReDim names(1 To lastRow - 1)
-    ReDim cats(1 To lastRow - 1)
-
-    ' Rows after header
-    For r = 2 To lastRow
-        If Len(Trim$(CStr(v(r, cName)))) > 0 Then
-            n = n + 1
-            names(n) = CStr(v(r, cName))
-            cats(n) = CStr(v(r, cCat))
-        End If
-    Next
-
-    If n = 0 Then
-        Erase names: Erase cats
-        LoadDatasetTypes = 0
-    Else
-        ReDim Preserve names(1 To n)
-        ReDim Preserve cats(1 To n)
-        LoadDatasetTypes = n
-    End If
-
-CleanUp:
-    On Error Resume Next
-    wb.Close SaveChanges:=False
-    Application.DisplayAlerts = True
-    Application.ScreenUpdating = True
-    Exit Function
-
-ErrHandler:
-    MsgBox "Load failed: " & Err.Description, vbExclamation
-    Resume CleanUp
-End Function
-
-' Helper: find a header title (case-insensitive) in row 1 of a 2-D variant array
-Private Function FindHeaderCol(ByVal v As Variant, ByVal header As String) As Long
-    Dim j As Long, ub As Long
-    ub = UBound(v, 2)
-    For j = 1 To ub
-        If StrComp(CStr(v(1, j)), header, vbTextCompare) = 0 Then
-            FindHeaderCol = j
-            Exit Function
-        End If
-    Next
-    FindHeaderCol = 0
-End Function
-
 '-------------------------
 ' Argument splitting utils
 '-------------------------
 
 ' Splits a function argument list into a 1-based Collection of strings.
 ' Respects quotes and nested parentheses (so commas inside "..." or (...) are ignored).
-Private Function SplitArgs(ByVal s As String) As Collection
+Public Function SplitArgs(ByVal s As String) As Collection
     Dim i As Long, ch As String * 1
     Dim inQuotes As Boolean, depth As Long
     Dim buf As String
@@ -118,30 +44,23 @@ Private Function SplitArgs(ByVal s As String) As Collection
     Set SplitArgs = col
 End Function
 
-' Joins a 1-based Collection of argument strings with ", "
-Private Function JoinArgs(ByVal args As Collection) As String
-    Dim i As Long, out As String
-    For i = 1 To args.Count
-        If i > 1 Then out = out & ", "
-        out = out & args(i)
-    Next
-    JoinArgs = out
-End Function
-
 '=== Helpers ======================================================
 
+' True for a formula calling an Arco function whose first two arguments are a
+' reserving-class path and a dataset name, the two the pickers fill in.
 Public Function IsArcRhoFormula(ByVal f As String) As Boolean
-    Dim u As String: u = UCase$(Trim$(f))
-    IsArcRhoFormula = (Left$(u, 9) = "=ARCOTRI(") _
-        Or (Left$(u, 9) = "=ARCOVEC(")
+    Dim functionName As String
+    functionName = ArcoFormulaFunction(f)
+    If Len(functionName) = 0 Then Exit Function
+    IsArcRhoFormula = (ArcoFunctionByName(functionName)("Args")(1)("Kind") = "path")
 End Function
 
-' Return the top-left “owner” cell if ActiveCell is inside a spilled Arco output;
+' Return the top-left ï¿½ownerï¿½ cell if ActiveCell is inside a spilled Arco output;
 ' otherwise Nothing.
 Public Function FindArcRhoOwnerForCell(ByVal c As Range) As Range
     On Error Resume Next
 
-    ' 1) If c itself is an Arco formula, it’s the owner
+    ' 1) If c itself is an Arco formula, itï¿½s the owner
     If c.HasFormula Then
         If IsArcRhoFormula(c.Formula2) Then
             Set FindArcRhoOwnerForCell = c

@@ -133,7 +133,7 @@ Public Sub SetupConnection2()
         sheet1.Range("A3").Value = "User Name"
         sheet1.Range("A7").Value = "Default Project Name"
         sheet1.Range("A9").Value = "Project Names"
-        If sheet1.Range("B7").Value = "" Then sheet1.Range("B7").Value = "NJ_Annual_Prod_2025 Q4-Nov"
+        OfferProjectDropdown sheet1
     
     Set Sheet2 = ActiveWorkbook.Sheets("Project Details")
         Sheet2.Columns("B").ColumnWidth = 22.14

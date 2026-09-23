@@ -15,51 +15,46 @@ Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 Option Explicit
 
-Private mHeaders As Variant      ' 1..5 strings
-Private mDefaults As Variant     ' 1..5 strings
-Private mAllCols As Variant      ' 1..5, each 0-based array of strings
+Private mClasses As Variant       ' the project's class paths, 1-based, or Empty
 Private mUpdating As Boolean
 Private mFilteringEnabled As Boolean
 Private mUIReady As Boolean
 
-Private Const RSV_CLS_INPUT_FILE As String = "INDEX_RSV_CLS_INPUT.csv"
-
+' The default project's reserving classes, from the list the pickers share.
+' Each level offers only the values found under the levels chosen above it.
 Private Sub UserForm_Initialize()
-    On Error GoTo load_fail
-    Dim csvPath As String
-    Dim loadStage As String
-    
-    mFilteringEnabled = False ' start disabled
-    mUIReady = False          ' form not ready yet
-    
-    loadStage = "resolving CSV path"
-    csvPath = ReservingClassesInputPath()
-    loadStage = "loading CSV data"
-    LoadCSV5 csvPath, 5, mHeaders, mDefaults, mAllCols
-    
-    loadStage = "setting field labels"
-    lbl1.Caption = NzStr(mHeaders(1), "Field 1")
-    lbl2.Caption = NzStr(mHeaders(2), "Field 2")
-    lbl3.Caption = NzStr(mHeaders(3), "Field 3")
-    lbl4.Caption = NzStr(mHeaders(4), "Field 4")
-    lbl5.Caption = NzStr(mHeaders(5), "Field 5")
-    
-    ' choose defaults: external > CSV row2
+    Dim projectName As String, message As String
     Dim d(1 To 5) As String
     Dim i As Long
     Dim activeRng As Range
-    
+    Dim arr As Variant
+
+    mFilteringEnabled = False ' start disabled
+    mUIReady = False          ' form not ready yet
+
+    projectName = WorkbookDefaultProject(ActiveWorkbook)
+    If Not LoadChoices(projectName, message) Then
+        MsgBox "Unable to load reserving classes:" & vbCrLf & message, vbExclamation
+    End If
+    mClasses = ChoiceReservingClasses(projectName)
+    Me.Caption = "Load Reserving Classes - " & projectName
+
+    For i = 1 To 5
+        Me.Controls("lbl" & i).Caption = "Level " & i
+    Next i
+
+    ' Defaults: the path in the active cell, else the project's first class.
     Set activeRng = GetSafeActiveCell()
-    loadStage = "reading active cell defaults"
     If Not activeRng Is Nothing And ActiveCellHasRsvCls(activeRng) Then
-        Dim arr As Variant
         arr = GetActiveCellParts(activeRng)
         For i = 1 To 5: d(i) = arr(i): Next i
-    Else
-        For i = 1 To 5: d(i) = CStr(mDefaults(i)): Next
+    ElseIf IsArray(mClasses) Then
+        arr = Split(mClasses(LBound(mClasses)), "\")
+        For i = 1 To 5
+            If i - 1 <= UBound(arr) Then d(i) = arr(i - 1)
+        Next i
     End If
-    
-    loadStage = "initializing controls"
+
     InitCombo cbo1, 1, d(1)
     InitCombo cbo2, 2, d(2)
     InitCombo cbo3, 3, d(3)
@@ -67,16 +62,38 @@ Private Sub UserForm_Initialize()
     InitCombo cbo5, 5, d(5)
 
     UpdatePreview
-    
-    Exit Sub
-load_fail:
-    MsgBox "Failed while " & loadStage & ":" & vbCrLf & csvPath & vbCrLf & Err.Description, vbExclamation
 End Sub
 
-Private Function ReservingClassesInputPath() As String
-    ReservingClassesInputPath = FirstExistingPath( _
-        ProductPath("library\" & RSV_CLS_INPUT_FILE), _
-        ProductPath(RSV_CLS_INPUT_FILE))
+' The distinct values at one level among the classes under the levels chosen
+' above it. A level above whose text matches no class is passed over, so a
+' half-typed or stale choice never empties the lists below it.
+Private Function LevelValues(ByVal level As Long) As Variant
+    Dim bag As Object, candidates As Collection, narrowed As Collection
+    Dim path As Variant, parts As Variant, up As Long
+
+    Set bag = CreateObject("Scripting.Dictionary")
+    bag.CompareMode = vbTextCompare
+    Set candidates = New Collection
+    If IsArray(mClasses) Then
+        For Each path In mClasses
+            candidates.Add Split(path, "\")
+        Next path
+    End If
+    For up = 1 To level - 1
+        Set narrowed = New Collection
+        For Each parts In candidates
+            If UBound(parts) >= up - 1 Then
+                If StrComp(Trim$(parts(up - 1)), Trim$(Me.Controls("cbo" & up).text), vbTextCompare) = 0 Then narrowed.Add parts
+            End If
+        Next parts
+        If narrowed.Count > 0 Then Set candidates = narrowed
+    Next up
+    For Each parts In candidates
+        If UBound(parts) >= level - 1 Then
+            If Not bag.Exists(parts(level - 1)) Then bag.Add parts(level - 1), True
+        End If
+    Next parts
+    LevelValues = bag.Keys
 End Function
 
 Private Sub UserForm_Activate()
@@ -96,7 +113,7 @@ Private Sub InitCombo(ByRef cb As MSForms.ComboBox, ByVal colIdx As Long, ByVal 
     cb.ListRows = 12
     
     cb.Clear
-    If IsArray(mAllCols(colIdx)) Then cb.List = ToOneBased(mAllCols(colIdx))
+    SetList cb, LevelValues(colIdx)
     
     If Len(defaultText) > 0 Then
         cb.text = defaultText
@@ -114,11 +131,11 @@ Private Sub FilterCombo(ByRef cb As MSForms.ComboBox, ByVal colIdx As Long)
     mUpdating = True
     
     Dim txt As String: txt = cb.text
-    Dim src As Variant: src = mAllCols(colIdx) ' 0-based
+    Dim src As Variant: src = LevelValues(colIdx) ' 0-based
     
     If Not mFilteringEnabled Then
         cb.Clear
-        cb.List = ToOneBased(src)
+        SetList cb, src
         cb.text = txt         ' preserve visible text (defaults)
         cb.SelStart = Len(txt)
         cb.SelLength = 0
@@ -129,14 +146,14 @@ Private Sub FilterCombo(ByRef cb As MSForms.ComboBox, ByVal colIdx As Long)
     Dim filtered As Variant, hasAny As Boolean
     If Len(txt) = 0 Then
         cb.Clear
-        cb.List = ToOneBased(src)
+        SetList cb, src
     Else
         filtered = Filter(src, txt, True, vbTextCompare)
         On Error Resume Next
         hasAny = (UBound(filtered) >= LBound(filtered))
         On Error GoTo 0
         cb.Clear
-        If hasAny Then cb.List = ToOneBased(filtered)
+        If hasAny Then SetList cb, filtered
     End If
     
     cb.text = txt
@@ -145,6 +162,16 @@ Private Sub FilterCombo(ByRef cb As MSForms.ComboBox, ByVal colIdx As Long)
     cb.DropDown
     
     mUpdating = False
+End Sub
+
+'---- Fill a combo's list; a combo cannot be handed an empty array
+Private Sub SetList(ByRef cb As MSForms.ComboBox, ByVal values As Variant)
+    values = ToOneBased(values)
+    If UBound(values) < LBound(values) Then
+        cb.Clear
+    Else
+        cb.List = values
+    End If
 End Sub
 
 '---- 0-based -> 1-based for ComboBox.List
@@ -159,11 +186,6 @@ Private Function ToOneBased(v As Variant) As Variant
         out(i - lb + 1) = CStr(v(i))
     Next
     ToOneBased = out
-End Function
-
-'---- Null/empty helper
-Private Function NzStr(ByVal s As String, ByVal Fallback As String) As String
-    If Len(Trim$(s)) = 0 Then NzStr = Fallback Else NzStr = s
 End Function
 
 '=================
@@ -258,36 +280,36 @@ Private Sub cbo5_KeyPress(ByVal KeyAscii As MSForms.ReturnInteger)
     mFilteringEnabled = True
 End Sub
 
-' Always show the full unfiltered list when dropdown arrow is clicked
+' The arrow shows the level's whole list under the levels chosen above
 
 Private Sub cbo1_DropButtonClick()
     
     mUpdating = True
-    cbo1.List = ToOneBased(mAllCols(1))   ' <-- full list for column 1
+    SetList cbo1, LevelValues(1)
     mUpdating = False
 End Sub
 
 Private Sub cbo2_DropButtonClick()
     mUpdating = True
-    cbo2.List = ToOneBased(mAllCols(2))
+    SetList cbo2, LevelValues(2)
     mUpdating = False
 End Sub
 
 Private Sub cbo3_DropButtonClick()
     mUpdating = True
-    cbo3.List = ToOneBased(mAllCols(3))
+    SetList cbo3, LevelValues(3)
     mUpdating = False
 End Sub
 
 Private Sub cbo4_DropButtonClick()
     mUpdating = True
-    cbo4.List = ToOneBased(mAllCols(4))
+    SetList cbo4, LevelValues(4)
     mUpdating = False
 End Sub
 
 Private Sub cbo5_DropButtonClick()
     mUpdating = True
-    cbo5.List = ToOneBased(mAllCols(5))
+    SetList cbo5, LevelValues(5)
     mUpdating = False
 End Sub
 

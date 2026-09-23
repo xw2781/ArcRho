@@ -24,16 +24,12 @@ Private mProjectName As String
 
 Private Sub UserForm_Initialize()
     Dim oldScr As Boolean, oldEvt As Boolean, oldCalc As XlCalculation
-    Dim projectName As String
+    Dim projectName As String, message As String
 
     'Me.lbl1.Font.Size = 12
 
-    projectName = CurrentWorkbookDefaultProject()
-    If Len(projectName) = 0 Then
-        ShowDefaultProjectWarning
-        Unload Me
-        Exit Sub
-    End If
+    ' The ribbon opens this form only once the workbook has a default project.
+    projectName = WorkbookDefaultProject(ActiveWorkbook)
     mProjectName = projectName
 
     oldScr = Application.ScreenUpdating
@@ -45,9 +41,11 @@ Private Sub UserForm_Initialize()
     
     On Error GoTo clean_fail
     
-    ' Ask the Arco Server for the project's dataset types, in the array shape
-    ' the filter code below already works with.
-    mData = LoadDatasetTypesData(mProjectName)
+    ' The project's dataset types, read from the Arco Server once per Excel
+    ' session and shared with the other pickers.
+    If Not LoadChoices(mProjectName, message) Then Err.Raise 5, , message
+    mData = ChoiceDatasetTypes(mProjectName)
+    If IsEmpty(mData) Then Err.Raise 5, , "This project defines no dataset types."
     
     ' Find column indices by header names
     mColCat = FindHeaderCol("Category")
@@ -57,6 +55,7 @@ Private Sub UserForm_Initialize()
     ' Build filter dropdown lists (with "All" at top)
     PopulateComboFromUnique cboCategory, mColCat
     PopulateComboFromUnique cboFormat, mColFmt
+    PresetFormatFromActiveFormula
     lstNames.ColumnCount = 3
     lstNames.ColumnWidths = "230 pt;80 pt;70 pt"
     
@@ -93,81 +92,19 @@ Private Sub UserForm_Terminate()
     DisableMouseWheelForListBox
 End Sub
 
-Private Function CurrentWorkbookDefaultProject() As String
-    Dim ws As Worksheet
-    Dim projectValue As String
-
+' Show only triangles or vectors when the selected cell already holds an Arco
+' formula that needs one.
+Private Sub PresetFormatFromActiveFormula()
+    Dim owner As Range, fn As Object, i As Long
     On Error Resume Next
-    Set ws = SettingsSheet(ActiveWorkbook)
+    Set owner = FindArcRhoOwnerForCell(ActiveCell)
     On Error GoTo 0
-    If ws Is Nothing Then Exit Function
-
-    projectValue = Trim$(CStr(ws.Range("B7").Value))
-    If Len(projectValue) = 0 Then Exit Function
-
-    CurrentWorkbookDefaultProject = Mid$(projectValue, InStrRev(projectValue, "\") + 1)
-End Function
-
-Private Sub ShowDefaultProjectWarning()
-    Dim msg As String
-
-    msg = "Please connect and log in, then select a default project before using Select Datasets."
-    On Error Resume Next
-    ufAlert.ShowMessage msg, "Arco"
-    If Err.Number <> 0 Then
-        Err.Clear
-        MsgBox msg, vbExclamation, "Arco"
-    End If
-    On Error GoTo 0
+    If owner Is Nothing Then Exit Sub
+    Set fn = ArcoFunctionByName(ArcoFormulaFunction(owner.Formula2))
+    For i = 0 To cboFormat.ListCount - 1
+        If StrComp(cboFormat.List(i), fn("Args")(2)("Kind"), vbTextCompare) = 0 Then cboFormat.ListIndex = i
+    Next i
 End Sub
-
-Private Function LoadDatasetTypesData(ByVal projectName As String) As Variant
-    Dim root As Object
-    Dim message As String
-    Dim columns As Collection
-    Dim rows As Collection
-    Dim outData() As Variant
-    Dim row As Collection
-    Dim r As Long, c As Long
-    Dim rowCount As Long, colCount As Long
-
-    If Not GatewayProjectDatasetTypes(projectName, root, message) Then
-        Err.Raise 5, , message
-    End If
-
-    Set columns = root("columns")
-    Set rows = root("rows")
-    colCount = columns.Count
-    rowCount = rows.Count
-    If colCount = 0 Then Err.Raise 5, , "This project defines no dataset types."
-
-    ReDim outData(1 To rowCount + 1, 1 To colCount)
-
-    For c = 1 To colCount
-        outData(1, c) = CStr(columns.Item(c))
-    Next c
-
-    For r = 1 To rowCount
-        If IsObject(rows.Item(r)) Then
-            Set row = rows.Item(r)
-            For c = 1 To colCount
-                If row.Count >= c Then
-                    If IsObject(row.Item(c)) Then
-                        outData(r + 1, c) = vbNullString
-                    ElseIf IsEmpty(row.Item(c)) Or IsNull(row.Item(c)) Then
-                        outData(r + 1, c) = vbNullString
-                    Else
-                        outData(r + 1, c) = CStr(row.Item(c))
-                    End If
-                Else
-                    outData(r + 1, c) = vbNullString
-                End If
-            Next c
-        End If
-    Next r
-
-    LoadDatasetTypesData = outData
-End Function
 
 ' ==== Filtering ====
 

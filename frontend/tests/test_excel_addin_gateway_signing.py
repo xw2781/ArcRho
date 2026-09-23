@@ -40,7 +40,12 @@ from arcrho_hosted_save_http_contract import (
     HEALTH_PATH,
     sign_request,
 )
-from arcrho_workspace_read_contract import WORKSPACE_READ_PATH
+from arcrho_workspace_read_contract import (
+    WORKSPACE_READ_CONTRACT_VERSION,
+    WORKSPACE_READ_FUNCTION,
+    WORKSPACE_READ_KINDS,
+    WORKSPACE_READ_PATH,
+)
 
 GATEWAY_CLIENT_BAS = REPOSITORY_ROOT / "excel-addin" / "src_vba" / "GatewayClient.bas"
 VERIFY_SCRIPT = REPOSITORY_ROOT / "excel-addin" / "tools" / "verify_gateway_signing.vbs"
@@ -147,6 +152,15 @@ class ExcelAddInGatewayConstantTests(unittest.TestCase):
         self.assertEqual(self.constants["HEADER_USER"], AUTH_USER_HEADER)
         self.assertEqual(self.constants["HEADER_TIMESTAMP"], AUTH_TIMESTAMP_HEADER)
         self.assertEqual(self.constants["HEADER_SIGNATURE"], AUTH_SIGNATURE_HEADER)
+
+    def test_workspace_read_names_match_the_contract(self) -> None:
+        """The one read the add-in's pickers make, and the spellings it is sent with."""
+
+        self.assertEqual(self.constants["GATEWAY_READ_FUNCTION"], WORKSPACE_READ_FUNCTION)
+        self.assertEqual(
+            self.constants["GATEWAY_READ_CONTRACT_VERSION"], str(WORKSPACE_READ_CONTRACT_VERSION)
+        )
+        self.assertIn(self.constants["GATEWAY_READ_FORMULA_CHOICES"], WORKSPACE_READ_KINDS)
 
     def test_calculation_request_names_match_the_contract(self) -> None:
         """What the add-in has to write into the request body and read back out."""
