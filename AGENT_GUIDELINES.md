@@ -8,7 +8,7 @@ This is the ArcRho monorepo root. Use one Git repository here for all ArcRho com
 - `frontend/`: current ArcRho desktop/web UI, Electron host, backend service code currently bundled with the frontend app, docs, release fragments, and frontend-specific agent rules.
 - `python-api/`: Python API, ResQ migration scripts, migration references, and macro source files.
 - `server-components/`: the ArcRho Server components — Engine, Orchestrator, Bridge, Launcher, Admin Control, Gateway — with their build, deploy, and installer tooling.
-- `tools/`: repository-level automation, including commit/push helpers for agents and `svg_icon_preview.py`, which collects every SVG in the repository into one browser gallery (run it directly, or double-click `tools/preview_svg_icons.bat`).
+- `tools/`: repository-level automation, including commit/push helpers for agents, `agent_screen_control/` for looking at and clicking desktop applications during GUI verification, and `svg_icon_preview.py`, which collects every SVG in the repository into one browser gallery (run it directly, or double-click `tools/preview_svg_icons.bat`).
 - `agent-memory/`: tracked Claude Code project memories; see [Agent Memory](#agent-memory).
 
 ## Project Terms and Abbreviations
@@ -109,6 +109,7 @@ Every log file any ArcRho component writes is kept for 30 days and no longer. No
 | [Agent Project Data Access](agent-instructions/agent-project-data-access.md) | `ArcRho Server project data`, `project metadata JSON`, `sidecar`, `method JSON`, `dataset JSON`, `reserving-class data path`, `resq_data_migration.py`, `E:\ArcRho Server\projects` |
 | [Component Deployment Authorization](agent-instructions/component-deployment-authorization.md) | `rebuild`, `redeploy`, `deploy.py`, `build_exe.py`, `build_manager.bat`, `bundled_sources`, `kill_all`, `heartbeat`, `Bridge`, `Engine`, `Gateway`, `Orchestrator`, `Admin Control`, `Launcher` |
 | [SVG Icon Management](agent-instructions/svg-icon-management.md) | `svg`, `.svg`, `icon`, `icons`, `iconography`, `glyph`, `sprite`, `symbol`, `cursor image`, `logo`, `artwork`, `viewBox`, `currentColor`, `mask-image`, `icon folder`, `shared/icons`, `file-icons`, `tab-type-icons` |
+| [GUI Verification](agent-instructions/gui-verification.md) | `GUI verification`, `GUI test`, `verify in the GUI`, `click`, `double-click`, `drag`, `screenshot`, `mouse`, `desktop`, `ResQ window`, `ResQ GUI`, `Excel window`, `Remote Desktop` |
 | [ResQ API Reference Material](agent-instructions/resq-api-reference.md) | `ResQ COM`, `ResQ API`, `ResQ scripting`, `ResQ help manual`, `ResQToolBox`, `ResQ object hierarchy`, `ResQ migration`, `reserve review notebook`, `ConnectByName`, `GetDFMMethod`, `AddMethod` |
 
 ## Bug Fix Verification and Cleanup
