@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Step 6 done 2026-09-23: the Bridge runs the new export and the shared library offers the Export macro at 3.0.0; three other users' Bridges stayed down after the deploy until they relaunch. Step 7 done 2026-09-23: one export run from Arco created a new DFM, BF and Result Selection in ResQ and put back three methods changed in ResQ; a defect with prior-period Curves columns on a created DFM was fixed and shipped as macro 3.0.1 with a Bridge redeploy; one question about ResQ's read-only prior-period rows is open. Step 8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Step 6 done 2026-09-23: the Bridge runs the new export and the shared library offers the Export macro at 3.0.0; three other users' Bridges stayed down after the deploy until they relaunch. Step 7 done 2026-09-23: one export run from Arco created a new DFM, BF and Result Selection in ResQ and put back three methods changed in ResQ; a defect with prior-period Curves columns on a created DFM was fixed and shipped as macro 3.0.1 with a Bridge redeploy; one question about ResQ's read-only prior-period rows is open. Step 8 done 2026-09-23: Load Settings From Another Method was checked in the running app (copy, undo, redo and save behave as Decision 9 says; no defect). Completed 2026-09-23: all 8 steps done in 193 minutes against 455 estimated; Open decision 1 stays open for a follow-up.
 
 Last updated: 2026-09-23
 
@@ -17,16 +17,16 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
 | 6 | The new export reaches every user | [x] | 2026-09-23 | 30 min | 12 min | The server now runs the new export and the macro library offers Export Reserving Class to ResQ 3.0.0; three other users' ResQ connections did not restart on their own and need them to reopen Arco. |
 | 7 | The export is checked end to end in Arco and ResQ | [x] | 2026-09-23 | 80 min | 54 min | One export from Arco created a new DFM, BF and Result Selection in ResQ and put back three methods changed in ResQ, with no failures; one defect was fixed (a newly created DFM lost the prior-period column on its Curves tab) and reaches users through the server and macro 3.0.1; ResQ's own prior-period rows cannot be written, which is left as an open question. |
-| 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
+| 8 | Copying DFM settings is checked in the running app | [x] | 2026-09-23 | 40 min | 19 min | In the running app a DFM took another class's DFM settings in one click, showed unsaved, undid and redid cleanly, and saved exactly the source's rows, selections, exclusions and Curves choices while keeping its own name, input and notes; it was then put back as it was, and no defect was found. |
 
-Overall: 7 of 8 steps done. Estimated 455 min, actual so far 174 min.
+Overall: 8 of 8 steps done. Estimated 455 min, actual 193 min.
 
 ## How agents work this plan
 
 - Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
 - Note the clock before the first file is read and again at the commit, keeping the two parts apart: time spent reading and editing, and time spent running tests, checks and deploys.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
-- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in the [plans index](README.md).
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in the [plans index](../README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
 - Do not start a step while the previous one is uncommitted.
 
@@ -37,59 +37,59 @@ Two extra rules for this plan:
 
 ## Ship impact
 
-- **Server component redeploy, then a macro publish.** The export's ResQ writer and the session that drives it are frozen into the Bridge ([bundled_sources.py](../../server-components/src/arcrho_bridge/bundled_sources.py)). Steps 2-4 take effect only after step 6 redeploys the Bridge and publishes the macro.
+- **Server component redeploy, then a macro publish.** The export's ResQ writer and the session that drives it are frozen into the Bridge ([bundled_sources.py](../../../server-components/src/arcrho_bridge/bundled_sources.py)). Steps 2-4 take effect only after step 6 redeploys the Bridge and publishes the macro.
 - **Frontend release only for step 5.** "Load Settings From Another Method" lives in the DFM page and reuses the existing method load and method list routes, so no server component bundles it. It is tested in dev mode and ships with the next app release.
 - **Risk to the released app: none.** The released macro already sends the ticked names and renders the rows the Bridge returns. Which rows can be ticked is decided in the Bridge. One cosmetic gap: the released review window labels a row that will be created in ResQ "Overwrites ResQ copy". The corrected "Created in ResQ" label reads from the app's own library, so it appears after the next app build.
 - **Do not bump `SYNC_SESSION_API_VERSION`** unless a step changes the request or response contract. None is expected to.
 
 ## Background
 
-The Export Reserving Class to ResQ macro ([export_reserving_class_to_resq.py](../../python-api/macros/export_reserving_class_to_resq.py)) has two halves:
+The Export Reserving Class to ResQ macro ([export_reserving_class_to_resq.py](../../../python-api/macros/export_reserving_class_to_resq.py)) has two halves:
 
 - **The ResQ writer.** `ResQReservingClassExporter` runs inside the Bridge.
 - **The client side.** `run_macro` publishes a `transfer_preview` request, shows the shared review window, then publishes an `export` request carrying the ticked names.
 
-The canonical session [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) owns the inventory, the review rows, the dependency order and the dispatch:
+The canonical session [sync_session.py](../../../python-api/migration/resq_migration/sync_session.py) owns the inventory, the review rows, the dependency order and the dispatch:
 
 - **Review rows.** `preview_transfer` builds them (`_transfer_rows`, `_transfer_row` around line 2355).
-- **Tickability.** Whether a row can be ticked is [sync.transfer_support](../../python-api/migration/resq_migration/sync.py#L193-L213). For the export direction it refuses every item ResQ lacks: "ResQ has no matching dataset or method to overwrite".
+- **Tickability.** Whether a row can be ticked is [sync.transfer_support](../../../python-api/migration/resq_migration/sync.py#L193-L213). For the export direction it refuses every item ResQ lacks: "ResQ has no matching dataset or method to overwrite".
 - **Write order.** `export_reserving_class` (line 2825) orders the ticked rows (`_dependency_ordered_rows`, line 169) and hands each to `_push_row_to_resq` (line 1048).
 - **Dispatch today.** DFM goes to `export_dfms` and Result Selection to `export_result_selections`. BF, CC and B&S SR are **save-only** (`_SAVE_ONLY_METHOD_CODES`, line 88): only their Notes are written, then they are saved. The macro's `_export_bf` exists but the export phase never calls it.
 
 What the writer does today for an existing method:
 
-- **DFM** ([_export_dfm](../../python-api/macros/export_reserving_class_to_resq.py#L537-L554)): excluded ratios, User Entry values, tail factors, selected rows, the Curves tab and Notes. It never touches the input triangle, the lengths, or the average formula rows themselves. It matches Arco rows to ResQ rows by label (`_average_formula_display_indexes`), so a row that exists on only one side is silently left out.
+- **DFM** ([_export_dfm](../../../python-api/macros/export_reserving_class_to_resq.py#L537-L554)): excluded ratios, User Entry values, tail factors, selected rows, the Curves tab and Notes. It never touches the input triangle, the lengths, or the average formula rows themselves. It matches Arco rows to ResQ rows by label (`_average_formula_display_indexes`), so a row that exists on only one side is silently left out.
 - **BF**: Notes and save only.
-- **Result Selection** ([_export_result_selection](../../python-api/macros/export_reserving_class_to_resq.py#L1175-L1259)): adds any loaded dataset ResQ lacks, writes weights and overridden ultimates. It never removes a dataset ResQ has and Arco does not.
-- **Anything ResQ lacks**: skipped as `missing_in_resq`. The code and [resq_reserving_class_export.md](../../python-api/docs/resq_reserving_class_export.md) both say the export never creates anything.
+- **Result Selection** ([_export_result_selection](../../../python-api/macros/export_reserving_class_to_resq.py#L1175-L1259)): adds any loaded dataset ResQ lacks, writes weights and overridden ultimates. It never removes a dataset ResQ has and Arco does not.
+- **Anything ResQ lacks**: skipped as `missing_in_resq`. The code and [resq_reserving_class_export.md](../../../python-api/docs/resq_reserving_class_export.md) both say the export never creates anything.
 
-The review window renderer, [resq_transfer_review.py](../../python-api/src/arcrho_api/resq_transfer_review.py#L112-L117), only projects what the Bridge sends. It greys a row out when `transfer_supported` is false.
+The review window renderer, [resq_transfer_review.py](../../../python-api/src/arcrho_api/resq_transfer_review.py#L112-L117), only projects what the Bridge sends. It greys a row out when `transfer_supported` is false.
 
 ### Arco method JSON the export reads
 
-- **DFM** ([dfm_contract.py](../../python-api/src/arcrho_api/dfm_contract.py)): `details_tab` has `name`, `output_type`, `input_triangle`, `origin_length`, `development_length` and `decimal_places`. `ratios_tab.average_formulas` holds one row per average:
+- **DFM** ([dfm_contract.py](../../../python-api/src/arcrho_api/dfm_contract.py)): `details_tab` has `name`, `output_type`, `input_triangle`, `origin_length`, `development_length` and `decimal_places`. `ratios_tab.average_formulas` holds one row per average:
   - `label` names the row.
   - `custom_average_formula_settings` gives each row's `average_type` (`custom` / `user_entry`), `base` (`simple` / `volume` / `benchmark`), `periods` (`all` or a count) and `exclude` (high/low count).
   - `inputs` holds the formula text of a User Entry row, for example `=("Simple - 5"+"Simple - 3")/2`.
   - `selected` and `values` hold the chosen row and the figures per column.
 
-  `curves_tab` is owned by [dfm_curves.py](../../python-api/src/arcrho_api/dfm_curves.py).
-- **BF** ([bornhuetter_ferguson_contract.py](../../python-api/src/arcrho_api/bornhuetter_ferguson_contract.py)): `details_tab` has `name`, `output_type` and `origin_length`. `method_tab` holds:
+  `curves_tab` is owned by [dfm_curves.py](../../../python-api/src/arcrho_api/dfm_curves.py).
+- **BF** ([bornhuetter_ferguson_contract.py](../../../python-api/src/arcrho_api/bornhuetter_ferguson_contract.py)): `details_tab` has `name`, `output_type` and `origin_length`. `method_tab` holds:
   - `latest_dataset`;
   - `dfm_dataset`, the DFM whose output supplies percentage developed;
   - `prior_datasets`, a list of `{name, weights}`.
-- **Result Selection** (`normalize_method_payload` in [result_selection_service.py](../../frontend/app_server/services/result_selection_service.py#L306)): `details_tab` has `name`, `output_type` and `origin_length`. `method_tab.loaded_datasets` is a list of `{name, weights}`, and `method_tab.ultimate_overrides` holds the overridden ultimates.
+- **Result Selection** (`normalize_method_payload` in [result_selection_service.py](../../../frontend/app_server/services/result_selection_service.py#L306)): `details_tab` has `name`, `output_type` and `origin_length`. `method_tab.loaded_datasets` is a list of `{name, weights}`, and `method_tab.ultimate_overrides` holds the overridden ultimates.
 
 ### How the import reads the same settings from ResQ
 
 The export must be the exact inverse of these readers, so they stay the single owner of the mapping between Arco and ResQ settings:
 
-- **DFM** ([dfm.py](../../python-api/migration/resq_migration/dfm.py)):
+- **DFM** ([dfm.py](../../../python-api/migration/resq_migration/dfm.py)):
   - `export_dfm` (line 796) reads the whole method.
   - `resq_average_row_labels` (306) and `_resq_average_formula_names` (329) name the average rows.
   - `_read_resq_average_definition` (383), `_translate_resq_average_formula` (493), `_infer_avg_settings` (553) and `_average_row_settings` (582) turn a ResQ row into Arco settings.
-- **BF**: `export_bornhuetter_ferguson` in [extractors.py](../../python-api/migration/resq_migration/extractors.py#L2309).
-- **Result Selection**: `export_result_selection` in [extractors.py](../../python-api/migration/resq_migration/extractors.py#L1966).
+- **BF**: `export_bornhuetter_ferguson` in [extractors.py](../../../python-api/migration/resq_migration/extractors.py#L2309).
+- **Result Selection**: `export_result_selection` in [extractors.py](../../../python-api/migration/resq_migration/extractors.py#L1966).
 
 ### ResQ COM surface found so far (to be confirmed live in step 1)
 
@@ -106,7 +106,7 @@ The export must be the exact inverse of these readers, so they stay the single o
 
 ### The Arco DFM page today
 
-- **Details tab.** Sections for name / output type, input triangle / precedents / dependents, and origin length / development length / decimal places ([dfm.html](../../frontend/ui/method_pages/dfm/dfm.html#L39-L144), wired in `dfm_details.js`).
+- **Details tab.** Sections for name / output type, input triangle / precedents / dependents, and origin length / development length / decimal places ([dfm.html](../../../frontend/ui/method_pages/dfm/dfm.html#L39-L144), wired in `dfm_details.js`).
 - **Loading and listing.** `POST /dfm/method/load` takes any project and reserving class. `GET /dfm/method-index?project_name&reserving_class` lists a class's DFMs. Both wrappers are in `dfm_method_api.js`.
 - **The nearest existing feature.** `saveDfmTemplate()` (`dfm_persistence.js:1862`) writes the lengths and average formulas to a local `.arc-dfm` file. Nothing reads one back. `apply_owned_patch` in `dfm_contract.py` (line 1987) rebases owned settings onto a method, for the ResQ RPC bridge.
 - **Pickers.** None combines a reserving-class tree with a method list. `openReservingClassPicker` (`shared/components/pickers/reserving_class_picker.js`) returns a class path; the method index lists that class's DFMs.
@@ -124,7 +124,7 @@ These are settled for this plan so that no workflow step has to ask.
    - **BF:** output type, origin length, latest, percentage developed, every prior with its weights, Notes.
    - **Result Selection:** output type, origin length, loaded datasets (adding what ResQ lacks and removing what Arco does not hold), weights, overrides, Notes.
 6. **BF leaves the save-only group.** Cape Cod and B&S Settlement Rate stay save-only.
-7. **The mapping lives beside the import.** The Arco-to-ResQ average-row mapping goes into [dfm.py](../../python-api/migration/resq_migration/dfm.py) next to the import's ResQ-to-Arco translation. It is tested as a round trip, so the two cannot drift. The Bridge freezes the migration package beside the macro, so the exporter may call it; this is the same bundle, not the app's `arcrho_api`.
+7. **The mapping lives beside the import.** The Arco-to-ResQ average-row mapping goes into [dfm.py](../../../python-api/migration/resq_migration/dfm.py) next to the import's ResQ-to-Arco translation. It is tested as a round trip, so the two cannot drift. The Bridge freezes the migration package beside the macro, so the exporter may call it; this is the same bundle, not the app's `arcrho_api`.
 8. **Review label.** A row that will be created reads "Created in ResQ". The Bridge sends `presence: "arcrho"` with `transfer_supported: true`. The renderer in `arcrho_api` gains that case. Until the next app build, the released renderer shows "Overwrites ResQ copy" for such rows.
 9. **"Load Settings From Another Method" in Arco.**
    - **Where and how.** A button on the DFM Details tab opens a picker with a reserving-class tree and that class's DFMs, in any class of the current project.
@@ -149,11 +149,11 @@ Steps 1 → 2 → 3 → 4 run in order. Step 5 depends only on step 1 and may ru
 
 **Read first.**
 - This plan's Background and Decisions.
-- [resq_reserving_class_export.md](../../python-api/docs/resq_reserving_class_export.md), the "ResQ COM findings" section.
-- [tools/resq_stored_length_probe.py](../../tools/resq_stored_length_probe.py), as the template for a create / verify / clean-up probe.
+- [resq_reserving_class_export.md](../../../python-api/docs/resq_reserving_class_export.md), the "ResQ COM findings" section.
+- [tools/resq_stored_length_probe.py](../../../tools/resq_stored_length_probe.py), as the template for a create / verify / clean-up probe.
 - `ResQToolBox2.py` lines 1825 and 2044-2153 under `E:\XWSpace\ResQ API Doc\reference`.
 - Memories: `resq-com-probe`, `resq-com-probe-dont-call-blindly`, `resq-custom-average-api`, `resq-dfm-curves-com-api`.
-- [GUI Verification](../../agent-instructions/gui-verification.md).
+- [GUI Verification](../../../agent-instructions/gui-verification.md).
 
 **Do.**
 - [ ] Write `tools/resq_method_config_probe.py`. It connects to the Fake project, works in one reserving class (`PRNJ - PA\PA\All States\Direct Group\COL`), names every object it creates with a `ZZ Probe` prefix, re-reads each result in a fresh connection, and deletes its objects at the end.
@@ -167,7 +167,7 @@ Steps 1 → 2 → 3 → 4 run in order. Step 5 depends only on step 1 and may ru
 - [ ] Confirm BF: latest (triangle and vector), percentage-developed type and dataset, and priors. Test whether the prior collection can hold several vectors with weights and how weights are written. If it cannot, record that only the single `Prior` works.
 - [ ] Confirm Result Selection: `RemoveDataset` of a loaded dataset, re-adding it, whether the order of `Dataset(i)` can be controlled, and weights after a remove.
 - [ ] In the ResQ GUI, run "Load Settings From Another Method" on a probe DFM from another DFM, and compare every setting through COM before and after. Also compare `LoadMethod` from COM. Record exactly what is copied and what is kept. Close every ResQ edit form you open with Cancel unless the test needs OK.
-- [ ] Add a "Creating and reconfiguring methods" section to [resq_reserving_class_export.md](../../python-api/docs/resq_reserving_class_export.md) with each confirmed call, its argument order, every refusal met, and the Load Settings finding. If a finding contradicts a Decision, add it to "Open decisions" with a recommendation and stop.
+- [ ] Add a "Creating and reconfiguring methods" section to [resq_reserving_class_export.md](../../../python-api/docs/resq_reserving_class_export.md) with each confirmed call, its argument order, every refusal met, and the Load Settings finding. If a finding contradicts a Decision, add it to "Open decisions" with a recommendation and stop.
 
 **Tests.** The probe itself is the test. Run it twice to prove it cleans up after itself, and paste its summary into the doc section.
 
@@ -180,13 +180,13 @@ Estimate: code edit 30 min, test/validation 30 min, total 60 min. Actual: code e
 **Goal.** Exporting an existing DFM makes its ResQ input triangle, lengths, output type and average formula rows match Arco before the existing value writes run.
 
 **Read first.**
-- Decisions 5 and 7, and the step 1 section of [resq_reserving_class_export.md](../../python-api/docs/resq_reserving_class_export.md).
-- The macro's DFM half, [lines 522-901](../../python-api/macros/export_reserving_class_to_resq.py#L522-L901).
-- [dfm.py](../../python-api/migration/resq_migration/dfm.py) lines 300-620, the import translation.
-- [test_export_reserving_class_macro.py](../../python-api/tests/test_export_reserving_class_macro.py): its fake COM classes and `ExportMacroAverageFormulaTests`.
+- Decisions 5 and 7, and the step 1 section of [resq_reserving_class_export.md](../../../python-api/docs/resq_reserving_class_export.md).
+- The macro's DFM half, [lines 522-901](../../../python-api/macros/export_reserving_class_to_resq.py#L522-L901).
+- [dfm.py](../../../python-api/migration/resq_migration/dfm.py) lines 300-620, the import translation.
+- [test_export_reserving_class_macro.py](../../../python-api/tests/test_export_reserving_class_macro.py): its fake COM classes and `ExportMacroAverageFormulaTests`.
 - The tests that cover `dfm.py`'s average translation (grep `python-api/tests` for `_translate_resq_average_formula`).
 - Memories: `python-test-runner`, `macro-must-not-depend-on-app-arcrho-api`.
-- Added during the step: `_export_result_delta` in [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around line 942), which decides the results-window message, and the `resq_migration.dfm` import list in [resq_data_migration.py](../../python-api/migration/resq_data_migration.py), since the exporter reaches the migration helpers through that module.
+- Added during the step: `_export_result_delta` in [sync_session.py](../../../python-api/migration/resq_migration/sync_session.py) (around line 942), which decides the results-window message, and the `resq_migration.dfm` import list in [resq_data_migration.py](../../../python-api/migration/resq_data_migration.py), since the exporter reaches the migration helpers through that module.
 
 **Do.**
 - [x] In `dfm.py`, add the inverse of the import translation. Given Arco's average-formula block, it returns per row the ResQ definition: name, AverageType, WeightType, PeriodsIncluded, ExcludeHighLow2, and a Formula whose quoted row labels become `Average(<row>)`. Map benchmark and User Entry rows exactly as the import reads them back.
@@ -209,11 +209,11 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Read first.**
 - Decisions 5 and 6, and the step 1 doc section.
-- The macro's BF and Result Selection writers, [lines 903-976](../../python-api/macros/export_reserving_class_to_resq.py#L903-L976) and [1160-1259](../../python-api/macros/export_reserving_class_to_resq.py#L1160-L1259).
-- [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) lines 80-100, 958-1080 and 2340-2415.
-- `export_bornhuetter_ferguson` and `export_result_selection` in [extractors.py](../../python-api/migration/resq_migration/extractors.py).
-- `SyncSessionExportTests` in [test_resq_sync_session.py](../../python-api/tests/test_resq_sync_session.py).
-- Added during the step: the BF branches of `_preflight_method_export` and `_verify_method_export` in [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around lines 1340 and 1505), because the Sync macro's apply phase calls the same BF writer and checks percentage-developed type 2 and prior 1; and the snapshot and create helpers of [tools/resq_method_config_probe.py](../../tools/resq_method_config_probe.py), which the live check reuses.
+- The macro's BF and Result Selection writers, [lines 903-976](../../../python-api/macros/export_reserving_class_to_resq.py#L903-L976) and [1160-1259](../../../python-api/macros/export_reserving_class_to_resq.py#L1160-L1259).
+- [sync_session.py](../../../python-api/migration/resq_migration/sync_session.py) lines 80-100, 958-1080 and 2340-2415.
+- `export_bornhuetter_ferguson` and `export_result_selection` in [extractors.py](../../../python-api/migration/resq_migration/extractors.py).
+- `SyncSessionExportTests` in [test_resq_sync_session.py](../../../python-api/tests/test_resq_sync_session.py).
+- Added during the step: the BF branches of `_preflight_method_export` and `_verify_method_export` in [sync_session.py](../../../python-api/migration/resq_migration/sync_session.py) (around lines 1340 and 1505), because the Sync macro's apply phase calls the same BF writer and checks percentage-developed type 2 and prior 1; and the snapshot and create helpers of [tools/resq_method_config_probe.py](../../../tools/resq_method_config_probe.py), which the live check reuses.
 
 **Do.**
 - [x] In the session, take BF out of `_SAVE_ONLY_METHOD_CODES` and dispatch it to `export_bfs`. Keep the review-row override so BF stays tickable.
@@ -236,12 +236,12 @@ Estimate: code edit 35 min, test/validation 15 min, total 50 min. Actual: code e
 
 **Read first.**
 - Decisions 1-4 and 8, and the step 1 doc section.
-- [sync.py](../../python-api/migration/resq_migration/sync.py#L180-L215).
+- [sync.py](../../../python-api/migration/resq_migration/sync.py#L180-L215).
 - The sync_session ranges named in step 3, plus `export_reserving_class` (line 2825) and the baseline helpers (lines 2718-2790).
-- [resq_transfer_review.py](../../python-api/src/arcrho_api/resq_transfer_review.py#L100-L140).
-- [resq_reserving_class_transfer_review.md](../../python-api/docs/resq_reserving_class_transfer_review.md).
+- [resq_transfer_review.py](../../../python-api/src/arcrho_api/resq_transfer_review.py#L100-L140).
+- [resq_reserving_class_transfer_review.md](../../../python-api/docs/resq_reserving_class_transfer_review.md).
 - How Arco's dataset-type definitions are read (grep `dataset_types.json` under `python-api/migration/resq_migration`).
-- Added during the step: the export-review override in `_transfer_row` of [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around line 2404), which offered every Arco-only save-only method (a Cape Cod too) and had to be limited to methods ResQ holds; `_export_result_delta` (around line 960) and the `export_reserving_class` result loop, which carry the "Created in ResQ" message; and `export_result_table_payload` in the macro, whose header now counts created methods.
+- Added during the step: the export-review override in `_transfer_row` of [sync_session.py](../../../python-api/migration/resq_migration/sync_session.py) (around line 2404), which offered every Arco-only save-only method (a Cape Cod too) and had to be limited to methods ResQ holds; `_export_result_delta` (around line 960) and the `export_reserving_class` result loop, which carry the "Created in ResQ" message; and `export_result_table_payload` in the macro, whose header now counts created methods.
 
 **Do.**
 - [x] `transfer_support`: for the export direction, an Arco-only DFM, BF or Result Selection is supported with the reason "Creates the method in ResQ." Everything else ResQ lacks stays refused. The import direction and the Sync macro are unchanged.
@@ -278,9 +278,9 @@ Estimate: code edit 45 min, test/validation 20 min, total 65 min. Actual: code e
 
 **Read first.**
 - Decision 9 and the step 1 Load Settings finding.
-- [FRONTEND_AGENT_GUIDELINES.md](../../frontend/FRONTEND_AGENT_GUIDELINES.md).
+- [FRONTEND_AGENT_GUIDELINES.md](../../../frontend/FRONTEND_AGENT_GUIDELINES.md).
 - The `arcrho-ui-design` skill.
-- [dfm.html](../../frontend/ui/method_pages/dfm/dfm.html#L39-L144), `dfm_details.js`, `dfm_method_api.js`, and the parts of `dfm_persistence.js` that build the payload and `saveDfmTemplate`.
+- [dfm.html](../../../frontend/ui/method_pages/dfm/dfm.html#L39-L144), `dfm_details.js`, `dfm_method_api.js`, and the parts of `dfm_persistence.js` that build the payload and `saveDfmTemplate`.
 - `openReservingClassPicker` in `frontend/ui/shared/components/pickers/reserving_class_picker.js`.
 - The DFM page's undo and dirty-state helpers: `dfm_ratio_history.js` (the undo stack, Ratios-tab only until this step) and the undo routing in `dfm_tabs_orchestrator.js`; `applyDfmOwnedPatchPayload` and the preview scheduling in `dfm_persistence.js`.
 - The method-index response shape: rows are named by output dataset in `name`, `method_name` appears only when it differs, `status` is 0 or 2 (`shared/dataset/review_status.js`).
@@ -305,9 +305,9 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code e
 
 **Read first.**
 - Decisions 10 and 11.
-- [Component Deployment Authorization](../../agent-instructions/component-deployment-authorization.md).
+- [Component Deployment Authorization](../../../agent-instructions/component-deployment-authorization.md).
 - AGENT_GUIDELINES "Component Build and Deploy".
-- [python-api/macros/README.md](../../python-api/macros/README.md).
+- [python-api/macros/README.md](../../../python-api/macros/README.md).
 - Memories: `remote-component-deploy`, `bridge-restart-after-deploy`, `shared-macro-library-deploy`.
 
 **Do.**
@@ -334,7 +334,7 @@ Estimate: code edit 10 min, test/validation 20 min, total 30 min. Actual: code e
 **Goal.** Prove in the real GUIs that the export creates missing methods and restores changed settings, and fix what it finds.
 
 **Read first.**
-- [GUI Verification](../../agent-instructions/gui-verification.md) and the screen tool [README](../../tools/agent_screen_control/README.md).
+- [GUI Verification](../../../agent-instructions/gui-verification.md) and the screen tool [README](../../../tools/agent_screen_control/README.md).
 - Memories: `arcrho-launch-electron-detached`, `desktop-input-control-works`, `bridge-worker-claim-identity`, `resq-export-order-diagnosis`.
 - The step 1 doc section.
 - Added during the step: the method save and load routes (`frontend/app_server/api/dfm_method_router.py`, `bornhuetter_ferguson_router.py`, `result_selection_router.py`, each a plan then a save carrying its fingerprint) and `/datasets/cached/delete`, used to make and remove the `ZZ E2E` methods; the exporter's `_sync_dfm_curves` and `_sync_dfm_average_rows`, to judge what the comparison found.
@@ -374,18 +374,24 @@ Notes from the step:
 **Read first.** Step 7's read-first list, Decision 9, and the step 5 commit.
 
 **Do.**
-- [ ] In dev mode, open a DFM in class `PRNJ - PA\PA\All States\Direct Group\COL`, click the new button, and pick a DFM in another class with different rows.
-- [ ] Confirm the rows, selections, lengths and Curves match the source. Confirm the name, input triangle, output type and Notes stay.
-- [ ] Confirm the page shows unsaved, undo restores it, and a save persists the copy (check the saved method JSON).
-- [ ] Restore the DFM afterwards: re-copy from its ResQ copy with the Import macro, or save the original settings back.
-- [ ] Fix any defect with a test and commit.
+- [x] In dev mode, open a DFM in class `PRNJ - PA\PA\All States\Direct Group\COL`, click the new button, and pick a DFM in another class with different rows.
+- [x] Confirm the rows, selections, lengths and Curves match the source. Confirm the name, input triangle, output type and Notes stay.
+- [x] Confirm the page shows unsaved, undo restores it, and a save persists the copy (check the saved method JSON).
+- [x] Restore the DFM afterwards: re-copy from its ResQ copy with the Import macro, or save the original settings back.
+- [x] Fix any defect with a test and commit.
 
 **Tests.** The GUI run, plus any regression test.
 
 **Done when.** The copy, undo and save all behave as Decision 9 says in the running app, and the test DFM is back to its original settings.
 
-Estimate: code edit 10 min, test/validation 30 min, total 40 min.
+Estimate: code edit 10 min, test/validation 30 min, total 40 min. Actual: code edit 6 min, test/validation 13 min, total 19 min; under half because the dev-mode window from step 7 was still open and no defect turned up.
+
+Notes from the step:
+- Target `F 25 - Incurred DFM Bootstrap` in COL (13 average rows, Volume - all selected, one Curves column included, only `F 92 - Current Qtr Selected` downstream); source `C 22 - CWOP DFM w/ Selected LDFs` in `HPPREF\HO+DF\NJ\Legacy\HOL` (10 rows, User Entry then Simple - 5 selected, exclusions in the first two columns, seven Curves periods included, tail from column 6, method Notes present). Both are 12/12, so the length-change path was not exercised in the GUI; step 5's tests cover it.
+- Everything ran through the GUI with the screen tool: the button, the picker (class chosen from the Shortcut list, the DFM from the right-hand list), Load, the Ratios, Curves and Notes tabs, Edit > Undo Ratio Change from the Notes tab (the page went back to clean), Edit > Redo, and Save.
+- The saved method JSON matched the source in average-row labels, settings, User Entry formulas and values, selections, exclusions (same origin and development labels), and every Curves setting; the name, output type, input triangle, Decimal Places, cell notes and Results choices stayed, and the empty Notes stayed empty although the source has Notes.
+- Restore: Edit > Undo after the save brought back the original method, which was saved again. The method JSON then matched a byte copy taken first except its revisions and timestamps and eleven User Entry figures written as `1` instead of `1.0`, the way any page save writes them; its output CSV is byte-identical. `F 92`, flagged for review by both saves, was re-saved unchanged and reads OK, its figures now written without float noise (`52253` for `52252.99999999999`).
 
 ## Rough size
 
-Estimated 455 minutes of agent time across 8 steps: 240 minutes of code edits and 215 minutes of tests, checks and deploys.
+Estimated 455 minutes of agent time across 8 steps: 240 minutes of code edits and 215 minutes of tests, checks and deploys. Actual: 193 minutes across the 8 steps.
