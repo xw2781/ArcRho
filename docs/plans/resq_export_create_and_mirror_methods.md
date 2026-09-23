@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 6-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 4 done 2026-09-23: a DFM, BF or Result Selection only Arco holds can now be ticked in the export review and is created in ResQ with Arco's settings, reading "Created in ResQ" (live in ResQ after step 6; the review label after the next app build). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Step 6 done 2026-09-23: the Bridge runs the new export and the shared library offers the Export macro at 3.0.0; three other users' Bridges stayed down after the deploy until they relaunch. Steps 7-8 not started.
 
 Last updated: 2026-09-23
 
@@ -15,11 +15,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [x] | 2026-09-23 | 50 min | 17 min | Exporting a BF that ResQ already has now also gives it Arco's latest, percentage developed and every prior with its weights, and a Result Selection loses the datasets Arco does not load; the results window says what changed, and it reaches users with the step 6 update. |
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [x] | 2026-09-23 | 65 min | 16 min | A DFM, BF or Result Selection that only Arco has can now be ticked in the export review and is created in ResQ with Arco's settings, making its output type too when ResQ lacks it; one whose inputs ResQ lacks is skipped with the missing input named, and it reaches users with the step 6 update. |
 | 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
-| 6 | The new export reaches every user | [ ] | | 30 min | | |
+| 6 | The new export reaches every user | [x] | 2026-09-23 | 30 min | 12 min | The server now runs the new export and the macro library offers Export Reserving Class to ResQ 3.0.0; three other users' ResQ connections did not restart on their own and need them to reopen Arco. |
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 5 of 8 steps done. Estimated 455 min, actual so far 108 min.
+Overall: 6 of 8 steps done. Estimated 455 min, actual so far 120 min.
 
 ## How agents work this plan
 
@@ -311,18 +311,23 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code e
 - Memories: `remote-component-deploy`, `bridge-restart-after-deploy`, `shared-macro-library-deploy`.
 
 **Do.**
-- [ ] Copy the macro at commit `5e0f4535` to `python-api/macros/backup/export_reserving_class_to_resq/2.14.0/`.
-- [ ] Set the header to `Version: 3.0.0` with a one-line release note, and refresh its Description.
-- [ ] Commit, then confirm the newest build-listener heartbeat names `E:\XWSpace\Repos\ArcRho-buildbot`.
-- [ ] Run `python server-components/deploy.py --ref <that commit>`, letting the CLI pick the stale components, and check its payload holds only this plan's files.
-- [ ] Verify each deployed component as the authorization doc says. For the Bridge, check it is running again and check `apps.bridge.auto_create_instance`.
-- [ ] Copy the active macros to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros` and run `python publish_macro_library.py` from `python-api/macros`.
+- [x] Copy the macro at commit `5e0f4535` to `python-api/macros/backup/export_reserving_class_to_resq/2.14.0/`.
+- [x] Set the header to `Version: 3.0.0` with a one-line release note, and refresh its Description.
+- [x] Commit, then confirm the newest build-listener heartbeat names `E:\XWSpace\Repos\ArcRho-buildbot`.
+- [x] Run `python server-components/deploy.py --ref <that commit>`, letting the CLI pick the stale components, and check its payload holds only this plan's files.
+- [x] Verify each deployed component as the authorization doc says. For the Bridge, check it is running again and check `apps.bridge.auto_create_instance`.
+- [x] Copy the active macros to `C:\Users\xwei.PRCINS\Documents\ArcRho\macros` and run `python publish_macro_library.py` from `python-api/macros`.
+
+Notes from the step:
+- Only the Bridge was deployed (1.7.3, from commit `103247d2`). The CLI also listed the Engine, Gateway and Credential as stale, but for them this plan changed only the review-window label, which runs in the app; the rest of their staleness is another session's committed Excel-picker read (`dd95aafe`), which is theirs to deploy. The Bridge build still carries that commit's additive `latest_project` field, which the Bridge never serves.
+- After the deploy only xwei's Bridge and worker came back. jhou's, JZhang's and JZhu's Bridges were stopped by the deploy and did not return within four minutes, because none of them has an Orchestrator running on the server; each needs to reopen their Arco session (see the `bridge-restart-after-deploy` memory).
+- The library publish used `--only export_reserving_class_to_resq.py`. Six other macros hold committed versions the library lacks (mostly the 2026-09-18 product rename); they are not this plan's, so they stay unpublished. The ResQ migration support bundle is always republished with a macro, so it now matches `HEAD`, the same code the new Bridge runs.
 
 **Tests.** Macro metadata tests (`frontend/tests/flight_deck.test.mjs` and `python-api/tests/test_publish_macro_library_support.py`). Deploy exit code 0. The deployed Bridge's bundled macro equals the committed file.
 
 **Done when.** The Bridge heartbeat is fresh with the new build, and the shared library lists the macro at 3.0.0.
 
-Estimate: code edit 10 min, test/validation 20 min, total 30 min.
+Estimate: code edit 10 min, test/validation 20 min, total 30 min. Actual: code edit 1 min, test/validation 11 min, total 12 min; under half because the Bridge build reused its warm slot (17 files changed, one minute) and the header bump was a three-line edit.
 
 ### Step 7 — The export is checked end to end in Arco and ResQ
 
