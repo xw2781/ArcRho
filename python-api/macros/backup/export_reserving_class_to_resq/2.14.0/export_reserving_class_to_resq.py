@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 3.0.0
-# Release Note: The export now creates a DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks, and brings an existing one's input, lengths, average rows, priors and loaded datasets in line with Arco.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ, in ArcRho's dependency order: input datasets with their Notes; DFMs with their output type, input triangle, lengths, average rows, ratio, tail and Curves-tab selections; Bornhuetter Ferguson methods with their latest, percentage developed and priors; Result Selections with their loaded datasets, weights and overrides; B&S Case Reserve Adequacy selections; the Notes of every dataset and method; and a save of every Cape Cod and B&S Settlement Rate method. A DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks is created.
+# Version: 2.14.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ: input datasets with their Notes, DFM ratio, tail and Curves-tab selections, Result Selection and B&S Case Reserve Adequacy selections, the Notes of every dataset and method, and a save of every Bornhuetter Ferguson, Cape Cod and B&S Settlement Rate method, in ArcRho's dependency order.
 # Scope: Reserving Class
 # Icon: upload
 # </arcrho-macro>
@@ -56,12 +56,6 @@ MAX_AVERAGE_FORMULA_PROBE = 30
 RESQ_CURVE_FIXED_COLUMNS = 5
 RESQ_CURVE_COLUMN_TYPE_USER_ENTRY = 3
 
-# CustomAverages(i).AverageType ordinals the export writes; resq_migration.dfm
-# owns the full list.
-RESQ_AVERAGE_TYPE_CUSTOM = 0
-RESQ_AVERAGE_TYPE_USER_ENTRY = 5
-RESQ_AVERAGE_TYPE_CALCULATED = 6
-
 # A v4 sidecar names its owning method in ``method_type``; the numeric twin is
 # gone from the file, so the ResQ code is derived here from that name.
 _SIDECAR_METHOD_TYPE_CODES = {
@@ -73,10 +67,8 @@ _SIDECAR_METHOD_TYPE_CODES = {
     "result selection": RESQ_METHOD_TYPE_RESULT_SELECTION,
 }
 
-# Methods ``save_method`` writes Notes for and then saves, without touching
-# any other field, by the ResQ code the caller names them with. The export
-# session sends only Cape Cod and B&S Settlement Rate here; a BF goes through
-# ``export_bfs``, and its entry stays so ``save_method`` can still find one.
+# Methods the export phase writes Notes for and then saves, without touching
+# any other field, by the ResQ code the session names them with.
 _SAVE_ONLY_METHOD_LABELS = {
     RESQ_METHOD_TYPE_BF: "BF",
     RESQ_METHOD_TYPE_CAPE_COD: "CC",
@@ -219,11 +211,6 @@ class ResQReservingClassExporter:
         self.project: Any = None
         self.reserving_class: Any = None
         self._lookup_maps = {}
-        # Whether a DFM, BF or Result Selection ResQ does not hold is created.
-        # The export session turns it on; the Sync macro's apply phase drives
-        # the same writers and leaves it off, so it never creates anything.
-        self.create_missing_methods = False
-        self._created_current = False
         self.counts = {
             "datasets_written": 0,
             "dfms_written": 0,
@@ -232,15 +219,11 @@ class ResQReservingClassExporter:
             "result_selections_written": 0,
             "bs_cras_written": 0,
             "methods_saved": 0,
-            "methods_created": 0,
             "errors": 0,
         }
         self.skipped = {}
         self.skip_details = []
         self.error_details = []
-        # Items written with more to say than "written" -- the structure
-        # changes of a DFM -- which the session puts in the results window.
-        self.written_details = []
         self._completed = 0
         self._total = 0
 
@@ -347,192 +330,12 @@ class ResQReservingClassExporter:
             target = self._find_vector(name)
         return target
 
-    # The export creates only a DFM, Bornhuetter Ferguson or Result Selection
-    # ResQ does not hold (see "creating a method" below), and only when the
-    # export session asks for it. A plain dataset, a Cape Cod, a Berquist
-    # Sherman method -- and any method on the Sync macro's apply path -- that
-    # ResQ does not hold is reported with this skip and left alone; such an
-    # object reaches ResQ through ResQ itself, never through an ArcRho write.
+    # The export never creates anything in ResQ. A dataset or method ResQ does
+    # not hold is reported with this skip and left alone; a new object reaches
+    # ResQ through ResQ itself, never through an ArcRho write.
     @staticmethod
     def _missing_in_resq(label):
         return ExportSkipped("missing_in_resq", f"{label} not found in ResQ; the export never creates one")
-
-    # ----- creating a method ------------------------------------------------------
-    #
-    # A DFM, BF or Result Selection ArcRho holds and ResQ lacks is created with
-    # the sequence the probe of 2026-09-23 confirmed (cases C1-C4): its inputs
-    # are looked up first, so a method whose input ResQ lacks is skipped
-    # untouched; its output type is found, or made from ArcRho's dataset-type
-    # definition; then ``AddMethod``, the method and output names, the output
-    # type, the inputs a save needs, and ``Save``. The writer then carries on
-    # down the path an existing method takes, so every other setting is
-    # written exactly the same way. ResQ lists a created object on the same
-    # connection straight away, so the lookups that follow -- a BF on a DFM
-    # created just before it -- find it once the name maps are rebuilt.
-
-    def _create_method(self, method_code, label, name, details, *, input_dataset=None, prepare=None):
-        """Create one method in ResQ; return it with what else had to be created."""
-
-        output_name = _clean_label(details.get("output_dataset")) or name
-        dataset_type, type_created = self._output_type_for_new_method(details, output_name)
-        method = None
-        try:
-            method = self.reserving_class.AddMethod(method_code)
-            method.Name = name
-            output = method.OutputVector
-            output.Name = output_name
-            output.DatasetType = dataset_type
-            if prepare is not None:
-                prepare(method)
-            method.Save()
-        except Exception as exc:
-            self._discard_failed_create(method, dataset_type if type_created else None)
-            raise RuntimeError(
-                self._create_refusal_text(label, dataset_type, input_dataset, exc)
-            ) from exc
-        self._lookup_maps = {}
-        self.counts["methods_created"] += 1
-        self._created_current = True
-        wanted_type = _clean_label(details.get("output_type"))
-        return method, ([f"new output type {wanted_type}"] if type_created else [])
-
-    def _after_create(self, error):
-        """A failure after the method was created says the method is in ResQ."""
-        if not self._created_current:
-            return error
-        return f"created in ResQ, then {error}"
-
-    def _record_written_details(self, kind, name, created, structure):
-        """Tell the session what changed beyond values: a creation, or the structure."""
-        if self._created_current:
-            self.written_details.append({"kind": kind, "name": name, "created": True, "message": ", ".join(created)})
-        elif structure:
-            self.written_details.append({"kind": kind, "name": name, "message": ", ".join(structure)})
-
-    def _dataset_type_definition(self, type_name):
-        """ArcRho's own definition of a dataset type, from the project's dataset_types.json."""
-        rows_of = getattr(self.migration, "_dataset_type_rows", None)
-        rows = rows_of() if callable(rows_of) else []
-        wanted = _label_key(type_name)
-        return next((row for row in rows if _label_key(row.get("name")) == wanted), None)
-
-    def _output_type_for_new_method(self, details, output_name):
-        """The ResQ dataset type a new method's output takes, created when ResQ lacks it.
-
-        ResQ refuses a second vector of a unique type in one reserving class,
-        with a misleading text, so a type another vector already holds skips
-        the method before anything is created. A new type follows ArcRho's
-        definition: its name and category, the method's decimal places, and
-        the shape every method output type in ResQ has -- a unique origin
-        vector that is not aggregated (``DatasetTypes().Add()`` defaults to
-        aggregated).
-        """
-
-        wanted = _clean_label(details.get("output_type"))
-        if not wanted:
-            raise ExportSkipped("missing_output_type", "the Arco method names no output type")
-        existing = self._find_dataset_type(wanted)
-        if existing is not None:
-            holder = self._vector_of_type(wanted, output_name) if bool(getattr(existing, "Unique", True)) else ""
-            if holder:
-                raise ExportSkipped(
-                    "output_type_in_use",
-                    f"output type {wanted} is already used by {holder} in this ResQ reserving class",
-                )
-            return existing, False
-        definition = self._dataset_type_definition(wanted)
-        if definition is None:
-            raise ExportSkipped(
-                "missing_output_type",
-                f"output type {wanted} is in neither ResQ nor the Arco dataset types",
-            )
-        category_name = _clean_label(definition.get("category"))
-        category = self._find_in("categories", self.project.Categories, category_name) if category_name else None
-        if category is None:
-            raise ExportSkipped(
-                "missing_category",
-                f"output type {wanted} needs the category {category_name or '(none)'}, which ResQ does not have",
-            )
-        try:
-            decimals = int(details.get("decimal_places"))
-        except (TypeError, ValueError):
-            decimals = 0
-        dataset_type = self.project.DatasetTypes().Add()
-        try:
-            dataset_type.Name = wanted
-            dataset_type.Category = category
-            dataset_type.DataFormat = RESQ_DATA_FORMAT_ORIGIN_VECTOR
-            dataset_type.DecimalPlaces = decimals
-            dataset_type.Unique = True
-            dataset_type.Aggregated = False
-            dataset_type.Save()
-        except Exception as exc:
-            raise RuntimeError(f"ResQ refused to create the output type {wanted}: {exc}") from exc
-        self._lookup_maps.pop("dataset_types", None)
-        return dataset_type, True
-
-    def _vector_of_type(self, type_name, output_name):
-        """The name of a vector in the class holding this dataset type, other than the output's own."""
-        wanted = _label_key(type_name)
-        for vector in _iter_collection(self.reserving_class.Vectors()):
-            try:
-                held = _label_key(vector.DatasetType.Name)
-                vector_name = _clean_label(vector.Name)
-            except Exception:
-                continue
-            if held == wanted and _label_key(vector_name) != _label_key(output_name):
-                return vector_name
-        return ""
-
-    @staticmethod
-    def _discard_failed_create(method, dataset_type):
-        """Drop what a refused creation left behind: the unsaved method, a type made for it."""
-        for item in (method, dataset_type):
-            if item is None:
-                continue
-            try:
-                item.Delete()
-            except Exception:
-                pass
-
-    @staticmethod
-    def _category_name(dataset_type):
-        try:
-            return _clean_label(dataset_type.Category.Name)
-        except Exception:
-            return ""
-
-    def _create_refusal_text(self, label, dataset_type, input_dataset, exc):
-        """ResQ's reason for refusing a new method, told plainly where ResQ's text misleads.
-
-        ResQ refuses an output type whose category differs from the input's
-        with "There cannot be more than one ... Vector in a Reserving Class",
-        naming some unrelated vector (case C2), so that refusal names the two
-        categories instead.
-        """
-
-        text = str(exc)
-        if input_dataset is not None and "cannot be more than one" in text:
-            output_category = self._category_name(dataset_type)
-            try:
-                input_category = self._category_name(input_dataset.DatasetType)
-            except Exception:
-                input_category = ""
-            if output_category and input_category and _label_key(output_category) != _label_key(input_category):
-                return (
-                    f"ResQ refused to create the {label}: its output type is in category {output_category}, "
-                    f"but its input {_clean_label(getattr(input_dataset, 'Name', ''))} is in {input_category}"
-                )
-        return f"ResQ refused to create the {label}: {text}"
-
-    def _new_dfm_input(self, details):
-        wanted = _clean_label(details.get("input_triangle"))
-        if not wanted:
-            raise ExportSkipped("missing_input", "the Arco DFM names no input triangle")
-        triangle = self._find_triangle(wanted)
-        if triangle is None:
-            raise ExportSkipped("missing_input", f"input triangle {wanted} not found in ResQ")
-        return triangle
 
     # ----- datasets ---------------------------------------------------------------
 
@@ -724,33 +527,17 @@ class ResQReservingClassExporter:
             payload = entry["payload"]
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
-            self._created_current = False
             try:
                 self._export_dfm(name, details, payload, entry)
             except ExportSkipped as skip:
                 self._record_skip("DFM", name, skip.reason, str(skip))
             except Exception as exc:
-                self._record_error("DFM", name, self._after_create(exc))
+                self._record_error("DFM", name, exc)
 
     def _export_dfm(self, name, details, payload, entry):
         dfm = self._find_in("dfm_methods", self.reserving_class.DFMMethods, name)
-        created = []
         if dfm is None:
-            if not self.create_missing_methods:
-                raise self._missing_in_resq("DFM")
-            triangle = self._new_dfm_input(details)
-            dfm, created = self._create_method(
-                RESQ_METHOD_TYPE_DFM,
-                "DFM",
-                name,
-                details,
-                input_dataset=triangle,
-                prepare=lambda method: setattr(method, "InputTriangle", triangle),
-            )
-        # The structure goes first: a length change resets ResQ's selections,
-        # exclusions and Curves values, which the writes below then restore,
-        # and a formula this step fixes must not skip the DFM in the probe.
-        structure = self._sync_dfm_structure(dfm, details, payload)
+            raise self._missing_in_resq("DFM")
         self._probe_dfm_averages(dfm)
         excluded = self._sync_dfm_excluded_ratios(dfm, payload)
         user_values = self._sync_dfm_user_entry_values(dfm, payload)
@@ -760,205 +547,11 @@ class ResQReservingClassExporter:
         notes = self._sync_notes(dfm, entry)
         dfm.Save()
         self.counts["dfms_written"] += 1
-        self._record_written_details("DFM", name, created, structure)
         self._emit(
-            f"{'Created' if self._created_current else 'Exported'} DFM: {name} ("
-            + (f"{', '.join(structure)}; " if structure else "")
-            + f"excluded {excluded}, user values {user_values}, tails {tails}, "
+            f"Exported DFM: {name} (excluded {excluded}, user values {user_values}, tails {tails}, "
             f"selected {selected}, curves {curves}, notes {notes})",
             status="success",
         )
-
-    # ----- DFM structure ----------------------------------------------------------
-    #
-    # Exporting an existing DFM makes its ResQ output type, input triangle,
-    # lengths and average rows match ArcRho before the value writes run. The
-    # row definitions come from ``resq_migration.dfm.arcrho_average_rows_as_resq``,
-    # the inverse of the import's own reading, so a row read back through the
-    # import is the row ArcRho holds. Only what differs is written.
-
-    def _sync_dfm_structure(self, dfm, details, payload):
-        """Write the DFM's output type, input, lengths and rows; say what changed."""
-
-        changes = []
-        try:
-            changes += self._sync_output_type(dfm, details)
-            changes += self._sync_dfm_input_triangle(dfm, details)
-            changes += self._sync_dfm_lengths(dfm, details)
-            changes += self._sync_dfm_average_rows(dfm, payload)
-        except ExportSkipped:
-            raise
-        except Exception as exc:
-            done = f" after {', '.join(changes)}" if changes else ""
-            raise RuntimeError(f"ResQ refused a change to the DFM's structure{done}: {exc}") from exc
-        return changes
-
-    def _find_dataset_type(self, name):
-        return self._find_in("dataset_types", self.project.DatasetTypes, name)
-
-    def _sync_output_type(self, method, details):
-        """Give the method's output vector ArcRho's output type, when ResQ has it."""
-
-        wanted = _clean_label(details.get("output_type"))
-        if not wanted:
-            return []
-        output = method.OutputVector
-        current = _clean_label(getattr(getattr(output, "DatasetType", None), "Name", ""))
-        if _label_key(current) == _label_key(wanted):
-            return []
-        dataset_type = self._find_dataset_type(wanted)
-        if dataset_type is None:
-            return [f"output type {wanted} is not in ResQ, kept {current}"]
-        output.DatasetType = dataset_type
-        return [f"output type {current} -> {wanted}"]
-
-    def _sync_dfm_input_triangle(self, dfm, details):
-        wanted = _clean_label(details.get("input_triangle"))
-        if not wanted:
-            return []
-        current = _clean_label(getattr(dfm.InputTriangle, "Name", ""))
-        if _label_key(current) == _label_key(wanted):
-            return []
-        triangle = self._find_triangle(wanted)
-        if triangle is None:
-            raise ExportSkipped("missing_input", f"input triangle {wanted} not found in ResQ")
-        dfm.InputTriangle = triangle
-        return [f"input {current} -> {wanted}"]
-
-    def _sync_dfm_lengths(self, dfm, details):
-        """Put ArcRho's origin and development lengths, origin first.
-
-        ResQ refuses a development length that does not divide the origin
-        length and pulls the development length down with a shorter origin,
-        so the origin goes first and the development length follows. Should
-        ResQ refuse the origin while the old development length is still set,
-        the development length goes first instead.
-        """
-
-        try:
-            origin = int(details.get("origin_length") or 0)
-            development = int(details.get("development_length") or 0)
-        except (TypeError, ValueError):
-            return []
-        before = (_safe_length(dfm, "OriginLength"), _safe_length(dfm, "DevelopmentLength"))
-        if not origin or not development or before == (origin, development):
-            return []
-        try:
-            if before[0] != origin:
-                dfm.OriginLength = origin
-            if _safe_length(dfm, "DevelopmentLength") != development:
-                dfm.DevelopmentLength = development
-        except Exception:
-            dfm.DevelopmentLength = development
-            dfm.OriginLength = origin
-        return [f"lengths {before[0]}/{before[1]} -> {origin}/{development}"]
-
-    def _read_average_rows(self, dfm):
-        """Each ResQ average row's name and fields, in ResQ order."""
-
-        rows = []
-        for index in range(1, self._average_formula_count(dfm) + 1):
-            average = dfm.CustomAverages(index)
-            average_type = int(average.AverageType)
-            rows.append(
-                {
-                    "raw_name": str(dfm.AverageFormula(index) or ""),
-                    "average_type": average_type,
-                    "weight_type": int(average.WeightType),
-                    "periods_included": int(average.PeriodsIncluded),
-                    "exclude_flag": bool(average.ExcludeHighLow),
-                    "exclude_high_low": int(average.ExcludeHighLow2),
-                    "formula": str(average.Formula or "").strip(),
-                }
-            )
-        return rows
-
-    def _average_row_is_current(self, current, reading, wanted):
-        """True when a ResQ row already holds what ArcRho asks for.
-
-        Either the import would read the ResQ row back as ArcRho's row -- which
-        keeps a ResQ median, pattern or prior-analysis row ArcRho carries as
-        copied values -- or ResQ holds exactly the definition the export
-        would write.
-        """
-
-        arcrho = wanted["arcrho"]
-        key = self.migration.average_formula_key
-        if (
-            _label_key(reading["label"]) == _label_key(arcrho["label"])
-            and reading["settings"] == arcrho["settings"]
-            and key(reading["formula"]) == key(arcrho["formula"])
-        ):
-            return True
-        if current["average_type"] != wanted["average_type"]:
-            return False
-        if _label_key(_strip_formula_index(current["raw_name"])) != _label_key(wanted["name"]):
-            return False
-        if wanted["average_type"] == RESQ_AVERAGE_TYPE_CUSTOM:
-            return (
-                current["weight_type"] == wanted["weight_type"]
-                and current["periods_included"] == wanted["periods_included"]
-                and current["exclude_high_low"] == wanted["exclude_high_low"]
-                and current["exclude_flag"] == (wanted["exclude_high_low"] > 0)
-            )
-        if wanted["average_type"] == RESQ_AVERAGE_TYPE_CALCULATED:
-            return key(current["formula"]) == key(wanted["formula"])
-        return True
-
-    def _write_average_row(self, dfm, index, current, wanted):
-        """Write one row's fields, then its name.
-
-        ResQ renames a row from its fields until it is named explicitly, and
-        the import reads a custom row's weighting, periods and exclusion from
-        that name, so the name always goes last.
-        """
-
-        average = dfm.CustomAverages(index)
-        average_type = wanted["average_type"]
-        if current["average_type"] != average_type:
-            average.AverageType = average_type
-        if average_type == RESQ_AVERAGE_TYPE_CUSTOM:
-            if current["weight_type"] != wanted["weight_type"]:
-                average.WeightType = wanted["weight_type"]
-            if current["periods_included"] != wanted["periods_included"]:
-                average.PeriodsIncluded = wanted["periods_included"]
-            exclude = wanted["exclude_high_low"]
-            if current["exclude_flag"] != (exclude > 0):
-                average.ExcludeHighLow = exclude > 0
-            if current["exclude_high_low"] != exclude:
-                average.ExcludeHighLow2 = exclude
-        elif average_type == RESQ_AVERAGE_TYPE_CALCULATED:
-            if self.migration.average_formula_key(current["formula"]) != self.migration.average_formula_key(
-                wanted["formula"]
-            ):
-                average.Formula = wanted["formula"]
-        average.Name = wanted["name"]
-
-    def _sync_dfm_average_rows(self, dfm, payload):
-        """Give the ResQ DFM ArcRho's average rows: their count, then each row."""
-
-        average_formulas = _dict_path(payload, ("ratios_tab", "average_formulas"))
-        wanted_rows = self.migration.arcrho_average_rows_as_resq(average_formulas)
-        if not wanted_rows:
-            return []
-        changes = []
-        count = self._average_formula_count(dfm)
-        if count != len(wanted_rows):
-            dfm.RatioAverageCount = len(wanted_rows)
-            changes.append(f"rows {count} -> {len(wanted_rows)}")
-        current_rows = self._read_average_rows(dfm)
-        readings = self.migration.resq_average_rows_as_arcrho(
-            [row["raw_name"] for row in current_rows], current_rows
-        )
-        redefined = 0
-        for index, (current, reading, wanted) in enumerate(zip(current_rows, readings, wanted_rows), start=1):
-            if self._average_row_is_current(current, reading, wanted):
-                continue
-            self._write_average_row(dfm, index, current, wanted)
-            redefined += 1
-        if redefined:
-            changes.append(f"{redefined} row{'s' if redefined != 1 else ''} redefined")
-        return changes
 
     def _resq_notes_text(self, notes):
         # ResQ Notes need \r\n line breaks; a \n-only value renders as one line.
@@ -995,14 +588,6 @@ class ResQReservingClassExporter:
             return max(int(dfm.RatioAverageCount), 0)
         except Exception:
             return 0
-
-    @staticmethod
-    def _average_type_at(dfm, index):
-        """ResQ's AverageType of one average row, ``None`` when it cannot be read."""
-        try:
-            return int(dfm.CustomAverages(index).AverageType)
-        except Exception:
-            return None
 
     def _probe_dfm_averages(self, dfm):
         """Skip a DFM whose ResQ average formulas cannot be evaluated.
@@ -1150,28 +735,18 @@ class ResQReservingClassExporter:
             for label, display_index in display_indexes.items()
             if _is_user_entry_label(label)
         }
-        # A ResQ User Entry row ArcRho names otherwise -- one the structure
-        # step just defined from an ArcRho User Entry row -- takes the values
-        # of the ArcRho row of its own label.
-        typed_indexes = {
-            label: display_index
-            for label, display_index in display_indexes.items()
-            if label not in user_entry_indexes
-            and self._average_type_at(dfm, display_index) == RESQ_AVERAGE_TYPE_USER_ENTRY
-        }
-        if not user_entry_indexes and not typed_indexes:
+        if not user_entry_indexes:
             return 0
         # ResQ's own User Entry row takes the row ArcRho holds as such, even
         # when that row was renamed; every further User Entry row of the DFM
         # is matched to its own ArcRho row by the label the import gave it.
         rows = {}
         primary_row = self._user_entry_payload_row_index(average_formulas)
-        if primary_row is not None and user_entry_indexes:
+        if primary_row is not None:
             rows[primary_row] = next(iter(user_entry_indexes.values()))
         labels = average_formulas.get("label") if isinstance(average_formulas.get("label"), list) else []
-        label_indexes = {**user_entry_indexes, **typed_indexes}
         for row_index, label in enumerate(labels):
-            display_index = label_indexes.get(str(label))
+            display_index = user_entry_indexes.get(str(label))
             if display_index is not None and row_index not in rows and display_index not in rows.values():
                 rows[row_index] = display_index
         # The last column is the "- Ult" tail, which is the row's TailFactor
@@ -1333,13 +908,12 @@ class ResQReservingClassExporter:
             payload = entry["payload"]
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
-            self._created_current = False
             try:
                 self._export_bf(name, details, payload, entry)
             except ExportSkipped as skip:
                 self._record_skip("BF", name, skip.reason, str(skip))
             except Exception as exc:
-                self._record_error("BF", name, self._after_create(exc))
+                self._record_error("BF", name, exc)
 
     def _find_method_by_output(self, collection, name):
         direct = _safe_item(collection, name)
@@ -1357,207 +931,49 @@ class ResQReservingClassExporter:
 
     def _export_bf(self, name, details, payload, entry):
         bf = self._find_method_by_output(self.reserving_class.BFMethods(), name)
-        method_tab = _dict_path(payload, ("method_tab",))
-        created = []
         if bf is None:
-            if not self.create_missing_methods:
-                raise self._missing_in_resq("BF method")
-            # Every input is looked up before anything is created; a new BF
-            # takes its latest, percentage developed and priors before its
-            # first save, the way the probe saved one (case C3).
-            (_latest_name, latest, _latest_type), _developed, _priors = self._resolve_bf_inputs(method_tab)
-            bf, created = self._create_method(
-                RESQ_METHOD_TYPE_BF,
-                "BF",
-                name,
-                details,
-                input_dataset=latest,
-                prepare=lambda method: self._sync_bf_structure(method, details, method_tab),
-            )
+            raise self._missing_in_resq("BF method")
 
-        structure = self._sync_bf_structure(bf, details, method_tab)
-        weights = self._sync_bf_prior_weights(bf, method_tab)
-        notes = self._sync_notes(bf, entry)
-        bf.Save()
-        self.counts["bfs_written"] += 1
-        self._record_written_details("BF", name, created, structure)
-        self._emit(
-            f"{'Created' if self._created_current else 'Exported'} BF: {name} ("
-            + (f"{', '.join(structure)}; " if structure else "")
-            + f"prior weights {weights}, notes {notes})",
-            status="success",
-        )
+        method_tab = _dict_path(payload, ("method_tab",))
+        origin_length = int(details.get("origin_length") or 0)
+        if origin_length:
+            bf.OriginLength = origin_length
 
-    # ----- BF structure -----------------------------------------------------------
-    #
-    # Exporting an existing BF makes its ResQ output type, origin length,
-    # latest, percentage developed and priors match ArcRho, writing only what
-    # differs. Every input is looked up before anything is written, so a BF
-    # whose input ResQ lacks is skipped untouched.
-
-    def _bf_prior_names(self, method_tab):
-        priors = method_tab.get("prior_datasets")
-        names = []
-        for prior in priors if isinstance(priors, list) else []:
-            name = _clean_label(prior.get("name") if isinstance(prior, dict) else "")
-            if name:
-                names.append(name)
-        return names
-
-    def _resolve_bf_inputs(self, method_tab):
-        """ResQ's latest, percentage-developed and prior datasets for ArcRho's names."""
-
-        latest = None
-        latest_type = None
         latest_name = _clean_label(method_tab.get("latest_dataset"))
         if latest_name:
             latest = self._find_triangle(latest_name)
-            latest_type = RESQ_DATA_FORMAT_TRIANGLE
-            if latest is None:
+            if latest is not None:
+                bf.LatestType = RESQ_DATA_FORMAT_TRIANGLE
+                bf.Latest = latest
+            else:
                 latest = self._find_vector(latest_name)
-                latest_type = RESQ_DATA_FORMAT_ORIGIN_VECTOR
-            if latest is None:
-                raise ExportSkipped("missing_input", f"latest dataset {latest_name} not found in ResQ")
-        developed = None
+                if latest is not None:
+                    bf.LatestType = RESQ_DATA_FORMAT_ORIGIN_VECTOR
+                    bf.Latest = latest
+
         developed_name = _clean_label(method_tab.get("dfm_dataset"))
         if developed_name:
             developed = self._find_vector(developed_name)
-            if developed is None:
-                raise ExportSkipped("missing_input", f"percentage-developed dataset {developed_name} not found in ResQ")
-        priors = []
-        for prior_name in self._bf_prior_names(method_tab):
-            prior = self._find_vector(prior_name)
-            if prior is None:
-                raise ExportSkipped("missing_input", f"prior dataset {prior_name} not found in ResQ")
-            priors.append((prior_name, prior))
-        return (latest_name, latest, latest_type), (developed_name, developed), priors
-
-    def _sync_bf_structure(self, bf, details, method_tab):
-        """Write the BF's output type, origin length, inputs and priors; say what changed."""
-
-        latest, developed, priors = self._resolve_bf_inputs(method_tab)
-        changes = []
-        try:
-            changes += self._sync_output_type(bf, details)
-            changes += self._sync_origin_length(bf, details)
-            changes += self._sync_bf_latest(bf, *latest)
-            changes += self._sync_bf_percentage_developed(bf, method_tab, *developed)
-            changes += self._sync_bf_priors(bf, method_tab, priors)
-        except Exception as exc:
-            done = f" after {', '.join(changes)}" if changes else ""
-            raise RuntimeError(f"ResQ refused a change to the BF's inputs{done}: {exc}") from exc
-        return changes
-
-    def _sync_origin_length(self, method, details):
-        try:
-            wanted = int(details.get("origin_length") or 0)
-        except (TypeError, ValueError):
-            return []
-        current = _safe_length(method, "OriginLength")
-        if not wanted or current == wanted:
-            return []
-        method.OriginLength = wanted
-        return [f"origin length {current} -> {wanted}"]
-
-    def _sync_bf_latest(self, bf, wanted_name, latest, latest_type):
-        if latest is None:
-            return []
-        current = _clean_label(getattr(getattr(bf, "Latest", None), "Name", ""))
-        current_type = _safe_length(bf, "LatestType")
-        if _label_key(current) == _label_key(wanted_name) and current_type == latest_type:
-            return []
-        bf.LatestType = latest_type
-        bf.Latest = latest
-        return [f"latest {current} -> {wanted_name}"]
-
-    def _sync_bf_percentage_developed(self, bf, method_tab, wanted_name, developed):
-        """Point percentage developed at ArcRho's DFM output, under its type.
-
-        ArcRho reads percentage developed from the DFM's cumulative
-        development factors, ResQ's type 2. The dataset goes in before the
-        type, because putting the dataset moves ResQ's type (step 1, C3).
-        """
-
-        if developed is None:
-            return []
-        wanted_type = method_tab.get("percentage_developed_type_code")
-        wanted_type = RESQ_PERC_DEVELOPED_CUM_DEV_FACTORS if wanted_type is None else int(wanted_type)
-        changes = []
-        current = _clean_label(getattr(getattr(bf, "PercentageDeveloped", None), "Name", ""))
-        current_type = _safe_length(bf, "PercentageDevelopedType")
-        if _label_key(current) != _label_key(wanted_name):
-            bf.PercentageDeveloped = developed
-            changes.append(f"percentage developed {current} -> {wanted_name}")
-        if _safe_length(bf, "PercentageDevelopedType") != wanted_type:
-            bf.PercentageDevelopedType = wanted_type
-            if current_type != wanted_type:
-                changes.append(f"percentage developed type {current_type} -> {wanted_type}")
-        return changes
-
-    def _resq_bf_prior_names(self, bf):
-        names = []
-        for index in range(1, _safe_length(bf, "PriorVectorCount") + 1):
-            names.append(_clean_label(getattr(bf.PriorRatioObj(index).Vector, "Name", "")))
-        return names
-
-    def _sync_bf_priors(self, bf, method_tab, priors):
-        """Make ResQ's prior list ArcRho's, in ArcRho's order.
-
-        The priors both lists already share at the front stay with their
-        weights; every later ResQ prior is removed from the end, then the rest
-        of ArcRho's list is added. An ArcRho BF with no prior leaves ResQ's
-        priors alone.
-        """
-
-        if not priors:
-            return []
-        current = self._resq_bf_prior_names(bf)
-        kept = 0
-        while (
-            kept < len(current)
-            and kept < len(priors)
-            and _label_key(current[kept]) == _label_key(priors[kept][0])
-        ):
-            kept += 1
-        if kept == len(current) == len(priors):
-            return []
-        prior_type = method_tab.get("prior_type_code")
-        prior_type = RESQ_PRIOR_TYPE_ULTIMATES if prior_type is None else int(prior_type)
-        for index in range(len(current), kept, -1):
-            bf.RemovePriorVector(index)
-        for _prior_name, prior in priors[kept:]:
-            bf.AddPriorVector(prior, prior_type)
-        return [f"priors {', '.join(current) or 'none'} -> {', '.join(name for name, _ in priors)}"]
-
-    def _sync_bf_prior_weights(self, bf, method_tab):
-        """Write each prior's weight per origin where ResQ's differs from ArcRho's.
-
-        ResQ takes weights only under manual weighting
-        (``PriorRatioWeightSelection = 1``), set before the first write. A
-        blank ArcRho weight is 1, the BF contract's default.
-        """
+            if developed is not None:
+                developed_type = method_tab.get("percentage_developed_type_code")
+                if developed_type is None:
+                    developed_type = RESQ_PERC_DEVELOPED_CUM_DEV_FACTORS
+                bf.PercentageDevelopedType = int(developed_type)
+                bf.PercentageDeveloped = developed
 
         priors = method_tab.get("prior_datasets")
-        priors = [prior for prior in priors if isinstance(prior, dict) and _clean_label(prior.get("name"))] if isinstance(priors, list) else []
-        prior_count = _safe_length(bf, "PriorVectorCount")
-        origin_count = _safe_length(bf, "OriginCount")
-        updates = 0
-        for prior_index, prior in enumerate(priors[:prior_count], start=1):
-            weights = prior.get("weights")
-            if not isinstance(weights, list):
-                continue
-            ratio = bf.PriorRatioObj(prior_index)
-            for origin_index, raw in enumerate(weights[:origin_count], start=1):
-                wanted = _safe_number(raw)
-                wanted = 1.0 if wanted is None else wanted
-                current = _safe_number(ratio.RatioWeights(origin_index))
-                if current is not None and abs(current - wanted) <= 1e-12:
-                    continue
-                if not updates and _safe_length(bf, "PriorRatioWeightSelection") != 1:
-                    bf.PriorRatioWeightSelection = 1
-                ratio.SetRatioWeights(origin_index, wanted)
-                updates += 1
-        return updates
+        if isinstance(priors, list) and priors:
+            prior_name = _clean_label(priors[0].get("name") if isinstance(priors[0], dict) else "")
+            if prior_name:
+                prior = self._find_vector(prior_name)
+                if prior is not None:
+                    prior_type = method_tab.get("prior_type_code")
+                    bf.PriorType = int(prior_type) if prior_type is not None else RESQ_PRIOR_TYPE_ULTIMATES
+                    bf.Prior = prior
+        notes = self._sync_notes(bf, entry)
+        bf.Save()
+        self.counts["bfs_written"] += 1
+        self._emit(f"Exported BF: {name} (notes {notes})", status="success")
 
     # ----- Cape Cod ---------------------------------------------------------------
 
@@ -1749,40 +1165,58 @@ class ResQReservingClassExporter:
             payload = entry["payload"]
             details = _dict_path(payload, ("details_tab",))
             name = _clean_label(details.get("name")) or entry["name"]
-            self._created_current = False
             try:
                 self._export_result_selection(name, details, payload, entry)
             except ExportSkipped as skip:
                 self._record_skip("Result Selection", name, skip.reason, str(skip))
             except Exception as exc:
-                self._record_error("Result Selection", name, self._after_create(exc))
+                self._record_error("Result Selection", name, exc)
 
     def _export_result_selection(self, name, details, payload, entry):
         rs = self._find_method_by_output(self.reserving_class.ResultSelections(), name)
+        if rs is None:
+            raise self._missing_in_resq("Result Selection")
         method_tab = _dict_path(payload, ("method_tab",))
         loaded = method_tab.get("loaded_datasets")
         loaded = loaded if isinstance(loaded, list) else []
-        created = []
-        if rs is None:
-            if not self.create_missing_methods:
-                raise self._missing_in_resq("Result Selection")
-            # A new Result Selection needs every dataset it loads; an existing
-            # one only reports a dataset ResQ lacks and leaves it out.
-            for source in loaded:
-                source_name = _clean_label(source.get("name") if isinstance(source, dict) else "")
-                if source_name and self._find_dataset(source_name) is None:
-                    raise ExportSkipped("missing_input", f"loaded dataset {source_name} not found in ResQ")
-            rs, created = self._create_method(
-                RESQ_METHOD_TYPE_RESULT_SELECTION,
-                "Result Selection",
-                name,
-                details,
-                prepare=lambda method: self._sync_result_selection_structure(method, name, details, loaded),
-            )
 
         origin_length = int(details.get("origin_length") or 0)
-        structure = self._sync_result_selection_structure(rs, name, details, loaded)
-        existing = self._result_selection_dataset_indexes(rs)
+        if origin_length:
+            rs.OriginLength = origin_length
+
+        # Ensure every ArcRho source dataset is loaded into the ResQ method.
+        existing = {}
+        dataset_count = int(getattr(rs, "DatasetCount", 0) or 0)
+        for dataset_index in range(1, dataset_count + 1):
+            try:
+                existing[_label_key(rs.Dataset(dataset_index).Name)] = dataset_index
+            except Exception:
+                continue
+        for source in loaded:
+            source_name = _clean_label(source.get("name") if isinstance(source, dict) else "")
+            if not source_name or _label_key(source_name) in existing:
+                continue
+            dataset = self._find_dataset(source_name)
+            if dataset is None:
+                self._record_skip(
+                    "Result Selection dataset",
+                    source_name,
+                    "missing_rs_source_dataset",
+                    f"{name}: source dataset not found in ResQ",
+                )
+                continue
+            rs.AddDataset(dataset)
+        if any(_label_key(str(s.get("name") or "")) not in existing for s in loaded if isinstance(s, dict)):
+            rs.Save()
+
+        # Refresh the index map after AddDataset calls.
+        existing = {}
+        dataset_count = int(getattr(rs, "DatasetCount", 0) or 0)
+        for dataset_index in range(1, dataset_count + 1):
+            try:
+                existing[_label_key(rs.Dataset(dataset_index).Name)] = dataset_index
+            except Exception:
+                continue
 
         origin_count = int(getattr(rs, "OriginCount", 0) or 0)
         weight_updates = 0
@@ -1819,82 +1253,10 @@ class ResQReservingClassExporter:
         notes = self._sync_notes(rs, entry)
         rs.Save()
         self.counts["result_selections_written"] += 1
-        self._record_written_details("Result Selection", name, created, structure)
         self._emit(
-            f"{'Created' if self._created_current else 'Exported'} Result Selection: {name} ("
-            + (f"{', '.join(structure)}; " if structure else "")
-            + f"weights {weight_updates}, overrides {override_updates}, notes {notes})",
+            f"Exported Result Selection: {name} (weights {weight_updates}, overrides {override_updates}, notes {notes})",
             status="success",
         )
-
-    @staticmethod
-    def _result_selection_dataset_indexes(rs):
-        """ResQ's own index for each loaded dataset, by name key.
-
-        ResQ orders ``Dataset(i)`` itself, whatever order the datasets were
-        added in, so weights are always addressed through this map.
-        """
-
-        indexes = {}
-        for dataset_index in range(1, int(getattr(rs, "DatasetCount", 0) or 0) + 1):
-            try:
-                indexes.setdefault(_label_key(rs.Dataset(dataset_index).Name), dataset_index)
-            except Exception:
-                continue
-        return indexes
-
-    def _sync_result_selection_structure(self, rs, name, details, loaded):
-        """Write the output type and origin length, then make the loaded datasets ArcRho's.
-
-        Every ResQ dataset ArcRho's list lacks is removed (``RemoveDataset``
-        takes the dataset object), then every ArcRho dataset ResQ lacks is
-        added, and the method is saved so the indexes the weights use are
-        ResQ's new ones. An ArcRho list with no names removes nothing. A
-        dataset ResQ does not hold is reported and left out.
-        """
-
-        changes = []
-        try:
-            changes += self._sync_output_type(rs, details)
-            changes += self._sync_origin_length(rs, details)
-            wanted = {}
-            for source in loaded:
-                source_name = _clean_label(source.get("name") if isinstance(source, dict) else "")
-                if source_name:
-                    wanted.setdefault(_label_key(source_name), source_name)
-            current = []
-            for dataset_index in range(1, int(getattr(rs, "DatasetCount", 0) or 0) + 1):
-                dataset = rs.Dataset(dataset_index)
-                current.append((_clean_label(getattr(dataset, "Name", "")), dataset))
-            removed = [(label, dataset) for label, dataset in current if wanted and _label_key(label) not in wanted]
-            for _label, dataset in removed:
-                rs.RemoveDataset(dataset)
-            held = {_label_key(label) for label, _dataset in current}
-            added = []
-            for key, source_name in wanted.items():
-                if key in held:
-                    continue
-                dataset = self._find_dataset(source_name)
-                if dataset is None:
-                    self._record_skip(
-                        "Result Selection dataset",
-                        source_name,
-                        "missing_rs_source_dataset",
-                        f"{name}: source dataset not found in ResQ",
-                    )
-                    continue
-                rs.AddDataset(dataset)
-                added.append(source_name)
-            if removed or added:
-                rs.Save()
-        except Exception as exc:
-            done = f" after {', '.join(changes)}" if changes else ""
-            raise RuntimeError(f"ResQ refused a change to the Result Selection's datasets{done}: {exc}") from exc
-        if removed:
-            changes.append("removed " + ", ".join(label for label, _dataset in removed))
-        if added:
-            changes.append("added " + ", ".join(added))
-        return changes
 
 
 # ----- macro UI flow ------------------------------------------------------------------
@@ -1999,9 +1361,6 @@ def export_result_table_payload(result) -> dict:
     items = [item for item in result.get("results") or [] if isinstance(item, dict)]
     rows = []
     counts = {outcome: 0 for outcome in _OUTCOME_CELLS}
-    # A method the export created is an exported row whose message says so;
-    # the header counts them apart.
-    created = sum(1 for item in items if item.get("created") and str(item.get("outcome") or "") == "exported")
     for index, item in enumerate(items, start=1):
         outcome = str(item.get("outcome") or "")
         if outcome not in counts:
@@ -2026,9 +1385,7 @@ def export_result_table_payload(result) -> dict:
             f"{headline}\n"
             f"Project: {result.get('project_name')} | Reserving class: {result.get('rc_path')} | "
             f"ResQ: {result.get('connection_name')}\n"
-            f"Exported {counts['exported']} dataset/method item(s)"
-            + (f", {created} of them created in ResQ" if created else "")
-            + f"; saved {counts['saved']} method(s); "
+            f"Exported {counts['exported']} dataset/method item(s); saved {counts['saved']} method(s); "
             f"skipped {counts['skipped']}; failed {counts['failed']}.\n"
             f"{export_baseline_sentence(result.get('baseline'))}\n"
             f"{export_selection_sentence(result.get('selection'))}"
