@@ -17,6 +17,12 @@ sampling error, so a difference passes the plan's parity bar when it is within
 three standard errors of the two runs combined, which is 3·sqrt(2) = 4.24 ResQ
 standard errors.
 
+It then compares each origin's mean and standard deviation the same way, so a
+gap confined to a few origins (a lost tail factor, say) shows up even when the
+totals agree. ResQ's per-origin figures are its full run's; the standard error
+of a standard deviation takes the kurtosis of the first 500 simulations the
+fixture keeps by origin, scaled to the full run's 10,000.
+
 Reads only; run on any PC that sees the ArcRho Server share::
 
     py -3.10 tools/bootstrap_parity_report.py [--server-root PATH] [--project NAME]
@@ -104,6 +110,42 @@ def _rows(arco_scaled: dict, resq_scaled: dict, resq_totals: list[float]) -> lis
     ]
 
 
+def _z(diff: float, error: float) -> float:
+    return diff / error if error else (0.0 if abs(diff) < 1e-6 else math.inf)
+
+
+def _origin_rows(arco_scaled: dict, resq_scaled: dict, resq_origin_sims: list[list[float]], n: int) -> list[tuple]:
+    """Per origin: (origin index, Arco mean, ResQ mean, z, Arco sd, ResQ sd, z).
+
+    ``resq_origin_sims`` is the fixture's first simulations, one list of
+    reserves by origin each. It only sets the shape of each origin's
+    distribution (its kurtosis); ResQ's mean and standard deviation are the
+    full run's.
+    """
+
+    rows = []
+    for index in range(1, len(resq_scaled["mean"])):
+        sample = [sim[index - 1] for sim in resq_origin_sims]
+        _, sample_sd, _, sample_se_sd = _moments(sample)
+        r_mean, r_sd = resq_scaled["mean"][index], resq_scaled["standard_error"][index]
+        a_mean, a_sd = arco_scaled["mean"][index], arco_scaled["standard_error"][index]
+        se_mean = r_sd / math.sqrt(n)
+        # The sample's relative error of the sd, rescaled from its own size to n.
+        se_sd = r_sd * (sample_se_sd / sample_sd) * math.sqrt(len(sample) / n) if sample_sd > 0 else 0.0
+        rows.append((index, a_mean, r_mean, _z(a_mean - r_mean, se_mean), a_sd, r_sd, _z(a_sd - r_sd, se_sd)))
+    return rows
+
+
+def _consolidated_origin_sims(consolidation: dict) -> list[list[float]]:
+    """Each first simulation's consolidated reserves by origin, the sum of its methods'."""
+
+    sims = []
+    for by_method in consolidation["reserves_by_class_first_simulations"]:
+        origins = len(by_method[0]) - 1  # origins 1..n, then the total
+        sims.append([math.fsum(method[k] for method in by_method) for k in range(origins)])
+    return sims
+
+
 def build_report(server_root: Path, project: str) -> list[dict]:
     with gzip.open(FIXTURE, "rt", encoding="utf-8") as handle:
         fixture = json.load(handle)
@@ -116,6 +158,13 @@ def build_report(server_root: Path, project: str) -> list[dict]:
             {
                 "name": segment["reserving_class"].rsplit("\\", 1)[-1],
                 "rows": _rows(summary["scaled"], segment["scaled"], segment["scaled_total_by_simulation"]),
+                "origins": segment["origin_labels"],
+                "origin_rows": _origin_rows(
+                    summary["scaled"],
+                    segment["scaled"],
+                    segment["scaled_by_origin_first_simulations"],
+                    len(segment["scaled_total_by_simulation"]),
+                ),
             }
         )
     consolidation = fixture["consolidation"]
@@ -125,6 +174,13 @@ def build_report(server_root: Path, project: str) -> list[dict]:
         {
             "name": "Total consolidation",
             "rows": _rows(summary["scaled"], consolidation["scaled"], consolidation["scaled_total_by_simulation"]),
+            "origins": consolidation["origin_labels"],
+            "origin_rows": _origin_rows(
+                summary["scaled"],
+                consolidation["scaled"],
+                _consolidated_origin_sims(consolidation),
+                len(consolidation["scaled_total_by_simulation"]),
+            ),
         }
     )
     return report
@@ -152,7 +208,16 @@ def main(argv: list[str] | None = None) -> int:
             if flag:
                 failures.append(f"{block['name']} {label}")
             print(f"  {label:<10}{_number(label, arco):>12}{_number(label, resq):>12}{diff_text:>11}{z:>+13.2f}{flag}")
-    print("\nVerdict: " + ("every statistic within the parity bar." if not failures else "outside: " + ", ".join(failures)))
+        print(f"  {'By origin':<10}{'Mean Arco':>12}{'ResQ':>11}{'z':>8}{'Sd Arco':>11}{'ResQ':>11}{'z':>8}")
+        for index, a_mean, r_mean, z_mean, a_sd, r_sd, z_sd in block["origin_rows"]:
+            origin = block["origins"][index - 1]
+            outside = [name for name, z in (("mean", z_mean), ("sd", z_sd)) if abs(z) > PARITY_Z]
+            failures.extend(f"{block['name']} {origin} {name}" for name in outside)
+            print(
+                f"  {origin:<10}{a_mean:>12,.0f}{r_mean:>11,.0f}{z_mean:>+8.2f}"
+                f"{a_sd:>11,.0f}{r_sd:>11,.0f}{z_sd:>+8.2f}{'  outside' if outside else ''}"
+            )
+    print("\nVerdict: " + ("every statistic, in total and by origin, within the parity bar." if not failures else "outside: " + ", ".join(failures)))
     return 0 if not failures else 1
 
 
