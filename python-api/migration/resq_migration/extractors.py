@@ -2915,11 +2915,17 @@ def _bst_target_snapshot(method, name: str) -> dict | None:
     if not target_name:
         return None
     count = _vector_origin_count(target)
-    labels = [_vector_origin_label(target, index) for index in range(1, count + 1)]
+    # ResQ's IVector names its origins through PeriodLabel(1..n) and has no
+    # OriginLabel, which the shared vector readers ask for; their "1".."n"
+    # fallback matches none of the DFM's labels and left the method unscaled.
+    labels = [
+        _normalize_import_name(_try_call_member(target, "PeriodLabel", [((index,), {})]))
+        for index in range(1, count + 1)
+    ]
     values = []
     for index in range(1, count + 1):
         try:
-            value = _vector_value(target, index)
+            value = _try_call_member(target, "ValuesByIndex", [((index,), {})])
             values.append(None if value is None else float(value))
         except Exception as exc:
             if _STRICT_RESQ_EXTRACTION.get():

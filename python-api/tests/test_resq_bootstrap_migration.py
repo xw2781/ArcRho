@@ -95,6 +95,22 @@ class _Vector:
         return self._values[index - 1]
 
 
+class _TargetVector:
+    """A target ultimate shaped like ResQ's IVector: Count and PeriodLabel, no OriginLabel."""
+
+    def __init__(self, name: str, labels: list[str], values: list):
+        self.Name = name
+        self._labels = list(labels)
+        self._values = list(values)
+        self.Count = len(self._values)
+
+    def PeriodLabel(self, index: int):
+        return self._labels[index - 1]
+
+    def ValuesByIndex(self, index: int):
+        return self._values[index - 1]
+
+
 class _Dfm:
     Name = DFM_NAME
 
@@ -127,7 +143,7 @@ class _Bootstrap:
         )
         self.DFMMethod = _Dfm()
         self.TargetUltimate = (
-            _Vector(SETTINGS["target_ultimate"], labels, SEGMENT["target_ultimates"])
+            _TargetVector(SETTINGS["target_ultimate"], labels, SEGMENT["target_ultimates"])
             if target
             else None
         )
@@ -328,6 +344,10 @@ class ResQBootstrapMigrationTests(unittest.TestCase):
         self.assertEqual(results["target_ultimate"], "F 92 - Current Qtr Selected")
         self.assertEqual(results["target_scaling_methods"], ["additive"] * 10)
         self.assertEqual(results["origin_labels"], SEGMENT["origin_labels"])
+        # The target lines up origin by origin, so the method is scaled to it.
+        for got, want in zip(results["target_ultimate_values"], SEGMENT["target_ultimates"], strict=True):
+            self.assertAlmostEqual(got, want, places=5)
+        self.assertTrue(all(value is not None for value in results["target_reserve_values"]))
         # Simulated once on import, so the method opens with results.
         self.assertTrue(all(value is not None for value in results["bootstrap_ultimate"]))
         self.assertEqual(
