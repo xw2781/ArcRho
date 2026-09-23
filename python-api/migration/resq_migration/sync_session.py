@@ -84,13 +84,17 @@ _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
 # Methods the export phase writes Notes for and then saves in ResQ without
 # writing another field: ResQ recalculates each from the datasets and DFMs
 # exported before it and re-stamps it. Keyed by the ResQ method-type code the
-# exporter looks it up by.
-_SAVE_ONLY_METHOD_CODES = {KIND_BF: 2, KIND_CC: 3, KIND_BS_SR: 8}
-# Methods only the export phase pushes: the save-only kinds, and B&S Case
-# Reserve Adequacy, whose Avg. Selections the exporter writes. The sync's
-# field-level apply and read-back do not cover them, so they stay out of
-# ``_EXPORTABLE_METHOD_KINDS`` and the review offers them for export alone.
-_EXPORT_PHASE_METHOD_KINDS = set(_SAVE_ONLY_METHOD_CODES) | {KIND_BS_CRA}
+# exporter looks it up by. A BF is not one of them: the export writes its
+# output type, origin length, latest, percentage developed and priors.
+_SAVE_ONLY_METHOD_CODES = {KIND_CC: 3, KIND_BS_SR: 8}
+# Methods whose export review row is offered even where the sync's own
+# support refuses it: the save-only kinds, B&S Case Reserve Adequacy, whose
+# Avg. Selections the exporter writes, and BF, which kept this override when
+# it left the save-only group. The sync's field-level apply and read-back do
+# not cover the save-only kinds or B&S Case Reserve Adequacy, so those stay
+# out of ``_EXPORTABLE_METHOD_KINDS`` and the review offers them for export
+# alone.
+_EXPORT_PHASE_METHOD_KINDS = set(_SAVE_ONLY_METHOD_CODES) | {KIND_BF, KIND_BS_CRA}
 
 # Tie-break rank inside one write direction. The dependency walk decides the
 # order wherever one accepted row reads another; rows with no such link fall
@@ -1061,8 +1065,8 @@ def _export_rows(runtime: Mapping[str, Any], inventory: list[dict[str, Any]]) ->
 def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
     """Write one export row and say what became of it: exported, saved, skipped, or failed.
 
-    Input datasets, DFMs, Result Selections, and B&S Case Reserve Adequacy
-    methods go through the exporter's writers; every other supported method
+    Input datasets, DFMs, BFs, Result Selections, and B&S Case Reserve
+    Adequacy methods go through the exporter's writers; every other supported method
     has its Notes written and is then saved, so ResQ recalculates it from the
     inputs written before it. Notes reach ResQ for every kind either way.
     There is no preflight and no read-back: an export is a push, not a
@@ -1092,6 +1096,8 @@ def _push_row_to_resq(exporter, row: Mapping[str, Any]) -> tuple[str, str]:
         exporter.export_datasets([item.get("payload") or {}])
     elif kind == KIND_DFM:
         exporter.export_dfms([_writer_entry(item, row)])
+    elif kind == KIND_BF:
+        exporter.export_bfs([_writer_entry(item, row)])
     elif kind == KIND_RS:
         exporter.export_result_selections([_writer_entry(item, row)])
     else:

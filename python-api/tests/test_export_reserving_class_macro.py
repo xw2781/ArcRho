@@ -1060,8 +1060,9 @@ class ExportMacroDfmStructureTests(unittest.TestCase):
 
 
 class ExportMacroSaveOnlyTests(unittest.TestCase):
-    """BF, Cape Cod, and Berquist Sherman methods carry their Notes and are then
-    saved in ResQ; no other field of theirs is rewritten."""
+    """``save_method`` writes a method's Notes and saves it in ResQ; no other
+    field is rewritten. The export sends Cape Cod and B&S Settlement Rate
+    methods here; a BF goes through ``export_bfs``."""
 
     def setUp(self):
         self.module = _load_macro()
@@ -1189,6 +1190,334 @@ class ExportMacroSaveOnlyTests(unittest.TestCase):
         self.assertEqual(exporter.counts["errors"], 1)
         self.assertEqual(exporter.error_details[-1]["message"], "part of the template implementation")
         self.assertEqual(exporter.counts["methods_saved"], 0)
+
+
+class _FakePriorRatio:
+    """One entry of a ResQ BF's prior collection, ``PriorRatioObj(k)``."""
+
+    def __init__(self, vector, prior_type, origins):
+        self.Vector = vector
+        self.PriorType = prior_type
+        self.weights = [1.0] * origins  # ResQ's default weight
+        self.weight_puts = []
+
+    def RatioWeights(self, origin_index):
+        return self.weights[origin_index - 1]
+
+    def SetRatioWeights(self, origin_index, weight):
+        self.weight_puts.append((origin_index, weight))
+        self.weights[origin_index - 1] = weight
+
+
+class _FakeResqBf:
+    """A ResQ BF with the members the export writes.
+
+    Putting ``PercentageDeveloped`` moves a type-2 BF to type 3, as the
+    probe of 2026-09-23 saw (case C3).
+    """
+
+    def __init__(
+        self,
+        *,
+        latest="Paid Loss",
+        latest_type=0,
+        developed="D 50 out",
+        developed_type=2,
+        priors=("D 82",),
+        origin_length=12,
+        output_type="D 41",
+        origins=3,
+    ):
+        self.Latest = _FakeNamed(latest)
+        self.LatestType = latest_type
+        self._developed = _FakeNamed(developed)
+        self._developed_type = developed_type
+        self.priors = [_FakePriorRatio(_FakeNamed(name), 0, origins) for name in priors]
+        self.OriginLength = origin_length
+        self.OriginCount = origins
+        self.OutputVector = types.SimpleNamespace(Name="D 41 out", DatasetType=_FakeNamed(output_type))
+        self.PriorRatioWeightSelection = 0
+        self.Notes = ""
+        self.saved = 0
+        self.calls = []
+
+    @property
+    def PercentageDeveloped(self):
+        return self._developed
+
+    @PercentageDeveloped.setter
+    def PercentageDeveloped(self, value):
+        self.calls.append(("PercentageDeveloped", value.Name))
+        self._developed = value
+        if self._developed_type == 2:
+            self._developed_type = 3
+
+    @property
+    def PercentageDevelopedType(self):
+        return self._developed_type
+
+    @PercentageDevelopedType.setter
+    def PercentageDevelopedType(self, value):
+        self.calls.append(("PercentageDevelopedType", value))
+        self._developed_type = value
+
+    @property
+    def PriorVectorCount(self):
+        return len(self.priors)
+
+    def PriorRatioObj(self, index):
+        return self.priors[index - 1]
+
+    def AddPriorVector(self, vector, prior_type):
+        self.calls.append(("AddPriorVector", vector.Name, prior_type))
+        self.priors.append(_FakePriorRatio(vector, prior_type, self.OriginCount))
+
+    def RemovePriorVector(self, index):
+        self.calls.append(("RemovePriorVector", index))
+        del self.priors[index - 1]
+
+    def Save(self):
+        self.saved += 1
+
+
+class ExportMacroBfTests(unittest.TestCase):
+    """Exporting an existing BF gives ResQ ArcRho's output type, origin length, inputs and priors."""
+
+    TRIANGLES = ("Paid Loss", "Reported Loss")
+    VECTORS = ("D 50 out", "D 51 out", "D 82", "D 91", "D 92")
+    DATASET_TYPES = ("D 41", "D 42")
+
+    def setUp(self):
+        self.module = _load_macro()
+
+    def _exporter(self, bf):
+        exporter = self.module.ResQReservingClassExporter(
+            _migration(), arcrho_project_name="Project", rc_path="Line/Class", server_root=Path(".")
+        )
+        exporter.reserving_class = types.SimpleNamespace(BFMethods=lambda: "bfs")
+        exporter._find_method_by_output = Mock(return_value=bf)
+        exporter._find_triangle = lambda name: _FakeNamed(name) if name in self.TRIANGLES else None
+        exporter._find_vector = lambda name: _FakeNamed(name) if name in self.VECTORS else None
+        exporter._find_dataset_type = lambda name: _FakeNamed(name) if name in self.DATASET_TYPES else None
+        return exporter
+
+    @staticmethod
+    def _payload(*, latest="Paid Loss", developed="D 50 out", priors=(("D 82", None),), **details):
+        details.setdefault("name", "D 41 out")
+        details.setdefault("output_type", "D 41")
+        details.setdefault("origin_length", 12)
+        return {
+            "details_tab": details,
+            "method_tab": {
+                "latest_dataset": latest,
+                "dfm_dataset": developed,
+                "prior_datasets": [
+                    {"name": name, "weights": list(weights) if weights is not None else [1.0, 1.0, 1.0]}
+                    for name, weights in priors
+                ],
+            },
+        }
+
+    def _export(self, exporter, payload):
+        exporter.export_bfs([{"name": "D 41 out", "payload": payload, "notes": ""}])
+
+    def test_an_unchanged_bf_has_nothing_structural_written(self):
+        bf = _FakeResqBf()
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload())
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(bf.calls, [])
+        self.assertEqual(bf.PriorRatioWeightSelection, 0)
+        self.assertEqual(exporter.written_details, [])
+        self.assertEqual((bf.saved, exporter.counts["bfs_written"]), (1, 1))
+
+    def test_a_bf_whose_latest_percentage_developed_and_priors_all_differ_takes_arcrhos(self):
+        bf = _FakeResqBf(priors=("D 92",), origin_length=3, output_type="D 42")
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload(latest="D 92", developed="D 51 out", priors=(("D 82", None),)))
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(bf.OutputVector.DatasetType.Name, "D 41")
+        self.assertEqual(bf.OriginLength, 12)
+        self.assertEqual((bf.Latest.Name, bf.LatestType), ("D 92", 1))  # a vector latest
+        # The dataset goes in before the type, which ResQ's dataset put had moved to 3.
+        self.assertEqual((bf.PercentageDeveloped.Name, bf.PercentageDevelopedType), ("D 51 out", 2))
+        self.assertLess(bf.calls.index(("PercentageDeveloped", "D 51 out")), bf.calls.index(("PercentageDevelopedType", 2)))
+        self.assertEqual([prior.Vector.Name for prior in bf.priors], ["D 82"])
+        self.assertIn(("RemovePriorVector", 1), bf.calls)
+        self.assertIn(("AddPriorVector", "D 82", 0), bf.calls)
+        self.assertEqual(
+            exporter.written_details[-1]["message"],
+            "output type D 42 -> D 41, origin length 3 -> 12, latest Paid Loss -> D 92, "
+            "percentage developed D 50 out -> D 51 out, priors D 92 -> D 82",
+        )
+        self.assertEqual(bf.saved, 1)
+
+    def test_a_bf_with_two_priors_keeps_the_shared_first_and_writes_both_weights(self):
+        bf = _FakeResqBf(priors=("D 82",))
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload(priors=(("D 82", [0.25, 0.25, None]), ("D 91", [0.75, 0.75, 0.5]))))
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual([prior.Vector.Name for prior in bf.priors], ["D 82", "D 91"])
+        self.assertNotIn("RemovePriorVector", [call[0] for call in bf.calls])
+        self.assertEqual(bf.PriorRatioWeightSelection, 1)
+        # A blank ArcRho weight is 1, which ResQ already holds, so it is not written.
+        self.assertEqual(bf.priors[0].weight_puts, [(1, 0.25), (2, 0.25)])
+        self.assertEqual(bf.priors[1].weights, [0.75, 0.75, 0.5])
+        self.assertEqual(exporter.written_details[-1]["message"], "priors D 82 -> D 82, D 91")
+
+    def test_a_resq_type_other_than_arcrhos_is_restored_without_moving_the_dataset(self):
+        bf = _FakeResqBf(developed_type=3)
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload())
+
+        self.assertEqual(bf.calls, [("PercentageDevelopedType", 2)])
+        self.assertEqual(exporter.written_details[-1]["message"], "percentage developed type 3 -> 2")
+
+    def test_a_bf_whose_prior_resq_lacks_is_skipped_before_any_write(self):
+        bf = _FakeResqBf(priors=("D 92",), origin_length=3)
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload(priors=(("D 99 missing", None),)))
+
+        self.assertEqual(exporter.skipped, {"missing_input": 1})
+        self.assertIn("prior dataset D 99 missing not found in ResQ", exporter.skip_details[-1]["message"])
+        self.assertEqual((bf.calls, bf.OriginLength, bf.saved), ([], 3, 0))
+
+    def test_a_refused_change_is_an_error_naming_what_was_done(self):
+        bf = _FakeResqBf(priors=("D 92",), origin_length=3)
+
+        def refuse(_vector, _prior_type):
+            raise RuntimeError("ResQ said no")
+
+        bf.AddPriorVector = refuse
+        exporter = self._exporter(bf)
+
+        self._export(exporter, self._payload())
+
+        self.assertEqual(exporter.counts["errors"], 1)
+        self.assertEqual(
+            exporter.error_details[-1]["message"],
+            "ResQ refused a change to the BF's inputs after origin length 3 -> 12: ResQ said no",
+        )
+        self.assertEqual(bf.saved, 0)
+
+
+class _FakeResqResultSelection:
+    """A ResQ Result Selection. ``AddDataset`` puts the dataset first, never
+    where it was asked, because ResQ orders ``Dataset(i)`` itself (case C4)."""
+
+    def __init__(self, datasets, *, origins=3, output_type="D 99", origin_length=12):
+        self.datasets = [_FakeNamed(name) for name in datasets]
+        self.weights = {name: [0.5] * origins for name in datasets}
+        self.OriginCount = origins
+        self.OriginLength = origin_length
+        self.OutputVector = types.SimpleNamespace(Name="D 99 out", DatasetType=_FakeNamed(output_type))
+        self.Notes = ""
+        self.calls = []
+
+    @property
+    def DatasetCount(self):
+        return len(self.datasets)
+
+    def Dataset(self, index):
+        return self.datasets[index - 1]
+
+    def AddDataset(self, dataset):
+        self.calls.append(("AddDataset", dataset.Name))
+        self.datasets.insert(0, dataset)
+        self.weights[dataset.Name] = [0.0] * self.OriginCount
+
+    def RemoveDataset(self, dataset):
+        if isinstance(dataset, int):
+            raise TypeError("RemoveDataset takes the dataset, not an index")
+        self.calls.append(("RemoveDataset", dataset.Name))
+        self.datasets.remove(dataset)
+        del self.weights[dataset.Name]
+
+    def SetWeights(self, dataset_index, origin_index, weight):
+        self.weights[self.datasets[dataset_index - 1].Name][origin_index - 1] = weight
+
+    def ClearOverriddenUltimates(self):
+        self.calls.append(("ClearOverriddenUltimates",))
+
+    def SetUltimates(self, origin_index, origin_length, value):
+        self.calls.append(("SetUltimates", origin_index, origin_length, value))
+
+    def Save(self):
+        self.calls.append(("Save",))
+
+
+class ExportMacroResultSelectionTests(unittest.TestCase):
+    """Exporting an existing Result Selection makes its loaded datasets ArcRho's."""
+
+    def setUp(self):
+        self.module = _load_macro()
+
+    def _exporter(self, rs, held=("A", "B", "C", "X")):
+        exporter = self.module.ResQReservingClassExporter(
+            _migration(), arcrho_project_name="Project", rc_path="Line/Class", server_root=Path(".")
+        )
+        exporter.reserving_class = types.SimpleNamespace(ResultSelections=lambda: "rss")
+        exporter._find_method_by_output = Mock(return_value=rs)
+        exporter._find_dataset = lambda name: _FakeNamed(name) if name in held else None
+        exporter._find_dataset_type = lambda name: _FakeNamed(name) if name in ("D 98", "D 99") else None
+        return exporter
+
+    @staticmethod
+    def _payload(loaded, **details):
+        details.setdefault("name", "D 99 out")
+        details.setdefault("output_type", "D 99")
+        details.setdefault("origin_length", 12)
+        return {
+            "details_tab": details,
+            "method_tab": {"loaded_datasets": [{"name": name, "weights": weights} for name, weights in loaded]},
+        }
+
+    def test_an_extra_dataset_is_removed_and_a_missing_one_added_before_the_weights(self):
+        rs = _FakeResqResultSelection(["A", "B", "X"], output_type="D 98")
+        exporter = self._exporter(rs)
+
+        exporter.export_result_selections([{
+            "name": "D 99 out",
+            "payload": self._payload([("A", [0.2, 0.2, 0.2]), ("B", [0.3, 0.3, 0.3]), ("C", [0.5, 0.5, 0.5])]),
+        }])
+
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
+        self.assertEqual(exporter.skipped, {})
+        self.assertEqual(rs.OutputVector.DatasetType.Name, "D 99")
+        self.assertEqual([dataset.Name for dataset in rs.datasets], ["C", "A", "B"])
+        # The save that follows the remove and the add comes before any weight.
+        self.assertEqual(rs.calls[:3], [("RemoveDataset", "X"), ("AddDataset", "C"), ("Save",)])
+        # Weights follow each dataset to ResQ's own index for it.
+        self.assertEqual(rs.weights, {"A": [0.2] * 3, "B": [0.3] * 3, "C": [0.5] * 3})
+        self.assertEqual(exporter.written_details[-1]["message"], "output type D 98 -> D 99, removed X, added C")
+        self.assertEqual(exporter.counts["result_selections_written"], 1)
+
+    def test_matching_datasets_are_neither_removed_nor_added_nor_saved_twice(self):
+        rs = _FakeResqResultSelection(["A", "B"])
+        exporter = self._exporter(rs)
+
+        exporter.export_result_selections([{"name": "D 99 out", "payload": self._payload([("A", [1, 1, 1]), ("B", [0, 0, 0])])}])
+
+        self.assertEqual([call for call in rs.calls if call[0] in ("RemoveDataset", "AddDataset")], [])
+        self.assertEqual(rs.calls.count(("Save",)), 1)
+        self.assertEqual(exporter.written_details, [])
+
+    def test_an_arcrho_list_with_no_names_removes_nothing(self):
+        rs = _FakeResqResultSelection(["A", "B"])
+        exporter = self._exporter(rs)
+
+        exporter.export_result_selections([{"name": "D 99 out", "payload": self._payload([])}])
+
+        self.assertEqual([dataset.Name for dataset in rs.datasets], ["A", "B"])
+        self.assertEqual(exporter.counts["errors"], 0, exporter.error_details)
 
 
 class ExportMacroBsCraTests(unittest.TestCase):

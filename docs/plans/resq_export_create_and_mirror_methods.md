@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 3, 4 and 6-8 not started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7). Step 2 done 2026-09-23: exporting an existing DFM now brings its output type, input, lengths and average rows in line with Arco (live in ResQ after step 6). Step 3 done 2026-09-23: exporting an existing BF now brings its output type, origin length, latest, percentage developed and every prior with its weights in line with Arco, and a Result Selection also drops the datasets Arco does not hold (live in ResQ after step 6). Step 5 done 2026-09-23: the DFM Details tab gains "Load Settings From Another Method" (ships with the next app release; the full app check is step 8). Steps 4 and 6-8 not started.
 
 Last updated: 2026-09-23
 
@@ -12,14 +12,14 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Learn how ResQ creates and reconfigures these three methods | [x] | 2026-09-23 | 60 min | 22 min | ResQ was shown to accept creating, reshaping and copying these three methods, and the rules and pitfalls it follows are written down for the next steps. |
 | 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [x] | 2026-09-23 | 60 min | 20 min | Exporting a DFM that ResQ already has now also gives it Arco's input triangle, lengths, output type and average rows, and the results window says what changed; it reaches users with the step 6 update. |
-| 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [ ] | | 50 min | | |
+| 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [x] | 2026-09-23 | 50 min | 17 min | Exporting a BF that ResQ already has now also gives it Arco's latest, percentage developed and every prior with its weights, and a Result Selection loses the datasets Arco does not load; the results window says what changed, and it reaches users with the step 6 update. |
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [ ] | | 65 min | | |
 | 5 | A DFM can copy every setting from another DFM in one click | [x] | 2026-09-23 | 70 min | 33 min | The DFM Details tab has a Load Settings From Another Method button: pick a class and one of its DFMs, and its lengths, average rows, selections, matching exclusions and Curves choices are copied, unsaved until Save and undoable; it reaches users with the next app release. |
 | 6 | The new export reaches every user | [ ] | | 30 min | | |
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 3 of 8 steps done. Estimated 455 min, actual so far 75 min.
+Overall: 4 of 8 steps done. Estimated 455 min, actual so far 92 min.
 
 ## How agents work this plan
 
@@ -213,12 +213,13 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 - [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) lines 80-100, 958-1080 and 2340-2415.
 - `export_bornhuetter_ferguson` and `export_result_selection` in [extractors.py](../../python-api/migration/resq_migration/extractors.py).
 - `SyncSessionExportTests` in [test_resq_sync_session.py](../../python-api/tests/test_resq_sync_session.py).
+- Added during the step: the BF branches of `_preflight_method_export` and `_verify_method_export` in [sync_session.py](../../python-api/migration/resq_migration/sync_session.py) (around lines 1340 and 1505), because the Sync macro's apply phase calls the same BF writer and checks percentage-developed type 2 and prior 1; and the snapshot and create helpers of [tools/resq_method_config_probe.py](../../tools/resq_method_config_probe.py), which the live check reuses.
 
 **Do.**
-- [ ] In the session, take BF out of `_SAVE_ONLY_METHOD_CODES` and dispatch it to `export_bfs`. Keep the review-row override so BF stays tickable.
-- [ ] Extend `_export_bf` with the output type and every Arco prior with its weights, in the form step 1 confirmed. Keep latest, percentage developed and origin length, and match the percentage-developed type the import reads.
-- [ ] In `_export_result_selection`, write the output type and remove every ResQ dataset whose name Arco's `loaded_datasets` lacks, before re-reading indexes for the weights.
-- [ ] Update the BF and Result Selection paragraphs of the export doc and the save-only list.
+- [x] In the session, take BF out of `_SAVE_ONLY_METHOD_CODES` and dispatch it to `export_bfs`. Keep the review-row override so BF stays tickable.
+- [x] Extend `_export_bf` with the output type and every Arco prior with its weights, in the form step 1 confirmed. Keep latest, percentage developed and origin length, and match the percentage-developed type the import reads.
+- [x] In `_export_result_selection`, write the output type and remove every ResQ dataset whose name Arco's `loaded_datasets` lacks, before re-reading indexes for the weights.
+- [x] Update the BF and Result Selection paragraphs of the export doc and the save-only list.
 
 **Tests.**
 - Macro tests: a BF whose latest, percentage-developed source and priors all differ; a BF with two priors.
@@ -227,7 +228,7 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Done when.** The tests pass, and a `ZZ Probe` BF and Result Selection in the Fake project, changed on the ResQ side and then written from a hand-built Arco payload, read back through the import equal to that payload.
 
-Estimate: code edit 35 min, test/validation 15 min, total 50 min.
+Estimate: code edit 35 min, test/validation 15 min, total 50 min. Actual: code edit 12 min, test/validation 5 min, total 17 min; a third of the estimate because the DFM step had already built the pattern (resolve, write only what differs, report the changes) and the step 1 probe's helpers made the live ResQ check one script that passed on its first run.
 
 ### Step 4 — The export creates a DFM, BF or Result Selection that ResQ does not have yet
 

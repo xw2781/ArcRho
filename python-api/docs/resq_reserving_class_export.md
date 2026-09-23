@@ -75,9 +75,38 @@ every item below is written, each after the items it reads:
   a formula ResQ cannot evaluate is skipped with that formula named. The read
   covers the `RatioAverageCount` rows the DFM really has, never the phantom
   rows ResQ reports past them.
-- **Result Selections** — the loaded source datasets, weights (`SetWeights`),
-  selected-ultimate overrides (`ClearOverriddenUltimates` + `SetUltimates`),
-  and Notes.
+- **Bornhuetter Ferguson methods** — first the inputs, so the ResQ BF matches
+  ArcRho's: the output vector's dataset type, the origin length, the latest
+  (a triangle when ResQ holds one by that name, else a vector, with
+  `LatestType` to match), percentage developed (`PercentageDeveloped` put
+  before `PercentageDevelopedType`, because putting the dataset moves ResQ's
+  type; the type is 2, the DFM's cumulative development factors, which is
+  what ArcRho reads percentage developed from), and every ArcRho prior in
+  ArcRho's order. The priors both lists already share at the front stay with
+  their weights; every later ResQ prior is removed from the end
+  (`RemovePriorVector`) and the rest of ArcRho's list is added
+  (`AddPriorVector(vector, 0)`, ultimates). Then each prior's weight per
+  origin where ResQ's differs (`PriorRatioObj(k).SetRatioWeights`, after
+  `PriorRatioWeightSelection = 1`, manual weighting; a blank ArcRho weight is
+  1), then Notes and a save. Only what differs is written. Every input is
+  looked up before anything is written, so a BF whose latest,
+  percentage-developed or prior dataset ResQ lacks is skipped untouched
+  (`missing_input`), and a change ResQ refuses fails the BF with ResQ's
+  reason. The results window lists the input changes, for example
+  `Written to ResQ: latest Paid -> Incurred, priors D 82 -> D 82, D 91.`
+  The import reads only a BF's first prior (`Prior`), so a BF with several
+  priors imports its first one.
+- **Result Selections** — the output vector's dataset type, the origin
+  length, then the loaded source datasets: every ResQ dataset ArcRho's
+  `loaded_datasets` lacks is removed (`RemoveDataset`, which takes the
+  dataset object), every ArcRho dataset ResQ lacks is added (`AddDataset`),
+  and the method is saved before the weights so they address ResQ's new
+  indexes. ResQ orders `Dataset(i)` itself, so weights (`SetWeights`) always
+  go through a name-to-index map re-read after the changes. Then
+  selected-ultimate overrides (`ClearOverriddenUltimates` + `SetUltimates`)
+  and Notes. An ArcRho list with no names removes nothing; a source dataset
+  ResQ does not hold is reported and left out. The results window lists what
+  was removed and added.
 - **B&S Case Reserve Adequacy methods** — the `Avg. Selections` tab and
   Notes. For each development column of both grids the exporter writes the
   `User Value` row (`SetUserAvgInflation`, `SetUserAvgCaseReserves`) and then
@@ -87,7 +116,7 @@ every item below is written, each after the items it reads:
   the `User Value` row as the numbers the page evaluated, with a formula's
   text kept beside them, so a formula-backed cell reaches ResQ as its plain
   value. The method is then saved.
-- **Bornhuetter Ferguson, Cape Cod, and B&S Settlement Rate methods** — Notes
+- **Cape Cod and B&S Settlement Rate methods** — Notes
   and a save. The exporter finds the ResQ method by its ArcRho output name,
   writes the Notes of that output sidecar into the ResQ `Notes`, and calls
   `Save()`, so ResQ recalculates it from the datasets and DFMs written before
@@ -333,8 +362,15 @@ writes; a live export of a `ZZ Probe` DFM on 2026-09-23 took it from ResQ's
 five default rows to eight ArcRho rows of every kind, then to five with the
 lengths 12/12 -> 3/3 and back, changing the input triangle and output type
 each way, and every row read back through the import equal to ArcRho's; a
-second export of the same payload wrote nothing structural. The BF, Result
-Selection and create calls are not used by the export yet.
+second export of the same payload wrote nothing structural. The BF (B1) and
+Result Selection (R1) calls are what the export's BF and Result Selection
+writers use; a live export on 2026-09-23 took a `ZZ Probe` BF whose latest,
+percentage developed (type 3), and priors had been changed in ResQ, and a
+`ZZ Probe` Result Selection with one dataset swapped, back to hand-built
+ArcRho payloads (a triangle latest, type 2, priors `D 82` and `D 91` at 0.25
+and 0.75, and the three loaded datasets with their weights), read back
+equal through the import and through COM; a second export wrote nothing
+structural. The create calls are not used by the export yet.
 
 ### Creating a method (C1-C4)
 
@@ -538,9 +574,10 @@ ArcRho → ResQ mapping gaps of the DFM and Result Selection writers:
    average whose label does not exist in the ResQ method is skipped for that
    column; creating or reordering ResQ averages via `CustomAverages(i)` is
    untested.
-10. Result Selection dataset ordering after `AddDataset` is assumed stable;
-    weights are addressed through a name→index map rebuilt after adds, but
-    ResQ's `CustomSortIndex` semantics are undocumented.
+10. ResQ orders a Result Selection's `Dataset(i)` itself, whatever order the
+    datasets were added in, and `CustomSortIndex` does not change it (R1);
+    weights are addressed through a name→index map rebuilt after the removes
+    and adds.
 11. Ultimate overrides push ArcRho `ultimate_overrides` as ResQ overridden
     ultimates; non-overridden ultimates are not pushed.
 12. On the Curves tab, ArcRho user columns map onto ResQ's by position
@@ -553,8 +590,9 @@ ArcRho → ResQ mapping gaps of the DFM and Result Selection writers:
     `fitting_method = least_squares` and shown in ArcRho with its
     log-regression fits.
 
-The Bornhuetter Ferguson and Cape Cod field writers remain in the exporter
-for the sync macro's apply phase; their known gaps (one BF prior, no scaling
-type, collapsed prior-ultimate modes) are the sync documentation's
-`supported fields only` caveat and do not affect the export, which only saves
-those methods.
+The Cape Cod field writer remains in the exporter for the sync macro's apply
+phase; its known gaps (no scaling type, collapsed prior-ultimate modes) are
+the sync documentation's `supported fields only` caveat and do not affect the
+export, which only saves Cape Cod methods. The sync's apply phase also uses
+the BF writer, but still refuses a BF with more than one prior before any
+write, because its read-back checks only the first.

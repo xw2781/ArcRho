@@ -1270,6 +1270,7 @@ def _push_exporter():
         "errors": 0,
         "datasets_written": 0,
         "dfms_written": 0,
+        "bfs_written": 0,
         "result_selections_written": 0,
         "bs_cras_written": 0,
         "methods_saved": 0,
@@ -1285,6 +1286,7 @@ def _push_exporter():
 
     exporter.export_datasets.side_effect = bump("datasets_written")
     exporter.export_dfms.side_effect = bump("dfms_written")
+    exporter.export_bfs.side_effect = bump("bfs_written")
     exporter.export_result_selections.side_effect = bump("result_selections_written")
     exporter.export_bs_cras.side_effect = bump("bs_cras_written")
     exporter.save_method.side_effect = bump("methods_saved")
@@ -1318,7 +1320,7 @@ class SyncSessionExportTests(unittest.TestCase):
 
     def test_a_save_only_method_carries_its_notes_and_is_saved_by_its_resq_code(self):
         exporter = _push_exporter()
-        for kind, code in ((sync_session.KIND_BF, 2), (sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8)):
+        for kind, code in ((sync_session.KIND_CC, 3), (sync_session.KIND_BS_SR, 8)):
             with self.subTest(kind=kind):
                 exporter.save_method.reset_mock()
                 item = _export_item(
@@ -1343,14 +1345,55 @@ class SyncSessionExportTests(unittest.TestCase):
     def test_a_save_only_method_without_a_readable_sidecar_carries_no_notes(self):
         exporter = _push_exporter()
         row = {
-            "kind": sync_session.KIND_BF,
-            "name": "BF Ult",
-            "arcrho": _export_item("BF Ult", kind=sync_session.KIND_BF, method_name="BF Ult"),
+            "kind": sync_session.KIND_CC,
+            "name": "CC Ult",
+            "arcrho": _export_item("CC Ult", kind=sync_session.KIND_CC, method_name="CC Ult"),
         }
 
         sync_session._push_row_to_resq(exporter, row)
 
-        exporter.save_method.assert_called_once_with(2, "BF Ult", {"name": "BF Ult", "payload": {}})
+        exporter.save_method.assert_called_once_with(3, "CC Ult", {"name": "CC Ult", "payload": {}})
+
+    def test_a_bf_goes_through_its_writer_and_says_what_changed(self):
+        exporter = _push_exporter()
+        exporter.written_details = []
+
+        def export_bfs(_entries):
+            exporter.counts["bfs_written"] += 1
+            exporter.written_details.append({"kind": "BF", "name": "BF Ult", "message": "priors D 82 -> D 82, D 91"})
+
+        exporter.export_bfs.side_effect = export_bfs
+        item = _export_item(
+            "BF Ult",
+            kind=sync_session.KIND_BF,
+            payload={"method_tab": {"latest_dataset": "Paid Loss"}},
+            method_name="BF in ResQ",
+            notes="Reviewed.",
+        )
+        row = {"kind": sync_session.KIND_BF, "name": "BF Ult", "arcrho": item}
+
+        self.assertEqual(
+            sync_session._push_row_to_resq(exporter, row),
+            ("exported", "Written to ResQ: priors D 82 -> D 82, D 91."),
+        )
+        exporter.export_bfs.assert_called_once_with([{
+            "name": "BF in ResQ",
+            "payload": {"method_tab": {"latest_dataset": "Paid Loss"}},
+            "notes": "Reviewed.",
+        }])
+        exporter.save_method.assert_not_called()
+
+    def test_an_arcrho_only_bf_keeps_the_export_review_override(self):
+        from resq_migration import sync as sync_contract
+
+        bf = _export_item("BF Ult", kind=sync_session.KIND_BF, can_export_to_resq=True)
+        row = sync_session._transfer_row(
+            sync_contract, sync_contract.DIRECTION_EXPORT, "bf ult", bf, None, None, ""
+        )
+
+        self.assertTrue(row["transfer_supported"])
+        self.assertIn(sync_session.KIND_BF, sync_session._EXPORT_PHASE_METHOD_KINDS)
+        self.assertNotIn(sync_session.KIND_BF, sync_session._SAVE_ONLY_METHOD_CODES)
 
     def test_a_bs_cra_method_goes_through_the_writer_despite_the_sync_block_reason(self):
         exporter = _push_exporter()
@@ -1446,8 +1489,8 @@ class SyncSessionExportTests(unittest.TestCase):
             exporter.error_details.append({"message": "locked by the template"})
 
         exporter.save_method.side_effect = fail
-        bf = {"kind": sync_session.KIND_BF, "name": "BF Ult", "arcrho": _export_item("BF Ult", kind=sync_session.KIND_BF)}
-        self.assertEqual(sync_session._push_row_to_resq(exporter, bf), ("failed", "locked by the template"))
+        cc = {"kind": sync_session.KIND_CC, "name": "CC Ult", "arcrho": _export_item("CC Ult", kind=sync_session.KIND_CC)}
+        self.assertEqual(sync_session._push_row_to_resq(exporter, cc), ("failed", "locked by the template"))
 
     def test_method_rows_order_by_their_output_sidecar_precedents(self):
         from resq_migration import sync as sync_contract
@@ -1518,9 +1561,10 @@ class SyncSessionExportTests(unittest.TestCase):
         self.assertEqual((result["project_name"], result["rc_path"], result["connection_name"]), ("Demo", r"Auto\PP", "ResQ Test"))
         self.assertEqual(
             [(item["name"], item["outcome"]) for item in result["results"]],
-            [("Paid Loss", "exported"), ("Paid LDF", "exported"), ("BF Ult", "saved"), ("Selected Ult", "exported")],
+            [("Paid Loss", "exported"), ("Paid LDF", "exported"), ("BF Ult", "exported"), ("Selected Ult", "exported")],
         )
-        exporter.save_method.assert_called_once_with(2, "BF Ult", {"name": "BF Ult", "payload": {}})
+        exporter.export_bfs.assert_called_once_with([{"name": "BF Ult", "payload": {}}])
+        exporter.save_method.assert_not_called()
         writes = [event for event in events if event.get("event") == "write"]
         self.assertEqual([(event["completed"], event["total"], event["status"]) for event in writes], [(1, 4, "success"), (2, 4, "success"), (3, 4, "success"), (4, 4, "success")])
         self.assertEqual(writes[0]["message"], "Paid Loss: Written to ResQ.")
@@ -1761,7 +1805,7 @@ class SyncSessionExportTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed_with_errors")
         self.assertEqual(
             [(item["name"], item["outcome"], item["message"]) for item in result["results"]],
-            [("Paid Loss", "failed", "COM went away"), ("BF Ult", "saved", "Written to ResQ.")],
+            [("Paid Loss", "failed", "COM went away"), ("BF Ult", "exported", "Written to ResQ.")],
         )
 
 
