@@ -202,7 +202,13 @@ Deferred from both pages: discounting, cashflow views, Igloo and CSV export, the
 
 A step that meets one records it here and stops.
 
-None open. Decision 1 below was settled on 2026-09-23.
+Decision 1 below was settled on 2026-09-23.
+
+**Decision 2 (open, found by step 10 on 2026-09-23): which classes the import may hand to the Engine.** Step 9 made the import skip the Engine for every class whose ResQ `Calculated` flag is true, so that the Total class stops failing with "Unknown reserving-class type [Total]". But ResQ reports `Calculated = True` for every class probed in the fake project, not only Total: `All States\Direct Group\BI Total`, `COL` and `Total`, `NJ\Direct Group\COL` and `MA\Direct Group\MP+PIP` (read with the migration's own binding and helper). Arco builds all of those except Total from source rows: their `Net Loss--Incurred` and the other generated datasets are Engine-owned in Arco today, and Arco's reserving-class types know `BI Total`, `COL`, `MP+PIP`, `Direct Group` and `All States` but not `Total`. So as committed, re-importing any class (including step 10's four segment classes and `MP+PIP`) would bring every generated dataset across as ResQ's values instead of asking the Engine, breaking the Generated Dataset Import Parity rule, and step 14 would ship that to the Bridge. Step 10 stopped before writing anything to the project.
+
+- **Recommended:** hand a class to the Engine exactly when Arco's own reserving-class types (the catalog the Engine resolves against) know every level of its path; ResQ's `Calculated` flag no longer decides. That keeps every segment class Engine-built and still imports Total as ResQ's values. It needs one canonical reader of that catalog shared by the Engine and the migration, which is the design question.
+- **Alternatives:** keep asking the Engine and fall back to ResQ's values only when it answers "Unknown reserving-class type" (a fallback, which needs the user's approval under AGENT_GUIDELINES); or find a different ResQ property that singles out Total (none found: `Aggregated` describes a class with a calculated parent).
+- **Unblocks:** step 10 (and, before it, a fix to step 9's scope rule with its tests, as its own step).
 
 ## Plan
 
