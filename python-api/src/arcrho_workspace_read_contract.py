@@ -196,6 +196,16 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_dataset_types_data",
         ("project_name",),
     ),
+    # The project names, one project's reserving classes, and its dataset
+    # types in one round trip: the Excel add-in's Insert Function panel, Select
+    # Datasets, and Load Reserving Classes pick from these and keep them for the
+    # Excel session. With no project it answers the project names alone.
+    "excel_formula_choices": WorkspaceReadKind(
+        "excel_formula_choices_service",
+        "list_formula_choices",
+        (),
+        ("project_name",),
+    ),
     # Planning a dataset-type change reads one index per reserving class of
     # the project; from a Client PC that is one round trip each, so the plan
     # the confirmation dialog shows is built on the server host when it can be.
