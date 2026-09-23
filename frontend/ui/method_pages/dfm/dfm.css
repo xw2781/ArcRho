@@ -427,6 +427,9 @@ body {
   white-space: nowrap;
 }
 .dfmActionBtn:hover { background: #e9e9e9; }
+/* Load Settings sits on the Details form as a quiet outline; it takes the
+   shared hover fill only while the pointer is over it, in every theme. */
+#dfmLoadSettingsBtn:not(:hover) { background: transparent; }
 .dfmActions {
   display: flex;
   justify-content: flex-start;
@@ -965,6 +968,12 @@ body {
 #ratioWrap table.ratioSummaryTable tbody th.summaryDragHandle {
   position: sticky;
   left: 0;
+}
+/* The label the averages menu was opened on. A blue tint, not the selected-row
+   gray, because the menu target and the selection can be different rows. */
+#ratioWrap table.ratioSummaryTable tbody th.summaryDragHandle.dfmSummaryLabelMenuTarget {
+  background: color-mix(in srgb, #2b6df6 30%, var(--ar-spreadsheet-label-fill));
+  color: var(--ar-spreadsheet-label-text);
 }
 #ratioWrap table.ratioSummaryTable tbody tr + tr th,
 #ratioWrap table.ratioSummaryTable tbody tr + tr td {

@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The right-click menu on the DFM Ratios averages table now stays inside the window and shows only the actions that apply.",
+  "details": [
+    "Right-clicking near the bottom or right edge no longer cuts the menu off.",
+    "Right-clicking a formula label no longer offers Copy Value or Add Cell Notes, and the label is filled blue while the menu is open.",
+    "The Load Settings From Another Method button on the Details tab shows a fill only on hover."
+  ]
+}

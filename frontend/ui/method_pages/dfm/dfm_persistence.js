@@ -127,7 +127,7 @@ import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260920a";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260923b";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";

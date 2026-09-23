@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260919a"/>
   <link rel="stylesheet" href="/ui/shared/components/floating_window/window_resize.css?v=20260913a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260920b"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260923b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c"/>
@@ -295,10 +295,10 @@
       </svg>
     </button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="copy-summary-value">Copy Value</button>
+    <button class="dfmCtxItem" data-action="copy-summary-value" data-cell-only="1">Copy Value</button>
     <button class="dfmCtxItem" data-action="paste-summary-value" hidden>Paste Value</button>
-    <button class="dfmCtxItem" data-action="add-summary-cell-note">Add Cell Notes</button>
-    <div class="dfmCtxSep"></div>
+    <button class="dfmCtxItem" data-action="add-summary-cell-note" data-cell-only="1">Add Cell Notes</button>
+    <div class="dfmCtxSep" data-cell-only="1"></div>
     <button class="dfmCtxItem" data-action="copy-selected-formula-patterns">Copy Formula Patterns</button>
     <button class="dfmCtxItem" data-action="apply-selected-formula-patterns">Apply Formula Patterns</button>
     <div class="dfmCtxSep"></div>

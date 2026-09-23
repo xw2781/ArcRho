@@ -9,6 +9,7 @@ import {
 } from "/ui/method_pages/dfm/ratios_summary/summary_runtime.js?v=20260914b";
 import { substituteFormulaRowValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260919a";
 import { parseDatasetFormula, evaluateDatasetFormula } from "/ui/shared/dataset/dataset_formula.js?v=20260917a";
+import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 
 const {
   state, calcRatio, roundRatio, roundHalfUp, formatRatio, computeAverageForColumn,
@@ -440,6 +441,16 @@ function getAvgModalEl() {
 function hideAvgMenu() {
   const menu = getAvgMenuEl();
   if (menu) menu.style.display = "none";
+  markAvgMenuLabel(null);
+}
+
+// Fills the formula label the averages menu was opened on, so the user can see
+// which row Rename, Delete, and Custom Average will act on.
+function markAvgMenuLabel(label) {
+  document.querySelectorAll("#ratioWrap th.dfmSummaryLabelMenuTarget").forEach((cell) => {
+    if (cell !== label) cell.classList.remove("dfmSummaryLabelMenuTarget");
+  });
+  label?.classList.add("dfmSummaryLabelMenuTarget");
 }
 
 function hideResultsTabMenu() {
@@ -448,12 +459,13 @@ function hideResultsTabMenu() {
 }
 
 
-function showAvgMenu(x, y) {
+function showAvgMenu(x, y, labelCell = null) {
   const menu = getAvgMenuEl();
   if (!menu) return;
-  menu.style.display = "block";
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
+  markAvgMenuLabel(labelCell);
+  // Measure before placing so a click near the window's bottom or right edge
+  // opens the menu inside the window instead of cutting it off.
+  openContextMenu(menu, { clientX: x, clientY: y, offset: 8 });
 }
 
 

@@ -88,7 +88,8 @@ export function wireSummaryContextMenu(summaryTable) {
     e.preventDefault();
     const row = e.target?.closest?.("tr[data-row-id]");
     const noteCell = e.target?.closest?.("td.summaryCell");
-    const onLabelCell = !!e.target?.closest?.("th.summaryDragHandle");
+    const labelCell = e.target?.closest?.("th.summaryDragHandle") || null;
+    const onLabelCell = !!labelCell;
     summaryRuntime.summaryContextCellForNote = noteCell || null;
     setLastSummaryCtxRowId(row?.dataset?.rowId || null);
     const lastId = getLastSummaryCtxRowId();
@@ -113,6 +114,10 @@ export function wireSummaryContextMenu(summaryTable) {
       menu.querySelectorAll("[data-label-only], .dfmCtxSep[data-label-only]").forEach((item) => {
         item.style.display = onLabelCell ? "" : "none";
       });
+      // Copy Value and Cell Notes act on a value cell, never on a formula label.
+      menu.querySelectorAll("[data-cell-only]").forEach((item) => {
+        item.style.display = onLabelCell ? "none" : "";
+      });
       if (renameBtn) renameBtn.disabled = disableRename;
       if (deleteBtn) deleteBtn.disabled = disableDelete;
       if (customBtn) customBtn.disabled = !onLabelCell;
@@ -127,7 +132,7 @@ export function wireSummaryContextMenu(summaryTable) {
         noteBtn.textContent = hasNote ? "Edit Cell Notes" : "Add Cell Notes";
       }
     }
-    showAvgMenu(e.clientX, e.clientY);
+    showAvgMenu(e.clientX, e.clientY, labelCell);
   });
 
   if (!summaryRuntime.avgMenuWired) {
