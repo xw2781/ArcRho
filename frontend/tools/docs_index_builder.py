@@ -572,9 +572,11 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("ui/method_pages/bootstrap/bootstrap.html", "Bootstrap iframe page."),
             ("ui/method_pages/bootstrap/bootstrap_main.js", "Bootstrap state, load/save flow, rendering, and tab coordination."),
-            ("ui/method_pages/bootstrap/bootstrap_page_model.js", "Pure settings, residual-flag, and Targets-row rules the page and its tests share."),
+            ("ui/method_pages/bootstrap/bootstrap_page_model.js", "Pure settings, residual-flag, Targets-row, and Results-view rules the page and its tests share."),
             ("ui/method_pages/bootstrap/bootstrap_method_api.js", "Bootstrap load/save transport adapter."),
             ("ui/method_pages/bootstrap/bootstrap_residual_chart.js", "Residuals-tab scatter renderer."),
+            ("ui/method_pages/bootstrap/bootstrap_distribution_chart.js", "Results-tab distribution chart of the total with the chosen percentiles marked."),
+            ("ui/method_pages/bootstrap/bootstrap_fan_chart.js", "Results-tab fan chart of the mean and percentile bands by origin."),
         ],
     },
     "berquist_sherman": {

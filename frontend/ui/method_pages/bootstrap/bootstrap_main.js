@@ -33,7 +33,22 @@ import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_i
 import { BOOTSTRAP_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import { loadBootstrapMethod, saveBootstrapMethod } from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260923a";
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
+import { createDistributionChart } from "/ui/method_pages/bootstrap/bootstrap_distribution_chart.js?v=20260923b";
+import { createFanChart } from "/ui/method_pages/bootstrap/bootstrap_fan_chart.js?v=20260923b";
 import {
+  BST_BASIS_OPTIONS,
+  BST_DEFAULT_PERCENTILES,
+  BST_MEASURE_OPTIONS,
+  availableBases,
+  distributionChartData,
+  fanChartData,
+  formatPercentileList,
+  formatRunDuration,
+  ladderTableRows,
+  parsePercentileList,
+  resultsClipboardText,
+  resultsView,
+  summaryTableColumns,
   BST_DISTRIBUTION_OPTIONS,
   BST_METHOD_TYPE,
   BST_MODEL_OPTIONS,
@@ -55,7 +70,7 @@ import {
   residualGrid,
   simulationSummary,
   targetRows,
-} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923a";
+} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923b";
 
 const ALLOWED_TABS = windowTabIds("bootstrap");
 const params = new URLSearchParams(window.location.search || "");
@@ -71,12 +86,26 @@ const state = {
   ownedRevision: "",
   derivedRevision: "",
   needsReview: false,
+  // A run in flight, and how long the last run in this window took; the
+  // stored method does not record a run's duration.
+  running: false,
+  lastRunMs: null,
+  // Results view choices: page state, not method settings, so they never
+  // make the method dirty.
+  results: {
+    basis: "scaled",
+    measure: "reserves",
+    percentiles: BST_DEFAULT_PERCENTILES.slice(),
+    fullLadder: false,
+  },
 };
 
 let cleanSnapshot = "";
 let isDirty = false;
 let tabbedPage = null;
 let residualChart = null;
+let distributionChart = null;
+let fanChart = null;
 let menuState = null;
 
 const els = {
@@ -84,6 +113,7 @@ const els = {
   stateChip: document.getElementById("bstStateChip"),
   stateLabel: document.getElementById("bstStateLabel"),
   runInfo: document.getElementById("bstRunInfo"),
+  simulateBtn: document.getElementById("bstSimulateBtn"),
   saveBtn: document.getElementById("bstSaveBtn"),
   cancelBtn: document.getElementById("bstCancelBtn"),
   nameInput: document.getElementById("bstNameInput"),
@@ -120,9 +150,30 @@ const els = {
   targetsHead: document.getElementById("bstTargetsHead"),
   targetsBody: document.getElementById("bstTargetsBody"),
   targetsCaption: document.getElementById("bstTargetsCaption"),
-  resultsSummary: document.getElementById("bstResultsSummary"),
+  resultsBody: document.getElementById("bstResultsBody"),
   resultsEmpty: document.getElementById("bstResultsEmpty"),
   resultsEmptyText: document.getElementById("bstResultsEmptyText"),
+  emptySimulateBtn: document.getElementById("bstEmptySimulateBtn"),
+  basisControl: document.getElementById("bstBasisControl"),
+  measureControl: document.getElementById("bstMeasureControl"),
+  percentileInput: document.getElementById("bstPercentileInput"),
+  percentileResetBtn: document.getElementById("bstPercentileResetBtn"),
+  fullLadderInput: document.getElementById("bstFullLadderInput"),
+  copyResultsBtn: document.getElementById("bstCopyResultsBtn"),
+  resultsStale: document.getElementById("bstResultsStale"),
+  staleSimulateBtn: document.getElementById("bstStaleSimulateBtn"),
+  resultsHead: document.getElementById("bstResultsHead"),
+  resultsTableBody: document.getElementById("bstResultsTableBody"),
+  resultsCaption: document.getElementById("bstResultsCaption"),
+  distributionTitle: document.getElementById("bstDistributionTitle"),
+  distributionChart: document.getElementById("bstDistributionChart"),
+  distributionEmpty: document.getElementById("bstDistributionEmpty"),
+  distributionTooltip: document.getElementById("bstDistributionTooltip"),
+  fanTitle: document.getElementById("bstFanTitle"),
+  fanChart: document.getElementById("bstFanChart"),
+  fanLegend: document.getElementById("bstFanLegend"),
+  fanEmpty: document.getElementById("bstFanEmpty"),
+  fanTooltip: document.getElementById("bstFanTooltip"),
   menu: document.getElementById("bstMenu"),
 };
 
@@ -223,13 +274,23 @@ function syncHeader() {
   const name = state.settings.name;
   els.headerName.textContent = name || BST_METHOD_TYPE;
   document.title = name ? `${name} - ${BST_METHOD_TYPE}` : BST_METHOD_TYPE;
-  const run = bootstrapRunState({ method: state.method, dirty: isDirty });
+  const run = bootstrapRunState({ method: state.method, dirty: isDirty, running: state.running });
   els.stateChip.dataset.state = run.key;
   els.stateLabel.textContent = run.label;
   const summary = simulationSummary(state.method);
-  els.runInfo.textContent = hasSimulationRun(state.method)
-    ? `${formatNumber(summary.simulation_count)} simulations · seed ${summary.random_seed}`
-    : "";
+  const duration = formatRunDuration(state.lastRunMs);
+  els.runInfo.textContent = state.running
+    ? `Running ${formatNumber(state.settings.simulationCount)} simulations`
+    : hasSimulationRun(state.method)
+      ? [
+        `${formatNumber(summary.simulation_count)} simulations`,
+        `seed ${summary.random_seed}`,
+        ...(duration ? [`ran in ${duration}`] : []),
+      ].join(" · ")
+      : "";
+  const canRun = !state.running && !!state.settings.dfmMethod;
+  for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) button.disabled = !canRun;
+  els.resultsStale.hidden = !(isDirty && hasSimulationRun(state.method)) || state.running;
 }
 
 function syncSaveControls() {
@@ -524,29 +585,140 @@ function renderTargets() {
     : "";
 }
 
+/* ---------------------------------------------------------------------------
+   Results: one view (basis and measure) feeds the table and both charts, and
+   the chosen percentiles are shared by all three.
+--------------------------------------------------------------------------- */
+
+function segmentedMarkup(options, current, available = null) {
+  return options.map((option) => {
+    const enabled = !available || available.includes(option.value);
+    return `<button class="bstSegment" type="button" role="radio" data-value="${option.value}"
+      aria-checked="${option.value === current ? "true" : "false"}" ${enabled ? "" : "disabled"}>${escapeHtml(option.label)}</button>`;
+  }).join("");
+}
+
+function currentResultsView() {
+  const bases = availableBases(state.method);
+  if (bases.length && !bases.includes(state.results.basis)) state.results.basis = bases[0];
+  return resultsView(state.method, { basis: state.results.basis, measure: state.results.measure });
+}
+
+function resultCell(value, kind, extra = "") {
+  const shown = kind === "percent" ? formatPercent(value) : formatNumber(value);
+  return `<td class="bstCell${extra ? ` ${extra}` : ""}">${shown}</td>`;
+}
+
+function renderSummaryTable(view) {
+  const columns = summaryTableColumns(view.measure, state.results.percentiles);
+  els.resultsHead.innerHTML = `<tr><th class="bstOriginHead">Origin</th>${
+    columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr>`;
+  const rowMarkup = (row, total) => `<tr${total ? " class=\"bstTotalRow\"" : ""}>
+    <td class="bstOriginCell">${escapeHtml(row.label)}</td>${
+    columns.map((column) => resultCell(column.value(row), column.kind)).join("")}</tr>`;
+  els.resultsTableBody.innerHTML = view.rows.map((row) => rowMarkup(row, false)).join("") + rowMarkup(view.total, true);
+}
+
+function renderLadderTable(view) {
+  const rows = ladderTableRows(view, state.results.percentiles);
+  els.resultsHead.innerHTML = `<tr><th class="bstOriginHead">Statistic</th>${
+    view.rows.map((row) => `<th>${escapeHtml(row.label)}</th>`).join("")}<th>Total</th></tr>`;
+  els.resultsTableBody.innerHTML = rows.map((row) => `<tr${row.chosen ? " class=\"bstChosenRow\"" : ""}>
+    <td class="bstOriginCell">${escapeHtml(row.label)}</td>${
+    row.values.map((value, index) => resultCell(value, row.kind, index === row.values.length - 1 ? "bstTotalCell" : "")).join("")}</tr>`).join("");
+}
+
+function renderResultsCharts(view) {
+  const noun = view.measure === "ultimates" ? "Ultimate" : "Reserve";
+  els.distributionTitle.textContent = `Distribution Of Total ${noun}`;
+  els.fanTitle.textContent = `${noun}s By Origin`;
+  distributionChart?.render(distributionChartData(view, state.results.percentiles));
+  fanChart?.render(fanChartData(view, state.results.percentiles));
+}
+
 function renderResults() {
   const run = hasSimulationRun(state.method);
   els.resultsEmpty.hidden = run;
-  els.resultsSummary.hidden = !run;
+  els.resultsBody.hidden = !run;
+  syncHeader();
   if (!run) {
     els.resultsEmptyText.textContent = state.settings.dfmMethod
-      ? "Not run yet. Save runs the simulation."
-      : "Choose a DFM on the Details tab, then save to run the simulation.";
+      ? "Not run yet. Simulate runs the model and saves the results."
+      : "Choose a DFM on the Details tab, then simulate.";
     return;
   }
-  const summary = simulationSummary(state.method);
-  const scaled = summary.scaled || {};
-  const mean = numberOrNull(scaled.mean?.[0]);
-  const sd = numberOrNull(scaled.standard_error?.[0]);
-  const figures = [
-    ["Mean Reserve", formatNumber(mean)],
-    ["Standard Deviation", formatNumber(sd)],
-    ["CV", mean ? formatPercent(sd / mean) : ""],
-    ["99.5%", formatNumber(scaled.percentiles?.["99.5"]?.[0])],
-  ];
-  els.resultsSummary.innerHTML = `<div class="bstFigureRow">${figures.map(([label, value]) => `
-    <div class="bstFigure"><span class="bstFigureLabel">${label}</span><span class="bstFigureValue">${value}</span></div>`).join("")}</div>
-    <p class="bstCaption">Scaled total reserve over ${formatNumber(summary.simulation_count)} simulations.</p>`;
+  const view = currentResultsView();
+  els.basisControl.innerHTML = segmentedMarkup(BST_BASIS_OPTIONS, state.results.basis, availableBases(state.method));
+  els.measureControl.innerHTML = segmentedMarkup(BST_MEASURE_OPTIONS, state.results.measure);
+  if (document.activeElement !== els.percentileInput) {
+    els.percentileInput.value = formatPercentileList(state.results.percentiles);
+  }
+  els.fullLadderInput.checked = state.results.fullLadder;
+  if (!view) return;
+  els.resultsBody.classList.toggle("isFullLadder", state.results.fullLadder);
+  if (state.results.fullLadder) renderLadderTable(view);
+  else renderSummaryTable(view);
+  const basisLabel = view.basis === "scaled" ? "Scaled" : "Unscaled";
+  els.resultsCaption.textContent = `${basisLabel} ${view.measure} over ${formatNumber(view.simulationCount)} simulations, seed ${view.randomSeed ?? ""}.`;
+  renderResultsCharts(view);
+}
+
+function commitPercentiles() {
+  const parsed = parsePercentileList(els.percentileInput.value);
+  if (!parsed.ok) {
+    postStatus(parsed.error, "warn");
+    els.percentileInput.value = formatPercentileList(state.results.percentiles);
+    return;
+  }
+  state.results.percentiles = parsed.values;
+  els.percentileInput.value = formatPercentileList(parsed.values);
+  renderResults();
+}
+
+async function copyResults() {
+  const view = currentResultsView();
+  const payload = resultsClipboardText(view, {
+    percentiles: state.results.percentiles,
+    fullLadder: state.results.fullLadder,
+  });
+  if (!payload) return;
+  try {
+    await navigator.clipboard.writeText(payload);
+    postStatus(`Copied ${payload.split("\r\n").length - 1} rows of results.`);
+  } catch (err) {
+    postStatus(`Copy failed: ${String(err?.message || err)}`, "error");
+  }
+}
+
+function wireResults() {
+  const segmentedHandler = (key) => (event) => {
+    const button = event.target.closest(".bstSegment");
+    if (!button || button.disabled || button.dataset.value === state.results[key]) return;
+    state.results[key] = button.dataset.value;
+    renderResults();
+  };
+  els.basisControl.addEventListener("click", segmentedHandler("basis"));
+  els.measureControl.addEventListener("click", segmentedHandler("measure"));
+  els.percentileInput.addEventListener("change", commitPercentiles);
+  els.percentileInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") els.percentileInput.blur();
+    if (event.key === "Escape") {
+      els.percentileInput.value = formatPercentileList(state.results.percentiles);
+      els.percentileInput.blur();
+    }
+  });
+  els.percentileResetBtn.addEventListener("click", () => {
+    state.results.percentiles = BST_DEFAULT_PERCENTILES.slice();
+    renderResults();
+  });
+  els.fullLadderInput.addEventListener("change", () => {
+    state.results.fullLadder = els.fullLadderInput.checked;
+    renderResults();
+  });
+  els.copyResultsBtn.addEventListener("click", () => void copyResults());
+  for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) {
+    button.addEventListener("click", () => void simulateFromUser());
+  }
 }
 
 function renderAll() {
@@ -608,18 +780,28 @@ async function tryLoadExistingMethod() {
   }
 }
 
-async function runSave(progress) {
+/* Every save re-simulates on the server, so Save and Simulate send the same
+   request; Simulate only words the progress card for the run and stays
+   available when nothing changed, to run the stored settings again. */
+async function runSave(progress, { simulate = false } = {}) {
   const s = state.settings;
   if (!s.name || !s.outputType || !s.dfmMethod) {
-    postStatus("Bootstrap save requires Name, Output Type, and DFM.", "error");
+    postStatus(`Bootstrap ${simulate ? "simulation" : "save"} requires Name, Output Type, and DFM.`, "error");
     return { ok: false };
   }
   const method = applyBootstrapSettings(state.method || {}, s);
   let result;
   objectChangeWatch.pause();
   try {
+    const started = performance.now();
+    state.running = true;
+    syncHeader();
     try {
-      progress.writing();
+      if (simulate) {
+        progress.setMessage(`Running ${formatNumber(s.simulationCount)} simulations and saving the results.`);
+      } else {
+        progress.writing();
+      }
       result = await saveBootstrapMethod({
         project_name: state.project,
         reserving_class: state.reservingClass,
@@ -634,7 +816,10 @@ async function runSave(progress) {
         void showPageMessageBox({ title: "Arco Engine Unavailable", message: String(err?.message || err), tone: "warn" });
       }
       throw err;
+    } finally {
+      state.running = false;
     }
+    state.lastRunMs = performance.now() - started;
     applyLoaded(result);
     markClean();
     void detailsDependencies.refresh().catch(() => null);
@@ -644,7 +829,7 @@ async function runSave(progress) {
     postStatus(
       result?.propagation_ok === false
         ? `Bootstrap saved, but some dependent updates did not complete: ${text(result?.propagation?.message) || s.name}`
-        : `Bootstrap saved: ${s.name}`,
+        : `Bootstrap ${simulate ? "simulated and saved" : "saved"}: ${s.name} (${formatRunDuration(state.lastRunMs)})`,
       result?.propagation_ok === false ? "warn" : "",
     );
     const propagationOutcome = await trackSavePropagation(result?.propagation, {
@@ -675,16 +860,23 @@ async function runSave(progress) {
   }
 }
 
-async function saveFromUser() {
+async function saveFromUser({ simulate = false } = {}) {
+  if (state.running) return;
   try {
-    const saved = await saveProgress.run((progress) => runSave(progress));
+    const saved = await saveProgress.run((progress) => runSave(progress, { simulate }));
     if (saved?.ok && saved?.propagationClean) {
       await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
     }
   } catch (err) {
     console.error(err);
-    postStatus(`Save failed: ${String(err?.message || err)}`, "error");
+    postStatus(`${simulate ? "Simulation" : "Save"} failed: ${String(err?.message || err)}`, "error");
+  } finally {
+    syncHeader();
   }
+}
+
+function simulateFromUser() {
+  return saveFromUser({ simulate: true });
 }
 
 /* ---------------------------------------------------------------------------
@@ -918,6 +1110,12 @@ function initTabbedPage() {
     onTabChange: (tabId) => {
       closeMenu();
       if (tabId === "residuals") requestAnimationFrame(() => residualChart?.refresh());
+      if (tabId === "results") {
+        requestAnimationFrame(() => {
+          distributionChart?.refresh();
+          fanChart?.refresh();
+        });
+      }
       try {
         window.parent?.postMessage({ type: "arcrho:bst-tab-changed", inst, tab: tabId }, "*");
       } catch {}
@@ -946,9 +1144,21 @@ async function init() {
     randomSeed: newRandomSeed(),
   };
   residualChart = createResidualChart({ canvas: els.residualChart });
+  distributionChart = createDistributionChart({
+    canvas: els.distributionChart,
+    tooltip: els.distributionTooltip,
+    emptyState: els.distributionEmpty,
+  });
+  fanChart = createFanChart({
+    canvas: els.fanChart,
+    legend: els.fanLegend,
+    tooltip: els.fanTooltip,
+    emptyState: els.fanEmpty,
+  });
   initTabbedPage();
   wireMenu();
   wireInputs();
+  wireResults();
   wireMessages();
   let loaded = false;
   try {

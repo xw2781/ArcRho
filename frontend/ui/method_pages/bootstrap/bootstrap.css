@@ -536,7 +536,7 @@ table.bstTable {
   text-align: center !important;
 }
 
-/* Empty states and the results summary. */
+/* Empty states. */
 .bstEmpty {
   display: grid;
   min-height: 160px;
@@ -548,31 +548,111 @@ table.bstTable {
   font-weight: 600;
 }
 .bstEmpty[hidden] { display: none; }
-.bstResultsSummary[hidden] { display: none; }
-.bstFigureRow {
+.bstEmptyContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Results: the view toolbar, a stale-run notice, the summary table (or the
+   full ladder), then the two charts side by side, stacked when narrow. */
+.bstResultsBody[hidden] { display: none; }
+.bstSegmentedCompact { height: 28px; }
+.bstSegmentedCompact .bstSegment { padding: 0 12px; }
+.bstPercentileInput { width: 200px; }
+.bstToolButton { height: 28px; }
+.bstStateChip[data-state="running"] { border-color: #bfd3fb; background: var(--bst-accent-soft); color: #1d4ed8; }
+.bstStateChip[data-state="running"] .bstStateDot {
+  background: var(--bst-accent);
+  animation: bstRunPulse 900ms ease-in-out infinite alternate;
+}
+@keyframes bstRunPulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+.bstNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid #f5d0a4;
+  background: var(--bst-warning-soft);
+  color: var(--bst-warning);
+}
+.bstNotice[hidden] { display: none; }
+.bstResultsWrap { width: max-content; max-height: 360px; }
+.bstResultsBody.isFullLadder .bstResultsWrap { max-height: 520px; }
+.bstTable tr.bstChosenRow td { font-weight: 700; }
+.bstTable tr.bstChosenRow td.bstOriginCell { color: #1d4ed8; }
+.bstTable td.bstTotalCell { font-weight: 700; }
+.bstResultsCharts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+.bstResultsCharts .bstChartPanel { height: 320px; }
+.bstChartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bstChartLegend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 12px;
+  color: #475569;
+  font-size: 11px;
 }
-.bstFigure {
+.bstChartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.bstChartLegendSwatch {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+.bstSwatchMeanLine { height: 2px; background: #111827; }
+.bstSwatchMarkerLine { height: 0; border-top: 2px dashed #b45309; }
+.bstChartEmpty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--bst-muted);
+  font-weight: 600;
+  pointer-events: none;
+}
+.bstChartEmpty[hidden] { display: none; }
+.bstChartTooltip {
+  position: absolute;
+  z-index: 5;
   display: flex;
-  min-width: 150px;
+  max-width: 240px;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 12px;
-  border: 1px solid var(--bst-border);
-  background: #fbfcfe;
-}
-.bstFigureLabel {
-  color: #64748b;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  color: #1f2937;
   font-size: 11px;
-  font-weight: 700;
+  pointer-events: none;
 }
-.bstFigureValue {
-  color: #111827;
-  font-family: var(--bst-font);
-  font-size: 16px;
-  font-weight: 700;
+.bstChartTooltip[hidden] { display: none; }
+.bstChartTooltip strong { font-size: 12px; }
+@media (max-width: 1100px) {
+  .bstResultsCharts { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 720px) {
