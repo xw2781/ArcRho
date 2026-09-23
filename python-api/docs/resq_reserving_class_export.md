@@ -38,7 +38,9 @@ every item below is written, each after the items it reads:
   before any value is written: the output vector's dataset type, the input
   triangle, the origin and development lengths (`OriginLength` first, then
   `DevelopmentLength`, keeping ResQ's rule that the development length
-  divides the origin length), the number of average rows
+  divides the origin length), the Details-tab decimal places as ResQ's Dec
+  Places (`RatioDecimalPlaces`, which the import reads back into
+  `details_tab.decimal_places`), the number of average rows
   (`RatioAverageCount`), and each row's definition (`AverageType`,
   `WeightType`, `PeriodsIncluded`, `ExcludeHighLow`/`ExcludeHighLow2`,
   `Formula` for a User Calculation row, then `Name`). The rows come from

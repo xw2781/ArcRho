@@ -1,8 +1,8 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 3.0.2
-# Release Note: A DFM's Decimal Places now reach ResQ's Dec Places when it is exported.
-# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ, in ArcRho's dependency order: input datasets with their Notes; DFMs with their output type, input triangle, lengths, decimal places, average rows, ratio, tail and Curves-tab selections; Bornhuetter Ferguson methods with their latest, percentage developed and priors; Result Selections with their loaded datasets, weights and overrides; B&S Case Reserve Adequacy selections; the Notes of every dataset and method; and a save of every Cape Cod and B&S Settlement Rate method. A DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks is created.
+# Version: 3.0.1
+# Release Note: A DFM the export creates in ResQ now carries Arco's prior-analysis Curves column values instead of ResQ's 1.0 defaults.
+# Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ, in ArcRho's dependency order: input datasets with their Notes; DFMs with their output type, input triangle, lengths, average rows, ratio, tail and Curves-tab selections; Bornhuetter Ferguson methods with their latest, percentage developed and priors; Result Selections with their loaded datasets, weights and overrides; B&S Case Reserve Adequacy selections; the Notes of every dataset and method; and a save of every Cape Cod and B&S Settlement Rate method. A DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks is created.
 # Scope: Reserving Class
 # Icon: upload
 # </arcrho-macro>
@@ -785,7 +785,6 @@ class ResQReservingClassExporter:
             changes += self._sync_output_type(dfm, details)
             changes += self._sync_dfm_input_triangle(dfm, details)
             changes += self._sync_dfm_lengths(dfm, details)
-            changes += self._sync_dfm_decimal_places(dfm, details)
             changes += self._sync_dfm_average_rows(dfm, payload)
         except ExportSkipped:
             raise
@@ -853,23 +852,6 @@ class ResQReservingClassExporter:
             dfm.DevelopmentLength = development
             dfm.OriginLength = origin
         return [f"lengths {before[0]}/{before[1]} -> {origin}/{development}"]
-
-    def _sync_dfm_decimal_places(self, dfm, details):
-        """Put ArcRho's Details-tab decimal places as ResQ's Dec Places.
-
-        The import reads ``RatioDecimalPlaces`` into ``details_tab.decimal_places``,
-        so this is its inverse.
-        """
-
-        try:
-            wanted = int(details.get("decimal_places"))
-        except (TypeError, ValueError):
-            return []
-        current = _safe_length(dfm, "RatioDecimalPlaces")
-        if current == wanted:
-            return []
-        dfm.RatioDecimalPlaces = wanted
-        return [f"decimal places {current} -> {wanted}"]
 
     def _read_average_rows(self, dfm):
         """Each ResQ average row's name and fields, in ResQ order."""

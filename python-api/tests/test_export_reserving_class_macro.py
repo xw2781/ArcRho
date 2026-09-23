@@ -803,6 +803,7 @@ class _FakeResqDfm:
         self._development = development_length
         self.InputTriangle = _FakeNamed(input_name)
         self.OutputVector = types.SimpleNamespace(Name="D 50 out", DatasetType=_FakeNamed(output_type))
+        self.RatioDecimalPlaces = 4
         self.length_puts = []
         self.saved = 0
         self.Notes = ""
@@ -944,6 +945,24 @@ class ExportMacroDfmStructureTests(unittest.TestCase):
         self.assertEqual(dfm.saved, 1)
         # The prior-analysis row ArcRho carries as copied values keeps its ResQ type.
         self.assertEqual(dfm.averages[5].AverageType, 7)
+
+    def test_the_arcrho_decimal_places_become_resq_dec_places(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, decimal_places=0))
+
+        self.assertEqual(dfm.RatioDecimalPlaces, 0)
+        self.assertEqual(exporter.written_details[-1]["message"], "decimal places 4 -> 0")
+
+    def test_matching_decimal_places_are_not_written(self):
+        dfm = _FakeResqDfm(self.RESQ_ROWS)
+        exporter = self._exporter(dfm)
+
+        self._export(exporter, self._payload(self.ARCRHO_ROWS, decimal_places=4))
+
+        self.assertEqual(dfm.RatioDecimalPlaces, 4)
+        self.assertEqual(exporter.written_details, [])
 
     def test_too_many_resq_rows_are_dropped_to_the_arcrho_count(self):
         dfm = _FakeResqDfm(self.RESQ_ROWS + [("User Entry", 5, 0, 0, 0), ("Simple - 2", 0, 0, 2, 0)])
