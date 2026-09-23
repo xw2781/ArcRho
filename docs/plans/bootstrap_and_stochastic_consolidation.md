@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 is next.
+Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 is next.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -16,8 +16,8 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | ResQ's own bootstrap and consolidation results are captured as the reference to match | [x] | 2026-09-23 | 70 min | 11 min | The five segment ranges and the total range in ResQ are now realistic, saved, and kept as the reference Arco must match. |
-| 2 | We know whether ResQ's random numbers can be reproduced, and how it builds correlated rankings | [ ] | | 90 min | | |
-| 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | |
+| 2 | We know whether ResQ's random numbers can be reproduced, and how it builds correlated rankings | [x] | 2026-09-23 | 90 min | 34 min | ResQ's way of pairing up segment simulations is now known exactly; its random numbers themselves could not be reproduced, so Arco's ranges will match ResQ's within sampling error rather than to the last digit. |
+| 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | Dropped: ResQ's random stream could not be identified. |
 | 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [ ] | | 55 min | | |
 | 5 | Arco can combine several segments' simulations with chosen correlations, matching ResQ | [ ] | | 70 min | | |
 | 6 | A consolidation can be saved and reopened as its own method with its own output | [ ] | | 60 min | | |
@@ -31,7 +31,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | The server components carry the new calculations and imports | [ ] | | 30 min | | |
 | 15 | The whole flow is checked by hand in both ResQ and Arco | [ ] | | 80 min | | |
 
-Overall: 1 of 15 steps done. Estimated 1,095 min, actual so far 11 min.
+Overall: 2 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 45 min.
 
 ## How agents work this plan
 
@@ -123,6 +123,15 @@ From the ResQ manual (pages `correlations_tab.htm`, `included_methods_tab.htm`, 
 
 Step 1 confirms rule 3 exactly against ResQ's numbers; step 2 establishes how rule 2 generates ranks for each dependency type and how a non-positive-definite target is adjusted.
 
+**Rule 2 established (step 2, 2026-09-23).** Probed in memory on the Total consolidation with `tools/resq_random_probe.py`, seed 1 unless stated; "exact" means every one of the 5 × 10,000 ranks matched.
+
+1. **The adjusted matrix.** Each target off-diagonal ρ becomes `2·sin(π·ρ/6)` (exact to 1e-16), whatever the dependency type. If that matrix is not positive definite, ResQ clips its eigenvalues at 1e-6 and rescales to a unit diagonal, `C = V·max(λ, 1e-6)·Vᵀ`, then `C[i, j] / sqrt(C[i, i]·C[j, j])`. This matched a symmetric and an asymmetric non-positive-definite target to 7e-16; Higham's nearest correlation matrix differs by 0.055. A positive-definite matrix passes through unchanged.
+2. **Normal.** Draw `Z`, an `m × n` matrix of standard normals, filled method by method: method 1's n draws come first, then method 2's, and so on. Compute `X = L·Z` with `L` the lower Cholesky factor of the adjusted matrix. `ConsolidationRanks(c, s)` is the rank of `X[c, s]` within row c, with rank 1 the smallest. This is exact for the reference target, the identity and two non-positive-definite targets. The normals come from the same stream, and in the same order, as a bootstrap's forecast draws with the same seed (see [Random numbers](#random-numbers)).
+3. **Uniform.** The same with `Z` replaced by raw uniforms `U` from the same stream, method-major: `X = L·U`. Method 1's ranks are exactly the ranks of the stream's first 10,000 uniforms, and the achieved rank correlations (0.3758, 0.3260) match the model's expectation (0.3758, 0.3363) within sampling error.
+4. **Gamma.** The same with Gamma(shape 1) marginals, `X = L·(−ln U)`, from the same uniforms. For every method whose row of `L` is a unit vector, the ranks are exactly the reverse of the Uniform ranks for the same seed. The achieved rank correlations (0.4236, 0.3860) match the model (0.4253, 0.3906).
+5. **Student's T.** A multivariate t: `X = L·Z / sqrt(W/ν)`, with one chi-square `W` on ν degrees of freedom per simulation, shared by every method. With ν = 5 the upper-5% co-exceedance was 0.244 and 0.266, against the model's 0.266 and 0.244; a separate t per element gives 0.20. The draw order of `W` against `Z` was not pinned, and changing ν changes every rank, method 1's included.
+6. **0% correlated** gives the identity matrix and exactly the Normal ranks with an identity target. **As it comes** gives exactly the same ranks and the same pairing as 0% in this ResQ build: each segment's contribution to consolidated simulation s is its simulation at rank `ConsolidationRanks(c, s)`, not its simulation s. **100% correlated** is the all-ones matrix through the repair in point 1 (adjusted off-diagonals 0.9999990000008), then point 2. It gives near-identical ranks across segments, not identical ones.
+
 ## Random numbers
 
 Arco draws from Python's seeded generator, so a run is reproducible from its seed but differs draw for draw from ResQ's. A first black-box search on 2026-09-23 found no match:
@@ -131,6 +140,16 @@ Arco draws from Python's seeded generator, so a run is reproducible from its see
 - **Raw bootstrap draws:** on COL `F 72B`, held only in the probe's memory and never saved, estimation variance None and forecast distribution Normal leave each simulated cell as `mean + sd·Z`, so the standard-normal draws `Z` can be backed out exactly (scale 21.916, means from the per-simulation factors ResQ reports, cumulative starting at the latest simulated diagonal). ResQ is deterministic per seed (seed 1 twice gave identical cells). Searching the first 20,000 outputs of seven generators (Delphi LCG, .NET, Mersenne Twister 53- and 32-bit, MINSTD 16807 and 48271, Wichmann–Hill) under inverse-CDF, Box–Muller and polar transforms found no draw that matches.
 
 ResQ's automation library is a single native binary (`ResQ3Automation.dll` 5.8.0, WTW); the search stays black-box — inputs against outputs — and does not inspect the binary. Step 2 continues it with a time box and a fixed stopping rule; exact parity is a bonus, and statistical parity is the acceptance bar either way.
+
+**Step 2 result (2026-09-23): the draw pipeline is known, the uniform generator is not.** The first search's backed-out draws were wrong, not ResQ's generator. On COM, `DevelopmentFactors(d, s)` returns cumulative age-to-ultimate factors, not age-to-age factors. With estimation None and a Normal forecast, each future incremental is `m + φ·sqrt(|m|)·Z`, where `m` is the deterministic chain-ladder incremental from the latest diagonal (not recursive) and φ is `ScaleValues_Forecasting`. Backed out that way, the draws are standard normal and independent (2,000 simulations, mean 0.002, sd 1.001). What is pinned:
+
+- **Normals.** They come from Marsaglia's polar method, and both outputs of an accepted pair are used: the one built from the first uniform comes out first, the other is kept for the next draw. The kept value carries into the next simulation. A pair is rejected when `s = v1² + v2² ≥ 1`, and its two uniforms are skipped.
+- **Draw order in a bootstrap.** One draw per future cell, oldest origin first and development ascending within an origin. The tail column draws nothing. Simulation 1's draws do not depend on the simulation count, and each seed gives the same stream every time.
+- **Uniforms.** Each uniform is `k / (2³¹ − 1)` for a 31-bit integer k, recovered exactly from accepted pairs, and `v = 2u − 1`. The first uniform for seed s is `((1265966691 · s) mod 2³²) >> 1` exactly. This held for 13 seeds read exactly (2 to 16, 100, 1,000, 65,536, 2³¹ − 2) and was consistent with 9 more read only approximately, including 1514684455. Later uniforms are piecewise linear in the seed. Over seeds 1 to 40, one step of seed moves the second uniform by one of three amounts (24,486,009, 24,486,898 or 24,489,455, give or take 1), and later positions by a few more amounts each. One of those amounts is always seed 1's own value at that position.
+- **The consolidation shares the generator.** For a given seed its uniform stream starts at the same point as a bootstrap's, so ranks built from ResQ's normals are exact (see rule 2 under [how ResQ consolidates](#how-resq-consolidates)). A contiguous 10,000-uniform stretch for seed 1 was rebuilt from the Uniform consolidation's method-1 ranks together with the bootstrap's accepted pairs: 3,899 of 5,000 pairs exact, 1,101 rejected, which is the expected 21.5% rejection rate.
+- **Generators ruled out**, by within-stream tests that hold for any seed: every LCG and MLCG modulo 2³¹ − 1 and every 32-bit LCG (mapped to 31 bits by `>> 1`, mask, or `Random(MaxInt)`-style scaling); shuffled MLCGs (Numerical Recipes `ran1`, `RtlRandom`); order-2 MRGs modulo 2³¹ − 1 and L'Ecuyer's 1993 MRG; lagged-Fibonacci and subtractive generators with lags under 700 (`.NET System.Random`, glibc `random()`); MT19937 through its twist recurrence; xorshift32; and L'Ecuyer's 1988 combined generator. Seeded membership searches also ruled out MT19937, Java's `Random` and `.NET`. The lattice alone rules out every generator whose uniforms sit on a 2⁻³², 2⁻⁵³, 1e-9 or `1/2147483563` grid (MRG32k3a, Numerical Recipes `ran2` and `ran3`, and xorshift, xoroshiro, KISS or MWC scaled the usual way), and the polar finding makes the inverse-CDF, Box–Muller and Ziggurat transforms moot.
+
+The search stopped at about 35 minutes of the 90-minute box. Every listed family had been ruled out, and what is left needs a structural idea rather than more enumeration, so step 3 is dropped. Arco keeps its own seeded generator; parity with ResQ is statistical. The rank algorithm is known exactly, so Arco's consolidation matches ResQ exactly whenever it is fed ResQ's ranks or normals. A later attempt should start from the first-uniform formula and the piecewise-linear dependence on the seed. Together they point to a small state seeded by a 32-bit multiply, combined with a second component that has its own modulus or wrap. The probe's `draws` mode, and `ranks` with dependency Uniform and an identity target, give that data for any seed in seconds.
 
 ## Decisions
 
@@ -213,19 +232,19 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 **Read first.** [Random numbers](#random-numbers) and [how ResQ consolidates](#how-resq-consolidates); step 1's tool. Do not disassemble or inspect ResQ's binaries; compare inputs with outputs only.
 
 **Do.**
-- [ ] Add `tools/resq_random_probe.py`. All ResQ changes are in-memory on a loaded method and never saved; say so in its docstring.
-- [ ] Raw normal draws: on COL `F 72B` with estimation None and forecast Normal, collect the backed-out `Z` for several seeds (0, 1, 2, 12345, 2^31-1) and small simulation counts (1, 2, 5), and pin down the draw order within a simulation (which cell draws first) by comparing a 1-simulation run with a 2-simulation run.
-- [ ] Test generators beyond the seven already ruled out: Mersenne Twister seeded by `init_by_array`, xorshift/xoroshiro families, L'Ecuyer MRG32k3a, Park–Miller with Schrage, Numerical Recipes `ran1`/`ran2`/`ran3`, Marsaglia's KISS and MWC, Intel MKL-style `MCG31`, each with the seed used directly and hashed through the generator's own seeding; normals by inverse CDF (Acklam and Wichura), Box–Muller (both outputs), polar (one and both outputs), and Ziggurat. Stop at the first exact match.
-- [ ] If the normal stream is identified, pin the uniform draw used by Resampled (residual index), and the Gamma and Log-Normal samplers (Marsaglia–Tsang, Cheng, Ahrens–Dieter) with estimation Resampled/Gamma and forecast None, one feature at a time.
-- [ ] Rank generation, independently of the above: on the Total consolidation, in memory, set each correlation type, each dependency type (with 5 and 20 degrees of freedom for Student's T), and a target matrix that is not positive definite; read `MethodCorrelations_Adjusted` and all `ConsolidationRanks`. From these, record: how 0% and 100% and As it comes assign ranks; whether Normal ranks behave as a Gaussian copula of the adjusted matrix (achieved rank correlations and tail co-movement across 5 seeds); what Uniform and Gamma mean (rank correlation achieved against target, and tail dependence in the upper 5%); and how a non-positive-definite matrix is repaired (compare with eigenvalue clipping then unit-diagonal rescaling, and with Higham's nearest correlation matrix).
-- [ ] Write the findings into [Random numbers](#random-numbers) and [How ResQ consolidates](#how-resq-consolidates). For anything not determined inside the time box, write the fallback step 5 implements: Uniform = independent uniform marginals combined through the Cholesky factor then ranked; Gamma = the same with Gamma(shape 1) marginals; non-positive-definite repair = eigenvalue clipping at 1e-8 then unit-diagonal rescaling.
-- [ ] Set step 3's row to "Dropped: ResQ's random stream could not be identified" if no exact generator was found.
+- [x] Add `tools/resq_random_probe.py`. All ResQ changes are in-memory on a loaded method and never saved; say so in its docstring.
+- [x] Raw normal draws: on COL `F 72B` with estimation None and forecast Normal, collect the backed-out `Z` for several seeds (0, 1, 2, 12345, 2^31-1) and small simulation counts (1, 2, 5), and pin down the draw order within a simulation (which cell draws first) by comparing a 1-simulation run with a 2-simulation run. Done for seeds 0, 1, 2, 12345 and 2³¹ − 1 at 1, 2 and 5 simulations, and for seed 1 at 2,000 and 6,000. The first search's draws were backed out with the wrong factors, because COM's `DevelopmentFactors` are age-to-ultimate.
+- [x] Test generators beyond the seven already ruled out: Mersenne Twister seeded by `init_by_array`, xorshift/xoroshiro families, L'Ecuyer MRG32k3a, Park–Miller with Schrage, Numerical Recipes `ran1`/`ran2`/`ran3`, Marsaglia's KISS and MWC, Intel MKL-style `MCG31`, each with the seed used directly and hashed through the generator's own seeding; normals by inverse CDF (Acklam and Wichura), Box–Muller (both outputs), polar (one and both outputs), and Ziggurat. Stop at the first exact match. The transform is the polar method with both outputs, and the uniforms lie on a `1/(2³¹ − 1)` grid, which rules out several families outright. No generator matched; [Random numbers](#random-numbers) lists what was tested.
+- [ ] (Not reached: the uniform generator was not identified.) If the normal stream is identified, pin the uniform draw used by Resampled (residual index), and the Gamma and Log-Normal samplers (Marsaglia–Tsang, Cheng, Ahrens–Dieter) with estimation Resampled/Gamma and forecast None, one feature at a time.
+- [x] Rank generation, independently of the above: on the Total consolidation, in memory, set each correlation type, each dependency type (with 5 and 20 degrees of freedom for Student's T), and a target matrix that is not positive definite; read `MethodCorrelations_Adjusted` and all `ConsolidationRanks`. From these, record: how 0% and 100% and As it comes assign ranks; whether Normal ranks behave as a Gaussian copula of the adjusted matrix (achieved rank correlations and tail co-movement across 5 seeds); what Uniform and Gamma mean (rank correlation achieved against target, and tail dependence in the upper 5%); and how a non-positive-definite matrix is repaired (compare with eigenvalue clipping then unit-diagonal rescaling, and with Higham's nearest correlation matrix). Pinned exactly except Student's T, whose draw order is open; see rule 2 under [how ResQ consolidates](#how-resq-consolidates).
+- [x] Write the findings into [Random numbers](#random-numbers) and [How ResQ consolidates](#how-resq-consolidates). For anything not determined inside the time box, write the fallback step 5 implements: Uniform = independent uniform marginals combined through the Cholesky factor then ranked; Gamma = the same with Gamma(shape 1) marginals; non-positive-definite repair = eigenvalue clipping at 1e-8 then unit-diagonal rescaling. The probe replaced every fallback with ResQ's actual rule (the clip is at 1e-6, not 1e-8), except Student's T: step 5 uses a multivariate t with one chi-square per simulation shared by all methods.
+- [x] Set step 3's row to "Dropped: ResQ's random stream could not be identified" if no exact generator was found.
 
 **Tests.** None beyond the probe; this is a research step. If the generator was found, commit a tiny fixture of the first 20 draws for two seeds under `python-api/tests/fixtures/resq_random_stream.json` for step 3.
 
 **Done when.** The two plan sections state the findings or the fallbacks, and step 3 is either ready with a precise specification or dropped.
 
-**Estimate.** Estimate: code edit 50 min, test/validation 40 min, total 90 min.
+**Estimate.** Estimate: code edit 50 min, test/validation 40 min, total 90 min. Actual: code edit 22 min, test/validation 12 min, total 34 min. Well under the estimate because every ResQ probe runs in seconds. The hunt also stopped early, once the listed families were ruled out and only a structural idea could make further progress.
 
 ### Step 3 — Reproduce ResQ's random stream (only if step 2 found it)
 
@@ -447,7 +466,7 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 ## Rough size
 
-15 steps, estimated at 1,095 minutes of agent time: 640 minutes of code editing and 455 minutes of test and validation runs. Step 3 (90 minutes) falls away if step 2 cannot identify ResQ's random stream.
+15 steps, estimated at 1,095 minutes of agent time: 640 minutes of code editing and 455 minutes of test and validation runs. Step 3 (90 minutes: 55 editing, 35 validation) was dropped when step 2 could not identify ResQ's random stream. That leaves 14 steps and 1,005 minutes: 585 minutes of editing and 420 of validation.
 
 ## Parity results
 
