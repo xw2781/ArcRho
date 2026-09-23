@@ -150,8 +150,12 @@ Left out, and not shown in the results:
   through the Engine and ResQ through its own generator.
 - **Bootstrap and Stochastic Consolidation methods** — ResQ has no write path
   for them yet. The import brings a Bootstrap from ResQ into ArcRho (its
-  settings and seed, rebuilt from the imported DFM and simulated once), but
-  nothing flows back.
+  settings and seed, rebuilt from the imported DFM and simulated once), and a
+  Stochastic Consolidation (its segments by class path, factors, correlation
+  settings, target matrix and seed, consolidated once when every segment
+  bootstrap is already in ArcRho), but nothing flows back. A ResQ calculated
+  class, such as a Total, imports as an ordinary class: its datasets arrive as
+  ResQ's values and none is rebuilt by the Engine.
 - **Method output datasets** — they are written through their method, never
   as datasets.
 

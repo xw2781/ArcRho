@@ -1,7 +1,7 @@
 """
 resq_data_migration.py
 
-Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, Bootstrap methods, and DFM methods to ArcRho dataset files.
+Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, Bootstrap methods, Stochastic Consolidations, and DFM methods to ArcRho dataset files.
 Scope: ProjectName = '{PROJECT_NAME}'
 Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder>\\
 
@@ -84,6 +84,7 @@ from resq_migration.catalog import (  # noqa: E402
     configure_catalog,
     rebuild_dataset_instance_index,
     refresh_sidecar_graphs_for_rc,
+    resq_class_scope,
 )
 from resq_migration.engine_parity import (  # noqa: E402
     compare_import_values,
@@ -111,6 +112,8 @@ from resq_migration.core import (  # noqa: E402
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
+    METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE,
+    _bool_value,
     _cached_dataset_names_from_file,
     _clean_name,
     _dataset_cache_csv_file_name,
@@ -145,6 +148,7 @@ from resq_migration.extractors import (  # noqa: E402
     _find_bornhuetter_ferguson_for_vector,
     _find_cape_cod_for_vector,
     _find_result_selection_for_vector,
+    _find_stochastic_consolidation_for_vector,
     _result_selection_source_payload,
     configure_extractors,
     defer_sidecar_graph_enrichment,
@@ -152,6 +156,7 @@ from resq_migration.extractors import (  # noqa: E402
     export_bornhuetter_ferguson,
     export_berquist_sherman,
     export_cape_cod,
+    export_stochastic_consolidation,
     export_result_selection,
     export_triangle,
     export_vector,
@@ -162,6 +167,7 @@ from resq_migration.extractors import (  # noqa: E402
     write_cape_cod_export,
     write_engine_generated_export,
     write_result_selection_export,
+    write_stochastic_consolidation_export,
     write_triangle_export,
     write_vector_export,
 )
@@ -702,6 +708,36 @@ def _bootstrap_export_names(
     return names
 
 
+def _resq_class_is_calculated(reserving_class) -> bool:
+    """True for a ResQ calculated class: a formula over other classes, with no source rows."""
+
+    return _bool_value(_safe_attr(reserving_class, "Calculated", False))
+
+
+def _stochastic_consolidation_export_names(
+    reserving_class,
+    progress_callback: ProgressCallback | None = None,
+) -> list[str]:
+    try:
+        collection = reserving_class.BootstrapConsolidations()
+    except Exception:
+        return []
+    names: list[str] = []
+    for item in collection:
+        name = _clean_name(_safe_attr(item, "Name", ""))
+        if not name:
+            continue
+        names.append(name)
+        _report_inventory_item(
+            progress_callback,
+            kind="stochastic_consolidation_inventory",
+            noun="Stochastic Consolidations",
+            name=name,
+            discovered=len(names),
+        )
+    return names
+
+
 def _berquist_sherman_export_names(
     triangle_names: list[str],
     triangle_method_types: dict[str, int],
@@ -743,6 +779,7 @@ def resq_export_dataset_counts(
     bf_names = _bf_export_names(reserving_class, progress_callback) if run_dfms else []
     cc_names = _cc_export_names(reserving_class, progress_callback) if run_dfms else []
     bootstrap_names = _bootstrap_export_names(reserving_class, progress_callback) if run_dfms else []
+    scon_names = _stochastic_consolidation_export_names(reserving_class, progress_callback) if run_dfms else []
     bssr_names, bscra_names = (
         _berquist_sherman_export_names(triangle_names, triangle_method_types)
         if run_triangles
@@ -755,6 +792,7 @@ def resq_export_dataset_counts(
         "bfs": len(bf_names),
         "ccs": len(cc_names),
         "bootstraps": len(bootstrap_names),
+        "stochastic_consolidations": len(scon_names),
         "bssrs": len(bssr_names),
         "bscras": len(bscra_names),
         "methods": (
@@ -762,6 +800,7 @@ def resq_export_dataset_counts(
             + len(bf_names)
             + len(cc_names)
             + len(bootstrap_names)
+            + len(scon_names)
             + len(bssr_names)
             + len(bscra_names)
         ),
@@ -774,6 +813,7 @@ def resq_export_dataset_counts(
         "bf_names": bf_names,
         "cc_names": cc_names,
         "bootstrap_names": bootstrap_names,
+        "stochastic_consolidation_names": scon_names,
         "bssr_names": bssr_names,
         "bscra_names": bscra_names,
     }
@@ -1508,6 +1548,77 @@ def _export_bootstrap_tasks(
     return written, errors
 
 
+def _export_stochastic_consolidation_tasks(
+    tasks: list[tuple[str, object]],
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    progress_callback: ProgressCallback | None,
+    progress_state: dict,
+    method_counts: dict | None,
+    strict_extraction: bool,
+    verbose: bool,
+) -> tuple[int, int]:
+    """Build and publish each Stochastic Consolidation the vector loop deferred.
+
+    A consolidation reads its segment bootstraps from their own classes, so it
+    runs after this class's bootstraps are written. One whose segments are not
+    all in Arco yet is written unrun, and the import says which are missing.
+    """
+
+    written = errors = 0
+    total = int(progress_state.get("total") or 0)
+    for vector_name, consolidation in tasks:
+        status = "success"
+        try:
+            payload = export_stochastic_consolidation(
+                consolidation,
+                project_data_dir=PROJECT_DATA_DIR,
+                strict=strict_extraction,
+            )
+            problem = str(payload.get("_import_problem") or "")
+            method_path = write_stochastic_consolidation_export(payload, rc_path, rc_dir)
+            if problem:
+                detail = (
+                    f"    WARN Stochastic Consolidation vector {vector_name}; {method_path.name} "
+                    f"written without a run: {problem}"
+                )
+                _record_detail(
+                    progress_state,
+                    "consolidation_warnings",
+                    kind="vector",
+                    name=vector_name,
+                    detail=f"Written without a run: {problem}",
+                )
+                status = "warning"
+            else:
+                detail = f"    OK  Stochastic Consolidation vector {vector_name}; {method_path.name}"
+            _log(verbose, detail)
+            if isinstance(method_counts, dict):
+                method_counts["scons_written"] = int(method_counts.get("scons_written") or 0) + 1
+            written += 1
+        except Exception as exc:
+            detail = f"    ERR Stochastic Consolidation vector {vector_name}: {exc}"
+            _log(verbose, detail)
+            if verbose:
+                traceback.print_exc(file=sys.stdout)
+            _record_error_detail(progress_state, kind="vector", name=vector_name, detail=str(exc))
+            errors += 1
+            status = "error"
+        progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+        _report_progress(
+            progress_callback,
+            event="finish",
+            kind="vector",
+            name=vector_name,
+            completed=int(progress_state.get("completed") or 0),
+            total=total,
+            status=status,
+            message=detail.strip(),
+        )
+    return written, errors
+
+
 def export_vectors_for_rc(
     reserving_class,
     rc_path: str,
@@ -1520,6 +1631,7 @@ def export_vectors_for_rc(
     include_bf_methods: bool = False,
     include_cc_methods: bool = False,
     include_bootstrap_methods: bool = False,
+    include_stochastic_consolidations: bool = False,
     dfm_names: list[str] | None = None,
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
@@ -1531,7 +1643,9 @@ def export_vectors_for_rc(
     """Export vector datasets for one reserving class. Returns (written, errors).
 
     A Bootstrap's output vector is exported after every other vector, because
-    the Bootstrap is built from the Arco DFM method this same loop writes.
+    the Bootstrap is built from the Arco DFM method this same loop writes. A
+    Stochastic Consolidation's comes last of all, because it may include this
+    class's own bootstraps.
     """
     vector_collection = reserving_class.Vectors()
     vector_names = list(vector_names) if vector_names is not None else _vector_export_names(reserving_class)
@@ -1541,6 +1655,7 @@ def export_vectors_for_rc(
     written = errors = 0
     engine_tasks: list[dict] = []
     bootstrap_tasks: list[tuple[str, object]] = []
+    scon_tasks: list[tuple[str, object]] = []
     progress_state = progress_state if isinstance(progress_state, dict) else {"completed": 0, "total": len(vector_names)}
     known_dataset_type_keys = _dataset_type_keys()
     for vector_name in vector_names:
@@ -1642,6 +1757,16 @@ def export_vectors_for_rc(
                     _log(verbose, f"    WARN Bootstrap method not found for vector {vector_name}; exporting vector only")
                 else:
                     bootstrap_tasks.append((vector_name, bootstrap))
+                    continue
+            if method_type == METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE and include_stochastic_consolidations:
+                consolidation = _find_stochastic_consolidation_for_vector(reserving_class, vector_name)
+                if consolidation is None:
+                    _log(
+                        verbose,
+                        f"    WARN Stochastic Consolidation not found for vector {vector_name}; exporting vector only",
+                    )
+                else:
+                    scon_tasks.append((vector_name, consolidation))
                     continue
             bf_payload = None
             if method_type == METHOD_TYPE_BF_CODE and include_bf_methods:
@@ -1807,6 +1932,19 @@ def export_vectors_for_rc(
         )
         written += bootstrap_written
         errors += bootstrap_errors
+    if scon_tasks:
+        scon_written, scon_errors = _export_stochastic_consolidation_tasks(
+            scon_tasks,
+            rc_path,
+            rc_dir,
+            progress_callback=progress_callback,
+            progress_state=progress_state,
+            method_counts=method_counts,
+            strict_extraction=strict_extraction,
+            verbose=verbose,
+        )
+        written += scon_written
+        errors += scon_errors
     if engine_tasks and not engine_available:
         _skip_engine_generated_tasks(
             engine_tasks,
@@ -2135,6 +2273,7 @@ def _import_reserving_class_as_acting_user(
             "bfs_written": 0,
             "ccs_written": 0,
             "bootstraps_written": 0,
+            "scons_written": 0,
             "bssr_written": 0,
             "bscra_written": 0,
             "engine_skipped": 0,
@@ -2211,7 +2350,9 @@ def _import_reserving_class_as_acting_user(
 
             rc_written = 0
 
-            with defer_sidecar_graph_enrichment():
+            with defer_sidecar_graph_enrichment(), resq_class_scope(
+                calculated=_resq_class_is_calculated(reserving_class)
+            ):
                 if run_triangles:
                     written, errors = export_triangles_for_rc(
                         reserving_class,
@@ -2243,6 +2384,7 @@ def _import_reserving_class_as_acting_user(
                         include_bf_methods=run_dfms,
                         include_cc_methods=run_dfms,
                         include_bootstrap_methods=run_dfms,
+                        include_stochastic_consolidations=run_dfms,
                         dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
                         method_counts=counts,
                         engine_provenance=engine_provenance,
@@ -2326,6 +2468,7 @@ def _import_reserving_class_as_acting_user(
                 + counts.get("bfs_written", 0)
                 + counts.get("ccs_written", 0)
                 + counts.get("bootstraps_written", 0)
+                + counts.get("scons_written", 0)
                 + counts.get("bssr_written", 0)
                 + counts.get("bscra_written", 0)
             )
@@ -2350,6 +2493,7 @@ def _import_reserving_class_as_acting_user(
                 "bfs_total": dataset_counts.get("bfs", 0),
                 "ccs_total": dataset_counts.get("ccs", 0),
                 "bootstraps_total": dataset_counts.get("bootstraps", 0),
+                "stochastic_consolidations_total": dataset_counts.get("stochastic_consolidations", 0),
                 "bssrs_total": dataset_counts.get("bssrs", 0),
                 "bscras_total": dataset_counts.get("bscras", 0),
                 "methods_total": dataset_counts.get("methods", 0),
@@ -2358,6 +2502,7 @@ def _import_reserving_class_as_acting_user(
                 "dfm_dependents_refreshed": list(propagation.refreshed_outputs),
                 "propagation_warnings": list(propagation.warnings),
                 "error_details": progress_state.get("error_details", []),
+                "consolidation_warnings": progress_state.get("consolidation_warnings", []),
                 **counts,
             }
             _report_progress(
@@ -2461,11 +2606,14 @@ def main(argv: list[str] | None = None) -> None:
                 "bfs_written": 0,
                 "ccs_written": 0,
                 "bootstraps_written": 0,
+                "scons_written": 0,
                 "bssr_written": 0,
                 "bscra_written": 0,
             }
 
-            with defer_sidecar_graph_enrichment():
+            with defer_sidecar_graph_enrichment(), resq_class_scope(
+                calculated=_resq_class_is_calculated(reserving_class)
+            ):
                 if run_triangles:
                     written, errors = export_triangles_for_rc(
                         reserving_class,
@@ -2491,6 +2639,7 @@ def main(argv: list[str] | None = None) -> None:
                         include_bf_methods=run_dfms,
                         include_cc_methods=run_dfms,
                         include_bootstrap_methods=run_dfms,
+                        include_stochastic_consolidations=run_dfms,
                         method_counts=method_counts,
                         engine_provenance=engine_provenance,
                     )
@@ -2501,6 +2650,7 @@ def main(argv: list[str] | None = None) -> None:
                         + int(method_counts.get("bfs_written") or 0)
                         + int(method_counts.get("ccs_written") or 0)
                         + int(method_counts.get("bootstraps_written") or 0)
+                        + int(method_counts.get("scons_written") or 0)
                     )
                     total_errors += errors
 

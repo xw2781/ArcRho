@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,10 @@ from arcrho_api.dataset_index_contract import (
     write_index_json_unlocked,
 )
 from arcrho_api.dataset_link_contract import link_precedent_names
+from arcrho_api.stochastic_consolidation_contract import (
+    SCON_METHOD_TYPE,
+    SCON_SOURCE_KIND,
+)
 from arcrho_api.dataset_type_contract import (
     dataset_type_formula_graph,
     dataset_type_key,
@@ -182,14 +188,45 @@ def _is_calculated_dataset_type(dataset_type_name: object, rows: list[dict] | No
     row = _dataset_type_row(dataset_type_name, rows)
     return bool(row) and is_app_calculated_dataset_type(row, dataset_type_keys(rows))
 
+# False while a ResQ calculated reserving class is imported. Such a class is
+# ResQ's sum of other classes: the Engine has no source rows for it, so every
+# dataset it would generate imports ResQ's values instead.
+_ENGINE_BUILDS_CLASS: ContextVar[bool] = ContextVar("resq_engine_builds_class", default=True)
+
+
+@contextmanager
+def resq_class_scope(*, calculated: bool):
+    """Import one ResQ reserving class; a calculated class keeps ResQ's values.
+
+    A ResQ calculated class adds other classes' datasets through cross-class
+    formulas that Arco neither stores nor evaluates. It imports as an ordinary
+    Arco class: its datasets arrive as values, and none is handed to the Engine.
+    """
+
+    token = _ENGINE_BUILDS_CLASS.set(not calculated)
+    try:
+        yield
+    finally:
+        _ENGINE_BUILDS_CLASS.reset(token)
+
+
+def engine_builds_class() -> bool:
+    """False inside the import of a ResQ calculated class (see ``resq_class_scope``)."""
+
+    return _ENGINE_BUILDS_CLASS.get()
+
+
 def _is_engine_generated_instance(payload: dict) -> bool:
     """True for a generated single-instance dataset that the data-engine should build.
 
     The accepted rule is: the dataset type is flagged ``Generated=true`` and the
     instance name equals its dataset type (matching the app's single-instance
     generated behavior). Method outputs (DFM/RS/BF), manual, and non-generated
-    calculated datasets are excluded and continue to import from ResQ.
+    calculated datasets are excluded and continue to import from ResQ, and so
+    does every dataset of a ResQ calculated class.
     """
+    if not engine_builds_class():
+        return False
     name = _normalize_import_name(payload.get("name"))
     dataset_type = _normalize_import_name(payload.get("dataset_type")) or name
     if not name or _clean_name(name) != _clean_name(dataset_type):
@@ -368,11 +405,21 @@ def _dependency_entry(
 
 
 def _entry_names(entries: object) -> list[str]:
+    """The same-class dataset names a graph list holds.
+
+    An entry that carries a ``reserving_class`` or ``project`` names a dataset
+    somewhere else (a Stochastic Consolidation's segment bootstraps), so it is
+    never matched against a same-named dataset in this class.
+    """
     if not isinstance(entries, list):
         return []
     out: list[str] = []
     seen: set[str] = set()
     for item in entries:
+        if isinstance(item, dict) and (
+            _clean_name(item.get("reserving_class")) or _clean_name(item.get("project"))
+        ):
+            continue
         name = _clean_name(item.get("dataset_name")) if isinstance(item, dict) else _clean_name(item)
         key = _canon_dataset_name(name)
         if not key or key in seen:
@@ -565,6 +612,7 @@ def _sidecar_is_method(meta: dict) -> bool:
         BF_SOURCE_KIND,
         CC_SOURCE_KIND,
         BST_SOURCE_KIND,
+        SCON_SOURCE_KIND,
         BS_SR_SOURCE_KIND,
         BS_CRA_SOURCE_KIND,
     }:
@@ -576,6 +624,7 @@ def _sidecar_is_method(meta: dict) -> bool:
         BF_METHOD_TYPE.lower(),
         CC_METHOD_TYPE.lower(),
         BST_METHOD_TYPE.lower(),
+        SCON_METHOD_TYPE.lower(),
         BS_SR_METHOD_TYPE.lower(),
         BS_CRA_METHOD_TYPE.lower(),
     }

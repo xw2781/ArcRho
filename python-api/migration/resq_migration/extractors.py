@@ -49,7 +49,7 @@ from arcrho_api.cape_cod_contract import (
     cape_cod_precedent_names,
     recalculate_cape_cod_method,
 )
-from arcrho_api.dfm_contract import build_dfm_output_sidecar, dfm_output_variants
+from arcrho_api.dfm_contract import DFM_JSON_FORMAT, build_dfm_output_sidecar, dfm_output_variants
 from arcrho_api.dataset_display_contract import normalize_show_subtotal
 from arcrho_api.dataset_link_contract import DatasetLinkError, canonical_dataset_formula
 from arcrho_api.engine_dataset_sidecar_contract import build_engine_dataset_sidecar
@@ -57,6 +57,20 @@ from arcrho_api.sidecar_audit_contract import AUDIT_ACTION_INSERT, AUDIT_ACTION_
 from arcrho_api.sidecar_core_contract import (
     dependency_entries,
     stored_length_fields,
+)
+from arcrho_api.stochastic_consolidation_contract import (
+    SCON_FILE_PREFIX,
+    SCON_JSON_FORMAT,
+    StochasticConsolidationContractError,
+    apply_owned_patch as scon_apply_owned_patch,
+    build_stochastic_consolidation_output_sidecar,
+    consolidate_stochastic_method,
+    normalize_stochastic_consolidation_method,
+    stochastic_consolidation_output_variants,
+)
+from arcrho_api.stochastic_consolidation_simulation import (
+    SCON_CORRELATION_OPTIONS,
+    SCON_DEPENDENCY_TYPES,
 )
 from arcrho_api.timestamps import format_persisted_timestamp, utc_now_text
 
@@ -66,6 +80,7 @@ from .catalog import (
     _is_calculated_dataset_type,
     _is_generated_dataset_type,
     _triangle_source_kind,
+    engine_builds_class,
 )
 from .engine import import_user_identity_service
 from .core import (
@@ -89,11 +104,13 @@ from .core import (
     METHOD_TYPE_NONE_CODE,
     METHOD_TYPE_DFM_CODE,
     METHOD_TYPE_RESULT_SELECTION_CODE,
+    METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE,
     _bool_value,
     _call_member,
     _clean_name,
     _dataset_cache_csv_file_name,
     _encode_name_part,
+    _encode_rc_folder,
     _is_result_selection_method_type,
     _iso_or_text,
     _json_sidecar_name,
@@ -1530,6 +1547,7 @@ def write_vector_export(
         METHOD_TYPE_BF_CODE,
         METHOD_TYPE_CAPE_COD_CODE,
         METHOD_TYPE_BOOTSTRAP_CODE,
+        METHOD_TYPE_STOCHASTIC_CONSOLIDATION_CODE,
     }:
         # A method-coded vector without its exported method imports as a plain dataset.
         meta_method_type = "None"
@@ -1538,7 +1556,12 @@ def write_vector_export(
         meta_method_type = method_type
         meta_method_type_code = payload.get("method_type_code", _method_type_code(method_type, 0))
     is_method_output = is_bornhuetter_ferguson or is_cape_cod
-    is_engine_generated = (not is_result_selection) and (not is_method_output) and _is_generated_dataset_type(dataset_type)
+    is_engine_generated = (
+        (not is_result_selection)
+        and (not is_method_output)
+        and engine_builds_class()
+        and _is_generated_dataset_type(dataset_type)
+    )
     # ArcRho's own dataset-types library decides whether the dataset is
     # calculated. The ResQ Formula on the vector is deliberately ignored: a
     # formula only ResQ knows (a prior-quarter lookup, say) is one ArcRho can
@@ -3159,6 +3182,273 @@ def _find_bootstrap_for_vector(reserving_class, vector_name: str):
         vector_name,
         "OutputVector",
         "Bootstrap",
+    )
+
+
+# ResQ's StochasticConsolidation codes share Arco's label order:
+# CorrelationType 0 independent, 1 fully correlated, 2 specified, 3 as it
+# comes; DependencyType 0 normal, 1 uniform, 2 gamma, 3 Student's T.
+SCON_RESQ_CORRELATION_TYPES = SCON_CORRELATION_OPTIONS
+SCON_RESQ_DEPENDENCY_TYPES = SCON_DEPENDENCY_TYPES
+
+
+def _scon_indexed(method, member_name: str, *indices: int):
+    try:
+        return _call_member(method, member_name, *indices)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not read Stochastic Consolidation {member_name}{indices!r}.",
+                exc,
+            )
+        return None
+
+
+def _scon_segments(method, name: str) -> list[dict]:
+    """The included bootstraps, in ResQ's order, as (class path, method name, factor).
+
+    ``IncludedMethods(i)`` answers the bootstrap's output vector, whose name is
+    the Arco bootstrap's name and whose ``ReservingClass.Path`` is the class
+    path Arco keys the segment by.
+    """
+
+    count = _extract_int_attr(method, "IncludedMethodCount", 0, context=f"Stochastic Consolidation {name!r}")
+    segments: list[dict] = []
+    for index in range(1, count + 1):
+        included = _scon_indexed(method, "IncludedMethods", index)
+        if included is None:
+            raise ValueError(f"Stochastic Consolidation {name!r} included method {index} could not be read.")
+        class_obj = _extract_attr(included, "ReservingClass", None, context=f"{name!r} included method {index}")
+        class_path = _normalize_import_name(
+            _extract_attr(class_obj, "Path", "", context=f"{name!r} included method {index} ReservingClass")
+        )
+        method_name = _normalize_import_name(
+            _extract_attr(included, "Name", "", context=f"{name!r} included method {index}")
+        )
+        if not class_path or not method_name:
+            raise ValueError(
+                f"Stochastic Consolidation {name!r} included method {index} has no reserving class or name."
+            )
+        factor = _scon_indexed(method, "Factors", index)
+        segments.append({
+            "reserving_class": class_path,
+            "method_name": method_name,
+            "factor": 1.0 if factor is None else float(factor),
+        })
+    return segments
+
+
+def _scon_target_matrix(method, size: int) -> list[list[float]]:
+    matrix: list[list[float]] = []
+    for row in range(1, size + 1):
+        values = []
+        for column in range(1, size + 1):
+            value = _scon_indexed(method, "MethodCorrelations", row, column)
+            values.append((1.0 if row == column else 0.0) if value is None else float(value))
+        matrix.append(values)
+    return matrix
+
+
+def _read_segment_bootstrap(project_data_dir: Path, segment: dict) -> dict | None:
+    """A segment's imported Bootstrap and its DFM's input type, read from its own class.
+
+    Mirrors the app server's segment read: the Bootstrap method JSON under the
+    segment's class folder, and ``input_triangle`` of the DFM it re-fits.
+    ``None`` when the class has no such Bootstrap in Arco yet.
+    """
+
+    methods_dir = Path(project_data_dir) / _encode_rc_folder(segment["reserving_class"]) / METHOD_DATA_DIR
+    bootstrap = _safe_read_json(methods_dir / f"{BST_FILE_PREFIX}{_encode_name_part(segment['method_name'])}.json")
+    if _clean_name(bootstrap.get("json_format")) != BST_JSON_FORMAT:
+        return None
+    details = bootstrap.get("details_tab") if isinstance(bootstrap.get("details_tab"), dict) else {}
+    base_type = ""
+    dfm_name = _clean_name(details.get("dfm_method"))
+    if dfm_name:
+        dfm = _safe_read_json(methods_dir / f"DFM@{_encode_name_part(dfm_name)}.json")
+        if _clean_name(dfm.get("json_format")).lower() == DFM_JSON_FORMAT:
+            dfm_details = dfm.get("details_tab") if isinstance(dfm.get("details_tab"), dict) else {}
+            base_type = _clean_name(dfm_details.get("input_triangle"))
+    return {"bootstrap": bootstrap, "base_triangle_type": base_type}
+
+
+@_strict_extractor
+def export_stochastic_consolidation(method, *, project_data_dir: Path, strict: bool = False) -> dict:
+    """Build a canonical Stochastic Consolidation payload from a ResQ xStochasticConsolidation.
+
+    ResQ supplies only what the user owns: the included bootstraps with their
+    class paths and factors, the correlation settings and target matrix, the
+    base triangle type and the seed. The owned settings go onto an empty
+    method exactly as the app server's first save puts them. When every
+    segment's Bootstrap is already in Arco (read from ``project_data_dir``),
+    the consolidation is run once here so the imported method opens with
+    results; otherwise it is written unrun, with ResQ's origin labels and blank
+    values, and ``_import_problem`` says why.
+    """
+
+    del strict
+    output_vector = _extract_attr(method, "OutputVector", None, context="Stochastic Consolidation")
+    name = _normalize_import_name(
+        _extract_attr(output_vector, "Name", "", context="Stochastic Consolidation OutputVector")
+    ) or _normalize_import_name(_extract_attr(method, "Name", "", context="Stochastic Consolidation"))
+    context = f"Stochastic Consolidation {name!r}"
+    dataset_type_obj = _extract_attr(output_vector, "DatasetType", None, context=f"{context} OutputVector")
+    output_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"{context} output DatasetType")
+    ) or name
+    category_obj = _extract_attr(dataset_type_obj, "Category", None, context=f"{context} output DatasetType")
+    dataset_category = _normalize_import_name(
+        _extract_attr(category_obj, "Name", "", context=f"{context} output Category")
+    )
+    base_obj = _extract_attr(method, "BaseTriangleType", None, context=context)
+    base_type = _normalize_import_name(_extract_attr(base_obj, "Name", "", context=f"{context} BaseTriangleType"))
+    segments = _scon_segments(method, name)
+    try:
+        notes = _clean_name(method.Notes)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read {context}.Notes.", exc)
+        notes = ""
+    try:
+        modified = _iso_or_text(output_vector.Modified)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read {context} OutputVector.Modified.", exc)
+        modified = utc_now_text()
+    degrees = float(_extract_attr(method, "DegreesOfFreedom", 0, context=context) or 0)
+    # ResQ holds a whole number of degrees of freedom; keep it whole, as the page sends it.
+    degrees = int(degrees) if degrees.is_integer() else degrees
+
+    owned = {
+        "json_format": SCON_JSON_FORMAT,
+        "details_tab": {
+            "name": name,
+            "output_type": output_type,
+            "dataset_category": dataset_category,
+            "base_triangle_type": base_type,
+            "origin_length": _extract_int_attr(method, "OriginLength", 12, context=context),
+            "development_length": _extract_int_attr(method, "DevelopmentLength", 12, context=context),
+            "random_seed": _extract_int_attr(method, "RandomSeed", 0, context=context),
+        },
+        "segments_tab": {"segments": segments},
+        "correlation_tab": {
+            "correlation_option": _cc_code_label(
+                _extract_attr(method, "CorrelationType", 2, context=context),
+                SCON_RESQ_CORRELATION_TYPES,
+                "Stochastic Consolidation CorrelationType",
+            ),
+            "dependency_type": _cc_code_label(
+                _extract_attr(method, "DependencyType", 0, context=context),
+                SCON_RESQ_DEPENDENCY_TYPES,
+                "Stochastic Consolidation DependencyType",
+            ),
+            "degrees_of_freedom": degrees,
+            "target_correlations": _scon_target_matrix(method, len(segments)),
+        },
+    }
+    # The same step the app server's first save takes: owned settings onto an
+    # empty method, so nothing ResQ derived is carried as Arco's own.
+    merged = scon_apply_owned_patch({"json_format": SCON_JSON_FORMAT}, owned, timestamp=modified)
+    reads = [_read_segment_bootstrap(project_data_dir, segment) for segment in merged["segments_tab"]["segments"]]
+    missing = [
+        f"{segment['reserving_class']} / {segment['method_name']}"
+        for segment, read in zip(merged["segments_tab"]["segments"], reads)
+        if read is None
+    ]
+    problem = ""
+    payload = None
+    if missing:
+        problem = "its segment bootstraps are not in Arco yet: " + "; ".join(missing)
+    else:
+        try:
+            payload = consolidate_stochastic_method(merged, reads, timestamp=modified)
+        except StochasticConsolidationContractError as exc:
+            problem = str(exc)
+    if payload is None:
+        count = _extract_int_attr(method, "OriginCount", 0, context=context)
+        labels = []
+        for index in range(1, count + 1):
+            label = _scon_indexed(method, "OriginLabel", index)
+            labels.append(_clean_name(label))
+        merged["results_tab"]["origin_labels"] = labels
+        payload = normalize_stochastic_consolidation_method(merged, require_complete=True, timestamp=modified)
+    payload["_sidecar_notes"] = notes
+    payload["_sidecar_status"] = normalize_method_status(
+        _extract_attr(output_vector, "Status", 0, context=f"{context} OutputVector")
+    )
+    payload["_sidecar_user"] = _normalize_import_name(
+        _extract_attr(output_vector, "User", "", context=f"{context} OutputVector")
+    )
+    payload["_import_problem"] = problem
+    return payload
+
+
+def write_stochastic_consolidation_export(payload: dict, rc_path: str, rc_dir: Path) -> Path:
+    """Publish an imported Stochastic Consolidation: method JSON, output CSVs and sidecar.
+
+    The files are the ones the app server's save writes for the same payload:
+    ``methods/SCON@<name>.json``, ``datasets/<name>@<period>.csv`` for the
+    native period and each coarser 3/6/12 variant, and the sidecar, whose
+    precedents name each segment bootstrap in its own class.
+    """
+
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    name = _normalize_import_name(details_tab.get("name")) or "Stochastic Consolidation"
+    method_payload = dict(payload)
+    notes = str(method_payload.pop("_sidecar_notes", "") or "")
+    status = normalize_method_status(method_payload.pop("_sidecar_status", 0))
+    user = str(method_payload.pop("_sidecar_user", "") or "")
+    method_payload.pop("_import_problem", None)
+    out_path = rc_dir / METHOD_DATA_DIR / f"{SCON_FILE_PREFIX}{_encode_name_part(name)}.json"
+    _write_json(out_path, method_payload)
+    origin_length = int(details_tab.get("origin_length") or 12)
+    for period, values in stochastic_consolidation_output_variants(method_payload).items():
+        _write_csv_matrix(
+            rc_dir / DATASET_CACHE_DIR / _vector_cache_csv_file_name(name, period),
+            [[value] for value in values],
+        )
+    sidecar_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    existing = _safe_read_json(sidecar_path)
+    metadata = method_payload.get("method_metadata") if isinstance(method_payload.get("method_metadata"), dict) else {}
+    publication_revision = _clean_name(metadata.get("publication_revision"))
+    output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
+    meta = build_stochastic_consolidation_output_sidecar(
+        method_payload,
+        project_name=PROJECT_NAME,
+        reserving_class=rc_path,
+        csv_file=_vector_cache_csv_file_name(name, origin_length),
+        existing=existing,
+        notes=notes,
+        timestamp=metadata.get("last_modified"),
+        user=user,
+        output_changed=output_changed,
+        append_audit=not existing or output_changed,
+        status=status,
+    )
+    _write_sidecar_json(sidecar_path, meta)
+    return out_path
+
+
+def _find_stochastic_consolidation_for_vector(reserving_class, vector_name: str):
+    """The Stochastic Consolidation that publishes *vector_name*, in this class only."""
+
+    try:
+        collection = _call_member(reserving_class, "BootstrapConsolidations")
+    except Exception:
+        return None
+    direct_candidates = []
+    try:
+        item = reserving_class.GetBootStrapConsolidation(vector_name)
+        if item is not None:
+            direct_candidates.append(item)
+    except Exception:
+        pass
+    return _find_unique_method_by_output(
+        collection,
+        direct_candidates,
+        vector_name,
+        "OutputVector",
+        "Stochastic Consolidation",
     )
 
 

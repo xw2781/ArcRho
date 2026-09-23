@@ -38,6 +38,7 @@ Load, run, and save a Stochastic Consolidation, which combines the simulated res
 - Simulations are never persisted, for the consolidation or its segments: each run rebuilds them from the seeds, and the method keeps a summary rich enough for every Results view.
 - Each segment records the revision of the bootstrap it consumed (`bootstrap_revision`), which is how the load tells a changed segment.
 - The output sidecar lists each segment as a precedent carrying its `reserving_class`. No reverse `dependents` edge is written onto a bootstrap's sidecar.
+- The ResQ import (`python-api/migration/resq_migration/extractors.py`, `export_stochastic_consolidation`) writes the same files as a first save: ResQ's owned settings go onto an empty method and are consolidated from the segment bootstraps already imported into their own classes. When a segment is not in Arco yet, the method is written unrun (ResQ's origin labels, blank values) and the import reports which segments are missing; the page then shows `not_run` and offers Consolidate.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
