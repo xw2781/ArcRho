@@ -26,8 +26,8 @@ Consolidation is still open, so this file stays an open plan.
 - B&S Case Reserve Adequacy Adjustment (berquistshermancra) — **done**
 - B&S Settlement Rate Adjustment (berquistshermansr) — **done**
 - Cape Cod(capecodmethod) — **done** (`frontend/docs/plans/cape_cod_method_plan.md`)
-- Bootstrap Consolidation (bootstrapconsolidation) — **not started**
-- BootstrapMethod (bootstrapmethod) — **done** (`frontend/docs/plans/bootstrap_method_plan.md`)
+- Bootstrap Consolidation (bootstrapconsolidation) — **planned** in [bootstrap_and_stochastic_consolidation.md](bootstrap_and_stochastic_consolidation.md)
+- BootstrapMethod (bootstrapmethod) — calculation and server layer **done** (`frontend/docs/plans/bootstrap_method_plan.md`); page and ResQ import planned in [bootstrap_and_stochastic_consolidation.md](bootstrap_and_stochastic_consolidation.md)
 
 # Phase 1 - B&S MVP (delivered)
 

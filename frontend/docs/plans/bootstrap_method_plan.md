@@ -650,6 +650,8 @@ Two ResQ views would remove the last guesswork; neither blocks V1:
 
 ## Delivery Status
 
+The remaining work (page, ResQ import, fuller results, and Stochastic Consolidation) is planned and tracked in [docs/plans/bootstrap_and_stochastic_consolidation.md](../../../docs/plans/bootstrap_and_stochastic_consolidation.md); this file stays the calculation reference.
+
 | Layer | State |
 | --- | --- |
 | `arcrho_api.bootstrap_simulation` (calculation engine) | Done, ResQ-verified |
