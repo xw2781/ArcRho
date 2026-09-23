@@ -775,6 +775,14 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/schemas/bootstrap.py", "Bootstrap identity and revision-aware save request models."),
         ],
     },
+    "stochastic_consolidation": {
+        "doc": "docs/app_server/domains/stochastic_consolidation.md",
+        "files": [
+            ("app_server/api/stochastic_consolidation_router.py", "Stochastic Consolidation load/consolidate/candidates/save routes."),
+            ("app_server/services/stochastic_consolidation_service.py", "Cross-class segment reads, freshness report, run without writing, and transactional publication."),
+            ("app_server/schemas/stochastic_consolidation.py", "Stochastic Consolidation identity, run, picker and revision-aware save request models."),
+        ],
+    },
     "book": {
         "doc": "docs/app_server/domains/book.md",
         "files": [
@@ -1260,6 +1268,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Persists the complete Bootstrap method snapshot, native/coarser output vector CSVs, and its output sidecar with dependency edges and a matching publication revision. Simulated reserves are never persisted: only the seed, the simulation count, and a summary.",
             "1. Change the v1 payload only across every producer and exact parity test.\n2. Resolve the DFM method to the dataset it publishes before touching the dependency graph.",
             "- Out-of-band source edits bypass managed propagation; failed refresh branches retain their last valid publication and remain Review Needed.",
+        ),
+        "stochastic_consolidation": (
+            "Stochastic Consolidation load, run, segment picker and save domain; its segments are Bootstrap methods in other reserving classes.",
+            "- Used by the Stochastic Consolidation method page.",
+            "- Persists the method JSON, native/coarser output vector CSVs, and an output sidecar whose precedents name each segment's class. Simulations are never persisted.",
+            "1. Change the payload only in `arcrho_api/stochastic_consolidation_contract.py` and its parity tests.\n2. Keep every segment read addressed by the segment's own reserving class.",
+            "- Cross-class propagation is deferred; a changed segment is reported on open, not refreshed.",
         ),
         "book": (
             "Workbook metadata/sheet/patch domain.",

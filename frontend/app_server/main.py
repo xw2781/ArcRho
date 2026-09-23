@@ -46,6 +46,7 @@ from app_server.api import (
     berquist_sherman_router,
     cape_cod_router,
     bootstrap_router,
+    stochastic_consolidation_router,
     dfm_method_index_router,
     project_user_preferences_router,
     ui_automation_router,
@@ -104,6 +105,7 @@ app.include_router(bornhuetter_ferguson_router)
 app.include_router(berquist_sherman_router)
 app.include_router(cape_cod_router)
 app.include_router(bootstrap_router)
+app.include_router(stochastic_consolidation_router)
 app.include_router(dfm_method_index_router)
 app.include_router(project_user_preferences_router)
 app.include_router(ui_automation_router)

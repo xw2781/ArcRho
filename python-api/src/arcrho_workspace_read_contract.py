@@ -137,6 +137,26 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_bootstrap_method",
         ("project_name", "reserving_class", "method_name"),
     ),
+    # A Stochastic Consolidation's segments are bootstraps in other reserving
+    # classes. The load checks each one's freshness, the run re-simulates each
+    # one, and the picker scans every class of the project, so all three are
+    # hosted where those files are local disk. The run writes nothing; Save
+    # publishes the same run.
+    "stochastic_consolidation_load": WorkspaceReadKind(
+        "stochastic_consolidation_service",
+        "load_stochastic_consolidation_method",
+        ("project_name", "reserving_class", "method_name"),
+    ),
+    "stochastic_consolidation_consolidate": WorkspaceReadKind(
+        "stochastic_consolidation_service",
+        "consolidate_stochastic_consolidation_method",
+        ("project_name", "reserving_class", "method"),
+    ),
+    "stochastic_consolidation_candidates": WorkspaceReadKind(
+        "stochastic_consolidation_service",
+        "list_stochastic_consolidation_candidates",
+        ("project_name", "reserving_class"),
+    ),
     # B&S keeps its method JSON on the host API rather than an app-server save
     # path, so this read exists to pair that file with the output sidecar in one
     # visit. ``method_type`` picks the variant's filename prefix.

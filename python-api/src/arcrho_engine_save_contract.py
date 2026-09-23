@@ -61,6 +61,10 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
     ),
     "cape_cod_method": ("cape_cod_service", "save_cape_cod_method"),
     "bootstrap_method": ("bootstrap_service", "save_bootstrap_method"),
+    "stochastic_consolidation_method": (
+        "stochastic_consolidation_service",
+        "save_stochastic_consolidation_method",
+    ),
     "berquist_sherman_method": (
         "berquist_sherman_service",
         "save_berquist_sherman",

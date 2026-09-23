@@ -19,6 +19,9 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /bornhuetter-ferguson/load` | `bornhuetter_ferguson_load` | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method` |
 | `POST /cape-cod/load` | `cape_cod_load` | `cape_cod_service.load_cape_cod_method` |
 | `POST /bootstrap/load` | `bootstrap_load` | `bootstrap_service.load_bootstrap_method` |
+| `POST /stochastic-consolidation/load` | `stochastic_consolidation_load` | `stochastic_consolidation_service.load_stochastic_consolidation_method` |
+| `POST /stochastic-consolidation/consolidate` | `stochastic_consolidation_consolidate` | `stochastic_consolidation_service.consolidate_stochastic_consolidation_method` |
+| `POST /stochastic-consolidation/segments/candidates` | `stochastic_consolidation_candidates` | `stochastic_consolidation_service.list_stochastic_consolidation_candidates` |
 | `POST /excel_links/list` | `excel_link_listing` | `excel_link_service.list_reserving_class_excel_links` |
 | `POST /excel_links/check` | `excel_link_value_check` | `excel_link_service.check_reserving_class_excel_link_values` |
 | `POST /excel/read_cells_batch` | `excel_cell_values` | `excel_service.excel_read_cells_batch` |
