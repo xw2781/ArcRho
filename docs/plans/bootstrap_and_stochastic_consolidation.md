@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; none done. Step 1 is blocked on open decision 1 (the segments' target makes every scaled result negative). Step 3 depends on what step 2 finds and may be dropped.
+Status: Broken into 15 session-sized steps on 2026-09-23; none done. Open decision 1 (the segments' unrealistic target) was settled the same day by re-pointing each target at its DFM's ultimate. Step 3 depends on what step 2 finds and may be dropped.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -117,6 +117,7 @@ These are settled; a step that finds one wrong stops and records it under Open d
 - **Cross-class freshness is checked on open, not propagated.** A consolidation stores the revision of every bootstrap it consumed. When one has changed, the page says which and offers Consolidate; the save walk does not cross reserving classes in V1. Eager cross-class propagation is deferred.
 - **Parity bar.** Deterministic quantities match ResQ to 1e-9 relative. The consolidation arithmetic (rule 3) matches ResQ exactly when fed ResQ's own simulations and ranks. Simulated statistics (mean, standard deviation, 5–95% percentiles) match within three standard errors of ResQ's own 10,000-run sampling error; with a reproduced random stream (step 3) they match exactly.
 - **Canonical labels for the new method.** UI and JSON method type `Stochastic Consolidation` (already ResQ's name in `resq_migration/core.py`, code 7); source kind `stochastic_consolidation`; JSON format `arcrho-stochastic-consolidation-v4`; method file `methods/SCON@<Name>.json`; route prefix `/stochastic-consolidation/...`; page folder `frontend/ui/method_pages/stochastic_consolidation/`; CSS/DOM prefix `scon`; shell tab type and window kind `stochastic_consolidation`; tab state field `sconTab`. `SC` and `CON` are too easily confused with other prefixes, hence `SCON@`.
+- **Segment targets are re-pointed at each segment's own DFM ultimate** (decision 1, settled 2026-09-23 by the orchestrating session under the user's leave to edit the fake project's data). Step 1 found that `F 92 - Current Qtr Selected ` sits at about 0.42-0.50x of the latest incurred diagonal in every segment, so every scaled reserve came out large and negative (unscaled runs were plausible: total CV 16%-57%). Rather than dropping the target, which would take additive scaling out of the reference, or replacing five aggregation-formula triangles, each segment's `F 72 A` target ultimate becomes the output vector of its own DFM `F 25 - Incurred DFM Bootstrap` in ResQ, keeping Additive scaling for every origin. The scaled mean then sits at the DFM reserve, a realistic target that still exercises scaling. If ResQ refuses that vector as a target, fall back to no target (scaled equals unscaled) and say so in the reference-model section. Step 10's import carries the same target into Arco because it copies ResQ's settings. Unscaled results found by step 1 (total mean / sd): BI Total 275,741 / 56,987; CMPxCAT 33,885 / 5,922; COL 58,820 / 9,304; MP+PIP 57,911 / 33,140; PD+UMPD 84,793 / 16,379.
 - **Realistic data when needed.** If a segment's ResQ run is not plausible (step 1's test below), its `Net Loss--Incurred` triangle is replaced in both ResQ and Arco by a synthetic one written by the capture tool, and the plan records which segments were replaced.
 
 ## Page design
@@ -152,28 +153,7 @@ Deferred from both pages: discounting, cashflow views, Igloo and CSV export, the
 
 A step that meets one records it here and stops.
 
-**1. Step 1: every segment fails the plausibility test because of its target, not its triangle** (recorded 2026-09-23 by step 1; no ResQ data was changed).
-
-What was found, over COM, simulating each `F 72 A` in memory only (never saved):
-
-| Segment | Unscaled mean / sd | Scaled mean | Target ultimate against latest |
-| :--- | :--- | :--- | :--- |
-| BI Total | 275,741 / 56,987 | -759,273 | about 0.42x |
-| CMPxCAT | 33,885 / 5,922 | -264,948 | about 0.43x |
-| COL | 58,820 / 9,304 | -773,150 | about 0.42x |
-| MP+PIP | 57,911 / 33,140 | -700,795 | about 0.44x |
-| PD+UMPD | 84,793 / 16,379 | -440,895 | about 0.50x |
-
-- The unscaled runs are plausible (total CV 16%-57%). Every scaled total is negative because the target, `F 92 - Current Qtr Selected `, sits at roughly 40-50% of the latest incurred diagonal for every mature origin, so the target reserves are large and negative.
-- The plan's remedy does not fit. All five segment classes are calculated classes, and each one's `Net Loss--Incurred` is an aggregation formula over child classes (for example BI Total = BI + BIR51 + UMBI + UMBIR51). `F 92` is a Result Selection output in each class. A synthetic triangle would have to drop five aggregation formulas in ResQ and in Arco, and would have to be shrunk to about 0.4x of today's values just to sit under a target that is itself the inconsistent piece.
-
-Options:
-
-- **A (recommended). Drop the target on the five `F 72 A` bootstraps** (target ultimate none, in ResQ and in step 10's Arco copy), so scaled equals unscaled. Least invasive, keeps the real aggregated triangles, and all five then pass (positive means, CV 16%-57%). Additive scaling stays covered by the existing COL fixture. The reference-model table would say "no target" instead of `F 92`.
-- **B. Keep the target and accept negative scaled reserves.** The consolidation arithmetic and ranks do not care about sign, but the CV check and realistic percentiles lose meaning; waive the plausibility test.
-- **C. Follow the plan literally.** Replace each segment's `Net Loss--Incurred` with a synthetic triangle whose ultimates sit near `F 92`, removing the five aggregation formulas in both apps.
-
-Step 1 resumes once one is chosen. Also learnt: `Simulate` takes about 0.4 s per 10,000-simulation segment; `IncludedMethods`, `Factors`, `ConsolidationRanks` and the correlation getters are 1-based on the method index (index 0 access-violates), and `ConsolidationRanks` answers without saved reserves.
+None open. Decision 1 below was settled on 2026-09-23.
 
 ## Plan
 
@@ -187,6 +167,7 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Do.**
 - [ ] Add `tools/resq_bootstrap_capture.py`, a reusable script with two modes: `run` (Simulate and Save each named bootstrap, then Consolidate and Save the consolidation) and `capture` (read only). Mutating calls are limited to `Simulate`, `Consolidate`, `Save`, and in the realistic-data case the triangle writes below.
+- [ ] Before simulating, re-point each segment `F 72 A`'s target ultimate at its DFM's output vector, per the decision on segment targets, keeping Additive scaling; update the reference-model section to say so.
 - [ ] Capture per segment: the settings listed in the reference-model table, the observed triangle, the DFM's selected ratios, fitted values, residuals, scale values, the unscaled and scaled `Mean`, `StandardError` and `PercentileValue` (5% steps plus 99 and 99.5) by origin and total, the target reserves, `TotalRank(s)` for every simulation, and `SimulatedValue(0, s)` (the total) for every simulation, plus `SimulatedValue(o, s)` by origin for the first 500 simulations.
 - [ ] Capture for the consolidation: settings, target, adjusted and achieved matrices, `ConsolidationRanks(c, s)` for all simulations, the consolidated scaled total per simulation, the consolidated summary by origin and total, and `SimulatedReservesByClass` for the first 500 simulations.
 - [ ] Plausibility test per segment, before accepting it: the total mean scaled reserve is positive, the total CV lies between 2% and 60%, and the run raises no error. A segment that fails gets a synthetic `Net Loss--Incurred` triangle (a smooth incurred pattern with reasonable noise, written by the script to ResQ and saved; record the numbers in the fixture so step 10 writes the same triangle into Arco), and the reason goes into this plan's reference-model section.
