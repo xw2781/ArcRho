@@ -53,6 +53,10 @@ function getBootstrapWindowKey(datasetName, path = state.selectedPath) {
   return `bst\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
 
+function getStochasticConsolidationWindowKey(datasetName, path = state.selectedPath) {
+  return `scon\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+}
+
 function getBerquistShermanWindowKey(datasetName, variant, path = state.selectedPath) {
   return `bs\u0001${normalizeBerquistShermanVariant(variant)}\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
@@ -83,6 +87,7 @@ function getWindowMethodType(frame) {
   if (isBornhuetterFergusonWindow(frame)) return "Bornhuetter Ferguson";
   if (isCapeCodWindow(frame)) return "Cape Cod";
   if (isBootstrapWindow(frame)) return "Bootstrap";
+  if (isStochasticConsolidationWindow(frame)) return "Stochastic Consolidation";
   if (isBerquistShermanWindow(frame)) {
     return getBerquistShermanContract(frame?.dataset?.bsVariant)?.methodType || "None";
   }
@@ -141,9 +146,11 @@ function getProjectInstanceWindowSnapshot(frame) {
           ? "cape_cod"
           : isBootstrapWindow(frame)
             ? "bootstrap"
-            : isBerquistShermanWindow(frame)
-              ? "berquist_sherman"
-              : "dataset";
+            : isStochasticConsolidationWindow(frame)
+              ? "stochastic_consolidation"
+              : isBerquistShermanWindow(frame)
+                ? "berquist_sherman"
+                : "dataset";
   const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName || "");
   if (!name) return null;
   const active = getActiveDatasetWindow() === frame;
@@ -165,6 +172,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     bfTab: kind === "bornhuetter_ferguson" ? toText(frame.dataset.bfTab || "") : "",
     ccTab: kind === "cape_cod" ? toText(frame.dataset.ccTab || "") : "",
     bstTab: kind === "bootstrap" ? toText(frame.dataset.bstTab || "") : "",
+    sconTab: kind === "stochastic_consolidation" ? toText(frame.dataset.sconTab || "") : "",
     bsTab: kind === "berquist_sherman" ? toText(frame.dataset.bsTab || "") : "",
     bsVariant: kind === "berquist_sherman" ? normalizeBerquistShermanVariant(frame.dataset.bsVariant) : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
@@ -212,6 +220,7 @@ function getVisibleProjectInstanceWindowSummaries() {
       bfTab: snapshot.bfTab || "",
       ccTab: snapshot.ccTab || "",
       bstTab: snapshot.bstTab || "",
+      sconTab: snapshot.sconTab || "",
       bsTab: snapshot.bsTab || "",
       bsVariant: snapshot.bsVariant || "",
       zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
@@ -500,6 +509,10 @@ function isBootstrapWindow(frame) {
   return frame?.dataset?.windowKind === "bootstrap";
 }
 
+function isStochasticConsolidationWindow(frame) {
+  return frame?.dataset?.windowKind === "stochastic_consolidation";
+}
+
 function isBerquistShermanWindow(frame) {
   return frame?.dataset?.windowKind === "berquist_sherman";
 }
@@ -719,7 +732,7 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   if (options?.draft) params.set("draft_instance", "1");
   if (options?.initialTab) params.set("tab", toText(options.initialTab));
   const methodType = toText(options?.methodType).toLowerCase();
-  if (["dfm", "result selection", "rs", "bornhuetter ferguson", "bf", "cape cod", "cc", "bootstrap"].includes(methodType)) {
+  if (["dfm", "result selection", "rs", "bornhuetter ferguson", "bf", "cape cod", "cc", "bootstrap", "stochastic consolidation"].includes(methodType)) {
     params.set("vector_column_label", "Ultimate");
   }
   params.set("inst", inst);
@@ -824,6 +837,23 @@ function buildBootstrapViewerUrl(datasetName, inst, options = {}) {
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
   return `/ui/method_pages/bootstrap/bootstrap.html?${params.toString()}`;
+}
+
+function buildStochasticConsolidationViewerUrl(datasetName, inst, options = {}) {
+  const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const initialTab = windowTab("stochastic_consolidation", options?.initialTab || options?.sconTab);
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  params.set("project", projectName);
+  params.set("class", targetPath);
+  if (name) params.set("name", name);
+  if (options?.outputType) params.set("output_type", toText(options.outputType));
+  if (options?.category) params.set("category", toText(options.category));
+  params.set("tab", initialTab);
+  params.set("inst", inst);
+  params.set("project_instance", "1");
+  params.set("v", String(Date.now()));
+  return `/ui/method_pages/stochastic_consolidation/stochastic_consolidation.html?${params.toString()}`;
 }
 
 function buildBerquistShermanViewerUrl(datasetName, inst, options = {}) {
@@ -994,9 +1024,11 @@ function createFloatingContentWindow(options = {}) {
           ? "Cape Cod"
           : frame.dataset.windowKind === "bootstrap"
             ? "Bootstrap"
-            : frame.dataset.windowKind === "berquist_sherman"
-              ? getBerquistShermanContract(options.bsVariant || options.variant)?.methodType || ""
-              : ""
+            : frame.dataset.windowKind === "stochastic_consolidation"
+              ? "Stochastic Consolidation"
+              : frame.dataset.windowKind === "berquist_sherman"
+                ? getBerquistShermanContract(options.bsVariant || options.variant)?.methodType || ""
+                : ""
   ));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") {
@@ -1013,6 +1045,9 @@ function createFloatingContentWindow(options = {}) {
   }
   if (frame.dataset.windowKind === "bootstrap") {
     frame.dataset.bstTab = windowTab("bootstrap", options.bstTab || options.initialTab);
+  }
+  if (frame.dataset.windowKind === "stochastic_consolidation") {
+    frame.dataset.sconTab = windowTab("stochastic_consolidation", options.sconTab || options.initialTab);
   }
   if (frame.dataset.windowKind === "berquist_sherman") {
     frame.dataset.bsTab = windowTab("berquist_sherman", options.bsTab || options.initialTab);
@@ -1387,6 +1422,33 @@ function openBootstrapWindow(datasetName, options = {}) {
   });
 }
 
+function openStochasticConsolidationWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return;
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
+    setStatus("Select a reserving class path before opening a Stochastic Consolidation object.", true);
+    return;
+  }
+
+  const windowKey = getStochasticConsolidationWindowKey(name, targetPath);
+  const title = `${targetPath}\\Stochastic Consolidation\\${name}`;
+  const initialTab = windowTab("stochastic_consolidation", options.initialTab || options.sconTab);
+  const inst = `pi_scon_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "stochastic_consolidation",
+    name,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildStochasticConsolidationViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
+    path: targetPath,
+    methodType: options.methodType || "Stochastic Consolidation",
+    initialTab,
+  });
+}
+
 function openBerquistShermanWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   if (!name) return;
@@ -1492,6 +1554,9 @@ function applyRestoredWindowState(frame, item = {}) {
   if (toText(item?.bstTab) && isBootstrapWindow(frame)) {
     frame.dataset.bstTab = toText(item.bstTab);
   }
+  if (toText(item?.sconTab) && isStochasticConsolidationWindow(frame)) {
+    frame.dataset.sconTab = toText(item.sconTab);
+  }
   if (isBerquistShermanWindow(frame)) {
     if (toText(item?.bsTab)) frame.dataset.bsTab = toText(item.bsTab);
     const variant = normalizeBerquistShermanVariant(item?.bsVariant || item?.methodType);
@@ -1538,6 +1603,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     const isBornhuetterFergusonMethod = methodType.toLowerCase() === "bornhuetter ferguson";
     const isCapeCodMethod = methodType.toLowerCase() === "cape cod";
     const isBootstrapMethod = methodType.toLowerCase() === "bootstrap";
+    const isStochasticConsolidationMethod = methodType.toLowerCase() === "stochastic consolidation";
     const kind = rawKind === "dfm"
       ? "dfm"
       : rawKind === "result_selection" || isLegacyResultSelectionMethod
@@ -1548,9 +1614,11 @@ async function applyProjectInstanceRestoreState(rawState) {
             ? "cape_cod"
             : rawKind === "bootstrap" || isBootstrapMethod
               ? "bootstrap"
-              : rawKind === "berquist_sherman" || !!bsVariant
-                ? "berquist_sherman"
-                : "dataset";
+              : rawKind === "stochastic_consolidation" || isStochasticConsolidationMethod
+                ? "stochastic_consolidation"
+                : rawKind === "berquist_sherman" || !!bsVariant
+                  ? "berquist_sherman"
+                  : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
@@ -1567,6 +1635,8 @@ async function applyProjectInstanceRestoreState(rawState) {
             ? openCapeCodWindow(name, { initialTab: item?.ccTab, ccTab: item?.ccTab, methodType })
             : kind === "bootstrap"
               ? openBootstrapWindow(name, { initialTab: item?.bstTab, bstTab: item?.bstTab, methodType })
+              : kind === "stochastic_consolidation"
+                ? openStochasticConsolidationWindow(name, { initialTab: item?.sconTab, sconTab: item?.sconTab, methodType })
               : kind === "berquist_sherman"
               ? openBerquistShermanWindow(name, {
                 path: item?.path,
@@ -1596,6 +1666,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     buildBornhuetterFergusonViewerUrl,
     buildCapeCodViewerUrl,
     buildBootstrapViewerUrl,
+    buildStochasticConsolidationViewerUrl,
     buildBerquistShermanViewerUrl,
     buildDatasetViewerUrl,
     buildDfmViewerUrl,
@@ -1614,6 +1685,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     getDfmWindowKey,
     getCapeCodWindowKey,
     getBootstrapWindowKey,
+    getStochasticConsolidationWindowKey,
     getBerquistShermanWindowKey,
     getFrameRect,
     getMaximizedWindowRect,
@@ -1633,6 +1705,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     isBornhuetterFergusonWindow,
     isCapeCodWindow,
     isBootstrapWindow,
+    isStochasticConsolidationWindow,
     isBerquistShermanWindow,
     isDatasetWindowMaximized,
     isDfmWindow,
@@ -1649,6 +1722,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     openBornhuetterFergusonWindow,
     openCapeCodWindow,
     openBootstrapWindow,
+    openStochasticConsolidationWindow,
     openBerquistShermanWindow,
     openDfmWindow,
     openResultSelectionWindow,

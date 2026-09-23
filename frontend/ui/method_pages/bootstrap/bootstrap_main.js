@@ -33,8 +33,9 @@ import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_i
 import { BOOTSTRAP_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import { loadBootstrapMethod, saveBootstrapMethod } from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260923a";
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
-import { createDistributionChart } from "/ui/method_pages/bootstrap/bootstrap_distribution_chart.js?v=20260923b";
-import { createFanChart } from "/ui/method_pages/bootstrap/bootstrap_fan_chart.js?v=20260923b";
+import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
+import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
+import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260923a";
 import {
   BST_BASIS_OPTIONS,
   BST_DEFAULT_PERCENTILES,
@@ -44,11 +45,9 @@ import {
   fanChartData,
   formatPercentileList,
   formatRunDuration,
-  ladderTableRows,
   parsePercentileList,
   resultsClipboardText,
   resultsView,
-  summaryTableColumns,
   BST_DISTRIBUTION_OPTIONS,
   BST_METHOD_TYPE,
   BST_MODEL_OPTIONS,
@@ -70,7 +69,7 @@ import {
   residualGrid,
   simulationSummary,
   targetRows,
-} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923b";
+} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923c";
 
 const ALLOWED_TABS = windowTabIds("bootstrap");
 const params = new URLSearchParams(window.location.search || "");
@@ -604,28 +603,11 @@ function currentResultsView() {
   return resultsView(state.method, { basis: state.results.basis, measure: state.results.measure });
 }
 
-function resultCell(value, kind, extra = "") {
-  const shown = kind === "percent" ? formatPercent(value) : formatNumber(value);
-  return `<td class="bstCell${extra ? ` ${extra}` : ""}">${shown}</td>`;
-}
-
-function renderSummaryTable(view) {
-  const columns = summaryTableColumns(view.measure, state.results.percentiles);
-  els.resultsHead.innerHTML = `<tr><th class="bstOriginHead">Origin</th>${
-    columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}</tr>`;
-  const rowMarkup = (row, total) => `<tr${total ? " class=\"bstTotalRow\"" : ""}>
-    <td class="bstOriginCell">${escapeHtml(row.label)}</td>${
-    columns.map((column) => resultCell(column.value(row), column.kind)).join("")}</tr>`;
-  els.resultsTableBody.innerHTML = view.rows.map((row) => rowMarkup(row, false)).join("") + rowMarkup(view.total, true);
-}
-
-function renderLadderTable(view) {
-  const rows = ladderTableRows(view, state.results.percentiles);
-  els.resultsHead.innerHTML = `<tr><th class="bstOriginHead">Statistic</th>${
-    view.rows.map((row) => `<th>${escapeHtml(row.label)}</th>`).join("")}<th>Total</th></tr>`;
-  els.resultsTableBody.innerHTML = rows.map((row) => `<tr${row.chosen ? " class=\"bstChosenRow\"" : ""}>
-    <td class="bstOriginCell">${escapeHtml(row.label)}</td>${
-    row.values.map((value, index) => resultCell(value, row.kind, index === row.values.length - 1 ? "bstTotalCell" : "")).join("")}</tr>`).join("");
+function renderResultsTable(view) {
+  const build = state.results.fullLadder ? ladderTableMarkup : summaryTableMarkup;
+  const { head, body } = build(view, state.results.percentiles, { cssPrefix: "bst" });
+  els.resultsHead.innerHTML = head;
+  els.resultsTableBody.innerHTML = body;
 }
 
 function renderResultsCharts(view) {
@@ -656,8 +638,7 @@ function renderResults() {
   els.fullLadderInput.checked = state.results.fullLadder;
   if (!view) return;
   els.resultsBody.classList.toggle("isFullLadder", state.results.fullLadder);
-  if (state.results.fullLadder) renderLadderTable(view);
-  else renderSummaryTable(view);
+  renderResultsTable(view);
   const basisLabel = view.basis === "scaled" ? "Scaled" : "Unscaled";
   els.resultsCaption.textContent = `${basisLabel} ${view.measure} over ${formatNumber(view.simulationCount)} simulations, seed ${view.randomSeed ?? ""}.`;
   renderResultsCharts(view);

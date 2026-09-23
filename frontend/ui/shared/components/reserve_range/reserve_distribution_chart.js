@@ -1,10 +1,11 @@
-/* Distribution of the total reserve (or ultimate) on the Results tab: the
-   stored histogram as bars, the mean as a solid line, and each chosen
-   percentile as a dashed marker labelled across the top. It reads only what
-   the page model hands it, redraws itself when its box changes size or the
-   colour theme changes, and shows a bar's range and share on hover. */
+/* Distribution of a total reserve (or ultimate), shared by the Bootstrap and
+   the Stochastic Consolidation Results tabs: the stored histogram as bars,
+   the mean as a solid line, and each chosen percentile as a dashed marker
+   labelled across the top. It reads only what the reserve-range model hands
+   it, redraws itself when its box changes size or the colour theme changes,
+   and shows a bar's range and share on hover. */
 
-import { formatAxisTick } from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923b";
+import { formatAxisTick } from "./reserve_range_model.js?v=20260923a";
 
 const COLORS = Object.freeze({
   bar: "rgba(43, 109, 246, 0.22)",

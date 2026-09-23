@@ -35,6 +35,7 @@ export function installProjectInstanceMessages(ctx) {
   const isBornhuetterFergusonWindow = (...args) => api.isBornhuetterFergusonWindow(...args);
   const isCapeCodWindow = (...args) => api.isCapeCodWindow(...args);
   const isBootstrapWindow = (...args) => api.isBootstrapWindow(...args);
+  const isStochasticConsolidationWindow = (...args) => api.isStochasticConsolidationWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
@@ -46,6 +47,7 @@ export function installProjectInstanceMessages(ctx) {
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openCapeCodWindow = (...args) => api.openCapeCodWindow(...args);
   const openBootstrapWindow = (...args) => api.openBootstrapWindow(...args);
+  const openStochasticConsolidationWindow = (...args) => api.openStochasticConsolidationWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const refreshCachedDatasetTableFromDisk = (...args) => api.refreshCachedDatasetTableFromDisk(...args);
@@ -333,6 +335,7 @@ function getActiveWindowJsonKind(frame) {
   if (isBornhuetterFergusonWindow(frame) || methodType === "bornhuetter ferguson") return "bornhuetter_ferguson";
   if (isCapeCodWindow(frame) || methodType === "cape cod") return "cape_cod";
   if (isBootstrapWindow(frame) || methodType === "bootstrap") return "bootstrap";
+  if (isStochasticConsolidationWindow(frame) || methodType === "stochastic consolidation") return "stochastic_consolidation";
   if (isBerquistShermanWindow(frame) || normalizeBerquistShermanVariant(methodType)) return "berquist_sherman";
   return "";
 }
@@ -381,6 +384,8 @@ async function openActiveDatasetRelatedFile(fileKind) {
       filename = `CC@${namePart}.json`;
     } else if (jsonKind === "bootstrap") {
       filename = `BST@${namePart}.json`;
+    } else if (jsonKind === "stochastic_consolidation") {
+      filename = `SCON@${namePart}.json`;
     } else if (jsonKind === "berquist_sherman") {
       const contract = getBerquistShermanContract(activeFrame.dataset.bsVariant || getWindowMethodType(activeFrame));
       if (!contract) {
@@ -644,6 +649,11 @@ function handleAutomationOpenDataset(message, sourceWindow) {
               path: state.selectedPath,
               methodType: "Bootstrap",
             })
+          : openMethod && methodType === "stochastic consolidation"
+            ? openStochasticConsolidationWindow(datasetName, {
+              path: state.selectedPath,
+              methodType: "Stochastic Consolidation",
+            })
           : openMethod && bsVariant
             ? openBerquistShermanWindow(datasetName, {
               path: state.selectedPath,
@@ -871,6 +881,11 @@ function handleOpenDependentDataset(message, sourceWindow) {
       path: targetPath,
       methodType: "Bootstrap",
     });
+  } else if (openMethod && methodType === "stochastic consolidation") {
+    frame = openStochasticConsolidationWindow(datasetName, {
+      path: targetPath,
+      methodType: "Stochastic Consolidation",
+    });
   } else if (openMethod && bsVariant) {
     frame = openBerquistShermanWindow(datasetName, {
       path: targetPath,
@@ -893,6 +908,8 @@ function handleOpenDependentDataset(message, sourceWindow) {
           ? "Cape Cod"
           : methodType === "bootstrap"
             ? "Bootstrap"
+          : methodType === "stochastic consolidation"
+            ? "Stochastic Consolidation"
           : bsVariant
             ? getBerquistShermanContract(bsVariant)?.methodType || "Berquist Sherman"
             : "Result Selection";
@@ -1602,6 +1619,14 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame && isBootstrapWindow(frame)) {
       frame.dataset.bstTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:scon-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isStochasticConsolidationWindow(frame)) {
+      frame.dataset.sconTab = toText(msg.tab || "");
       notifyProjectInstanceStateChanged();
     }
     return;

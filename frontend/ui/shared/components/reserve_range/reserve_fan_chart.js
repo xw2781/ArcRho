@@ -1,11 +1,13 @@
-/* Fan chart for the Results tab: the simulated mean by origin as a line, the
-   DFM's figure as a dashed line, and one shaded band per symmetric pair of the
-   chosen percentiles, the narrower bands painted darker over the wider ones.
-   The page model computes the bands (fanChartData); this module only draws
-   them, redraws when its box or the colour theme changes, and names the
-   origin's figures on hover. */
+/* Fan chart of a reserve range by origin, shared by the Bootstrap and the
+   Stochastic Consolidation Results tabs: the simulated mean by origin as a
+   line, the DFM's figure as a dashed line when the method has one, and one
+   shaded band per symmetric pair of the chosen percentiles, the narrower bands
+   painted darker over the wider ones. The reserve-range model computes the
+   bands (fanChartData); this module only draws them, redraws when its box or
+   the colour theme changes, and names the origin's figures on hover. Legend
+   items take the page's class prefix (cssPrefix), so each page styles them. */
 
-import { formatAxisTick } from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923b";
+import { formatAxisTick } from "./reserve_range_model.js?v=20260923a";
 
 const COLORS = Object.freeze({
   band: [43, 109, 246],
@@ -53,7 +55,7 @@ export function fanBandAlpha(index, count) {
   return 0.1 + (0.2 * index) / (count - 1);
 }
 
-export function createFanChart({ canvas, legend, tooltip, emptyState } = {}) {
+export function createFanChart({ canvas, legend, tooltip, emptyState, cssPrefix = "bst" } = {}) {
   if (!canvas) return null;
   let data = null;
   let columns = [];
@@ -64,9 +66,9 @@ export function createFanChart({ canvas, legend, tooltip, emptyState } = {}) {
     const items = [];
     const add = (label, swatchStyle) => {
       const item = document.createElement("span");
-      item.className = "bstChartLegendItem";
+      item.className = `${cssPrefix}ChartLegendItem`;
       const swatch = document.createElement("span");
-      swatch.className = "bstChartLegendSwatch";
+      swatch.className = `${cssPrefix}ChartLegendSwatch`;
       swatch.setAttribute("aria-hidden", "true");
       Object.assign(swatch.style, swatchStyle);
       item.append(swatch, document.createTextNode(label));
@@ -74,7 +76,9 @@ export function createFanChart({ canvas, legend, tooltip, emptyState } = {}) {
     };
     if (data) {
       add("Mean", { background: COLORS.mean, height: "2px" });
-      add("DFM", { borderTop: `2px dashed ${COLORS.dfm}`, height: "0" });
+      if (data.dfm.some((value) => finite(value) !== null)) {
+        add("DFM", { borderTop: `2px dashed ${COLORS.dfm}`, height: "0" });
+      }
       const count = data.bands.length;
       data.bands.forEach((band, index) => {
         const [r, g, b] = COLORS.band;
@@ -266,7 +270,7 @@ export function createFanChart({ canvas, legend, tooltip, emptyState } = {}) {
 
   return {
     render(next) {
-      data = next && Array.isArray(next.labels) ? next : null;
+      data = next && Array.isArray(next.labels) ? { ...next, dfm: Array.isArray(next.dfm) ? next.dfm : [] } : null;
       hideTooltip();
       renderLegend();
       schedule();

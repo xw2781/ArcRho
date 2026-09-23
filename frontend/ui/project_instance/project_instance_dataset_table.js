@@ -63,6 +63,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openCapeCodWindow = (...args) => api.openCapeCodWindow(...args);
   const openBootstrapWindow = (...args) => api.openBootstrapWindow(...args);
+  const openStochasticConsolidationWindow = (...args) => api.openStochasticConsolidationWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
@@ -1297,6 +1298,10 @@ function isBootstrapDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "bootstrap";
 }
 
+function isStochasticConsolidationDatasetRecord(record) {
+  return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "stochastic consolidation";
+}
+
 function getBerquistShermanRecordVariant(record) {
   return normalizeBerquistShermanVariant(
     getDatasetRecordValue(record, "methodType") || record?.sourceKind || record?.instance?.source_kind
@@ -1346,6 +1351,13 @@ function isCapeCodVectorDatasetRecord(record) {
 function isBootstrapVectorDatasetRecord(record) {
   return (
     isBootstrapDatasetRecord(record)
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+  );
+}
+
+function isStochasticConsolidationVectorDatasetRecord(record) {
+  return (
+    isStochasticConsolidationDatasetRecord(record)
     && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
   );
 }
@@ -1403,6 +1415,16 @@ function openBootstrapTabForDataset(record) {
   if (!datasetName || !state.selectedPath) return;
   openBootstrapWindow(datasetName, {
     methodType: getDatasetRecordValue(record, "methodType") || "Bootstrap",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+  });
+}
+
+function openStochasticConsolidationTabForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName || !state.selectedPath) return;
+  openStochasticConsolidationWindow(datasetName, {
+    methodType: getDatasetRecordValue(record, "methodType") || "Stochastic Consolidation",
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
   });
@@ -1604,6 +1626,29 @@ function addBootstrapForDataset(record) {
     category: getDatasetRecordValue(record, "category"),
   });
   setStatus(`Opened Bootstrap for ${datasetName}.`);
+}
+
+function addStochasticConsolidationForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName) {
+    setStatus("Select a vector dataset before adding a Stochastic Consolidation object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a Stochastic Consolidation object.", true);
+    return;
+  }
+  if (!canAddResultSelectionForDataset(record)) {
+    setStatus("Stochastic Consolidation can be added only to vector datasets with Method Type None.", true);
+    return;
+  }
+  openStochasticConsolidationWindow(datasetName, {
+    initialTab: "details",
+    methodType: "Stochastic Consolidation",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+  });
+  setStatus(`Opened Stochastic Consolidation for ${datasetName}.`);
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -2490,6 +2535,7 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
       || isBornhuetterFergusonVectorDatasetRecord(viewRecord)
       || isCapeCodVectorDatasetRecord(viewRecord)
       || isBootstrapVectorDatasetRecord(viewRecord)
+      || isStochasticConsolidationVectorDatasetRecord(viewRecord)
     );
     showAsVectorItem.hidden = !showAsVector;
     showAsVectorItem.disabled = !showAsVector;
@@ -2535,6 +2581,15 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     addBootstrapItem.hidden = temporaryView || emptyContext;
     addBootstrapItem.disabled = !canAdd;
     addBootstrapItem.title = canAdd ? "" : "Bootstrap can be added only to vector datasets with Method Type None.";
+  }
+  const addConsolidationItem = menu.querySelector("[data-row-action='add-stochastic-consolidation']");
+  if (addConsolidationItem) {
+    const canAdd = !temporaryView && !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addConsolidationItem.hidden = temporaryView || emptyContext;
+    addConsolidationItem.disabled = !canAdd;
+    addConsolidationItem.title = canAdd
+      ? ""
+      : "Stochastic Consolidation can be added only to vector datasets with Method Type None.";
   }
   for (const variant of BERQUIST_SHERMAN_VARIANTS) {
     const addBerquistShermanItem = menu.querySelector(`[data-row-action='add-berquist-sherman-${variant}']`);
@@ -2666,6 +2721,10 @@ function openDatasetRecord(record) {
   }
   if (isBootstrapDatasetRecord(record)) {
     openBootstrapTabForDataset(record);
+    return;
+  }
+  if (isStochasticConsolidationDatasetRecord(record)) {
+    openStochasticConsolidationTabForDataset(record);
     return;
   }
   if (isBerquistShermanDatasetRecord(record)) {
@@ -3195,6 +3254,8 @@ function applyDatasetRowContextAction(action) {
     addCapeCodForDataset(viewRecord);
   } else if (normalized === "add-bootstrap") {
     addBootstrapForDataset(viewRecord);
+  } else if (normalized === "add-stochastic-consolidation") {
+    addStochasticConsolidationForDataset(viewRecord);
   } else if (normalized === "add-berquist-sherman-sr") {
     addBerquistShermanForDataset(viewRecord, "sr");
   } else if (normalized === "add-berquist-sherman-cra") {
@@ -3760,6 +3821,8 @@ async function loadDatasets() {
     isCapeCodVectorDatasetRecord,
     isBootstrapDatasetRecord,
     isBootstrapVectorDatasetRecord,
+    isStochasticConsolidationDatasetRecord,
+    isStochasticConsolidationVectorDatasetRecord,
     isDatasetColumnFilterActive,
     isDfmDatasetRecord,
     isMethodDatasetRecord,
@@ -3774,6 +3837,7 @@ async function loadDatasets() {
     openBornhuetterFergusonTabForDataset,
     openCapeCodTabForDataset,
     openBootstrapTabForDataset,
+    openStochasticConsolidationTabForDataset,
     openDfmTabForDataset,
     parseDatasetGroupId,
     positionDatasetTableFilterPopover,

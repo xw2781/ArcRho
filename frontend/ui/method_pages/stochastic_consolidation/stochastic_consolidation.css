@@ -1,0 +1,753 @@
+:root {
+  --scon-border: #d8dde3;
+  --scon-bg: #f4f6f8;
+  --scon-text: #202733;
+  --scon-muted: #697386;
+  --scon-accent: #2b6df6;
+  --scon-accent-soft: #eaf1ff;
+  --scon-warning: #b45309;
+  --scon-warning-soft: #fff4e5;
+  --scon-success: #15803d;
+  --scon-font: var(--ar-spreadsheet-font, Arial, "Segoe UI", sans-serif);
+  --scon-grid-border: var(--ar-spreadsheet-grid-border, #d9dee7);
+  --scon-header-cell: var(--ar-spreadsheet-header-fill, #eef2f7);
+  --scon-label-cell: var(--ar-spreadsheet-label-fill, #f3f4f6);
+  --scon-cell-h: var(--ar-spreadsheet-cell-height, 24px);
+  --scon-entry-cell: #ffffff;
+  --scon-derived-cell: #dff8f8;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--scon-bg);
+  color: var(--scon-text);
+  font: 12px/1.45 Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+}
+.sconShell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Header: identity, run state, and the page actions. */
+.sconHeader {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 10px 2px;
+  background: #f5f7fa;
+}
+.sconHeaderIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sconHeaderName {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sconStateChip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sconStateDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.sconStateChip[data-state="current"] { border-color: #bbe5c8; color: var(--scon-success); }
+.sconStateChip[data-state="current"] .sconStateDot { background: var(--scon-success); }
+.sconStateChip[data-state="changed"] { border-color: #f5d0a4; background: var(--scon-warning-soft); color: var(--scon-warning); }
+.sconStateChip[data-state="changed"] .sconStateDot { background: var(--scon-warning); }
+.sconStateChip[data-state="segment"] { border-color: #f5d0a4; background: var(--scon-warning-soft); color: var(--scon-warning); }
+.sconStateChip[data-state="segment"] .sconStateDot { background: var(--scon-warning); }
+.sconRunInfo {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--scon-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sconHeaderActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.sconHeaderActions .sconButton { min-width: 72px; height: 28px; }
+
+.sconTabbed {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sconPageHost {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0 var(--tabbed-page-gutter, 8px) var(--tabbed-page-gutter, 8px);
+  padding: 10px;
+  border: 1px solid var(--scon-border);
+  border-top: 0;
+  background: #ffffff;
+}
+.sconPage { display: none; }
+#sconAuditPage[style*="display: block"],
+#sconAuditPage.sconTabFloatingPage {
+  display: flex !important;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Controls */
+.sconFieldControl {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.sconMediumField { width: 140px; }
+.sconMediumWideField { width: 240px; }
+.sconInlineField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sconInput {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  color: var(--ar-details-control-color, #000);
+  font: inherit;
+  font-size: 12px;
+}
+.sconInput[readonly] { background: #f5f7fa; }
+.sconNumericText { text-align: right; }
+.sconInput:focus,
+.sconNumberInput:focus,
+.sconCellInput:focus {
+  outline: none;
+  border-color: #8aa8ff;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+.sconFieldControl.withPicker .sconInput { padding-right: 36px; }
+.sconButton,
+.sconIconButton {
+  appearance: none;
+  height: 30px;
+  border: 1px solid #c8c8c8;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #f1f1f1;
+  color: #263241;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sconButton { padding: 0 12px; }
+.sconButton.primary {
+  border-color: var(--scon-accent);
+  background: var(--scon-accent-soft);
+  color: #1d4ed8;
+}
+.sconButton.primary:hover:not(:disabled) { background: #dbe8ff; }
+.sconButton.primary.is-clean {
+  border-color: rgba(21, 34, 54, 0.18);
+  background: #ffffff;
+  color: #1f2937;
+}
+.sconButton:hover:not(:disabled),
+.sconIconButton:hover { background: #e8f0fe; border-color: #9fb9ff; }
+.sconButton:disabled { cursor: default; opacity: 0.55; }
+.sconIconButton {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-color: #d3d3d3;
+  background: #f8fbff;
+  color: #555555;
+  font-size: 14px;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+.sconLinkButton {
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  cursor: pointer;
+}
+.sconLinkButton:hover { text-decoration: underline; }
+.sconLinkButton[hidden] { display: none; }
+
+/* Segmented controls: the correlation option and the view switches. */
+.sconSegmented {
+  display: inline-flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  overflow: hidden;
+}
+.sconSegmentHint { display: inline-flex; }
+.sconSegment {
+  padding: 0 14px;
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.sconSegmented > :last-child .sconSegment,
+.sconSegmented > .sconSegment:last-child { border-right: 0; }
+.sconSegment:hover:not(:disabled) { background: #f1f5f9; }
+.sconSegment[aria-checked="true"] {
+  background: var(--scon-accent-soft);
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.sconSegment:disabled { color: #94a3b8; cursor: default; }
+.sconSegment:focus-visible { outline: 2px solid rgba(43, 109, 246, 0.36); outline-offset: -2px; }
+
+/* Dropdown triggers and the one shared menu. */
+.sconDropdownButton,
+.sconCellDropdown {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  color: #111111;
+  font: inherit;
+  cursor: pointer;
+}
+.sconDropdownButton { height: 30px; }
+.sconDropdownValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sconDropdownButton:hover:not(:disabled),
+.sconCellDropdown:hover { background: #f8fafc; border-color: #b8c3d3; }
+.sconDropdownButton:focus-visible,
+.sconCellDropdown:focus-visible { outline: none; border-color: #8aa8ff; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16); }
+.sconDropdownButton:disabled { color: #94a3b8; cursor: default; background: #f8fafc; }
+.sconDropdownCaret {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #64748b;
+  opacity: 0.7;
+  transition: transform 120ms ease;
+}
+.sconDropdownButton:hover .sconDropdownCaret,
+.sconDropdownButton.open .sconDropdownCaret,
+.sconCellDropdown.open .sconDropdownCaret { opacity: 1; }
+.sconDropdownButton.open .sconDropdownCaret,
+.sconCellDropdown.open .sconDropdownCaret { transform: rotate(180deg); border-top-color: #2f5fd3; }
+.sconMenu {
+  position: fixed;
+  z-index: 1000;
+  max-height: 280px;
+  padding: 3px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+.sconMenuOption {
+  display: block;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #111827;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.sconMenuOption:hover,
+.sconMenuOption:focus { outline: none; background: #f1f5f9; }
+.sconMenuOption[aria-selected="true"] { background: #eaf2ff; color: #0d6efd; }
+
+/* Tab toolbars: framed groups on one row, like the other method pages. */
+.sconToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 8px;
+  margin: 6px 0 10px;
+}
+.sconToolGroup {
+  position: relative;
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  padding: 9px 10px 5px;
+  border: 1px solid #cfd8e690;
+  border-radius: 2px;
+}
+.sconToolTitle {
+  position: absolute;
+  top: -8px;
+  left: 9px;
+  padding: 0 4px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 11px;
+}
+.sconToolControls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.sconToolField,
+.sconToolCheck {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  color: #1f2937;
+  white-space: nowrap;
+}
+.sconToolCheck input { accent-color: var(--scon-accent); }
+.sconNumberInput {
+  width: 69px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #cfcfcf;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: #ffffff;
+  font: inherit;
+  text-align: right;
+}
+.sconToolInput { height: 28px; }
+
+.sconCaption {
+  margin: 6px 2px 0;
+  color: var(--scon-muted);
+  font-size: 11px;
+}
+.sconCaption:empty { display: none; }
+.sconChartPanel {
+  display: flex;
+  min-width: 0;
+  height: 340px;
+  flex-direction: column;
+  border: 1px solid var(--scon-border);
+  background: #ffffff;
+}
+.sconChartHeader {
+  padding: 7px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fbfcfe;
+}
+.sconChartTitle {
+  margin: 0;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sconChartPlot {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px;
+}
+.sconChartCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Tables */
+.sconTableWrap {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--scon-border);
+  background: #ffffff;
+}
+.sconTableWrap::-webkit-scrollbar { width: 20px; height: 20px; }
+.sconTableWrap::-webkit-scrollbar-track,
+.sconTableWrap::-webkit-scrollbar-corner { background: #f1f3f5; }
+.sconTableWrap::-webkit-scrollbar-thumb {
+  border: 3px solid #f1f3f5;
+  border-radius: 5px;
+  background-color: rgba(182, 182, 182, 0.2);
+  background-clip: content-box;
+}
+.sconTableWrap::-webkit-scrollbar-thumb:hover { background-color: rgba(120, 120, 120, 0.267); }
+table.sconTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  font-family: var(--scon-font);
+  font-size: 13px;
+}
+.sconTable th,
+.sconTable td {
+  height: var(--scon-cell-h);
+  min-width: 78px;
+  padding: 0 8px;
+  border-right: 1px solid var(--scon-grid-border);
+  border-bottom: 1px solid var(--scon-grid-border);
+  color: #132a63;
+  text-align: right;
+  white-space: nowrap;
+}
+.sconTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 30px;
+  background: var(--scon-header-cell);
+  color: #111827;
+  font-weight: 400;
+  text-align: center;
+}
+.sconTable .sconOriginHead,
+.sconTable .sconOriginCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 96px;
+  background: var(--scon-label-cell);
+  color: #111827;
+  text-align: center;
+}
+.sconTable thead .sconOriginHead { z-index: 3; background: var(--scon-header-cell); }
+.sconTable tbody tr:hover td:not(.sconOriginCell) { background-color: #f8fafc; }
+.sconTable td.sconDerivedCell { background: var(--scon-derived-cell); }
+.sconTable tbody tr:hover td.sconDerivedCell { background: #d2f1f1; }
+.sconTable td.sconInactiveCell { background: #f5f7fa; }
+.sconTable td.sconEntryCell {
+  padding: 0;
+  background: var(--scon-entry-cell);
+}
+.sconTable tr.sconTotalRow td { font-weight: 700; }
+/* A fixed width: an input sized by percentage still asks an auto-layout table
+   for its intrinsic width and would widen every column it sits in. */
+.sconCellInput {
+  width: 86px;
+  height: calc(var(--scon-cell-h) - 1px);
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #003fff;
+  font: inherit;
+  text-align: right;
+}
+.sconCellInput:hover { border-color: #cbd5e1; }
+.sconCellDropdown {
+  height: calc(var(--scon-cell-h) - 1px);
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #003fff;
+}
+.sconEmptyRow {
+  height: 60px;
+  color: var(--scon-muted);
+  text-align: center !important;
+}
+
+/* Empty states. */
+.sconEmpty {
+  display: grid;
+  min-height: 160px;
+  margin: 8px 0;
+  place-items: center;
+  border: 1px dashed #b9c2cf;
+  background: #fbfcfe;
+  color: var(--scon-muted);
+  font-weight: 600;
+}
+.sconEmpty[hidden] { display: none; }
+.sconEmptyContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Results: the view toolbar, a stale-run notice, the summary table (or the
+   full ladder), then the two charts side by side, stacked when narrow. */
+.sconResultsBody[hidden] { display: none; }
+.sconSegmentedCompact { height: 28px; }
+.sconSegmentedCompact .sconSegment { padding: 0 12px; }
+.sconPercentileInput { width: 200px; }
+.sconToolButton { height: 28px; }
+.sconStateChip[data-state="running"] { border-color: #bfd3fb; background: var(--scon-accent-soft); color: #1d4ed8; }
+.sconStateChip[data-state="running"] .sconStateDot {
+  background: var(--scon-accent);
+  animation: sconRunPulse 900ms ease-in-out infinite alternate;
+}
+@keyframes sconRunPulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+.sconNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid #f5d0a4;
+  background: var(--scon-warning-soft);
+  color: var(--scon-warning);
+}
+.sconNotice[hidden] { display: none; }
+.sconResultsWrap { width: max-content; max-height: 360px; }
+.sconResultsBody.isFullLadder .sconResultsWrap { max-height: 520px; }
+.sconTable tr.sconChosenRow td { font-weight: 700; }
+.sconTable tr.sconChosenRow td.sconOriginCell { color: #1d4ed8; }
+.sconTable td.sconTotalCell { font-weight: 700; }
+.sconResultsCharts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+.sconResultsCharts .sconChartPanel { height: 320px; }
+.sconChartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sconChartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #475569;
+  font-size: 11px;
+}
+.sconChartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.sconChartLegendSwatch {
+  display: inline-block;
+  width: 16px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+.sconSwatchMeanLine { height: 2px; background: #111827; }
+.sconSwatchMarkerLine { height: 0; border-top: 2px dashed #b45309; }
+.sconChartEmpty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--scon-muted);
+  font-weight: 600;
+  pointer-events: none;
+}
+.sconChartEmpty[hidden] { display: none; }
+.sconChartTooltip {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  max-width: 240px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  color: #1f2937;
+  font-size: 11px;
+  pointer-events: none;
+}
+.sconChartTooltip[hidden] { display: none; }
+.sconChartTooltip strong { font-size: 12px; }
+@media (max-width: 1100px) {
+  .sconResultsCharts { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .sconHeader { flex-wrap: wrap; }
+  .sconRunInfo { display: none; }
+  .sconToolControls { flex-wrap: wrap; gap: 8px 14px; }
+}
+.sconCheckbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--scon-accent);
+}
+
+/* Segments: one row per included bootstrap. A click selects the row the
+   toolbar's Remove and Move buttons act on. */
+.sconSegmentsWrap { width: max-content; }
+.sconTable .sconTextHead,
+.sconTable td.sconTextCell { text-align: left; }
+.sconTable .sconIndexHead,
+.sconTable td.sconIndexCell {
+  min-width: 36px;
+  width: 36px;
+  background: var(--scon-label-cell);
+  color: #111827;
+  text-align: center;
+}
+.sconTable thead .sconIndexHead { background: var(--scon-header-cell); }
+.sconTable td.sconTextCell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sconTable .sconMethodHead { min-width: 260px; }
+.sconTable .sconIssueHead { min-width: 240px; }
+.sconSegmentsTable tbody tr { cursor: default; }
+.sconSegmentsTable tbody tr.isSelected td { background-color: #eaf2ff; }
+.sconSegmentsTable tbody tr.isSelected td.sconIndexCell {
+  background: #a6a6a6;
+  color: #111827;
+}
+.sconTable td.sconIssueCell {
+  max-width: 360px;
+  white-space: normal;
+  line-height: 1.3;
+  text-align: left;
+}
+.sconIssue { display: block; color: var(--scon-warning); }
+.sconIssue.isError { color: #be123c; }
+.sconIssueOk { color: var(--scon-success); }
+.sconIssueNote { display: block; color: var(--scon-muted); }
+.sconTable td.sconMethodCell { min-width: 260px; }
+.sconCellDropdown .sconDropdownValue { text-align: left; }
+.sconTable td.sconIndexCell { position: sticky; left: 0; z-index: 1; }
+
+/* Correlation matrices: a square grid per matrix, side by side when the
+   Achieved view shows the rank and the linear correlations together. */
+.sconDependencyButton { width: 150px; height: 28px; }
+.sconDegreesField[hidden],
+.sconToolField[hidden] { display: none; }
+.sconMatrices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sconMatrixBlock { min-width: 0; max-width: 100%; }
+.sconMatrixTitle {
+  margin: 0 0 4px 2px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sconMatrixWrap { width: max-content; max-width: 100%; }
+.sconMatrixTable th,
+.sconMatrixTable td { min-width: 92px; }
+.sconMatrixTable td.sconDiagonalCell { background: #f5f7fa; color: #64748b; }
+.sconMatrixTable td.sconMirrorCell { background: var(--scon-derived-cell); }
+.sconMatrixTable td.sconEntryCell .sconCellInput { width: 90px; }
+.sconCellInput[aria-invalid="true"] {
+  border-color: #be123c;
+  box-shadow: 0 0 0 2px rgba(190, 18, 60, 0.12);
+}
+.sconMatrixError { color: #be123c; }
+.sconMatrixEmpty {
+  padding: 18px 12px;
+  border: 1px dashed #b9c2cf;
+  background: #fbfcfe;
+  color: var(--scon-muted);
+  font-weight: 600;
+}
+
+/* The Results tab's segment breakdown sits under the charts. */
+.sconSectionTitle {
+  margin: 14px 0 6px 2px;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sconBreakdownWrap { width: max-content; }
+
+/* The segment picker lists each bootstrap with its figures. */
+.sconMenuOption.sconCandidateOption {
+  display: flex;
+  height: auto;
+  min-height: 34px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 10px;
+  white-space: normal;
+}
+.sconCandidateName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sconCandidateMeta {
+  overflow: hidden;
+  color: var(--scon-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sconMenuEmpty {
+  padding: 8px 10px;
+  color: var(--scon-muted);
+}

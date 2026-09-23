@@ -35,6 +35,7 @@ const METHOD_TYPE_LABELS = Object.freeze({
   "bornhuetter ferguson": "Bornhuetter Ferguson",
   "cape cod": "Cape Cod",
   bootstrap: "Bootstrap",
+  "stochastic consolidation": "Stochastic Consolidation",
 });
 
 export function normalizeDependencyText(value) {

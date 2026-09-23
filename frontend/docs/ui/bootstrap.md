@@ -5,7 +5,7 @@ Bootstrap method page: an over-dispersed Poisson bootstrap of a DFM, simulated f
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bootstrap.entry_points -->
-- `ui/method_pages/bootstrap/bootstrap.html`: external scripts `/ui/method_pages/bootstrap/bootstrap_main.js?v=20260923b`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
+- `ui/method_pages/bootstrap/bootstrap.html`: external scripts `/ui/method_pages/bootstrap/bootstrap_main.js?v=20260923c`, `/ui/shared/services/color_theme.js?v=20260811a`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/datasets/cached?${qs.toString()}`
@@ -24,8 +24,10 @@ Detected `arcrho:*` message types in key JS files:
 - [`ui/method_pages/bootstrap/bootstrap_page_model.js`](../../ui/method_pages/bootstrap/bootstrap_page_model.js) - Pure settings, residual-flag, Targets-row, and Results-view rules the page and its tests share.
 - [`ui/method_pages/bootstrap/bootstrap_method_api.js`](../../ui/method_pages/bootstrap/bootstrap_method_api.js) - Bootstrap load/save transport adapter.
 - [`ui/method_pages/bootstrap/bootstrap_residual_chart.js`](../../ui/method_pages/bootstrap/bootstrap_residual_chart.js) - Residuals-tab scatter renderer.
-- [`ui/method_pages/bootstrap/bootstrap_distribution_chart.js`](../../ui/method_pages/bootstrap/bootstrap_distribution_chart.js) - Results-tab distribution chart of the total with the chosen percentiles marked.
-- [`ui/method_pages/bootstrap/bootstrap_fan_chart.js`](../../ui/method_pages/bootstrap/bootstrap_fan_chart.js) - Results-tab fan chart of the mean and percentile bands by origin.
+- [`ui/shared/components/reserve_range/reserve_range_model.js`](../../ui/shared/components/reserve_range/reserve_range_model.js) - Results views shared with the Stochastic Consolidation page: rows, columns, ladder, clipboard, fan bands, distribution markers.
+- [`ui/shared/components/reserve_range/reserve_range_table.js`](../../ui/shared/components/reserve_range/reserve_range_table.js) - Shared Results summary-table and full-ladder markup.
+- [`ui/shared/components/reserve_range/reserve_distribution_chart.js`](../../ui/shared/components/reserve_range/reserve_distribution_chart.js) - Shared Results distribution chart of the total with the chosen percentiles marked.
+- [`ui/shared/components/reserve_range/reserve_fan_chart.js`](../../ui/shared/components/reserve_range/reserve_fan_chart.js) - Shared Results fan chart of the mean and percentile bands by origin.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -40,7 +42,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- `bootstrap_page_model.js` owns every rule the page applies: which settings it edits and how they are read from and written back into the method (writing back what it read leaves the method unchanged), the option lists and labels, the run-state chip, the residual flag rule, the Targets rows, and every Results view (the rows by origin, the table columns, the full ladder, the clipboard text, the percentile chooser, the fan bands and the distribution markers). The two chart modules only draw what it hands them.
+- `bootstrap_page_model.js` owns every rule the page applies: which settings it edits and how they are read from and written back into the method (writing back what it read leaves the method unchanged), the option lists and labels, the run-state chip, the residual flag rule, the Targets rows, and every Results view (the rows by origin, the table columns, the full ladder, the clipboard text, the percentile chooser, the fan bands and the distribution markers). The Results views, the table markup and the two charts live in `ui/shared/components/reserve_range/`, shared with the Stochastic Consolidation page; the page model re-exports the views under their Bootstrap names, and the chart modules only draw what they are handed.
 - **Details**: Name (read-only once saved, because a save cannot change a method's identity), Output Type, the DFM picker (it lists DFM output vectors and stores the DFM's method name), Precedents and Dependents, the inherited Origin and Development Lengths read-only, and the model as a segmented control. Mack is shown disabled with a "not available yet" tooltip. ResQ's single-scale checkbox is the same setting as the model and appears only here.
 - **Residuals**: one toolbar with the residual type, the two scale-value smoothers, and Show Scale Values; below it the residual grid and a scatter of residuals by development period side by side, stacked below 1,100px wide. A residual is flagged in the warning colour when its size reaches 1.5 times the root mean square of the residuals in the same grid, which matches ResQ's red cells for the reference method and stays meaningful for the unscaled types. Show Scale Values adds the Unsmoothed, Smoothed, User Entry and Selected rows for both scale blocks; User Entry cells are editable and must be positive or blank. A caption gives the zero-mean adjustment, the bias factor, and the data point and parameter counts.
 - **Simulation**: simulations, the seed with New Seed, the pseudo-data and forecast distributions, prevent negative cumulative data, and the two negative-mean choices; the over-dispersed Poisson one is disabled unless a distribution is ODP.

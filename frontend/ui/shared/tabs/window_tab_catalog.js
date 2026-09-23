@@ -68,6 +68,17 @@ export const BOOTSTRAP_TAB_DEFS = Object.freeze([
   { id: "audit", label: "Audit Log" },
 ]);
 
+/* Setup tabs first (ResQ's one-control Simulation tab is folded into
+   Details), then results, then notes and the audit log. */
+export const STOCHASTIC_CONSOLIDATION_TAB_DEFS = Object.freeze([
+  { id: "details", label: "Details" },
+  { id: "segments", label: "Segments" },
+  { id: "correlation", label: "Correlation" },
+  { id: "results", label: "Results" },
+  { id: "notes", label: "Notes" },
+  { id: "audit", label: "Audit Log" },
+]);
+
 export const BERQUIST_SHERMAN_TAB_DEFS = Object.freeze([
   { id: "details", label: "Details" },
   { id: "method", label: "Method" },
@@ -125,6 +136,13 @@ export const WINDOW_TAB_KINDS = Object.freeze([
     label: "Bootstrap",
     hint: "BST",
     tabs: BOOTSTRAP_TAB_DEFS,
+    appDefaultTab: "results",
+  }),
+  Object.freeze({
+    key: "stochastic_consolidation",
+    label: "Stochastic Consolidation",
+    hint: "SCON",
+    tabs: STOCHASTIC_CONSOLIDATION_TAB_DEFS,
     appDefaultTab: "results",
   }),
 ]);

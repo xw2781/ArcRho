@@ -85,7 +85,7 @@ test("Project Instance windows open on the user's default tab", async () => {
 
   assert.match(windows, /import \{ resolveWindowTab \} from "\/ui\/shared\/tabs\/window_tab_catalog\.js/);
   assert.match(windows, /const windowTab = \(kind, requestedTab\) => resolveWindowTab\(kind, requestedTab, state\.defaultWindowTabs\);/);
-  for (const kind of ["dataset", "dfm", "result_selection", "bornhuetter_ferguson", "cape_cod", "berquist_sherman", "bootstrap"]) {
+  for (const kind of ["dataset", "dfm", "result_selection", "bornhuetter_ferguson", "cape_cod", "berquist_sherman", "bootstrap", "stochastic_consolidation"]) {
     assert.ok(windows.includes(`windowTab("${kind}"`), `${kind} windows resolve their tab`);
   }
   // No opener may hard-code a default tab beside the catalog's.
@@ -100,11 +100,12 @@ test("Project Instance windows open on the user's default tab", async () => {
     'appDefaultTab: "method"',
     'appDefaultTab: "method"',
     'appDefaultTab: "results"',
+    'appDefaultTab: "results"',
   ]);
 });
 
 test("Every tabbed page reads its tab list from the shared catalog", async () => {
-  const [catalog, dsv, dfmConfig, bf, cc, rs, bs, bst, dataTab] = await Promise.all([
+  const [catalog, dsv, dfmConfig, bf, cc, rs, bs, bst, scon, dataTab] = await Promise.all([
     read("ui/shared/tabs/window_tab_catalog.js"),
     read("ui/dataset_viewer/dataset_viewer_main.js"),
     read("ui/method_pages/dfm/dfm_tab_config.js"),
@@ -113,6 +114,7 @@ test("Every tabbed page reads its tab list from the shared catalog", async () =>
     read("ui/method_pages/result_selection/result_selection_main.js"),
     read("ui/method_pages/berquist_sherman/berquist_sherman_main.js"),
     read("ui/method_pages/bootstrap/bootstrap_main.js"),
+    read("ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js"),
     read("ui/shared/tabs/data/data_tab_controller.js"),
   ]);
 
@@ -124,6 +126,7 @@ test("Every tabbed page reads its tab list from the shared catalog", async () =>
   assert.match(rs, /const RS_TAB_DEFS = RESULT_SELECTION_TAB_DEFS;/);
   assert.match(bs, /const TABS = BERQUIST_SHERMAN_TAB_DEFS;/);
   assert.match(bst, /tabs: BOOTSTRAP_TAB_DEFS,/);
+  assert.match(scon, /tabs: STOCHASTIC_CONSOLIDATION_TAB_DEFS,/);
   assert.match(dataTab, /DATASET_VIEWER_TAB_IDS: windowTabIds\("dataset"\)/);
   // The Data tab's own id set was a second copy of the Dataset Viewer's tabs.
   assert.doesNotMatch(dataTab, /new Set\(\["details", "data", "chart"/);
@@ -159,7 +162,7 @@ test("Opening an existing method never pins its tab past the preference", async 
   // Adding a brand-new method still opens on Details: nothing can be computed
   // before its inputs are chosen.
   assert.match(table, /fresh: true,\s+initialTab: "details"/u);
-  assert.equal(table.match(/initialTab: "details"/gu)?.length, 7);
+  assert.equal(table.match(/initialTab: "details"/gu)?.length, 8);
 });
 
 test("Every tabbed page paints its requested tab before the tab system loads", async () => {
@@ -170,6 +173,7 @@ test("Every tabbed page paints its requested tab before the tab system loads", a
     ["ui/method_pages/cape_cod/cape_cod.html", ["details", "method", "ultimates", "ratios", "notes", "audit"]],
     ["ui/method_pages/berquist_sherman/berquist_sherman.html", ["details", "method", "notes", "links", "audit"]],
     ["ui/method_pages/bootstrap/bootstrap.html", ["details", "residuals", "simulation", "targets", "results", "notes", "audit"]],
+    ["ui/method_pages/stochastic_consolidation/stochastic_consolidation.html", ["details", "segments", "correlation", "results", "notes", "audit"]],
   ];
 
   for (const [page, tabIds] of PAGES) {
@@ -209,6 +213,7 @@ test("Every tabbed page stays blank until its opening tab has rendered", async (
     "ui/method_pages/cape_cod/cape_cod.html",
     "ui/method_pages/berquist_sherman/berquist_sherman.html",
     "ui/method_pages/bootstrap/bootstrap.html",
+    "ui/method_pages/stochastic_consolidation/stochastic_consolidation.html",
   ];
   for (const page of HOLDING_PAGES) {
     const html = await read(page);
@@ -225,6 +230,7 @@ test("Every tabbed page stays blank until its opening tab has rendered", async (
     ["ui/method_pages/cape_cod/cape_cod_main.js", /void init\(\)\.finally\(\(\) => window\.arcrhoRevealPage\?\.\(\)\)/u],
     ["ui/method_pages/berquist_sherman/berquist_sherman_main.js", /void init\(\)\.finally\(\(\) => window\.arcrhoRevealPage\?\.\(\)\)/u],
     ["ui/method_pages/bootstrap/bootstrap_main.js", /void init\(\)\.finally\(\(\) => window\.arcrhoRevealPage\?\.\(\)\)/u],
+    ["ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js", /void init\(\)\.finally\(\(\) => window\.arcrhoRevealPage\?\.\(\)\)/u],
   ];
   for (const [path, pattern] of REVEALS) {
     assert.match(await read(path), pattern, `${path} reveals its page`);

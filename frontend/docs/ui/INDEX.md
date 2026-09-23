@@ -16,6 +16,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 3 external scripts | - |
 | `ui/method_pages/cape_cod/cape_cod.html` | 3 external scripts | - |
 | `ui/method_pages/bootstrap/bootstrap.html` | 3 external scripts | - |
+| `ui/method_pages/stochastic_consolidation/stochastic_consolidation.html` | 3 external scripts | - |
 | `ui/method_pages/berquist_sherman/berquist_sherman.html` | 3 external scripts | - |
 | `ui/method_pages/result_selection/result_selection.html` | 7 external scripts | - |
 | `ui/workflow/workflow.html` | 2 external scripts | - |
@@ -35,6 +36,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 - [`docs/ui/bornhuetter_ferguson.md`](bornhuetter_ferguson.md) - Bornhuetter Ferguson method-page index.
 - [`docs/ui/cape_cod.md`](cape_cod.md) - Cape Cod method-page index.
 - [`docs/ui/bootstrap.md`](bootstrap.md) - Bootstrap method-page index.
+- [`docs/ui/stochastic_consolidation.md`](stochastic_consolidation.md) - Stochastic Consolidation method-page index.
 - [`docs/ui/berquist_sherman.md`](berquist_sherman.md) - Berquist Sherman method-page index.
 - [`docs/ui/result_selection.md`](result_selection.md) - Result Selection method-page index.
 - [`docs/ui/workflow.md`](workflow.md) - Workflow feature index.

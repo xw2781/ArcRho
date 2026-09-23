@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "stochastic-consolidation",
+  "audience": "user",
+  "summary": "Stochastic Consolidation methods now open from the project list, and a new one can be added from a vector row: pick bootstraps from other reserving classes, set their correlations, and read the combined reserve range.",
+  "details": [
+    "The Segments tab lists each included bootstrap with its own mean, standard deviation and CV, and says why a segment cannot be combined.",
+    "The Correlation tab edits the target correlations as a mirrored matrix and shows the correlations a run used and achieved.",
+    "Consolidate runs the combination without saving; the Results tab shows the range with your chosen percentiles, a distribution chart, a fan chart, and each segment's share and the diversification."
+  ]
+}
