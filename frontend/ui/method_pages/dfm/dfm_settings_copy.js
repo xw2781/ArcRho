@@ -4,20 +4,20 @@ DFM settings copy - what "Load Settings From Another Method" takes from a
 source DFM and what the open DFM keeps. A leaf module so the rule can be tested
 without the page.
 
-Copied from the source: the origin and development lengths, every average
-formula row (labels, settings, User Entry formulas and values), the selected
-row per column, the ratio exclusions where the origin and development labels
-match, and the Curves tab choices.
+Copied from the source: the origin and development lengths, the ratio decimal
+places, every average formula row (labels, settings, User Entry formulas and
+values), the selected row per column, the ratio exclusions where the origin and
+development labels match, and the Curves tab choices.
 
 Kept from the open DFM: its name, output type and output dataset, the input
-triangle, the ratio decimal places, the cell notes, the Results tab choices,
-and the Notes (which are not part of the method payload at all).
+triangle, the cell notes, the Results tab choices, and the Notes (which are not
+part of the method payload at all).
 
-ResQ's own copy keeps the ratio decimal places too, so this follows ResQ there
-rather than the plan's first draft. Per-column values follow their ratio
-development label, so a column lands on the same age even when the two methods
-started from different geometry; a column the source does not have starts
-empty, and an exclusion the source does not have is included.
+ResQ's own copy keeps the ratio decimal places; this one carries them, as the
+user asked. Per-column values follow their ratio development label, so a column
+lands on the same age even when the two methods started from different
+geometry; a column the source does not have starts empty, and an exclusion the
+source does not have is included.
 ===============================================================================
 */
 
@@ -111,6 +111,8 @@ export function projectDfmSettingsCopy(target, source) {
     const value = positiveInteger(sourceDetails[key]);
     if (value) details[key] = value;
   }
+  const decimals = Number.parseInt(String(sourceDetails["decimal_places"] ?? "").trim(), 10);
+  if (Number.isFinite(decimals) && decimals >= 0) details["decimal_places"] = decimals;
   merged["details_tab"] = details;
 
   const targetColumns = ratioLabels(merged);

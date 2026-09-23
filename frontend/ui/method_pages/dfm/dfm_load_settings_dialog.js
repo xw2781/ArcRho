@@ -32,7 +32,7 @@ import {
   dfmSettingsLengthChange,
   listDfmCopySources,
   projectDfmSettingsCopy,
-} from "/ui/method_pages/dfm/dfm_settings_copy.js?v=20260923a";
+} from "/ui/method_pages/dfm/dfm_settings_copy.js?v=20260923b";
 import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260920b";
 import { closeFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920b";
 

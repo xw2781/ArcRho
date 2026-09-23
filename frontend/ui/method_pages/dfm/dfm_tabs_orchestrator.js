@@ -84,7 +84,7 @@ import {
   runRatioRedo,
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
-import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260923a";
+import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260923b";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";

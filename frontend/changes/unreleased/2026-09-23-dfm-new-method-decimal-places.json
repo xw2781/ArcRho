@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A new DFM's Decimal Places now starts at 4 instead of taking the input triangle's precision, so ratios on a claim-count triangle no longer show as whole numbers.",
+  "details": [
+    "Existing DFMs keep the Decimal Places they were saved with."
+  ]
+}

@@ -86,6 +86,9 @@ export function registerDataTabInputsController(runtime) {
   }
 
   function setDatasetDecimalPlacesValue(value) {
+    // In a DFM page this id is the method's own ratio decimal places, not the
+    // input triangle's, so a dataset's precision must never be written into it.
+    if (isDfmDataTabHost()) return;
     const input = document.getElementById("decimalPlaces");
     if (!input) return;
     input.value = String(clampDatasetDecimalPlaces(value));

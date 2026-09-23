@@ -144,7 +144,7 @@ test("the copy takes the source's Curves choices and drops the fitted chain", ()
   assert.equal("selected_values" in curves, false);
 });
 
-test("the open DFM keeps its identity, input, decimal places, cell notes and Results choices", () => {
+test("the open DFM keeps its identity, input, cell notes and Results choices and takes the source's decimal places", () => {
   const target = targetMethod();
   const snapshot = JSON.stringify(target);
   const merged = projectDfmSettingsCopy(target, sourceMethod());
@@ -157,8 +157,11 @@ test("the open DFM keeps its identity, input, decimal places, cell notes and Res
       input: merged["details_tab"]["input_triangle"],
       decimals: merged["details_tab"]["decimal_places"],
     },
-    { name: "Target DFM", outputType: "Paid LDF", outputDataset: "Target DFM", input: "Paid Loss", decimals: 5 },
+    { name: "Target DFM", outputType: "Paid LDF", outputDataset: "Target DFM", input: "Paid Loss", decimals: 3 },
   );
+  const sourceWithZero = sourceMethod();
+  sourceWithZero["details_tab"]["decimal_places"] = 0;
+  assert.equal(projectDfmSettingsCopy(target, sourceWithZero)["details_tab"]["decimal_places"], 0);
   assert.deepEqual(merged["data_tab"], target["data_tab"]);
   assert.deepEqual(merged["ratios_tab"]["cell_notes"], { "2022|12-24": "target note" });
   assert.deepEqual(merged["results_tab"], target["results_tab"]);
