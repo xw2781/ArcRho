@@ -501,6 +501,29 @@ def test_changing_the_dfm_clears_the_embedded_snapshot(method):
     assert rebased["details_tab"]["dfm_source_revision"] == ""
 
 
+def test_a_first_calculation_keeps_owned_lists_given_before_the_snapshot(fixture):
+    # A first save and a ResQ import both hand over owned per-origin and
+    # per-period lists before any DFM snapshot is embedded; none may be cut.
+    case = _case(fixture, "odp_single_scale")
+    reference = fixture["simulation_reference"]
+    seed = _seed_payload(case, reference)
+    origins = len(case["origin_labels"])
+    periods = case["total_development_periods"]
+    seed["results_tab"]["target_scaling_methods"] = ["multiplicative"] * origins
+    seed["results_tab"]["target_cvs"] = [0.25] * origins
+    seed["residuals_tab"]["user_scale_values_residuals"] = [None, 30.0] + [None] * (periods - 2)
+    method = recalculate_bootstrap_method(
+        seed,
+        dfm_snapshot=_snapshot_from_fixture(case),
+        target_snapshot=_target_snapshot(case, reference),
+        timestamp="2026-08-05T00:00:00Z",
+    )
+    assert method["results_tab"]["target_scaling_methods"] == ["multiplicative"] * origins
+    assert method["results_tab"]["target_cvs"] == [0.25] * origins
+    assert method["residuals_tab"]["user_scale_values_residuals"][1] == 30.0
+    assert method["residuals_tab"]["scale_values_residuals"]["selected"][1] == 30.0
+
+
 def test_owned_patch_preserves_derived_state_when_only_owned_values_change(method):
     patch = dict(method)
     patch["simulation_tab"] = {**method["simulation_tab"], "simulation_count": 5000}

@@ -23,6 +23,22 @@ from arcrho_api.bornhuetter_ferguson_contract import (
     build_bornhuetter_ferguson_output_sidecar,
     recalculate_bornhuetter_ferguson_method,
 )
+from arcrho_api.bootstrap_contract import (
+    BST_FILE_PREFIX,
+    BST_JSON_FORMAT,
+    BST_METHOD_TYPE,
+    BST_SOURCE_KIND,
+    bootstrap_output_variants,
+    build_bootstrap_output_sidecar,
+    dfm_snapshot_from_method,
+    recalculate_bootstrap_method,
+)
+from arcrho_api.bootstrap_simulation import (
+    BST_DISTRIBUTIONS,
+    BST_MODEL_TYPES,
+    BST_ODP_NEGATIVE_MEAN_ACTIONS,
+    BST_SCALING_METHODS,
+)
 from arcrho_api.cape_cod_contract import (
     CC_JSON_FORMAT,
     CC_METHOD_TYPE,
@@ -66,6 +82,7 @@ from .core import (
     DEFAULT_CALENDAR,
     DEFAULT_CUMULATIVE,
     METHOD_TYPE_BF_CODE,
+    METHOD_TYPE_BOOTSTRAP_CODE,
     METHOD_TYPE_BS_CRA_CODE,
     METHOD_TYPE_BS_SR_CODE,
     METHOD_TYPE_CAPE_COD_CODE,
@@ -1509,7 +1526,11 @@ def write_vector_export(
     elif is_cape_cod:
         meta_method_type = CC_METHOD_TYPE
         meta_method_type_code = METHOD_TYPE_CAPE_COD_CODE
-    elif raw_method_type_code in {METHOD_TYPE_BF_CODE, METHOD_TYPE_CAPE_COD_CODE}:
+    elif raw_method_type_code in {
+        METHOD_TYPE_BF_CODE,
+        METHOD_TYPE_CAPE_COD_CODE,
+        METHOD_TYPE_BOOTSTRAP_CODE,
+    }:
         # A method-coded vector without its exported method imports as a plain dataset.
         meta_method_type = "None"
         meta_method_type_code = METHOD_TYPE_NONE_CODE
@@ -2814,6 +2835,332 @@ def _find_cape_cod_for_vector(reserving_class, vector_name: str):
         "OutputVector",
         "Cape Cod",
     )
+
+
+# ResQ BootstrapScaleValueType: svtUnsmoothed 0, svtSmoothed 1, svtUserEntry 2,
+# svtSelected 3. ScaleValues_*(d, svtUserEntry) answers the unsmoothed value
+# when nothing was typed, so a user entry is real only where it is selected.
+BST_RESQ_SCALE_USER_ENTRY = 2
+
+
+def _bst_code_label(value: object, labels: tuple[str, ...], field_name: str) -> str:
+    """Map a ResQ Bootstrap enumeration code onto Arco's label of the same index."""
+
+    return _cc_code_label(value, labels, f"Bootstrap {field_name}")
+
+
+def _bst_indexed(method, member_name: str, *indices: int):
+    try:
+        return _call_member(method, member_name, *indices)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(
+                f"Could not read Bootstrap {member_name}{indices!r}.",
+                exc,
+            )
+        return None
+
+
+def _bst_user_scale_values(method, block: str, periods: int) -> list:
+    """The per-period User Entry scale values ResQ actually selected."""
+
+    values: list = []
+    for dev_index in range(1, periods + 1):
+        selected = _bst_indexed(method, f"SelectedScaleValues_{block}", dev_index)
+        try:
+            is_user_entry = int(selected) == BST_RESQ_SCALE_USER_ENTRY
+        except (TypeError, ValueError):
+            is_user_entry = False
+        value = (
+            _bst_indexed(method, f"ScaleValues_{block}", dev_index, BST_RESQ_SCALE_USER_ENTRY)
+            if is_user_entry
+            else None
+        )
+        values.append(None if value is None else float(value))
+    return values
+
+
+def _bst_target_snapshot(method, name: str) -> dict | None:
+    """The target ultimate vector's values, by origin label, as ResQ holds them."""
+
+    target = _extract_attr(method, "TargetUltimate", None, context=f"Bootstrap {name!r}")
+    if target is None:
+        return None
+    target_name = _normalize_import_name(
+        _extract_attr(target, "Name", "", context=f"Bootstrap {name!r} TargetUltimate")
+    )
+    if not target_name:
+        return None
+    count = _vector_origin_count(target)
+    labels = [_vector_origin_label(target, index) for index in range(1, count + 1)]
+    values = []
+    for index in range(1, count + 1):
+        try:
+            value = _vector_value(target, index)
+            values.append(None if value is None else float(value))
+        except Exception as exc:
+            if _STRICT_RESQ_EXTRACTION.get():
+                _strict_failure(
+                    f"Could not read Bootstrap {name!r} target value for origin index {index}.",
+                    exc,
+                )
+            values.append(None)
+    return {"name": target_name, "origin_labels": labels, "values": values}
+
+
+@_strict_extractor
+def export_bootstrap(method, *, dfm_payload: dict, strict: bool = False) -> dict:
+    """Build a complete canonical Bootstrap payload from a ResQ xBootstrapMethod.
+
+    ResQ supplies only the settings the user owns. The DFM snapshot comes from
+    the migrated Arco DFM method JSON (``dfm_payload``) through the same
+    contract the app server saves with, so the residual grid, scale values and
+    simulation summary are Arco's own calculation, run once here so the
+    imported method opens with results.
+    """
+
+    del strict
+    output_vector = _extract_attr(method, "OutputVector", None, context="Bootstrap method")
+    name = _normalize_import_name(
+        _extract_attr(output_vector, "Name", "", context="Bootstrap OutputVector")
+    ) or _normalize_import_name(_extract_attr(method, "Name", "", context="Bootstrap method"))
+    context = f"Bootstrap {name!r}"
+    dataset_type_obj = _extract_attr(output_vector, "DatasetType", None, context=f"{context} OutputVector")
+    output_type = _normalize_import_name(
+        _extract_attr(dataset_type_obj, "Name", "", context=f"{context} output DatasetType")
+    ) or name
+    category_obj = _extract_attr(dataset_type_obj, "Category", None, context=f"{context} output DatasetType")
+    dataset_category = _normalize_import_name(
+        _extract_attr(category_obj, "Name", "", context=f"{context} output Category")
+    )
+    dfm_method = _extract_attr(method, "DFMMethod", None, context=context)
+    dfm_name = _normalize_import_name(_extract_attr(dfm_method, "Name", "", context=f"{context} DFMMethod"))
+    if not dfm_name:
+        raise ValueError(f"Bootstrap method {name!r} does not name its DFM.")
+    dfm_snapshot = dfm_snapshot_from_method(dfm_payload)
+    if dfm_snapshot["name"].casefold() != dfm_name.casefold():
+        raise ValueError(
+            f"Bootstrap method {name!r} reads DFM {dfm_name!r}, not {dfm_snapshot['name']!r}."
+        )
+    periods = int(dfm_snapshot["total_development_periods"])
+    origin_count = len(dfm_snapshot["origin_labels"])
+    origin_length = _extract_int_attr(method, "OriginLength", dfm_snapshot["origin_length"], context=context)
+    development_length = _extract_int_attr(
+        method, "DevelopmentLength", dfm_snapshot["development_length"], context=context
+    )
+    target_snapshot = _bst_target_snapshot(method, name)
+    scaling_methods = []
+    target_cvs = []
+    for origin_index in range(1, origin_count + 1):
+        scaling_methods.append(
+            _bst_code_label(
+                _bst_indexed(method, "TargetScalingMethods", origin_index),
+                BST_SCALING_METHODS,
+                "TargetScalingMethods",
+            )
+        )
+        cv = _bst_indexed(method, "TargetCVs", origin_index)
+        target_cvs.append(0 if cv is None else float(cv))
+    try:
+        notes = _clean_name(method.Notes)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read {context}.Notes.", exc)
+        notes = ""
+    try:
+        modified = _iso_or_text(output_vector.Modified)
+    except Exception as exc:
+        if _STRICT_RESQ_EXTRACTION.get():
+            _strict_failure(f"Could not read {context} OutputVector.Modified.", exc)
+        modified = utc_now_text()
+
+    owned = {
+        "json_format": BST_JSON_FORMAT,
+        "details_tab": {
+            "name": name,
+            "method_type": BST_METHOD_TYPE,
+            "output_type": output_type,
+            "dataset_category": dataset_category,
+            "origin_length": origin_length,
+            "development_length": development_length,
+            "model_type": _bst_code_label(
+                _extract_attr(method, "ModelType", 2, context=context), BST_MODEL_TYPES, "ModelType"
+            ),
+            "dfm_method": dfm_name,
+        },
+        "residuals_tab": {
+            "residual_scale_smoothing": float(
+                _extract_attr(method, "ScaleValueSmoother_Residuals", 0, context=context) or 0
+            ),
+            "forecast_scale_smoothing": float(
+                _extract_attr(method, "ScaleValueSmoother_Forecasting", 0, context=context) or 0
+            ),
+            "user_scale_values_residuals": _bst_user_scale_values(method, "Residuals", periods),
+            "user_scale_values_forecasting": _bst_user_scale_values(method, "Forecasting", periods),
+        },
+        "simulation_tab": {
+            "estimation_variance": _bst_code_label(
+                _extract_attr(method, "EstimationVariance", 4, context=context),
+                BST_DISTRIBUTIONS,
+                "EstimationVariance",
+            ),
+            "process_variance": _bst_code_label(
+                _extract_attr(method, "ProcessVariance", 4, context=context),
+                BST_DISTRIBUTIONS,
+                "ProcessVariance",
+            ),
+            "simulation_count": _extract_int_attr(method, "SimulationCount", 10000, context=context),
+            "random_seed": _extract_int_attr(method, "RandomSeed", 0, context=context),
+            "prevent_negative_data": _bool_value(
+                _extract_attr(method, "PreventNegativeData", True, context=context)
+            ),
+            # ResQ's type library names these UseNormalOnNegMean and
+            # ODP_NegativeMeanOption, not the spellings its help pages use.
+            "negative_mean_action": (
+                "normal"
+                if _bool_value(_extract_attr(method, "UseNormalOnNegMean", True, context=context))
+                else "value_0_01"
+            ),
+            "odp_negative_mean_action": _bst_code_label(
+                _extract_attr(method, "ODP_NegativeMeanOption", 2, context=context),
+                BST_ODP_NEGATIVE_MEAN_ACTIONS,
+                "ODP_NegativeMeanOption",
+            ),
+        },
+        "results_tab": {
+            "target_ultimate": target_snapshot["name"] if target_snapshot else "",
+            "target_scaling_methods": scaling_methods,
+            "target_cvs": target_cvs,
+        },
+        "method_metadata": {
+            "method_type": BST_METHOD_TYPE,
+            "source_kind": BST_SOURCE_KIND,
+            "last_modified": modified,
+            "data_refreshed": modified,
+        },
+    }
+    payload = recalculate_bootstrap_method(
+        owned,
+        dfm_snapshot=dfm_snapshot,
+        target_snapshot=target_snapshot,
+        timestamp=modified,
+    )
+    payload["_sidecar_notes"] = notes
+    payload["_sidecar_status"] = normalize_method_status(
+        _extract_attr(output_vector, "Status", 0, context=f"{context} OutputVector")
+    )
+    payload["_sidecar_user"] = _normalize_import_name(
+        _extract_attr(output_vector, "User", "", context=f"{context} OutputVector")
+    )
+    return payload
+
+
+def bootstrap_graph_precedents(payload: dict, dfm_payload: dict) -> list[str]:
+    """The Bootstrap's precedents as the dataset graph names them.
+
+    The DFM is a method; the graph knows it by the dataset it publishes, exactly
+    as the app server resolves it.
+    """
+
+    details = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    results = payload.get("results_tab") if isinstance(payload.get("results_tab"), dict) else {}
+    dfm_details = dfm_payload.get("details_tab") if isinstance(dfm_payload.get("details_tab"), dict) else {}
+    dfm_name = _clean_name(details.get("dfm_method"))
+    dfm_dataset = _clean_name(dfm_details.get("output_dataset")) or _clean_name(dfm_details.get("name")) or dfm_name
+    names: list[str] = []
+    for value in (dfm_dataset if dfm_name else "", results.get("target_ultimate")):
+        name = _clean_name(value)
+        if name and name.casefold() not in {item.casefold() for item in names}:
+            names.append(name)
+    return names
+
+
+def write_bootstrap_export(
+    payload: dict,
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    dfm_payload: dict,
+) -> Path:
+    """Publish an imported Bootstrap: method JSON, output CSVs and output sidecar.
+
+    The files are the ones the app server's Bootstrap save writes for the same
+    payload: ``methods/BST@<name>.json``, ``datasets/<name>@<period>.csv`` for
+    the native period and each coarser 3/6/12 variant, and the sidecar.
+    """
+
+    details_tab = payload.get("details_tab") if isinstance(payload.get("details_tab"), dict) else {}
+    name = _normalize_import_name(details_tab.get("name")) or BST_METHOD_TYPE
+    method_payload = dict(payload)
+    notes = str(method_payload.pop("_sidecar_notes", "") or "")
+    status = normalize_method_status(method_payload.pop("_sidecar_status", 0))
+    user = str(method_payload.pop("_sidecar_user", "") or "")
+    out_path = rc_dir / METHOD_DATA_DIR / f"{BST_FILE_PREFIX}{_encode_name_part(name)}.json"
+    _write_json(out_path, method_payload)
+    origin_length = int(details_tab.get("origin_length") or 12)
+    for period, values in bootstrap_output_variants(method_payload).items():
+        _write_csv_matrix(
+            rc_dir / DATASET_CACHE_DIR / _vector_cache_csv_file_name(name, period),
+            [[value] for value in values],
+        )
+    sidecar_path = rc_dir / DATASET_SIDECAR_DIR / _json_sidecar_name(name)
+    existing = _safe_read_json(sidecar_path)
+    publication_revision = _clean_name(
+        method_payload.get("method_metadata", {}).get("publication_revision")
+        if isinstance(method_payload.get("method_metadata"), dict)
+        else ""
+    )
+    output_changed = _clean_name(existing.get("publication_revision")) != publication_revision
+    timestamp = (
+        method_payload.get("method_metadata", {}).get("last_modified")
+        if isinstance(method_payload.get("method_metadata"), dict)
+        else None
+    )
+    meta = build_bootstrap_output_sidecar(
+        method_payload,
+        project_name=PROJECT_NAME,
+        reserving_class=rc_path,
+        csv_file=_vector_cache_csv_file_name(name, origin_length),
+        precedents=bootstrap_graph_precedents(method_payload, dfm_payload),
+        existing=existing,
+        notes=notes,
+        timestamp=timestamp,
+        user=user,
+        output_changed=output_changed,
+        append_audit=not existing or output_changed,
+        status=status,
+    )
+    _write_sidecar_json(sidecar_path, meta)
+    return out_path
+
+
+def _find_bootstrap_for_vector(reserving_class, vector_name: str):
+    """The Bootstrap that publishes *vector_name*, looked up in this class only.
+
+    ``xResQProject.GetBootstrapMethod`` searches the whole project and can hand
+    back a same-named method from another reserving class, so the lookup always
+    goes through the class's own collection.
+    """
+
+    try:
+        collection = _call_member(reserving_class, "BootstrapMethods")
+    except Exception:
+        return None
+    direct_candidates = []
+    try:
+        item = reserving_class.GetBootStrapMethod(vector_name)
+        if item is not None:
+            direct_candidates.append(item)
+    except Exception:
+        pass
+    return _find_unique_method_by_output(
+        collection,
+        direct_candidates,
+        vector_name,
+        "OutputVector",
+        "Bootstrap",
+    )
+
 
 def _parse_origin_start_month(label: object, base_len: int) -> tuple[int, int] | None:
     text = _clean_name(label)

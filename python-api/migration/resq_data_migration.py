@@ -1,7 +1,7 @@
 """
 resq_data_migration.py
 
-Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, and DFM methods to ArcRho dataset files.
+Migrate ResQ triangles, vectors, Result Selections, Bornhuetter Ferguson methods, Cape Cod methods, Bootstrap methods, and DFM methods to ArcRho dataset files.
 Scope: ProjectName = '{PROJECT_NAME}'
 Output: E:\\ArcRho Server\\projects\\{PROJECT_NAME}\\data\\<ReservingClassFolder>\\
 
@@ -104,6 +104,7 @@ from resq_migration.core import (  # noqa: E402
     DATASET_INDEX_VERSION,
     DATASET_SIDECAR_DIR,
     METHOD_TYPE_BF_CODE,
+    METHOD_TYPE_BOOTSTRAP_CODE,
     METHOD_TYPE_BS_CRA_CODE,
     METHOD_TYPE_BS_SR_CODE,
     METHOD_TYPE_CAPE_COD_CODE,
@@ -140,12 +141,14 @@ from resq_migration.extractors import (  # noqa: E402
     _apply_cape_cod_vector_metadata,
     _apply_result_selection_vector_metadata,
     _find_berquist_sherman_for_triangle,
+    _find_bootstrap_for_vector,
     _find_bornhuetter_ferguson_for_vector,
     _find_cape_cod_for_vector,
     _find_result_selection_for_vector,
     _result_selection_source_payload,
     configure_extractors,
     defer_sidecar_graph_enrichment,
+    export_bootstrap,
     export_bornhuetter_ferguson,
     export_berquist_sherman,
     export_cape_cod,
@@ -155,6 +158,7 @@ from resq_migration.extractors import (  # noqa: E402
     resq_stored_lengths,
     write_bornhuetter_ferguson_export,
     write_berquist_sherman_export,
+    write_bootstrap_export,
     write_cape_cod_export,
     write_engine_generated_export,
     write_result_selection_export,
@@ -674,6 +678,30 @@ def _cc_export_names(
     return names
 
 
+def _bootstrap_export_names(
+    reserving_class,
+    progress_callback: ProgressCallback | None = None,
+) -> list[str]:
+    try:
+        bootstrap_collection = reserving_class.BootstrapMethods()
+    except Exception:
+        return []
+    names: list[str] = []
+    for item in bootstrap_collection:
+        name = _clean_name(_safe_attr(item, "Name", ""))
+        if not name:
+            continue
+        names.append(name)
+        _report_inventory_item(
+            progress_callback,
+            kind="bootstrap_inventory",
+            noun="Bootstrap methods",
+            name=name,
+            discovered=len(names),
+        )
+    return names
+
+
 def _berquist_sherman_export_names(
     triangle_names: list[str],
     triangle_method_types: dict[str, int],
@@ -714,6 +742,7 @@ def resq_export_dataset_counts(
     dfm_names = _dfm_export_names(reserving_class, progress_callback) if run_dfms else []
     bf_names = _bf_export_names(reserving_class, progress_callback) if run_dfms else []
     cc_names = _cc_export_names(reserving_class, progress_callback) if run_dfms else []
+    bootstrap_names = _bootstrap_export_names(reserving_class, progress_callback) if run_dfms else []
     bssr_names, bscra_names = (
         _berquist_sherman_export_names(triangle_names, triangle_method_types)
         if run_triangles
@@ -725,9 +754,17 @@ def resq_export_dataset_counts(
         "dfms": len(dfm_names),
         "bfs": len(bf_names),
         "ccs": len(cc_names),
+        "bootstraps": len(bootstrap_names),
         "bssrs": len(bssr_names),
         "bscras": len(bscra_names),
-        "methods": len(dfm_names) + len(bf_names) + len(cc_names) + len(bssr_names) + len(bscra_names),
+        "methods": (
+            len(dfm_names)
+            + len(bf_names)
+            + len(cc_names)
+            + len(bootstrap_names)
+            + len(bssr_names)
+            + len(bscra_names)
+        ),
         "total": len(triangle_names) + len(vector_names),
         "triangle_names": triangle_names,
         "triangle_items": triangle_items,
@@ -736,6 +773,7 @@ def resq_export_dataset_counts(
         "dfm_names": dfm_names,
         "bf_names": bf_names,
         "cc_names": cc_names,
+        "bootstrap_names": bootstrap_names,
         "bssr_names": bssr_names,
         "bscra_names": bscra_names,
     }
@@ -1393,6 +1431,83 @@ def export_triangles_for_rc(
     return written, errors
 
 
+def _read_migrated_dfm_payload(rc_dir: Path, dfm_name: str) -> dict:
+    """The Arco DFM method JSON this import wrote, which a Bootstrap is built from."""
+
+    path = rc_dir / METHOD_DATA_DIR / f"DFM@{_encode_name_part(dfm_name)}.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"its DFM {dfm_name!r} was not imported into Arco, so it cannot be built"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"its DFM {dfm_name!r} method file is not a JSON object")
+    return payload
+
+
+def _export_bootstrap_tasks(
+    tasks: list[tuple[str, object]],
+    rc_path: str,
+    rc_dir: Path,
+    *,
+    progress_callback: ProgressCallback | None,
+    progress_state: dict,
+    method_counts: dict | None,
+    strict_extraction: bool,
+    verbose: bool,
+) -> tuple[int, int]:
+    """Build and publish each Bootstrap the vector loop deferred."""
+
+    written = errors = 0
+    total = int(progress_state.get("total") or 0)
+    for vector_name, bootstrap in tasks:
+        try:
+            dfm_name = _normalize_import_name(
+                _safe_attr(_safe_attr(bootstrap, "DFMMethod", None), "Name", "")
+            )
+            if not dfm_name:
+                raise ValueError("it does not name its DFM")
+            dfm_payload = _read_migrated_dfm_payload(rc_dir, dfm_name)
+            payload = export_bootstrap(
+                bootstrap,
+                dfm_payload=dfm_payload,
+                strict=strict_extraction,
+            )
+            method_path = write_bootstrap_export(
+                payload,
+                rc_path,
+                rc_dir,
+                dfm_payload=dfm_payload,
+            )
+            detail = f"    OK  Bootstrap vector {vector_name}; {method_path.name}"
+            _log(verbose, detail)
+            if isinstance(method_counts, dict):
+                method_counts["bootstraps_written"] = int(method_counts.get("bootstraps_written") or 0) + 1
+            written += 1
+            status = "success"
+        except Exception as exc:
+            detail = f"    ERR Bootstrap vector {vector_name}: {exc}"
+            _log(verbose, detail)
+            if verbose:
+                traceback.print_exc(file=sys.stdout)
+            _record_error_detail(progress_state, kind="vector", name=vector_name, detail=str(exc))
+            errors += 1
+            status = "error"
+        progress_state["completed"] = int(progress_state.get("completed") or 0) + 1
+        _report_progress(
+            progress_callback,
+            event="finish",
+            kind="vector",
+            name=vector_name,
+            completed=int(progress_state.get("completed") or 0),
+            total=total,
+            status=status,
+            message=detail.strip(),
+        )
+    return written, errors
+
+
 def export_vectors_for_rc(
     reserving_class,
     rc_path: str,
@@ -1404,6 +1519,7 @@ def export_vectors_for_rc(
     include_dfm_methods: bool = False,
     include_bf_methods: bool = False,
     include_cc_methods: bool = False,
+    include_bootstrap_methods: bool = False,
     dfm_names: list[str] | None = None,
     method_counts: dict | None = None,
     engine_provenance: dict | None = None,
@@ -1412,7 +1528,11 @@ def export_vectors_for_rc(
     strict_extraction: bool = False,
     verbose: bool = True,
 ) -> tuple[int, int]:
-    """Export vector datasets for one reserving class. Returns (written, errors)."""
+    """Export vector datasets for one reserving class. Returns (written, errors).
+
+    A Bootstrap's output vector is exported after every other vector, because
+    the Bootstrap is built from the Arco DFM method this same loop writes.
+    """
     vector_collection = reserving_class.Vectors()
     vector_names = list(vector_names) if vector_names is not None else _vector_export_names(reserving_class)
     dfm_by_output = _dfm_methods_by_output_name(reserving_class, dfm_names) if include_dfm_methods else {}
@@ -1420,6 +1540,7 @@ def export_vectors_for_rc(
     _log(verbose, "Vectors: " + str(len(vector_names)))
     written = errors = 0
     engine_tasks: list[dict] = []
+    bootstrap_tasks: list[tuple[str, object]] = []
     progress_state = progress_state if isinstance(progress_state, dict) else {"completed": 0, "total": len(vector_names)}
     known_dataset_type_keys = _dataset_type_keys()
     for vector_name in vector_names:
@@ -1515,6 +1636,13 @@ def export_vectors_for_rc(
                     message=detail.strip(),
                 )
                 continue
+            if method_type == METHOD_TYPE_BOOTSTRAP_CODE and include_bootstrap_methods:
+                bootstrap = _find_bootstrap_for_vector(reserving_class, vector_name)
+                if bootstrap is None:
+                    _log(verbose, f"    WARN Bootstrap method not found for vector {vector_name}; exporting vector only")
+                else:
+                    bootstrap_tasks.append((vector_name, bootstrap))
+                    continue
             bf_payload = None
             if method_type == METHOD_TYPE_BF_CODE and include_bf_methods:
                 bf_method = _find_bornhuetter_ferguson_for_vector(reserving_class, vector_name)
@@ -1666,6 +1794,19 @@ def export_vectors_for_rc(
                 status="error",
                 message=detail.strip(),
             )
+    if bootstrap_tasks:
+        bootstrap_written, bootstrap_errors = _export_bootstrap_tasks(
+            bootstrap_tasks,
+            rc_path,
+            rc_dir,
+            progress_callback=progress_callback,
+            progress_state=progress_state,
+            method_counts=method_counts,
+            strict_extraction=strict_extraction,
+            verbose=verbose,
+        )
+        written += bootstrap_written
+        errors += bootstrap_errors
     if engine_tasks and not engine_available:
         _skip_engine_generated_tasks(
             engine_tasks,
@@ -1993,6 +2134,7 @@ def _import_reserving_class_as_acting_user(
             "dfms_written": 0,
             "bfs_written": 0,
             "ccs_written": 0,
+            "bootstraps_written": 0,
             "bssr_written": 0,
             "bscra_written": 0,
             "engine_skipped": 0,
@@ -2100,6 +2242,7 @@ def _import_reserving_class_as_acting_user(
                         include_dfm_methods=run_dfms,
                         include_bf_methods=run_dfms,
                         include_cc_methods=run_dfms,
+                        include_bootstrap_methods=run_dfms,
                         dfm_names=dataset_counts.get("dfm_names") if isinstance(dataset_counts.get("dfm_names"), list) else None,
                         method_counts=counts,
                         engine_provenance=engine_provenance,
@@ -2182,6 +2325,7 @@ def _import_reserving_class_as_acting_user(
                 + counts["dfms_written"]
                 + counts.get("bfs_written", 0)
                 + counts.get("ccs_written", 0)
+                + counts.get("bootstraps_written", 0)
                 + counts.get("bssr_written", 0)
                 + counts.get("bscra_written", 0)
             )
@@ -2205,6 +2349,7 @@ def _import_reserving_class_as_acting_user(
                 "dfms_total": dataset_counts.get("dfms", 0),
                 "bfs_total": dataset_counts.get("bfs", 0),
                 "ccs_total": dataset_counts.get("ccs", 0),
+                "bootstraps_total": dataset_counts.get("bootstraps", 0),
                 "bssrs_total": dataset_counts.get("bssrs", 0),
                 "bscras_total": dataset_counts.get("bscras", 0),
                 "methods_total": dataset_counts.get("methods", 0),
@@ -2315,6 +2460,7 @@ def main(argv: list[str] | None = None) -> None:
                 "dfms_written": 0,
                 "bfs_written": 0,
                 "ccs_written": 0,
+                "bootstraps_written": 0,
                 "bssr_written": 0,
                 "bscra_written": 0,
             }
@@ -2344,6 +2490,7 @@ def main(argv: list[str] | None = None) -> None:
                         include_dfm_methods=run_dfms,
                         include_bf_methods=run_dfms,
                         include_cc_methods=run_dfms,
+                        include_bootstrap_methods=run_dfms,
                         method_counts=method_counts,
                         engine_provenance=engine_provenance,
                     )
@@ -2353,6 +2500,7 @@ def main(argv: list[str] | None = None) -> None:
                         + int(method_counts.get("dfms_written") or 0)
                         + int(method_counts.get("bfs_written") or 0)
                         + int(method_counts.get("ccs_written") or 0)
+                        + int(method_counts.get("bootstraps_written") or 0)
                     )
                     total_errors += errors
 

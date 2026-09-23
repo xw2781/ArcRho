@@ -148,14 +148,18 @@ Left out, and not shown in the results:
   inputs in ArcRho and in ResQ alike.
 - **Engine-generated datasets** (`source_kind: engine`) — ArcRho rebuilds them
   through the Engine and ResQ through its own generator.
-- **Bootstrap methods** — ResQ has no write path for them yet.
+- **Bootstrap and Stochastic Consolidation methods** — ResQ has no write path
+  for them yet. The import brings a Bootstrap from ResQ into ArcRho (its
+  settings and seed, rebuilt from the imported DFM and simulated once), but
+  nothing flows back.
 - **Method output datasets** — they are written through their method, never
   as datasets.
 
 **Methods ResQ does not hold.** A DFM, Bornhuetter Ferguson or Result
 Selection that exists in ArcRho but not in ResQ is created, then written
 exactly as an existing one is. Nothing else is ever created: a plain dataset,
-a Cape Cod, a Berquist Sherman method or a Bootstrap that ResQ lacks is shown
+a Cape Cod, a Berquist Sherman method, a Bootstrap or a Stochastic
+Consolidation that ResQ lacks is shown
 as `Skipped` (a warning) and left alone, and reaches ResQ through ResQ
 itself. The creation follows the sequence the probe confirmed (C1-C4 below):
 
@@ -621,7 +625,7 @@ cleanup  counts back to 17/4/11/57/74/260, no ZZ Probe object left
 
 ResQ COM API:
 
-1. Enum ordinals are undocumented; only `ResQMethodType` 0-4/8/9,
+1. Enum ordinals are undocumented; only `ResQMethodType` 0-4/6-9,
    `ResQDataFormat` 0/1, `RatioExclusionType` 0/1/2, and `PercDevelopedType`
    0-3 are empirically confirmed.
 2. `AddMethod` accepts 1-4 in live code; whether it supports Berquist Sherman

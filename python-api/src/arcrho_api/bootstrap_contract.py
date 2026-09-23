@@ -140,6 +140,12 @@ def _fit(values: list[Any], size: int, fill: Any) -> list[Any]:
     return trimmed
 
 
+def _fit_owned(values: list[Any], size: int | None, fill: Any) -> list[Any]:
+    """Fit an owned list to its axis, or keep it whole while there is no axis."""
+
+    return list(values) if size is None else _fit(values, size, fill)
+
+
 def _flags(value: Any, size: int, default: bool = False) -> list[bool]:
     raw = [bool(item) for item in value] if isinstance(value, (list, tuple)) else []
     return _fit(raw, size, default)
@@ -556,9 +562,20 @@ def normalize_bootstrap_method(
     row_count = len(origins)
     periods = snapshot["total_development_periods"]
     model_type = _choice(details_source.get("model_type"), BST_MODEL_TYPES, "odp_single_scale")
+    # Before a DFM snapshot exists (a first save, an import) the method has no
+    # axis to size its owned per-origin and per-period lists by. They are kept
+    # as given until recalculation embeds the snapshot and fits them, so a
+    # first save cannot silently drop a scaling method or a user scale entry.
+    has_axis = bool(origins)
+    owned_rows = row_count if has_axis else None
+    owned_periods = periods if has_axis else None
 
-    user_residual_scale = _fit(_numbers(residuals_source.get("user_scale_values_residuals")), periods, None)
-    user_forecast_scale = _fit(_numbers(residuals_source.get("user_scale_values_forecasting")), periods, None)
+    user_residual_scale = _fit_owned(
+        _numbers(residuals_source.get("user_scale_values_residuals")), owned_periods, None
+    )
+    user_forecast_scale = _fit_owned(
+        _numbers(residuals_source.get("user_scale_values_forecasting")), owned_periods, None
+    )
 
     default_time = _timestamp(timestamp)
     last_modified = _clean(metadata_source.get("last_modified")) or default_time
@@ -644,15 +661,15 @@ def normalize_bootstrap_method(
             "target_reserve_values": _fit(
                 _numbers(results_source.get("target_reserve_values")), row_count, None
             ),
-            "target_scaling_methods": _fit(
+            "target_scaling_methods": _fit_owned(
                 [
                     _choice(item, BST_SCALING_METHODS, "additive")
                     for item in (results_source.get("target_scaling_methods") or [])
                 ],
-                row_count,
+                owned_rows,
                 "additive",
             ),
-            "target_cvs": _fit(_numbers(results_source.get("target_cvs")), row_count, 0),
+            "target_cvs": _fit_owned(_numbers(results_source.get("target_cvs")), owned_rows, 0),
             "simulation_summary": _normalize_summary(results_source.get("simulation_summary")),
             "bootstrap_ultimate": _fit(
                 _numbers(results_source.get("bootstrap_ultimate")), row_count, None

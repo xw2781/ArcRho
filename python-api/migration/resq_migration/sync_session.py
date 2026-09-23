@@ -78,8 +78,19 @@ KIND_RS = "Result Selection"
 KIND_BS_SR = "B&S Settlement Rate"
 KIND_BS_CRA = "B&S Case Reserve Adequacy"
 KIND_BOOTSTRAP = "Bootstrap"
+# ResQ method type 7. Only named here: a sync neither imports nor exports it.
+KIND_STOCHASTIC_CONSOLIDATION = "Stochastic Consolidation"
 
-_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS, KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}
+_METHOD_KINDS = {
+    KIND_DFM,
+    KIND_BF,
+    KIND_CC,
+    KIND_RS,
+    KIND_BS_SR,
+    KIND_BS_CRA,
+    KIND_BOOTSTRAP,
+    KIND_STOCHASTIC_CONSOLIDATION,
+}
 _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
 # Methods the export phase writes Notes for and then saves in ResQ without
 # writing another field: ResQ recalculates each from the datasets and DFMs
@@ -411,6 +422,8 @@ def _method_kind(method_type: object) -> str:
         return KIND_BS_CRA
     if normalized in {"bootstrap", "bst"}:
         return KIND_BOOTSTRAP
+    if normalized in {"stochastic consolidation", "scon"}:
+        return KIND_STOCHASTIC_CONSOLIDATION
     return str(method_type or "").strip() or KIND_DATASET
 
 
@@ -428,6 +441,7 @@ def _kind_from_code(code: object, fallback: object = "") -> str:
         3: KIND_CC,
         4: KIND_RS,
         6: KIND_BOOTSTRAP,
+        7: KIND_STOCHASTIC_CONSOLIDATION,
         8: KIND_BS_SR,
         9: KIND_BS_CRA,
     }.get(value, _method_kind(fallback) if fallback else f"ResQ Method {value}")
@@ -784,7 +798,7 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                 import_reason = ""
             can_receive = kind == KIND_DATASET
             receive_reason = ""
-            if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP}:
+            if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP, KIND_STOCHASTIC_CONSOLIDATION}:
                 can_receive = False
                 receive_reason = f"Arco-to-ResQ write-back is not supported for {kind}."
             elif kind == KIND_DATASET and calculated:
@@ -1058,15 +1072,16 @@ _EXPORT_PROGRESS_STATUS = {
 def _export_rows(runtime: Mapping[str, Any], inventory: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The ArcRho items an export pushes, as rows the dependency walk can order.
 
-    Calculated and engine datasets never reach the inventory; Bootstrap is
-    left out here because ResQ has no write path for it yet.
+    Calculated and engine datasets never reach the inventory; Bootstrap and
+    Stochastic Consolidation are left out here because ResQ has no write path
+    for them yet.
     """
 
     sync_contract = runtime["sync_contract"]
     rows: list[dict[str, Any]] = []
     for item in inventory:
         kind = str(item.get("kind") or KIND_DATASET)
-        if kind == KIND_BOOTSTRAP:
+        if kind in {KIND_BOOTSTRAP, KIND_STOCHASTIC_CONSOLIDATION}:
             continue
         key = sync_contract.logical_key(item.get("name"))
         rows.append({"id": key, "key": key, "kind": kind, "name": str(item.get("name") or ""), "arcrho": item})
