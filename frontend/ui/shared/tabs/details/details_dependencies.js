@@ -34,6 +34,7 @@ const METHOD_TYPE_LABELS = Object.freeze({
   "result selection": "Result Selection",
   "bornhuetter ferguson": "Bornhuetter Ferguson",
   "cape cod": "Cape Cod",
+  bootstrap: "Bootstrap",
 });
 
 export function normalizeDependencyText(value) {

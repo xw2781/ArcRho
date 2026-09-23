@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "bootstrap",
+  "audience": "user",
+  "summary": "Bootstrap methods now open from the project list in their own window, and a new one can be added from a vector row.",
+  "details": [
+    "Details, Residuals, Simulation and Targets tabs set up the model; saving runs the simulation.",
+    "The residual grid and a residual chart sit side by side, with large residuals flagged.",
+    "A chip above the tabs says whether the stored run still matches the inputs on screen."
+  ]
+}

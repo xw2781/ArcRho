@@ -62,6 +62,7 @@ FRONTEND_ENTRY_HTMLS = [
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
     "ui/method_pages/cape_cod/cape_cod.html",
+    "ui/method_pages/bootstrap/bootstrap.html",
     "ui/method_pages/berquist_sherman/berquist_sherman.html",
     "ui/method_pages/result_selection/result_selection.html",
     "ui/workflow/workflow.html",
@@ -563,6 +564,17 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/cape_cod/cape_cod.html", "Cape Cod iframe page."),
             ("ui/method_pages/cape_cod/cape_cod_main.js", "Cape Cod state, persistence, calculation, and tab coordination."),
             ("ui/method_pages/cape_cod/cape_cod_ratios_chart.js", "Cape Cod Ratios-tab renderer."),
+        ],
+    },
+    "bootstrap": {
+        "doc": "docs/ui/bootstrap.md",
+        "html": ["ui/method_pages/bootstrap/bootstrap.html"],
+        "files": [
+            ("ui/method_pages/bootstrap/bootstrap.html", "Bootstrap iframe page."),
+            ("ui/method_pages/bootstrap/bootstrap_main.js", "Bootstrap state, load/save flow, rendering, and tab coordination."),
+            ("ui/method_pages/bootstrap/bootstrap_page_model.js", "Pure settings, residual-flag, and Targets-row rules the page and its tests share."),
+            ("ui/method_pages/bootstrap/bootstrap_method_api.js", "Bootstrap load/save transport adapter."),
+            ("ui/method_pages/bootstrap/bootstrap_residual_chart.js", "Residuals-tab scatter renderer."),
         ],
     },
     "berquist_sherman": {
@@ -1143,6 +1155,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "tasks": "1. Change Cape Cod calculations or persistence: update the canonical python contract first, then mirror `ui/method_pages/cape_cod/cape_cod_json_contract.js`.\n2. Change Ratios chart behavior: update `cape_cod_ratios_chart.js` in the same feature directory.",
             "risks": "- The JS calculation mirror must stay identical to `arcrho_api/cape_cod_contract.py` or saves are rejected.\n- Trend-rate auto-fit clears manual trend-factor overrides; changing that ordering breaks ResQ parity.",
         },
+        "bootstrap": {
+            "purpose": "Bootstrap method page: an over-dispersed Poisson bootstrap of a DFM, scaled onto a target ultimate.",
+            "external": "- Opens inside Project Instance as a nested method iframe.\n- Loads and saves through the `/bootstrap/*` routes; the server re-simulates on every save.",
+            "data": "- Edits only the owned settings of the persisted `arcrho-bootstrap-v4` method; every derived value comes from the last save.\n- Tracks dirty, run-state, and tab state locally.",
+            "tasks": "1. Change what a tab edits: update `bootstrap_page_model.js` and its round-trip test.\n2. Change layout or controls: update `bootstrap.html`, `bootstrap.css`, and `bootstrap_main.js` together.",
+            "risks": "- A setting the page writes must be one `apply_owned_patch` accepts, or the save silently ignores it.\n- Dirty-state and close messages must remain coordinated with Project Instance.",
+        },
         "berquist_sherman": {
             "purpose": "Annual Berquist Sherman method page for settlement-rate and case-reserve-adequacy adjustments.",
             "external": "- Opens inside Project Instance as a nested method iframe.\n- Loads named annual datasets and exchanges dependency preview messages with its host.",
@@ -1670,6 +1689,7 @@ def render_frontend_index_key_files(doc_path: str) -> str:
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/bornhuetter_ferguson.md", "Bornhuetter Ferguson method-page index."),
         ("docs/ui/cape_cod.md", "Cape Cod method-page index."),
+        ("docs/ui/bootstrap.md", "Bootstrap method-page index."),
         ("docs/ui/berquist_sherman.md", "Berquist Sherman method-page index."),
         ("docs/ui/result_selection.md", "Result Selection method-page index."),
         ("docs/ui/workflow.md", "Workflow feature index."),

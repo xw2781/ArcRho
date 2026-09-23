@@ -62,6 +62,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const openBerquistShermanWindow = (...args) => api.openBerquistShermanWindow(...args);
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openCapeCodWindow = (...args) => api.openCapeCodWindow(...args);
+  const openBootstrapWindow = (...args) => api.openBootstrapWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const openNewDatasetDraftWindow = (...args) => api.openNewDatasetDraftWindow(...args);
   const postProjectInstanceStatus = (...args) => api.postProjectInstanceStatus(...args);
@@ -1292,6 +1293,10 @@ function isCapeCodDatasetRecord(record) {
   return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "cape cod";
 }
 
+function isBootstrapDatasetRecord(record) {
+  return normalizeLookupKey(getDatasetRecordValue(record, "methodType")) === "bootstrap";
+}
+
 function getBerquistShermanRecordVariant(record) {
   return normalizeBerquistShermanVariant(
     getDatasetRecordValue(record, "methodType") || record?.sourceKind || record?.instance?.source_kind
@@ -1334,6 +1339,13 @@ function isBornhuetterFergusonVectorDatasetRecord(record) {
 function isCapeCodVectorDatasetRecord(record) {
   return (
     isCapeCodDatasetRecord(record)
+    && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
+  );
+}
+
+function isBootstrapVectorDatasetRecord(record) {
+  return (
+    isBootstrapDatasetRecord(record)
     && normalizeLookupKey(getDatasetRecordValue(record, "dataFormat")) === "vector"
   );
 }
@@ -1383,6 +1395,16 @@ function openCapeCodTabForDataset(record) {
     outputType: getDatasetRecordValue(record, "datasetTypeName"),
     category: getDatasetRecordValue(record, "category"),
     originLength: Number(record?.meta?.originLength) || undefined,
+  });
+}
+
+function openBootstrapTabForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName || !state.selectedPath) return;
+  openBootstrapWindow(datasetName, {
+    methodType: getDatasetRecordValue(record, "methodType") || "Bootstrap",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
   });
 }
 
@@ -1559,6 +1581,29 @@ function addCapeCodForDataset(record) {
     originLength: Number(record?.meta?.originLength) || undefined,
   });
   setStatus(`Opened Cape Cod for ${datasetName}.`);
+}
+
+function addBootstrapForDataset(record) {
+  const datasetName = toText(record?.datasetName);
+  if (!datasetName) {
+    setStatus("Select a vector dataset before adding a Bootstrap object.", true);
+    return;
+  }
+  if (!state.selectedPath) {
+    setStatus("Select a reserving class path before adding a Bootstrap object.", true);
+    return;
+  }
+  if (!canAddResultSelectionForDataset(record)) {
+    setStatus("Bootstrap can be added only to vector datasets with Method Type None.", true);
+    return;
+  }
+  openBootstrapWindow(datasetName, {
+    initialTab: "details",
+    methodType: "Bootstrap",
+    outputType: getDatasetRecordValue(record, "datasetTypeName"),
+    category: getDatasetRecordValue(record, "category"),
+  });
+  setStatus(`Opened Bootstrap for ${datasetName}.`);
 }
 
 function recordSelectedDfmObject(methodName) {
@@ -2444,6 +2489,7 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
       || isResultSelectionVectorDatasetRecord(viewRecord)
       || isBornhuetterFergusonVectorDatasetRecord(viewRecord)
       || isCapeCodVectorDatasetRecord(viewRecord)
+      || isBootstrapVectorDatasetRecord(viewRecord)
     );
     showAsVectorItem.hidden = !showAsVector;
     showAsVectorItem.disabled = !showAsVector;
@@ -2482,6 +2528,13 @@ function showDatasetRowContextMenu(recordKey, x, y, options = {}) {
     addCapeCodItem.hidden = temporaryView || emptyContext;
     addCapeCodItem.disabled = !canAdd;
     addCapeCodItem.title = canAdd ? "" : "Cape Cod can be added only to vector datasets with Method Type None.";
+  }
+  const addBootstrapItem = menu.querySelector("[data-row-action='add-bootstrap']");
+  if (addBootstrapItem) {
+    const canAdd = !temporaryView && !emptyContext && canAddResultSelectionForDataset(viewRecord);
+    addBootstrapItem.hidden = temporaryView || emptyContext;
+    addBootstrapItem.disabled = !canAdd;
+    addBootstrapItem.title = canAdd ? "" : "Bootstrap can be added only to vector datasets with Method Type None.";
   }
   for (const variant of BERQUIST_SHERMAN_VARIANTS) {
     const addBerquistShermanItem = menu.querySelector(`[data-row-action='add-berquist-sherman-${variant}']`);
@@ -2609,6 +2662,10 @@ function openDatasetRecord(record) {
   }
   if (isCapeCodDatasetRecord(record)) {
     openCapeCodTabForDataset(record);
+    return;
+  }
+  if (isBootstrapDatasetRecord(record)) {
+    openBootstrapTabForDataset(record);
     return;
   }
   if (isBerquistShermanDatasetRecord(record)) {
@@ -3136,6 +3193,8 @@ function applyDatasetRowContextAction(action) {
     addBornhuetterFergusonForDataset(viewRecord);
   } else if (normalized === "add-cape-cod") {
     addCapeCodForDataset(viewRecord);
+  } else if (normalized === "add-bootstrap") {
+    addBootstrapForDataset(viewRecord);
   } else if (normalized === "add-berquist-sherman-sr") {
     addBerquistShermanForDataset(viewRecord, "sr");
   } else if (normalized === "add-berquist-sherman-cra") {
@@ -3699,6 +3758,8 @@ async function loadDatasets() {
     isBornhuetterFergusonVectorDatasetRecord,
     isCapeCodDatasetRecord,
     isCapeCodVectorDatasetRecord,
+    isBootstrapDatasetRecord,
+    isBootstrapVectorDatasetRecord,
     isDatasetColumnFilterActive,
     isDfmDatasetRecord,
     isMethodDatasetRecord,
@@ -3712,6 +3773,7 @@ async function loadDatasets() {
     openBerquistShermanTabForDataset,
     openBornhuetterFergusonTabForDataset,
     openCapeCodTabForDataset,
+    openBootstrapTabForDataset,
     openDfmTabForDataset,
     parseDatasetGroupId,
     positionDatasetTableFilterPopover,

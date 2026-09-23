@@ -49,6 +49,10 @@ function getCapeCodWindowKey(datasetName, path = state.selectedPath) {
   return `cc\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
 
+function getBootstrapWindowKey(datasetName, path = state.selectedPath) {
+  return `bst\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
+}
+
 function getBerquistShermanWindowKey(datasetName, variant, path = state.selectedPath) {
   return `bs\u0001${normalizeBerquistShermanVariant(variant)}\u0001${normalizePath(path)}\u0001${toText(datasetName).toLowerCase()}`;
 }
@@ -78,6 +82,7 @@ function getWindowMethodType(frame) {
   if (isResultSelectionWindow(frame)) return "Result Selection";
   if (isBornhuetterFergusonWindow(frame)) return "Bornhuetter Ferguson";
   if (isCapeCodWindow(frame)) return "Cape Cod";
+  if (isBootstrapWindow(frame)) return "Bootstrap";
   if (isBerquistShermanWindow(frame)) {
     return getBerquistShermanContract(frame?.dataset?.bsVariant)?.methodType || "None";
   }
@@ -134,9 +139,11 @@ function getProjectInstanceWindowSnapshot(frame) {
         ? "bornhuetter_ferguson"
         : isCapeCodWindow(frame)
           ? "cape_cod"
-          : isBerquistShermanWindow(frame)
-            ? "berquist_sherman"
-            : "dataset";
+          : isBootstrapWindow(frame)
+            ? "bootstrap"
+            : isBerquistShermanWindow(frame)
+              ? "berquist_sherman"
+              : "dataset";
   const name = toText(frame.dataset.windowItemName || frame.dataset.windowDatasetName || "");
   if (!name) return null;
   const active = getActiveDatasetWindow() === frame;
@@ -157,6 +164,7 @@ function getProjectInstanceWindowSnapshot(frame) {
     rsTab: kind === "result_selection" ? toText(frame.dataset.rsTab || "") : "",
     bfTab: kind === "bornhuetter_ferguson" ? toText(frame.dataset.bfTab || "") : "",
     ccTab: kind === "cape_cod" ? toText(frame.dataset.ccTab || "") : "",
+    bstTab: kind === "bootstrap" ? toText(frame.dataset.bstTab || "") : "",
     bsTab: kind === "berquist_sherman" ? toText(frame.dataset.bsTab || "") : "",
     bsVariant: kind === "berquist_sherman" ? normalizeBerquistShermanVariant(frame.dataset.bsVariant) : "",
     rect: hiddenItem?.restoreRect || getFrameRect(frame),
@@ -203,6 +211,7 @@ function getVisibleProjectInstanceWindowSummaries() {
       rsTab: snapshot.rsTab || "",
       bfTab: snapshot.bfTab || "",
       ccTab: snapshot.ccTab || "",
+      bstTab: snapshot.bstTab || "",
       bsTab: snapshot.bsTab || "",
       bsVariant: snapshot.bsVariant || "",
       zIndex: Number.parseInt(frame.style.zIndex || "0", 10) || 0,
@@ -487,6 +496,10 @@ function isCapeCodWindow(frame) {
   return frame?.dataset?.windowKind === "cape_cod";
 }
 
+function isBootstrapWindow(frame) {
+  return frame?.dataset?.windowKind === "bootstrap";
+}
+
 function isBerquistShermanWindow(frame) {
   return frame?.dataset?.windowKind === "berquist_sherman";
 }
@@ -706,7 +719,7 @@ function buildDatasetViewerUrl(datasetName, inst, options = {}) {
   if (options?.draft) params.set("draft_instance", "1");
   if (options?.initialTab) params.set("tab", toText(options.initialTab));
   const methodType = toText(options?.methodType).toLowerCase();
-  if (["dfm", "result selection", "rs", "bornhuetter ferguson", "bf", "cape cod", "cc"].includes(methodType)) {
+  if (["dfm", "result selection", "rs", "bornhuetter ferguson", "bf", "cape cod", "cc", "bootstrap"].includes(methodType)) {
     params.set("vector_column_label", "Ultimate");
   }
   params.set("inst", inst);
@@ -794,6 +807,23 @@ function buildCapeCodViewerUrl(datasetName, inst, options = {}) {
   params.set("project_instance", "1");
   params.set("v", String(Date.now()));
   return `/ui/method_pages/cape_cod/cape_cod.html?${params.toString()}`;
+}
+
+function buildBootstrapViewerUrl(datasetName, inst, options = {}) {
+  const params = new URLSearchParams();
+  const name = toText(datasetName);
+  const initialTab = windowTab("bootstrap", options?.initialTab || options?.bstTab);
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  params.set("project", projectName);
+  params.set("class", targetPath);
+  if (name) params.set("name", name);
+  if (options?.outputType) params.set("output_type", toText(options.outputType));
+  if (options?.category) params.set("category", toText(options.category));
+  params.set("tab", initialTab);
+  params.set("inst", inst);
+  params.set("project_instance", "1");
+  params.set("v", String(Date.now()));
+  return `/ui/method_pages/bootstrap/bootstrap.html?${params.toString()}`;
 }
 
 function buildBerquistShermanViewerUrl(datasetName, inst, options = {}) {
@@ -962,9 +992,11 @@ function createFloatingContentWindow(options = {}) {
         ? "Bornhuetter Ferguson"
         : frame.dataset.windowKind === "cape_cod"
           ? "Cape Cod"
-          : frame.dataset.windowKind === "berquist_sherman"
-            ? getBerquistShermanContract(options.bsVariant || options.variant)?.methodType || ""
-            : ""
+          : frame.dataset.windowKind === "bootstrap"
+            ? "Bootstrap"
+            : frame.dataset.windowKind === "berquist_sherman"
+              ? getBerquistShermanContract(options.bsVariant || options.variant)?.methodType || ""
+              : ""
   ));
   if (methodType) frame.dataset.windowMethodType = methodType;
   if (frame.dataset.windowKind === "dfm") {
@@ -978,6 +1010,9 @@ function createFloatingContentWindow(options = {}) {
   }
   if (frame.dataset.windowKind === "cape_cod") {
     frame.dataset.ccTab = windowTab("cape_cod", options.ccTab || options.initialTab);
+  }
+  if (frame.dataset.windowKind === "bootstrap") {
+    frame.dataset.bstTab = windowTab("bootstrap", options.bstTab || options.initialTab);
   }
   if (frame.dataset.windowKind === "berquist_sherman") {
     frame.dataset.bsTab = windowTab("berquist_sherman", options.bsTab || options.initialTab);
@@ -1325,6 +1360,33 @@ function openCapeCodWindow(datasetName, options = {}) {
   });
 }
 
+function openBootstrapWindow(datasetName, options = {}) {
+  const name = toText(datasetName);
+  if (!name) return;
+  const targetPath = normalizePath(options?.path || state.selectedPath);
+  if (!targetPath) {
+    setStatus("Select a reserving class path before opening a Bootstrap object.", true);
+    return;
+  }
+
+  const windowKey = getBootstrapWindowKey(name, targetPath);
+  const title = `${targetPath}\\Bootstrap\\${name}`;
+  const initialTab = windowTab("bootstrap", options.initialTab || options.bstTab);
+  const inst = `pi_bst_${Date.now()}_${state.windowSeq++}`;
+  return createFloatingContentWindow({
+    kind: "bootstrap",
+    name,
+    itemName: name,
+    title,
+    windowKey,
+    inst,
+    iframeSrc: buildBootstrapViewerUrl(name, inst, { ...options, path: targetPath, initialTab }),
+    path: targetPath,
+    methodType: options.methodType || "Bootstrap",
+    initialTab,
+  });
+}
+
 function openBerquistShermanWindow(datasetName, options = {}) {
   const name = toText(datasetName);
   if (!name) return;
@@ -1427,6 +1489,9 @@ function applyRestoredWindowState(frame, item = {}) {
   if (toText(item?.ccTab) && isCapeCodWindow(frame)) {
     frame.dataset.ccTab = toText(item.ccTab);
   }
+  if (toText(item?.bstTab) && isBootstrapWindow(frame)) {
+    frame.dataset.bstTab = toText(item.bstTab);
+  }
   if (isBerquistShermanWindow(frame)) {
     if (toText(item?.bsTab)) frame.dataset.bsTab = toText(item.bsTab);
     const variant = normalizeBerquistShermanVariant(item?.bsVariant || item?.methodType);
@@ -1472,6 +1537,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     );
     const isBornhuetterFergusonMethod = methodType.toLowerCase() === "bornhuetter ferguson";
     const isCapeCodMethod = methodType.toLowerCase() === "cape cod";
+    const isBootstrapMethod = methodType.toLowerCase() === "bootstrap";
     const kind = rawKind === "dfm"
       ? "dfm"
       : rawKind === "result_selection" || isLegacyResultSelectionMethod
@@ -1480,9 +1546,11 @@ async function applyProjectInstanceRestoreState(rawState) {
           ? "bornhuetter_ferguson"
           : rawKind === "cape_cod" || isCapeCodMethod
             ? "cape_cod"
-            : rawKind === "berquist_sherman" || !!bsVariant
-              ? "berquist_sherman"
-              : "dataset";
+            : rawKind === "bootstrap" || isBootstrapMethod
+              ? "bootstrap"
+              : rawKind === "berquist_sherman" || !!bsVariant
+                ? "berquist_sherman"
+                : "dataset";
     const name = toText(item?.name || item?.datasetName || item?.methodName);
     if (!name) continue;
     const frame = kind === "dfm"
@@ -1497,7 +1565,9 @@ async function applyProjectInstanceRestoreState(rawState) {
           ? openBornhuetterFergusonWindow(name, { initialTab: item?.bfTab, bfTab: item?.bfTab, methodType })
           : kind === "cape_cod"
             ? openCapeCodWindow(name, { initialTab: item?.ccTab, ccTab: item?.ccTab, methodType })
-            : kind === "berquist_sherman"
+            : kind === "bootstrap"
+              ? openBootstrapWindow(name, { initialTab: item?.bstTab, bstTab: item?.bstTab, methodType })
+              : kind === "berquist_sherman"
               ? openBerquistShermanWindow(name, {
                 path: item?.path,
                 initialTab: item?.bsTab,
@@ -1525,6 +1595,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     beginWindowDragCapture,
     buildBornhuetterFergusonViewerUrl,
     buildCapeCodViewerUrl,
+    buildBootstrapViewerUrl,
     buildBerquistShermanViewerUrl,
     buildDatasetViewerUrl,
     buildDfmViewerUrl,
@@ -1542,6 +1613,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     getDatasetWindowKey,
     getDfmWindowKey,
     getCapeCodWindowKey,
+    getBootstrapWindowKey,
     getBerquistShermanWindowKey,
     getFrameRect,
     getMaximizedWindowRect,
@@ -1560,6 +1632,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     hasDirtyDfmWindow,
     isBornhuetterFergusonWindow,
     isCapeCodWindow,
+    isBootstrapWindow,
     isBerquistShermanWindow,
     isDatasetWindowMaximized,
     isDfmWindow,
@@ -1575,6 +1648,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     openNewDatasetDraftWindow,
     openBornhuetterFergusonWindow,
     openCapeCodWindow,
+    openBootstrapWindow,
     openBerquistShermanWindow,
     openDfmWindow,
     openResultSelectionWindow,

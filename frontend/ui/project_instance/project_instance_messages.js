@@ -34,6 +34,7 @@ export function installProjectInstanceMessages(ctx) {
   const isBerquistShermanWindow = (...args) => api.isBerquistShermanWindow(...args);
   const isBornhuetterFergusonWindow = (...args) => api.isBornhuetterFergusonWindow(...args);
   const isCapeCodWindow = (...args) => api.isCapeCodWindow(...args);
+  const isBootstrapWindow = (...args) => api.isBootstrapWindow(...args);
   const isResultSelectionWindow = (...args) => api.isResultSelectionWindow(...args);
   const maximizeDatasetWindow = (...args) => api.maximizeDatasetWindow(...args);
   const notifyActiveDfmWindowState = (...args) => api.notifyActiveDfmWindowState(...args);
@@ -44,6 +45,7 @@ export function installProjectInstanceMessages(ctx) {
   const openBerquistShermanWindow = (...args) => api.openBerquistShermanWindow(...args);
   const openBornhuetterFergusonWindow = (...args) => api.openBornhuetterFergusonWindow(...args);
   const openCapeCodWindow = (...args) => api.openCapeCodWindow(...args);
+  const openBootstrapWindow = (...args) => api.openBootstrapWindow(...args);
   const openResultSelectionWindow = (...args) => api.openResultSelectionWindow(...args);
   const postMessageToDatasetWindows = (...args) => api.postMessageToDatasetWindows(...args);
   const refreshCachedDatasetTableFromDisk = (...args) => api.refreshCachedDatasetTableFromDisk(...args);
@@ -330,6 +332,7 @@ function getActiveWindowJsonKind(frame) {
   if (isResultSelectionWindow(frame) || methodType === "result selection") return "result_selection";
   if (isBornhuetterFergusonWindow(frame) || methodType === "bornhuetter ferguson") return "bornhuetter_ferguson";
   if (isCapeCodWindow(frame) || methodType === "cape cod") return "cape_cod";
+  if (isBootstrapWindow(frame) || methodType === "bootstrap") return "bootstrap";
   if (isBerquistShermanWindow(frame) || normalizeBerquistShermanVariant(methodType)) return "berquist_sherman";
   return "";
 }
@@ -376,6 +379,8 @@ async function openActiveDatasetRelatedFile(fileKind) {
       filename = `BF@${namePart}.json`;
     } else if (jsonKind === "cape_cod") {
       filename = `CC@${namePart}.json`;
+    } else if (jsonKind === "bootstrap") {
+      filename = `BST@${namePart}.json`;
     } else if (jsonKind === "berquist_sherman") {
       const contract = getBerquistShermanContract(activeFrame.dataset.bsVariant || getWindowMethodType(activeFrame));
       if (!contract) {
@@ -634,6 +639,11 @@ function handleAutomationOpenDataset(message, sourceWindow) {
             path: state.selectedPath,
             methodType: "Cape Cod",
           })
+          : openMethod && methodType === "bootstrap"
+            ? openBootstrapWindow(datasetName, {
+              path: state.selectedPath,
+              methodType: "Bootstrap",
+            })
           : openMethod && bsVariant
             ? openBerquistShermanWindow(datasetName, {
               path: state.selectedPath,
@@ -856,6 +866,11 @@ function handleOpenDependentDataset(message, sourceWindow) {
       path: targetPath,
       methodType: "Cape Cod",
     });
+  } else if (openMethod && methodType === "bootstrap") {
+    frame = openBootstrapWindow(datasetName, {
+      path: targetPath,
+      methodType: "Bootstrap",
+    });
   } else if (openMethod && bsVariant) {
     frame = openBerquistShermanWindow(datasetName, {
       path: targetPath,
@@ -876,6 +891,8 @@ function handleOpenDependentDataset(message, sourceWindow) {
         ? "Bornhuetter Ferguson"
         : methodType === "cape cod"
           ? "Cape Cod"
+          : methodType === "bootstrap"
+            ? "Bootstrap"
           : bsVariant
             ? getBerquistShermanContract(bsVariant)?.methodType || "Berquist Sherman"
             : "Result Selection";
@@ -1577,6 +1594,14 @@ window.addEventListener("message", (event) => {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame && isCapeCodWindow(frame)) {
       frame.dataset.ccTab = toText(msg.tab || "");
+      notifyProjectInstanceStateChanged();
+    }
+    return;
+  }
+  if (msg.type === "arcrho:bst-tab-changed") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame && isBootstrapWindow(frame)) {
+      frame.dataset.bstTab = toText(msg.tab || "");
       notifyProjectInstanceStateChanged();
     }
     return;

@@ -57,6 +57,17 @@ export const CAPE_COD_TAB_DEFS = Object.freeze([
   { id: "audit", label: "Audit Log" },
 ]);
 
+/* Setup tabs first, then results, then notes and the audit log. */
+export const BOOTSTRAP_TAB_DEFS = Object.freeze([
+  { id: "details", label: "Details" },
+  { id: "residuals", label: "Residuals" },
+  { id: "simulation", label: "Simulation" },
+  { id: "targets", label: "Targets" },
+  { id: "results", label: "Results" },
+  { id: "notes", label: "Notes" },
+  { id: "audit", label: "Audit Log" },
+]);
+
 export const BERQUIST_SHERMAN_TAB_DEFS = Object.freeze([
   { id: "details", label: "Details" },
   { id: "method", label: "Method" },
@@ -108,6 +119,13 @@ export const WINDOW_TAB_KINDS = Object.freeze([
     hint: "BS",
     tabs: BERQUIST_SHERMAN_TAB_DEFS,
     appDefaultTab: "method",
+  }),
+  Object.freeze({
+    key: "bootstrap",
+    label: "Bootstrap",
+    hint: "BST",
+    tabs: BOOTSTRAP_TAB_DEFS,
+    appDefaultTab: "results",
   }),
 ]);
 

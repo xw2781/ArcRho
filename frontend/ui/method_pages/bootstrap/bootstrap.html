@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/ui/shared/services/color_theme.js?v=20260811a"></script>
+  <title>Bootstrap</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_form_layout.css?v=20260820b">
+  <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
+  <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260911a">
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260830a">
+  <link rel="stylesheet" href="/ui/method_pages/bootstrap/bootstrap.css?v=20260923a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/high_contrast.css?v=20260811c">
+</head>
+<body data-arcrho-page-hold="1">
+  <main class="bstShell">
+    <!-- The run state and the actions sit above the tabs, so every tab shows
+         whether the stored run still describes the inputs on screen. -->
+    <header class="bstHeader">
+      <div class="bstHeaderIdentity">
+        <span class="bstHeaderName" id="bstHeaderName">Bootstrap</span>
+        <span class="bstStateChip" id="bstStateChip" data-state="not-run"><span class="bstStateDot" aria-hidden="true"></span><span id="bstStateLabel">Not run yet</span></span>
+        <span class="bstRunInfo" id="bstRunInfo"></span>
+      </div>
+      <div class="bstHeaderActions">
+        <button class="bstButton primary" id="bstSaveBtn" type="button">Save</button>
+        <button class="bstButton" id="bstCancelBtn" type="button">Cancel</button>
+      </div>
+    </header>
+
+    <section class="bstTabbed" id="bstTabbedPage">
+      <div class="bstPageHost">
+        <section class="bstPage arDetailsRoot" id="bstDetailsPage" data-page="details" role="tabpanel">
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstNameInput">Name : </label>
+              <div class="bstFieldControl arDetailsField">
+                <input class="bstInput arDetailsControl" id="bstNameInput" type="text" autocomplete="off">
+              </div>
+              <label class="arDetailsLabel" for="bstOutputTypeInput">Output Type : </label>
+              <div class="bstFieldControl arDetailsField withPicker">
+                <input class="bstInput arDetailsControl" id="bstOutputTypeInput" type="text" readonly>
+                <button class="bstIconButton" id="bstOutputTypeBtn" type="button" aria-label="Select output type">...</button>
+              </div>
+              <label class="arDetailsLabel" data-details-field="project" for="bstProjectInput">Project : </label>
+              <div class="bstFieldControl arDetailsField" data-details-field="project">
+                <input class="bstInput arDetailsControl" id="bstProjectInput" type="text" readonly>
+              </div>
+              <label class="arDetailsLabel" for="bstClassInput">Segment : </label>
+              <div class="bstFieldControl arDetailsField">
+                <input class="bstInput arDetailsControl" id="bstClassInput" type="text" readonly>
+              </div>
+            </div>
+          </div>
+
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstDfmInput">DFM : </label>
+              <div class="bstFieldControl arDetailsField withPicker bstSourceField">
+                <input class="bstInput arDetailsControl" id="bstDfmInput" type="text" readonly>
+                <button class="bstIconButton" id="bstDfmBtn" type="button" aria-label="Select DFM">...</button>
+              </div>
+              <label class="arDetailsLabel" id="bstPrecedentsLabel">Precedents : </label>
+              <div class="arDetailsField">
+                <div class="arDetailsChipBox">
+                  <div id="bstPrecedentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="bstPrecedentsLabel"></div>
+                </div>
+              </div>
+              <label class="arDetailsLabel" id="bstDependentsLabel">Dependents : </label>
+              <div class="arDetailsField">
+                <div class="arDetailsChipBox">
+                  <div id="bstDependentsList" class="arDetailsChipList" aria-live="polite" aria-labelledby="bstDependentsLabel"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstOriginLengthInput">Origin Length : </label>
+              <div class="bstFieldControl arDetailsField arDetailsShortField">
+                <input class="bstInput arDetailsControl" id="bstOriginLengthInput" type="text" readonly>
+              </div>
+              <label class="arDetailsLabel" for="bstDevelopmentLengthInput">Development Length : </label>
+              <div class="bstFieldControl arDetailsField arDetailsShortField">
+                <input class="bstInput arDetailsControl" id="bstDevelopmentLengthInput" type="text" readonly>
+              </div>
+              <label class="arDetailsLabel" id="bstModelLabel">Model : </label>
+              <div class="arDetailsField">
+                <div class="bstSegmented" id="bstModelControl" role="radiogroup" aria-labelledby="bstModelLabel"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="bstPage" id="bstResidualsPage" data-page="residuals" role="tabpanel">
+          <div class="bstToolbar">
+            <div class="bstToolGroup">
+              <span class="bstToolTitle">Residuals</span>
+              <div class="bstToolControls">
+                <span class="bstToolField">
+                  <label class="bstToolLabel" for="bstResidualTypeButton">Type : </label>
+                  <button class="bstDropdownButton bstResidualTypeButton" id="bstResidualTypeButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                  </button>
+                </span>
+              </div>
+            </div>
+            <div class="bstToolGroup">
+              <span class="bstToolTitle">Scale Values</span>
+              <div class="bstToolControls">
+                <span class="bstToolField">
+                  <label class="bstToolLabel" for="bstResidualSmoothingInput">Residual Smoother : </label>
+                  <input class="bstNumberInput" id="bstResidualSmoothingInput" type="text" inputmode="decimal" autocomplete="off">
+                </span>
+                <span class="bstToolField">
+                  <label class="bstToolLabel" for="bstForecastSmoothingInput">Forecast Smoother : </label>
+                  <input class="bstNumberInput" id="bstForecastSmoothingInput" type="text" inputmode="decimal" autocomplete="off">
+                </span>
+                <label class="bstToolCheck"><input id="bstShowScaleInput" type="checkbox"> Show Scale Values</label>
+              </div>
+            </div>
+          </div>
+          <div class="bstResidualsSplit">
+            <div class="bstResidualsGridColumn">
+              <div class="bstTableWrap">
+                <table class="bstTable bstResidualTable" aria-label="Bootstrap residuals">
+                  <thead id="bstResidualHead"></thead>
+                  <tbody id="bstResidualBody"></tbody>
+                </table>
+              </div>
+              <p class="bstCaption" id="bstResidualCaption"></p>
+            </div>
+            <section class="bstChartPanel" aria-labelledby="bstResidualChartTitle">
+              <header class="bstChartHeader">
+                <h2 class="bstChartTitle" id="bstResidualChartTitle">Residuals By Development Period</h2>
+              </header>
+              <div class="bstChartPlot">
+                <canvas class="bstChartCanvas" id="bstResidualChart" role="img" aria-label="Residuals by development period"></canvas>
+              </div>
+            </section>
+          </div>
+          <div class="bstEmpty" id="bstResidualsEmpty" hidden>Choose a DFM and save to fit the model.</div>
+        </section>
+
+        <section class="bstPage arDetailsRoot" id="bstSimulationPage" data-page="simulation" role="tabpanel">
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstSimulationCountInput">Simulations : </label>
+              <div class="bstFieldControl arDetailsField bstMediumField">
+                <input class="bstInput arDetailsControl bstNumericText" id="bstSimulationCountInput" type="text" inputmode="numeric" autocomplete="off">
+              </div>
+              <label class="arDetailsLabel" for="bstSeedInput">Random Seed : </label>
+              <div class="arDetailsField bstInlineField">
+                <div class="bstFieldControl bstMediumField">
+                  <input class="bstInput arDetailsControl bstNumericText" id="bstSeedInput" type="text" inputmode="numeric" autocomplete="off">
+                </div>
+                <button class="bstButton" id="bstNewSeedBtn" type="button">New Seed</button>
+              </div>
+            </div>
+          </div>
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstEstimationButton">Pseudo Data Distribution : </label>
+              <div class="arDetailsField bstMediumWideField">
+                <button class="bstDropdownButton" id="bstEstimationButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                </button>
+              </div>
+              <label class="arDetailsLabel" for="bstProcessButton">Forecast Distribution : </label>
+              <div class="arDetailsField bstMediumWideField">
+                <button class="bstDropdownButton" id="bstProcessButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                </button>
+              </div>
+              <label class="arDetailsLabel" for="bstPreventNegativeInput">Prevent Negative Cumulative Data : </label>
+              <div class="arDetailsField">
+                <input class="bstCheckbox" id="bstPreventNegativeInput" type="checkbox">
+              </div>
+            </div>
+          </div>
+          <div class="arDetailsSection">
+            <div class="arDetailsGrid">
+              <label class="arDetailsLabel" for="bstNegativeMeanButton">Negative Mean, Gamma Or Log Normal : </label>
+              <div class="arDetailsField bstMediumWideField">
+                <button class="bstDropdownButton" id="bstNegativeMeanButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                </button>
+              </div>
+              <label class="arDetailsLabel" for="bstOdpNegativeMeanButton">Negative Mean, Over-dispersed Poisson : </label>
+              <div class="arDetailsField bstMediumWideField">
+                <button class="bstDropdownButton" id="bstOdpNegativeMeanButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="bstPage" id="bstTargetsPage" data-page="targets" role="tabpanel">
+          <div class="bstToolbar">
+            <div class="bstToolGroup bstTargetPickerGroup">
+              <span class="bstToolTitle">Target</span>
+              <div class="bstToolControls">
+                <span class="bstToolField bstTargetField">
+                  <label class="bstToolLabel" for="bstTargetInput">Target Ultimate : </label>
+                  <span class="bstFieldControl withPicker">
+                    <input class="bstInput bstToolInput" id="bstTargetInput" type="text" readonly>
+                    <button class="bstIconButton" id="bstTargetBtn" type="button" aria-label="Select target ultimate">...</button>
+                  </span>
+                  <button class="bstLinkButton" id="bstTargetClearBtn" type="button">Clear</button>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="bstTableWrap bstTargetsWrap">
+            <table class="bstTable bstTargetsTable" aria-label="Bootstrap targets">
+              <thead id="bstTargetsHead"></thead>
+              <tbody id="bstTargetsBody"></tbody>
+            </table>
+          </div>
+          <p class="bstCaption" id="bstTargetsCaption"></p>
+        </section>
+
+        <section class="bstPage" id="bstResultsPage" data-page="results" role="tabpanel">
+          <div class="bstResultsSummary" id="bstResultsSummary" hidden></div>
+          <div class="bstEmpty" id="bstResultsEmpty">
+            <span id="bstResultsEmptyText">Not run yet. Save runs the simulation.</span>
+          </div>
+        </section>
+
+        <section class="bstPage" id="bstNotesPage" data-page="notes" role="tabpanel">
+          <div id="bstNotesMount"></div>
+        </section>
+
+        <section class="bstPage" id="bstAuditPage" data-page="audit" role="tabpanel">
+          <div id="bstAuditLogMount"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="bstMenu" id="bstMenu" role="listbox" hidden></div>
+
+  <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
+  <script type="module" src="/ui/method_pages/bootstrap/bootstrap_main.js?v=20260923a"></script>
+</body>
+</html>
