@@ -860,7 +860,10 @@ export function wireSummarySelection(summaryTable, selectedTable) {
       if (!cell) return;
       const rowId = String(cell.dataset.r || "");
       const cfg = summaryRowMap.get(rowId);
-      if (!cfg || !isUserEntryConfig(cfg)) return;
+      const devs = state.model ? getEffectiveDevLabelsForModel(state.model) : [];
+      const tailEntry = devs.length > 0
+        && summaryRuntime.isSummaryTailEntryCell(cfg, Number(cell.dataset.col), devs.length - 1);
+      if (!cfg || (!isUserEntryConfig(cfg) && !tailEntry)) return;
       e.preventDefault();
       updateSummaryFormulaBarForCell(cell);
       const barEl = document.getElementById("dfmSummaryFormulaBar");

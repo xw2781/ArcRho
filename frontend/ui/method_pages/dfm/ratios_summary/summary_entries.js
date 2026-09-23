@@ -29,7 +29,54 @@ const {
   computeFormulaValidationTooltipLayout, revealAndFocusFormulaInput, showFormulaValidationError,
   wireSelectableTable, openDfmSummaryPlotWindow, hasDfmCellNote, showDfmCellNoteEditor,
   beginRatioHistoryAction, commitRatioHistoryAction,
+  isSummaryTailEntryCell, getSummaryRowTailFactor, setSummaryRowTailFactor, getDfmDecimalPlaces,
 } = summaryRuntime;
+
+// Whether a cell is a computed or benchmark row's tail, which takes a typed
+// number rather than a User Entry formula.
+function isTailEntryCell(cfg, col) {
+  const devs = state.model ? getEffectiveDevLabelsForModel(state.model) : [];
+  if (!devs.length) return false;
+  return isSummaryTailEntryCell(cfg, col, devs.length - 1);
+}
+
+function persistSummaryRowTailFactor(rowId, cfg) {
+  const cfgKey = getSummaryConfigKey();
+  if (!cfgKey) return;
+  const customRows = loadCustomSummaryRows(cfgKey);
+  const idx = customRows.findIndex((row) => String(row?.id || "") === String(rowId));
+  if (idx < 0) return;
+  customRows[idx] = { ...customRows[idx], values: cfg.values.slice() };
+  saveCustomSummaryRows(cfgKey, customRows);
+}
+
+// A tail typed on a computed or benchmark row: one number greater than zero,
+// or plain arithmetic that gives one. Nothing recalculates the tail, so a row
+// or dataset reference is refused rather than frozen into a number.
+function commitSummaryTailEntry(summaryTable, rowId, col, cfg, inputEl) {
+  const raw = collapseFormulaEquals(String(inputEl.value || "").trim());
+  const body = stripFormulaEquals(raw);
+  const plain = body && !/["'[\]]/u.test(body) && !containsExcelRef(body) && !containsDfmDatasetReference(body);
+  const value = plain ? evaluateSimpleMathExpression(`=${body}`, new Map()) : null;
+  if (!Number.isFinite(value) || value <= 0) {
+    showSummaryFormulaBarValidationError("Enter a tail factor greater than zero.", inputEl);
+    return false;
+  }
+  setSummaryRowTailFactor(cfg, col, value);
+  persistSummaryRowTailFactor(rowId, cfg);
+  const cell = summaryTable.querySelector(`td.summaryCell[data-r="${rowId}"][data-col="${col}"]`);
+  if (cell) {
+    cell.textContent = formatRatio(value, getDfmDecimalPlaces());
+    cell.dataset.copyValue = String(value);
+  }
+  const selectedTable = document.querySelector("#ratioWrap table.ratioSelectedTable");
+  if (selectedTable) ensureSelectedRowValues(summaryTable, selectedTable);
+  endSummaryFormulaEditSession(summaryTable);
+  clearSummaryFormulaBarValidationError();
+  updateSummaryFormulaBarForCell(cell);
+  summaryRuntime._onRatioStateMutated();
+  return true;
+}
 
 const getAvgModalEl = (...args) => summaryRuntime.getAvgModalEl(...args);
 const isSummaryFormulaEditSessionActive = (...args) => summaryRuntime.isSummaryFormulaEditSessionActive(...args);
@@ -306,6 +353,11 @@ async function commitSummaryFormulaInput(inputEl) {
   const col = Number(inputEl.dataset.col);
   if (!rowId || !Number.isFinite(col) || col < 0) return true;
   const cfg = summaryRowMap.get(rowId);
+  if (cfg && isTailEntryCell(cfg, col)) {
+    if (isSummaryFormulaCommitPending(inputEl)) return false;
+    clearSummaryFormulaBarValidationError();
+    return commitSummaryTailEntry(summaryTable, rowId, col, cfg, inputEl);
+  }
   if (!cfg || !isUserEntryConfig(cfg)) return true;
   if (isSummaryFormulaCommitPending(inputEl)) return false;
 
@@ -463,7 +515,8 @@ function updateSummaryFormulaBarForCell(cell) {
     showSummaryFormulaBarIdle();
     return;
   }
-  if (!isUserEntryConfig(cfg)) {
+  const tailEntry = !isExcelRangeCell && isTailEntryCell(cfg, editCol);
+  if (!isUserEntryConfig(cfg) && !tailEntry) {
     showSummaryFormulaBarReadOnlyValue(targetCell, cfg);
     return;
   }
@@ -472,8 +525,10 @@ function updateSummaryFormulaBarForCell(cell) {
   const inputEl = el.querySelector("#dfmSummaryFormulaBarInput");
   const inputRaw = isExcelRangeCell
     ? String(targetCell.dataset.excelRangeFormula || "").trim()
-    : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
-  const displayInputRaw = isExcelRangeCell
+    : tailEntry
+      ? String(getSummaryRowTailFactor(cfg, editCol))
+      : String(getUserEntryInputForCol(cfg, editCol) || "").trim();
+  const displayInputRaw = isExcelRangeCell || tailEntry
     ? ""
     : String(getUserEntryDisplayInputForCol(cfg, editCol) || "").trim();
   const labelEl = el.querySelector("#dfmSummaryFormulaBarLabelText");
@@ -587,9 +642,11 @@ function beginSummaryFormulaEditSession(summaryTable, cell, input, col) {
   const rowId = String(cell.dataset.r || "");
   if (!rowId) return;
   const cfg = summaryRowMap.get(rowId);
-  const fallbackOriginal = cfg && isUserEntryConfig(cfg)
-    ? String(getUserEntryInputForCol(cfg, col) || "").trim()
-    : "";
+  const fallbackOriginal = cfg && isTailEntryCell(cfg, col)
+    ? String(getSummaryRowTailFactor(cfg, col))
+    : cfg && isUserEntryConfig(cfg)
+      ? String(getUserEntryInputForCol(cfg, col) || "").trim()
+      : "";
   const keepOriginal =
     summaryRuntime.summaryFormulaEditState &&
     summaryRuntime.summaryFormulaEditState.summaryTable === summaryTable &&

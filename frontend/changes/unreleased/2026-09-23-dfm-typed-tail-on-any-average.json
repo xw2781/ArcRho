@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A tail factor typed on any average row in a DFM's Ratios tab is now kept, as in ResQ, instead of being reset to 1 on computed averages such as Volume - all.",
+  "details": [
+    "The tail cell of every average row is now an input: select it, type the factor, and press Enter.",
+    "A DFM imported from ResQ keeps the tail ResQ has on a computed average row, so its ultimates match ResQ's."
+  ]
+}

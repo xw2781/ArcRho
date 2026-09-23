@@ -677,13 +677,12 @@ export function getSelectedRatioValues(model, devs) {
 }
 
 // The "- Ult" column is a row's own tail factor, entered rather than averaged
-// (ResQ keeps it as the average row's TailFactor). A User Entry or frozen
-// benchmark row carries it in its stored values; a computed average row has
-// none and stays at 1.
+// (ResQ keeps it as the average row's TailFactor). Every average row owns one,
+// a computed average included, as in ResQ, and carries it in its stored
+// values; a row with no stored tail reads 1. Mirrors
+// dfm_contract._calculate_formula_values.
 export function summaryRowOwnsTail(cfg) {
-  const averageType = String(cfg?.averageType || "").trim().toLowerCase();
-  const base = String(cfg?.base || "").trim().toLowerCase();
-  return averageType === "user_entry" || base === "benchmark";
+  return !!cfg && typeof cfg === "object";
 }
 
 export function getSummaryRowTailFactor(cfg, col) {
@@ -691,6 +690,26 @@ export function getSummaryRowTailFactor(cfg, col) {
   const raw = Array.isArray(cfg.values) ? cfg.values[col] : 1;
   const manual = Number(raw);
   return Number.isFinite(manual) && manual > 0 ? manual : 1;
+}
+
+// A User Entry row's tail cell is one of its formula cells. Any other row's
+// tail cell -- a computed average or a frozen benchmark -- takes a typed
+// number and nothing else, since nothing recalculates it.
+export function isSummaryTailEntryCell(cfg, col, lastCol) {
+  if (!summaryRowOwnsTail(cfg) || !Number.isFinite(col) || !Number.isFinite(lastCol) || col < lastCol) return false;
+  return String(cfg.averageType || "").trim().toLowerCase() !== "user_entry";
+}
+
+export function setSummaryRowTailFactor(cfg, col, value) {
+  const next = Number(value);
+  if (!summaryRowOwnsTail(cfg) || !Number.isInteger(col) || col < 0 || !Number.isFinite(next) || next <= 0) {
+    return false;
+  }
+  const values = Array.isArray(cfg.values) ? cfg.values.slice() : [];
+  while (values.length <= col) values.push(1);
+  values[col] = next;
+  cfg.values = values;
+  return true;
 }
 
 // =============================================================================

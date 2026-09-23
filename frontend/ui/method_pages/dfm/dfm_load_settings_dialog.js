@@ -21,7 +21,7 @@ import {
   applyDfmOwnedPatchPayload,
   buildDfmMethodPayload,
   cancelDfmMethodAsyncTasks,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260919b";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
 import { loadDfmMethod } from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 import { ensureResultsRatioBasisAligned } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
 import {

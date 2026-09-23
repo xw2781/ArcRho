@@ -1531,8 +1531,9 @@ def _calculate_formula_values(
 
     def stored_tail(row: int) -> float:
         # The "- Ult" column is the row's own tail factor, entered rather than
-        # averaged: ResQ keeps it as each average row's TailFactor. A computed
-        # average row has none and stays at 1.0.
+        # averaged: ResQ keeps it as each average row's TailFactor, and every
+        # row owns one, a computed average included (ResQ's MP+PIP F 25 types
+        # 1.0018 on "Volume - all"). A row with no stored tail reads 1.0.
         value = canonical_input_number(old_values[row][tail_col]) if 0 <= tail_col < len(old_values[row]) else None
         return float(value) if value is not None and value > 0 else 1.0
 
@@ -1547,7 +1548,7 @@ def _calculate_formula_values(
             ]
             continue
         for col in range(col_count):
-            computed[row][col] = 1.0 if col >= tail_col else canonical_input_number(
+            computed[row][col] = stored_tail(row) if col >= tail_col else canonical_input_number(
                 _calculate_average(
                     values,
                     mask,

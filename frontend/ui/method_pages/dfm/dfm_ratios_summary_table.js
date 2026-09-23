@@ -11,8 +11,8 @@ import {
 import "/ui/method_pages/dfm/ratios_summary/summary_model.js?v=20260923b";
 import "/ui/method_pages/dfm/ratios_summary/summary_formula_bar.js?v=20260920a";
 import "/ui/method_pages/dfm/ratios_summary/summary_excel.js?v=20260914b";
-import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260919a";
-import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260923b";
+import "/ui/method_pages/dfm/ratios_summary/summary_entries.js?v=20260923c";
+import "/ui/method_pages/dfm/ratios_summary/summary_interactions.js?v=20260923c";
 
 export const DFM_RATIO_HIGHLIGHT_EDGE_CLASSES = Object.freeze({
   top: "dfmTableHighlightEdgeTop",
@@ -125,17 +125,13 @@ export function updateRatioSummary() {
     }
     if (col >= devs.length - 1) {
       if (isSummary && summaryRuntime.summaryRowOwnsTail(config)) {
-        // A frozen benchmark row shows its own tail factor, as ResQ does.
+        // Every average row shows its own tail factor and takes a typed one,
+        // as ResQ does: the tail is an input, never an average.
         const tail = summaryRuntime.getSummaryRowTailFactor(config, col);
         cell.textContent = summaryRuntime.formatRatio(tail, summaryRuntime.getDfmDecimalPlaces());
         cell.dataset.copyValue = String(tail);
         cell.classList.remove("na", "ratioPlaceholder", "strike");
-      } else if (isSummary) {
-        cell.textContent = "1.0000";
-        cell.dataset.copyValue = "1";
-        cell.classList.remove("na");
-        cell.classList.add("ratioPlaceholder");
-        cell.classList.remove("strike");
+        cell.classList.add("userEntryEditable");
       } else {
         cell.textContent = "";
         cell.dataset.copyValue = "";

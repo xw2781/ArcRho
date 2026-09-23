@@ -724,6 +724,47 @@ class DfmContractTests(unittest.TestCase):
             "benchmark",
         )
 
+    def test_a_computed_row_keeps_the_tail_typed_on_it(self) -> None:
+        # ResQ's tail cell is an input on every average row: MP+PIP's F 25
+        # types 1.0018 on the computed "Volume - all" row and selects it.
+        baseline = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        payload = owned_payload()
+        payload["ratios_tab"]["average_formulas"]["values"][0][2] = 1.0018
+        method = recalculate_dfm_method(
+            payload, input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        formulas = method["ratios_tab"]["average_formulas"]
+        self.assertEqual(formulas["values"][0][2], 1.0018)
+        self.assertEqual(formulas["values"][0][:2], baseline["ratios_tab"]["average_formulas"]["values"][0][:2])
+        self.assertEqual(method["curves_tab"]["selected_values"][-1], 1.0018)
+        for tailed, plain in zip(
+            method["results_tab"]["ultimate_vector"], baseline["results_tab"]["ultimate_vector"]
+        ):
+            self.assertAlmostEqual(tailed, plain * 1.0018, delta=abs(plain) * 1e-12)
+        self.assertEqual(normalize_dfm_method(method), method)
+
+    def test_a_computed_row_with_no_stored_tail_reads_one(self) -> None:
+        payload = owned_payload()
+        formulas = payload["ratios_tab"]["average_formulas"]
+        formulas["values"][0] = [1, 1]
+        formulas["values"][1][2] = 0
+        method = recalculate_dfm_method(
+            payload, input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        values = method["ratios_tab"]["average_formulas"]["values"]
+        self.assertEqual(values[0][2], 1.0)
+        self.assertEqual(values[1][2], 1.0)
+
+    def test_a_method_with_every_computed_tail_at_one_is_unchanged(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        again = recalculate_dfm_method(method, timestamp="2026-01-03T00:00:00Z")
+        self.assertEqual(method_revisions(again), method_revisions(method))
+        self.assertEqual(again["results_tab"]["ultimate_vector"], method["results_tab"]["ultimate_vector"])
+
     def test_preview_preserves_refresh_timestamp(self) -> None:
         method = recalculate_dfm_method(
             owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot(), timestamp="old"

@@ -127,7 +127,7 @@ import {
   cancelDfmExcelFreshnessCheck,
   checkDfmExcelLinkFreshness,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260923b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260923c";
 import { containsDfmDatasetReference } from "/ui/method_pages/dfm/dfm_dataset_reference.js?v=20260811b";
 import { resolveDfmDatasetReferencesInFormulas } from "/ui/method_pages/dfm/dfm_dataset_formula.js?v=20260820a";
 import { setDfmExcelFreshnessState } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";
@@ -850,7 +850,7 @@ function buildAverageFormulaValues() {
   return values.map((row) => trimTrailingNulls(row));
 }
 
-function hydrateUserEntryValuesFromAverageFormulaValues(summaryRows, formulas, averageFormulaValues) {
+function hydrateSummaryRowValuesFromAverageFormulaValues(summaryRows, formulas, averageFormulaValues) {
   if (!Array.isArray(summaryRows) || !Array.isArray(formulas) || !Array.isArray(averageFormulaValues)) {
     return summaryRows;
   }
@@ -859,9 +859,10 @@ function hydrateUserEntryValuesFromAverageFormulaValues(summaryRows, formulas, a
     const key = String(formula || "").replace(/\s+/g, " ").trim().toLowerCase();
     if (key && !formulaIndexByLabel.has(key)) formulaIndexByLabel.set(key, index);
   });
+  // Every row takes its stored values: a User Entry or frozen benchmark row
+  // reads all of them, and any other row still owns its "- Ult" tail factor.
   return summaryRows.map((row) => {
-    const isFrozenBenchmark = String(row?.base || "").trim().toLowerCase() === "benchmark";
-    if ((!isUserEntrySummaryRow(row) && !isFrozenBenchmark) || Array.isArray(row?.values)) return row;
+    if (!row || Array.isArray(row.values)) return row;
     const labelKey = String(row?.label || row?.id || "").replace(/\s+/g, " ").trim().toLowerCase();
     const rowIndex = formulaIndexByLabel.get(labelKey);
     const valueRow = Number.isInteger(rowIndex) ? averageFormulaValues[rowIndex] : null;
@@ -1171,7 +1172,7 @@ async function applyDfmMethodPayloadProgrammatically(payload, options = {}) {
     const averageFormulaValues = getDfmAverageFormulaValues(averageFormulas);
     const averageFormulaRows = buildDfmSummaryRowsFromAverageFormulaObject(averageFormulas);
     const resolvedSummary = buildDfmSummaryRowsFromAverageFormulas(averageFormulaRows, formulas);
-    const summaryRows = hydrateUserEntryValuesFromAverageFormulaValues(
+    const summaryRows = hydrateSummaryRowValuesFromAverageFormulaValues(
       resolvedSummary.rows,
       formulas,
       averageFormulaValues,

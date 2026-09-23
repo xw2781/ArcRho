@@ -15,7 +15,7 @@ import {
 import { resetRatioChartThresholds } from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260919b";
 import {
   scheduleRatioSelectionLoad,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260919b";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import {
   loadProjectUserPreferences,

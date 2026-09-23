@@ -3,7 +3,7 @@ import {
   breakDfmExternalLinks,
   getDfmExternalLinkRecords,
   refreshAllExcelLinks,
-} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260923b";
+} from "/ui/method_pages/dfm/dfm_ratios_summary_table.js?v=20260923c";
 
 let dfmLinksController = null;
 let linksChangedListener = null;

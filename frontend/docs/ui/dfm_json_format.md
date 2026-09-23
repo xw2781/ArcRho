@@ -53,7 +53,7 @@ The ratio triangle keeps its own axis labels on purpose, even though the contrac
 
 Each `excluded` row must be exactly as long as the `ratio_values` row beside it; a payload that breaks that alignment is rejected wherever the method is validated as complete, which includes the macro and ArcBot handoffs. Both rows drop their trailing empty cells, so they stay aligned only while they agree on which cells are empty: a cell whose ratio cannot be calculated -- a zero or missing left value, most often a zero origin row -- is null in `ratio_values` and 2 in `excluded`, never a calculated ratio of 0.
 
-The last `average_formulas.values` column, `<age> - Ult`, is each row's tail factor: an entered value on a User Entry or benchmark row (ResQ's `CustomAverages(i).TailFactor`) and `1.0` on a computed average row. Formulas in `inputs` never apply there.
+The last `average_formulas.values` column, `<age> - Ult`, is each row's tail factor, an entered value on every average row as ResQ's `CustomAverages(i).TailFactor` is: a User Entry, benchmark or computed average row keeps what is stored there, with `1.0` when nothing is. Formulas in `inputs` never apply there. The field's shape is unchanged; until 2026-09-23 the recalculation reset a computed row's tail to `1.0`.
 
 `curves_tab` stores the Curves tab, owned by `arcrho_api/dfm_curves.py`:
 

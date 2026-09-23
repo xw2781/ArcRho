@@ -342,7 +342,9 @@ test("opaque benchmark averages render from their frozen canonical values", asyn
   );
   assert.equal(result.value, 1.234567);
   assert.equal(result.totalIncluded, 1);
-  assert.match(persistenceSource, /isFrozenBenchmark/u);
+  // Opening a method hydrates every row's stored values, a benchmark's included
+  // (dfm_tail_entry.test.mjs exercises the hydration itself).
+  assert.match(persistenceSource, /function hydrateSummaryRowValuesFromAverageFormulaValues/u);
 });
 
 test("an origin whose later value is zero holds no ratio and joins no average", async () => {
