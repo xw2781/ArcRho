@@ -51,6 +51,16 @@ export function loadBootstrapMethod(identity = {}, options = {}) {
   return requestJson("/bootstrap/load", identityBody(identity), options);
 }
 
+/* Runs the settings on screen on the server and returns the method with the
+   new run; nothing is written, and Save publishes the same run. */
+export function simulateBootstrapMethod({ project_name, reserving_class, method } = {}, options = {}) {
+  return requestJson("/bootstrap/simulate", {
+    project_name: text(project_name),
+    reserving_class: text(reserving_class),
+    method,
+  }, options);
+}
+
 export function planBootstrapSave(input = {}, options = {}) {
   return requestJson("/bootstrap/save/plan", saveBody(input), options);
 }

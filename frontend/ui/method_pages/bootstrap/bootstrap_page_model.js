@@ -205,13 +205,27 @@ export function newRandomSeed(random = Math.random) {
 
 
 
-/* The header chip. A run in flight wins; otherwise a run exists once a summary
-   is stored, and any unsaved edit means the stored run no longer describes the
-   inputs on screen. */
-export function bootstrapRunState({ method, dirty, running = false }) {
+/* A snapshot of exactly what a run depends on, so the page can tell whether
+   the run on screen still describes the settings on screen. Name, output
+   type, category, the scale-values display switch and notes do not change a
+   run. */
+export function runInputSnapshot(settings) {
+  const {
+    name: _name,
+    outputType: _outputType,
+    datasetCategory: _datasetCategory,
+    showScaleValues: _showScaleValues,
+    ...inputs
+  } = settings || {};
+  return JSON.stringify(inputs);
+}
+
+/* The header chip. A run in flight wins; then whether a run is on screen at
+   all, and whether it was made from the settings on screen. */
+export function bootstrapRunState({ hasRun = false, settingsMatchRun = true, running = false } = {}) {
   if (running) return { key: "running", label: "Simulating" };
-  if (dirty) return { key: "changed", label: "Inputs changed — run again" };
-  if (!hasSimulationRun(method)) return { key: "not-run", label: "Not run yet" };
+  if (!hasRun) return { key: "not-run", label: "Not run yet" };
+  if (!settingsMatchRun) return { key: "changed", label: "Inputs changed — run again" };
   return { key: "current", label: "Up to date" };
 }
 

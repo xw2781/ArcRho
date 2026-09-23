@@ -25,6 +25,7 @@ import {
   readBootstrapSettings,
   residualColumnLabels,
   residualFlagThreshold,
+  runInputSnapshot,
   targetRows,
 } from "../ui/method_pages/bootstrap/bootstrap_page_model.js";
 import {
@@ -114,6 +115,22 @@ test("Project Instance opens Bootstrap rows in their own window kind and names t
   assert.match(messages, /msg\.type === "arcrho:bst-tab-changed"/u);
 });
 
+test("Simulate runs without saving and leaves the page dirty until Save", async () => {
+  const [main, api] = await Promise.all([
+    read("ui/method_pages/bootstrap/bootstrap_main.js"),
+    read("ui/method_pages/bootstrap/bootstrap_method_api.js"),
+  ]);
+  assert.match(api, /requestJson\("\/bootstrap\/simulate",/u);
+  const simulate = main.slice(main.indexOf("async function simulateFromUser()"));
+  const body = simulate.slice(0, simulate.search(/\r?\n\}\r?\n/u) + 3);
+  assert.match(body, /await simulateBootstrapMethod\(/u);
+  assert.doesNotMatch(body, /saveBootstrapMethod|saveFromUser|markClean/u);
+  assert.match(body, /state\.runUnsaved = true;/u);
+  assert.match(body, /markDirty\(\);/u);
+  assert.match(main, /postDirty\(snapshotPage\(\) !== cleanSnapshot \|\| state\.runUnsaved\);/u);
+  assert.doesNotMatch(main, /simulate: true/u);
+});
+
 test("a large residual is flagged against the grid's own spread", () => {
   const grid = [[0.2, -0.3, 2.4], [-0.1, 0.4, null], [0.3, null, null]];
   const threshold = residualFlagThreshold(grid);
@@ -179,11 +196,33 @@ test("the Targets rows compare each target reserve with the unscaled mean", () =
   assert.deepEqual(residualColumnLabels(method, 3), ["12", "24", "Tail"]);
 });
 
-test("the run chip reads the stored run and unsaved edits", () => {
-  const method = sampleMethod();
-  assert.equal(bootstrapRunState({ method, dirty: false }).label, "Up to date");
-  assert.equal(bootstrapRunState({ method, dirty: true }).label, "Inputs changed — run again");
-  assert.equal(bootstrapRunState({ method: null, dirty: false }).label, "Not run yet");
+test("the run chip reads whether a run is on screen and whether it matches the settings", () => {
+  assert.equal(bootstrapRunState({ hasRun: true, settingsMatchRun: true }).label, "Up to date");
+  assert.equal(bootstrapRunState({ hasRun: true, settingsMatchRun: false }).label, "Inputs changed — run again");
+  assert.equal(bootstrapRunState({ hasRun: false, settingsMatchRun: false }).label, "Not run yet");
+});
+
+test("only settings that change a run move the run snapshot", () => {
+  const settings = readBootstrapSettings(sampleMethod());
+  const base = runInputSnapshot(settings);
+  for (const [key, value] of [
+    ["name", "Renamed"],
+    ["outputType", "Other Output"],
+    ["datasetCategory", "Other Category"],
+    ["showScaleValues", !settings.showScaleValues],
+  ]) {
+    assert.equal(runInputSnapshot({ ...settings, [key]: value }), base, `${key} does not change a run`);
+  }
+  for (const [key, value] of [
+    ["randomSeed", settings.randomSeed + 1],
+    ["simulationCount", settings.simulationCount + 1],
+    ["dfmMethod", "Another DFM"],
+    ["residualType", "unscaled"],
+    ["targetUltimate", "Another Target"],
+    ["targetScalingMethods", ["unscaled"]],
+  ]) {
+    assert.notEqual(runInputSnapshot({ ...settings, [key]: value }), base, `${key} changes a run`);
+  }
 });
 
 /* A stored summary for two origins: every ladder percentile p of origin w's
@@ -315,16 +354,24 @@ test("the distribution chart marks the chosen percentiles on the stored histogra
 });
 
 test("the run chip moves from not run to running to up to date, and to changed on an edit", () => {
-  const method = resultsMethod();
+  // A new method is simulated (unsaved, still dirty), its seed edited, then
+  // simulated again; Save keeps the run and a rename does not make it stale.
+  const settings = readBootstrapSettings(resultsMethod());
+  const edited = { ...settings, randomSeed: settings.randomSeed + 1 };
+  const snapshotOf = (screen, run) => runInputSnapshot(screen) === runInputSnapshot(run);
   const steps = [
-    bootstrapRunState({ method: null, dirty: false }),
-    bootstrapRunState({ method: null, dirty: false, running: true }),
-    bootstrapRunState({ method, dirty: false }),
-    bootstrapRunState({ method, dirty: true }),
-    bootstrapRunState({ method, dirty: true, running: true }),
-    bootstrapRunState({ method, dirty: false }),
+    bootstrapRunState({ hasRun: false, settingsMatchRun: false }),
+    bootstrapRunState({ hasRun: false, settingsMatchRun: false, running: true }),
+    bootstrapRunState({ hasRun: true, settingsMatchRun: snapshotOf(settings, settings) }),
+    bootstrapRunState({ hasRun: true, settingsMatchRun: snapshotOf(edited, settings) }),
+    bootstrapRunState({ hasRun: true, settingsMatchRun: snapshotOf(edited, settings), running: true }),
+    bootstrapRunState({ hasRun: true, settingsMatchRun: snapshotOf(edited, edited) }),
+    bootstrapRunState({ hasRun: true, settingsMatchRun: snapshotOf({ ...edited, name: "Renamed" }, edited) }),
   ];
-  assert.deepEqual(steps.map((step) => step.key), ["not-run", "running", "current", "changed", "running", "current"]);
+  assert.deepEqual(
+    steps.map((step) => step.key),
+    ["not-run", "running", "current", "changed", "running", "current", "current"],
+  );
   assert.equal(steps[1].label, "Simulating");
   assert.equal(formatRunDuration(850), "850 ms");
   assert.equal(formatRunDuration(4210), "4.2 s");

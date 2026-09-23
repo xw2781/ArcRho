@@ -6,6 +6,6 @@
   "details": [
     "Switch between scaled and unscaled results, and between reserves and ultimates; the table and both charts follow.",
     "Choose the percentiles once and every view uses them; Full Ladder shows every half percent from 0 to 100, and Copy puts the table on the clipboard.",
-    "A Simulate button runs the model and saves the results, and the header says how long the run took."
+    "A Simulate button runs the model and shows the results without saving them, and the header says how long the run took; Save keeps the run."
   ]
 }

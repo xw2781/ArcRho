@@ -137,6 +137,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_bootstrap_method",
         ("project_name", "reserving_class", "method_name"),
     ),
+    # Simulate re-fits the DFM and re-simulates from the seed where the DFM
+    # and the target are local disk, and writes nothing; Save publishes the
+    # same run.
+    "bootstrap_simulate": WorkspaceReadKind(
+        "bootstrap_service",
+        "simulate_bootstrap_method",
+        ("project_name", "reserving_class", "method"),
+    ),
     # A Stochastic Consolidation's segments are bootstraps in other reserving
     # classes. The load checks each one's freshness, the run re-simulates each
     # one, and the picker scans every class of the project, so all three are

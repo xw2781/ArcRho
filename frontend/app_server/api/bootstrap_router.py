@@ -4,8 +4,10 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
+from arcrho_api.bootstrap_contract import BST_JSON_FORMAT, owned_projection
 from app_server.schemas.bootstrap import (
     BootstrapIdentityRequest,
+    BootstrapRunRequest,
     BootstrapSaveRequest,
 )
 from app_server.services import (
@@ -31,6 +33,33 @@ def load_bootstrap(req: BootstrapIdentityRequest) -> Dict[str, Any]:
             req.project_name,
             req.reserving_class,
             req.method_name,
+        ),
+    )
+
+
+def _run_inputs(method: Dict[str, Any]) -> Dict[str, Any]:
+    # A run merges only the settings a user owns onto the stored method, so
+    # the stored residuals and results the page holds never travel with the
+    # request.
+    return {"json_format": BST_JSON_FORMAT, **owned_projection(method)}
+
+
+@router.post("/bootstrap/simulate")
+def simulate_bootstrap(req: BootstrapRunRequest) -> Dict[str, Any]:
+    # Runs where the DFM and the target live and writes nothing; Save
+    # publishes the same run.
+    method = _run_inputs(req.method)
+    return workspace_read_client.run_workspace_read(
+        "bootstrap_simulate",
+        {
+            "project_name": req.project_name,
+            "reserving_class": req.reserving_class,
+            "method": method,
+        },
+        local=lambda: bootstrap_service.simulate_bootstrap_method(
+            req.project_name,
+            req.reserving_class,
+            method,
         ),
     )
 

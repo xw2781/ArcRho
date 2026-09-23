@@ -9,6 +9,7 @@ is touched, while the numbers are read from the DFM method JSON.
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 import tempfile
@@ -35,6 +36,9 @@ from arcrho_api.bootstrap_contract import BST_JSON_FORMAT, normalize_bootstrap_m
 from arcrho_api.dfm_contract import normalize_dfm_method
 from arcrho_api.io import persisted_json_text
 from arcrho_api.sidecar_core_contract import DATASET_SIDECAR_JSON_FORMAT, RETIRED_SIDECAR_FIELDS
+from arcrho_workspace_read_contract import HTTP_WORKSPACE_READ_KINDS, WORKSPACE_READ_KINDS
+import app_server.api  # noqa: F401  (registers the route submodules)
+from app_server.schemas.bootstrap import BootstrapRunRequest
 from app_server.services import (
     bootstrap_service,
     calculated_dataset_service,
@@ -675,6 +679,130 @@ class BootstrapServiceTests(unittest.TestCase):
             (self.sidecars / f"{BOOTSTRAP_NAME}.json").read_text(encoding="utf-8")
         )
         self.assertEqual(review["status"], dataset_sidecar_status_service.STATUS_REVIEW_NEEDED)
+
+    # -- simulate: a run that writes nothing ---------------------------------
+
+    def _workspace_state(self) -> dict:
+        root = Path(self.temp.name)
+        return {
+            str(path.relative_to(root)): (path.stat().st_mtime_ns, path.read_bytes())
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        }
+
+    def simulate(self, payload: dict | None = None) -> dict:
+        return bootstrap_service.simulate_bootstrap_method(
+            "Project",
+            "Class",
+            payload if payload is not None else self.method_payload(),
+        )
+
+    def test_simulate_a_new_method_writes_nothing_and_matches_the_save(self) -> None:
+        before = self._workspace_state()
+
+        run = self.simulate()
+
+        self.assertEqual(self._workspace_state(), before)
+        self.assertFalse(run["sidecar"]["exists"])
+        self.assertEqual(run["changed_paths"], [])
+        results = run["method"]["results_tab"]
+        self.assertEqual(results["origin_labels"], self.origin_labels)
+        self.assertEqual(results["simulation_summary"]["simulation_count"], SIMULATION_COUNT)
+
+        saved = self.save()
+        self.assertEqual(
+            saved["method"]["results_tab"]["simulation_summary"], results["simulation_summary"]
+        )
+        self.assertEqual(saved["method"]["results_tab"]["bootstrap_ultimate"], results["bootstrap_ultimate"])
+        self.assertEqual(saved["publication_revision"], run["publication_revision"])
+
+    def test_simulate_merges_edits_onto_the_stored_method_like_save(self) -> None:
+        saved = self.save()
+        edited = json.loads(json.dumps(saved["method"]))
+        edited["simulation_tab"]["random_seed"] = 12345
+        edited["results_tab"]["target_scaling_methods"] = ["unscaled"] * len(self.origin_labels)
+        # Stale derived values from the page never reach the run.
+        edited["results_tab"]["simulation_summary"] = {}
+        before = self._workspace_state()
+
+        run = self.simulate(edited)
+
+        self.assertEqual(self._workspace_state(), before)
+        summary = run["method"]["results_tab"]["simulation_summary"]
+        self.assertEqual(summary["random_seed"], 12345)
+        self.assertNotEqual(summary, saved["method"]["results_tab"]["simulation_summary"])
+        self.assertNotEqual(run["owned_revision"], saved["owned_revision"])
+
+        resaved = self.save(edited, expected_owned_revision=saved["owned_revision"])
+        self.assertEqual(resaved["method"]["results_tab"]["simulation_summary"], summary)
+        self.assertEqual(
+            resaved["method"]["results_tab"]["bootstrap_ultimate"],
+            run["method"]["results_tab"]["bootstrap_ultimate"],
+        )
+
+    def test_simulate_requires_a_dfm_and_a_known_format_on_disk(self) -> None:
+        with self.assertRaises(HTTPException) as no_dfm:
+            self.simulate(self.method_payload(details_tab={"dfm_method": ""}))
+        self.assertEqual(no_dfm.exception.status_code, 422)
+
+        self.save()
+        path = self.methods / f"BST@{BOOTSTRAP_NAME}.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["json_format"] = "arcrho-bootstrap-method-by-tab-v0"
+        self._write_json(path, payload)
+        with self.assertRaises(HTTPException) as unknown:
+            self.simulate()
+        self.assertEqual(unknown.exception.status_code, 409)
+
+
+class _CaptureRead:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def __call__(self, kind, kwargs, *, local):
+        self.calls.append((kind, dict(kwargs)))
+        return {"ok": True}
+
+
+class BootstrapSimulateTransportTests(unittest.TestCase):
+    """Simulate is a hosted read: it runs where the DFM and target live."""
+
+    def test_the_read_is_registered_with_the_service_signature(self) -> None:
+        self.assertIn("bootstrap_simulate", HTTP_WORKSPACE_READ_KINDS)
+        spec = WORKSPACE_READ_KINDS["bootstrap_simulate"]
+        self.assertEqual((spec.module, spec.function), ("bootstrap_service", "simulate_bootstrap_method"))
+        # A contract argument the service does not take breaks the read only
+        # on the Gateway, never locally.
+        parameters = inspect.signature(bootstrap_service.simulate_bootstrap_method).parameters
+        self.assertEqual(set(spec.required), set(parameters))
+        self.assertEqual(spec.optional, ())
+
+    def test_the_route_selects_the_hosted_transport_with_owned_settings_only(self) -> None:
+        router = sys.modules["app_server.api.bootstrap_router"]
+        capture = _CaptureRead()
+        method = {
+            "json_format": BST_JSON_FORMAT,
+            "details_tab": {"name": "M", "dfm_method": "D", "dfm_snapshot": {"big": 1}},
+            "simulation_tab": {"random_seed": 7},
+            "results_tab": {"target_ultimate": "T", "simulation_summary": {"big": 1}},
+        }
+        with mock.patch.object(router.workspace_read_client, "run_workspace_read", capture):
+            router.simulate_bootstrap(
+                BootstrapRunRequest(project_name="Demo", reserving_class="COL", method=method)
+            )
+        [(kind, kwargs)] = capture.calls
+        self.assertEqual(kind, "bootstrap_simulate")
+        spec = WORKSPACE_READ_KINDS[kind]
+        self.assertTrue(set(kwargs) <= spec.allowed)
+        self.assertTrue(set(spec.required) <= set(kwargs))
+        sent = kwargs["method"]
+        self.assertEqual(sent["json_format"], BST_JSON_FORMAT)
+        self.assertEqual(sent["details_tab"]["dfm_method"], "D")
+        self.assertEqual(sent["simulation_tab"]["random_seed"], 7)
+        self.assertEqual(sent["results_tab"]["target_ultimate"], "T")
+        # The stored residuals and results never travel with a run request.
+        self.assertNotIn("dfm_snapshot", sent["details_tab"])
+        self.assertNotIn("simulation_summary", sent["results_tab"])
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience entry point

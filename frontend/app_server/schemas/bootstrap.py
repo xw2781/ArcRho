@@ -11,6 +11,12 @@ class BootstrapIdentityRequest(BaseModel):
     method_name: str = Field(..., min_length=1)
 
 
+class BootstrapRunRequest(BaseModel):
+    project_name: str = Field(..., min_length=1)
+    reserving_class: str = Field(..., min_length=1)
+    method: Dict[str, Any]
+
+
 class BootstrapSaveRequest(BaseModel):
     project_name: str = Field(..., min_length=1)
     reserving_class: str = Field(..., min_length=1)

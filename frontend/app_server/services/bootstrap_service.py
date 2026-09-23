@@ -903,6 +903,84 @@ def _roles_for_save(
     }
 
 
+def _run_merged(
+    project: str,
+    reserving: str,
+    current: Mapping[str, Any] | None,
+    merged: Mapping[str, Any],
+    *,
+    sidecar_cache: Dict[str, Dict[str, Any]] | None = None,
+    snapshot_cache: Dict[SnapshotCacheKey, Dict[str, Any]] | None = None,
+    dfm_cache: Dict[str, Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Re-simulate a merged method the way Save does.
+
+    A source whose name changed is read again; otherwise the embedded DFM
+    snapshot and target values are reused, so Simulate and the Save after it
+    produce the same run.
+    """
+
+    roles = _roles_for_save(current, merged)
+    if roles:
+        return _recalculate_with_sources(
+            project,
+            reserving,
+            merged,
+            roles,
+            changed_precedents=_precedent_dataset_names(
+                project, reserving, merged, dfm_cache=dfm_cache
+            ),
+            allow_review_needed=True,
+            sidecar_cache=sidecar_cache,
+            snapshot_cache=snapshot_cache,
+            dfm_cache=dfm_cache,
+        )
+    return _contract_call(
+        recalculate_bootstrap_method,
+        merged,
+        timestamp=_now(),
+        update_refresh_timestamp=False,
+    )
+
+
+def simulate_bootstrap_method(
+    project_name: str,
+    reserving_class: str,
+    method: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run the bootstrap a page describes and return it without writing.
+
+    The settings on screen are merged onto the stored method exactly as Save
+    merges them, and the run starts from the same seed, so the result is what
+    a Save of the same settings publishes.
+    """
+
+    project = _clean(project_name)
+    reserving = _clean(reserving_class)
+    if not project or not reserving:
+        raise HTTPException(400, "project_name and reserving_class are required.")
+    incoming = _contract_call(
+        normalize_bootstrap_method,
+        method,
+        require_complete=False,
+    )
+    method_name, output_dataset = _identity(incoming)
+    if not _clean(_details(incoming).get("dfm_method")):
+        raise HTTPException(422, "Bootstrap simulation requires a DFM.")
+    method_path = _method_path(project, reserving, method_name)
+    with dataset_sidecar_status_service.sidecar_write_lock(_sidecar_path(project, reserving, output_dataset)):
+        current = _read_json(method_path)
+    if current:
+        if _clean(current.get("json_format")) != BST_JSON_FORMAT:
+            raise HTTPException(409, "Bootstrap changed on disk; reload it before simulating.")
+        current = _contract_call(normalize_bootstrap_method, current, require_complete=True)
+        merged = _contract_call(apply_owned_patch, current, method, timestamp=_now())
+    else:
+        merged = incoming
+    refreshed = _run_merged(project, reserving, current or None, merged)
+    return _method_response(project, reserving, refreshed, {})
+
+
 def save_bootstrap_method(
     project_name: str,
     reserving_class: str,
@@ -969,28 +1047,15 @@ def save_bootstrap_method(
                     409,
                     f"Output dataset '{output_dataset}' is already owned by '{owner}'. Choose a unique Bootstrap name.",
                 )
-        roles = _roles_for_save(current or None, merged)
-        if roles:
-            refreshed = _recalculate_with_sources(
-                project,
-                reserving,
-                merged,
-                roles,
-                changed_precedents=_precedent_dataset_names(
-                    project, reserving, merged, dfm_cache=dfm_cache
-                ),
-                allow_review_needed=True,
-                sidecar_cache=sidecar_cache,
-                snapshot_cache=snapshot_cache,
-                dfm_cache=dfm_cache,
-            )
-        else:
-            refreshed = _contract_call(
-                recalculate_bootstrap_method,
-                merged,
-                timestamp=_now(),
-                update_refresh_timestamp=False,
-            )
+        refreshed = _run_merged(
+            project,
+            reserving,
+            current or None,
+            merged,
+            sidecar_cache=sidecar_cache,
+            snapshot_cache=snapshot_cache,
+            dfm_cache=dfm_cache,
+        )
         previous_publication = _revision_response(current)["publication_revision"] if current else ""
         next_publication = _revision_response(refreshed)["publication_revision"]
         publication_changed = not current or previous_publication != next_publication

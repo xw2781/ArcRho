@@ -31,7 +31,11 @@ import {
 } from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import { BOOTSTRAP_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
-import { loadBootstrapMethod, saveBootstrapMethod } from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260923a";
+import {
+  loadBootstrapMethod,
+  saveBootstrapMethod,
+  simulateBootstrapMethod,
+} from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260923b";
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
 import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
 import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
@@ -67,9 +71,10 @@ import {
   readBootstrapSettings,
   residualColumnLabels,
   residualGrid,
+  runInputSnapshot,
   simulationSummary,
   targetRows,
-} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923c";
+} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923d";
 
 const ALLOWED_TABS = windowTabIds("bootstrap");
 const params = new URLSearchParams(window.location.search || "");
@@ -89,6 +94,10 @@ const state = {
   // stored method does not record a run's duration.
   running: false,
   lastRunMs: null,
+  // The run-input snapshot the run on screen was made from (null when there
+  // is none), and whether that run came from Simulate and is not saved yet.
+  runSnapshot: null,
+  runUnsaved: false,
   // Results view choices: page state, not method settings, so they never
   // make the method dirty.
   results: {
@@ -269,11 +278,19 @@ function snapshotPage() {
   return JSON.stringify({ settings: state.settings, notes: notesController.elements.input?.value || "" });
 }
 
+function currentRunState() {
+  return bootstrapRunState({
+    hasRun: hasSimulationRun(state.method),
+    settingsMatchRun: state.runSnapshot !== null && state.runSnapshot === runInputSnapshot(state.settings),
+    running: state.running,
+  });
+}
+
 function syncHeader() {
   const name = state.settings.name;
   els.headerName.textContent = name || BST_METHOD_TYPE;
   document.title = name ? `${name} - ${BST_METHOD_TYPE}` : BST_METHOD_TYPE;
-  const run = bootstrapRunState({ method: state.method, dirty: isDirty, running: state.running });
+  const run = currentRunState();
   els.stateChip.dataset.state = run.key;
   els.stateLabel.textContent = run.label;
   const summary = simulationSummary(state.method);
@@ -285,11 +302,12 @@ function syncHeader() {
         `${formatNumber(summary.simulation_count)} simulations`,
         `seed ${summary.random_seed}`,
         ...(duration ? [`ran in ${duration}`] : []),
+        ...(state.runUnsaved ? ["not saved yet"] : []),
       ].join(" · ")
       : "";
   const canRun = !state.running && !!state.settings.dfmMethod;
   for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) button.disabled = !canRun;
-  els.resultsStale.hidden = !(isDirty && hasSimulationRun(state.method)) || state.running;
+  els.resultsStale.hidden = run.key !== "changed";
 }
 
 function syncSaveControls() {
@@ -303,7 +321,11 @@ function syncSaveControls() {
 
 function postDirty(dirty, force = false) {
   const next = !!dirty;
-  if (!force && isDirty === next) return;
+  if (!force && isDirty === next) {
+    // The chip follows the settings, not only the dirty flag.
+    syncHeader();
+    return;
+  }
   isDirty = next;
   syncSaveControls();
   syncHeader();
@@ -312,8 +334,10 @@ function postDirty(dirty, force = false) {
   } catch {}
 }
 
+/* The page is dirty when a setting or the notes differ from the last load or
+   save, or when a Simulate produced a run that is not saved yet. */
 function markDirty() {
-  postDirty(snapshotPage() !== cleanSnapshot);
+  postDirty(snapshotPage() !== cleanSnapshot || state.runUnsaved);
 }
 
 function markClean() {
@@ -544,7 +568,7 @@ function renderTargets() {
     <th>Target / Unscaled</th>
   </tr>`;
   if (!rows.length) {
-    els.targetsBody.innerHTML = `<tr><td class="bstEmptyRow" colspan="8">Choose a DFM and save to list the origins.</td></tr>`;
+    els.targetsBody.innerHTML = `<tr><td class="bstEmptyRow" colspan="8">Choose a DFM and simulate to list the origins.</td></tr>`;
     els.targetsCaption.textContent = "";
     return;
   }
@@ -580,7 +604,7 @@ function renderTargets() {
       <td class="bstCell bstDerivedCell">${formatPercent(total.ratio)}</td>
     </tr>`;
   els.targetsCaption.textContent = pending
-    ? "The target reserves and the unscaled means update when the method is saved."
+    ? "The target reserves and the unscaled means update on the next Simulate or Save."
     : "";
 }
 
@@ -625,7 +649,7 @@ function renderResults() {
   syncHeader();
   if (!run) {
     els.resultsEmptyText.textContent = state.settings.dfmMethod
-      ? "Not run yet. Simulate runs the model and saves the results."
+      ? "Not run yet. Simulate runs the model; Save keeps the run."
       : "Choose a DFM on the Details tab, then simulate.";
     return;
   }
@@ -734,6 +758,9 @@ function applyLoaded(result) {
   state.settings = readBootstrapSettings(method);
   state.ownedRevision = text(result?.owned_revision);
   state.derivedRevision = text(result?.derived_revision);
+  // A stored run was made from the stored settings: every save re-simulates.
+  state.runSnapshot = hasSimulationRun(method) ? runInputSnapshot(state.settings) : null;
+  state.runUnsaved = false;
   applyOutputSidecar(result?.sidecar);
   renderAll();
   objectChangeWatch.ensure({
@@ -761,24 +788,34 @@ async function tryLoadExistingMethod() {
   }
 }
 
-/* Every save re-simulates on the server, so Save and Simulate send the same
-   request; Simulate only words the progress card for the run and stays
-   available when nothing changed, to run the stored settings again. */
-async function runSave(progress, { simulate = false } = {}) {
+/* Save re-simulates on the server from the settings on screen, and the run
+   is reproducible from its seed, so a Save after Simulate publishes the run
+   on screen. When no run on screen matches the settings, the progress card
+   says the save runs the model too. */
+function requirementError(action) {
   const s = state.settings;
-  if (!s.name || !s.outputType || !s.dfmMethod) {
-    postStatus(`Bootstrap ${simulate ? "simulation" : "save"} requires Name, Output Type, and DFM.`, "error");
+  return !s.name || !s.outputType || !s.dfmMethod
+    ? `Bootstrap ${action} requires Name, Output Type, and DFM.`
+    : "";
+}
+
+async function runSave(progress) {
+  const problem = requirementError("save");
+  if (problem) {
+    postStatus(problem, "error");
     return { ok: false };
   }
+  const s = state.settings;
   const method = applyBootstrapSettings(state.method || {}, s);
+  const rerun = currentRunState().key !== "current";
   let result;
   objectChangeWatch.pause();
   try {
     const started = performance.now();
-    state.running = true;
+    state.running = rerun;
     syncHeader();
     try {
-      if (simulate) {
+      if (rerun) {
         progress.setMessage(`Running ${formatNumber(s.simulationCount)} simulations and saving the results.`);
       } else {
         progress.writing();
@@ -800,7 +837,7 @@ async function runSave(progress, { simulate = false } = {}) {
     } finally {
       state.running = false;
     }
-    state.lastRunMs = performance.now() - started;
+    if (rerun) state.lastRunMs = performance.now() - started;
     applyLoaded(result);
     markClean();
     void detailsDependencies.refresh().catch(() => null);
@@ -810,7 +847,9 @@ async function runSave(progress, { simulate = false } = {}) {
     postStatus(
       result?.propagation_ok === false
         ? `Bootstrap saved, but some dependent updates did not complete: ${text(result?.propagation?.message) || s.name}`
-        : `Bootstrap ${simulate ? "simulated and saved" : "saved"}: ${s.name} (${formatRunDuration(state.lastRunMs)})`,
+        : rerun
+          ? `Bootstrap simulated and saved: ${s.name} (${formatRunDuration(state.lastRunMs)})`
+          : `Bootstrap saved: ${s.name}`,
       result?.propagation_ok === false ? "warn" : "",
     );
     const propagationOutcome = await trackSavePropagation(result?.propagation, {
@@ -841,23 +880,58 @@ async function runSave(progress, { simulate = false } = {}) {
   }
 }
 
-async function saveFromUser({ simulate = false } = {}) {
+async function saveFromUser() {
   if (state.running) return;
   try {
-    const saved = await saveProgress.run((progress) => runSave(progress, { simulate }));
+    const saved = await saveProgress.run((progress) => runSave(progress));
     if (saved?.ok && saved?.propagationClean) {
       await showSavedDependentsNotice(saved.refreshedDatasets, { linkWarnings: saved.linkWarnings });
     }
   } catch (err) {
     console.error(err);
-    postStatus(`${simulate ? "Simulation" : "Save"} failed: ${String(err?.message || err)}`, "error");
+    postStatus(`Save failed: ${String(err?.message || err)}`, "error");
   } finally {
     syncHeader();
   }
 }
 
-function simulateFromUser() {
-  return saveFromUser({ simulate: true });
+/* Runs the settings on screen on the server without writing; the run stays
+   on screen, unsaved, and the page stays dirty until Save. */
+async function simulateFromUser() {
+  if (state.running) return;
+  const problem = requirementError("simulation");
+  if (problem) {
+    postStatus(problem, "error");
+    return;
+  }
+  const settings = state.settings;
+  const method = applyBootstrapSettings(state.method || {}, settings);
+  const started = performance.now();
+  state.running = true;
+  syncHeader();
+  postStatus(`Running ${formatNumber(settings.simulationCount)} simulations.`);
+  try {
+    const result = await simulateBootstrapMethod({
+      project_name: state.project,
+      reserving_class: state.reservingClass,
+      method,
+    });
+    if (!result?.method || text(result.method.json_format) !== "arcrho-bootstrap-v4") {
+      throw new Error("Bootstrap simulation did not return a current method.");
+    }
+    state.lastRunMs = performance.now() - started;
+    state.method = result.method;
+    state.runSnapshot = runInputSnapshot(settings);
+    state.runUnsaved = true;
+    postStatus(`Simulated ${formatNumber(settings.simulationCount)} runs in ${formatRunDuration(state.lastRunMs)}. Save keeps the run.`);
+  } catch (err) {
+    console.error(err);
+    postStatus(`Simulation failed: ${String(err?.message || err)}`, "error");
+  } finally {
+    state.running = false;
+    renderAll();
+    markDirty();
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1150,7 +1224,7 @@ async function init() {
   if (!loaded) renderAll();
   void detailsDependencies.refresh().catch(() => null);
   markClean();
-  postStatus(loaded ? "Bootstrap ready." : "New Bootstrap: choose a DFM, then save to run it.");
+  postStatus(loaded ? "Bootstrap ready." : "New Bootstrap: choose a DFM, then simulate to run it.");
 }
 
 // The window is held blank until the opening tab is rendered; see
