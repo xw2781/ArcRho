@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Export Reserving Class to ResQ
-# Version: 3.0.1
-# Release Note: A DFM the export creates in ResQ now carries Arco's prior-analysis Curves column values instead of ResQ's 1.0 defaults.
+# Version: 3.0.0
+# Release Note: The export now creates a DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks, and brings an existing one's input, lengths, average rows, priors and loaded datasets in line with Arco.
 # Description: Push the datasets and methods you tick from the reserving class selected in the active Project Instance page into ResQ, in ArcRho's dependency order: input datasets with their Notes; DFMs with their output type, input triangle, lengths, average rows, ratio, tail and Curves-tab selections; Bornhuetter Ferguson methods with their latest, percentage developed and priors; Result Selections with their loaded datasets, weights and overrides; B&S Case Reserve Adequacy selections; the Notes of every dataset and method; and a save of every Cape Cod and B&S Settlement Rate method. A DFM, Bornhuetter Ferguson or Result Selection that ResQ lacks is created.
 # Scope: Reserving Class
 # Icon: upload
@@ -1230,11 +1230,9 @@ class ResQReservingClassExporter:
     def _sync_dfm_curves(self, dfm, payload):
         """Write the ArcRho Curves tab choices onto the ResQ Curves tab.
 
-        The fit settings, the Include flags, the user columns and the
-        Selected Estimate Number per period go across. Every ArcRho user column
-        is written into a ResQ User Entry column, whatever ArcRho calls it; a
-        ResQ user column that is a prior analysis, pattern or benchmark keeps
-        its own values (ResQ refuses a write to one), and the
+        The fit settings, the Include flags, the User Entry columns and the
+        Selected Estimate Number per period go across. A ResQ user column that
+        is a prior analysis, pattern or benchmark keeps its own values, and the
         fitting method is never written: ArcRho fits by log regression only, so
         a ResQ method fitted by least squares keeps that setting.
         """
@@ -1262,10 +1260,8 @@ class ResQReservingClassExporter:
         for offset, column in enumerate(user_columns):
             if not isinstance(column, Mapping):
                 continue
-            # Only ResQ's column type decides. An ArcRho prior-analysis,
-            # pattern or benchmark column lands in a ResQ User Entry column
-            # as its values -- a DFM the export has just created has nothing
-            # else -- the way such a ratio row becomes a User Entry row.
+            if str(column.get("column_type") or "user_entry") != "user_entry":
+                continue
             resq_column = RESQ_CURVE_FIXED_COLUMNS + 1 + offset
             if int(dfm.CurveColumnType(resq_column)) != RESQ_CURVE_COLUMN_TYPE_USER_ENTRY:
                 continue

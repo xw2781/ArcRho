@@ -67,8 +67,17 @@ every item below is written, each after the items it reads:
   `SelectedTailFactor` and `SelectedTailCurve`), and Notes. The sync's
   apply phase uses the same writer, structure step included. `FittingMethod` is never written: ArcRho fits
   by log regression only, so a ResQ method fitted by least squares keeps that
-  setting; a prior-analysis, pattern or benchmark user column keeps ResQ's
-  own values. The User Entry factors reach every ResQ User Entry row, those
+  setting; a ResQ prior-analysis, pattern or benchmark user column keeps
+  ResQ's own values, because ResQ refuses a write to one ("You may not set
+  user entry values on a non-user entry curve"). An ArcRho user column of
+  any kind lands in a ResQ User Entry column as its values and label, so a
+  DFM the export creates carries ArcRho's prior-analysis column (found in
+  the end-to-end check of 2026-09-23, macro 3.0.1). A ResQ prior-analysis
+  ratio row is read-only in the same way ("You cannot set a user value for
+  a read-only average"), and a length change clears both it and a
+  prior-analysis Curves column to 1.0; the export leaves them, so after a
+  length change their values differ from ArcRho's until ResQ's prior
+  analysis is re-run. The User Entry factors reach every ResQ User Entry row, those
   named User Entry and those ArcRho names otherwise. After the structure
   and before the values, the first column of every ResQ average formula is
   read; a DFM with
@@ -638,7 +647,9 @@ ArcRho → ResQ mapping gaps of the DFM and Result Selection writers:
 12. On the Curves tab, ArcRho user columns map onto ResQ's by position
     (column 6 onward); `CurveUserValueColCount` is raised when ArcRho holds
     more, never lowered, and a column ResQ types as prior analysis, pattern
-    or benchmark is left as ResQ has it. `SetSelectedEstimates(DevIndex)`
+    or benchmark is left as ResQ has it; ResQ's column type alone decides,
+    so an ArcRho prior-analysis column fills a ResQ User Entry column.
+    `SetSelectedEstimates(DevIndex)`
     changes the stored number without moving the tail's selected value, so
     the tail is always written through `SelectedTailFactor` (probed
     2026-09-03). A ResQ Curves tab fitted by least squares is read as

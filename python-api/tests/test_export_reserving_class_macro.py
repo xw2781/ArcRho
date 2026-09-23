@@ -705,6 +705,36 @@ class ExportMacroAverageFormulaTests(unittest.TestCase):
         # ArcRho fits by log regression only, so ResQ's fitting method is left alone.
         self.assertIsInstance(dfm.FittingMethod, Mock)
 
+    def test_an_arcrho_prior_analysis_column_fills_a_resq_user_entry_column(self):
+        """A DFM the export just created has only User Entry columns (step 7, 2026-09-23).
+
+        The ArcRho prior-analysis column "Aug 2024" used to be skipped, so the
+        created DFM's third Curves column stayed at ResQ's 1.0 defaults.
+        """
+
+        exporter = self._exporter()
+        dfm = self._resq_dfm()
+        dfm.OriginCount = 2
+        dfm.DevelopmentCount.side_effect = lambda _origin: 3
+        dfm.FutureDevelopmentPeriods = 1
+        dfm.FreeFitC = False
+        dfm.CurveUserValueColCount = 2
+        dfm.CurveColumnType.side_effect = lambda column: {6: 3, 7: 3}[column]
+        dfm.CurveColumnDescription.side_effect = lambda column: {6: "User Entry", 7: "User Entry"}[column]
+        payload = {"curves_tab": {
+            "user_columns": [
+                {"label": "User Entry", "column_type": "user_entry", "values": [1.0, 1.0], "tail": 1.0},
+                {"label": "Aug 2024", "column_type": "prior_analysis", "values": [1.9, 1.1], "tail": 1.0017},
+            ],
+        }}
+
+        exporter._sync_dfm_curves(dfm, payload)
+
+        dfm.SetCurveColumnDescription.assert_called_once_with(7, "Aug 2024")
+        dfm.SetCurveValues.assert_any_call(7, 1, 1.9)
+        dfm.SetCurveValues.assert_any_call(7, 2, 1.1)
+        dfm.SetCurveValues.assert_any_call(7, 0, 1.0017)
+
     def test_a_dfm_whose_count_resq_will_not_give_stops_at_the_first_user_entry(self):
         exporter = self._exporter()
         dfm = self._resq_dfm()
