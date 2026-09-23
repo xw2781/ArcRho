@@ -294,6 +294,186 @@ the writer relies on:
   sees the truth. The exporter uses one connection and neither creates nor
   deletes.
 
+## Creating and reconfiguring methods
+
+Probed live on 2026-09-23 with
+[`tools/resq_method_config_probe.py`](../../tools/resq_method_config_probe.py)
+against `NJ_Annual_Prod_202605_Fake`, class
+`PRNJ - PA\PA\All States\Direct Group\COL` (a roll-up class: `Aggregated` and
+`Calculated` are both true). Early binding, every result re-read through a
+fresh connection (`Disconnect` + `ConnectByName`). The case ids (C1, D2, ...)
+are the probe's. These are the calls the export's create and mirror paths
+rely on; nothing here is used by the export yet.
+
+### Creating a method (C1-C4)
+
+- **`ReservingClass.AddMethod(kind)`** with 1 = DFM, 2 = BF, 4 = Result
+  Selection returns the new method with its output vector already attached.
+  Before anything is set it reports an empty `Name`, output name and output
+  type, `OriginLength` 12, and for a DFM `DevelopmentLength` 12, no input
+  triangle and **5 average rows** (`Volume - 1` .. `Volume - 5`). A BF starts
+  with `PriorVectorCount` 0, a Result Selection with `DatasetCount` 0.
+- **The sequence that saves:** `method.Name`, `method.OutputVector.Name`,
+  `method.OutputVector.DatasetType = <xDatasetType>`, the inputs, the lengths,
+  then `method.Save()`. ResQ writes `Created: <date> by <user>` into a new
+  DFM's Notes.
+- **A DFM needs its input first.** `Save` without `InputTriangle` is refused:
+  "You cannot save a DFM with no input triangle".
+- **A new dataset type:** `project.DatasetTypes().Add()` starts as
+  `Unique = True`, **`Aggregated = True`**, `DataFormat = 0`,
+  `DecimalPlaces = -1`, no category. Put `Name`, `Category =
+  project.Categories().Item(<name>)`, `DataFormat = 1` (origin vector),
+  `DecimalPlaces`, `Unique = True` and `Aggregated = False`, then `Save()`.
+  Every method output type in the class is `Unique = True, Aggregated =
+  False`, so the create path should match that. `Aggregated = True` did not
+  itself stop a save.
+- **A missing category reads as `None`**, from `Categories().Item(<missing>)`
+  and from a name scan alike, so the "category missing" skip of Decision 3 is
+  a plain `None` check.
+- **Refusals met, all at `Save`, all with a misleading text:**
+  - a second vector on a unique type already used in the class: `There cannot
+    be more than one "ZZ Probe DFM B" Vector in a Reserving Class` (the vector
+    that holds the type);
+  - an output type whose **category differs from the input triangle's**:
+    `There cannot be more than one "<some vector of the input's category>"
+    Vector in a Reserving Class`, for example `"C 52 - CWOP/Reported DFM w/
+    Selected LDFs  "` for a D-category type on `Claim Counts--CWP`. Seven of
+    the eight mismatched pairs tried were refused; every matched pair saved.
+    Real method types share their input's category, so the export will meet
+    this only when ArcRho's type is in a different category from its input;
+    the result row should then say the category does not match the input
+    rather than repeat ResQ's text;
+  - the shared, non-unique `F 00 - Ultimate Net Loss` as a DFM's output type
+    (a D-category input): refused naming `"D 92 - Current Qtr Selected"`.
+  A refused save persists nothing and does not affect later saves on the
+  same connection.
+- **BF (C3):** `LatestType = 0` (triangle) or `1` (vector) and `Latest`;
+  `PercentageDeveloped = <DFM output vector>`, **then**
+  `PercentageDevelopedType`. Putting the dataset after the type moved a fresh
+  BF's type from 2 to 3; putting the type again restores it. Priors through
+  `AddPriorVector(vector, 0)` (0 = ultimates).
+- **Result Selection (C4):** `AddDataset(<xTriangle or xVector>)` per dataset.
+  **The order of `Dataset(i)` is ResQ's, not the order of the adds:** adding
+  the DFM before the BF read back as triangle, BF, DFM, already in memory.
+  Address weights through the index re-read after the adds, never by position
+  in ArcRho's list.
+- **Deleting:** `method.Delete()` removes the method and its output vector
+  (no leftover vector), and the dataset type then deletes with
+  `DatasetType.Delete()`.
+
+### Reconfiguring a DFM (D1-D4)
+
+- **Input triangle (D1):** a plain `InputTriangle` put. Selections,
+  exclusions, User Entry values, rows, the Curves tab and Notes all survive;
+  only the curve-fit `IncludedRatios` flags are recomputed.
+- **Lengths (D2): put `OriginLength` first, then `DevelopmentLength`.**
+  `OriginLength = 3` on an O12/D12 method is accepted and pulls the
+  development length down to 3 with it. `DevelopmentLength = 12` on O3/D3 is
+  refused ("The development length is incompatible with the origin length");
+  `OriginLength = 12` first, then `DevelopmentLength = 12`, works. **A length
+  change resets** every selection to ResQ's default row, clears the ratio
+  exclusions and the Curves user values, and resets
+  `FutureDevelopmentPeriods`. The average rows themselves survive. So the
+  existing value writes must run after the structure writes, which is what
+  Decision 5's order does.
+- **Row count (D3):** `RatioAverageCount` is settable both ways. Growing
+  appends ResQ's default rows in its own order (from row 6: `Volume - all`,
+  `Vol + 0.9 - all`, `Simple - all`, `Lowest - all` (type 3), `Highest - all`
+  (type 4)), then `User Entry` rows (type 5, value 1.0 in every column).
+  Shrinking drops rows from the end. Columns the user had selected keep their
+  row; columns still on ResQ's default move to the new default row (row 6,
+  `Volume - all`). A selection that pointed at a dropped row was not tested,
+  because the export writes selections after the rows.
+- **Row fields (D4):** every `CustomAverages(i)` field is a plain put:
+  `AverageType` (0 custom, 5 user entry, 6 calculated, 9 benchmark),
+  `WeightType` (0 simple, 1 volume), `PeriodsIncluded` (**0 = all**),
+  `ExcludeHighLow` (bool) with `ExcludeHighLow2` (count), and `Formula` (type
+  6 only, `(Average(3)+Average(4))/2`). Every row kind evaluated
+  (`AverageRatioValues` answered for each) and read back identically in a
+  fresh connection.
+- **ResQ renames a row from its fields until it is named explicitly.** After
+  the field puts `AverageFormula(i)` read `Simple - all`, `Volume - all`,
+  `Simple - 5`, `Volume - 3 Ex hi/lo`, `Simple - 6 Ex hi/lo x2`, `User Entry`,
+  `Calculated` and `Benchmark Pattern`; `ResetName()` gives the same default.
+  An explicit `Name` put sticks (`ZZ custom label`), survives later field
+  puts (`Benchmark` stayed after `Formula` and `PeriodsIncluded` puts), and
+  `ResetName()` returns it to the field-derived default. The import reads a
+  custom row's weighting, periods and exclusion from the **name**
+  (`_infer_avg_settings`), so the export must write the fields first and then
+  put ArcRho's label as `Name` on every row.
+
+### Reconfiguring a BF (B1)
+
+- `LatestType = 1` with a vector `Latest`, and back to `0` with a triangle,
+  both persist. `PercentageDevelopedType` 2 and 3 both persist.
+- **The prior collection holds several vectors.** `AddPriorVector(vector, 0)`
+  twice gives `PriorVectorCount` 2. Weights: `PriorRatioWeightSelection = 1`
+  (manual), then `PriorRatioObj(k).SetRatioWeights(originIndex, weight)` per
+  origin (default weight 1.0). Two priors at 0.25 / 0.75 read back exactly.
+- `RemovePriorVector(k)` removes the k-th prior and the later ones move up
+  with their weights.
+- **The legacy `Prior` is prior 1 of the collection.** It reads
+  `PriorRatioObj(1).Vector`, and a `Prior` put replaces that vector, keeping
+  its weights. The import reads only `Prior`, so a BF with several priors
+  imports its first one.
+
+### Reconfiguring a Result Selection (R1)
+
+- `SetWeights(datasetIndex, originIndex, weight)` persists.
+- **`RemoveDataset(<xTriangle or xVector>)`** takes the dataset object, not an
+  index (an index raises a type error). The remaining datasets keep their
+  weights.
+- A re-added dataset goes back where ResQ orders it (here last) with weight 0.
+- `SetCustomSortIndex(i, n)` persists `CustomSortIndex(i)` but does not change
+  the `Dataset(i)` order, so the order cannot be controlled through COM.
+
+### Load Settings From Another Method (L1)
+
+`targetDfm.LoadMethod(sourceDfm)` (documented as ResQ's "Apply To"), then
+`Save`, read back in a fresh connection:
+
+- **Copied:** origin and development lengths, every average row (count,
+  names, types, weighting, periods, exclusion, formulas), User Entry values,
+  the selected row per column, the ratio exclusions (by position), the Curves
+  user columns and values, `FutureDevelopmentPeriods` and the curve-fit
+  `IncludedRatios`.
+- **Kept:** the name, the output vector and its type, the input triangle, the
+  Notes, and `RatioDecimalPlaces` (source 3, target stayed 5).
+- **Added:** ResQ appends a line to the target's Notes, `Method settings loaded
+  from <class path>\<source> at <time> by <user>`.
+
+This matches Decision 9 of the plan closely: ResQ keeps the ratio decimal
+places and writes a Notes line, which Decision 9 does not.
+
+**Not yet confirmed in the ResQ window.** The same comparison through the
+Details tab's "Load Settings From Another Method" button could not run on
+2026-09-23 because the Remote Desktop session was not drawing. The probe's
+`--gui-setup` / `--gui-compare` modes set up a source and target DFM and
+compare them afterwards; the check is carried into step 7 of
+`docs/plans/resq_export_create_and_mirror_methods.md`.
+
+### Probe summary (run 5 of 5, 2026-09-23)
+
+```
+C0  class COL: 17 DFM, 4 BF, 11 RS, 57 triangles, 74 vectors, 260 types; no ZZ Probe object
+C1  AddMethod(1) defaults O12/D12, 5 rows; Save without input refused; Save ok
+C2  DFM on a new C-category type ok; refused: second vector on a unique type,
+    shared F 00 type, D-category type on a C-category input
+C3  BF ok; % developed type 2 -> 3 when the dataset is put after it
+C4  RS ok; Dataset(i) order triangle, BF, DFM (added triangle, DFM, BF)
+V1  all four read back in a fresh connection
+D1  input change keeps selections, exclusions, curves; recomputes IncludedRatios
+D2  O12/D12 -> O3/D3 -> O12/D12: O first; D12 on O3 refused; selections,
+    exclusions, curve values and future periods reset; rows kept
+D3  5 -> 15 -> 11 -> 13 rows; default rows appended, User Entry after row 10
+D4  8 row kinds written and read back; names follow fields until Name is put
+B1  two priors 0.25/0.75, remove, latest vector/triangle, pd type 2/3 all persist
+R1  remove keeps weights; re-add appends with weight 0; sort index does not reorder
+L1  LoadMethod copies lengths, rows, values, selections, exclusions, curves;
+    keeps name, output, input, Notes, ratio decimals; appends a Notes line
+cleanup  counts back to 17/4/11/57/74/260, no ZZ Probe object left
+```
+
 ## Unclear / undocumented areas
 
 ResQ COM API:

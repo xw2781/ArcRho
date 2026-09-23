@@ -1,6 +1,6 @@
 # ResQ Export: Create Missing Methods and Mirror Method Settings
 
-Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method"; none started.
+Status: Planned 2026-09-23 and broken into 8 session-sized steps. The export will create a DFM, Bornhuetter Ferguson or Result Selection that Arco holds and ResQ does not, bring an existing one's settings in line with Arco, and the DFM page gains "Load Settings From Another Method". Step 1 done 2026-09-23 (every ResQ call confirmed live; the ResQ-window check of Load Settings moved into step 7); steps 2-8 not started.
 
 Last updated: 2026-09-23
 
@@ -10,7 +10,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Learn how ResQ creates and reconfigures these three methods | [ ] | | 60 min | | |
+| 1 | Learn how ResQ creates and reconfigures these three methods | [x] | 2026-09-23 | 60 min | 22 min | ResQ was shown to accept creating, reshaping and copying these three methods, and the rules and pitfalls it follows are written down for the next steps. |
 | 2 | The export brings an existing DFM's input, lengths and average rows in line with Arco | [ ] | | 60 min | | |
 | 3 | The export brings an existing BF's inputs and a Result Selection's loaded datasets in line with Arco | [ ] | | 50 min | | |
 | 4 | The export creates a DFM, BF or Result Selection that ResQ does not have yet | [ ] | | 65 min | | |
@@ -19,7 +19,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 7 | The export is checked end to end in Arco and ResQ | [ ] | | 80 min | | |
 | 8 | Copying DFM settings is checked in the running app | [ ] | | 40 min | | |
 
-Overall: 0 of 8 steps done. Estimated 455 min, actual so far 0 min.
+Overall: 1 of 8 steps done. Estimated 455 min, actual so far 22 min.
 
 ## How agents work this plan
 
@@ -173,7 +173,7 @@ Steps 1 → 2 → 3 → 4 run in order. Step 5 depends only on step 1 and may ru
 
 **Done when.** The doc section answers every question above from a live run, the probe leaves no `ZZ Probe` object behind in ResQ, and the tool and doc are committed.
 
-Estimate: code edit 30 min, test/validation 30 min, total 60 min.
+Estimate: code edit 30 min, test/validation 30 min, total 60 min. Actual: code edit 11 min, test/validation 11 min, total 22 min; under half because the stored-length probe was a ready template and the COM calls mostly behaved as documented, and the ResQ-window Load Settings check could not run (the Remote Desktop screen was not drawing) and moved into step 7.
 
 ### Step 2 — The export brings an existing DFM's input, lengths and average rows in line with Arco
 
@@ -331,6 +331,7 @@ Estimate: code edit 10 min, test/validation 20 min, total 30 min.
   - Confirm the review shows the new rows as tickable.
   - Confirm the results window lists them as created or exported, with no failure.
 - [ ] In the ResQ GUI, open each new and changed method and screenshot its Details, Ratios or Method tab to compare with Arco.
+- [ ] Carried over from step 1: run `py -3.10 tools/resq_method_config_probe.py --gui-setup`, use the ResQ Details tab's "Load Settings From Another Method" on `ZZ Probe GUI Target` from `ZZ Probe GUI Source`, save it in ResQ, then run `--gui-compare` and `--cleanup`. Record in the export doc's "Load Settings From Another Method" section whether the button copies what `LoadMethod` copies.
 - [ ] Confirm through COM that every setting matches Arco's JSON.
 - [ ] Run the Review macro (or the import preview) to confirm no remaining setting differences for these methods.
 - [ ] Fix any defect found, with a test, commit it, and redeploy as in step 6 (patch-bump the macro and republish if it changed). Record each defect in this step's user note.
