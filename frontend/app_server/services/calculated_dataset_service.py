@@ -2679,14 +2679,21 @@ def project_reserving_classes(project_name: str) -> List[str]:
     spelling is taken from the class's own ``index.json`` when it has one and
     only decoded from the folder name when it does not. This is the one
     enumeration; the Engine's source-refresh job asks it the same question.
+    The import staging and scratch folders beside the classes are not classes.
     """
 
     from arcrho_api.dataset_index_contract import INDEX_FILE_NAME
+    from arcrho_project_duplication_contract import PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES
 
+    transient = {name.casefold() for name in PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES}
     data_dir = config.get_project_data_dir(project_name)
     try:
         entries = sorted(
-            (entry for entry in os.scandir(data_dir) if entry.is_dir()),
+            (
+                entry
+                for entry in os.scandir(data_dir)
+                if entry.is_dir() and entry.name.casefold() not in transient
+            ),
             key=lambda entry: (entry.name.casefold(), entry.name),
         )
     except FileNotFoundError:
