@@ -1,6 +1,6 @@
 # Bootstrap and Stochastic Consolidation
 
-Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 done the same day: a bootstrap's stored summary now carries the half-percent percentile ladder, ultimate statistics and a total-reserve histogram, it hands a consolidation its individual simulations and ranks, all five segments match ResQ within sampling error, and the summary statistics follow ResQ's own definitions exactly. Step 5 is next.
+Status: Broken into 15 session-sized steps on 2026-09-23; step 1 done the same day (ResQ's segment targets made realistic, the five bootstraps and the Total consolidation saved in ResQ and captured as the reference fixture, rule 3 confirmed exactly). Step 2 done the same day: ResQ's rank generation is pinned exactly (normal copula via the lower Cholesky factor of `2·sin(π·ρ/6)`, eigenvalue clipping at 1e-6 for a non-positive-definite target, and the Uniform, Gamma and Student's T variants), and its normals are known to be polar-method draws on a `1/(2³¹ − 1)` uniform grid. The uniform generator itself was not identified, so step 3 is dropped and parity with ResQ is statistical. Step 4 done the same day: a bootstrap's stored summary now carries the half-percent percentile ladder, ultimate statistics and a total-reserve histogram, it hands a consolidation its individual simulations and ranks, all five segments match ResQ within sampling error, and the summary statistics follow ResQ's own definitions exactly. Step 5 done the same day: the consolidation calculation reproduces ResQ's Total consolidation exactly when fed ResQ's segment simulations and ranks, and with Arco's own ranks its total standard deviation is 74,498 against ResQ's 74,529 (0.04 standard errors). Step 6 is next.
 Last updated: 2026-09-23
 
 ## Ship impact
@@ -19,7 +19,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | We know whether ResQ's random numbers can be reproduced, and how it builds correlated rankings | [x] | 2026-09-23 | 90 min | 34 min | ResQ's way of pairing up segment simulations is now known exactly; its random numbers themselves could not be reproduced, so Arco's ranges will match ResQ's within sampling error rather than to the last digit. |
 | 3 | Arco can draw the same random numbers as ResQ from the same seed (only if step 2 found how) | [ ] | | 90 min | | Dropped: ResQ's random stream could not be identified. |
 | 4 | A bootstrap reports a fuller set of percentiles and hands its individual simulations to a consolidation | [x] | 2026-09-23 | 55 min | 12 min | A bootstrap now keeps every half-percent of its range, its ultimates and a histogram, and all five segments agree with ResQ within sampling error. |
-| 5 | Arco can combine several segments' simulations with chosen correlations, matching ResQ | [ ] | | 70 min | | |
+| 5 | Arco can combine several segments' simulations with chosen correlations, matching ResQ | [x] | 2026-09-23 | 70 min | 7 min | Arco can now combine the five segment ranges into one total range with chosen correlations, and it lands where ResQ's does. |
 | 6 | A consolidation can be saved and reopened as its own method with its own output | [ ] | | 60 min | | |
 | 7 | A consolidation can be opened, run and saved through the server, reading bootstraps from other classes | [ ] | | 75 min | | |
 | 8 | Importing a class from ResQ brings its bootstrap methods across | [ ] | | 70 min | | |
@@ -31,7 +31,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | The server components carry the new calculations and imports | [ ] | | 30 min | | |
 | 15 | The whole flow is checked by hand in both ResQ and Arco | [ ] | | 80 min | | |
 
-Overall: 3 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 57 min.
+Overall: 4 of 14 steps done (step 3 dropped). Estimated 1,005 min, actual so far 64 min.
 
 ## How agents work this plan
 
@@ -133,6 +133,8 @@ Step 1 confirms rule 3 exactly against ResQ's numbers; step 2 establishes how ru
 4. **Gamma.** The same with Gamma(shape 1) marginals, `X = L·(−ln U)`, from the same uniforms. For every method whose row of `L` is a unit vector, the ranks are exactly the reverse of the Uniform ranks for the same seed. The achieved rank correlations (0.4236, 0.3860) match the model (0.4253, 0.3906).
 5. **Student's T.** A multivariate t: `X = L·Z / sqrt(W/ν)`, with one chi-square `W` on ν degrees of freedom per simulation, shared by every method. With ν = 5 the upper-5% co-exceedance was 0.244 and 0.266, against the model's 0.266 and 0.244; a separate t per element gives 0.20. The draw order of `W` against `Z` was not pinned, and changing ν changes every rank, method 1's included.
 6. **0% correlated** gives the identity matrix and exactly the Normal ranks with an identity target. **As it comes** gives exactly the same ranks and the same pairing as 0% in this ResQ build: each segment's contribution to consolidated simulation s is its simulation at rank `ConsolidationRanks(c, s)`, not its simulation s. **100% correlated** is the all-ones matrix through the repair in point 1 (adjusted off-diagonals 0.9999990000008), then point 2. It gives near-identical ranks across segments, not identical ones.
+
+**Step 5 result (2026-09-23).** Fed ResQ's segment totals and ResQ's `ConsolidationRanks`, Arco's combination reproduces every one of the 10,000 consolidated totals to 1e-9, ResQ's total ranks exactly, its mean, standard deviation and captured percentiles to 1e-12, and its achieved rank and linear correlations to 1e-9. With Arco's own ranks for the reference seed and target, the achieved rank correlations are 0.381 (target 0.38) and 0.336 (target 0.34), and the total standard deviation is 74,498 against ResQ's 74,529, 0.04 combined standard errors apart; the mean is unchanged because every rank row is a permutation. The calculation takes the upper triangle of a target matrix as authoritative and mirrors it, since the page edits cells above the diagonal. The diversification view reports the sum of the segments' standalone standard deviations, 121,730, against the total's 74,498.
 
 ## Random numbers
 
@@ -286,17 +288,17 @@ Steps run in order. Steps 11–13 do not depend on steps 8–10 and could run be
 
 **Goal.** A pure calculation module combines several bootstraps' simulations into consolidated reserves, reproducing ResQ exactly when given ResQ's simulations and ranks.
 
-**Read first.** [How ResQ consolidates](#how-resq-consolidates) and [Random numbers](#random-numbers) as steps 1–2 left them; step 4's per-simulation function; `bootstrap_simulation.py` for code style (dependency-free Python).
+**Read first.** [How ResQ consolidates](#how-resq-consolidates) and [Random numbers](#random-numbers) as steps 1–2 left them; step 4's per-simulation function; `bootstrap_simulation.py` for code style (dependency-free Python); [test_resq_consolidation_fixture.py](../../python-api/tests/test_resq_consolidation_fixture.py) and [test_bootstrap_segment_parity.py](../../python-api/tests/test_bootstrap_segment_parity.py) for the fixture's layout and the helpers that turn a fixture segment into a bootstrap payload.
 
 **Do.**
-- [ ] Add `python-api/src/arcrho_api/stochastic_consolidation_simulation.py`: target-to-adjusted conversion (`2·sin(πρ/6)` for Normal, and whatever step 2 recorded for the other structures), positive-definite repair, Cholesky, rank generation for the four correlation options and four dependency structures, the rule-3 combination with factors, the consolidated summary (same shape as step 4's), achieved rank and linear correlations between segments, and per-segment standalone statistics for the diversification view.
-- [ ] Seeded and deterministic; uses step 3's stream if step 3 landed.
+- [x] Add `python-api/src/arcrho_api/stochastic_consolidation_simulation.py`: target-to-adjusted conversion (`2·sin(πρ/6)` for Normal, and whatever step 2 recorded for the other structures), positive-definite repair, Cholesky, rank generation for the four correlation options and four dependency structures, the rule-3 combination with factors, the consolidated summary (same shape as step 4's), achieved rank and linear correlations between segments, and per-segment standalone statistics for the diversification view.
+- [x] Seeded and deterministic; uses step 3's stream if step 3 landed (it did not, so Arco's own seeded generator).
 
 **Tests.** `python-api/tests/test_stochastic_consolidation_simulation.py`: rule 3 reproduces ResQ's consolidated totals exactly from step 1's fixture; Arco's own ranks for the reference seed and matrix achieve the target rank correlations within sampling error; 0% gives achieved correlations near 0 and 100% gives 1; Student's T with low degrees of freedom shows more upper-tail co-movement than Normal; a non-positive-definite target is repaired as specified; the consolidated mean equals the sum of segment means times factors for every correlation option.
 
 **Done when.** The new tests pass, and Arco's consolidated total standard deviation for the reference model (from ResQ's segment simulations plus Arco's ranks) is within three standard errors of ResQ's.
 
-**Estimate.** Estimate: code edit 45 min, test/validation 25 min, total 70 min.
+**Estimate.** Estimate: code edit 45 min, test/validation 25 min, total 70 min. Actual: code edit 5 min, test/validation 2 min, total 7 min (under half: step 2 had pinned every rule, so the module was a direct transcription, and the whole suite runs in two seconds).
 
 ### Step 6 — Consolidation persisted contract
 
