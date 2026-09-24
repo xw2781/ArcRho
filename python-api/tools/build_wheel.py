@@ -25,6 +25,10 @@ STANDALONE_MODULES = (
     SRC / "arcrho_project_duplication_contract.py",
     SRC / "arcrho_engine_job_lease.py",
     SRC / "arcrho_dependent_propagation_contract.py",
+    SRC / "arcrho_engine_save_contract.py",
+    SRC / "arcrho_hosted_save_http_contract.py",
+    SRC / "arcrho_workspace_read_contract.py",
+    SRC / "arcrho_workspace_mutation_contract.py",
 )
 
 

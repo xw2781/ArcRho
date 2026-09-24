@@ -24,3 +24,7 @@ packages = ["src/arcrho_api"]
 "src/arcrho_project_duplication_contract.py" = "arcrho_project_duplication_contract.py"
 "src/arcrho_engine_job_lease.py" = "arcrho_engine_job_lease.py"
 "src/arcrho_dependent_propagation_contract.py" = "arcrho_dependent_propagation_contract.py"
+"src/arcrho_engine_save_contract.py" = "arcrho_engine_save_contract.py"
+"src/arcrho_hosted_save_http_contract.py" = "arcrho_hosted_save_http_contract.py"
+"src/arcrho_workspace_read_contract.py" = "arcrho_workspace_read_contract.py"
+"src/arcrho_workspace_mutation_contract.py" = "arcrho_workspace_mutation_contract.py"

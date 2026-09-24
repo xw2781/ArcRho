@@ -38,6 +38,20 @@ session.set_reserving_class(r"Segment\Path")
 dfm = session.DFM("Method Name")
 ```
 
+## Gateway Client
+
+`arcrho_api.gateway.GatewayClient` sends the same signed reads, mutations and hosted saves the desktop app sends, using the running user's own Gateway credential (`%APPDATA%\ArcRho\arcrho_gateway.json`). Arco does not need to be open, the save runs the canonical server-side service including its dependent walk, and the audit log records the script's user. Prefer it over the local app URL in `arcrho_api.ui` for data work: on a shared machine that URL can reach another user's app, which then saves under their name.
+
+```python
+from arcrho_api.gateway import GatewayClient
+
+gateway = GatewayClient()
+rs = gateway.read("result_selection_load", project_name=p, reserving_class=rc, method_name=name)
+gateway.save("result_selection_method", p, rc, rs["method"], rs["sidecar"]["notes"], rs["method_revision"])
+```
+
+`read` and `mutate` take any kind registered in `arcrho_workspace_read_contract` and `arcrho_workspace_mutation_contract`; `save` takes any `SAVE_JOB_KINDS` entry with the service's arguments after the project and reserving class. A refusal raises `GatewayError` carrying the HTTP status, such as 423 while a dependent walk holds the class (poll the `propagation_busy` read before saving).
+
 ## DFM JSON Contract
 
 The canonical grouped GUI shape is self-contained:

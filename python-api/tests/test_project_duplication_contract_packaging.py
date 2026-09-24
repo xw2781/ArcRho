@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import tempfile
 import unittest
 import zipfile
@@ -33,23 +34,27 @@ class ProjectDuplicationContractPackagingTests(unittest.TestCase):
             with zipfile.ZipFile(wheel_path) as wheel:
                 names = set(wheel.namelist())
 
-        self.assertIn("arcrho_project_duplication_contract.py", names)
-        self.assertIn("arcrho_engine_job_lease.py", names)
-        self.assertIn("arcrho_dependent_propagation_contract.py", names)
+        for path in builder.STANDALONE_MODULES:
+            self.assertIn(path.name, names)
 
     def test_hatch_wheel_force_includes_the_canonical_contract(self) -> None:
         pyproject_text = (PYTHON_API_ROOT / "pyproject.toml").read_text(
             encoding="utf-8"
         )
-        for module_name in (
-            "arcrho_project_duplication_contract",
-            "arcrho_engine_job_lease",
-            "arcrho_dependent_propagation_contract",
-        ):
+        for path in _load_wheel_builder().STANDALONE_MODULES:
             self.assertIn(
-                f'"src/{module_name}.py" = "{module_name}.py"',
+                f'"src/{path.name}" = "{path.name}"',
                 pyproject_text,
             )
+
+    def test_wheel_carries_every_contract_the_gateway_client_imports(self) -> None:
+        source = (PYTHON_API_ROOT / "src" / "arcrho_api" / "gateway.py").read_text(
+            encoding="utf-8"
+        )
+        imported = set(re.findall(r"^from (arcrho_\w+_contract) import", source, re.M))
+        shipped = {path.stem for path in _load_wheel_builder().STANDALONE_MODULES}
+        self.assertTrue(imported)
+        self.assertLessEqual(imported, shipped)
 
 
 if __name__ == "__main__":
