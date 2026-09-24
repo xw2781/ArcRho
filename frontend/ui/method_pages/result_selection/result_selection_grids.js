@@ -802,22 +802,10 @@
 
       function applyMethodHighlightDom() {
         methodSpreadsheetTable.applyDom();
-        for (const td of els.methodGrid?.querySelectorAll?.(".rsMethodCell") || []) {
-          const colIndex = Number.parseInt(td.dataset.colIndex || "", 10);
-          const rowIndex = Number.parseInt(td.dataset.rowIndex || "", 10);
-          const highlighted = isMethodCellHighlighted(colIndex, rowIndex);
-          td.classList.toggle("rsHighlightedUltimateCell", highlighted && td.dataset.cellType === "ultimate");
-        }
       }
 
       function applyResultsHighlightDom() {
         resultsSpreadsheetTable.applyDom();
-        for (const td of els.resultsGrid?.querySelectorAll?.(".rsResultsCell") || []) {
-          const colIndex = Number.parseInt(td.dataset.colIndex || "", 10);
-          const rowIndex = Number.parseInt(td.dataset.rowIndex || "", 10);
-          const highlighted = isResultsCellHighlighted(colIndex, rowIndex);
-          td.classList.toggle("rsHighlightedUltimateCell", highlighted && td.dataset.cellType === "ultimate");
-        }
       }
 
       function startMethodCellHighlight(event, colIndex, rowIndex, options = {}) {
@@ -1183,7 +1171,6 @@
         td.classList.toggle("rsHighlightedCell", isMethodCellHighlighted(colIndex, rowIndex));
         td.classList.toggle("rsHighlightAnchorCell", isMethodHighlightAnchor(colIndex, rowIndex));
         td.classList.toggle("rsHighlightedRowLabel", column.type === "origin" && isMethodRowHighlightedByRange(rowIndex));
-        td.classList.toggle("rsHighlightedUltimateCell", isMethodCellHighlighted(colIndex, rowIndex) && column.type === "ultimate");
         if (options.rowToggleColumnCount) {
           td.addEventListener("click", (event) => {
             event.preventDefault();
@@ -1216,7 +1203,6 @@
         td.classList.toggle("rsHighlightedCell", isResultsCellHighlighted(colIndex, rowIndex));
         td.classList.toggle("rsHighlightAnchorCell", isResultsHighlightAnchor(colIndex, rowIndex));
         td.classList.toggle("rsHighlightedRowLabel", column.type === "origin" && isResultsRowHighlightedByRange(rowIndex));
-        td.classList.toggle("rsHighlightedUltimateCell", isResultsCellHighlighted(colIndex, rowIndex) && column.type === "ultimate");
         if (options.rowToggleColumnCount) {
           td.addEventListener("click", (event) => {
             event.preventDefault();

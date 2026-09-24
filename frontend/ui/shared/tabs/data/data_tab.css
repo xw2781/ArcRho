@@ -322,6 +322,20 @@
   outline: none;
 }
 
+/* The selection's grid lines, as spreadsheet_table.css draws them for every
+   table, repeated here because this tab's #tableWrap rules outrank the shared
+   ones. :not(.na) also lifts these above the Dark theme's cell border rule. */
+#tableWrap tbody td.sel:not(.na) {
+  border-right-color: var(--ar-spreadsheet-selection-border);
+  border-bottom-color: var(--ar-spreadsheet-selection-border);
+}
+
+#tableWrap tbody td.sel:not(.na):not(.arArrayFormulaCell) {
+  box-shadow:
+    inset 0 var(--ar-spreadsheet-selection-edge-top, 0) 0 var(--ar-spreadsheet-selection-border),
+    inset var(--ar-spreadsheet-selection-edge-left, 0) 0 0 var(--ar-spreadsheet-selection-border);
+}
+
 #tableWrap td.dsNullValue,
 #tableWrap td.dsNullValue.sel,
 #tableWrap td.dsNullValue.active {
@@ -345,6 +359,16 @@
   background: var(--ar-spreadsheet-selected-label-fill);
   color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
+}
+
+/* A highlighted label takes the selection's line only between one another;
+   the edge it shares with the grid keeps the normal grid line. */
+#tableWrap th.activeCol {
+  border-right-color: var(--ar-spreadsheet-selection-border);
+}
+
+#tableWrap th.activeRow {
+  border-bottom-color: var(--ar-spreadsheet-selection-border);
 }
 
 /*

@@ -25,13 +25,14 @@
   --ar-spreadsheet-label-text: #000000;
   --ar-spreadsheet-selection-fill: rgba(43, 109, 246, 0.16);
   --ar-spreadsheet-selection-text: #000000;
+  --ar-spreadsheet-selection-border: #ffffff;
   --ar-spreadsheet-selected-label-fill: #dae4f5;
-  --ar-spreadsheet-weighted-selection-fill: rgba(157, 204, 0, 0.3);
+  --ar-spreadsheet-weighted-selection-fill: #ecf8af;
   --ar-spreadsheet-anchor-color: #2b6df6;
   --ar-spreadsheet-percent-fill: #ecf8f8;
   --ar-spreadsheet-percent-selection-fill: #cdeeee;
   --ar-spreadsheet-percent-selection-text: #0d6470;
-  --ar-spreadsheet-source-selection-fill: #d6eaa6;
+  --ar-spreadsheet-source-selection-fill: #b5e222;
   --ar-spreadsheet-source-selection-text: #000000;
   --ar-spreadsheet-result-fill: #fdf8dc;
   --ar-spreadsheet-result-selection-fill: #f8e59a;
@@ -54,6 +55,7 @@
   --ar-spreadsheet-label-text: #b8c0cc;
   --ar-spreadsheet-selection-fill: rgba(82, 139, 255, 0.24);
   --ar-spreadsheet-selection-text: #e3ebff;
+  --ar-spreadsheet-selection-border: #435a88;
   --ar-spreadsheet-selected-label-fill: #3a4660;
   --ar-spreadsheet-weighted-selection-fill: rgba(152, 195, 121, 0.28);
   --ar-spreadsheet-anchor-color: #6ea0ff;

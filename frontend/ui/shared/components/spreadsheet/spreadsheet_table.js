@@ -65,9 +65,22 @@ export function createSpreadsheetTableController(options = {}) {
   const getCellValue = typeof options.getCellValue === "function"
     ? options.getCellValue
     : (_position, cell) => String(cell?.textContent || "").trim();
-  const selectedClasses = classNames(options.selectedClasses || ["arSpreadsheetSelected"]);
+  // Every selected cell also carries the shared class, and the top and left
+  // edges of a selection carry shared edge classes, so spreadsheet_table.css
+  // draws the selection's grid lines the same way on every page.
+  const selectedClasses = classNames(["arSpreadsheetSelected", ...classNames(options.selectedClasses)]);
   const activeClasses = classNames(options.activeClasses);
   const anchorClasses = classNames(options.anchorClasses || ["arSpreadsheetSelectionAnchor"]);
+  const sharedEdgeClasses = { top: "arSpreadsheetSelectionEdgeTop", left: "arSpreadsheetSelectionEdgeLeft" };
+  // A selected cell whose neighbour on that side is not selected sits on the
+  // selection's outer edge.
+  const edgeSides = [["top", -1, 0], ["right", 0, 1], ["bottom", 1, 0], ["left", 0, -1]]
+    .map(([side, dr, dc]) => ({
+      dr,
+      dc,
+      classes: classNames([...classNames(sharedEdgeClasses[side]), ...classNames(options.edgeClasses?.[side])]),
+    }))
+    .filter((edge) => edge.classes.length);
   const selectedLabelClasses = classNames(options.selectedLabelClasses || ["arSpreadsheetSelectedLabel"]);
   const rowSelectedLabelClasses = classNames(options.rowSelectedLabelClasses || selectedLabelClasses);
   const columnSelectedLabelClasses = classNames(options.columnSelectedLabelClasses || selectedLabelClasses);
@@ -126,6 +139,7 @@ export function createSpreadsheetTableController(options = {}) {
       ...selectedClasses,
       ...activeClasses,
       ...anchorClasses,
+      ...edgeSides.flatMap((edge) => edge.classes),
       ...rowSelectedLabelClasses,
       ...columnSelectedLabelClasses,
     ])];
@@ -142,13 +156,20 @@ export function createSpreadsheetTableController(options = {}) {
     if (!root) return false;
     const selection = normalizeState();
     clearDomClasses(root);
+    const isSelected = (position) => selection.ranges.some((range) => cellInRange(position, range));
 
     root.querySelectorAll(cellSelector).forEach((cell) => {
       const position = getCellPosition(cell);
       if (!Number.isInteger(position?.r) || !Number.isInteger(position?.c)) return;
-      const selected = selection.ranges.some((range) => cellInRange(position, range));
+      const selected = isSelected(position);
       selectedClasses.forEach((className) => cell.classList.toggle(className, selected));
       cell.setAttribute("aria-selected", selected ? "true" : "false");
+      if (selected) {
+        edgeSides.forEach(({ dr, dc, classes }) => {
+          if (isSelected({ r: position.r + dr, c: position.c + dc })) return;
+          classes.forEach((className) => cell.classList.add(className));
+        });
+      }
       if (selection.activeCell && position.r === selection.activeCell.r && position.c === selection.activeCell.c) {
         activeClasses.forEach((className) => cell.classList.add(className));
       }

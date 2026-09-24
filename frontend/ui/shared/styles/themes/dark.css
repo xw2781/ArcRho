@@ -1775,7 +1775,7 @@
 }
 
 :root[data-arcrho-theme="dark"] .bfMethodTable td:not(.bfHighlightedCell):not(.bfSelectedSourceCell),
-:root[data-arcrho-theme="dark"] .rsGrid td:not(.rsHighlightedCell):not(.rsHighlightedUltimateCell):not(.rsSelectedSourceCell) {
+:root[data-arcrho-theme="dark"] .rsGrid td:not(.rsHighlightedCell):not(.rsSelectedSourceCell) {
   border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);

@@ -16,6 +16,9 @@
   --ar-spreadsheet-cell-padding-x: 6px;
   --ar-spreadsheet-selection-fill: #6197f166;
   --ar-spreadsheet-selection-text: #000000;
+  /* The grid lines of selected cells, deeper than the fill so a range keeps
+     its cell edges instead of reading as one flat block. */
+  --ar-spreadsheet-selection-border: #9fbdf2;
   --ar-spreadsheet-weighted-selection-fill: #d9e98be5;
   --ar-spreadsheet-selected-label-fill: #a6a6a6;
   --ar-spreadsheet-anchor-color: #0f172a;
@@ -115,6 +118,40 @@
   background: var(--ar-spreadsheet-selected-label-fill);
   color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
+}
+
+/* A selection's grid lines. Each cell owns only its right and bottom lines, so
+   the range's top and left edges are drawn inside the edge cells as a shadow,
+   which keeps the cell text from shifting. A linked cell keeps its own frame.
+   Highlighted labels take the selection's line only between one another; the
+   edge a label shares with the grid keeps the normal grid line, so it never
+   doubles the selection's own top or left edge. The Data tab repeats these
+   under its own id rules in data_tab.css. */
+.arSpreadsheetTable td.arSpreadsheetSelected {
+  border-right-color: var(--ar-spreadsheet-selection-border);
+  border-bottom-color: var(--ar-spreadsheet-selection-border);
+}
+
+.arSpreadsheetTable thead .arSpreadsheetSelectedLabel {
+  border-right-color: var(--ar-spreadsheet-selection-border);
+}
+
+.arSpreadsheetTable tbody .arSpreadsheetSelectedLabel {
+  border-bottom-color: var(--ar-spreadsheet-selection-border);
+}
+
+.arSpreadsheetTable td.arSpreadsheetSelected:not(.arArrayFormulaCell) {
+  box-shadow:
+    inset 0 var(--ar-spreadsheet-selection-edge-top, 0) 0 var(--ar-spreadsheet-selection-border),
+    inset var(--ar-spreadsheet-selection-edge-left, 0) 0 0 var(--ar-spreadsheet-selection-border);
+}
+
+.arSpreadsheetTable td.arSpreadsheetSelectionEdgeTop {
+  --ar-spreadsheet-selection-edge-top: 1px;
+}
+
+.arSpreadsheetTable td.arSpreadsheetSelectionEdgeLeft {
+  --ar-spreadsheet-selection-edge-left: 1px;
 }
 
 /* A linked cell whose Excel reference failed validation keeps its saved value

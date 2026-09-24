@@ -651,7 +651,6 @@ input {
 .bsMethodTable thead th.arSpreadsheetSelectedLabel {
   background: var(--ar-spreadsheet-selected-label-fill);
 }
-
 .bsSelUserInput {
   width: 100%;
   height: 100%;

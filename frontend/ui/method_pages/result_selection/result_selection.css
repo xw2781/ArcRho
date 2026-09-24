@@ -927,8 +927,7 @@ body {
   color: #8aa3a9;
   font-style: italic;
 }
-.rsGrid td.rsMethodCell.rsHighlightedUltimateCell,
-.rsGrid td.rsResultsCell.rsHighlightedUltimateCell {
+.rsGrid td.rsUltimateCell.rsHighlightedCell {
   background: var(--rs-ultimate-highlight-cell);
   color: var(--ar-spreadsheet-result-selection-text);
 }
@@ -984,7 +983,7 @@ body {
   font-weight: 400;
 }
 .rsGrid td.rsUltimateCell.rsUltimateCustomValue,
-.rsGrid td.rsUltimateCell.rsUltimateCustomValue.rsHighlightedUltimateCell {
+.rsGrid td.rsUltimateCell.rsUltimateCustomValue.rsHighlightedCell {
   color: #dc2626;
   font-weight: 700;
 }
