@@ -292,6 +292,22 @@ class DfmV2PropagationTests(unittest.TestCase):
             [1100, 2200, 3300],
         )
 
+    def test_a_settled_dependent_is_neither_refreshed_nor_marked(self) -> None:
+        before_method = self.method_path.read_bytes()
+        before_sidecar = self.output_sidecar.read_bytes()
+        self.input_path.write_text("100,200,260\n200,400,\n400,,\n", encoding="utf-8")
+
+        result = refresh_dfm_dependents_for_sources(
+            self.rc,
+            ("Paid Loss",),
+            settled=("Paid Loss", "paid dfm"),
+        )
+
+        self.assertEqual(result.refreshed_outputs, ())
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(self.method_path.read_bytes(), before_method)
+        self.assertEqual(self.output_sidecar.read_bytes(), before_sidecar)
+
     def test_basis_only_refresh_stamps_the_output_sidecar_without_rewriting_the_output(self) -> None:
         before = json.loads(self.output_sidecar.read_text(encoding="utf-8"))
         self.basis_path.write_text("1100\n2200\n3300\n", encoding="utf-8")

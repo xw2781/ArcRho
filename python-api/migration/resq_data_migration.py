@@ -120,10 +120,12 @@ from resq_migration.core import (  # noqa: E402
     _dataset_cache_csv_file_name,
     _encode_name_part,
     _encode_rc_folder,
+    _json_sidecar_name,
     _normalize_cached_dataset_name,
     _normalize_import_name,
     _safe_attr,
     _safe_int_attr,
+    _safe_read_json,
     _iso_or_text,
     _method_type_name,
     _vector_cache_csv_file_name,
@@ -2109,24 +2111,67 @@ def _restore_runtime_scope(previous: tuple[Path, str, Path]) -> None:
     _configure_migration_modules()
 
 
-def refresh_migrated_dfm_dependents(
-    rc_path: str,
-    precedent_names: list[str],
-) -> DfmPropagationResult:
-    """Refresh canonical DFM branches after a partial durable ResQ migration."""
+def _imported_dataset_changed(previous_rc_dir: Path | None, rc_dir: Path, name: str) -> bool:
+    """Whether an imported dataset's file differs from the class's copy before the import.
 
-    reserving_class = ArcRhoClient(SERVER_ROOT).project(PROJECT_NAME).reserving_class(rc_path)
+    An Engine rebuild of unchanged source data writes the same CSV again, and a
+    dataset the import skipped still holds the copy the merge carried over, so
+    neither is a change its dependents need to hear about.
+    """
+    sidecar_name = _json_sidecar_name(name)
+    meta = _safe_read_json(rc_dir / DATASET_SIDECAR_DIR / sidecar_name)
+    if not meta:
+        return False
+    if previous_rc_dir is None:
+        return True
+    previous_meta = _safe_read_json(previous_rc_dir / DATASET_SIDECAR_DIR / sidecar_name)
+    csv_name = str(meta.get("csv_file") or "")
+    if not csv_name or csv_name != str(previous_meta.get("csv_file") or ""):
+        return True
+    try:
+        return (rc_dir / DATASET_CACHE_DIR / csv_name).read_bytes() != (
+            previous_rc_dir / DATASET_CACHE_DIR / csv_name
+        ).read_bytes()
+    except OSError:
+        return True
+
+
+def refresh_import_dependents(
+    previous_rc_dir: Path | None,
+    rc_dir: Path,
+    rc_path: str,
+    imported_names: list[str],
+) -> DfmPropagationResult:
+    """Refresh what depends on the datasets an import actually changed.
+
+    ``rc_dir`` is the folder the import wrote -- the Bridge's staged class once
+    the untouched live groups are merged into it -- and ``previous_rc_dir``
+    holds the class as it was before, or is None when there is no copy to
+    compare against. The walk runs in ``rc_dir``, so it recalculates the
+    dependents against the new inputs before anything is committed. What the
+    import itself wrote came from ResQ and is left as ResQ gave it.
+    """
+
     names: list[str] = []
     seen: set[str] = set()
-    for raw_name in precedent_names:
+    for raw_name in imported_names:
         name = _normalize_import_name(raw_name)
         key = name.casefold()
         if not name or key in seen:
             continue
         seen.add(key)
         names.append(name)
+    changed = [name for name in names if _imported_dataset_changed(previous_rc_dir, Path(rc_dir), name)]
+    if not changed:
+        return DfmPropagationResult()
     try:
-        return refresh_dfm_dependents_for_sources(reserving_class, names)
+        # The walk must work in the folder the import wrote, whatever its
+        # location or folder-name encoding.
+        project = ArcRhoClient(SERVER_ROOT).project(PROJECT_NAME)
+        project.data_dir = Path(rc_dir).parent
+        project.reserving_class_data_dir = lambda _reserving_class: Path(rc_dir)
+        reserving_class = project.reserving_class(rc_path)
+        return refresh_dfm_dependents_for_sources(reserving_class, changed, settled=names)
     except Exception as exc:
         return DfmPropagationResult((), (f"DFM propagation could not start: {exc}",))
 
@@ -2427,24 +2472,14 @@ def _import_reserving_class_as_acting_user(
                 refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
                 if refreshed:
                     _log(verbose, f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
-            propagation = DfmPropagationResult()
+            # The caller walks their dependents once the import is merged with
+            # the class it replaces; see refresh_import_dependents.
+            imported_dataset_names: list[str] = []
             if rc_written:
-                precedent_names = []
                 if run_triangles and isinstance(dataset_counts.get("triangle_names"), list):
-                    precedent_names.extend(dataset_counts["triangle_names"])
+                    imported_dataset_names.extend(dataset_counts["triangle_names"])
                 if run_vectors and isinstance(dataset_counts.get("vector_names"), list):
-                    precedent_names.extend(dataset_counts["vector_names"])
-                _report_progress(
-                    progress_callback,
-                    event="finalize",
-                    kind="dfm_dependents",
-                    completed=int(progress_state.get("completed") or 0),
-                    total=int(progress_state.get("total") or 0),
-                    message="Refreshing dependent DFM methods...",
-                )
-                propagation = refresh_migrated_dfm_dependents(rc_path, precedent_names)
-                for warning in propagation.warnings:
-                    _log(verbose, f"    WARN {warning}")
+                    imported_dataset_names.extend(dataset_counts["vector_names"])
             _report_progress(
                 progress_callback,
                 event="finalize",
@@ -2494,8 +2529,7 @@ def _import_reserving_class_as_acting_user(
                 "methods_total": dataset_counts.get("methods", 0),
                 "grand_total": progress_state["total"],
                 "selected_names": None if selected_names is None else list(selected_names),
-                "dfm_dependents_refreshed": list(propagation.refreshed_outputs),
-                "propagation_warnings": list(propagation.warnings),
+                "imported_dataset_names": imported_dataset_names,
                 "error_details": progress_state.get("error_details", []),
                 "consolidation_warnings": progress_state.get("consolidation_warnings", []),
                 **counts,
@@ -2655,6 +2689,7 @@ def main(argv: list[str] | None = None) -> None:
                     total_written += written
                     total_errors += errors
 
+            snapshot_rc_dir = None
             if snapshot_entry is not None:
                 _snapshot_temp, snapshot_rc_dir, _live_rc_dir = snapshot_entry
                 merge_result = merge_preserved_arcrho_artifacts(snapshot_rc_dir, rc_dir)
@@ -2663,17 +2698,20 @@ def main(argv: list[str] | None = None) -> None:
                         "    OK  retained "
                         f"{merge_result['groups']} Arco-owned or newer dataset/method group(s)"
                     )
-                snapshot_entry[0].cleanup()
-                pending_snapshots.remove(snapshot_entry)
 
             if rc_written:
                 refreshed = refresh_sidecar_graphs_for_rc(rc_dir)
                 if refreshed:
                     print(f"    OK  refreshed sidecar graph metadata ({refreshed} files)")
             if rc_written and migrated_precedent_names:
-                propagation = refresh_migrated_dfm_dependents(rc_path, migrated_precedent_names)
+                propagation = refresh_import_dependents(
+                    snapshot_rc_dir, rc_dir, rc_path, migrated_precedent_names
+                )
                 for warning in propagation.warnings:
                     print(f"    WARN {warning}")
+            if snapshot_entry is not None:
+                snapshot_entry[0].cleanup()
+                pending_snapshots.remove(snapshot_entry)
             rebuild_dataset_instance_index(PROJECT_NAME, rc_path, rc_dir)
             active_index_context = None
 

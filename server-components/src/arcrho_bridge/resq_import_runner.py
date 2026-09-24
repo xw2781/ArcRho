@@ -338,7 +338,7 @@ def run_reserving_class_import(
                 },
             )
 
-        merge_result = _refresh_stage_contract(
+        merge_result, propagation = _refresh_stage_contract(
             module,
             project_name,
             rc_path,
@@ -348,7 +348,10 @@ def run_reserving_class_import(
             stage_rc_dir,
             overwrite=import_policy == "overwrite",
             requested_names=selected_names,
+            imported_names=result.pop("imported_dataset_names", None),
         )
+        result["dfm_dependents_refreshed"] = list(propagation.refreshed_outputs)
+        result["propagation_warnings"] = list(propagation.warnings)
         preserved_groups = int(merge_result.get("groups") or 0)
         if preserved_groups:
             _report_progress(
@@ -978,15 +981,24 @@ def _refresh_stage_contract(
     *,
     overwrite: bool = False,
     requested_names: list[str] | None = None,
-) -> dict[str, object]:
+    imported_names: list[str] | None = None,
+) -> tuple[dict[str, object], Any]:
     apply_scope = getattr(module, "_apply_runtime_scope", None)
     restore_scope = getattr(module, "_restore_runtime_scope", None)
     refresh_graphs = getattr(module, "refresh_sidecar_graphs_for_rc", None)
+    refresh_dependents = getattr(module, "refresh_import_dependents", None)
     rebuild_index = getattr(module, "rebuild_dataset_instance_index", None)
     merge_artifacts = getattr(module, "merge_preserved_arcrho_artifacts", None)
     if not all(
         callable(item)
-        for item in (apply_scope, restore_scope, refresh_graphs, rebuild_index, merge_artifacts)
+        for item in (
+            apply_scope,
+            restore_scope,
+            refresh_graphs,
+            refresh_dependents,
+            rebuild_index,
+            merge_artifacts,
+        )
     ):
         raise ResQMigrationBundleError(
             "The canonical ResQ migration bundle does not expose required merge/graph/index helpers."
@@ -1002,8 +1014,17 @@ def _refresh_stage_contract(
         if not isinstance(merge_result, Mapping):
             raise ResQMigrationBundleError("The canonical Arco merge returned a non-object result.")
         refresh_graphs(stage_rc_dir)
+        # Dependents are walked inside the stage, after the merge brought the
+        # untouched live groups in, so they meet the new inputs and the live
+        # class is not written before the commit.
+        propagation = refresh_dependents(
+            live_rc_dir if live_rc_dir.is_dir() else None,
+            stage_rc_dir,
+            rc_path,
+            list(imported_names or []),
+        )
         rebuild_index(project_name, rc_path, stage_rc_dir)
-        return dict(merge_result)
+        return dict(merge_result), propagation
     finally:
         restore_scope(previous_scope)
 

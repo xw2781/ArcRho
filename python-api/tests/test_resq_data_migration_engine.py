@@ -828,7 +828,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         rebuild.assert_called_once_with("Demo", r"Auto\PP", self.rc_dir)
         application.Disconnect.assert_called_once_with()
 
-    def test_partial_triangle_migration_refreshes_existing_dfm_dependents(self) -> None:
+    def test_partial_triangle_migration_hands_its_datasets_to_the_dependent_walk(self) -> None:
         reserving_class = object()
         project = types.SimpleNamespace(
             ReservingClasses=lambda: types.SimpleNamespace(Item=lambda _path: reserving_class)
@@ -842,7 +842,6 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         client_module.Dispatch = Mock(return_value=application)
         win32com_module = types.ModuleType("win32com")
         win32com_module.client = client_module
-        propagation = self.module.DfmPropagationResult(("Paid DFM",), ("branch warning",))
 
         with (
             patch.dict("sys.modules", {"win32com": win32com_module, "win32com.client": client_module}),
@@ -861,11 +860,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             }),
             patch.object(self.module, "export_triangles_for_rc", return_value=(1, 0)),
             patch.object(self.module, "refresh_sidecar_graphs_for_rc", return_value=1),
-            patch.object(
-                self.module,
-                "refresh_migrated_dfm_dependents",
-                return_value=propagation,
-            ) as refresh_dfms,
+            patch.object(self.module, "refresh_dfm_dependents_for_sources") as walk,
             patch.object(self.module, "rebuild_dataset_instance_index"),
         ):
             result = self.module.import_reserving_class_from_resq(
@@ -878,11 +873,11 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
                 verbose=False,
             )
 
-        refresh_dfms.assert_called_once_with(r"Auto\PP", ["Paid Loss"])
-        self.assertEqual(result["dfm_dependents_refreshed"], ["Paid DFM"])
-        self.assertEqual(result["propagation_warnings"], ["branch warning"])
+        # The walk waits for the caller's merge; the importer only names what it wrote.
+        walk.assert_not_called()
+        self.assertEqual(result["imported_dataset_names"], ["Paid Loss"])
 
-    def test_full_migration_refreshes_preserved_local_dfm_source_selections(self) -> None:
+    def test_full_migration_hands_triangles_and_vectors_to_the_dependent_walk(self) -> None:
         reserving_class = object()
         project = types.SimpleNamespace(
             ReservingClasses=lambda: types.SimpleNamespace(Item=lambda _path: reserving_class)
@@ -896,7 +891,6 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
         client_module.Dispatch = Mock(return_value=application)
         win32com_module = types.ModuleType("win32com")
         win32com_module.client = client_module
-        propagation = self.module.DfmPropagationResult(("Locally Selected DFM",), ())
 
         with (
             patch.dict("sys.modules", {"win32com": win32com_module, "win32com.client": client_module}),
@@ -918,11 +912,7 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
             patch.object(self.module, "export_triangles_for_rc", return_value=(1, 0)),
             patch.object(self.module, "export_vectors_for_rc", return_value=(1, 0)),
             patch.object(self.module, "refresh_sidecar_graphs_for_rc", return_value=2),
-            patch.object(
-                self.module,
-                "refresh_migrated_dfm_dependents",
-                return_value=propagation,
-            ) as refresh_dfms,
+            patch.object(self.module, "refresh_dfm_dependents_for_sources") as walk,
             patch.object(self.module, "rebuild_dataset_instance_index"),
         ):
             result = self.module.import_reserving_class_from_resq(
@@ -935,11 +925,57 @@ class ResqDataMigrationEngineTests(unittest.TestCase):
                 verbose=False,
             )
 
-        refresh_dfms.assert_called_once_with(
-            r"Auto\PP",
+        walk.assert_not_called()
+        self.assertEqual(
+            result["imported_dataset_names"],
             ["Locally Selected Triangle", "Locally Selected Basis"],
         )
-        self.assertEqual(result["dfm_dependents_refreshed"], ["Locally Selected DFM"])
+
+    def _write_imported_dataset(self, rc_dir: Path, name: str, rows: str) -> None:
+        (rc_dir / "sidecars").mkdir(parents=True, exist_ok=True)
+        (rc_dir / "datasets").mkdir(parents=True, exist_ok=True)
+        csv_name = f"{name}@12.csv"
+        (rc_dir / "sidecars" / f"{name}.json").write_text(
+            json.dumps({"dataset_name": name, "csv_file": csv_name}),
+            encoding="utf-8",
+        )
+        (rc_dir / "datasets" / csv_name).write_text(rows, encoding="utf-8")
+
+    def test_the_import_walks_only_from_datasets_whose_values_changed(self) -> None:
+        stage_rc = self.root / "r" / "job" / "d" / self.rc_dir.name
+        self._write_imported_dataset(self.rc_dir, "Paid Loss", "1,2\n3,\n")
+        self._write_imported_dataset(stage_rc, "Paid Loss", "1,2\n3,\n")
+        self._write_imported_dataset(self.rc_dir, "Incurred Loss", "5,6\n7,\n")
+        self._write_imported_dataset(stage_rc, "Incurred Loss", "5,6\n8,\n")
+        self._write_imported_dataset(stage_rc, "New Engine", "9\n")
+        imported = ["Paid Loss", "Incurred Loss", "New Engine", "Skipped"]
+
+        with patch.object(
+            self.module,
+            "refresh_dfm_dependents_for_sources",
+            return_value=self.module.DfmPropagationResult(("Paid DFM",), ()),
+        ) as walk:
+            result = self.module.refresh_import_dependents(self.rc_dir, stage_rc, r"Auto\PP", imported)
+
+        reserving_class, changed = walk.call_args.args
+        # An unchanged rebuild and a skipped item start nothing, and nothing
+        # the import wrote is refreshed a second time.
+        self.assertEqual(changed, ["Incurred Loss", "New Engine"])
+        self.assertEqual(walk.call_args.kwargs["settled"], imported)
+        self.assertEqual(reserving_class.data_dir, stage_rc)
+        self.assertEqual(result.refreshed_outputs, ("Paid DFM",))
+
+    def test_an_import_that_changed_no_values_starts_no_walk(self) -> None:
+        stage_rc = self.root / "r" / "job" / "d" / self.rc_dir.name
+        self._write_imported_dataset(self.rc_dir, "Paid Loss", "1,2\n3,\n")
+        self._write_imported_dataset(stage_rc, "Paid Loss", "1,2\n3,\n")
+
+        with patch.object(self.module, "refresh_dfm_dependents_for_sources") as walk:
+            result = self.module.refresh_import_dependents(self.rc_dir, stage_rc, r"Auto\PP", ["Paid Loss"])
+
+        walk.assert_not_called()
+        self.assertEqual(result.refreshed_outputs, ())
+        self.assertEqual(result.warnings, ())
 
 
 if __name__ == "__main__":

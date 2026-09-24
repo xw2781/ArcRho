@@ -23,6 +23,10 @@ for source_root in (ENGINE_SRC, CANONICAL_SRC):
 from arcrho_bridge import resq_import_runner as runner  # noqa: E402
 
 
+def _no_dependents(*_args):
+    return SimpleNamespace(refreshed_outputs=(), warnings=())
+
+
 class ResQImportRunnerTests(unittest.TestCase):
     def setUp(self):
         TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -97,6 +101,7 @@ class ResQImportRunnerTests(unittest.TestCase):
             _restore_runtime_scope=lambda _previous: None,
             merge_preserved_arcrho_artifacts=lambda _live, _stage, **_kwargs: {"groups": 0, "files": 0, "names": []},
             refresh_sidecar_graphs_for_rc=lambda path: None,
+            refresh_import_dependents=_no_dependents,
             rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
         )
 
@@ -152,6 +157,7 @@ class ResQImportRunnerTests(unittest.TestCase):
                 "names": [],
             },
             refresh_sidecar_graphs_for_rc=lambda path: refresh_calls.append(Path(path)),
+            refresh_import_dependents=_no_dependents,
             rebuild_dataset_instance_index=rebuild,
         )
 
@@ -218,6 +224,7 @@ class ResQImportRunnerTests(unittest.TestCase):
                 "names": [],
             },
             refresh_sidecar_graphs_for_rc=lambda _path: None,
+            refresh_import_dependents=_no_dependents,
             rebuild_dataset_instance_index=(
                 lambda _project, _rc, path: self._write_index(Path(path))
             ),
@@ -249,9 +256,20 @@ class ResQImportRunnerTests(unittest.TestCase):
         def importer(_project_name, _rc_path, **kwargs):
             stage_rc = Path(kwargs["project_data_dir"]) / "rc"
             self._write_dataset(stage_rc, "new-resq", source_kind="input", value="new")
-            return {"errors": 0, "engine_errors": 0, "engine_available": True}
+            return {
+                "errors": 0,
+                "engine_errors": 0,
+                "engine_available": True,
+                "imported_dataset_names": ["new-resq"],
+            }
 
         merge_kwargs = []
+        dependent_calls = []
+
+        def refresh_dependents(previous, stage, rc_path, names):
+            order.append("dependents")
+            dependent_calls.append((previous, Path(stage), rc_path, names))
+            return SimpleNamespace(refreshed_outputs=("Paid DFM",), warnings=("branch warning",))
 
         def merge(live, stage, **kwargs):
             order.append("merge")
@@ -276,6 +294,7 @@ class ResQImportRunnerTests(unittest.TestCase):
             _restore_runtime_scope=lambda _previous: None,
             merge_preserved_arcrho_artifacts=merge,
             refresh_sidecar_graphs_for_rc=refresh,
+            refresh_import_dependents=refresh_dependents,
             rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
         )
 
@@ -288,7 +307,15 @@ class ResQImportRunnerTests(unittest.TestCase):
                 events.append,
             )
 
-        self.assertEqual(order, ["merge", "refresh"])
+        self.assertEqual(order, ["merge", "refresh", "dependents"])
+        # Dependents are walked in the stage against the live class as it was.
+        self.assertEqual(
+            dependent_calls,
+            [(live_rc, server_root / "r" / "run-merge-policy" / "d" / "rc", r"Business\Auto", ["new-resq"])],
+        )
+        self.assertEqual(result["dfm_dependents_refreshed"], ["Paid DFM"])
+        self.assertEqual(result["propagation_warnings"], ["branch warning"])
+        self.assertNotIn("imported_dataset_names", result)
         # A request with no policy keeps today's merge behavior.
         self.assertEqual(merge_kwargs, [{"overwrite": False, "requested_names": None}])
         self.assertEqual(result["import_policy"], "merge")
@@ -749,6 +776,7 @@ class ResQImportRunnerTests(unittest.TestCase):
                 "names": [],
             },
             refresh_sidecar_graphs_for_rc=lambda _path: 0,
+            refresh_import_dependents=_no_dependents,
             rebuild_dataset_instance_index=lambda _project, _rc, path: self._write_index(Path(path)),
         )
 

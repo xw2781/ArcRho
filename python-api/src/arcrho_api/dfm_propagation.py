@@ -72,6 +72,8 @@ def refresh_dfm_dependents(
 def refresh_dfm_dependents_for_sources(
     reserving_class: "ReservingClass",
     updated_datasets: Iterable[Any],
+    *,
+    settled: Iterable[Any] = (),
 ) -> DfmPropagationResult:
     """Refresh direct/transitive DFM branches; isolate failures and preserve publications.
 
@@ -79,6 +81,9 @@ def refresh_dfm_dependents_for_sources(
     public API scripts), so it must hold the same reserving-class lease that
     Engine dependent-propagation jobs use; a walk and an Engine job never
     interleave on one class. Client processes enqueue an Engine job instead.
+
+    ``settled`` names datasets the walk must neither refresh nor mark: an
+    import passes what it has just written, which is already current.
     """
 
     from arcrho_dependent_propagation_contract import held_reserving_class_lease
@@ -89,15 +94,18 @@ def refresh_dfm_dependents_for_sources(
         reserving_class.path,
     ):
         return _refresh_dfm_dependents_for_sources_locked(
-            reserving_class, updated_datasets
+            reserving_class, updated_datasets, settled=settled
         )
 
 
 def _refresh_dfm_dependents_for_sources_locked(
     reserving_class: "ReservingClass",
     updated_datasets: Iterable[Any],
+    *,
+    settled: Iterable[Any] = (),
 ) -> DfmPropagationResult:
     sidecar_dir = reserving_class.data_dir / "sidecars"
+    settled_keys = {_key(name) for name in settled}
     frontier: list[tuple[str, bool, str]] = []
     queued_roots: set[str] = set()
     for raw_name in updated_datasets:
@@ -126,7 +134,7 @@ def _refresh_dfm_dependents_for_sources_locked(
             for output_name in dependent_names:
                 output_key = _key(output_name)
                 edge = (_key(source_name), event_token, output_key, blocked)
-                if not output_key or edge in processed_edges:
+                if not output_key or output_key in settled_keys or edge in processed_edges:
                     continue
                 processed_edges.add(edge)
                 target = targets.setdefault(
