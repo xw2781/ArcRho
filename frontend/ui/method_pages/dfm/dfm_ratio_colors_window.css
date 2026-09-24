@@ -1,0 +1,332 @@
+/* Custom Colors: a non-modal window floating over the DFM page, so the Ratios
+   tables behind it repaint as colours are picked. Chrome comes from the shared
+   theme tokens, so it follows Light and Dark without a rule of its own. It sits
+   under the context menus (10000) so a table menu still opens over it. */
+.dfmColorsWindow {
+  position: fixed;
+  z-index: 2600;
+  display: flex;
+  width: 348px;
+  max-width: calc(100vw - 16px);
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 6px;
+  background: var(--ar-color-surface, #fff);
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  color: var(--ar-color-text, #1f2937);
+  font: 12px var(--app-font, Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif);
+}
+
+.dfmColorsHeader {
+  display: flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 5px 5px 0 0;
+  background: var(--ar-color-surface-muted, #eef2f6);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.dfmColorsTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.dfmColorsClose,
+.dfmColorsRowReset {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.dfmColorsClose:hover,
+.dfmColorsRowReset:hover:not(:disabled) {
+  background: var(--ar-color-surface-hover, #e8eef6);
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.dfmColorsRowReset:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dfmColorsClose svg,
+.dfmColorsRowReset svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dfmColorsBody {
+  max-height: min(460px, calc(100vh - 120px));
+  padding: 4px 10px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Label, preview, Font, Fill, reset: one grid for the column labels and every
+   row, so the swatches line up down the window. */
+.dfmColorsColumnLabels,
+.dfmColorsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 30px 30px 22px;
+  align-items: center;
+  column-gap: 6px;
+}
+
+.dfmColorsColumnLabels {
+  height: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+  text-align: center;
+}
+
+.dfmColorsGroupLabel {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.dfmColorsRow {
+  min-height: 28px;
+}
+
+.dfmColorsLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The preview is one Ratios cell: its font, fill and strike as the tables
+   draw them now. */
+.dfmColorsPreview {
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  font-family: var(--ar-spreadsheet-font, Arial, sans-serif);
+  line-height: 18px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dfmColorsSwatchBtn {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  color: var(--ar-color-text, #1f2937);
+  cursor: pointer;
+}
+
+.dfmColorsSwatchBtn:hover,
+.dfmColorsSwatchBtn[aria-expanded="true"] {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+/* A colour the user set carries a small accent dot, so a changed swatch reads
+   apart from one showing the theme's own colour. */
+.dfmColorsSwatchBtn.isCustom::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ar-color-accent, #2b6df6);
+}
+
+.dfmColorsFontGlyph {
+  font-weight: 700;
+  line-height: 14px;
+  border-bottom: 3px solid var(--dfm-colors-swatch, currentColor);
+}
+
+.dfmColorsFillChip {
+  width: 16px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+}
+
+.dfmColorsFooter {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-top: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 0 0 5px 5px;
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+
+.dfmColorsBtn {
+  height: 28px;
+  min-width: 72px;
+  padding: 0 12px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-surface, #fff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dfmColorsBtn:hover:not(:disabled) {
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.dfmColorsBtn:disabled {
+  color: var(--ar-color-text-disabled, #9ca3af);
+  cursor: default;
+}
+
+.dfmColorsWindow button:focus-visible,
+.dfmColorsWindow input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ar-color-border-focus, #93c5fd);
+}
+
+/* The picker opens under the swatch that asked for it, inside the window. */
+.dfmColorsPicker {
+  position: absolute;
+  z-index: 1;
+  width: 292px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 6px;
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+}
+
+.dfmColorsPicker[hidden] {
+  display: none;
+}
+
+.dfmColorsPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(12, 18px);
+  gap: 4px;
+}
+
+.dfmColorsPreset {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.dfmColorsPreset:hover {
+  transform: translateY(-1px);
+}
+
+.dfmColorsPreset[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--ar-color-surface-raised, #fbfcfe), 0 0 0 3px var(--ar-color-accent, #2b6df6);
+}
+
+.dfmColorsWindow .dfmColorsPreset:focus-visible {
+  box-shadow: 0 0 0 2px var(--ar-color-surface-raised, #fbfcfe), 0 0 0 4px var(--ar-color-border-focus, #93c5fd);
+}
+
+.dfmColorsPickerName {
+  height: 18px;
+  margin: 6px 0 4px;
+  overflow: hidden;
+  color: var(--ar-color-text-muted, #64748b);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.dfmColorsPickerCustom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dfmColorsDefaultBtn {
+  min-width: 0;
+}
+
+.dfmColorsNativeInput {
+  width: 34px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  cursor: pointer;
+}
+
+.dfmColorsHexInput {
+  width: 0;
+  height: 28px;
+  flex: 1 1 auto;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  color: inherit;
+  font: 12px Consolas, "Courier New", monospace;
+}
+
+.dfmColorsHexInput:focus {
+  outline: none;
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: 0 0 0 2px var(--ar-color-focus-ring, rgba(96, 165, 250, 0.16));
+}
+
+.dfmColorsHexError {
+  margin-top: 4px;
+  color: var(--ar-color-danger, #be123c);
+  font-size: 11px;
+}
+
+.dfmColorsHexError[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dfmColorsPreset {
+    transition: none;
+  }
+}

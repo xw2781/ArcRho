@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "The DFM Ratios tables have a Custom Colors window for choosing the font and fill of each part of the tables.",
+  "details": [
+    "Open it from the right-click menu of the ratio triangle or the average formula table.",
+    "Colours apply at once to every DFM window and are kept for your user; Reset all returns the theme's own colours."
+  ]
+}

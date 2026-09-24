@@ -1338,6 +1338,81 @@ body {
 #ratioWrap td.summaryCell.excelLinkError {
   color: #b91c1c;
 }
+/*
+ * Custom Colors (dfm_ratio_colors_model.js). Each rule is switched on by its
+ * token on the root, so a colour the user has not set leaves every rule above
+ * and every theme sheet in charge. The two ids lift these rules over the
+ * one-id theme rules; inside :where() nothing else counts, so between two set
+ * colours the later rule here wins. A rule leaves out the cells another
+ * component owns, which keeps an unset state looking as it does today.
+ */
+:root[data-dfm-ratio-colors~="ratio-font"] #ratioWrapHost #ratioWrap :where(table.ratioMainTable td.ratioCell:not(.strike, .ratioPlaceholder)) {
+  color: var(--dfm-ratio-color-ratio-font);
+}
+:root[data-dfm-ratio-colors~="ratio-fill"] #ratioWrapHost #ratioWrap :where(table.ratioMainTable td.ratioCell:not(.ratioColActive)) {
+  background-color: var(--dfm-ratio-color-ratio-fill);
+}
+:root[data-dfm-ratio-colors~="data-value-font"] #ratioWrapHost #ratioWrap :where(td.ratioDataCell) {
+  color: var(--dfm-ratio-color-data-value-font);
+}
+:root[data-dfm-ratio-colors~="data-value-fill"] #ratioWrapHost #ratioWrap :where(td.ratioDataCell, td.ratioDataSpacer) {
+  background-color: var(--dfm-ratio-color-data-value-fill);
+}
+:root[data-dfm-ratio-colors~="average-font"] #ratioWrapHost #ratioWrap :where(table.ratioSummaryTable td.summaryCell:not(.ratioPlaceholder, .userEntryEditable, .ratioSelectedCell, .excelLinked, .excelRangeAffected, .excelLinkError)) {
+  color: var(--dfm-ratio-color-average-font);
+}
+:root[data-dfm-ratio-colors~="average-fill"] #ratioWrapHost #ratioWrap :where(table.ratioSummaryTable td.summaryCell:not(.ratioColActive, .userEntryEditable, .ratioSelectedCell, .summaryFormulaReferencedCell, .summaryFormulaActiveRefCell, .summaryFormulaRefDragTarget)) {
+  background-color: var(--dfm-ratio-color-average-fill);
+}
+:root[data-dfm-ratio-colors~="selected-value-font"] #ratioWrapHost #ratioWrap :where(table.ratioSelectedTable td:not(.ratioDataSpacer)) {
+  color: var(--dfm-ratio-color-selected-value-font);
+}
+:root[data-dfm-ratio-colors~="selected-value-fill"] #ratioWrapHost #ratioWrap :where(table.ratioSelectedTable td:not(.ratioColActive, .ratioDataSpacer)) {
+  background-color: var(--dfm-ratio-color-selected-value-fill);
+}
+:root[data-dfm-ratio-colors~="column-highlight-fill"] #ratioWrapHost #ratioWrap :where(td.ratioColActive:not(.userEntryEditable, .ratioSelectedCell, .summaryFormulaReferencedCell, .summaryFormulaActiveRefCell, .summaryFormulaRefDragTarget)) {
+  background-color: var(--dfm-ratio-color-column-highlight-fill);
+}
+:root[data-dfm-ratio-colors~="excluded-ratio-font"] #ratioWrapHost #ratioWrap :where(table.ratioMainTable td.ratioCell.strike) {
+  color: var(--dfm-ratio-color-excluded-ratio-font);
+  text-decoration-color: var(--dfm-ratio-color-excluded-ratio-font);
+}
+:root[data-dfm-ratio-colors~="excluded-ratio-fill"] #ratioWrapHost #ratioWrap :where(table.ratioMainTable td.ratioCell.strike) {
+  background-color: var(--dfm-ratio-color-excluded-ratio-fill);
+}
+:root[data-dfm-ratio-colors~="placeholder-font"] #ratioWrapHost #ratioWrap :where(td.ratioCell.ratioPlaceholder:not(.ratioSelectedCell)) {
+  color: var(--dfm-ratio-color-placeholder-font);
+}
+:root[data-dfm-ratio-colors~="user-entry-font"] #ratioWrapHost #ratioWrap :where(td.summaryCell.userEntryEditable:not(.ratioSelectedCell, .excelLinked, .excelRangeAffected, .excelLinkError)) {
+  color: var(--dfm-ratio-color-user-entry-font);
+}
+:root[data-dfm-ratio-colors~="user-entry-fill"] #ratioWrapHost #ratioWrap :where(td.summaryCell.userEntryEditable:not(.ratioSelectedCell, .summaryFormulaReferencedCell, .summaryFormulaActiveRefCell, .summaryFormulaRefDragTarget)) {
+  background-color: var(--dfm-ratio-color-user-entry-fill);
+}
+:root[data-dfm-ratio-colors~="selected-average-font"] #ratioWrapHost #ratioWrap :where(td.summaryCell.ratioSelectedCell:not(.excelLinked, .excelRangeAffected, .excelLinkError)) {
+  color: var(--dfm-ratio-color-selected-average-font);
+}
+:root[data-dfm-ratio-colors~="selected-average-fill"] #ratioWrapHost #ratioWrap :where(td.summaryCell.ratioSelectedCell:not(.summaryFormulaReferencedCell, .summaryFormulaActiveRefCell, .summaryFormulaRefDragTarget)) {
+  background-color: var(--dfm-ratio-color-selected-average-fill);
+}
+:root[data-dfm-ratio-colors~="excel-linked-font"] #ratioWrapHost #ratioWrap :where(td.summaryCell:is(.excelLinked, .excelRangeAffected):not(.excelLinkError)) {
+  color: var(--dfm-ratio-color-excel-linked-font);
+}
+:root[data-dfm-ratio-colors~="excel-link-error-font"] #ratioWrapHost #ratioWrap :where(td.summaryCell.excelLinkError) {
+  color: var(--dfm-ratio-color-excel-link-error-font);
+}
+:root[data-dfm-ratio-colors~="column-header-font"] #ratioWrapHost #ratioWrap :where(thead th:not(.ratioDataHeader)) {
+  color: var(--dfm-ratio-color-column-header-font);
+}
+:root[data-dfm-ratio-colors~="column-header-fill"] #ratioWrapHost #ratioWrap :where(thead th:not(.arSpreadsheetSelectedLabel)) {
+  background-color: var(--dfm-ratio-color-column-header-fill);
+}
+:root[data-dfm-ratio-colors~="row-label-font"] #ratioWrapHost #ratioWrap :where(tbody th) {
+  color: var(--dfm-ratio-color-row-label-font);
+}
+:root[data-dfm-ratio-colors~="row-label-fill"] #ratioWrapHost #ratioWrap :where(tbody th:not(.arSpreadsheetSelectedLabel, .dfmSummaryLabelMenuTarget)) {
+  background-color: var(--dfm-ratio-color-row-label-fill);
+}
 .dfmModalActions {
   display: flex;
   justify-content: flex-end;
