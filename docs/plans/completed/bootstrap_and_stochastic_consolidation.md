@@ -695,7 +695,23 @@ Tests: the new replay test (6), and the DFM, ResQ DFM, bootstrap, consolidation 
 
 ## Parity results
 
-Filled in by steps 10, 15, 17 and 20.
+Filled in by steps 10, 15, 17 and 20, and by the follow-up fix below.
+
+**Follow-up (2026-09-23): each forecast cell's mean now comes from the chain ladder.** Chasing the three by-origin gaps step 20 left (BI Total 2025 about 4.7% wide, MP+PIP 2022-2025 about 2% narrow, COL 2019) found that Arco built each future cell's mean on the cumulative it had already simulated in that origin, while ResQ takes it from the deterministic chain ladder of the pseudo latest diagonal. The evidence, from ResQ runs held in memory (never saved) against Arco on the same model, three seeds each:
+
+- **Forecast noise only** (estimation None, forecast Gamma): ResQ's standard deviation by origin equals the exact formula `sqrt(SUM phi_F * |mu|)` of the deterministic chain ladder, and so does Arco without the build-up; Arco as it was put BI Total 2026 at 19,523 against ResQ's 13,869 and COL 2026 at 5,815 against 6,070.
+- **Estimation noise only** (estimation Gamma, forecast None): the projection rule plays no part, and Arco matches ResQ everywhere except the second-oldest origin (MP+PIP 2018 375 against 423, BI Total 2018 280 against 291). Simulating the two zero-residual cells in the pseudo data does not change it; the cause is open.
+
+Fixed in `bootstrap_simulation.simulate_bootstrap` (commit `19a0c6cf`) with a test against the exact formula that fails on the old projection; Bridge, Engine and Gateway deployed the same day; the six stored bootstraps and the Total consolidation re-run in the fake project. `tools/bootstrap_parity_report.py` afterwards:
+
+| Figure | Arco before | Arco after | ResQ |
+| :--- | :--- | :--- | :--- |
+| Total consolidation std. dev. | 75,309 (+1.42) | 74,459 (−0.13) | 74,529 |
+| BI Total 2025 std. dev. | 13,341 (+5.75) | within the bar | 12,786 |
+| MP+PIP 2025 std. dev. | 6,039 (−4.40) | 6,386 (+1.98) | 6,279 |
+| MP+PIP 2022-2024 std. dev. | 1.3-2.8 SE low | −0.5 to −0.8 SE | |
+
+Every total statistic of every segment and of the consolidation is within the bar. **Still outside, one origin each:** 2019 in BI Total (852 against 810, +4.31), COL (156 against 169, −5.42) and PD+UMPD (177 against 191, −4.54). They were there before the fix (BI Total 2019 read +4.46), their signs disagree, and they sit in the oldest origins with only a few future cells, like the open second-oldest-origin gap above. Left open as a follow-up; each is tens on reserves of a few hundred.
 
 **Step 20 (2026-09-23), by origin.** Scaled reserve standard deviation by origin, Arco / ResQ (z in ResQ standard errors; the bar is |z| ≤ 4.24), from `py -3.10 tools/bootstrap_parity_report.py` after `MP+PIP` was re-imported with ResQ's 1.0018 tail. Every by-origin mean equals ResQ's, as Additive scaling makes it.
 
