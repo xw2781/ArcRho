@@ -103,3 +103,4 @@
 - [BF/CC formula change needs republish](bf-cc-formula-change-needs-republish.md) — 2026-09-21: changing how BF/CC derive their calculated columns makes every stored method
 - [Desktop input control works](desktop-input-control-works.md) — for GUI verification use tools/agent_screen_control (click/drag with -Window guard, agent
 - [MSForms run-time multi-column white block](msforms-runtime-multicolumn-white-block.md) — a Controls.Add list given ColumnCount > 1 draws a stray white block under RDP scaling; keep
+- [Arco is the app name](arco-is-the-app-name.md) — "Arco Workspace" is the ArcRho desktop app; reopen the window or project tab to load UI edits
