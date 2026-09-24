@@ -365,11 +365,20 @@ function applyRatioInteractionMode(mode, options = {}) {
   const wrap = document.getElementById("ratioWrap");
   if (!wrap) return;
   const nextMode = mode === "select" ? "select" : "edit";
-  if (nextMode === "edit") clearRatioTableHighlights();
   if (nextMode === "select" && wrap.contains(document.activeElement)) {
     document.activeElement?.blur?.();
   }
   wrap.dataset.interactionMode = nextMode;
+  // Neither mode's column highlight survives the switch. The selection is
+  // cleared after the mode flips so its header labels are redrawn for the new
+  // mode, and an Edit-mode click's hidden selection never surfaces in Select.
+  clearRatioTableHighlights();
+  if (nextMode === "select" && (getRatioColAllActive() || activeRatioCols.size > 0)) {
+    activeRatioCols.clear();
+    setRatioColAllActive(false);
+    applyRatioColHighlight();
+    notifyDfmEditState();
+  }
   if (options.persist !== false) saveRatioInteractionMode(nextMode);
   updateRatioMenuLabel();
 }
