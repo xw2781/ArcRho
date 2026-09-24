@@ -33,74 +33,6 @@ body {
   min-width: 0;
 }
 
-/* Header: identity, run state, and the page actions. */
-.sconHeader {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 40px;
-  padding: 6px 10px 2px;
-  background: #f5f7fa;
-}
-.sconHeaderIdentity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.sconHeaderName {
-  min-width: 0;
-  overflow: hidden;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sconStateChip {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid #cbd5e1;
-  border-radius: 11px;
-  background: #ffffff;
-  color: #475569;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.sconStateDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-.sconStateChip[data-state="current"] { border-color: #bbe5c8; color: var(--scon-success); }
-.sconStateChip[data-state="current"] .sconStateDot { background: var(--scon-success); }
-.sconStateChip[data-state="changed"] { border-color: #f5d0a4; background: var(--scon-warning-soft); color: var(--scon-warning); }
-.sconStateChip[data-state="changed"] .sconStateDot { background: var(--scon-warning); }
-.sconStateChip[data-state="segment"] { border-color: #f5d0a4; background: var(--scon-warning-soft); color: var(--scon-warning); }
-.sconStateChip[data-state="segment"] .sconStateDot { background: var(--scon-warning); }
-.sconRunInfo {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--scon-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sconHeaderActions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-}
-.sconHeaderActions .sconButton { min-width: 72px; height: 28px; }
-
 .sconTabbed {
   flex: 1 1 auto;
   min-height: 0;
@@ -111,13 +43,41 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  margin: 0 var(--tabbed-page-gutter, 8px) var(--tabbed-page-gutter, 8px);
+  margin: 0 var(--tabbed-page-gutter, 8px);
   padding: 10px;
   border: 1px solid var(--scon-border);
   border-top: 0;
   background: #ffffff;
 }
 .sconPage { display: none; }
+
+/* Save bar: the run, Save and Cancel on the right, as on the other method
+   pages. */
+.sconSaveBar.tabbedPageSaveBar { background: #f5f7fa; }
+.sconSaveActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+.sconSaveBar .sconButton {
+  min-width: 72px;
+  height: 28px;
+}
+#sconSaveBtn {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+#sconSaveBtn:hover:not(:disabled) { background: #1d4ed8; }
+#sconCancelBtn,
+#sconSaveBtn.is-clean {
+  border-color: rgba(21, 34, 54, 0.18);
+  background: #ffffff;
+  color: #1f2937;
+}
+#sconCancelBtn:hover:not(:disabled),
+#sconSaveBtn.is-clean:hover:not(:disabled) { background: #f4f7fb; }
 #sconAuditPage[style*="display: block"],
 #sconAuditPage.sconTabFloatingPage {
   display: flex !important;
@@ -342,6 +302,48 @@ body {
   border: 1px solid #cfd8e690;
   border-radius: 2px;
 }
+/* Copy Table and Download CSV: quiet icon commands at the toolbar's right
+   end; each turns into a green check for a moment once it has done its job. */
+.sconTableActions {
+  display: flex;
+  align-self: flex-end;
+  gap: 2px;
+  margin-left: auto;
+}
+.sconTableAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sconTableAction:hover { border-color: #cbd5e1; background: #f8fafc; color: #1d4ed8; }
+.sconTableAction:focus-visible { outline: none; border-color: #8aa8ff; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16); }
+.sconTableActionIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: url("../../shared/icons/library/copy.svg?v=20260908a") no-repeat center / contain;
+  mask: url("../../shared/icons/library/copy.svg?v=20260908a") no-repeat center / contain;
+}
+.sconTableActionIcon[data-icon="download"] {
+  -webkit-mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
+  mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
+}
+.sconTableAction.isDone { color: #15803d; }
+.sconTableAction.isDone .sconTableActionIcon {
+  -webkit-mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
+  mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
+}
 .sconToolTitle {
   position: absolute;
   top: -8px;
@@ -422,27 +424,25 @@ body {
   border: 1px solid var(--scon-border);
   background: #ffffff;
 }
-.sconTableWrap::-webkit-scrollbar { width: 20px; height: 20px; }
-.sconTableWrap::-webkit-scrollbar-track,
-.sconTableWrap::-webkit-scrollbar-corner { background: #f1f3f5; }
-.sconTableWrap::-webkit-scrollbar-thumb {
-  border: 3px solid #f1f3f5;
-  border-radius: 5px;
-  background-color: rgba(182, 182, 182, 0.2);
-  background-clip: content-box;
-}
-.sconTableWrap::-webkit-scrollbar-thumb:hover { background-color: rgba(120, 120, 120, 0.267); }
+/* The grids take their selection look from the shared spreadsheet table, but
+   size their columns to their content. The segment list selects whole rows
+   instead, so none of its text is selectable either. */
 table.sconTable {
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: auto;
   width: max-content;
+  user-select: none;
   font-family: var(--scon-font);
   font-size: 13px;
 }
 .sconTable th,
 .sconTable td {
   height: var(--scon-cell-h);
+  width: auto;
   min-width: 78px;
+  max-width: none;
+  line-height: normal;
   padding: 0 8px;
   border-right: 1px solid var(--scon-grid-border);
   border-bottom: 1px solid var(--scon-grid-border);
@@ -471,14 +471,24 @@ table.sconTable {
   text-align: center;
 }
 .sconTable thead .sconOriginHead { z-index: 3; background: var(--scon-header-cell); }
-.sconTable tbody tr:hover td:not(.sconOriginCell) { background-color: #f8fafc; }
-.sconTable td.sconDerivedCell { background: var(--scon-derived-cell); }
-.sconTable tbody tr:hover td.sconDerivedCell { background: #d2f1f1; }
-.sconTable td.sconInactiveCell { background: #f5f7fa; }
+.sconTable tbody tr:hover td:not(.sconOriginCell, [aria-selected="true"]) { background-color: #f8fafc; }
+.sconTable td.sconDerivedCell { --scon-cell-fill: var(--scon-derived-cell); background: var(--scon-cell-fill); }
+.sconTable tbody tr:hover td.sconDerivedCell:not([aria-selected="true"]) { background: #d2f1f1; }
+.sconTable td.sconInactiveCell { --scon-cell-fill: #f5f7fa; background: var(--scon-cell-fill); }
 .sconTable td.sconEntryCell {
+  --scon-cell-fill: var(--scon-entry-cell);
   padding: 0;
-  background: var(--scon-entry-cell);
+  background: var(--scon-cell-fill);
 }
+/* The selection tint layers over a fill that carries meaning rather than
+   replacing it, and the labels of a selected line take the shared fill. */
+.sconTable.arSpreadsheetTable tbody td[aria-selected="true"] {
+  background:
+    linear-gradient(var(--ar-spreadsheet-selection-fill), var(--ar-spreadsheet-selection-fill)),
+    var(--scon-cell-fill, #ffffff);
+}
+.sconTable tbody td.arSpreadsheetSelectedLabel:first-child,
+.sconTable thead th.arSpreadsheetSelectedLabel { background: var(--ar-spreadsheet-selected-label-fill); }
 .sconTable tr.sconTotalRow td { font-weight: 700; }
 /* A fixed width: an input sized by percentage still asks an auto-layout table
    for its intrinsic width and would widen every column it sits in. */
@@ -532,15 +542,6 @@ table.sconTable {
 .sconSegmentedCompact .sconSegment { padding: 0 12px; }
 .sconPercentileInput { width: 200px; }
 .sconToolButton { height: 28px; }
-.sconStateChip[data-state="running"] { border-color: #bfd3fb; background: var(--scon-accent-soft); color: #1d4ed8; }
-.sconStateChip[data-state="running"] .sconStateDot {
-  background: var(--scon-accent);
-  animation: sconRunPulse 900ms ease-in-out infinite alternate;
-}
-@keyframes sconRunPulse {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
-}
 .sconNotice {
   display: flex;
   align-items: center;
@@ -626,8 +627,6 @@ table.sconTable {
 }
 
 @media (max-width: 720px) {
-  .sconHeader { flex-wrap: wrap; }
-  .sconRunInfo { display: none; }
   .sconToolControls { flex-wrap: wrap; gap: 8px 14px; }
 }
 .sconCheckbox {
@@ -699,8 +698,8 @@ table.sconTable {
 .sconMatrixWrap { width: max-content; max-width: 100%; }
 .sconMatrixTable th,
 .sconMatrixTable td { min-width: 92px; }
-.sconMatrixTable td.sconDiagonalCell { background: #f5f7fa; color: #64748b; }
-.sconMatrixTable td.sconMirrorCell { background: var(--scon-derived-cell); }
+.sconMatrixTable td.sconDiagonalCell { --scon-cell-fill: #f5f7fa; background: var(--scon-cell-fill); color: #64748b; }
+.sconMatrixTable td.sconMirrorCell { --scon-cell-fill: var(--scon-derived-cell); background: var(--scon-cell-fill); }
 .sconMatrixTable td.sconEntryCell .sconCellInput { width: 90px; }
 .sconCellInput[aria-invalid="true"] {
   border-color: #be123c;

@@ -232,22 +232,35 @@ function clipboardNumber(value, kind) {
 
 /* The table on screen as tab-separated text, numbers unformatted so they
    paste into a spreadsheet as numbers (a CV as a fraction). */
-export function resultsClipboardText(view, { percentiles = [], fullLadder = false } = {}) {
-  if (!view) return "";
-  const lines = [];
+// The Results table as plain rows, header first: what Copy Table and
+// Download CSV both hand out.
+function resultsTableCells(view, { percentiles = [], fullLadder = false } = {}) {
+  if (!view) return [];
   if (fullLadder) {
-    lines.push(["Statistic", ...view.rows.map((row) => row.label), "Total"].join("\t"));
-    for (const row of ladderTableRows(view, percentiles)) {
-      lines.push([row.label, ...row.values.map((value) => clipboardNumber(value, row.kind))].join("\t"));
-    }
-  } else {
-    const columns = summaryTableColumns(view.measure, percentiles, { dfm: view.hasDfm !== false });
-    lines.push(["Origin", ...columns.map((column) => column.label)].join("\t"));
-    for (const row of [...view.rows, view.total]) {
-      lines.push([row.label, ...columns.map((column) => clipboardNumber(column.value(row), column.kind))].join("\t"));
-    }
+    return [
+      ["Statistic", ...view.rows.map((row) => row.label), "Total"],
+      ...ladderTableRows(view, percentiles).map((row) => [row.label, ...row.values.map((value) => clipboardNumber(value, row.kind))]),
+    ];
   }
-  return lines.join("\r\n");
+  const columns = summaryTableColumns(view.measure, percentiles, { dfm: view.hasDfm !== false });
+  return [
+    ["Origin", ...columns.map((column) => column.label)],
+    ...[...view.rows, view.total].map((row) => [row.label, ...columns.map((column) => clipboardNumber(column.value(row), column.kind))]),
+  ];
+}
+
+export function resultsClipboardText(view, options = {}) {
+  return resultsTableCells(view, options).map((cells) => cells.join("\t")).join("\r\n");
+}
+
+function csvField(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function resultsCsvText(view, options = {}) {
+  const lines = resultsTableCells(view, options).map((cells) => cells.map(csvField).join(","));
+  return lines.length ? `${lines.join("\r\n")}\r\n` : "";
 }
 
 /* The fan chart's bands: one per symmetric pair of the chosen percentiles

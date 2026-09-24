@@ -1,6 +1,7 @@
 import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import {
+  applyTabbedPageSaveBar,
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
@@ -40,6 +41,9 @@ import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residu
 import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
 import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
 import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260923a";
+import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
+import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";
+import { wireFramedScrollActivity } from "/ui/shared/styles/framed_scroll_activity.js";
 import {
   BST_BASIS_OPTIONS,
   BST_DEFAULT_PERCENTILES,
@@ -51,6 +55,7 @@ import {
   formatRunDuration,
   parsePercentileList,
   resultsClipboardText,
+  resultsCsvText,
   resultsView,
   BST_DISTRIBUTION_OPTIONS,
   BST_METHOD_TYPE,
@@ -72,7 +77,6 @@ import {
   residualColumnLabels,
   residualGrid,
   runInputSnapshot,
-  simulationSummary,
   targetRows,
 } from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923d";
 
@@ -117,10 +121,6 @@ let fanChart = null;
 let menuState = null;
 
 const els = {
-  headerName: document.getElementById("bstHeaderName"),
-  stateChip: document.getElementById("bstStateChip"),
-  stateLabel: document.getElementById("bstStateLabel"),
-  runInfo: document.getElementById("bstRunInfo"),
   simulateBtn: document.getElementById("bstSimulateBtn"),
   saveBtn: document.getElementById("bstSaveBtn"),
   cancelBtn: document.getElementById("bstCancelBtn"),
@@ -168,6 +168,7 @@ const els = {
   percentileResetBtn: document.getElementById("bstPercentileResetBtn"),
   fullLadderInput: document.getElementById("bstFullLadderInput"),
   copyResultsBtn: document.getElementById("bstCopyResultsBtn"),
+  downloadResultsBtn: document.getElementById("bstDownloadResultsBtn"),
   resultsStale: document.getElementById("bstResultsStale"),
   staleSimulateBtn: document.getElementById("bstStaleSimulateBtn"),
   resultsHead: document.getElementById("bstResultsHead"),
@@ -183,6 +184,7 @@ const els = {
   fanEmpty: document.getElementById("bstFanEmpty"),
   fanTooltip: document.getElementById("bstFanTooltip"),
   menu: document.getElementById("bstMenu"),
+  cellContextMenu: document.getElementById("bstCellContextMenu"),
 };
 
 const closeConfirm = createPageCloseConfirm({ subject: BST_METHOD_TYPE });
@@ -232,6 +234,18 @@ const detailsDependencies = createDetailsDependenciesController({
   isProjectInstanceHost: window.parent !== window,
   setStatus: (message) => postStatus(message),
 });
+// The grids select and copy like the other method pages' grids.
+const gridTables = [els.residualBody, els.targetsBody, els.resultsTableBody].map((body) => body.closest("table"));
+const cellSelection = createMethodGridSelection({
+  tables: gridTables.map((table, index) => ({
+    key: String(index),
+    table,
+    scrollHost: table.closest(".bstTableWrap"),
+  })),
+  contextMenu: els.cellContextMenu,
+  onCopied: () => postStatus("Copied the selected values."),
+});
+let postedRunState = "";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -286,25 +300,33 @@ function currentRunState() {
   });
 }
 
+// A selected cell copies its raw figure rather than the formatted text.
+function copyValue(value) {
+  const n = numberOrNull(value);
+  return n === null ? "" : String(n);
+}
+
+function refreshGrid(body) {
+  tagMethodGridCells(body.closest("table"));
+  cellSelection.applyDom();
+}
+
+// The run state shows as a chip beside the window title, which Project
+// Instance draws.
+function postRunState(run) {
+  const key = `${run.key}|${run.label}`;
+  if (key === postedRunState) return;
+  postedRunState = key;
+  try {
+    window.parent?.postMessage({ type: "arcrho:window-run-state", inst, state: run.key, label: run.label }, "*");
+  } catch {}
+}
+
 function syncHeader() {
   const name = state.settings.name;
-  els.headerName.textContent = name || BST_METHOD_TYPE;
   document.title = name ? `${name} - ${BST_METHOD_TYPE}` : BST_METHOD_TYPE;
   const run = currentRunState();
-  els.stateChip.dataset.state = run.key;
-  els.stateLabel.textContent = run.label;
-  const summary = simulationSummary(state.method);
-  const duration = formatRunDuration(state.lastRunMs);
-  els.runInfo.textContent = state.running
-    ? `Running ${formatNumber(state.settings.simulationCount)} simulations`
-    : hasSimulationRun(state.method)
-      ? [
-        `${formatNumber(summary.simulation_count)} simulations`,
-        `seed ${summary.random_seed}`,
-        ...(duration ? [`ran in ${duration}`] : []),
-        ...(state.runUnsaved ? ["not saved yet"] : []),
-      ].join(" · ")
-      : "";
+  postRunState(run);
   const canRun = !state.running && !!state.settings.dfmMethod;
   for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) button.disabled = !canRun;
   els.resultsStale.hidden = run.key !== "changed";
@@ -503,7 +525,7 @@ function scaleRowsMarkup(title, block, userValues, userKey, columnCount) {
       }
       const value = Array.isArray(block?.[key]) ? block[key][c] : null;
       const cls = key === "selected" ? "bstCell bstResultCell" : "bstCell bstDerivedCell";
-      return `<td class="${cls}">${formatNumber(value, 3)}</td>`;
+      return `<td class="${cls}" data-copy-value="${copyValue(value)}">${formatNumber(value, 3)}</td>`;
     }).join("");
     return `<tr><td class="bstOriginCell bstScaleLabel">${label}</td>${cells}</tr>`;
   }).join("");
@@ -530,7 +552,7 @@ function renderResiduals() {
     Array.from({ length: columnCount }, (_, c) => {
       const value = row[c];
       const cls = flags[r]?.[c] ? "bstCell bstFlaggedCell" : "bstCell";
-      return `<td class="${cls}">${formatNumber(value, 3)}</td>`;
+      return `<td class="${cls}" data-copy-value="${copyValue(value)}">${formatNumber(value, 3)}</td>`;
     }).join("")}</tr>`).join("");
   const residuals = state.method?.residuals_tab || {};
   const scaleRows = state.settings.showScaleValues
@@ -538,6 +560,7 @@ function renderResiduals() {
       + scaleRowsMarkup("Scale (Forecasting)", residuals.scale_values_forecasting, state.settings.userScaleValuesForecasting, "forecasting", columnCount)
     : "";
   els.residualBody.innerHTML = rows + scaleRows;
+  refreshGrid(els.residualBody);
   const adjustment = numberOrNull(residuals.residual_adjustment);
   const bias = numberOrNull(residuals.bias_factor);
   const flagged = flags.flat().filter(Boolean).length;
@@ -551,7 +574,7 @@ function renderResiduals() {
 }
 
 function targetCell(value, decimals = 0, extra = "") {
-  return `<td class="bstCell ${extra}">${formatNumber(value, decimals)}</td>`;
+  return `<td class="bstCell ${extra}" data-copy-value="${copyValue(value)}">${formatNumber(value, decimals)}</td>`;
 }
 
 function renderTargets() {
@@ -569,6 +592,7 @@ function renderTargets() {
   </tr>`;
   if (!rows.length) {
     els.targetsBody.innerHTML = `<tr><td class="bstEmptyRow" colspan="8">Choose a DFM and simulate to list the origins.</td></tr>`;
+    refreshGrid(els.targetsBody);
     els.targetsCaption.textContent = "";
     return;
   }
@@ -590,7 +614,7 @@ function renderTargets() {
         : ""}</td>
       ${targetCell(row.unscaledMean, 0, "bstDerivedCell")}
       ${targetCell(row.difference, 0, "bstDerivedCell")}
-      <td class="bstCell bstDerivedCell">${formatPercent(row.ratio)}</td>
+      <td class="bstCell bstDerivedCell" data-copy-value="${copyValue(row.ratio)}">${formatPercent(row.ratio)}</td>
     </tr>`;
   }).join("");
   els.targetsBody.innerHTML = `${body}<tr class="bstTotalRow">
@@ -601,8 +625,9 @@ function renderTargets() {
       <td class="bstCell bstInactiveCell"></td>
       ${targetCell(total.unscaledMean, 0, "bstDerivedCell")}
       ${targetCell(total.difference, 0, "bstDerivedCell")}
-      <td class="bstCell bstDerivedCell">${formatPercent(total.ratio)}</td>
+      <td class="bstCell bstDerivedCell" data-copy-value="${copyValue(total.ratio)}">${formatPercent(total.ratio)}</td>
     </tr>`;
+  refreshGrid(els.targetsBody);
   els.targetsCaption.textContent = pending
     ? "The target reserves and the unscaled means update on the next Simulate or Save."
     : "";
@@ -632,6 +657,7 @@ function renderResultsTable(view) {
   const { head, body } = build(view, state.results.percentiles, { cssPrefix: "bst" });
   els.resultsHead.innerHTML = head;
   els.resultsTableBody.innerHTML = body;
+  refreshGrid(els.resultsTableBody);
 }
 
 function renderResultsCharts(view) {
@@ -680,6 +706,43 @@ function commitPercentiles() {
   renderResults();
 }
 
+// A table action shows its done label with a check for a moment.
+function flashDone(button) {
+  const label = button.querySelector(".bstTableActionLabel");
+  button.classList.add("isDone");
+  label.textContent = button.dataset.doneLabel;
+  clearTimeout(button.doneTimer);
+  button.doneTimer = setTimeout(() => {
+    button.classList.remove("isDone");
+    label.textContent = button.dataset.label;
+  }, 1400);
+}
+
+function resultsTableOptions() {
+  return { percentiles: state.results.percentiles, fullLadder: state.results.fullLadder };
+}
+
+// Download CSV saves the Results table as it is shown, through the desktop
+// host's save dialog.
+async function downloadResultsCsv() {
+  const payload = resultsCsvText(currentResultsView(), resultsTableOptions());
+  const host = window.ADAHost || window.top?.ADAHost || null;
+  if (!payload) return;
+  if (typeof host?.saveTextFile !== "function") {
+    postStatus("Downloading a CSV needs the desktop app.", "error");
+    return;
+  }
+  const name = state.settings.name || BST_METHOD_TYPE;
+  const result = await host.saveTextFile({ data: payload, suggestedName: `${name} - Results.csv` });
+  if (result?.canceled) return;
+  if (result?.error || !result?.path) {
+    postStatus(`Download failed: ${result?.error || "the file was not written"}`, "error");
+    return;
+  }
+  postStatus(`Saved the results to ${result.path}.`);
+  flashDone(els.downloadResultsBtn);
+}
+
 async function copyResults() {
   const view = currentResultsView();
   const payload = resultsClipboardText(view, {
@@ -690,6 +753,7 @@ async function copyResults() {
   try {
     await navigator.clipboard.writeText(payload);
     postStatus(`Copied ${payload.split("\r\n").length - 1} rows of results.`);
+    flashDone(els.copyResultsBtn);
   } catch (err) {
     postStatus(`Copy failed: ${String(err?.message || err)}`, "error");
   }
@@ -721,6 +785,7 @@ function wireResults() {
     renderResults();
   });
   els.copyResultsBtn.addEventListener("click", () => void copyResults());
+  els.downloadResultsBtn.addEventListener("click", () => void downloadResultsCsv());
   for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) {
     button.addEventListener("click", () => void simulateFromUser());
   }
@@ -910,6 +975,10 @@ async function simulateFromUser() {
   state.running = true;
   syncHeader();
   postStatus(`Running ${formatNumber(settings.simulationCount)} simulations.`);
+  const runCard = showSimulationRun({
+    title: "Simulating",
+    detail: `${formatNumber(settings.simulationCount)} simulations`,
+  });
   try {
     const result = await simulateBootstrapMethod({
       project_name: state.project,
@@ -928,6 +997,7 @@ async function simulateFromUser() {
     console.error(err);
     postStatus(`Simulation failed: ${String(err?.message || err)}`, "error");
   } finally {
+    await runCard.finish();
     state.running = false;
     renderAll();
     markDirty();
@@ -1211,6 +1281,8 @@ async function init() {
     emptyState: els.fanEmpty,
   });
   initTabbedPage();
+  applyTabbedPageSaveBar(document.getElementById("bstSaveBar"));
+  wireFramedScrollActivity(document);
   wireMenu();
   wireInputs();
   wireResults();

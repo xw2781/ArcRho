@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260911a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260830a">
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
+  <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a">
   <link rel="stylesheet" href="/ui/method_pages/bootstrap/bootstrap.css?v=20260923b">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a">
@@ -17,23 +19,8 @@
 </head>
 <body data-arcrho-page-hold="1">
   <main class="bstShell">
-    <!-- The run state and the actions sit above the tabs, so every tab shows
-         whether the stored run still describes the inputs on screen. -->
-    <header class="bstHeader">
-      <div class="bstHeaderIdentity">
-        <span class="bstHeaderName" id="bstHeaderName">Bootstrap</span>
-        <span class="bstStateChip" id="bstStateChip" data-state="not-run"><span class="bstStateDot" aria-hidden="true"></span><span id="bstStateLabel">Not run yet</span></span>
-        <span class="bstRunInfo" id="bstRunInfo"></span>
-      </div>
-      <div class="bstHeaderActions">
-        <button class="bstButton primary bstRunButton" id="bstSimulateBtn" type="button">Simulate</button>
-        <button class="bstButton primary" id="bstSaveBtn" type="button">Save</button>
-        <button class="bstButton" id="bstCancelBtn" type="button">Cancel</button>
-      </div>
-    </header>
-
     <section class="bstTabbed" id="bstTabbedPage">
-      <div class="bstPageHost">
+      <div class="bstPageHost ar-framed-scroll">
         <section class="bstPage arDetailsRoot" id="bstDetailsPage" data-page="details" role="tabpanel">
           <div class="arDetailsSection">
             <div class="arDetailsGrid">
@@ -60,7 +47,7 @@
           <div class="arDetailsSection">
             <div class="arDetailsGrid">
               <label class="arDetailsLabel" for="bstDfmInput">DFM : </label>
-              <div class="bstFieldControl arDetailsField withPicker bstSourceField">
+              <div class="bstFieldControl arDetailsField withPicker">
                 <input class="bstInput arDetailsControl" id="bstDfmInput" type="text" readonly>
                 <button class="bstIconButton" id="bstDfmBtn" type="button" aria-label="Select DFM">...</button>
               </div>
@@ -127,8 +114,8 @@
           </div>
           <div class="bstResidualsSplit">
             <div class="bstResidualsGridColumn">
-              <div class="bstTableWrap">
-                <table class="bstTable bstResidualTable" aria-label="Bootstrap residuals">
+              <div class="ar-framed-scroll bstTableWrap">
+                <table class="arSpreadsheetTable bstTable bstResidualTable" aria-label="Bootstrap residuals">
                   <thead id="bstResidualHead"></thead>
                   <tbody id="bstResidualBody"></tbody>
                 </table>
@@ -217,8 +204,8 @@
               </div>
             </div>
           </div>
-          <div class="bstTableWrap bstTargetsWrap">
-            <table class="bstTable bstTargetsTable" aria-label="Bootstrap targets">
+          <div class="ar-framed-scroll bstTableWrap bstTargetsWrap">
+            <table class="arSpreadsheetTable bstTable bstTargetsTable" aria-label="Bootstrap targets">
               <thead id="bstTargetsHead"></thead>
               <tbody id="bstTargetsBody"></tbody>
             </table>
@@ -245,19 +232,21 @@
                   <label class="bstToolCheck"><input id="bstFullLadderInput" type="checkbox"> Full Ladder</label>
                 </div>
               </div>
-              <div class="bstToolGroup">
-                <span class="bstToolTitle">Table</span>
-                <div class="bstToolControls">
-                  <button class="bstButton bstToolButton" id="bstCopyResultsBtn" type="button">Copy</button>
-                </div>
+              <div class="bstTableActions">
+                <button class="bstTableAction" id="bstCopyResultsBtn" type="button" data-label="Copy Table" data-done-label="Copied">
+                  <span class="bstTableActionIcon" data-icon="copy" aria-hidden="true"></span><span class="bstTableActionLabel">Copy Table</span>
+                </button>
+                <button class="bstTableAction" id="bstDownloadResultsBtn" type="button" data-label="Download CSV" data-done-label="Saved">
+                  <span class="bstTableActionIcon" data-icon="download" aria-hidden="true"></span><span class="bstTableActionLabel">Download CSV</span>
+                </button>
               </div>
             </div>
             <div class="bstNotice" id="bstResultsStale" hidden>
               <span>The inputs changed since this run, so these results describe the earlier settings.</span>
               <button class="bstButton primary bstToolButton" id="bstStaleSimulateBtn" type="button">Simulate</button>
             </div>
-            <div class="bstTableWrap bstResultsWrap">
-              <table class="bstTable bstResultsTable" aria-label="Bootstrap results">
+            <div class="ar-framed-scroll bstTableWrap bstResultsWrap">
+              <table class="arSpreadsheetTable bstTable bstResultsTable" aria-label="Bootstrap results">
                 <thead id="bstResultsHead"></thead>
                 <tbody id="bstResultsTableBody"></tbody>
               </table>
@@ -308,9 +297,26 @@
         </section>
       </div>
     </section>
+
+    <!-- The run sits beside Save and Cancel; its state shows beside the window
+         title, which Project Instance draws. -->
+    <footer class="bstSaveBar" id="bstSaveBar">
+      <div class="bstSaveActions">
+        <button class="bstButton primary bstRunButton" id="bstSimulateBtn" type="button">Simulate</button>
+        <button class="bstButton primary" id="bstSaveBtn" type="button">Save</button>
+        <button class="bstButton" id="bstCancelBtn" type="button">Cancel</button>
+      </div>
+    </footer>
   </main>
 
   <div class="bstMenu" id="bstMenu" role="listbox" hidden></div>
+  <!-- The cell context menu the other method grids offer. -->
+  <div id="bstCellContextMenu" class="ctx-menu" role="menu" style="display:none;">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" type="button" data-action="copy_value">Copy values</button>
+      <button class="ctx-item" type="button" data-action="remove_highlights">Remove Highlights</button>
+    </div>
+  </div>
 
   <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
   <script type="module" src="/ui/method_pages/bootstrap/bootstrap_main.js?v=20260923d"></script>

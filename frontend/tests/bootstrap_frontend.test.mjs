@@ -18,6 +18,7 @@ import {
   ladderTableRows,
   parsePercentileList,
   resultsClipboardText,
+  resultsCsvText,
   resultsView,
   summaryTableColumns,
   flagLargeResiduals,
@@ -325,6 +326,15 @@ test("copying the results gives tab-separated plain numbers", () => {
   assert.equal(ladder.length, 1 + 207);
 });
 
+test("downloading the results gives the same rows as a CSV", () => {
+  const view = resultsView(resultsMethod());
+  const lines = resultsCsvText(view, { percentiles: [50] }).split("\r\n");
+  assert.equal(lines[0], "Origin,Latest,Mean Reserve,Std. Deviation,CV,50%,Mean Ultimate,DFM Reserve,Mean - DFM");
+  assert.equal(lines[1], "2025,100,20,4,0.2,60,120,18,2");
+  assert.equal(lines.at(-1), "", "the file ends with a line break");
+  assert.equal(resultsCsvText(null), "");
+});
+
 test("the fan chart draws one band per symmetric pair of chosen percentiles, widest first", () => {
   assert.deepEqual(fanChartBands(BST_DEFAULT_PERCENTILES), [
     { lower: 0.5, upper: 99.5 },
@@ -393,4 +403,39 @@ test("the Results tab carries the view switches, the percentile chooser and both
   ]) {
     assert.match(html, new RegExp(`id="${id}"`, "u"), `${id} is on the page`);
   }
+});
+
+test("Bootstrap and Stochastic Consolidation keep their actions in the bottom bar and the run state in the title", async () => {
+  const [bstHtml, bstMain, sconHtml, sconMain, windows, messages] = await Promise.all([
+    read("ui/method_pages/bootstrap/bootstrap.html"),
+    read("ui/method_pages/bootstrap/bootstrap_main.js"),
+    read("ui/method_pages/stochastic_consolidation/stochastic_consolidation.html"),
+    read("ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js"),
+    read("ui/project_instance/project_instance_windows.js"),
+    read("ui/project_instance/project_instance_messages.js"),
+  ]);
+  for (const [html, main, prefix, run] of [
+    [bstHtml, bstMain, "bst", "Simulate"],
+    [sconHtml, sconMain, "scon", "Consolidate"],
+  ]) {
+    // No header above the tabs: the run, Save and Cancel sit in the save bar.
+    assert.doesNotMatch(html, new RegExp(`${prefix}Header`, "u"));
+    const saveBar = html.slice(html.indexOf(`<footer class="${prefix}SaveBar" id="${prefix}SaveBar">`), html.indexOf("</footer>"));
+    for (const id of [`${prefix}${run}Btn`, `${prefix}SaveBtn`, `${prefix}CancelBtn`]) {
+      assert.match(saveBar, new RegExp(`id="${id}"`, "u"), `${id} sits in the save bar`);
+    }
+    // The run state is a chip beside the window title.
+    assert.match(main, /type: "arcrho:window-run-state", inst, state: run\.key, label: run\.label/u);
+    // A run shows the simulation card for at least its minimum time.
+    assert.match(main, /const runCard = showSimulationRun\(/u);
+    assert.match(main, /await runCard\.finish\(\);\s*state\.running = false;/u);
+    // Scroll surfaces wear the framed scrollbar, and the grids select like the
+    // other method pages' grids.
+    assert.match(html, new RegExp(`class="${prefix}PageHost ar-framed-scroll"`, "u"));
+    assert.match(html, new RegExp(`id="${prefix}CellContextMenu" class="ctx-menu"`, "u"));
+    assert.match(main, /wireFramedScrollActivity\(document\);/u);
+    assert.match(main, /createMethodGridSelection\(\{/u);
+  }
+  assert.match(messages, /msg\.type === "arcrho:window-run-state"/u);
+  assert.match(windows, /function setWindowRunState\(frame, runState, label\)/u);
 });

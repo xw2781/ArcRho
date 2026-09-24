@@ -337,6 +337,7 @@ export {
   summaryTableColumns,
   ladderTableRows,
   resultsClipboardText,
+  resultsCsvText,
   fanChartBands,
   fanChartData,
   distributionChartData,

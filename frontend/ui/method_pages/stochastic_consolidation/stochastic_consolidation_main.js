@@ -1,6 +1,7 @@
 import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { openDatasetNamePicker } from "/ui/shared/components/pickers/dataset_name_picker.js";
 import {
+  applyTabbedPageSaveBar,
   createTabbedPage,
   requestTabbedPageWindowClose,
   updateTabbedPageSaveControls,
@@ -31,6 +32,9 @@ import {
 } from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { STOCHASTIC_CONSOLIDATION_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
+import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
+import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";
+import { wireFramedScrollActivity } from "/ui/shared/styles/framed_scroll_activity.js";
 import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
 import {
   escapeRangeHtml as escapeHtml,
@@ -48,6 +52,7 @@ import {
   formatRunDuration,
   parsePercentileList,
   resultsClipboardText,
+  resultsCsvText,
   resultsView,
 } from "/ui/shared/components/reserve_range/reserve_range_model.js?v=20260923a";
 import {
@@ -131,10 +136,6 @@ let fanChart = null;
 let menuState = null;
 
 const els = {
-  headerName: document.getElementById("sconHeaderName"),
-  stateChip: document.getElementById("sconStateChip"),
-  stateLabel: document.getElementById("sconStateLabel"),
-  runInfo: document.getElementById("sconRunInfo"),
   consolidateBtn: document.getElementById("sconConsolidateBtn"),
   saveBtn: document.getElementById("sconSaveBtn"),
   cancelBtn: document.getElementById("sconCancelBtn"),
@@ -172,6 +173,7 @@ const els = {
   percentileResetBtn: document.getElementById("sconPercentileResetBtn"),
   fullLadderInput: document.getElementById("sconFullLadderInput"),
   copyResultsBtn: document.getElementById("sconCopyResultsBtn"),
+  downloadResultsBtn: document.getElementById("sconDownloadResultsBtn"),
   resultsStale: document.getElementById("sconResultsStale"),
   resultsStaleText: document.getElementById("sconResultsStaleText"),
   staleConsolidateBtn: document.getElementById("sconStaleConsolidateBtn"),
@@ -190,6 +192,7 @@ const els = {
   breakdownBody: document.getElementById("sconBreakdownBody"),
   breakdownCaption: document.getElementById("sconBreakdownCaption"),
   menu: document.getElementById("sconMenu"),
+  cellContextMenu: document.getElementById("sconCellContextMenu"),
 };
 
 const closeConfirm = createPageCloseConfirm({ subject: SCON_METHOD_TYPE });
@@ -239,6 +242,18 @@ const detailsDependencies = createDetailsDependenciesController({
   isProjectInstanceHost: window.parent !== window,
   setStatus: (message) => postStatus(message),
 });
+// The value grids select and copy like the other method pages' grids. The
+// correlation matrices join as they are drawn, since each draw builds new
+// tables.
+const cellSelection = createMethodGridSelection({
+  tables: [els.resultsTableBody, els.breakdownBody].map((body, index) => {
+    const table = body.closest("table");
+    return { key: `grid${index}`, table, scrollHost: table.closest(".sconTableWrap") };
+  }),
+  contextMenu: els.cellContextMenu,
+  onCopied: () => postStatus("Copied the selected values."),
+});
+let postedRunState = "";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -277,25 +292,33 @@ function currentRunState() {
   });
 }
 
+// A selected cell copies its raw figure rather than the formatted text.
+function copyValue(value) {
+  const n = numberOrNull(value);
+  return n === null ? "" : String(n);
+}
+
+function refreshGrid(body) {
+  tagMethodGridCells(body.closest("table"));
+  cellSelection.applyDom();
+}
+
+// The run state shows as a chip beside the window title, which Project
+// Instance draws.
+function postRunState(run) {
+  const key = `${run.key}|${run.label}`;
+  if (key === postedRunState) return;
+  postedRunState = key;
+  try {
+    window.parent?.postMessage({ type: "arcrho:window-run-state", inst, state: run.key, label: run.label }, "*");
+  } catch {}
+}
+
 function syncHeader() {
   const name = state.settings.name;
-  els.headerName.textContent = name || SCON_METHOD_TYPE;
   document.title = name ? `${name} - ${SCON_METHOD_TYPE}` : SCON_METHOD_TYPE;
   const run = currentRunState();
-  els.stateChip.dataset.state = run.key;
-  els.stateLabel.textContent = run.label;
-  const summary = state.method?.results_tab?.simulation_summary;
-  const duration = formatRunDuration(state.lastRunMs);
-  els.runInfo.textContent = state.running
-    ? `Consolidating ${state.settings.segments.length} segments`
-    : hasRun()
-      ? [
-        `${formatNumber(summary?.simulation_count)} simulations`,
-        `seed ${summary?.random_seed ?? ""}`,
-        ...(duration ? [`ran in ${duration}`] : []),
-        ...(state.runUnsaved ? ["not saved yet"] : []),
-      ].join(" · ")
-      : "";
+  postRunState(run);
   const canRun = !state.running && state.settings.segments.length > 0;
   for (const button of [els.consolidateBtn, els.emptyConsolidateBtn, els.staleConsolidateBtn]) button.disabled = !canRun;
   const stale = run.key === "changed" || run.key === "segment";
@@ -632,19 +655,19 @@ function matrixMarkup(title, matrix, { editable = false, labels = matrixLabels()
   const body = labels.map((label, i) => `<tr><td class="sconOriginCell">${escapeHtml(label)}</td>${
     Array.from({ length: size }, (_, j) => {
       const value = numberOrNull(matrix?.[i]?.[j]);
-      if (i === j) return `<td class="sconCell sconDiagonalCell">${formatNumber(1, 4)}</td>`;
+      if (i === j) return `<td class="sconCell sconDiagonalCell" data-copy-value="1">${formatNumber(1, 4)}</td>`;
       if (editable && j > i) {
         const invalid = state.invalidCell && state.invalidCell[0] === i && state.invalidCell[1] === j;
         return `<td class="sconCell sconEntryCell"><input class="sconCellInput" type="text" inputmode="decimal"
           data-matrix-row="${i}" data-matrix-col="${j}" value="${value === null ? "" : escapeHtml(String(+value.toFixed(6)))}"
           ${invalid ? "aria-invalid=\"true\"" : ""} aria-label="${escapeHtml(`Target correlation of ${labels[i]} and ${labels[j]}`)}"></td>`;
       }
-      return `<td class="sconCell${editable ? " sconMirrorCell" : ""}">${formatNumber(value, 4)}</td>`;
+      return `<td class="sconCell${editable ? " sconMirrorCell" : ""}" data-copy-value="${copyValue(value)}">${formatNumber(value, 4)}</td>`;
     }).join("")}</tr>`).join("");
   return `<div class="sconMatrixBlock">
     ${title ? `<h3 class="sconMatrixTitle">${escapeHtml(title)}</h3>` : ""}
-    <div class="sconTableWrap sconMatrixWrap">
-      <table class="sconTable sconMatrixTable" aria-label="${escapeHtml(title || "Correlation matrix")}">
+    <div class="ar-framed-scroll sconTableWrap sconMatrixWrap">
+      <table class="arSpreadsheetTable sconTable sconMatrixTable" aria-label="${escapeHtml(title || "Correlation matrix")}">
         <thead>${head}</thead><tbody>${body}</tbody>
       </table>
     </div>
@@ -658,6 +681,14 @@ const OPTION_CAPTIONS = Object.freeze({
 });
 
 function renderCorrelation() {
+  renderCorrelationView();
+  els.matrices.querySelectorAll("table").forEach((table, index) => {
+    tagMethodGridCells(table);
+    cellSelection.addTable({ key: `matrix${index}`, table, scrollHost: table.closest(".sconTableWrap") });
+  });
+}
+
+function renderCorrelationView() {
   const s = state.settings;
   els.correlationControl.innerHTML = segmentedMarkup(SCON_CORRELATION_OPTIONS, s.correlationOption);
   setDropdown(els.dependencyButton, SCON_DEPENDENCY_OPTIONS, s.dependencyType);
@@ -744,27 +775,29 @@ function renderBreakdown() {
   const breakdown = segmentBreakdown(state.method);
   if (!breakdown) {
     els.breakdownBody.innerHTML = `<tr><td class="sconEmptyRow" colspan="7">The stored run has no segment figures.</td></tr>`;
+    refreshGrid(els.breakdownBody);
     els.breakdownCaption.textContent = "";
     return;
   }
   const rowMarkup = (row) => `<tr>
     <td class="sconCell sconTextCell" data-full-class="${escapeHtml(row.reservingClass)}">${escapeHtml(row.shortLabel)}</td>
     <td class="sconCell sconTextCell">${escapeHtml(row.methodName)}</td>
-    <td class="sconCell">${formatNumber(row.factor, 2)}</td>
-    <td class="sconCell">${formatNumber(row.mean)}</td>
-    <td class="sconCell">${formatNumber(row.sd)}</td>
-    <td class="sconCell">${formatPercent(row.cv)}</td>
-    <td class="sconCell">${formatPercent(row.share)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(row.factor)}">${formatNumber(row.factor, 2)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(row.mean)}">${formatNumber(row.mean)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(row.sd)}">${formatNumber(row.sd)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(row.cv)}">${formatPercent(row.cv)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(row.share)}">${formatPercent(row.share)}</td>
   </tr>`;
   els.breakdownBody.innerHTML = breakdown.rows.map(rowMarkup).join("") + `<tr class="sconTotalRow">
     <td class="sconCell sconTextCell">Total</td>
     <td class="sconCell sconTextCell"></td>
     <td class="sconCell"></td>
-    <td class="sconCell">${formatNumber(breakdown.total.mean)}</td>
-    <td class="sconCell">${formatNumber(breakdown.total.sd)}</td>
-    <td class="sconCell">${formatPercent(breakdown.total.cv)}</td>
-    <td class="sconCell">${formatPercent(breakdown.total.share)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(breakdown.total.mean)}">${formatNumber(breakdown.total.mean)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(breakdown.total.sd)}">${formatNumber(breakdown.total.sd)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(breakdown.total.cv)}">${formatPercent(breakdown.total.cv)}</td>
+    <td class="sconCell" data-copy-value="${copyValue(breakdown.total.share)}">${formatPercent(breakdown.total.share)}</td>
   </tr>`;
+  refreshGrid(els.breakdownBody);
   for (const cell of els.breakdownBody.querySelectorAll("[data-full-class]")) {
     attachArcrhoTooltip(cell, cell.dataset.fullClass);
   }
@@ -798,6 +831,7 @@ function renderResults() {
   const { head, body } = build(view, state.results.percentiles, { cssPrefix: "scon" });
   els.resultsHead.innerHTML = head;
   els.resultsTableBody.innerHTML = body;
+  refreshGrid(els.resultsTableBody);
   els.resultsCaption.textContent = `Consolidated scaled ${view.measure} over ${formatNumber(view.simulationCount)} simulations, seed ${view.randomSeed ?? ""}.`;
   const noun = view.measure === "ultimates" ? "Ultimate" : "Reserve";
   els.distributionTitle.textContent = `Distribution Of Total ${noun}`;
@@ -819,6 +853,43 @@ function commitPercentiles() {
   renderResults();
 }
 
+// A table action shows its done label with a check for a moment.
+function flashDone(button) {
+  const label = button.querySelector(".sconTableActionLabel");
+  button.classList.add("isDone");
+  label.textContent = button.dataset.doneLabel;
+  clearTimeout(button.doneTimer);
+  button.doneTimer = setTimeout(() => {
+    button.classList.remove("isDone");
+    label.textContent = button.dataset.label;
+  }, 1400);
+}
+
+function resultsTableOptions() {
+  return { percentiles: state.results.percentiles, fullLadder: state.results.fullLadder };
+}
+
+// Download CSV saves the Results table as it is shown, through the desktop
+// host's save dialog.
+async function downloadResultsCsv() {
+  const payload = resultsCsvText(currentResultsView(), resultsTableOptions());
+  const host = window.ADAHost || window.top?.ADAHost || null;
+  if (!payload) return;
+  if (typeof host?.saveTextFile !== "function") {
+    postStatus("Downloading a CSV needs the desktop app.", "error");
+    return;
+  }
+  const name = state.settings.name || SCON_METHOD_TYPE;
+  const result = await host.saveTextFile({ data: payload, suggestedName: `${name} - Results.csv` });
+  if (result?.canceled) return;
+  if (result?.error || !result?.path) {
+    postStatus(`Download failed: ${result?.error || "the file was not written"}`, "error");
+    return;
+  }
+  postStatus(`Saved the results to ${result.path}.`);
+  flashDone(els.downloadResultsBtn);
+}
+
 async function copyResults() {
   const payload = resultsClipboardText(currentResultsView(), {
     percentiles: state.results.percentiles,
@@ -828,6 +899,7 @@ async function copyResults() {
   try {
     await navigator.clipboard.writeText(payload);
     postStatus(`Copied ${payload.split("\r\n").length - 1} rows of results.`);
+    flashDone(els.copyResultsBtn);
   } catch (err) {
     postStatus(`Copy failed: ${String(err?.message || err)}`, "error");
   }
@@ -932,6 +1004,10 @@ async function consolidateFromUser() {
   state.running = true;
   syncHeader();
   postStatus(`Consolidating ${settings.segments.length} segments.`);
+  const runCard = showSimulationRun({
+    title: "Consolidating",
+    detail: `${formatNumber(settings.segments.length)} segments`,
+  });
   try {
     const result = await consolidateStochasticConsolidation({
       project_name: state.project,
@@ -949,6 +1025,7 @@ async function consolidateFromUser() {
     console.error(err);
     postStatus(`Consolidate failed: ${String(err?.message || err)}`, "error");
   } finally {
+    await runCard.finish();
     state.running = false;
     renderAll();
     markDirty();
@@ -1217,6 +1294,7 @@ function wireInputs() {
     renderResults();
   });
   els.copyResultsBtn.addEventListener("click", () => void copyResults());
+  els.downloadResultsBtn.addEventListener("click", () => void downloadResultsCsv());
   for (const button of [els.consolidateBtn, els.emptyConsolidateBtn, els.staleConsolidateBtn]) {
     button.addEventListener("click", () => void consolidateFromUser());
   }
@@ -1303,6 +1381,8 @@ async function init() {
     cssPrefix: "scon",
   });
   initTabbedPage();
+  applyTabbedPageSaveBar(document.getElementById("sconSaveBar"));
+  wireFramedScrollActivity(document);
   wireMenu();
   wireInputs();
   wireMessages();

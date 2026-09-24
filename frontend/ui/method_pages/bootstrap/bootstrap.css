@@ -34,72 +34,6 @@ body {
   min-width: 0;
 }
 
-/* Header: identity, run state, and the page actions. */
-.bstHeader {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 40px;
-  padding: 6px 10px 2px;
-  background: #f5f7fa;
-}
-.bstHeaderIdentity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.bstHeaderName {
-  min-width: 0;
-  overflow: hidden;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bstStateChip {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid #cbd5e1;
-  border-radius: 11px;
-  background: #ffffff;
-  color: #475569;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.bstStateDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-.bstStateChip[data-state="current"] { border-color: #bbe5c8; color: var(--bst-success); }
-.bstStateChip[data-state="current"] .bstStateDot { background: var(--bst-success); }
-.bstStateChip[data-state="changed"] { border-color: #f5d0a4; background: var(--bst-warning-soft); color: var(--bst-warning); }
-.bstStateChip[data-state="changed"] .bstStateDot { background: var(--bst-warning); }
-.bstRunInfo {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--bst-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bstHeaderActions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-}
-.bstHeaderActions .bstButton { min-width: 72px; height: 28px; }
-
 .bstTabbed {
   flex: 1 1 auto;
   min-height: 0;
@@ -110,13 +44,41 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  margin: 0 var(--tabbed-page-gutter, 8px) var(--tabbed-page-gutter, 8px);
+  margin: 0 var(--tabbed-page-gutter, 8px);
   padding: 10px;
   border: 1px solid var(--bst-border);
   border-top: 0;
   background: #ffffff;
 }
 .bstPage { display: none; }
+
+/* Save bar: the run, Save and Cancel on the right, as on the other method
+   pages. */
+.bstSaveBar.tabbedPageSaveBar { background: #f5f7fa; }
+.bstSaveActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+.bstSaveBar .bstButton {
+  min-width: 72px;
+  height: 28px;
+}
+#bstSaveBtn {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+#bstSaveBtn:hover:not(:disabled) { background: #1d4ed8; }
+#bstCancelBtn,
+#bstSaveBtn.is-clean {
+  border-color: rgba(21, 34, 54, 0.18);
+  background: #ffffff;
+  color: #1f2937;
+}
+#bstCancelBtn:hover:not(:disabled),
+#bstSaveBtn.is-clean:hover:not(:disabled) { background: #f4f7fb; }
 #bstAuditPage[style*="display: block"],
 #bstAuditPage.bstTabFloatingPage {
   display: flex !important;
@@ -132,7 +94,6 @@ body {
   min-width: 0;
   width: 100%;
 }
-.bstSourceField { max-width: 520px; }
 .bstMediumField { width: 140px; }
 .bstMediumWideField { width: 240px; }
 .bstInlineField {
@@ -343,6 +304,48 @@ body {
   border: 1px solid #cfd8e690;
   border-radius: 2px;
 }
+/* Copy Table and Download CSV: quiet icon commands at the toolbar's right
+   end; each turns into a green check for a moment once it has done its job. */
+.bstTableActions {
+  display: flex;
+  align-self: flex-end;
+  gap: 2px;
+  margin-left: auto;
+}
+.bstTableAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.bstTableAction:hover { border-color: #cbd5e1; background: #f8fafc; color: #1d4ed8; }
+.bstTableAction:focus-visible { outline: none; border-color: #8aa8ff; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16); }
+.bstTableActionIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: url("../../shared/icons/library/copy.svg?v=20260908a") no-repeat center / contain;
+  mask: url("../../shared/icons/library/copy.svg?v=20260908a") no-repeat center / contain;
+}
+.bstTableActionIcon[data-icon="download"] {
+  -webkit-mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
+  mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
+}
+.bstTableAction.isDone { color: #15803d; }
+.bstTableAction.isDone .bstTableActionIcon {
+  -webkit-mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
+  mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
+}
 .bstToolTitle {
   position: absolute;
   top: -8px;
@@ -380,15 +383,15 @@ body {
 .bstTargetField .bstFieldControl { width: 320px; }
 .bstToolInput { height: 28px; }
 
-/* Residuals: grid and chart side by side, stacked when narrow. */
+/* Residuals: the grid takes the full width and the chart sits below it. */
 .bstResidualsSplit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  align-items: start;
 }
 .bstResidualsSplit[hidden] { display: none; }
 .bstResidualsGridColumn { min-width: 0; }
+.bstResidualsGridColumn .bstTableWrap { width: max-content; }
 .bstCaption {
   margin: 6px 2px 0;
   color: var(--bst-muted);
@@ -425,9 +428,6 @@ body {
   width: 100%;
   height: 100%;
 }
-@media (max-width: 1100px) {
-  .bstResidualsSplit { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* Tables */
 .bstTableWrap {
@@ -436,20 +436,13 @@ body {
   border: 1px solid var(--bst-border);
   background: #ffffff;
 }
-.bstTableWrap::-webkit-scrollbar { width: 20px; height: 20px; }
-.bstTableWrap::-webkit-scrollbar-track,
-.bstTableWrap::-webkit-scrollbar-corner { background: #f1f3f5; }
-.bstTableWrap::-webkit-scrollbar-thumb {
-  border: 3px solid #f1f3f5;
-  border-radius: 5px;
-  background-color: rgba(182, 182, 182, 0.2);
-  background-clip: content-box;
-}
-.bstTableWrap::-webkit-scrollbar-thumb:hover { background-color: rgba(120, 120, 120, 0.267); }
 .bstTargetsWrap { width: max-content; }
+/* The grids take their selection look from the shared spreadsheet table, but
+   size their columns to their content. */
 table.bstTable {
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: auto;
   width: max-content;
   font-family: var(--bst-font);
   font-size: 13px;
@@ -457,7 +450,10 @@ table.bstTable {
 .bstTable th,
 .bstTable td {
   height: var(--bst-cell-h);
+  width: auto;
   min-width: 78px;
+  max-width: none;
+  line-height: normal;
   padding: 0 8px;
   border-right: 1px solid var(--bst-grid-border);
   border-bottom: 1px solid var(--bst-grid-border);
@@ -486,19 +482,29 @@ table.bstTable {
   text-align: center;
 }
 .bstTable thead .bstOriginHead { z-index: 3; background: var(--bst-header-cell); }
-.bstTable tbody tr:hover td:not(.bstOriginCell) { background-color: #f8fafc; }
+.bstTable tbody tr:hover td:not(.bstOriginCell, [aria-selected="true"]) { background-color: #f8fafc; }
 .bstTable td.bstFlaggedCell {
   color: var(--bst-warning);
   font-weight: 700;
 }
-.bstTable td.bstDerivedCell { background: var(--bst-derived-cell); }
-.bstTable td.bstResultCell { background: var(--bst-result-cell); }
-.bstTable tbody tr:hover td.bstDerivedCell { background: #d2f1f1; }
-.bstTable td.bstInactiveCell { background: #f5f7fa; }
+.bstTable td.bstDerivedCell { --bst-cell-fill: var(--bst-derived-cell); background: var(--bst-cell-fill); }
+.bstTable td.bstResultCell { --bst-cell-fill: var(--bst-result-cell); background: var(--bst-cell-fill); }
+.bstTable tbody tr:hover td.bstDerivedCell:not([aria-selected="true"]) { background: #d2f1f1; }
+.bstTable td.bstInactiveCell { --bst-cell-fill: #f5f7fa; background: var(--bst-cell-fill); }
 .bstTable td.bstEntryCell {
+  --bst-cell-fill: var(--bst-entry-cell);
   padding: 0;
-  background: var(--bst-entry-cell);
+  background: var(--bst-cell-fill);
 }
+/* The selection tint layers over a fill that carries meaning rather than
+   replacing it, and the labels of a selected line take the shared fill. */
+.bstTable tbody td[aria-selected="true"] {
+  background:
+    linear-gradient(var(--ar-spreadsheet-selection-fill), var(--ar-spreadsheet-selection-fill)),
+    var(--bst-cell-fill, #ffffff);
+}
+.bstTable td.bstOriginCell.arSpreadsheetSelectedLabel,
+.bstTable thead th.arSpreadsheetSelectedLabel { background: var(--ar-spreadsheet-selected-label-fill); }
 .bstTable tr.bstTotalRow td { font-weight: 700; }
 .bstTable tr.bstBandRow td {
   height: 22px;
@@ -562,15 +568,6 @@ table.bstTable {
 .bstSegmentedCompact .bstSegment { padding: 0 12px; }
 .bstPercentileInput { width: 200px; }
 .bstToolButton { height: 28px; }
-.bstStateChip[data-state="running"] { border-color: #bfd3fb; background: var(--bst-accent-soft); color: #1d4ed8; }
-.bstStateChip[data-state="running"] .bstStateDot {
-  background: var(--bst-accent);
-  animation: bstRunPulse 900ms ease-in-out infinite alternate;
-}
-@keyframes bstRunPulse {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
-}
 .bstNotice {
   display: flex;
   align-items: center;
@@ -656,8 +653,6 @@ table.bstTable {
 }
 
 @media (max-width: 720px) {
-  .bstHeader { flex-wrap: wrap; }
-  .bstRunInfo { display: none; }
   .bstToolControls { flex-wrap: wrap; gap: 8px 14px; }
   .bstTargetField .bstFieldControl { width: 220px; }
 }

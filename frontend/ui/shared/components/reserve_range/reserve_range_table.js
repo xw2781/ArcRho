@@ -34,9 +34,11 @@ export function formatRangePercent(value, decimals = 1) {
   return n === null ? "" : `${(n * 100).toFixed(decimals)}%`;
 }
 
+// A selected cell copies its raw figure, so a percentage copies as its fraction.
 function cell(prefix, value, kind, extra = "") {
   const shown = kind === "percent" ? formatRangePercent(value) : formatRangeNumber(value);
-  return `<td class="${prefix}Cell${extra ? ` ${extra}` : ""}">${shown}</td>`;
+  const raw = numberOrNull(value);
+  return `<td class="${prefix}Cell${extra ? ` ${extra}` : ""}" data-copy-value="${raw === null ? "" : raw}">${shown}</td>`;
 }
 
 /* The summary table: one row per origin, then the total. */

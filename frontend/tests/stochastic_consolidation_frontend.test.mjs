@@ -273,7 +273,7 @@ test("the segment breakdown names each segment's share and the diversification",
 test("the page carries every tab and control the design names", async () => {
   const html = await read("ui/method_pages/stochastic_consolidation/stochastic_consolidation.html");
   for (const id of [
-    "sconConsolidateBtn", "sconStateChip", "sconBaseTypeButton", "sconSeedInput", "sconNewSeedBtn",
+    "sconConsolidateBtn", "sconSaveBar", "sconBaseTypeButton", "sconSeedInput", "sconNewSeedBtn",
     "sconSimulationCountInput", "sconAddSegmentBtn", "sconMoveUpBtn", "sconMoveDownBtn", "sconRemoveSegmentBtn",
     "sconCorrelationControl", "sconDependencyButton", "sconDegreesInput", "sconMatrixViewControl",
     "sconMeasureControl", "sconPercentileInput", "sconFullLadderInput", "sconCopyResultsBtn",

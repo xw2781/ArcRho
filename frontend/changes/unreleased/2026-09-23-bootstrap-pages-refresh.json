@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "bootstrap",
+  "audience": "user",
+  "summary": "The Bootstrap and Stochastic Consolidation windows now look and work like the other method windows.",
+  "details": [
+    "Simulate or Consolidate, Save and Cancel sit together at the bottom, and the run state shows beside the window title.",
+    "A running animation shows while a run is in progress.",
+    "Tables select, copy and scroll like the other method tables, and Results can be downloaded as a CSV.",
+    "On Residuals the chart sits below the triangle, and both widen with the window."
+  ]
+}

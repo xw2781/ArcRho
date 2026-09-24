@@ -1,0 +1,52 @@
+/* The running card a stochastic method shows while it simulates: a Galton
+   board whose balls pile up into the bell curve a simulation converges to. */
+.arSimRun {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  background: rgba(244, 246, 248, 0.72);
+  backdrop-filter: blur(1.5px);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.arSimRun.isOpen { opacity: 1; }
+.arSimRunCard {
+  display: flex;
+  width: 300px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  transform: translateY(6px) scale(0.98);
+  transition: transform 180ms ease;
+}
+.arSimRun.isOpen .arSimRunCard { transform: none; }
+.arSimRunBoard {
+  display: block;
+  width: 264px;
+  height: 172px;
+}
+.arSimRunTitle {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+}
+.arSimRunDetail {
+  color: #697386;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-arcrho-theme="dark"] .arSimRun { background: rgba(33, 37, 43, 0.72); }
+:root[data-arcrho-theme="dark"] .arSimRunCard {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-raised);
+}
+:root[data-arcrho-theme="dark"] .arSimRunTitle { color: var(--ar-color-text-strong); }
+:root[data-arcrho-theme="dark"] .arSimRunDetail { color: var(--ar-color-text-muted); }

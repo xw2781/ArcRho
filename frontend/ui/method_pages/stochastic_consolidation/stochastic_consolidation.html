@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="/ui/shared/tabs/details/details_dependencies.css?v=20260820b">
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260911a">
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260830a">
+  <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
+  <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a">
   <link rel="stylesheet" href="/ui/method_pages/stochastic_consolidation/stochastic_consolidation.css?v=20260923a">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260817d">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260916a">
@@ -17,23 +19,8 @@
 </head>
 <body data-arcrho-page-hold="1">
   <main class="sconShell">
-    <!-- The run state and the actions sit above the tabs, so every tab shows
-         whether the stored run still describes the inputs and the segments. -->
-    <header class="sconHeader">
-      <div class="sconHeaderIdentity">
-        <span class="sconHeaderName" id="sconHeaderName">Stochastic Consolidation</span>
-        <span class="sconStateChip" id="sconStateChip" data-state="not-run"><span class="sconStateDot" aria-hidden="true"></span><span id="sconStateLabel">Not run yet</span></span>
-        <span class="sconRunInfo" id="sconRunInfo"></span>
-      </div>
-      <div class="sconHeaderActions">
-        <button class="sconButton primary sconRunButton" id="sconConsolidateBtn" type="button">Consolidate</button>
-        <button class="sconButton primary" id="sconSaveBtn" type="button">Save</button>
-        <button class="sconButton" id="sconCancelBtn" type="button">Cancel</button>
-      </div>
-    </header>
-
     <section class="sconTabbed" id="sconTabbedPage">
-      <div class="sconPageHost">
+      <div class="sconPageHost ar-framed-scroll">
         <section class="sconPage arDetailsRoot" id="sconDetailsPage" data-page="details" role="tabpanel">
           <div class="arDetailsSection">
             <div class="arDetailsGrid">
@@ -117,7 +104,7 @@
               </div>
             </div>
           </div>
-          <div class="sconTableWrap sconSegmentsWrap">
+          <div class="ar-framed-scroll sconTableWrap sconSegmentsWrap">
             <table class="sconTable sconSegmentsTable" aria-label="Included bootstraps">
               <thead>
                 <tr>
@@ -188,19 +175,21 @@
                   <label class="sconToolCheck"><input id="sconFullLadderInput" type="checkbox"> Full Ladder</label>
                 </div>
               </div>
-              <div class="sconToolGroup">
-                <span class="sconToolTitle">Table</span>
-                <div class="sconToolControls">
-                  <button class="sconButton sconToolButton" id="sconCopyResultsBtn" type="button">Copy</button>
-                </div>
+              <div class="sconTableActions">
+                <button class="sconTableAction" id="sconCopyResultsBtn" type="button" data-label="Copy Table" data-done-label="Copied">
+                  <span class="sconTableActionIcon" data-icon="copy" aria-hidden="true"></span><span class="sconTableActionLabel">Copy Table</span>
+                </button>
+                <button class="sconTableAction" id="sconDownloadResultsBtn" type="button" data-label="Download CSV" data-done-label="Saved">
+                  <span class="sconTableActionIcon" data-icon="download" aria-hidden="true"></span><span class="sconTableActionLabel">Download CSV</span>
+                </button>
               </div>
             </div>
             <div class="sconNotice" id="sconResultsStale" hidden>
               <span id="sconResultsStaleText"></span>
               <button class="sconButton primary sconToolButton" id="sconStaleConsolidateBtn" type="button">Consolidate</button>
             </div>
-            <div class="sconTableWrap sconResultsWrap">
-              <table class="sconTable sconResultsTable" aria-label="Consolidated results">
+            <div class="ar-framed-scroll sconTableWrap sconResultsWrap">
+              <table class="arSpreadsheetTable sconTable sconResultsTable" aria-label="Consolidated results">
                 <thead id="sconResultsHead"></thead>
                 <tbody id="sconResultsTableBody"></tbody>
               </table>
@@ -234,8 +223,8 @@
               </section>
             </div>
             <h2 class="sconSectionTitle">Segment Breakdown</h2>
-            <div class="sconTableWrap sconBreakdownWrap">
-              <table class="sconTable sconBreakdownTable" aria-label="Segment breakdown">
+            <div class="ar-framed-scroll sconTableWrap sconBreakdownWrap">
+              <table class="arSpreadsheetTable sconTable sconBreakdownTable" aria-label="Segment breakdown">
                 <thead>
                   <tr>
                     <th class="sconTextHead">Reserving Class</th>
@@ -269,9 +258,26 @@
         </section>
       </div>
     </section>
+
+    <!-- The run sits beside Save and Cancel; its state shows beside the window
+         title, which Project Instance draws. -->
+    <footer class="sconSaveBar" id="sconSaveBar">
+      <div class="sconSaveActions">
+        <button class="sconButton primary sconRunButton" id="sconConsolidateBtn" type="button">Consolidate</button>
+        <button class="sconButton primary" id="sconSaveBtn" type="button">Save</button>
+        <button class="sconButton" id="sconCancelBtn" type="button">Cancel</button>
+      </div>
+    </footer>
   </main>
 
   <div class="sconMenu" id="sconMenu" role="listbox" hidden></div>
+  <!-- The cell context menu the other method grids offer. -->
+  <div id="sconCellContextMenu" class="ctx-menu" role="menu" style="display:none;">
+    <div class="ctx-menu-inner">
+      <button class="ctx-item" type="button" data-action="copy_value">Copy values</button>
+      <button class="ctx-item" type="button" data-action="remove_highlights">Remove Highlights</button>
+    </div>
+  </div>
 
   <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
   <script type="module" src="/ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js?v=20260923a"></script>
