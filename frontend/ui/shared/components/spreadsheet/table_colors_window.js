@@ -1,33 +1,35 @@
 /*
 ===============================================================================
-DFM Ratios Custom Colors window - a non-modal floating window inside the DFM
-page, opened from either Ratios table context menu.
+Table Custom Colors window - a non-modal floating window inside a method page,
+opened from the page's table context menus.
 
-One row per recolourable part of the Ratios tables: a preview cell, a Font and
-a Fill swatch, and a reset for that row. A swatch opens a picker inside the
-window with the named colours, Default, the system colour dialog and a hex box.
-Every change is painted at once and saved; there is no OK step. The preview
-and swatches show what the tables show, read from stand-in cells built inside
-the live tables, so they follow the theme and table style without a copy of
-their colours here.
+One row per recolourable part of the tables: the page's own parts, then the
+parts every table shares. Each row has a preview cell, a Font and a Fill
+swatch, and a reset for that row. A swatch opens a picker inside the window
+with the named colours, Default, the system colour dialog and a hex box. Every
+change is painted at once and saved; there is no OK step. The preview and
+swatches show what the tables show, read from stand-in cells built inside the
+page, so they follow the theme and table style without a copy of their colours
+here.
 ===============================================================================
 */
 import {
-  DFM_RATIO_COLOR_COMPONENTS,
-  DFM_RATIO_COLOR_GROUPS,
-  DFM_RATIO_COLOR_PRESETS,
-  findDfmRatioColorPreset,
-  getDfmRatioColorComponent,
-  normalizeDfmRatioColorHex,
-  normalizeDfmRatioColors,
-  resetDfmRatioColorComponent,
-  setDfmRatioColor,
-} from "/ui/method_pages/dfm/dfm_ratio_colors_model.js?v=20260924a";
+  TABLE_COLOR_COMPONENTS,
+  TABLE_COLOR_PRESETS,
+  findTableColorPreset,
+  getTableColorComponent,
+  normalizeTableColorHex,
+  resetTableColorComponent,
+  resetTableColorsFor,
+  setTableColor,
+  tableColorGroupsFor,
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260924b";
 import {
-  getDfmRatioColors,
-  setDfmRatioColors,
-  subscribeDfmRatioColors,
-} from "/ui/method_pages/dfm/dfm_ratio_colors.js?v=20260924a";
+  getTableColors,
+  getTableColorsPage,
+  setTableColors,
+  subscribeTableColors,
+} from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
 
 const SAMPLE_VALUE = "1.052";
@@ -54,11 +56,12 @@ function effectiveSurface(element) {
 
 function buildProbeTable(probe) {
   const table = document.createElement("table");
-  table.className = `arSpreadsheetTable ${probe.table}`;
+  table.className = ["arSpreadsheetTable", probe.table].filter(Boolean).join(" ");
   const section = document.createElement(probe.header === "column" ? "thead" : "tbody");
   const row = document.createElement("tr");
   const cell = document.createElement(probe.header ? "th" : "td");
   if (probe.classes) cell.className = probe.classes;
+  if (probe.selected) cell.setAttribute("aria-selected", "true");
   if (probe.header === "row") {
     row.append(cell, document.createElement("td"));
   } else {
@@ -69,37 +72,65 @@ function buildProbeTable(probe) {
   return { table, cell };
 }
 
+/** Where a component's stand-in cell goes: its named host, or beside the page's first table. */
+function probeHost(probe) {
+  if (probe.host) return document.getElementById(probe.host);
+  return document.querySelector("table.arSpreadsheetTable")?.parentElement || document.body;
+}
+
 /**
- * The colours each component shows now, read from stand-in cells placed in the
- * live Ratios tables for as long as it takes to read them. They sit in a
- * hidden holder, so they are never laid out or painted.
+ * The colours each shown component has now, read from stand-in cells placed
+ * among the live tables for as long as it takes to read them. They sit in
+ * hidden holders, so they are never laid out or painted.
  */
-function measureComponentLooks() {
+function measureComponentLooks(components) {
   const looks = new Map();
-  const wrap = document.getElementById("ratioWrap");
-  if (!wrap) return looks;
-  const surface = effectiveSurface(wrap) || getComputedStyle(document.body).backgroundColor;
-  const holder = document.createElement("div");
-  holder.hidden = true;
-  const probes = DFM_RATIO_COLOR_COMPONENTS.map((component) => {
+  const holders = new Map();
+  const probes = [];
+  const rootStyle = getComputedStyle(document.documentElement);
+  const bodySurface = getComputedStyle(document.body).backgroundColor;
+  for (const component of components) {
+    const host = probeHost(component.probe);
+    if (!host) {
+      // A part whose stand-in table is not on this page shows the shared
+      // variables it sets.
+      const variable = (property) => rootStyle.getPropertyValue(component.variables?.[property] || "").trim();
+      if (component.variables) {
+        looks.set(component.id, {
+          font: variable("font"),
+          fill: variable("fill"),
+          surface: bodySurface,
+          fontStyle: "",
+          fontWeight: "",
+          decoration: "",
+          decorationColor: "",
+        });
+      }
+      continue;
+    }
+    if (!holders.has(host)) {
+      const holder = document.createElement("div");
+      holder.hidden = true;
+      holders.set(host, holder);
+    }
     const { table, cell } = buildProbeTable(component.probe);
-    holder.appendChild(table);
-    return { component, cell };
-  });
-  wrap.appendChild(holder);
-  for (const { component, cell } of probes) {
+    holders.get(host).appendChild(table);
+    probes.push({ component, cell, host });
+  }
+  holders.forEach((holder, host) => host.appendChild(holder));
+  for (const { component, cell, host } of probes) {
     const style = getComputedStyle(cell);
     looks.set(component.id, {
       font: style.color,
       fill: isTransparent(style.backgroundColor) ? "" : style.backgroundColor,
-      surface,
+      surface: effectiveSurface(host) || bodySurface,
       fontStyle: style.fontStyle,
       fontWeight: style.fontWeight,
       decoration: style.textDecorationLine,
       decorationColor: style.textDecorationColor,
     });
   }
-  holder.remove();
+  holders.forEach((holder) => holder.remove());
   return looks;
 }
 
@@ -118,27 +149,27 @@ function element(tag, className, text) {
 }
 
 function buildRow(component) {
-  const row = element("div", "dfmColorsRow");
+  const row = element("div", "arTableColorsRow");
   row.dataset.component = component.id;
-  row.appendChild(element("span", "dfmColorsLabel", component.label));
-  row.appendChild(element("span", "dfmColorsPreview", component.sample || SAMPLE_VALUE));
+  row.appendChild(element("span", "arTableColorsLabel", component.label));
+  row.appendChild(element("span", "arTableColorsPreview", component.sample || SAMPLE_VALUE));
   for (const property of ["font", "fill"]) {
     if (!component.properties.includes(property)) {
-      row.appendChild(element("span", "dfmColorsSwatchGap"));
+      row.appendChild(element("span", "arTableColorsSwatchGap"));
       continue;
     }
-    const button = element("button", "dfmColorsSwatchBtn");
+    const button = element("button", "arTableColorsSwatchBtn");
     button.type = "button";
     button.dataset.property = property;
     button.setAttribute("aria-haspopup", "dialog");
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-label", `${component.label} ${PROPERTY_LABELS[property].toLowerCase()} color`);
     button.appendChild(property === "font"
-      ? element("span", "dfmColorsFontGlyph", "A")
-      : element("span", "dfmColorsFillChip"));
+      ? element("span", "arTableColorsFontGlyph", "A")
+      : element("span", "arTableColorsFillChip"));
     row.appendChild(button);
   }
-  const reset = element("button", "dfmColorsRowReset");
+  const reset = element("button", "arTableColorsRowReset");
   reset.type = "button";
   reset.innerHTML = RESET_ICON;
   reset.setAttribute("aria-label", `Reset ${component.label}`);
@@ -147,44 +178,44 @@ function buildRow(component) {
   return row;
 }
 
-function buildWindow() {
-  const win = element("div", "dfmColorsWindow");
+function buildWindow(groups) {
+  const win = element("div", "arTableColorsWindow");
   win.setAttribute("role", "dialog");
   win.setAttribute("aria-label", "Custom Colors");
   win.innerHTML = `
-    <div class="dfmColorsHeader">
-      <span class="dfmColorsTitle">Custom Colors</span>
-      <button type="button" class="dfmColorsClose" aria-label="Close">${CLOSE_ICON}</button>
+    <div class="arTableColorsHeader">
+      <span class="arTableColorsTitle">Custom Colors</span>
+      <button type="button" class="arTableColorsClose" aria-label="Close">${CLOSE_ICON}</button>
     </div>
-    <div class="dfmColorsBody">
-      <div class="dfmColorsColumnLabels" aria-hidden="true">
+    <div class="arTableColorsBody">
+      <div class="arTableColorsColumnLabels" aria-hidden="true">
         <span></span><span>Preview</span><span>Font</span><span>Fill</span><span></span>
       </div>
     </div>
-    <div class="dfmColorsFooter">
-      <button type="button" class="dfmColorsBtn" data-action="reset-all">Reset all</button>
-      <button type="button" class="dfmColorsBtn" data-action="close">Close</button>
+    <div class="arTableColorsFooter">
+      <button type="button" class="arTableColorsBtn" data-action="reset-all">Reset all</button>
+      <button type="button" class="arTableColorsBtn" data-action="close">Close</button>
     </div>
-    <div class="dfmColorsPicker" role="dialog" hidden>
-      <div class="dfmColorsPresetGrid" role="group" aria-label="Named colors"></div>
-      <div class="dfmColorsPickerName" aria-live="polite"></div>
-      <div class="dfmColorsPickerCustom">
-        <button type="button" class="dfmColorsBtn dfmColorsDefaultBtn">Default</button>
-        <input type="color" class="dfmColorsNativeInput" aria-label="Any color" />
-        <input type="text" class="dfmColorsHexInput" aria-label="Hex color" placeholder="#rrggbb" maxlength="9" autocomplete="off" spellcheck="false" />
+    <div class="arTableColorsPicker" role="dialog" hidden>
+      <div class="arTableColorsPresetGrid" role="group" aria-label="Named colors"></div>
+      <div class="arTableColorsPickerName" aria-live="polite"></div>
+      <div class="arTableColorsPickerCustom">
+        <button type="button" class="arTableColorsBtn arTableColorsDefaultBtn">Default</button>
+        <input type="color" class="arTableColorsNativeInput" aria-label="Any color" />
+        <input type="text" class="arTableColorsHexInput" aria-label="Hex color" placeholder="#rrggbb" maxlength="9" autocomplete="off" spellcheck="false" />
       </div>
-      <div class="dfmColorsHexError" role="alert" hidden>Use #rgb, #rrggbb or #rrggbbaa.</div>
+      <div class="arTableColorsHexError" role="alert" hidden>Use #rgb, #rrggbb or #rrggbbaa.</div>
     </div>`;
-  const body = win.querySelector(".dfmColorsBody");
-  for (const group of DFM_RATIO_COLOR_GROUPS) {
-    const components = DFM_RATIO_COLOR_COMPONENTS.filter((component) => component.group === group.id);
+  const body = win.querySelector(".arTableColorsBody");
+  for (const group of groups) {
+    const components = TABLE_COLOR_COMPONENTS.filter((component) => component.group === group.id);
     if (!components.length) continue;
-    body.appendChild(element("div", "dfmColorsGroupLabel", group.label));
+    body.appendChild(element("div", "arTableColorsGroupLabel", group.label));
     for (const component of components) body.appendChild(buildRow(component));
   }
-  const grid = win.querySelector(".dfmColorsPresetGrid");
-  DFM_RATIO_COLOR_PRESETS.forEach((preset, index) => {
-    const swatch = element("button", "dfmColorsPreset");
+  const grid = win.querySelector(".arTableColorsPresetGrid");
+  TABLE_COLOR_PRESETS.forEach((preset, index) => {
+    const swatch = element("button", "arTableColorsPreset");
     swatch.type = "button";
     swatch.dataset.hex = preset.hex;
     swatch.dataset.index = String(index);
@@ -255,37 +286,41 @@ function makeHeaderDraggable(header, win) {
 }
 
 /** Opens the window, or brings the open one forward. */
-export function openDfmRatioColorsWindow() {
+export function openTableColorsWindow() {
   if (activeWindow) {
     activeWindow.focus();
     return;
   }
-  const win = buildWindow();
+  const page = getTableColorsPage();
+  const groups = tableColorGroupsFor(page);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const components = TABLE_COLOR_COMPONENTS.filter((component) => groupIds.has(component.group));
+  const win = buildWindow(groups);
   document.body.appendChild(win);
   placeWindow(win);
-  const stopDrag = makeHeaderDraggable(win.querySelector(".dfmColorsHeader"), win);
+  const stopDrag = makeHeaderDraggable(win.querySelector(".arTableColorsHeader"), win);
 
-  const picker = win.querySelector(".dfmColorsPicker");
-  const grid = picker.querySelector(".dfmColorsPresetGrid");
-  const presets = Array.from(grid.querySelectorAll(".dfmColorsPreset"));
-  const nameEl = picker.querySelector(".dfmColorsPickerName");
-  const nativeInput = picker.querySelector(".dfmColorsNativeInput");
-  const hexInput = picker.querySelector(".dfmColorsHexInput");
-  const hexError = picker.querySelector(".dfmColorsHexError");
+  const picker = win.querySelector(".arTableColorsPicker");
+  const grid = picker.querySelector(".arTableColorsPresetGrid");
+  const presets = Array.from(grid.querySelectorAll(".arTableColorsPreset"));
+  const nameEl = picker.querySelector(".arTableColorsPickerName");
+  const nativeInput = picker.querySelector(".arTableColorsNativeInput");
+  const hexInput = picker.querySelector(".arTableColorsHexInput");
+  const hexError = picker.querySelector(".arTableColorsHexError");
   let target = null; // { id, property, button } while the picker is open
   let hoveredPreset = null;
 
   function currentHex(id, property) {
-    return getDfmRatioColors().components[id]?.[property] || "";
+    return getTableColors().components[id]?.[property] || "";
   }
 
   function render() {
-    const prefs = getDfmRatioColors();
-    const looks = measureComponentLooks();
-    win.querySelectorAll(".dfmColorsRow").forEach((row) => {
+    const prefs = getTableColors();
+    const looks = measureComponentLooks(components);
+    win.querySelectorAll(".arTableColorsRow").forEach((row) => {
       const id = row.dataset.component;
       const look = looks.get(id);
-      const preview = row.querySelector(".dfmColorsPreview");
+      const preview = row.querySelector(".arTableColorsPreview");
       if (look) {
         preview.style.color = look.font;
         preview.style.fontStyle = look.fontStyle;
@@ -293,28 +328,28 @@ export function openDfmRatioColorsWindow() {
         preview.style.textDecorationLine = look.decoration;
         preview.style.textDecorationColor = look.decorationColor;
         paintFill(preview, look);
-        const fontBtn = row.querySelector('.dfmColorsSwatchBtn[data-property="font"]');
-        if (fontBtn) fontBtn.style.setProperty("--dfm-colors-swatch", look.font);
-        const fillChip = row.querySelector(".dfmColorsFillChip");
+        const fontBtn = row.querySelector('.arTableColorsSwatchBtn[data-property="font"]');
+        if (fontBtn) fontBtn.style.setProperty("--ar-table-colors-swatch", look.font);
+        const fillChip = row.querySelector(".arTableColorsFillChip");
         if (fillChip) paintFill(fillChip, look);
       }
-      row.querySelector(".dfmColorsRowReset").disabled = !prefs.components[id];
-      row.querySelectorAll(".dfmColorsSwatchBtn").forEach((button) => {
+      row.querySelector(".arTableColorsRowReset").disabled = !prefs.components[id];
+      row.querySelectorAll(".arTableColorsSwatchBtn").forEach((button) => {
         button.classList.toggle("isCustom", !!prefs.components[id]?.[button.dataset.property]);
       });
     });
-    win.querySelector('[data-action="reset-all"]').disabled = !Object.keys(prefs.components).length;
+    win.querySelector('[data-action="reset-all"]').disabled = !components.some((component) => prefs.components[component.id]);
     if (target) renderPicker();
   }
 
   function renderPicker() {
     const hex = currentHex(target.id, target.property);
-    const selected = findDfmRatioColorPreset(hex);
+    const selected = findTableColorPreset(hex);
     presets.forEach((swatch) => {
       swatch.setAttribute("aria-pressed", String(swatch.dataset.hex === hex));
     });
     const shown = hoveredPreset
-      ? DFM_RATIO_COLOR_PRESETS[Number(hoveredPreset.dataset.index)]
+      ? TABLE_COLOR_PRESETS[Number(hoveredPreset.dataset.index)]
       : selected;
     nameEl.textContent = shown
       ? `${shown.name}  ${shown.hex}`
@@ -328,18 +363,18 @@ export function openDfmRatioColorsWindow() {
 
   function apply(hex) {
     if (!target) return;
-    setDfmRatioColors(setDfmRatioColor(getDfmRatioColors(), target.id, target.property, hex));
+    setTableColors(setTableColor(getTableColors(), target.id, target.property, hex));
   }
 
   function openPicker(button) {
-    const row = button.closest(".dfmColorsRow");
+    const row = button.closest(".arTableColorsRow");
     if (target?.button === button) {
       closePicker({ restoreFocus: true });
       return;
     }
     closePicker();
     target = { id: row.dataset.component, property: button.dataset.property, button };
-    const component = getDfmRatioColorComponent(target.id);
+    const component = getTableColorComponent(target.id);
     picker.setAttribute("aria-label", `${component.label} ${PROPERTY_LABELS[target.property].toLowerCase()} color`);
     button.setAttribute("aria-expanded", "true");
     hoveredPreset = null;
@@ -375,14 +410,14 @@ export function openDfmRatioColorsWindow() {
 
   function commitHexText({ closeWhenValid }) {
     const text = hexInput.value.trim();
-    const hex = normalizeDfmRatioColorHex(text);
+    const hex = normalizeTableColorHex(text);
     hexError.hidden = !text || !!hex;
     if (!hex) return;
     apply(hex);
     if (closeWhenValid) closePicker({ restoreFocus: true });
   }
 
-  const unsubscribe = subscribeDfmRatioColors(render);
+  const unsubscribe = subscribeTableColors(render);
   const onThemeChanged = () => render();
   window.addEventListener("arcrho:color-theme-changed", onThemeChanged);
   window.addEventListener("arcrho:table-style-changed", onThemeChanged);
@@ -405,24 +440,24 @@ export function openDfmRatioColorsWindow() {
   }
 
   win.addEventListener("click", (event) => {
-    const swatchBtn = event.target.closest(".dfmColorsSwatchBtn");
+    const swatchBtn = event.target.closest(".arTableColorsSwatchBtn");
     if (swatchBtn) {
       openPicker(swatchBtn);
       return;
     }
-    const reset = event.target.closest(".dfmColorsRowReset");
+    const reset = event.target.closest(".arTableColorsRowReset");
     if (reset) {
-      const id = reset.closest(".dfmColorsRow").dataset.component;
-      setDfmRatioColors(resetDfmRatioColorComponent(getDfmRatioColors(), id));
+      const id = reset.closest(".arTableColorsRow").dataset.component;
+      setTableColors(resetTableColorComponent(getTableColors(), id));
       return;
     }
-    const preset = event.target.closest(".dfmColorsPreset");
+    const preset = event.target.closest(".arTableColorsPreset");
     if (preset) {
       apply(preset.dataset.hex);
       closePicker({ restoreFocus: true });
       return;
     }
-    if (event.target.closest(".dfmColorsDefaultBtn")) {
+    if (event.target.closest(".arTableColorsDefaultBtn")) {
       apply("");
       closePicker({ restoreFocus: true });
       return;
@@ -430,14 +465,14 @@ export function openDfmRatioColorsWindow() {
     const action = event.target.closest("[data-action]")?.dataset.action;
     if (action === "reset-all") {
       closePicker();
-      setDfmRatioColors(normalizeDfmRatioColors(null));
-    } else if (action === "close" || event.target.closest(".dfmColorsClose")) {
+      setTableColors(resetTableColorsFor(getTableColors(), page));
+    } else if (action === "close" || event.target.closest(".arTableColorsClose")) {
       close();
     }
   });
 
   grid.addEventListener("pointerover", (event) => {
-    hoveredPreset = event.target.closest(".dfmColorsPreset");
+    hoveredPreset = event.target.closest(".arTableColorsPreset");
     renderPicker();
   });
   grid.addEventListener("pointerleave", () => {
@@ -445,7 +480,7 @@ export function openDfmRatioColorsWindow() {
     renderPicker();
   });
   grid.addEventListener("focusin", (event) => {
-    hoveredPreset = event.target.closest(".dfmColorsPreset");
+    hoveredPreset = event.target.closest(".arTableColorsPreset");
     renderPicker();
   });
   grid.addEventListener("keydown", (event) => {
@@ -459,7 +494,7 @@ export function openDfmRatioColorsWindow() {
 
   nativeInput.addEventListener("input", () => apply(nativeInput.value));
   hexInput.addEventListener("input", () => {
-    const hex = normalizeDfmRatioColorHex(hexInput.value);
+    const hex = normalizeTableColorHex(hexInput.value);
     if (!hex) return;
     hexError.hidden = true;
     apply(hex);
@@ -475,7 +510,7 @@ export function openDfmRatioColorsWindow() {
     if (target && event.relatedTarget && !picker.contains(event.relatedTarget)) closePicker();
   });
 
-  // The window answers its own keys; none reach the Ratios tables behind it.
+  // The window answers its own keys; none reach the tables behind it.
   win.addEventListener("keydown", (event) => {
     event.stopPropagation();
     if (event.key !== "Escape") return;
@@ -487,9 +522,9 @@ export function openDfmRatioColorsWindow() {
   activeWindow = {
     focus() {
       win.parentElement?.appendChild(win);
-      win.querySelector(".dfmColorsSwatchBtn")?.focus();
+      win.querySelector(".arTableColorsSwatchBtn")?.focus();
     },
   };
   render();
-  win.querySelector(".dfmColorsSwatchBtn")?.focus();
+  win.querySelector(".arTableColorsSwatchBtn")?.focus();
 }

@@ -173,7 +173,7 @@ const SCRIPTING_NOTEBOOK_PREFS_FILE = "scripting_notebook_prefs.json";
 const MACRO_PREFS_FILE = "macro_prefs.json";
 const FLIGHT_DECK_PREFS_FILE = "flight_deck.json";
 const NOTES_PANEL_PREFS_FILE = "notes_panel_prefs.json";
-const DFM_RATIO_COLORS_PREFS_FILE = "dfm_ratio_colors.json";
+const TABLE_COLORS_PREFS_FILE = "table_colors.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
@@ -271,8 +271,8 @@ function getNotesPanelPrefsPath() {
   return path.join(getPrefsDir(), NOTES_PANEL_PREFS_FILE);
 }
 
-function getDfmRatioColorsPrefsPath() {
-  return path.join(getPrefsDir(), DFM_RATIO_COLORS_PREFS_FILE);
+function getTableColorsPrefsPath() {
+  return path.join(getPrefsDir(), TABLE_COLORS_PREFS_FILE);
 }
 
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
@@ -1863,10 +1863,10 @@ const notesPanelPreferences = preferencesFileHandlers(getNotesPanelPrefsPath, "n
 ipcMain.handle("notes-panel-preferences-load", notesPanelPreferences.load);
 ipcMain.handle("notes-panel-preferences-save", notesPanelPreferences.save);
 
-// The DFM Ratios Custom Colors, shared by every DFM window of this user.
-const dfmRatioColorPreferences = preferencesFileHandlers(getDfmRatioColorsPrefsPath, "DFM Ratios colors");
-ipcMain.handle("dfm-ratio-colors-preferences-load", dfmRatioColorPreferences.load);
-ipcMain.handle("dfm-ratio-colors-preferences-save", dfmRatioColorPreferences.save);
+// The table Custom Colors, shared by every method page of this user.
+const tableColorPreferences = preferencesFileHandlers(getTableColorsPrefsPath, "table colors");
+ipcMain.handle("table-colors-preferences-load", tableColorPreferences.load);
+ipcMain.handle("table-colors-preferences-save", tableColorPreferences.save);
 
 ipcMain.handle("scripting-last-notebook-load", async () => {
   const filePath = getScriptingNotebookPrefsPath();

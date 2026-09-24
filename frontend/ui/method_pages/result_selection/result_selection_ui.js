@@ -1188,6 +1188,8 @@
               renderMethodGrid();
             }
             closeCellContextMenu();
+          } else if (action === "table-colors") {
+            closeCellContextMenu();
           }
           if (action) focusMethodGrid();
         });

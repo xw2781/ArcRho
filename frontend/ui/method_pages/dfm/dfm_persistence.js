@@ -92,7 +92,7 @@ import {
   applyDfmCurvesTabPayload,
   buildDfmCurvesTabPayload,
   renderDfmCurvesTab,
-} from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260907a";
+} from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260924b";
 import { getSummaryRowTailFactor } from "/ui/method_pages/dfm/dfm_state.js";
 import {
   buildDfmAverageFormulaObject,

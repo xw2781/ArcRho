@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260911a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260901b"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260924a"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
@@ -19,8 +19,8 @@
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260919a"/>
   <link rel="stylesheet" href="/ui/shared/components/floating_window/window_resize.css?v=20260913a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260924a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm_ratio_colors_window.css?v=20260924a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260924c"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20260924b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
@@ -310,7 +310,7 @@
     <div class="dfmCtxSep" data-label-only="1"></div>
     <button class="dfmCtxItem" data-action="custom-average" data-label-only="1">Custom Average</button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="custom-colors">Custom Colors</button>
+    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors>Custom Colors</button>
   </div>
   <div id="dfmRatioMenu" class="dfmCtxMenu">
     <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-ratio-mode" data-target-mode="edit">
@@ -333,7 +333,7 @@
     <button class="dfmCtxItem" data-action="copy-ratio-patterns">Copy Ratio Patterns</button>
     <button class="dfmCtxItem" data-action="apply-ratio-patterns">Apply Ratio Patterns</button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="custom-colors">Custom Colors</button>
+    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors>Custom Colors</button>
   </div>
   <div id="dfmAvgModal" class="dfmModal">
     <div class="dfmModalBackdrop"></div>
@@ -451,6 +451,8 @@
       <button class="ctx-item" data-action="copy_value">Copy value</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-action="export_data">Export data</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" data-action="table_colors" data-table-colors>Custom Colors</button>
     </div>
   </div>
 
@@ -460,8 +462,8 @@
       // The window is held blank until the opening tab is rendered; see
       // ui/shared/tabbed_page/initial_tab_paint.js.
       try {
-        // The user's Ratios colours are painted before the page is revealed.
-        (await import("/ui/method_pages/dfm/dfm_ratio_colors.js?v=20260924a")).bootDfmRatioColors();
+        // The user's table colours are painted before the page is revealed.
+        (await import("/ui/shared/components/spreadsheet/table_colors.js?v=20260924b")).bootTableColors({ page: "dfm" });
         await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260923a");
         try {
           await window.ADA_DATASET_READY;

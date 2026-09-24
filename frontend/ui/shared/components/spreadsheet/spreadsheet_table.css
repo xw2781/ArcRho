@@ -11,6 +11,10 @@
      Dark points these back at its own text colour in dark.css. */
   --ar-spreadsheet-cell-text: #000000;
   --ar-spreadsheet-label-text: #000000;
+  /* Column headers and row labels share the label text above until the user
+     gives one of them its own colour (table_colors_model.js). */
+  --ar-spreadsheet-header-text: var(--ar-spreadsheet-label-text);
+  --ar-spreadsheet-row-label-text: var(--ar-spreadsheet-label-text);
   --ar-spreadsheet-cell-height: 20px;
   --ar-spreadsheet-cell-width: 100px;
   --ar-spreadsheet-cell-padding-x: 6px;
@@ -64,6 +68,18 @@
   --ar-spreadsheet-formula-link-glow: rgba(176, 140, 255, 0.3);
   --ar-spreadsheet-formula-link-glow-active: rgba(176, 140, 255, 0.52);
   --ar-spreadsheet-reference-pick-hover-fill: rgba(107, 165, 255, 0.16);
+}
+
+/* Every table rule that writes a label in the label text gets the header text
+   inside a header and the row-label text inside the body, so the two custom
+   label colours reach every page's tables without a rule of their own. The
+   root values resolve first, so neither refers back to itself. */
+:where(table > thead) {
+  --ar-spreadsheet-label-text: var(--ar-spreadsheet-header-text);
+}
+
+:where(table > tbody) {
+  --ar-spreadsheet-label-text: var(--ar-spreadsheet-row-label-text);
 }
 
 .arSpreadsheetTable {

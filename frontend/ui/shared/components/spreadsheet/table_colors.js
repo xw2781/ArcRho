@@ -1,32 +1,37 @@
 /*
 ===============================================================================
-DFM Ratios Custom Colors - the live preference behind the Custom Colors window.
+Table Custom Colors - the live preference behind the Custom Colors window.
 
-The colours are a local-user preference that every DFM window shares, kept in
-`%APPDATA%\ArcRho\prefs\dfm_ratio_colors.json` through the desktop host. A copy
-in localStorage paints a window at boot without waiting for the host, and is
-all there is in a browser session without the host. A change is painted at
-once, told to the other DFM windows over a BroadcastChannel, and written to the
-host file shortly after the last edit.
+The colours are a local-user preference that every method page shares, kept in
+`%APPDATA%\ArcRho\prefs\table_colors.json` through the desktop host. A copy in
+localStorage paints a window at boot without waiting for the host, and is all
+there is in a browser session without the host. A change is painted at once,
+told to the other open pages over a BroadcastChannel, and written to the host
+file shortly after the last edit.
 ===============================================================================
 */
 import {
-  DFM_RATIO_COLORS_ATTRIBUTE,
-  dfmRatioColorCssState,
-  normalizeDfmRatioColors,
-} from "/ui/method_pages/dfm/dfm_ratio_colors_model.js?v=20260924a";
+  TABLE_COLORS_ATTRIBUTE,
+  normalizeTableColors,
+  tableColorCssState,
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260924b";
 
-const STORAGE_KEY = "arcrho_dfm_ratio_colors";
-const CHANNEL_NAME = "arcrho:dfm-ratio-colors";
+const STORAGE_KEY = "arcrho_table_colors";
+const CHANNEL_NAME = "arcrho:table-colors";
 const SAVE_DELAY_MS = 400;
+// Any table menu item carrying this attribute opens the window. The click is
+// seen on its way down, before a page's menu handler can stop it, and that
+// handler then closes the menu as it does for any item.
+const MENU_ITEM_SELECTOR = "[data-table-colors]";
 
 const listeners = new Set();
-let current = normalizeDfmRatioColors(null);
+let current = normalizeTableColors(null);
 let appliedProperties = [];
 let channel = null;
 let saveTimer = 0;
 let editedSinceBoot = false;
 let booted = false;
+let currentPage = "";
 
 /** The desktop host bridge; a nested page reaches it through its top window. */
 function hostApi() {
@@ -39,9 +44,9 @@ function hostApi() {
 
 function readCachedColors() {
   try {
-    return normalizeDfmRatioColors(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null"));
+    return normalizeTableColors(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null"));
   } catch {
-    return normalizeDfmRatioColors(null);
+    return normalizeTableColors(null);
   }
 }
 
@@ -55,19 +60,19 @@ function writeCachedColors(prefs) {
 
 function applyToDocument(prefs) {
   const root = document.documentElement;
-  const { tokens, properties } = dfmRatioColorCssState(prefs);
+  const { tokens, properties } = tableColorCssState(prefs);
   for (const name of appliedProperties) {
     if (!(name in properties)) root.style.removeProperty(name);
   }
   for (const [name, value] of Object.entries(properties)) root.style.setProperty(name, value);
   appliedProperties = Object.keys(properties);
-  if (tokens.length) root.setAttribute(DFM_RATIO_COLORS_ATTRIBUTE, tokens.join(" "));
-  else root.removeAttribute(DFM_RATIO_COLORS_ATTRIBUTE);
+  if (tokens.length) root.setAttribute(TABLE_COLORS_ATTRIBUTE, tokens.join(" "));
+  else root.removeAttribute(TABLE_COLORS_ATTRIBUTE);
 }
 
 /** Paints `prefs` and tells the listeners; false when nothing changed. */
 function adopt(prefs) {
-  const next = normalizeDfmRatioColors(prefs);
+  const next = normalizeTableColors(prefs);
   if (JSON.stringify(next) === JSON.stringify(current)) return false;
   current = next;
   applyToDocument(current);
@@ -77,23 +82,28 @@ function adopt(prefs) {
 
 function saveToHost() {
   saveTimer = 0;
-  const save = hostApi()?.saveDfmRatioColorPreferences;
+  const save = hostApi()?.saveTableColorPreferences;
   if (typeof save !== "function") return;
   Promise.resolve(save(current)).catch(() => {
     // A host that cannot write keeps the colours for this session only.
   });
 }
 
-export function getDfmRatioColors() {
+export function getTableColors() {
   return current;
 }
 
-export function subscribeDfmRatioColors(listener) {
+/** The page the colours were booted for, which picks the page's own parts. */
+export function getTableColorsPage() {
+  return currentPage;
+}
+
+export function subscribeTableColors(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function setDfmRatioColors(prefs) {
+export function setTableColors(prefs) {
   editedSinceBoot = true;
   if (!adopt(prefs)) return;
   writeCachedColors(current);
@@ -102,21 +112,26 @@ export function setDfmRatioColors(prefs) {
   saveTimer = window.setTimeout(saveToHost, SAVE_DELAY_MS);
 }
 
-function openCustomColorsWindow(event) {
-  if (!event.target?.closest?.('[data-action="custom-colors"]')) return;
-  void import("/ui/method_pages/dfm/dfm_ratio_colors_window.js?v=20260924a")
-    .then((module) => module.openDfmRatioColorsWindow());
+/** Opens the Custom Colors window, or brings the open one forward. */
+export function openTableColorsWindow() {
+  void import("/ui/shared/components/spreadsheet/table_colors_window.js?v=20260924b")
+    .then((module) => module.openTableColorsWindow());
+}
+
+function openFromMenu(event) {
+  if (event.target?.closest?.(MENU_ITEM_SELECTOR)) openTableColorsWindow();
 }
 
 /**
  * Paints the stored colours, then keeps them current: the host file replaces
- * the local copy once it arrives, and other DFM windows' edits arrive over the
- * channel. Also wires the Custom Colors item of both Ratios context menus;
- * each menu's own handler closes it.
+ * the local copy once it arrives, and other pages' edits arrive over the
+ * channel. Also opens the window from any table menu item marked
+ * `data-table-colors`. `page` names the page's own parts in the catalogue.
  */
-export function bootDfmRatioColors() {
+export function bootTableColors({ page = "" } = {}) {
   if (booted) return;
   booted = true;
+  currentPage = String(page || "");
   adopt(readCachedColors());
   if (typeof BroadcastChannel === "function") {
     channel = new BroadcastChannel(CHANNEL_NAME);
@@ -128,10 +143,8 @@ export function bootDfmRatioColors() {
       saveToHost();
     }
   });
-  for (const menuId of ["dfmRatioMenu", "dfmAvgMenu"]) {
-    document.getElementById(menuId)?.addEventListener("click", openCustomColorsWindow);
-  }
-  const load = hostApi()?.loadDfmRatioColorPreferences;
+  document.addEventListener("click", openFromMenu, true);
+  const load = hostApi()?.loadTableColorPreferences;
   if (typeof load !== "function") return;
   Promise.resolve(load())
     .then((result) => {

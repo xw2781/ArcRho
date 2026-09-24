@@ -58,6 +58,10 @@ import {
   CAPE_COD_TAB_DEFS,
   windowTabIds,
 } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
+import { bootTableColors } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
+
+// The user's table colours, shared by every method page.
+bootTableColors();
 
 const DEFAULT_ORIGIN_LENGTH = 12;
 const DFM_METHOD_TYPE = "DFM";

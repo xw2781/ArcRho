@@ -49,7 +49,7 @@ import {
   buildResultsVector,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
 import { getDfmNotesSelection, wireNotesInput, refreshDfmNotesView } from "/ui/method_pages/dfm/dfm_notes_tab.js?v=20260911b";
-import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260907a";
+import { initDfmCurvesTab, renderDfmCurvesTab } from "/ui/method_pages/dfm/dfm_curves_tab.js?v=20260924b";
 import { initDfmLinks, refreshDfmLinks } from "/ui/method_pages/dfm/dfm_links_tab.js?v=20260914b";
 import {
   syncMethodNameFromInputs,

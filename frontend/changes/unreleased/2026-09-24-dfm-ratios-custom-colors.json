@@ -1,10 +1,11 @@
 {
   "type": "feature",
-  "scope": "dfm",
+  "scope": "method tables",
   "audience": "user",
-  "summary": "The DFM Ratios tables have a Custom Colors window for choosing the font and fill of each part of the tables.",
+  "summary": "Every method page's tables have a Custom Colors window for choosing the font and fill of each part of the tables.",
   "details": [
-    "Open it from the right-click menu of the ratio triangle or the average formula table.",
-    "Colours apply at once to every DFM window and are kept for your user; Reset all returns the theme's own colours."
+    "Open it from the right-click menu of any table on a DFM, Bornhuetter Ferguson, Cape Cod, Berquist Sherman, Bootstrap, Stochastic Consolidation, or Result Selection page.",
+    "Values, column headers, row labels, the green selected cells, and highlighted cells share one set of colours across every method page; the DFM also lists the Ratios tables' own parts.",
+    "Colours apply at once to every open page and are kept for your user; Reset all returns the theme's own colours."
   ]
 }
