@@ -621,7 +621,9 @@ def simulate_bootstrap(
     **from the pseudo latest diagonal** adding process variance.  Anchoring on
     the pseudo rather than the observed diagonal is what produces the newest
     origin's variance: with the observed diagonal the reference method's total
-    prediction error falls from 9,304 to 6,852.
+    prediction error falls from 9,304 to 6,852.  Every future cell's mean is
+    the chain-ladder incremental of that diagonal, independent of the cells
+    simulated before it.
     """
 
     options.validate()
@@ -679,7 +681,13 @@ def simulate_bootstrap(
                 ratios[c] = refitted
 
         # 3. project from the pseudo latest diagonal, adding process variance.
+        # Each future cell's mean is the chain-ladder incremental of the pseudo
+        # latest diagonal (``expected``), not of the cumulative already
+        # simulated, as ResQ does: building each mean on earlier simulated
+        # cells widens (or, for downward development, narrows) the later
+        # origins' ranges.
         cumulative = [pseudo[w][latest_column[w]] for w in range(origins)]
+        expected = list(cumulative)
         reserve = [0.0] * origins
         for c in range(periods - 1):
             factor = ratios[c] - 1.0
@@ -687,7 +695,8 @@ def simulate_bootstrap(
             for w in range(origins):
                 if latest_column[w] > c:
                     continue
-                mean = cumulative[w] * factor
+                mean = expected[w] * factor
+                expected[w] += mean
                 if mean == 0.0:
                     continue
                 increment, hit = draw_forecast(mean, phi, rng)

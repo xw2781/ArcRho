@@ -188,11 +188,12 @@ forecasting scale squared. For each simulation `s`:
 (12) f*[d]      = SUM_w P[w][d+1] / SUM_w P[w][d]  over origins observed at d+1
      Development periods whose DFM ratio is manual/curve-selected keep the DFM
      value and contribute no estimation error (this includes the tail factor).
-(13) project forward from the PSEUDO latest diagonal cum[w] = P[w][L(w)]:
-       mu       = cum[w] * (f*[d] - 1)
+(13) project forward from the PSEUDO latest diagonal E[w] = cum[w] = P[w][L(w)]:
+       mu       = E[w] * (f*[d] - 1)          chain ladder, not the simulated cum
+       E[w]    += mu
        inc      ~ the `process_variance` distribution with mean mu and
                   sd sqrt(phi_F[d+1] * |mu|)
-       cum[w]  += inc ;  reserve[w] += inc
+       cum[w]  += inc ;  reserve[w] += inc     cum only drives "prevent negative"
 (14) reserve[s][w]  = SUM of simulated future incrementals
      ultimate[s][w] = observed latest[w] + reserve[s][w]
 ```
@@ -200,6 +201,13 @@ forecasting scale squared. For each simulation `s`:
 Anchoring the projection on the **pseudo** latest diagonal rather than the
 observed one is what makes the newest origin's variance right: with the observed
 diagonal, F 72 A's total prediction error drops from 9,304 to 6,852.
+
+The mean of each future cell does not build on the cells simulated before it
+(corrected 2026-09-23). With estimation variance None and a Gamma forecast,
+ResQ's standard deviation by origin equals `sqrt(SUM phi_F * |mu|)` of the
+deterministic chain ladder; building each mean on the simulated cumulative
+instead put BI Total 2026 at 19,523 against ResQ's 13,869, and in the full model
+left BI Total 2025 about 4% wide and MP+PIP 2022-2025 about 2% narrow.
 
 ### 4. Scaling to targets (technical note 8)
 

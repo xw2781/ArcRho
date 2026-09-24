@@ -247,6 +247,40 @@ def test_projection_anchors_on_the_pseudo_latest_diagonal(fixture):
     assert newest == pytest.approx(reference["unscaled"]["standard_error"][-1], rel=0.06)
 
 
+def test_forecast_cells_do_not_build_on_earlier_simulated_cells(fixture):
+    """ResQ takes each future cell's mean from the chain ladder, not the simulated cumulative.
+
+    With no estimation noise every origin's variance is then exactly the sum of
+    phi * |mean| over the deterministic chain ladder; building each mean on the
+    cells already simulated misses it by about 4% on the newest origin.
+    """
+
+    case = _case(fixture, "odp_single_scale")
+    fit = _fit_for(case)
+    residuals = calculate_residuals(fit, model_type=case["model_type"])
+    options = BootstrapSimulationOptions(
+        simulation_count=20000,
+        random_seed=5,
+        estimation_variance="none",
+        process_variance="gamma",
+        prevent_negative_data=False,
+        negative_mean_action="normal",
+    )
+    summary = summarize_reserves(simulate_bootstrap(fit, residuals, options).reserves)
+    phi = [value * value for value in residuals.scale_unsmoothed]
+    for origin in range(fit.origin_count):
+        expected = fit.observed_cumulative[origin][fit.latest_column[origin]]
+        variance = 0.0
+        for column in range(fit.latest_column[origin], fit.total_development_periods - 1):
+            mean = expected * (fit.selected_ratios[column] - 1.0)
+            expected += mean
+            variance += phi[column + 1] * abs(mean)
+        if variance:
+            assert summary["standard_error"][origin + 1] == pytest.approx(
+                math.sqrt(variance), rel=0.03
+            ), f"origin {origin + 1}"
+
+
 # ---------------------------------------------------------------------------
 # Scaling
 # ---------------------------------------------------------------------------
