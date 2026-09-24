@@ -39,8 +39,8 @@ import {
   simulateBootstrapMethod,
 } from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260924a";
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
-import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924a";
-import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260924a";
+import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924b";
+import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260924b";
 import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924a";
 import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
 import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";

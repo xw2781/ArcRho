@@ -29,6 +29,23 @@ function niceStep(span, targetTicks = 5) {
 
 const whole = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
+// Keeps the shown tooltip inside its chart box, flipping it to the left of
+// the pointer near the right edge, so it never grows the page's scroll area.
+function placeTooltip(tooltip, event) {
+  const box = tooltip.offsetParent || tooltip.parentElement;
+  if (!box) return;
+  const bounds = box.getBoundingClientRect();
+  const px = event.clientX - bounds.left;
+  const py = event.clientY - bounds.top;
+  const width = tooltip.offsetWidth;
+  const height = tooltip.offsetHeight;
+  const maxLeft = Math.max(4, box.clientWidth - width - 4);
+  const maxTop = Math.max(4, box.clientHeight - height - 4);
+  const left = px + 12 + width <= box.clientWidth - 4 ? px + 12 : px - 12 - width;
+  tooltip.style.left = `${Math.min(Math.max(4, left), maxLeft)}px`;
+  tooltip.style.top = `${Math.min(Math.max(4, py - 48), maxTop)}px`;
+}
+
 function setCanvasSize(canvas) {
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.floor(rect.width));
@@ -193,9 +210,8 @@ export function createDistributionChart({ canvas, tooltip, emptyState } = {}) {
     const detail = document.createElement("span");
     detail.textContent = `${whole.format(bar.count)} simulations (${((bar.count / Math.max(1, data.total)) * 100).toFixed(1)}%)`;
     tooltip.replaceChildren(title, detail);
-    tooltip.style.left = `${Math.min(Math.max(8, px + 12), Math.max(8, bounds.width - 200))}px`;
-    tooltip.style.top = `${Math.max(8, event.clientY - bounds.top - 48)}px`;
     tooltip.hidden = false;
+    placeTooltip(tooltip, event);
   }
 
   const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => schedule()) : null;
