@@ -162,7 +162,8 @@
       }
 
       function setUltimateOverride(rowIndex, rawValue) {
-        const value = numberOrNull(rawValue);
+        // Excel copies displayed text, so "46,759" arrives with thousands separators.
+        const value = numberOrNull(String(rawValue ?? "").replace(/,/g, "").trim());
         if (value === null) return false;
         state.ultimateOverrides[rowIndex] = value;
         return true;

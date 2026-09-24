@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "result selection",
+  "audience": "user",
+  "summary": "Ultimate values copied from Excel with thousands separators, such as 46,759, now paste into a Result Selection's Selected Ultimate column instead of being ignored."
+}
