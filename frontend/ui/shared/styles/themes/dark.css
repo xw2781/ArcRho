@@ -143,6 +143,7 @@
   --ar-spreadsheet-grid-border: var(--ar-color-border-strong);
   --ar-spreadsheet-header-fill: var(--ar-color-input);
   --ar-spreadsheet-label-fill: var(--ar-color-input);
+  --ar-spreadsheet-cell-text: var(--ar-color-text);
   --ar-spreadsheet-label-text: var(--ar-color-text);
   --ds-grid-skeleton-bar: rgba(171, 178, 191, 0.16);
   --ds-grid-skeleton-sweep: rgba(171, 178, 191, 0.1);
@@ -932,9 +933,9 @@
   .arExternalLinksTable th,
   .arAuditLogTable th
 ) {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-table-header);
-  color: var(--ar-color-text);
+  border-color: var(--ar-spreadsheet-grid-border);
+  background-color: var(--ar-spreadsheet-header-fill);
+  color: var(--ar-spreadsheet-label-text);
 }
 
 :root[data-arcrho-theme="dark"] :is(
@@ -942,7 +943,7 @@
   .arExternalLinksTable td,
   .arAuditLogTable td
 ) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
@@ -1135,7 +1136,7 @@
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable td:not([aria-selected="true"]):not(.arSpreadsheetSelectedLabel) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
@@ -1146,13 +1147,13 @@
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable thead th:not(.arSpreadsheetSelectedLabel) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-spreadsheet-header-fill);
   color: var(--ar-spreadsheet-label-text);
 }
 
 :root[data-arcrho-theme="dark"] .arSpreadsheetTable :is(tbody th, tbody td:first-child):not(.arSpreadsheetSelectedLabel) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-spreadsheet-label-fill);
   color: var(--ar-spreadsheet-label-text);
 }
@@ -1532,7 +1533,7 @@
 }
 
 :root[data-arcrho-theme="dark"] #resultsWrap :is(thead th, tbody th, tbody td):not(.dfmTableHighlight):not(.dfmTableActive) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
@@ -1540,7 +1541,7 @@
 :root[data-arcrho-theme="dark"] #resultsWrap thead th,
 :root[data-arcrho-theme="dark"] #resultsWrap th:first-child,
 :root[data-arcrho-theme="dark"] #resultsWrap td:first-child {
-  background-color: var(--ar-color-table-header);
+  background-color: var(--ar-spreadsheet-header-fill);
 }
 
 :root[data-arcrho-theme="dark"] #resultsWrap tbody tr:not(.dfmResultsTotalRow):hover td:not(.dfmTableHighlight):not(.dfmTableActive) {
@@ -1605,7 +1606,7 @@
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap :is(table, td, th):not(.dfmTableActive):not(.dfmTableHighlight) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
 }
 
 :root[data-arcrho-theme="dark"] #ratioWrap td:not(.dfmTableActive):not(.dfmTableHighlight):not(.ratioSelectedCell) {
@@ -1647,8 +1648,8 @@
 
 :root[data-arcrho-theme="dark"] #ratioWrap th:not(.dfmTableHighlight),
 :root[data-arcrho-theme="dark"] #ratioWrap td:first-child:not(.dfmTableHighlight) {
-  background-color: var(--ar-color-table-header);
-  color: var(--ar-color-text);
+  background-color: var(--ar-spreadsheet-header-fill);
+  color: var(--ar-spreadsheet-label-text);
 }
 
 :root[data-arcrho-theme="dark"] .dfmModalBackdrop,
@@ -1775,7 +1776,7 @@
 
 :root[data-arcrho-theme="dark"] .bfMethodTable td:not(.bfHighlightedCell):not(.bfSelectedSourceCell),
 :root[data-arcrho-theme="dark"] .rsGrid td:not(.rsHighlightedCell):not(.rsHighlightedUltimateCell):not(.rsSelectedSourceCell) {
-  border-color: var(--ar-color-border-strong);
+  border-color: var(--ar-spreadsheet-grid-border);
   background-color: var(--ar-color-surface);
   color: var(--ar-color-text);
 }
@@ -1784,9 +1785,9 @@
 :root[data-arcrho-theme="dark"] .bfMethodTable td:first-child:not(.bfHighlightedRowLabel),
 :root[data-arcrho-theme="dark"] .rsGrid th,
 :root[data-arcrho-theme="dark"] .rsGrid td:first-child:not(.rsHighlightedRowLabel) {
-  border-color: var(--ar-color-border-strong);
-  background-color: var(--ar-color-table-header);
-  color: var(--ar-color-text);
+  border-color: var(--ar-spreadsheet-grid-border);
+  background-color: var(--ar-spreadsheet-header-fill);
+  color: var(--ar-spreadsheet-label-text);
 }
 
 /* Berquist Sherman method table scrollbar chrome. */

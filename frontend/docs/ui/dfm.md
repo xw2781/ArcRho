@@ -4,7 +4,6 @@
 <!-- MANUAL:BEGIN -->
 DFM feature across Details, Data, Ratios, Curves, Results, Notes, Links, and Audit Log on top of dataset context, with method metadata in Details. Links follows Notes.
 DFM Notes reuses `ui/shared/tabs/notes/` for path highlighting, `Tab`/`Shift+Tab` indentation, `Esc` to exit editing, spellcheck off, and whole-note display formatting while preserving DFM's `dfm_persistence.js` save flow. File paths render as deep-blue underlined non-bold text, known file extensions stop the token before trailing prose, and right-click shows `Open File`, `Copy File Path`, plus `Open as Read-Only` for Excel workbooks; focused editing shows plain text until focus leaves the textarea and toolbar. DFM relays nested `arcrho:open-path` requests to its parent so Notes links keep working in popped-out tab surfaces.
-High Contrast keeps Light colors, black spreadsheet text, and red excluded ratios.
 <!-- MANUAL:END -->
 
 ## Entry Points

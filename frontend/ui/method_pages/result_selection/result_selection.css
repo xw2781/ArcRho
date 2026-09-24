@@ -9,10 +9,10 @@
   --rs-weight-cell-w: 68px;
   --rs-spacer-col-w: 14px;
   --rs-border: #cfd6df;
-  --rs-grid-border: #f3f1f1;
-  --rs-label-cell: #d9dde2;
-  --rs-ultimate-cell: #fdf5a9;
-  --rs-ultimate-highlight-cell: #fde047;
+  --rs-grid-border: var(--ar-spreadsheet-grid-border);
+  --rs-label-cell: var(--ar-spreadsheet-label-fill);
+  --rs-ultimate-cell: var(--ar-spreadsheet-result-fill);
+  --rs-ultimate-highlight-cell: var(--ar-spreadsheet-result-selection-fill);
   --rs-header: #eef2f6;
   --tabbed-page-gutter: 8px;
 }
@@ -687,9 +687,7 @@ body {
   --rs-scrollbar-button-active: #d9dee7;
   --rs-scrollbar-thumb: rgba(182, 182, 182, 0.2);
   --rs-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
 }
 .rsGridHost::-webkit-scrollbar {
   width: 20px;
@@ -747,6 +745,7 @@ body {
   background-color: var(--rs-scrollbar-thumb-active);
 }
 .rsGrid {
+  color: var(--ar-spreadsheet-cell-text);
   border-collapse: separate;
   border-spacing: 0;
   width: max-content;
@@ -800,7 +799,7 @@ body {
   white-space: nowrap;
   text-align: center;
   background: var(--rs-label-cell);
-  color: #1f2937;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
   font-size: var(--rs-table-font-size);
 }
@@ -855,9 +854,9 @@ body {
   min-width: 0;
   max-width: none;
   background: var(--rs-label-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   text-align: center;
-  border-left: 1px solid var(--rs-grid-border);
+  border-left: 0;
 }
 .rsGrid td.rsOriginCell { font-weight: 400; }
 .rsGrid th:first-child { z-index: 5; }
@@ -870,7 +869,7 @@ body {
   font-style: italic;
 }
 .rsWeightCell {
-  background: #dff8f8;
+  background: var(--ar-spreadsheet-percent-fill);
 }
 .rsGrid td.rsWeightCell {
   padding: 0;
@@ -885,13 +884,12 @@ body {
   max-width: none;
   padding: 0;
   background: #fff;
-  border-left: 1px solid #d7dde5;
-  border-right: 1px solid #d7dde5;
 }
+/* A spacer's left edge is the line of the cell before it, so it draws only
+   its own right edge, like any other cell. */
 .rsGrid thead tr.rsColumnHeaderRow th.rsSectionSpacerHeader {
   background: var(--rs-label-cell);
   color: transparent;
-  box-shadow: inset -1px 0 #bfc7d2;
 }
 .rsMethodCell,
 .rsResultsCell {
@@ -912,12 +910,12 @@ body {
   font-weight: 400;
 }
 .rsGrid td.rsWeightCell.rsHighlightedCell {
-  background: #a8eeee;
-  color: #0284c7;
+  background: var(--ar-spreadsheet-percent-selection-fill);
+  color: var(--ar-spreadsheet-percent-selection-text);
 }
 .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightValue,
 .rsGrid td.rsWeightCell.rsHighlightedCell .rsWeightPercent {
-  color: #0284c7;
+  color: var(--ar-spreadsheet-percent-selection-text);
 }
 .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightValue,
 .rsGrid td.rsWeightCell.rsWeightNonZero .rsWeightPercent {
@@ -932,18 +930,18 @@ body {
 .rsGrid td.rsMethodCell.rsHighlightedUltimateCell,
 .rsGrid td.rsResultsCell.rsHighlightedUltimateCell {
   background: var(--rs-ultimate-highlight-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-result-selection-text);
 }
 .rsGrid td.rsSourceCell.rsSelectedSourceCell {
   background: var(--ar-spreadsheet-weighted-selection-fill);
-  color: #111827;
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 .rsGrid td.rsSourceCell.rsSourceEmptyZero {
   color: #8aa3a9;
 }
 .rsGrid td.rsSourceCell.rsSelectedSourceCell.rsHighlightedCell {
-  background: #9dcc00;
-  color: #111827;
+  background: var(--ar-spreadsheet-source-selection-fill);
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 .rsGrid td.rsMethodCell.rsHighlightAnchorCell,
 .rsGrid td.rsResultsCell.rsHighlightAnchorCell {
@@ -996,16 +994,16 @@ body {
   background: var(--rs-label-cell);
 }
 .rsReserveCell {
-  color: #0f172a;
+  color: var(--ar-spreadsheet-cell-text);
 }
 .rsGrid th.rsReserveHeader {
-  color: #0f172a;
+  color: var(--ar-spreadsheet-label-text);
 }
 .rsRatioCell {
-  color: #0f172a;
+  color: var(--ar-spreadsheet-cell-text);
 }
 .rsGrid th.rsRatioHeader {
-  color: #0f172a;
+  color: var(--ar-spreadsheet-label-text);
 }
 .rsTotalRow td {
   font-weight: 700;

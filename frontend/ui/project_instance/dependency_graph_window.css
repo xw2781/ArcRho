@@ -4,7 +4,7 @@
    owns no frame chrome of its own: the titlebar, dragging, resizing, minimize,
    maximize, and close all belong to the host frame in
    project_instance_windows.js. Every colour reads a shared --ar-color-* token,
-   so the Dark and High Contrast themes need no companion rule.
+   so the Dark theme needs no companion rule.
 
    The diagram is one SVG sized to the zoomed graph inside a scrolling canvas
    that draws no scrollbars, so dragging and the wheel pan it and nothing

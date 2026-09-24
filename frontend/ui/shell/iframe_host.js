@@ -122,8 +122,15 @@ export function createIframeHost(deps) {
     iframe.addEventListener("load", () => {
       const theme = getColorTheme?.() || "light";
       const messageType = window.ArcRhoColorTheme?.MESSAGE_TYPE || "arcrho:set-color-theme";
+      const themeApi = window.ArcRhoColorTheme;
       try {
         iframe.contentWindow?.postMessage({ type: messageType, theme }, "*");
+        if (themeApi?.getTableStyle) {
+          iframe.contentWindow?.postMessage({
+            type: themeApi.TABLE_STYLE_MESSAGE_TYPE,
+            tableStyle: themeApi.getTableStyle(),
+          }, "*");
+        }
       } catch {
         // The shared theme bootstrap still applies the persisted value if messaging is unavailable.
       }

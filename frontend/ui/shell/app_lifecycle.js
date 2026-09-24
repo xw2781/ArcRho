@@ -127,6 +127,7 @@ export async function clearCacheAndReload() {
       const result = await hostApi.clearCacheAndReload({
         restore,
         colorTheme: shell.getColorTheme?.() || "light",
+        tableStyle: window.ArcRhoColorTheme?.getTableStyle?.() || "revolutionary",
       });
       if (result !== false) return;
       shell.updateStatusBar?.("Host cache reload was unavailable; using browser reload...");
@@ -172,6 +173,7 @@ export async function restartApplication() {
       const result = await hostApi.clearAppCache({
         restore,
         colorTheme: shell.getColorTheme?.() || "light",
+        tableStyle: window.ArcRhoColorTheme?.getTableStyle?.() || "revolutionary",
       });
       if (result === false) shell.updateStatusBar?.("Host cache clear unavailable; restarting...");
     } catch (err) {

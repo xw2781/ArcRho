@@ -112,15 +112,17 @@ test("the grid auto-fits the row-label column to its corner header", () => {
   );
 });
 
-test("the Data grid draws its own top and left perimeter inside the scroll wrapper", () => {
-  assert.match(
-    dataTabCss,
-    /#tableWrap thead th\s*\{[\s\S]*?border-top:\s*1px solid var\(--ar-spreadsheet-grid-border\)/u,
-  );
-  assert.match(
-    dataTabCss,
-    /#tableWrap th:first-child,[\s\S]*?border-left:\s*1px solid var\(--ar-spreadsheet-grid-border\)/u,
-  );
+test("the Data grid borrows the scroll wrapper's border as its outer edge", () => {
+  // Top and left: the header row and the label column meet the frame, so they
+  // draw no line of their own there, and the frame keeps no 1px gap before them.
+  assert.match(dataTabCss, /#tableWrap thead th\s*\{[^}]*border-top:\s*0;/u);
+  assert.match(dataTabCss, /#tableWrap th:first-child,\s*#tableWrap td:first-child\s*\{[^}]*border-left:\s*0;/u);
+  assert.doesNotMatch(dataTabCss, /#tableWrap\s*\{[^}]*padding-(?:right|bottom):\s*1px/u);
+  // Right and bottom: the shared rule drops the last column's and last row's
+  // lines and draws them as a shadow the frame clips where the grid reaches it.
+  assert.match(spreadsheetCss, /:is\([^)]*#tableWrap[^)]*\) > table\.arSpreadsheetTable \{[^}]*box-shadow:/u);
+  assert.match(spreadsheetCss, /:is\([^)]*#tableWrap[^)]*\) > table\.arSpreadsheetTable tr > :last-child \{\s*border-right-width: 0;/u);
+  assert.match(spreadsheetCss, /:is\([^)]*#tableWrap[^)]*\) > table\.arSpreadsheetTable > :last-child > tr:last-child > \* \{\s*border-bottom-width: 0;/u);
 });
 
 test("the sticky row-label seam does not cover the dynamic-array left border", () => {

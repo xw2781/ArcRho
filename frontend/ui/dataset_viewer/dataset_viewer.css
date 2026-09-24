@@ -669,9 +669,11 @@ body {
 #dsNotesPage {
   overflow: auto;
 }
+/* The Links panes are framed, so they sit at the panel inset rather than 3px
+   inside the page frame, where the two frames would read as a doubled line. */
 #dsLinksPage[style*="display: block"] {
   display: flex !important;
-  padding: 3px;
+  padding: 10px;
 }
 #datasetLinksMount {
   width: 100%;

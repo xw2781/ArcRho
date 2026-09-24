@@ -14,7 +14,7 @@
   --scon-label-cell: var(--ar-spreadsheet-label-fill, #f3f4f6);
   --scon-cell-h: var(--ar-spreadsheet-cell-height, 24px);
   --scon-entry-cell: #ffffff;
-  --scon-derived-cell: #dff8f8;
+  --scon-derived-cell: var(--ar-spreadsheet-percent-fill);
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -428,6 +428,7 @@ body {
    size their columns to their content. The segment list selects whole rows
    instead, so none of its text is selectable either. */
 table.sconTable {
+  color: var(--ar-spreadsheet-cell-text);
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
@@ -446,7 +447,7 @@ table.sconTable {
   padding: 0 8px;
   border-right: 1px solid var(--scon-grid-border);
   border-bottom: 1px solid var(--scon-grid-border);
-  color: #132a63;
+  color: var(--ar-spreadsheet-cell-text);
   text-align: right;
   white-space: nowrap;
 }
@@ -456,7 +457,7 @@ table.sconTable {
   z-index: 2;
   height: 30px;
   background: var(--scon-header-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
   text-align: center;
 }
@@ -467,7 +468,7 @@ table.sconTable {
   z-index: 1;
   min-width: 96px;
   background: var(--scon-label-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   text-align: center;
 }
 .sconTable thead .sconOriginHead { z-index: 3; background: var(--scon-header-cell); }
@@ -646,7 +647,7 @@ table.sconTable {
   min-width: 36px;
   width: 36px;
   background: var(--scon-label-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   text-align: center;
 }
 .sconTable thead .sconIndexHead { background: var(--scon-header-cell); }
@@ -660,8 +661,8 @@ table.sconTable {
 .sconSegmentsTable tbody tr { cursor: default; }
 .sconSegmentsTable tbody tr.isSelected td { background-color: #eaf2ff; }
 .sconSegmentsTable tbody tr.isSelected td.sconIndexCell {
-  background: #a6a6a6;
-  color: #111827;
+  background: var(--ar-spreadsheet-selected-label-fill);
+  color: var(--ar-spreadsheet-label-text);
 }
 .sconTable td.sconIssueCell {
   max-width: 360px;

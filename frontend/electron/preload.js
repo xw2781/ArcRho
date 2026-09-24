@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
   setWindowBackgroundColor: (color) => invoke("window-set-background-color", { color }),
   loadColorThemePreference: () => invoke("color-theme-preference-load"),
   saveColorThemePreference: (theme) => invoke("color-theme-preference-save", { theme }),
+  loadTableStylePreference: () => invoke("table-style-preference-load"),
+  saveTableStylePreference: (tableStyle) => invoke("table-style-preference-save", { tableStyle }),
   getDocumentsPath: () => invoke("get-documents-path"),
   loadHomeFolderPreferences: () => invoke("home-folders-preferences-load"),
   saveHomeFolderPreferences: (preferences) => invoke("home-folders-preferences-save", { preferences }),

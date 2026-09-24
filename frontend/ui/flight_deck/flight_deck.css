@@ -1,6 +1,6 @@
 /* Flight Deck - a slim, always-on-top strip of one-press macro buttons that the user parks
-   anywhere over the workspace. Every colour comes from the shared --ar-* theme tokens so Light,
-   Dark, and High Contrast are covered without per-theme rules. */
+   anywhere over the workspace. Every colour comes from the shared --ar-* theme tokens so Light
+   and Dark are covered without per-theme rules. */
 
 #flightDeck {
   position: fixed;

@@ -1,11 +1,16 @@
-/* Shared visual foundation for spreadsheet-style Dataset and method tables. */
+/* Shared visual foundation for spreadsheet-style Dataset and method tables.
+   The values below are the Classic table style; the Revolutionary style that
+   the app opens with redefines them in themes/revolutionary.css. */
 :root {
   --ar-spreadsheet-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
   --ar-spreadsheet-font-size: 14px;
   --ar-spreadsheet-grid-border: #f3f1f1;
   --ar-spreadsheet-header-fill: #d9dde2;
   --ar-spreadsheet-label-fill: #d9dde2;
-  --ar-spreadsheet-label-text: #111827;
+  /* Light draws every table's text in pure black, values and labels alike;
+     Dark points these back at its own text colour in dark.css. */
+  --ar-spreadsheet-cell-text: #000000;
+  --ar-spreadsheet-label-text: #000000;
   --ar-spreadsheet-cell-height: 20px;
   --ar-spreadsheet-cell-width: 100px;
   --ar-spreadsheet-cell-padding-x: 6px;
@@ -14,6 +19,17 @@
   --ar-spreadsheet-weighted-selection-fill: #d9e98be5;
   --ar-spreadsheet-selected-label-fill: #a6a6a6;
   --ar-spreadsheet-anchor-color: #0f172a;
+  /* Method tables mark what a cell means with its fill: a percentage or weight,
+     an input taken from a source, or a result. Each has a resting fill where a
+     page tints the whole column, and a selected fill. */
+  --ar-spreadsheet-percent-fill: #dff8f8;
+  --ar-spreadsheet-percent-selection-fill: #a8eeee;
+  --ar-spreadsheet-percent-selection-text: #0284c7;
+  --ar-spreadsheet-source-selection-fill: #9dcc00;
+  --ar-spreadsheet-source-selection-text: #000000;
+  --ar-spreadsheet-result-fill: #fdf5a9;
+  --ar-spreadsheet-result-selection-fill: #fde047;
+  --ar-spreadsheet-result-selection-text: #000000;
   --ar-spreadsheet-link-error-text: #b91c1c;
   /* A linked range is outlined in the color of where its values come from:
      Excel's own green for a workbook, Arco's blue for another dataset. The
@@ -52,7 +68,7 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  color: #1f2937;
+  color: var(--ar-spreadsheet-cell-text);
   font-family: var(--ar-spreadsheet-font);
   font-size: var(--ar-spreadsheet-font-size);
   user-select: none;
@@ -291,4 +307,36 @@
   .arSpreadsheetTable td.arReferencePickCell::after {
     animation: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   A grid inside a scrolling frame.
+
+   The frame's border is the grid's outer edge. Wherever the grid meets it, the
+   grid draws no line of its own, so no edge ever shows twice. Each page drops
+   its own header top line and label-column left line in its own sheet; the
+   right and bottom edges are handled here for every framed grid at once.
+
+   A grid smaller than its frame still needs those two edges, so they are drawn
+   as a shadow just outside the table. A shadow adds no scroll size, so where
+   the grid reaches the frame the frame clips it and only its own line is left.
+   --------------------------------------------------------------------------- */
+:is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable {
+  box-shadow:
+    1px 0 0 var(--ar-spreadsheet-grid-border),
+    0 1px 0 var(--ar-spreadsheet-grid-border),
+    1px 1px 0 var(--ar-spreadsheet-grid-border);
+}
+
+:is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable tr > :last-child {
+  border-right-width: 0;
+}
+
+:is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable > :last-child > tr:last-child > * {
+  border-bottom-width: 0;
+}
+
+/* A linked range that ends on the last column keeps its own coloured edge. */
+:is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable tr > td.arArrayFormulaEdgeRight:last-child {
+  border-right-width: 1px;
 }

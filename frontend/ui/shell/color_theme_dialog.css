@@ -1,0 +1,233 @@
+/* Home "Color Theme" dialog. Styled from theme tokens only, so Light and Dark
+   are both covered without a per-theme override. */
+#colorThemeDialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: var(--ar-color-overlay, rgba(15, 23, 42, 0.18));
+}
+
+#colorThemeDialogOverlay.open {
+  display: flex;
+}
+
+#colorThemeDialogBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, 100%);
+  max-height: 100%;
+  padding: 16px;
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 8px;
+  background: var(--ar-color-surface-raised, #fbfcfe);
+  color: var(--ar-color-text, #1f2937);
+  box-shadow: var(--ar-shadow-dialog, 0 18px 42px rgba(15, 23, 42, 0.24));
+  font-size: 12px;
+  animation: colorThemeDialogIn 160ms ease;
+}
+
+@keyframes colorThemeDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.colorThemeDialogHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+#colorThemeDialogTitle {
+  color: var(--ar-color-text-strong, #111827);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.colorThemeDialogHint {
+  color: var(--ar-color-text-muted, #64748b);
+}
+
+.colorThemeSectionLabel {
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.colorThemeTiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: -6px;
+}
+
+@media (max-width: 620px) {
+  .colorThemeTiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.colorThemeTile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 6px;
+  background: var(--ar-color-surface, #ffffff);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.colorThemeTile:hover {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  box-shadow: var(--ar-shadow-floating, 0 8px 20px rgba(15, 23, 42, 0.08));
+  transform: translateY(-1px);
+}
+
+.colorThemeTile[aria-checked="true"] {
+  border-color: var(--ar-color-accent, #2b6df6);
+  box-shadow: 0 0 0 1px var(--ar-color-accent, #2b6df6);
+}
+
+.colorThemeTile:focus-visible,
+.colorThemeMode:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: 2px;
+}
+
+/* The snapshot is a picture of the style, so the pointer and focus go to the
+   tile around it. */
+.colorThemeTileFrame {
+  display: block;
+  height: 196px;
+  overflow: hidden;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 4px;
+  background: var(--ar-color-surface, #ffffff);
+}
+
+.colorThemeTilePreview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+
+.colorThemeTileText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 2px 2px;
+}
+
+.colorThemeTileName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ar-color-text-strong, #111827);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.colorThemeTileTag {
+  padding: 0 6px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 999px;
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.colorThemeTileCheck {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  fill: none;
+  stroke: var(--ar-color-accent, #2b6df6);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  visibility: hidden;
+}
+
+.colorThemeTile[aria-checked="true"] .colorThemeTileCheck {
+  visibility: visible;
+}
+
+.colorThemeTileDescription {
+  color: var(--ar-color-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.colorThemeModeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.colorThemeModes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ar-color-border, #d8dde3);
+  border-radius: 6px;
+  background: var(--ar-color-surface-muted, #eef2f6);
+}
+
+.colorThemeMode {
+  min-width: 64px;
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-text-muted, #64748b);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.colorThemeMode:hover {
+  color: var(--ar-color-text-strong, #111827);
+}
+
+.colorThemeMode[aria-checked="true"] {
+  background: var(--ar-color-surface, #ffffff);
+  color: var(--ar-color-text-strong, #111827);
+  box-shadow: var(--ar-shadow-subtle, 0 1px 2px rgba(15, 23, 42, 0.04));
+  font-weight: 700;
+}
+
+.colorThemeDialogButtons {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #colorThemeDialogBox {
+    animation: none;
+  }
+
+  .colorThemeTile,
+  .colorThemeMode {
+    transition: none;
+  }
+}

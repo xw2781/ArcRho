@@ -1095,6 +1095,11 @@ iframe.floatingTabIframe {
   transform: translateY(-1px);
 }
 
+.card.clickable:focus-visible {
+  outline: 2px solid var(--ar-color-border-focus, #93c5fd);
+  outline-offset: 2px;
+}
+
 .card.clickable:active {
   transform: translateY(0px);
   box-shadow: 0 3px 10px rgba(0,0,0,0.06), var(--ar-home-card-glow, 0 0 10px 2px rgba(43,109,246,0.18));
@@ -1126,6 +1131,7 @@ iframe.floatingTabIframe {
 .homeIconBox.projectInstance { color: #7c3aed; }
 .homeIconBox.agentGuide { color: #0891b2; }
 .homeIconBox.shortcut { color: #475569; }
+.homeIconBox.theme { color: #6366f1; }
 .card h3 {
   margin: 1px 0 6px 0;
   color: #202327;
@@ -2052,7 +2058,7 @@ select { padding: 6px 10px; }
 }
 
 /* Release notes dialog: the update prompt and the Release History window.
-   Styled from theme tokens only, so Light, Dark, and High Contrast are all
+   Styled from theme tokens only, so Light and Dark are both
    covered without a per-theme override list. */
 #releaseNotesOverlay {
   position: fixed;

@@ -12,6 +12,7 @@ const ICON_PATHS = {
   dfm: '<path d="M4 18h16"></path><path d="M6 15l4-5 4 3 4-7"></path><circle cx="6" cy="15" r="1.2"></circle><circle cx="10" cy="10" r="1.2"></circle><circle cx="14" cy="13" r="1.2"></circle><circle cx="18" cy="6" r="1.2"></circle>',
   projectInstance: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><path d="M3.5 9h17"></path><path d="M9 9v10.5"></path><path d="M12 12.5h6"></path><path d="M12 16h4"></path>',
   agentGuide: '<rect x="4" y="6" width="16" height="12" rx="2.5"></rect><circle cx="9.5" cy="12" r="1.2"></circle><circle cx="14.5" cy="12" r="1.2"></circle><path d="M12 3.5V6"></path><path d="M2.5 11v2.5"></path><path d="M21.5 11v2.5"></path>',
+  theme: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.4-.5-.8-.5-1.2 0-1 .8-1.7 1.8-1.7h2.2a3.7 3.7 0 0 0 3.7-3.7c0-4-3.8-7.5-8.5-7.5z"></path><circle cx="7.6" cy="11.2" r="1.2"></circle><circle cx="10.4" cy="7.3" r="1.2"></circle><circle cx="15" cy="7.6" r="1.2"></circle>',
   shortcut: '<path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.2 1.2"></path><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.2-1.2"></path>',
 };
 

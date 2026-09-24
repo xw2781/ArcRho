@@ -374,12 +374,16 @@ function syncSummaryFormulaPanelWidth() {
   const visibleWidth = host.clientWidth - padding;
   // The bar belongs to the summary table, so when that table is narrower than
   // the scrollport it stops at the table's right edge rather than running on
-  // across empty space.
+  // across empty space. The table's right line is drawn 1px outside its box
+  // (spreadsheet_table.css), so the bar reaches 1px further to end on it.
   const summaryTable = document.querySelector("#ratioWrap table.ratioSummaryTable");
-  const tableWidth = summaryTable ? Math.ceil(summaryTable.getBoundingClientRect().width) : 0;
+  const tableWidth = summaryTable ? Math.ceil(summaryTable.getBoundingClientRect().width) + 1 : 0;
   const width = tableWidth > 0 ? Math.min(visibleWidth, tableWidth) : visibleWidth;
   if (width > 0) panel.style.setProperty("--dfm-summary-formula-panel-width", `${width}px`);
   else panel.style.removeProperty("--dfm-summary-formula-panel-width");
+  // A bar that runs the full visible width meets the frame, which draws its
+  // right edge; one that stops at a narrower table draws its own.
+  panel.toggleAttribute("data-reaches-frame-end", width >= visibleWidth);
 }
 
 /**

@@ -53,31 +53,92 @@ const THEMED_DOCUMENTS = [
   "../ui/arcode/notebook-editor/index.html",
   "../ui/arcode/snowflake-console/index.html",
   "../ui/arcode/sql-server-console/index.html",
+  "../ui/project_instance/dependency_graph_window.html",
+  "../ui/shell/table_style_preview/table_style_preview.html",
 ];
 
 test("every runtime frontend document bootstraps the shared theme before loading separated theme sheets", () => {
   for (const path of THEMED_DOCUMENTS) {
     const html = read(path);
-    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js");
+    const bootstrap = html.indexOf("/ui/shared/services/color_theme.js?v=20260923c");
     const firstStylesheet = html.indexOf("rel=\"stylesheet\"");
-    const light = html.indexOf("/ui/shared/styles/themes/light.css");
-    const dark = html.indexOf("/ui/shared/styles/themes/dark.css");
-    const highContrast = html.indexOf("/ui/shared/styles/themes/high_contrast.css?v=20260811c");
+    const light = html.indexOf("/ui/shared/styles/themes/light.css?v=20260923c");
+    const dark = html.indexOf("/ui/shared/styles/themes/dark.css?v=20260923c");
+    const revolutionary = html.indexOf("/ui/shared/styles/themes/revolutionary.css?v=20260923c");
     const endHead = html.indexOf("</head>");
     assert.ok(bootstrap >= 0, `${path} loads the shared bootstrap`);
     assert.ok(firstStylesheet < 0 || bootstrap < firstStylesheet, `${path} applies theme state before visual CSS`);
-    assert.ok(light > bootstrap && dark > light && highContrast > dark, `${path} loads light, dark, then high contrast theme ownership`);
-    assert.ok(endHead > highContrast, `${path} loads theme sheets inside the head`);
+    assert.ok(light > bootstrap && dark > light && revolutionary > dark, `${path} loads light, dark, then the Revolutionary table style`);
+    assert.ok(endHead > revolutionary, `${path} loads theme sheets inside the head`);
+    assert.doesNotMatch(html, /high_contrast\.css/u, `${path} no longer loads the removed High Contrast sheet`);
   }
+  assert.equal(existsSync(new URL("../ui/shared/styles/themes/high_contrast.css", import.meta.url)), false);
 });
 
-test("light values remain explicit, high contrast reuses them, and dark values stay isolated", () => {
+test("the Revolutionary table style redefines shared tokens for Light and Dark and draws flat tabs", () => {
+  const revolutionary = read("../ui/shared/styles/themes/revolutionary.css");
+  const spreadsheet = read("../ui/shared/components/spreadsheet/spreadsheet_table.css");
+  const lightBlock = declarationsFor(revolutionary, ':root[data-arcrho-table-style="revolutionary"]:not([data-arcrho-theme="dark"])');
+  const darkBlock = declarationsFor(revolutionary, ':root[data-arcrho-theme="dark"][data-arcrho-table-style="revolutionary"]');
+
+  // Classic keeps today's values in the component sheet.
+  assert.match(spreadsheet, /--ar-spreadsheet-grid-border:\s*#f3f1f1/);
+  assert.match(spreadsheet, /--ar-spreadsheet-header-fill:\s*#d9dde2/);
+  assert.match(spreadsheet, /--ar-spreadsheet-percent-selection-fill:\s*#a8eeee/);
+  assert.match(spreadsheet, /--ar-spreadsheet-source-selection-fill:\s*#9dcc00/);
+  assert.match(spreadsheet, /--ar-spreadsheet-result-selection-fill:\s*#fde047/);
+
+  // Revolutionary grid lines stay visible on white while remaining low contrast.
+  const grid = cssHexToken(lightBlock, "--ar-spreadsheet-grid-border");
+  const ratio = contrastRatio(grid, "#ffffff");
+  assert.ok(ratio > contrastRatio("#f3f1f1", "#ffffff"), "Revolutionary grid lines are stronger than Classic");
+  assert.ok(ratio < 1.5, `grid lines stay low contrast (${ratio.toFixed(2)}:1)`);
+  for (const token of [
+    "--ar-spreadsheet-grid-border",
+    "--ar-spreadsheet-header-fill",
+    "--ar-spreadsheet-label-fill",
+    "--ar-spreadsheet-selection-fill",
+    "--ar-spreadsheet-percent-selection-fill",
+    "--ar-spreadsheet-source-selection-fill",
+    "--ar-spreadsheet-result-selection-fill",
+    "--ar-table-style-tab-marker",
+  ]) {
+    assert.match(lightBlock, new RegExp(`${token}\\s*:`), `Revolutionary Light defines ${token}`);
+    assert.match(darkBlock, new RegExp(`${token}\\s*:`), `Revolutionary Dark defines ${token}`);
+  }
+  assert.match(revolutionary, /\.tabbedPageTab\.active, \.tabbedPageTab\[aria-selected="true"\]\)::after \{[^}]*background-color:\s*var\(--ar-table-style-tab-marker\)/s);
+
+  // Light table text is pure black in both styles; Dark keeps its own text colour.
+  assert.match(spreadsheet, /--ar-spreadsheet-cell-text:\s*#000000/);
+  assert.match(spreadsheet, /--ar-spreadsheet-label-text:\s*#000000/);
+  assert.match(spreadsheet, /\.arSpreadsheetTable \{[^}]*color:\s*var\(--ar-spreadsheet-cell-text\)/s);
+  assert.match(lightBlock, /--ar-spreadsheet-label-text:\s*#000000/);
+  assert.match(lightBlock, /--ar-spreadsheet-selection-text:\s*#000000/);
+  for (const page of [
+    "../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.css",
+    "../ui/method_pages/cape_cod/cape_cod.css",
+    "../ui/method_pages/result_selection/result_selection.css",
+    "../ui/method_pages/bootstrap/bootstrap.css",
+    "../ui/method_pages/stochastic_consolidation/stochastic_consolidation.css",
+    "../ui/method_pages/berquist_sherman/berquist_sherman.css",
+    "../ui/shared/tabs/data/data_tab.css",
+  ]) {
+    assert.match(read(page), /color:\s*var\(--ar-spreadsheet-cell-text\)/, `${page} draws table values in the shared table text colour`);
+  }
+
+  // Dark table rules read the shared tokens, so Revolutionary reaches Dark tables.
+  const dark = read("../ui/shared/styles/themes/dark.css");
+  assert.match(dark, /--ar-spreadsheet-cell-text:\s*var\(--ar-color-text\)/);
+  assert.match(declarationsFor(dark, ".arSpreadsheetTable td:not"), /border-color:\s*var\(--ar-spreadsheet-grid-border\)/);
+  assert.match(declarationsFor(dark, ".rsGrid td:first-child:not"), /background-color:\s*var\(--ar-spreadsheet-header-fill\)/);
+});
+
+test("light values remain explicit and dark values stay isolated", () => {
   const light = read("../ui/shared/styles/themes/light.css");
   const dark = read("../ui/shared/styles/themes/dark.css");
-  const highContrast = read("../ui/shared/styles/themes/high_contrast.css");
 
   assert.match(light, /:root\[data-arcrho-theme="light"\]/);
-  assert.match(light, /:root\[data-arcrho-theme="high-contrast"\]/);
+  assert.doesNotMatch(light, /high-contrast/);
   assert.match(light, /--ar-native-window-background:\s*#ffffff/);
   assert.match(light, /--ar-color-surface:\s*#ffffff/);
   assert.match(light, /--ar-color-text:\s*#1f2937/);
@@ -87,26 +148,6 @@ test("light values remain explicit, high contrast reuses them, and dark values s
   assert.match(light, /--ar-chart-dfm-empty-text:\s*#555555/);
   assert.match(light, /--ar-chart-dfm-point-border:\s*#94a3b8/);
   assert.doesNotMatch(light, /data-arcrho-theme="dark"/);
-
-  assert.match(highContrast, /:root\[data-arcrho-theme="high-contrast"\]/);
-  assert.match(highContrast, /color-scheme:\s*light/);
-  assert.match(highContrast, /--ar-spreadsheet-label-text:\s*#000000/);
-  assert.match(highContrast, /--ar-spreadsheet-selection-text:\s*#000000/);
-  assert.match(highContrast, /#tableWrap/);
-  assert.match(highContrast, /\.pi-table/);
-  assert.match(highContrast, /\.taskDesignerTable/);
-  assert.match(highContrast, /color:\s*#000000\s*!important/);
-  assert.deepEqual(
-    [...highContrast.matchAll(/(--ar-[\w-]+)\s*:/g)].map((match) => match[1]),
-    ["--ar-spreadsheet-label-text", "--ar-spreadsheet-selection-text"],
-    "High Contrast only overrides spreadsheet text tokens",
-  );
-  assert.doesNotMatch(highContrast, /(?:background|border|fill|stroke)\s*:/);
-  assert.doesNotMatch(highContrast, /--ar-color-/);
-
-  const excludedRatioDeclarations = declarationsFor(highContrast, "#ratioWrap td.ratioCell.strike");
-  assert.match(excludedRatioDeclarations, /color:\s*#b000c2\s*!important/);
-  assert.match(excludedRatioDeclarations, /text-decoration-color:\s*#b000c2\s*!important/);
 
   assert.match(dark, /:root\[data-arcrho-theme="dark"\]/);
   assert.match(dark, /color-scheme:\s*dark/);
@@ -357,6 +398,7 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   const events = [];
   const nativeBackgrounds = [];
   const savedHostThemes = [];
+  const savedHostTableStyles = [];
   const root = {
     getAttribute: (name) => attributes.get(name) || null,
     setAttribute: (name, value) => attributes.set(name, value),
@@ -427,6 +469,11 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
         savedHostThemes.push(theme);
         return { ok: true, theme };
       },
+      loadTableStylePreference: async () => ({ exists: false, tableStyle: "revolutionary" }),
+      saveTableStylePreference: async (tableStyle) => {
+        savedHostTableStyles.push(tableStyle);
+        return { ok: true, tableStyle };
+      },
     },
     addEventListener: (type, handler) => listeners.set(type, handler),
     dispatchEvent: (event) => events.push(event),
@@ -437,9 +484,23 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   vm.runInNewContext(source, context, { filename: "color_theme.js" });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
   assert.equal(context.ArcRhoColorTheme.normalizeTheme("unsupported"), "light");
-  assert.equal(context.ArcRhoColorTheme.normalizeTheme("high-contrast"), "high-contrast");
+  assert.equal(context.ArcRhoColorTheme.normalizeTheme("high-contrast"), "light", "a saved High Contrast choice falls back to Light");
   assert.equal(context.ArcRhoColorTheme.getMonacoTheme("dark"), "arcrho-atom-one-dark");
-  assert.equal(context.ArcRhoColorTheme.getMonacoTheme("high-contrast"), "vs");
+  assert.equal(context.ArcRhoColorTheme.getMonacoTheme("light"), "vs");
+  assert.equal(attributes.get("data-arcrho-table-style"), "revolutionary", "Revolutionary is the default table style");
+  assert.equal(context.ArcRhoColorTheme.normalizeTableStyle("unsupported"), "revolutionary");
+
+  context.ArcRhoColorTheme.setTableStyle("classic");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(attributes.get("data-arcrho-table-style"), "classic");
+  assert.equal(storage.get("arcrho_table_style"), "classic");
+  assert.equal(savedHostTableStyles.at(-1), "classic");
+  assert.equal(posted.at(-1)?.type, "arcrho:set-table-style");
+  assert.equal(posted.at(-1)?.tableStyle, "classic");
+  assert.equal(events.at(-1).type, "arcrho:table-style-changed");
+  listeners.get("message")?.({ data: { type: "arcrho:set-table-style", tableStyle: "revolutionary" } });
+  assert.equal(attributes.get("data-arcrho-table-style"), "revolutionary");
 
   context.ArcRhoColorTheme.setTheme("dark");
   await Promise.resolve();
@@ -459,15 +520,6 @@ test("theme runtime validates, persists per user, applies, notifies frames, and 
   assert.equal(atomOneDarkTheme.colors["editor.selectionBackground"], "#3e4451");
   assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "keyword")?.foreground, "c678dd");
   assert.equal(atomOneDarkTheme.rules.find((rule) => rule.token === "string")?.foreground, "98c379");
-
-  context.ArcRhoColorTheme.setTheme("high-contrast");
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(storage.get("arcrho_color_theme"), "high-contrast");
-  assert.equal(savedHostThemes.at(-1), "high-contrast");
-  assert.equal(attributes.get("data-arcrho-theme"), "high-contrast");
-  assert.equal(monacoThemes.at(-1), "vs");
-  assert.equal(posted.at(-1)?.theme, "high-contrast");
 
   listeners.get("message")?.({ data: { type: "arcrho:set-color-theme", theme: "light" } });
   assert.equal(attributes.get("data-arcrho-theme"), "light");
@@ -547,8 +599,7 @@ test("ArcRho and standalone Arcode keep accessible theme menus without topbar to
   for (const html of [shellHtml, arcodeHtml]) {
     assert.match(html, /data-action="color-theme-light"[^>]*role="menuitemradio"/);
     assert.match(html, /data-action="color-theme-dark"[^>]*role="menuitemradio"/);
-    assert.match(html, /data-action="color-theme-high-contrast"[^>]*role="menuitemradio"/);
-    assert.match(html, /data-color-theme-value="high-contrast"[^>]*tabindex="-1"/);
+    assert.doesNotMatch(html, /high-contrast|High Contrast/);
     assert.match(html, /data-color-theme-trigger[^>]*tabindex="0"/);
     assert.match(html, /data-color-theme-menu[^>]*aria-haspopup="menu"/);
     assert.match(html, /data-color-theme-value="light"[^>]*tabindex="-1"/);
@@ -612,6 +663,12 @@ test("all Monaco owners choose the shared initial theme and Electron accepts com
   assert.match(preload, /setWindowBackgroundColor/);
   assert.match(preload, /loadColorThemePreference/);
   assert.match(preload, /saveColorThemePreference/);
+  assert.match(preload, /loadTableStylePreference/);
+  assert.match(preload, /saveTableStylePreference/);
+  assert.match(main, /ipcMain\.handle\("table-style-preference-load"/);
+  assert.match(main, /ipcMain\.handle\("table-style-preference-save"/);
+  assert.match(main, /table_style:\s*style/);
+  assert.match(main, /normalizeTableStylePreference\(payload\?\.tableStyle\)/);
   assert.match(main, /ipcMain\.handle\("window-set-background-color"/);
   assert.match(main, /ipcMain\.handle\("color-theme-preference-load"/);
   assert.match(main, /ipcMain\.handle\("color-theme-preference-save"/);
@@ -641,9 +698,9 @@ test("the startup splash mirrors the renderer-derived persisted theme without ch
   assert.ok(bootstrap >= 0 && bootstrap < inlineStyles, "splash theme state is set before first paint styles");
   assert.match(splash, /themes\.has\(requestedTheme\) \? requestedTheme : "light"/);
   assert.match(splash, /background:\s*#f8f9fc/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260817d/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260916a/);
-  assert.match(splash, /\.\/shared\/styles\/themes\/high_contrast\.css\?v=20260811c/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/light\.css\?v=20260923c/);
+  assert.match(splash, /\.\/shared\/styles\/themes\/dark\.css\?v=20260923c/);
+  assert.doesNotMatch(splash, /high_contrast|high-contrast/);
   assert.match(dark, /\.startupSplash/);
   assert.match(dark, /\.splash-container\s*\{[^}]*width:\s*292px[^}]*border:\s*1px solid var\(--ar-color-border\)[^}]*border-radius:\s*6px/s);
   assert.match(dark, /\.logo-icon img\s*\{[^}]*width:\s*88px[^}]*height:\s*88px/s);
@@ -665,7 +722,7 @@ test("DFM Ratios dark mode keeps exclusions visible and selected averages restra
   assert.match(selectedAverageDeclarations, /color:\s*#edf4d5/);
   assert.ok(contrastRatio("#c58bd8", "#282c34") >= 4.5, "excluded ratios remain readable on the table surface");
   assert.ok(contrastRatio("#edf4d5", "#526331") >= 4.5, "selected average text remains readable on its fill");
-  assert.match(dfm, /themes\/dark\.css\?v=20260916a/);
+  assert.match(dfm, /themes\/dark\.css\?v=20260923c/);
 });
 
 test("changed theme and chart owners are reached through current cache-version chains", () => {

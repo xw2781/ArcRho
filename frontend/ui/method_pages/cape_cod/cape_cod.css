@@ -13,9 +13,9 @@
   --cc-method-grid-border: var(--ar-spreadsheet-grid-border);
   --cc-method-header-cell: var(--ar-spreadsheet-header-fill);
   --cc-method-label-cell: var(--ar-spreadsheet-label-fill);
-  --cc-method-calc-cell: #dff8f8;
-  --cc-method-ultimate-cell: #fdf5a9;
-  --cc-method-ultimate-highlight-cell: #fde047;
+  --cc-method-calc-cell: var(--ar-spreadsheet-percent-fill);
+  --cc-method-ultimate-cell: var(--ar-spreadsheet-result-fill);
+  --cc-method-ultimate-highlight-cell: var(--ar-spreadsheet-result-selection-fill);
   --cc-method-override-text: #003fff;
   --cc-method-cell-h: var(--ar-spreadsheet-cell-height);
   --cc-method-header-h: 52px;
@@ -456,9 +456,7 @@ body {
   border-radius: 0;
   background: #fff;
   overflow: auto;
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
   max-height: calc(100vh - 240px);
   box-shadow: none;
 }
@@ -469,6 +467,7 @@ body {
 }
 table.ccMethodTable,
 table.ccUltimatesTable {
+  color: var(--ar-spreadsheet-cell-text);
   border-collapse: separate;
   border-spacing: 0;
   width: max-content;
@@ -514,7 +513,7 @@ table.ccUltimatesTable {
   border: 0;
   border-right: 1px solid var(--cc-method-grid-border);
   border-bottom: 1px solid var(--cc-method-grid-border);
-  color: #132a63;
+  color: var(--ar-spreadsheet-cell-text);
 }
 .ccMethodTable th:first-child,
 .ccMethodTable td:first-child,
@@ -528,8 +527,8 @@ table.ccUltimatesTable {
   z-index: 3;
   text-align: center;
   background: var(--cc-method-label-cell);
-  color: #111827;
-  border-left: 1px solid var(--cc-method-grid-border);
+  color: var(--ar-spreadsheet-label-text);
+  border-left: 0;
 }
 .ccMethodTable thead th,
 .ccUltimatesTable thead th {
@@ -544,9 +543,9 @@ table.ccUltimatesTable {
   text-align: center;
   background: var(--cc-method-header-cell);
   background-clip: padding-box;
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
-  border-top: 1px solid var(--cc-method-grid-border);
+  border-top: 0;
   cursor: cell;
 }
 .ccUltimatesTable thead th {
@@ -609,20 +608,20 @@ table.ccUltimatesTable {
   color: var(--ar-spreadsheet-selection-text);
 }
 .ccMethodTable td.ccCalcCell.ccHighlightedCell {
-  background: #a8eeee;
-  color: #0284c7;
+  background: var(--ar-spreadsheet-percent-selection-fill);
+  color: var(--ar-spreadsheet-percent-selection-text);
 }
 .ccMethodTable td.ccTrendFactorCell.ccHighlightedCell {
-  background: #9dcc00;
-  color: #111827;
+  background: var(--ar-spreadsheet-source-selection-fill);
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 .ccMethodTable td.ccUltimateCell.ccHighlightedCell {
   background: var(--cc-method-ultimate-highlight-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-result-selection-text);
 }
 .ccMethodTable td.ccOriginCell.ccHighlightedCell {
   background: var(--ar-spreadsheet-selected-label-fill);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
 }
 .ccMethodTable td.ccMethodCell.ccHighlightAnchorCell {

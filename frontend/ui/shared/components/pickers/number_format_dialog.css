@@ -1,6 +1,6 @@
 /* Number Format dialog: a small window that floats inside the tab that opened
    it, over a backdrop that makes the rest of that tab inert. Colours come from
-   the shared theme tokens, so the window follows Light, Dark and High Contrast
+   the shared theme tokens, so the window follows Light and Dark
    without a per-theme rule of its own. */
 .arFormatDialogLayer {
   position: absolute;

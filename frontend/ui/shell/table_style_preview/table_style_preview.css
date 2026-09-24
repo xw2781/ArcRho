@@ -1,0 +1,50 @@
+/* Table style snapshot. Only placement lives here; every colour comes from the
+   tab and spreadsheet tokens the chosen style defines. */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--ar-color-surface, #ffffff);
+  pointer-events: none;
+  user-select: none;
+}
+
+.previewPage {
+  flex: 1 1 auto;
+  padding: 8px;
+  background: var(--ar-color-surface, #ffffff);
+}
+
+.previewTable {
+  --ar-spreadsheet-cell-width: 66px;
+  border: 1px solid var(--ar-spreadsheet-grid-border);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.previewTable td {
+  text-align: right;
+}
+
+.previewTable th:first-child {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+  text-align: left;
+}
+
+.previewTable thead th:first-child {
+  font-size: 12px;
+}
+
+/* The row a DFM reads its selected factors from wears the input fill. */
+.previewTable tr.previewSelectedRow td[aria-selected="true"] {
+  background: var(--ar-spreadsheet-source-selection-fill);
+  color: var(--ar-spreadsheet-source-selection-text);
+}

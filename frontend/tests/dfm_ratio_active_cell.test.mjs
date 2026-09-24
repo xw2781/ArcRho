@@ -31,10 +31,12 @@ test("the ratio triangle's active cell is drawn like the average-formula table's
   );
 });
 
-test("a User Entry average reads as typeable until it is the selected one", () => {
-  const fillRule = /#ratioWrap td\.summaryCell\.userEntryEditable \{\s*background: #dff8f8;\s*\}/u;
+test("a User Entry average reads as typeable until it is the selected one", async () => {
+  const fillRule = /#ratioWrap td\.summaryCell\.userEntryEditable \{\s*background: var\(--ar-spreadsheet-percent-fill\);\s*\}/u;
   // The same pale blue a Result Selection weight cell carries.
   assert.match(dfmCss, fillRule);
+  const resultSelectionCss = await read("../ui/method_pages/result_selection/result_selection.css");
+  assert.match(resultSelectionCss, /\.rsWeightCell \{\s*background: var\(--ar-spreadsheet-percent-fill\);/u);
   // The selected-average green has to cover it, which it only does at equal
   // specificity by coming later in the file.
   assert.ok(

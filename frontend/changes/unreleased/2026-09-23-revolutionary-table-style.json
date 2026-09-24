@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "appearance",
+  "audience": "user",
+  "summary": "Tables and tabbed pages open in a new Revolutionary style with clearer grid lines, and a Color Theme card on Home lets you preview it beside the original Classic style and switch.",
+  "details": [
+    "Revolutionary keeps tables flat and quiet: slate grid lines you can see, pale headers, softer selection colours, and flat tabs with an underline.",
+    "Classic is the look the app had before; pick it on the Home Color Theme card to switch back.",
+    "The Color Theme card shows a live snapshot of each style and a Light / Dark switch, and a choice applies at once.",
+    "The High Contrast theme has been removed; anyone who had chosen it now opens in Light."
+  ]
+}

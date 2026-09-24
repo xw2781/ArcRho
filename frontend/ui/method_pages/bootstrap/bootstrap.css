@@ -14,8 +14,8 @@
   --bst-label-cell: var(--ar-spreadsheet-label-fill, #f3f4f6);
   --bst-cell-h: var(--ar-spreadsheet-cell-height, 24px);
   --bst-entry-cell: #ffffff;
-  --bst-derived-cell: #dff8f8;
-  --bst-result-cell: #fdf5a9;
+  --bst-derived-cell: var(--ar-spreadsheet-percent-fill);
+  --bst-result-cell: var(--ar-spreadsheet-result-fill);
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -440,6 +440,7 @@ body {
 /* The grids take their selection look from the shared spreadsheet table, but
    size their columns to their content. */
 table.bstTable {
+  color: var(--ar-spreadsheet-cell-text);
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
@@ -457,7 +458,7 @@ table.bstTable {
   padding: 0 8px;
   border-right: 1px solid var(--bst-grid-border);
   border-bottom: 1px solid var(--bst-grid-border);
-  color: #132a63;
+  color: var(--ar-spreadsheet-cell-text);
   text-align: right;
   white-space: nowrap;
 }
@@ -467,7 +468,7 @@ table.bstTable {
   z-index: 2;
   height: 30px;
   background: var(--bst-header-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
   text-align: center;
 }
@@ -478,7 +479,7 @@ table.bstTable {
   z-index: 1;
   min-width: 96px;
   background: var(--bst-label-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   text-align: center;
 }
 .bstTable thead .bstOriginHead { z-index: 3; background: var(--bst-header-cell); }

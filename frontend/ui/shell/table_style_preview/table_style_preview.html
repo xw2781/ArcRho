@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- A still snapshot of one table style for the Home "Color Theme" dialog. It is
+     drawn from the real tab and spreadsheet stylesheets, so it shows exactly what
+     a method page looks like. The style comes from ?tableStyle= and is locked, so
+     the app-wide choice never repaints it; Light or Dark follows the app. -->
+<html lang="en" data-arcrho-table-style-locked>
+<head>
+  <meta charset="utf-8"/>
+  <script src="/ui/shared/services/color_theme.js?v=20260923c"></script>
+  <title>Table Style Preview</title>
+  <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shell/table_style_preview/table_style_preview.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
+</head>
+<body>
+  <div class="tabbedPageTabBar" aria-hidden="true">
+    <button class="tabbedPageTab" type="button" tabindex="-1">Details</button>
+    <button class="tabbedPageTab" type="button" tabindex="-1">Data</button>
+    <button class="tabbedPageTab active" type="button" tabindex="-1" aria-selected="true">Ratios</button>
+    <button class="tabbedPageTab" type="button" tabindex="-1">Results</button>
+  </div>
+  <main class="previewPage" aria-hidden="true">
+    <table class="arSpreadsheetTable previewTable">
+      <thead>
+        <tr>
+          <th>Accident Year</th>
+          <th>12-24</th>
+          <th class="arSpreadsheetSelectedLabel">24-36</th>
+          <th class="arSpreadsheetSelectedLabel">36-48</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th>2019</th><td>1.609</td><td>1.253</td><td>1.113</td></tr>
+        <tr><th class="arSpreadsheetSelectedLabel">2020</th><td>1.607</td><td aria-selected="true" class="arSpreadsheetSelectionAnchor">1.256</td><td aria-selected="true">1.112</td></tr>
+        <tr><th class="arSpreadsheetSelectedLabel">2021</th><td>1.588</td><td aria-selected="true">1.199</td><td aria-selected="true">1.155</td></tr>
+        <tr><th>2022</th><td>1.586</td><td>1.080</td><td></td></tr>
+        <tr><th>2023</th><td>1.553</td><td></td><td></td></tr>
+        <tr class="previewSelectedRow"><th>Selected</th><td aria-selected="true">1.596</td><td aria-selected="true">1.199</td><td aria-selected="true">1.108</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

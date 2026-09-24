@@ -1,6 +1,7 @@
 import { shell } from "./shell_context.js?v=20260510a";
-import { homeCardIcon } from "./home_card_icons.js?v=20260908b";
-import { initHomeShortcuts } from "./home_shortcuts_view.js?v=20260908b";
+import { homeCardIcon } from "./home_card_icons.js?v=20260923c";
+import { initHomeShortcuts } from "./home_shortcuts_view.js?v=20260923c";
+import { openColorThemeDialog } from "./color_theme_dialog.js?v=20260923c";
 
 let homeWired = false;
 let cachedHomeBrandName = null;
@@ -87,6 +88,7 @@ export function renderHomeViewOnce(homeView) {
                 <div class="card clickable" id="cardFileExplorer">${homeCardIcon("files")}<div><h3>File Browser</h3><div class="muted">Browse favorite folders and open local files.</div></div></div>
                 <div class="card clickable" id="cardProjectSettings">${homeCardIcon("project")}<div><h3>Project Explorer</h3><div class="muted">Browse and manage projects.</div></div></div>
                 <div class="card clickable" id="cardBrowsingHistory">${homeCardIcon("history")}<div><h3>Browsing History</h3><div class="muted">Restore recent pages and dataset views.</div></div></div>
+                <div class="card clickable" id="cardColorTheme" role="button" tabindex="0">${homeCardIcon("theme")}<div><h3>Color Theme</h3><div class="muted">Preview table styles and switch between Light and Dark.</div></div></div>
               </div>
             </div>
             <div id="homeLaunchAutomationGroup" class="homeGroup">
@@ -110,6 +112,13 @@ export function renderHomeViewOnce(homeView) {
     document.getElementById("cardProjectSettings")?.addEventListener("click", () => shell.openProjectSettingsTab?.());
     document.getElementById("cardBrowsingHistory")?.addEventListener("click", () => shell.openBrowsingHistoryTab?.());
     document.getElementById("cardScripting")?.addEventListener("click", () => shell.openScriptingTab?.({ forceNew: true }));
+    const colorThemeCard = document.getElementById("cardColorTheme");
+    colorThemeCard?.addEventListener("click", () => openColorThemeDialog());
+    colorThemeCard?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openColorThemeDialog();
+    });
     homeWired = true;
   }
   initHomeShortcuts(homeView.querySelector("#homeShortcutGroups"));

@@ -6,15 +6,34 @@
   const MESSAGE_TYPE = "arcrho:set-color-theme";
   const CHANGE_EVENT = "arcrho:color-theme-changed";
   const DEFAULT_THEME = "light";
-  const THEMES = Object.freeze(["light", "dark", "high-contrast"]);
+  const THEMES = Object.freeze(["light", "dark"]);
   // Shared with the cascade controller so pointer and keyboard hold one open state.
   const THEME_MENU_OPEN_CLASS = "menuSubmenuOpen";
   const MONACO_ATOM_ONE_DARK_THEME = "arcrho-atom-one-dark";
   let hostPreferenceRevision = 0;
 
+  // The table style is a second choice beside Light and Dark: how spreadsheet
+  // grids and tabbed pages are drawn. Revolutionary is the default; Classic is
+  // the look the app had before it. revolutionary.css owns the difference.
+  const TABLE_STYLE_STORAGE_KEY = "arcrho_table_style";
+  const TABLE_STYLE_ATTRIBUTE = "data-arcrho-table-style";
+  const TABLE_STYLE_MESSAGE_TYPE = "arcrho:set-table-style";
+  const TABLE_STYLE_CHANGE_EVENT = "arcrho:table-style-changed";
+  const DEFAULT_TABLE_STYLE = "revolutionary";
+  const TABLE_STYLES = Object.freeze(["revolutionary", "classic"]);
+  // A document marked with this attribute draws one fixed style from its URL
+  // (the Home previews) and ignores the app-wide choice.
+  const TABLE_STYLE_LOCK_ATTRIBUTE = "data-arcrho-table-style-locked";
+  let hostTableStyleRevision = 0;
+
   function normalizeTheme(value) {
     const normalized = String(value || "").trim().toLowerCase();
     return THEMES.includes(normalized) ? normalized : DEFAULT_THEME;
+  }
+
+  function normalizeTableStyle(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return TABLE_STYLES.includes(normalized) ? normalized : DEFAULT_TABLE_STYLE;
   }
 
   function readStoredTheme() {
@@ -82,6 +101,98 @@
 
   function getTheme() {
     return normalizeTheme(global.document?.documentElement?.getAttribute(ATTRIBUTE_NAME));
+  }
+
+  function isTableStyleLocked() {
+    return !!global.document?.documentElement?.hasAttribute?.(TABLE_STYLE_LOCK_ATTRIBUTE);
+  }
+
+  function readStoredTableStyle() {
+    try {
+      return normalizeTableStyle(global.localStorage?.getItem(TABLE_STYLE_STORAGE_KEY));
+    } catch {
+      return DEFAULT_TABLE_STYLE;
+    }
+  }
+
+  function persistLocalTableStyle(style) {
+    try {
+      global.localStorage?.setItem(TABLE_STYLE_STORAGE_KEY, style);
+    } catch {
+      // The style still applies for this document when storage is unavailable.
+    }
+  }
+
+  function persistHostTableStyle(style) {
+    if (!isTopLevelWindow()) return;
+    const savePreference = global.ADAHost?.saveTableStylePreference;
+    if (typeof savePreference !== "function") return;
+    Promise.resolve(savePreference(style)).catch(() => {
+      // Browser-only sessions and temporarily unavailable hosts keep the local cache.
+    });
+  }
+
+  function getTableStyle() {
+    return normalizeTableStyle(global.document?.documentElement?.getAttribute(TABLE_STYLE_ATTRIBUTE));
+  }
+
+  function notifyChildFramesTableStyle(style) {
+    const frames = global.document?.querySelectorAll?.("iframe") || [];
+    for (const frame of frames) {
+      try {
+        frame.contentWindow?.postMessage({ type: TABLE_STYLE_MESSAGE_TYPE, tableStyle: style }, "*");
+      } catch {
+        // Ignore frames that are unavailable while loading or closing.
+      }
+    }
+  }
+
+  function applyTableStyle(value, options = {}) {
+    const style = normalizeTableStyle(value);
+    const root = global.document?.documentElement;
+    const previousStyle = getTableStyle();
+    root?.setAttribute(TABLE_STYLE_ATTRIBUTE, style);
+    if (options.persist === true) {
+      persistLocalTableStyle(style);
+      persistHostTableStyle(style);
+    }
+    if (options.notifyChildren !== false) notifyChildFramesTableStyle(style);
+    if (previousStyle !== style || options.forceEvent === true) {
+      global.dispatchEvent?.(new CustomEvent(TABLE_STYLE_CHANGE_EVENT, {
+        detail: { tableStyle: style, previousTableStyle: previousStyle, source: options.source || "runtime" },
+      }));
+    }
+    return style;
+  }
+
+  function setTableStyle(value, options = {}) {
+    hostTableStyleRevision += 1;
+    return applyTableStyle(value, {
+      ...options,
+      persist: options.persist !== false,
+      source: options.source || "user",
+    });
+  }
+
+  async function hydrateHostTableStylePreference() {
+    if (!isTopLevelWindow() || isTableStyleLocked()) return getTableStyle();
+    const loadPreference = global.ADAHost?.loadTableStylePreference;
+    if (typeof loadPreference !== "function") return readStoredTableStyle();
+    const revision = hostTableStyleRevision;
+    try {
+      const result = await loadPreference();
+      if (revision !== hostTableStyleRevision) return getTableStyle();
+      if (!result?.exists) {
+        const cachedStyle = readStoredTableStyle();
+        persistHostTableStyle(cachedStyle);
+        return cachedStyle;
+      }
+      const style = normalizeTableStyle(result.tableStyle);
+      persistLocalTableStyle(style);
+      return applyTableStyle(style, { persist: false, source: "host-preference" });
+    } catch {
+      return readStoredTableStyle();
+    }
   }
 
   function getMonacoTheme(theme = getTheme()) {
@@ -350,14 +461,25 @@
     DEFAULT_THEME,
     MESSAGE_TYPE,
     STORAGE_KEY,
+    TABLE_STYLE_ATTRIBUTE,
+    TABLE_STYLE_CHANGE_EVENT,
+    TABLE_STYLE_MESSAGE_TYPE,
+    TABLE_STYLE_STORAGE_KEY,
+    DEFAULT_TABLE_STYLE,
+    TABLE_STYLES,
     THEMES,
+    applyTableStyle,
     applyTheme,
     getCssColor,
     getMonacoTheme,
+    getTableStyle,
     getTheme,
     hydrateHostThemePreference,
+    normalizeTableStyle,
     normalizeTheme,
+    readStoredTableStyle,
     readStoredTheme,
+    setTableStyle,
     setTheme,
     syncNativeWindowBackground,
     wireThemeMenu,
@@ -366,26 +488,41 @@
 
   global.ArcRhoColorTheme = api;
   let bootstrapTheme = readStoredTheme();
+  let bootstrapTableStyle = readStoredTableStyle();
   try {
-    const requestedTheme = new URLSearchParams(global.location?.search || "").get("theme");
+    const params = new URLSearchParams(global.location?.search || "");
+    const requestedTheme = params.get("theme");
     if (THEMES.includes(String(requestedTheme || "").trim().toLowerCase())) {
       bootstrapTheme = normalizeTheme(requestedTheme);
       persistLocalTheme(bootstrapTheme);
+    }
+    const requestedTableStyle = params.get("tableStyle");
+    if (TABLE_STYLES.includes(String(requestedTableStyle || "").trim().toLowerCase())) {
+      bootstrapTableStyle = normalizeTableStyle(requestedTableStyle);
+      if (!isTableStyleLocked()) persistLocalTableStyle(bootstrapTableStyle);
     }
   } catch {
     // Keep the local renderer cache when the current URL is unavailable.
   }
   applyTheme(bootstrapTheme, { notifyChildren: false, source: "bootstrap" });
+  applyTableStyle(bootstrapTableStyle, { notifyChildren: false, source: "bootstrap" });
   void hydrateHostThemePreference();
+  void hydrateHostTableStylePreference();
 
   global.addEventListener?.("message", (event) => {
-    if (event?.data?.type !== MESSAGE_TYPE) return;
-    applyTheme(event.data.theme, { persist: false, source: "message" });
+    if (event?.data?.type === MESSAGE_TYPE) {
+      applyTheme(event.data.theme, { persist: false, source: "message" });
+    } else if (event?.data?.type === TABLE_STYLE_MESSAGE_TYPE && !isTableStyleLocked()) {
+      applyTableStyle(event.data.tableStyle, { persist: false, source: "message" });
+    }
   });
 
   global.addEventListener?.("storage", (event) => {
-    if (event.key !== STORAGE_KEY) return;
-    applyTheme(event.newValue, { persist: false, source: "storage" });
+    if (event.key === STORAGE_KEY) {
+      applyTheme(event.newValue, { persist: false, source: "storage" });
+    } else if (event.key === TABLE_STYLE_STORAGE_KEY && !isTableStyleLocked()) {
+      applyTableStyle(event.newValue, { persist: false, source: "storage" });
+    }
   });
 
   if (global.document?.readyState === "loading") {

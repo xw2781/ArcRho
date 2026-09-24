@@ -10,7 +10,7 @@
   --bs-muted: #64748b;
   --bs-blue: #2b6df6;
   --bs-blue-soft: #eff6ff;
-  --bs-selected-band: #dff8f8;
+  --bs-selected-band: var(--ar-spreadsheet-percent-fill);
   --bs-row-hover: #f8fafc;
   --bs-radius: 4px;
 }
@@ -78,7 +78,9 @@ input {
 }
 
 /* Notes scrolls inside the page frame; the audit log view manages its own
-   scrolling, so it only needs the frame inset. */
+   scrolling, so it only needs the frame inset. Links and Audit Log hold framed
+   panes of their own, so they sit at the panel inset rather than 3px inside
+   the page frame, where the two frames would read as one doubled line. */
 #bsNotesPage {
   padding: 10px;
   overflow: auto;
@@ -86,7 +88,7 @@ input {
 
 #bsAuditPage,
 #bsLinksPage {
-  padding: 3px;
+  padding: 10px;
 }
 
 #bsLinksMount {
@@ -356,9 +358,7 @@ input {
   --bs-scrollbar-button-active: #d9dee7;
   --bs-scrollbar-thumb: rgba(182, 182, 182, 0.2);
   --bs-scrollbar-thumb-active: rgba(120, 120, 120, 0.267);
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
 }
 
 .bsTableWrap::-webkit-scrollbar {
@@ -429,6 +429,7 @@ input {
 }
 
 .bsMethodTable {
+  color: var(--ar-spreadsheet-cell-text);
   min-width: 100%;
 }
 
@@ -442,17 +443,8 @@ input {
   z-index: 4;
   text-align: center;
   vertical-align: middle;
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: 0;
   background-clip: padding-box;
-}
-
-.bsMethodTable thead th::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: var(--ar-spreadsheet-grid-border);
-  pointer-events: none;
 }
 
 .bsMethodTable th:first-child,
@@ -466,7 +458,7 @@ input {
   text-align: center;
   background: var(--ar-spreadsheet-label-fill);
   color: var(--ar-spreadsheet-label-text);
-  border-left: 1px solid var(--ar-spreadsheet-grid-border);
+  border-left: 0;
   border-right: 0;
   box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
   background-clip: padding-box;
@@ -485,11 +477,6 @@ input {
   background: transparent;
 }
 
-/* The grid still needs its right wall, so the last cell of a row keeps that one
-   edge even when it is masked, exactly as the Dataset Viewer does. */
-.bsMethodTable tr > td.bsMaskedCell:last-child {
-  border-right-color: var(--ar-spreadsheet-grid-border);
-}
 
 /* Row hover must never repaint a fill that carries meaning: a selected
    estimator, proportion, or inflation source, the Proportion Settled and User

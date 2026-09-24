@@ -196,6 +196,12 @@ body {
 #dfmNotesPage { display: none; }
 #dfmLinksPage { display: none; }
 #dfmAuditPage { display: none; }
+/* Links and Audit Log hold framed panes of their own, so they sit at the usual
+   panel inset rather than 3px from the page's frame. */
+#dfmLinksPage,
+#dfmAuditPage {
+  padding: 10px;
+}
 /* The Details sections own the space between them, so this wrapper adds none. */
 .dfmSection {
   display: flex;
@@ -461,9 +467,7 @@ body {
   box-shadow: none;
   outline: none;
   overflow: auto;
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
   box-sizing: border-box;
   align-self: stretch;
 }
@@ -595,7 +599,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 5;
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: 0;
   box-shadow: none;
   background-clip: padding-box;
 }
@@ -609,7 +613,7 @@ body {
   width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
   min-width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
   max-width: var(--dfm-ratio-label-column-width, var(--ar-spreadsheet-cell-width));
-  border-left: 1px solid var(--ar-spreadsheet-grid-border);
+  border-left: 0;
   border-right: 0;
   position: sticky;
   left: 0;
@@ -637,6 +641,11 @@ body {
 
 #ratioWrap table + table {
   margin-top: 14px;
+  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+}
+/* The summary table sits under the formula bar rather than another table, but
+   still opens on its own top line. */
+#ratioWrap table.ratioSummaryTable {
   border-top: 1px solid var(--ar-spreadsheet-grid-border);
 }
 #ratioWrap td.ratioCell.strike {
@@ -667,8 +676,7 @@ body {
   z-index: 1;
 }
 #ratioWrap td.ratioSelectedCell {
-  /* background: rgba(183, 227, 86, 0.374); */
-  background: #9dcc00;
+  background: var(--ar-spreadsheet-source-selection-fill);
 }
 #ratioWrap td.dfmTableHighlight {
   background: rgb(148, 188, 248);
@@ -756,13 +764,13 @@ body {
    selected-average green at equal specificity, so selecting the row paints over
    the blue rather than sitting under it. */
 #ratioWrap td.summaryCell.userEntryEditable {
-  background: #dff8f8;
+  background: var(--ar-spreadsheet-percent-fill);
 }
 #ratioWrap td.summaryCell.ratioSelectedCell,
 #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableHighlight,
 #ratioWrap td.summaryCell.ratioSelectedCell.dfmTableActive {
   background: var(--ar-spreadsheet-weighted-selection-fill);
-  color: #111827;
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 /*
  * A spreadsheet gives every reference in one formula its own colour, so a
@@ -917,16 +925,27 @@ body {
   border: none !important;
   background: transparent !important;
 }
-#ratioWrap table.ratioMainTable tbody tr:last-child > td.na {
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border) !important;
-}
-#ratioWrap table.ratioMainTable tr > td.na:last-child {
-  border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
-}
 #ratioWrap.showNaBorders td.na {
   border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
   border-bottom: 1px solid var(--ar-spreadsheet-grid-border) !important;
   background: transparent !important;
+}
+/* The table's bottom edge is drawn by the shared rule in spreadsheet_table.css,
+   so a blank cell in the last row adds no line of its own under it. */
+#ratioWrap.showNaBorders table.ratioMainTable tbody tr:last-child > td.na {
+  border-bottom-width: 0 !important;
+}
+/* The frame around the tables is their outer edge. The header row, the label
+   column, the last column and the last row all meet it, so none of them draws
+   a line of its own there, or the edge would show twice.
+
+   The shared rule in spreadsheet_table.css draws the right and bottom edges;
+   the blank triangle cells force their borders, so they need saying again. */
+#ratioWrap > table:last-child {
+  margin-bottom: 0;
+}
+#ratioWrap > table tr > td.na:last-child {
+  border-right-width: 0 !important;
 }
 #ratioWrap th.summaryDragHandle {
   cursor: grab;
@@ -1003,7 +1022,7 @@ body {
   padding: 0 6px;
   white-space: nowrap;
   background: #fff;
-  color: #111;
+  color: #000000;
   text-overflow: ellipsis;
   overflow: hidden;
   box-sizing: border-box;
@@ -1167,6 +1186,14 @@ body {
 }
 .dfmSummaryFormulaBar:not(:focus-within):not(.hasValidationError) {
   border-color: var(--ar-workspace-frame-border);
+}
+/* The bar starts at the frame's left edge and, when it runs the full visible
+   width, ends at its right edge; on those sides the frame is its border. */
+#ratioWrap .dfmSummaryFormulaBar {
+  border-left-width: 0;
+}
+#ratioWrap .dfmSummaryFormulaPanel[data-reaches-frame-end] .dfmSummaryFormulaBar {
+  border-right-width: 0;
 }
 .dfmSummaryFormulaBarLabel {
   color: #6b7280;
@@ -1737,9 +1764,7 @@ body {
   border: 1px solid var(--ar-workspace-frame-border, #d8dde3);
   background: #fff;
   outline: none;
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
   box-sizing: border-box;
 }
 #resultsWrap:focus-visible {
@@ -1821,9 +1846,7 @@ body {
   box-shadow: none;
   outline: none;
   overflow: auto;
-  scrollbar-gutter: stable;
-  padding-right: 1px;
-  padding-bottom: 1px;
+  scrollbar-gutter: auto;
   box-sizing: border-box;
   align-self: stretch;
 }
@@ -1850,7 +1873,7 @@ table.dfmCurvesTable thead th {
   padding-bottom: 4px;
   text-align: center;
   vertical-align: middle;
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: 0;
   background-clip: padding-box;
 }
 table.dfmCurvesTable thead th.dfmCurvesColumnHeader {
@@ -1873,10 +1896,9 @@ table.dfmCurvesTable thead th.dfmCurvesCorner {
   left: 0;
   z-index: 3;
 }
-/* The grid closes on its left edge the way the Ratios grid does, so the frame
-   stays continuous once the row labels are stuck against it. */
+/* The row labels stick against the frame, which is their left edge. */
 table.dfmCurvesTable th:first-child {
-  border-left: 1px solid var(--ar-spreadsheet-grid-border);
+  border-left: 0;
 }
 table.dfmCurvesTable tbody th {
   background: var(--ar-spreadsheet-label-fill);
@@ -1917,14 +1939,13 @@ table.dfmCurvesTable td.dfmCurvesValue.dfmCurvesSelected,
 table.dfmCurvesTable td.dfmCurvesPattern.dfmCurvesSelected,
 table.dfmCurvesTable td.dfmCurvesFuture.dfmCurvesSelected {
   background: var(--ar-spreadsheet-weighted-selection-fill);
-  color: #111827;
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 /* The tail pattern and the periods it runs off over are one block: a quiet rule
    opens it, the X names the column the tail follows, and that column stays
    green all the way down so the choice and its result are read together. */
-table.dfmCurvesTable tr.dfmCurvesPatternRow th,
-table.dfmCurvesTable tr.dfmCurvesPatternRow td:not(.dfmCurvesBlank) {
-  border-top: 1px solid #cbd5e1;
+table.dfmCurvesTable tr:has(+ tr.dfmCurvesPatternRow) > * {
+  border-bottom-color: #cbd5e1;
 }
 table.dfmCurvesTable td.dfmCurvesPattern:not(.dfmCurvesSelected):hover,
 table.dfmCurvesTable td.dfmCurvesFuture:not(.dfmCurvesSelected):hover {
@@ -1940,8 +1961,8 @@ table.dfmCurvesTable td.dfmCurvesPattern:not(.dfmCurvesSelected):hover::after {
    follows along the row. Only the Selected Value beside it is filled, in the
    same pale yellow Result Selection fills its Selected Ultimate column with. */
 table.dfmCurvesTable td.dfmCurvesSelectedValue {
-  background: #fdf5a9;
-  color: #1f2937;
+  background: var(--ar-spreadsheet-result-fill);
+  color: var(--ar-spreadsheet-result-selection-text);
   font-weight: 400;
 }
 /* A period the fits leave out is struck through in the Ratios tab's colour, on
@@ -2090,16 +2111,8 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   position: sticky;
   top: 0;
   z-index: 5;
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: 0;
   background-clip: padding-box;
-}
-#resultsWrap thead th::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: var(--ar-spreadsheet-grid-border);
-  pointer-events: none;
 }
 #resultsWrap thead { background: var(--ar-spreadsheet-header-fill); }
 #resultsWrap th:first-child,
@@ -2111,7 +2124,7 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   z-index: 4;
   background: var(--ar-spreadsheet-label-fill);
   color: var(--ar-spreadsheet-label-text);
-  border-left: 1px solid var(--ar-spreadsheet-grid-border);
+  border-left: 0;
   border-right: 0;
   box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
   background-clip: padding-box;
@@ -2137,7 +2150,7 @@ table.dfmCurvesTable td.dfmCurvesEditing {
 #resultsWrap .dfmResultsTotalRow th:not(.arSpreadsheetSelectedLabel),
 #resultsWrap .dfmResultsTotalRow td:not(.dfmTableHighlight):not(.dfmTableActive) {
   background: #fff;
-  color: #1f2937;
+  color: var(--ar-spreadsheet-cell-text);
   font-weight: 700;
   border-bottom-color: #cbd5e1;
 }

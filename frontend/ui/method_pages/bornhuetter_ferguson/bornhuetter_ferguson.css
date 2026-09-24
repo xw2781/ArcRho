@@ -13,9 +13,9 @@
   --bf-method-grid-border: var(--ar-spreadsheet-grid-border);
   --bf-method-header-cell: var(--ar-spreadsheet-header-fill);
   --bf-method-label-cell: var(--ar-spreadsheet-label-fill);
-  --bf-method-percent-cell: #dff8f8;
-  --bf-method-ultimate-cell: #fdf5a9;
-  --bf-method-ultimate-highlight-cell: #fde047;
+  --bf-method-percent-cell: var(--ar-spreadsheet-percent-fill);
+  --bf-method-ultimate-cell: var(--ar-spreadsheet-result-fill);
+  --bf-method-ultimate-highlight-cell: var(--ar-spreadsheet-result-selection-fill);
   --bf-method-cell-h: var(--ar-spreadsheet-cell-height);
   --bf-method-header-h: 52px;
   --bf-method-header-line-h: 15px;
@@ -526,8 +526,6 @@ body {
   overflow: auto;
   flex: 1 1 auto;
   min-height: 0;
-  padding-right: 1px;
-  padding-bottom: 1px;
   box-shadow: none;
 }
 table.bfMethodTable {
@@ -555,7 +553,7 @@ table.bfMethodTable {
   background-clip: padding-box;
   color: #2f3948;
   font-weight: 400;
-  border-top: 1px solid #ddd;
+  border-top: 0;
 }
 .bfMethodTable th:first-child,
 .bfMethodTable td:first-child {
@@ -564,6 +562,7 @@ table.bfMethodTable {
 }
 table.bfMethodTable {
   width: max-content;
+  color: var(--ar-spreadsheet-cell-text);
   min-width: 0;
   table-layout: fixed;
   font-size: 14px;
@@ -606,7 +605,7 @@ table.bfMethodTable {
   -webkit-user-select: none;
   border-right-color: var(--bf-method-grid-border);
   border-bottom-color: var(--bf-method-grid-border);
-  color: #132a63;
+  color: var(--ar-spreadsheet-cell-text);
 }
 .bfMethodTable th:first-child,
 .bfMethodTable td:first-child {
@@ -618,8 +617,8 @@ table.bfMethodTable {
   z-index: 3;
   text-align: center;
   background: var(--bf-method-label-cell);
-  color: #111827;
-  border-left: 1px solid var(--bf-method-grid-border);
+  color: var(--ar-spreadsheet-label-text);
+  border-left: 0;
 }
 .bfMethodTable thead th {
   z-index: 4;
@@ -630,7 +629,7 @@ table.bfMethodTable {
   vertical-align: middle;
   text-align: center;
   background: var(--bf-method-header-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
   cursor: cell;
 }
@@ -691,16 +690,16 @@ table.bfMethodTable {
   color: var(--ar-spreadsheet-selection-text);
 }
 .bfMethodTable td.bfPercentCell.bfHighlightedCell {
-  background: #a8eeee;
-  color: #0284c7;
+  background: var(--ar-spreadsheet-percent-selection-fill);
+  color: var(--ar-spreadsheet-percent-selection-text);
 }
 .bfMethodTable td.bfPriorCell.bfSelectedSourceCell.bfHighlightedCell {
-  background: #9dcc00;
-  color: #111827;
+  background: var(--ar-spreadsheet-source-selection-fill);
+  color: var(--ar-spreadsheet-source-selection-text);
 }
 .bfMethodTable td.bfWeightCell.bfHighlightedCell {
-  background: #a8eeee;
-  color: #0284c7;
+  background: var(--ar-spreadsheet-percent-selection-fill);
+  color: var(--ar-spreadsheet-percent-selection-text);
 }
 .bfMethodTable td.bfWeightCell.bfWeightNonZero {
   color: #003fff;
@@ -708,11 +707,11 @@ table.bfMethodTable {
 }
 .bfMethodTable td.bfUltimateCell.bfHighlightedCell {
   background: var(--bf-method-ultimate-highlight-cell);
-  color: #111827;
+  color: var(--ar-spreadsheet-result-selection-text);
 }
 .bfMethodTable td.bfOriginCell.bfHighlightedCell {
   background: var(--ar-spreadsheet-selected-label-fill);
-  color: #111827;
+  color: var(--ar-spreadsheet-label-text);
   font-weight: 400;
 }
 .bfMethodTable td.bfMethodCell.bfHighlightAnchorCell {

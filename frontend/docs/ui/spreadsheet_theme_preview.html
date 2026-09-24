@@ -1,0 +1,1752 @@
+<title>Slate Spreadsheet Theme</title>
+<style>
+  /* ---------------------------------------------------------------------------
+     Preview shell. Quiet on purpose: the specimen window below is the subject.
+     --------------------------------------------------------------------------- */
+  :root {
+    --bg: #e8ecf1;
+    --ink: #18212d;
+    --muted: #5a6576;
+    --line: #d2d8e0;
+    --panel: #f6f8fa;
+    --accent: #2b6df6;
+    --seg: #dce2e9;
+    --seg-on: #ffffff;
+    --focus: rgba(43, 109, 246, 0.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #14171b;
+      --ink: #dde2e9;
+      --muted: #8e97a6;
+      --line: #2b3038;
+      --panel: #1b1f25;
+      --accent: #6ea0ff;
+      --seg: #22262d;
+      --seg-on: #353b46;
+      --focus: rgba(110, 160, 255, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #14171b;
+    --ink: #dde2e9;
+    --muted: #8e97a6;
+    --line: #2b3038;
+    --panel: #1b1f25;
+    --accent: #6ea0ff;
+    --seg: #22262d;
+    --seg-on: #353b46;
+    --focus: rgba(110, 160, 255, 0.5);
+  }
+
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.5 "Segoe UI", Arial, Tahoma, sans-serif;
+  }
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-block: 28px 56px;
+    padding-inline: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .intro h1 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.2;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+  .intro .kicker {
+    margin: 0 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .intro .lede {
+    margin: 6px 0 0;
+    max-width: 72ch;
+    color: var(--muted);
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px 22px;
+  }
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control > span {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 6px;
+    background: var(--seg);
+  }
+  .seg button,
+  .ghostBtn {
+    font: inherit;
+    font-size: 12px;
+    border: 0;
+    border-radius: 4px;
+    padding: 4px 11px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] {
+    background: var(--seg-on);
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+  .seg button:disabled { opacity: 0.45; cursor: default; }
+  .ghostBtn {
+    border: 1px solid var(--line);
+    padding: 4px 12px;
+    color: var(--ink);
+    user-select: none;
+    touch-action: none;
+  }
+  .ghostBtn[aria-pressed="true"] { background: var(--seg); }
+  .seg button:focus-visible,
+  .ghostBtn:focus-visible,
+  .copyBtn:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  .hint {
+    margin: -6px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .hint kbd {
+    font: 11px Consolas, "Cascadia Mono", monospace;
+    padding: 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel);
+  }
+
+  .handoff {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .handoff { grid-template-columns: minmax(0, 1fr); }
+  }
+  .handoff h2 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .handoff p { margin: 0 0 10px; color: var(--muted); max-width: 70ch; }
+  .changes {
+    margin: 0 0 14px;
+    padding-left: 18px;
+    color: var(--muted);
+  }
+  .changes li { margin: 3px 0; }
+  .changes b { color: var(--ink); font-weight: 700; }
+  .tokenScroll {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .tokenTable {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tokenTable th,
+  .tokenTable td {
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .tokenTable thead th { color: var(--muted); font-weight: 700; }
+  .tokenTable tbody tr:last-child > * { border-bottom: 0; }
+  .tokenTable td.col-on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .sw {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    vertical-align: -2px;
+    border: 1px solid rgba(127, 127, 127, 0.35);
+    border-radius: 2px;
+  }
+  .codeHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .codeHead h2 { margin: 0; }
+  .copyBtn {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  pre.css {
+    margin: 0;
+    max-height: 460px;
+    overflow: auto;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    font: 12px/1.55 Consolas, "Cascadia Mono", monospace;
+    color: var(--ink);
+    user-select: text;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Specimen. Every colour below comes from --sp-* tokens that the script sets
+     for the chosen variant, so Current, Slate, and Slate Dark share one sheet.
+     --------------------------------------------------------------------------- */
+  .spec {
+    --row-h: 20px;
+    font-family: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+    color: var(--sp-text);
+  }
+  .win {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 560px;
+    border: 1px solid var(--sp-win-border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--sp-page);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    transition: background-color 160ms ease;
+  }
+  @media (max-width: 600px) {
+    .win { height: 500px; }
+  }
+  .winTitle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 12px;
+    background: var(--sp-chrome);
+    border-bottom: 1px solid var(--sp-tab-seam);
+    font-size: 12px;
+    color: var(--sp-muted);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .winTitle .name { color: var(--sp-strong); font-weight: 700; }
+  .winTitle .path { overflow: hidden; text-overflow: ellipsis; }
+  .runChip {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--sp-input-border);
+    font-size: 11px;
+    color: var(--sp-text);
+  }
+  .runChip::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sp-ok);
+  }
+  .winGlyph {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    color: var(--sp-accent);
+  }
+
+  /* Tab bar: shared chrome for both styles. */
+  .tabBar {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    height: 35px;
+    padding: 4px 8px 0;
+    box-sizing: border-box;
+    background: var(--sp-canvas);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .tabBar::-webkit-scrollbar { display: none; }
+  .tabBar::after {
+    content: "";
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 0;
+    height: 1px;
+    background: var(--sp-tab-seam);
+    pointer-events: none;
+  }
+  .tab {
+    appearance: none;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .tab:focus-visible {
+    outline: 2px solid var(--sp-focus);
+    outline-offset: -2px;
+  }
+  .tab .count {
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--sp-muted);
+    font-weight: 400;
+  }
+
+  /* Current: boxed folder tabs, as tabbed_page.css draws them today. */
+  .spec[data-variant="current"] .tab {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    background: #edf1f6;
+    color: #1f2937;
+  }
+  .spec[data-variant="current"] .tab:hover { background: #f8fafc; }
+  .spec[data-variant="current"] .tab[aria-selected="true"] {
+    z-index: 2;
+    height: 29px;
+    border-bottom: 0;
+    background: #ffffff;
+    font-weight: 700;
+    transform: translateY(1px);
+  }
+
+  /* Slate: flat text tabs, one accent underline sitting on the seam. */
+  .spec:not([data-variant="current"]) .tab {
+    height: 30px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 4px 4px 0 0;
+    background: transparent;
+    color: var(--sp-tab-text);
+  }
+  .spec:not([data-variant="current"]) .tab:hover {
+    background: var(--sp-tab-hover);
+    color: var(--sp-strong);
+  }
+  .spec:not([data-variant="current"]) .tab[aria-selected="true"] {
+    color: var(--sp-strong);
+    font-weight: 700;
+    z-index: 2;
+  }
+  .spec:not([data-variant="current"]) .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--sp-accent);
+  }
+
+  .tabPages {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .tabPage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    box-sizing: border-box;
+  }
+  .pageHead {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    min-height: 20px;
+    font-size: 12px;
+    color: var(--sp-muted);
+  }
+  .pageHead strong { color: var(--sp-strong); font-weight: 700; }
+  .legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend i {
+    width: 12px;
+    height: 9px;
+    border: 1px solid currentColor;
+    box-sizing: border-box;
+  }
+  .legend.excel { color: var(--sp-link-excel); }
+  .legend.internal { color: var(--sp-link-internal); }
+  .legend.formula { color: var(--sp-link-formula); }
+  .legend span { color: var(--sp-muted); }
+
+  /* Framed scroll host. It hugs the table so the frame is the table's edge. */
+  .gridWrap {
+    flex: 0 1 auto;
+    min-height: 0;
+    width: fit-content;
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--sp-frame);
+    background: var(--sp-surface);
+    outline: none;
+  }
+  .gridWrap:focus-visible { box-shadow: 0 0 0 2px var(--sp-focus); }
+  .gridWrap::-webkit-scrollbar { width: 20px; height: 20px; }
+  .gridWrap::-webkit-scrollbar-track,
+  .gridWrap::-webkit-scrollbar-corner { background: var(--sp-track); }
+  .gridWrap::-webkit-scrollbar-thumb {
+    background: var(--sp-thumb);
+    border: 5px solid var(--sp-track);
+    background-clip: content-box;
+    border-radius: 10px;
+  }
+  .gridWrap::-webkit-scrollbar-thumb:hover { background-color: var(--sp-thumb-active); }
+  .gridWrap::-webkit-scrollbar-button { display: none; }
+
+  .grid {
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    font-size: var(--sp-font);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    -webkit-user-select: none;
+    color: var(--sp-text);
+  }
+  .grid th,
+  .grid td {
+    position: relative;
+    height: var(--row-h);
+    padding: 0 6px;
+    box-sizing: border-box;
+    border-right: 1px solid var(--sp-grid);
+    border-bottom: 1px solid var(--sp-grid);
+    background: var(--sp-surface);
+    line-height: calc(var(--row-h) - 1px);
+    font-weight: 400;
+    text-align: right;
+    white-space: nowrap;
+    transition: background-color 90ms ease;
+  }
+  .grid .v {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .grid tr > :last-child { border-right-color: transparent; }
+  .grid tbody tr:last-child > * { border-bottom-color: transparent; }
+
+  .grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--sp-head);
+    color: var(--sp-head-text);
+    border-bottom-color: var(--sp-seam);
+    text-align: center;
+    cursor: pointer;
+  }
+  .grid tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--sp-label);
+    color: var(--sp-label-text);
+    border-right-color: var(--sp-seam);
+    text-align: left;
+    cursor: pointer;
+  }
+  .grid thead th.corner {
+    left: 0;
+    z-index: 4;
+    border-right-color: var(--sp-seam);
+    text-align: left;
+    cursor: pointer;
+  }
+  .grid tr.gap > td {
+    height: 10px;
+    padding: 0;
+    background: var(--sp-surface);
+    border-right-color: transparent;
+    border-bottom-color: var(--sp-seam);
+  }
+  .grid td.isInput { background: var(--sp-input); }
+  .grid td.isExcluded { color: var(--sp-muted); text-decoration: line-through; }
+  .grid td.isDerived { color: var(--sp-derived-text); }
+  .grid tr.total > * {
+    background: var(--sp-total);
+    font-weight: 700;
+    box-shadow: inset 0 1px 0 var(--sp-seam);
+  }
+  .grid tbody tr:hover > td:not([aria-selected="true"]):not(.gapCell) {
+    background: var(--sp-hover);
+  }
+
+  /* Selection: each cell names its semantic kind; the kind picks the fill. */
+  .grid td { --k-fill: var(--sp-sel); --k-text: var(--sp-sel-text); }
+  .grid td[data-kind="pct"] { --k-fill: var(--sp-pct); --k-text: var(--sp-pct-text); }
+  .grid td[data-kind="src"] { --k-fill: var(--sp-src); --k-text: var(--sp-src-text); }
+  .grid td[data-kind="res"] { --k-fill: var(--sp-res); --k-text: var(--sp-res-text); }
+  .grid td[aria-selected="true"] {
+    background: var(--k-fill);
+    color: var(--k-text);
+  }
+  .grid thead th.isSelLabel,
+  .grid tbody th.isSelLabel {
+    background: var(--sp-sel-label);
+    color: var(--sp-sel-label-text);
+  }
+  .spec:not([data-variant="current"]) .grid thead th.isSelLabel {
+    box-shadow: inset 0 -2px 0 var(--sp-range);
+  }
+  .spec:not([data-variant="current"]) .grid tbody th.isSelLabel {
+    box-shadow: inset -2px 0 0 var(--sp-range);
+  }
+
+  /* Anchor. Current: the dashed box it has today. Slate: inside a range the
+     anchor stays unfilled, the way a spreadsheet marks where typing lands. */
+  .spec[data-variant="current"] .grid td.isAnchor {
+    outline: 1px dashed #0f172a;
+    outline-offset: -2px;
+  }
+  .spec:not([data-variant="current"]) .gridWrap[data-multi] .grid td.isAnchor {
+    background: var(--sp-surface);
+    color: var(--sp-text);
+  }
+
+  /* Range perimeter and link outlines are painted over the grid lines, so a
+     range's edge replaces the line under it instead of sitting beside it. */
+  .grid td.isEdge::before,
+  .grid td.isLink::after {
+    content: "";
+    position: absolute;
+    top: var(--it, -1px);
+    left: var(--il, -1px);
+    right: -1px;
+    bottom: -1px;
+    z-index: 1;
+    pointer-events: none;
+    border-style: solid;
+  }
+  .grid td.isEdge::before {
+    border-color: var(--sp-range);
+    border-width: var(--pt, 0) var(--pr, 0) var(--pb, 0) var(--pl, 0);
+  }
+  .spec[data-variant="current"] .grid td.isEdge::before { display: none; }
+  .grid td.isLink::after {
+    border-color: var(--lk);
+    border-width: var(--lt, 0) var(--lr, 0) var(--lb, 0) var(--ll, 0);
+  }
+  .grid td.lkExcel { --lk: var(--sp-link-excel); }
+  .grid td.lkInternal { --lk: var(--sp-link-internal); }
+  .grid td.lkFormula { --lk: var(--sp-link-formula); }
+
+  .cellEdit {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0 5px;
+    border: 1px solid var(--sp-range);
+    outline: none;
+    background: var(--sp-surface);
+    color: var(--sp-strong);
+    font: inherit;
+    text-align: right;
+  }
+
+  /* Details and Notes pages share the same field chrome. */
+  .form {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 340px);
+    gap: 8px 10px;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    padding: 14px 16px;
+    box-sizing: border-box;
+    border: 1px solid var(--sp-frame);
+    background: var(--sp-surface);
+    font-size: 12px;
+  }
+  @media (max-width: 600px) {
+    .form { grid-template-columns: minmax(0, 1fr); }
+  }
+  .form label { color: var(--sp-label-text); }
+  .form .rule {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--sp-grid);
+  }
+  .field {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+  }
+  .fieldInput,
+  .notes {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 26px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--sp-input-border);
+    border-radius: 3px;
+    background: var(--sp-surface);
+    color: var(--sp-text);
+    font: 12px Arial, "Segoe UI", Tahoma, sans-serif;
+  }
+  .fieldInput[readonly] { background: var(--sp-canvas); color: var(--sp-muted); }
+  .fieldInput:focus,
+  .notes:focus {
+    outline: none;
+    border-color: var(--sp-accent);
+    box-shadow: 0 0 0 3px var(--sp-focus-soft);
+  }
+  .pickBtn {
+    flex: 0 0 26px;
+    height: 26px;
+    border: 1px solid var(--sp-input-border);
+    border-radius: 3px;
+    background: var(--sp-surface);
+    color: var(--sp-muted);
+    cursor: pointer;
+    font: 12px Arial, sans-serif;
+  }
+  .pickBtn:hover { border-color: var(--sp-accent); color: var(--sp-accent); }
+  .notes {
+    flex: 1 1 auto;
+    height: auto;
+    width: 100%;
+    max-width: 720px;
+    padding: 8px 10px;
+    resize: none;
+    line-height: 1.5;
+  }
+
+  /* Save bar with spreadsheet-style selection readout on the left. */
+  .saveBar {
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    box-sizing: border-box;
+    background: var(--sp-canvas);
+    border-top: 1px solid var(--sp-tab-seam);
+    font-size: 12px;
+  }
+  .stats {
+    margin-right: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--sp-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .stats b { color: var(--sp-text); font-weight: 400; }
+  .dirty {
+    color: var(--sp-warn);
+    white-space: nowrap;
+  }
+  .sbtn {
+    height: 26px;
+    padding: 0 14px;
+    border: 1px solid var(--sp-input-border);
+    border-radius: 3px;
+    background: var(--sp-surface);
+    color: var(--sp-text);
+    font: 12px "Segoe UI", Arial, sans-serif;
+    cursor: pointer;
+  }
+  .sbtn.primary {
+    border-color: var(--sp-accent);
+    background: var(--sp-accent);
+    color: #ffffff;
+  }
+  .sbtn:disabled { opacity: 0.5; cursor: default; }
+  .sbtn:focus-visible { outline: 2px solid var(--sp-focus); outline-offset: 1px; }
+
+  .toast {
+    position: absolute;
+    right: 14px;
+    bottom: 50px;
+    z-index: 10;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: var(--sp-toast);
+    color: var(--sp-toast-text);
+    font-size: 12px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .grid th, .grid td, .tab, .win { transition: none; }
+  }
+</style>
+
+<div class="page">
+  <header class="intro">
+    <p class="kicker">ArcRho · Shared spreadsheet framework</p>
+    <h1>Slate spreadsheet theme</h1>
+    <p class="lede">A proposed colour theme and table style for the Dataset and method grids and their tabbed pages. Grid lines are drawn in a cool slate that you can actually see, while the header, labels and fills stay close to the page so the table still reads as flat and quiet. The triangle below is sample data.</p>
+  </header>
+
+  <div class="controls" role="toolbar" aria-label="Preview options">
+    <div class="control">
+      <span id="lblVariant">Theme</span>
+      <div class="seg" role="group" aria-labelledby="lblVariant" id="segVariant">
+        <button type="button" id="optCurrent" data-variant="current" aria-pressed="false">Current</button>
+        <button type="button" id="optSlate" data-variant="slate" aria-pressed="true">Slate</button>
+        <button type="button" id="optSlateDark" data-variant="slateDark" aria-pressed="false">Slate Dark</button>
+      </div>
+    </div>
+    <div class="control">
+      <span id="lblGrid">Grid Lines</span>
+      <div class="seg" role="group" aria-labelledby="lblGrid" id="segGrid">
+        <button type="button" id="optSoft" data-grid="soft" aria-pressed="false">Soft</button>
+        <button type="button" id="optBalanced" data-grid="balanced" aria-pressed="true">Balanced</button>
+        <button type="button" id="optDefined" data-grid="defined" aria-pressed="false">Defined</button>
+      </div>
+    </div>
+    <div class="control">
+      <span id="lblDensity">Row Height</span>
+      <div class="seg" role="group" aria-labelledby="lblDensity" id="segDensity">
+        <button type="button" id="optCompact" data-density="20" aria-pressed="true">20 px</button>
+        <button type="button" id="optRoomy" data-density="24" aria-pressed="false">24 px</button>
+      </div>
+    </div>
+    <div class="control">
+      <span>Before / After</span>
+      <button type="button" class="ghostBtn" id="holdCompare" aria-pressed="false">Hold to see Current</button>
+    </div>
+  </div>
+
+  <section class="spec" id="spec" data-variant="slate" aria-label="Theme specimen">
+    <div class="win">
+      <div class="winTitle">
+        <svg class="winGlyph" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 13.5h11M3.5 11V7.5M6.5 11V5M9.5 11V6.5M12.5 11V3"/></svg>
+        <span class="name">Paid Loss DFM</span>
+        <span class="path">Sample Project › Commercial Auto Liability</span>
+        <span class="runChip">Calculated</span>
+      </div>
+      <div class="tabBar" role="tablist" aria-label="Method pages" id="tabBar">
+        <button class="tab" type="button" role="tab" id="tab-details" data-tab="details" aria-controls="page-details" aria-selected="false">Details</button>
+        <button class="tab" type="button" role="tab" id="tab-data" data-tab="data" aria-controls="page-data" aria-selected="false">Data</button>
+        <button class="tab" type="button" role="tab" id="tab-ratios" data-tab="ratios" aria-controls="page-ratios" aria-selected="true">Ratios</button>
+        <button class="tab" type="button" role="tab" id="tab-results" data-tab="results" aria-controls="page-results" aria-selected="false">Results</button>
+        <button class="tab" type="button" role="tab" id="tab-notes" data-tab="notes" aria-controls="page-notes" aria-selected="false">Notes</button>
+      </div>
+      <div class="tabPages">
+        <section class="tabPage" id="page-details" role="tabpanel" aria-labelledby="tab-details" hidden>
+          <div class="form">
+            <label for="fName">Name :</label>
+            <div class="field"><input class="fieldInput" id="fName" type="text" value="Paid Loss DFM"></div>
+            <label for="fOutput">Output Type :</label>
+            <div class="field"><input class="fieldInput" id="fOutput" type="text" value="Paid Loss Ultimate"><button class="pickBtn" type="button" aria-label="Select output type">…</button></div>
+            <label for="fProject">Project :</label>
+            <div class="field"><input class="fieldInput" id="fProject" type="text" value="Sample Project" readonly></div>
+            <label for="fSegment">Segment :</label>
+            <div class="field"><input class="fieldInput" id="fSegment" type="text" value="Commercial Auto Liability" readonly></div>
+            <div class="rule"></div>
+            <label for="fTriangle">Triangle :</label>
+            <div class="field"><input class="fieldInput" id="fTriangle" type="text" value="Paid Loss" readonly><button class="pickBtn" type="button" aria-label="Select triangle">…</button></div>
+            <label for="fOrigin">Origin Length :</label>
+            <div class="field"><input class="fieldInput" id="fOrigin" type="text" value="12 months" readonly></div>
+            <label for="fDev">Development Length :</label>
+            <div class="field"><input class="fieldInput" id="fDev" type="text" value="12 months" readonly></div>
+          </div>
+        </section>
+        <section class="tabPage" id="page-data" role="tabpanel" aria-labelledby="tab-data" hidden>
+          <div class="pageHead">
+            <strong>Cumulative Paid Loss</strong>
+            <span>Accident year by development month</span>
+            <span class="legend excel"><i></i><span>Excel link</span></span>
+            <span class="legend formula"><i></i><span>Formula</span></span>
+          </div>
+          <div class="gridWrap" id="wrap-data" tabindex="0" aria-label="Cumulative paid loss triangle"></div>
+        </section>
+        <section class="tabPage" id="page-ratios" role="tabpanel" aria-labelledby="tab-ratios">
+          <div class="pageHead">
+            <strong>Age-to-Age Factors</strong>
+            <span>Double-click a factor to exclude it · type in the Selected row</span>
+          </div>
+          <div class="gridWrap" id="wrap-ratios" tabindex="0" aria-label="Age-to-age factors"></div>
+        </section>
+        <section class="tabPage" id="page-results" role="tabpanel" aria-labelledby="tab-results" hidden>
+          <div class="pageHead">
+            <strong>Bornhuetter Ferguson Ultimate</strong>
+            <span>Type in Expected Loss Ratio</span>
+            <span class="legend internal"><i></i><span>ArcRho dataset link</span></span>
+          </div>
+          <div class="gridWrap" id="wrap-results" tabindex="0" aria-label="Results"></div>
+        </section>
+        <section class="tabPage" id="page-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+          <textarea class="notes" id="fNotes" rows="10" aria-label="Method notes">Selected factors follow the five-year volume-weighted average.
+
+2018 at 24-36 is excluded: a single large claim settled early and inflates the ratio.
+2022 at 12-24 is excluded: reporting delay after the claims system change.
+
+Tail set to 1.000; paid development is complete by 120 months on every closed year.</textarea>
+        </section>
+      </div>
+      <div class="saveBar">
+        <span class="stats" id="stats" aria-live="polite"></span>
+        <span class="dirty" id="dirty" hidden>Unsaved changes</span>
+        <button class="sbtn" type="button" id="cancelBtn" disabled>Cancel</button>
+        <button class="sbtn primary" type="button" id="saveBtn" disabled>Save</button>
+      </div>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+  </section>
+
+  <p class="hint">Try it: drag across cells · click a row or column label · <kbd>Shift</kbd>+click or <kbd>Shift</kbd>+arrows to extend · arrows move the range · <kbd>Ctrl</kbd>+<kbd>C</kbd> copies · <kbd>Esc</kbd> clears · <kbd>←</kbd><kbd>→</kbd> on the tab bar switches pages.</p>
+
+  <section class="handoff" aria-label="Theme tokens">
+    <div>
+      <h2>What Changes From Current</h2>
+      <ul class="changes">
+        <li><b>Grid lines</b> move from a warm near-white to a cool slate that holds on white, and a slightly darker seam marks where the header and row labels meet the values.</li>
+        <li><b>Header and labels</b> drop the heavy gray fill for a pale tint, so the grid lines, not the fills, carry the structure.</li>
+        <li><b>Selection</b> keeps its four meanings (general, percentage, input, result) in softer fills, with a one-pixel range edge and an accent line on the matching row and column labels.</li>
+        <li><b>Tabs</b> become flat text with one accent underline instead of boxed folder tabs.</li>
+        <li><b>Links</b> keep their green, blue and purple outlines unchanged.</li>
+      </ul>
+      <div class="tokenScroll">
+        <table class="tokenTable" id="tokenTable"></table>
+      </div>
+    </div>
+    <div>
+      <div class="codeHead">
+        <h2 id="cssTitle">Tokens For Slate</h2>
+        <button type="button" class="copyBtn" id="copyCss">Copy CSS</button>
+      </div>
+      <pre class="css" id="cssOut"></pre>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------------
+     Tokens. Each value is [Current, Slate, Slate Dark]. `ar` names the real
+     spreadsheet token where one exists; `proposed` marks a token Slate adds.
+     ------------------------------------------------------------------------ */
+  const V = { current: 0, slate: 1, slateDark: 2 };
+  const GRID = {
+    soft: ["#f3f1f1", "#e8ecf1", "#30353e"],
+    balanced: ["#f3f1f1", "#dde3ea", "#373d48"],
+    defined: ["#f3f1f1", "#d0d7e0", "#404753"],
+  };
+  const TOKENS = [
+    { key: "font", label: "Font Size", ar: "--ar-spreadsheet-font-size", vals: ["14px", "13px", "13px"] },
+    { key: "grid", label: "Grid Line", ar: "--ar-spreadsheet-grid-border", swatch: true },
+    { key: "seam", label: "Header Seam", ar: "--ar-spreadsheet-seam-border", proposed: true, swatch: true, vals: ["#f3f1f1", "#c6ced9", "#4a515e"] },
+    { key: "frame", label: "Table Frame", ar: "--ar-spreadsheet-frame-border", proposed: true, swatch: true, vals: ["#d0d0d0", "#c9d1db", "#434a56"] },
+    { key: "head", label: "Header Fill", ar: "--ar-spreadsheet-header-fill", swatch: true, vals: ["#d9dde2", "#f2f4f7", "#2e333c"] },
+    { key: "head-text", label: "Header Text", ar: "--ar-spreadsheet-header-text", proposed: true, swatch: true, vals: ["#111827", "#526071", "#9aa3b2"] },
+    { key: "label", label: "Row Label Fill", ar: "--ar-spreadsheet-label-fill", swatch: true, vals: ["#d9dde2", "#f2f4f7", "#2e333c"] },
+    { key: "label-text", label: "Row Label Text", ar: "--ar-spreadsheet-label-text", swatch: true, vals: ["#111827", "#334155", "#b8c0cc"] },
+    { key: "surface", label: "Cell Fill", ar: "--ar-spreadsheet-cell-fill", proposed: true, swatch: true, vals: ["#ffffff", "#ffffff", "#282c34"] },
+    { key: "text", label: "Cell Text", ar: "--ar-spreadsheet-cell-text", proposed: true, swatch: true, vals: ["#1f2937", "#1f2937", "#c9cfd8"] },
+    { key: "input", label: "Input Cell Fill", ar: "--ar-spreadsheet-input-fill", proposed: true, swatch: true, vals: ["#ffffff", "#f7faff", "#2b313b"] },
+    { key: "hover", label: "Row Hover", ar: "--ar-spreadsheet-row-hover", proposed: true, swatch: true, vals: ["#ffffff", "#f5f8fc", "#2d323b"] },
+    { key: "total", label: "Total Row Fill", ar: "--ar-spreadsheet-total-fill", proposed: true, swatch: true, vals: ["#ffffff", "#f7f9fb", "#2e333c"] },
+    { key: "sel", label: "Selection", ar: "--ar-spreadsheet-selection-fill", swatch: true, vals: ["#6197f166", "#e0eafd", "#2f4266"] },
+    { key: "sel-text", label: "Selection Text", ar: "--ar-spreadsheet-selection-text", swatch: true, vals: ["#000000", "#12306e", "#e3ebff"] },
+    { key: "sel-label", label: "Selected Label", ar: "--ar-spreadsheet-selected-label-fill", swatch: true, vals: ["#a6a6a6", "#dae4f5", "#36425a"] },
+    { key: "sel-label-text", label: "Selected Label Text", ar: "--ar-spreadsheet-selected-label-text", proposed: true, swatch: true, vals: ["#111827", "#1e3a8a", "#d6e3ff"] },
+    { key: "range", label: "Range Edge", ar: "--ar-spreadsheet-range-border", proposed: true, swatch: true, vals: ["transparent", "#2b6df6", "#6ea0ff"] },
+    { key: "pct", label: "Percentage Selection", ar: "--ar-spreadsheet-weighted-selection-fill", swatch: true, vals: ["#a8eeee", "#d4f0f0", "#1d4447"] },
+    { key: "pct-text", label: "Percentage Text", ar: "--ar-spreadsheet-weighted-selection-text", proposed: true, swatch: true, vals: ["#0284c7", "#0d6470", "#9ee6e6"] },
+    { key: "src", label: "Input Selection", ar: "--ar-spreadsheet-source-selection-fill", proposed: true, swatch: true, vals: ["#9dcc00", "#e2f0c6", "#33421e"] },
+    { key: "src-text", label: "Input Selection Text", ar: "--ar-spreadsheet-source-selection-text", proposed: true, swatch: true, vals: ["#111827", "#3d5a0c", "#cde79a"] },
+    { key: "res", label: "Result Selection", ar: "--ar-spreadsheet-result-selection-fill", proposed: true, swatch: true, vals: ["#fde047", "#fbefc0", "#4a3f17"] },
+    { key: "res-text", label: "Result Selection Text", ar: "--ar-spreadsheet-result-selection-text", proposed: true, swatch: true, vals: ["#111827", "#744806", "#f3d47a"] },
+    { key: "link-excel", label: "Excel Link", ar: "--ar-spreadsheet-excel-link-border", swatch: true, vals: ["#217346", "#217346", "#3fbf7f"] },
+    { key: "link-internal", label: "ArcRho Link", ar: "--ar-spreadsheet-internal-link-border", swatch: true, vals: ["#2b6df6", "#2b6df6", "#6ba5ff"] },
+    { key: "link-formula", label: "Formula Link", ar: "--ar-spreadsheet-formula-link-border", swatch: true, vals: ["#7c3aed", "#7c3aed", "#b08cff"] },
+    { key: "canvas", label: "Tab Bar", ar: "--ar-tabbed-page-bar", proposed: true, swatch: true, tab: true, vals: ["#f5f7fa", "#eef1f5", "#1f2329"] },
+    { key: "page", label: "Tab Page", ar: "--ar-tabbed-page-surface", proposed: true, swatch: true, tab: true, vals: ["#ffffff", "#f7f9fb", "#23272e"] },
+    { key: "tab-seam", label: "Tab Seam", ar: "--ar-tabbed-page-seam", proposed: true, swatch: true, tab: true, vals: ["#d0d0d0", "#d3dae3", "#383e49"] },
+    { key: "tab-text", label: "Tab Text", ar: "--ar-tabbed-page-tab-text", proposed: true, swatch: true, tab: true, vals: ["#1f2937", "#5b6778", "#8d96a5"] },
+    { key: "tab-hover", label: "Tab Hover", ar: "--ar-tabbed-page-tab-hover", proposed: true, swatch: true, tab: true, vals: ["#f8fafc", "#e5eaf0", "#2a2f37"] },
+    { key: "accent", label: "Active Tab Marker", ar: "--ar-tabbed-page-tab-marker", proposed: true, swatch: true, tab: true, vals: ["#2b6df6", "#2b6df6", "#528bff"] },
+  ];
+  // Specimen-only values: chrome, controls and states around the table.
+  const EXTRA = {
+    "chrome": ["#e9edf2", "#e9edf2", "#1b1e23"],
+    "win-border": ["#c9d1dc", "#c9d1dc", "#343a44"],
+    "strong": ["#111827", "#111827", "#e2e6ec"],
+    "muted": ["#64748b", "#6b7686", "#8b93a2"],
+    "derived-text": ["#1f2937", "#475569", "#a4acb9"],
+    "input-border": ["#cfd6df", "#cfd6df", "#3d434e"],
+    "focus": ["rgba(43,109,246,0.36)", "rgba(43,109,246,0.36)", "rgba(110,160,255,0.5)"],
+    "focus-soft": ["rgba(43,109,246,0.14)", "rgba(43,109,246,0.14)", "rgba(110,160,255,0.2)"],
+    "track": ["#f1f3f5", "#f1f3f5", "#21252b"],
+    "thumb": ["rgba(182,182,182,0.2)", "rgba(160,170,184,0.28)", "#4e566680"],
+    "thumb-active": ["rgba(120,120,120,0.267)", "rgba(110,122,138,0.4)", "#747d9180"],
+    "ok": ["#15803d", "#15803d", "#98c379"],
+    "warn": ["#b45309", "#b45309", "#e5c07b"],
+    "toast": ["#1f2937", "#1f2937", "#e2e6ec"],
+    "toast-text": ["#ffffff", "#ffffff", "#1b1e23"],
+  };
+
+  const state = {
+    variant: "slate",
+    shown: "slate",
+    grid: "balanced",
+    density: 20,
+    tab: "ratios",
+    dirty: false,
+  };
+
+  const spec = document.getElementById("spec");
+
+  function tokenValue(t, vi) {
+    if (t.key === "grid") return GRID[state.grid][vi];
+    return t.vals[vi];
+  }
+
+  function applyTokens() {
+    const vi = V[state.shown];
+    spec.dataset.variant = state.shown;
+    for (const t of TOKENS) spec.style.setProperty("--sp-" + t.key, tokenValue(t, vi));
+    for (const k in EXTRA) spec.style.setProperty("--sp-" + k, EXTRA[k][vi]);
+    spec.style.setProperty("--row-h", state.density + "px");
+  }
+
+  /* ------------------------------------------------------------------------
+     Sample triangle. Deterministic, so every reload shows the same numbers.
+     ------------------------------------------------------------------------ */
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0;
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(20260923);
+  const N = 10;
+  const ORIGINS = Array.from({ length: N }, (_, i) => 2016 + i);
+  const AGES = Array.from({ length: N }, (_, j) => 12 * (j + 1));
+  const PATTERN = [0.38, 0.6, 0.745, 0.835, 0.895, 0.937, 0.964, 0.981, 0.992, 1.0];
+  const PREMIUM = [];
+  const TRI = [];
+  for (let i = 0; i < N; i++) {
+    const prem = Math.round((6400000 * Math.pow(1.045, i) * (0.95 + 0.1 * rand())) / 1000) * 1000;
+    PREMIUM.push(prem);
+    const ult = prem * (0.6 + 0.12 * rand());
+    const row = [];
+    for (let j = 0; j < N - i; j++) {
+      let v = ult * PATTERN[j] * (1 + (rand() - 0.5) * 0.05 * (1 - j / N));
+      if (j > 0) v = Math.max(v, row[j - 1] * 1.002);
+      row.push(Math.round(v));
+    }
+    TRI.push(row);
+  }
+  // Two outliers so the exclusions in the Notes read true.
+  TRI[2][2] = Math.round(TRI[2][1] * 1.31);
+  for (let j = 3; j < TRI[2].length; j++) TRI[2][j] = Math.max(TRI[2][j], Math.round(TRI[2][j - 1] * 1.03));
+  TRI[6][1] = Math.round(TRI[6][0] * 1.86);
+  for (let j = 2; j < TRI[6].length; j++) TRI[6][j] = Math.max(TRI[6][j], Math.round(TRI[6][j - 1] * 1.08));
+  const ELR_DEFAULT = ORIGINS.map((_, i) => Math.round((0.68 - 0.004 * i) * 1000) / 1000);
+
+  const DEFAULT_EXCLUDED = ["2,1", "6,0"];
+  const model = {
+    excluded: new Set(DEFAULT_EXCLUDED),
+    selectedOverride: {},
+    elr: ELR_DEFAULT.slice(),
+  };
+
+  const fmtMoney = (v) => Math.round(v).toLocaleString("en-US");
+  const fmtFactor = (v) => v.toFixed(3);
+  const fmtPct = (v) => (v * 100).toFixed(1) + "%";
+
+  function compute() {
+    const ratio = TRI.map((row, i) => {
+      const out = [];
+      for (let j = 0; j < N - 1; j++) out.push(j + 1 < row.length ? row[j + 1] / row[j] : null);
+      return out;
+    });
+    const avg = { simple3: [], vw5: [], vwAll: [], selected: [], cdf: [] };
+    for (let j = 0; j < N - 1; j++) {
+      const rows = [];
+      for (let i = N - 2 - j; i >= 0; i--) if (!model.excluded.has(i + "," + j)) rows.push(i);
+      const last3 = rows.slice(0, 3);
+      const last5 = rows.slice(0, 5);
+      avg.simple3.push(last3.length ? last3.reduce((s, i) => s + ratio[i][j], 0) / last3.length : 1);
+      const vw = (list) => {
+        const num = list.reduce((s, i) => s + TRI[i][j + 1], 0);
+        const den = list.reduce((s, i) => s + TRI[i][j], 0);
+        return den ? num / den : 1;
+      };
+      avg.vw5.push(vw(last5));
+      avg.vwAll.push(vw(rows));
+      const sel = model.selectedOverride[j];
+      avg.selected.push(sel != null ? sel : Math.round(avg.vw5[j] * 1000) / 1000);
+    }
+    for (let j = N - 2; j >= 0; j--) avg.cdf[j] = avg.selected[j] * (j + 1 < N - 1 ? avg.cdf[j + 1] : 1);
+    const results = ORIGINS.map((_, i) => {
+      const a = N - 1 - i;
+      const latest = TRI[i][a];
+      const cdf = a >= N - 1 ? 1 : avg.cdf[a];
+      const pct = 1 / cdf;
+      const elr = model.elr[i];
+      const ult = latest + PREMIUM[i] * elr * (1 - pct);
+      return { latest, cdf, pct, prem: PREMIUM[i], elr, ult, ibnr: ult - latest };
+    });
+    return { ratio, avg, results };
+  }
+
+  /* ------------------------------------------------------------------------
+     Grid models. A row is { label, cls, gapBefore, cells[] }; a cell is
+     { v, t, kind, input, excludable, excluded, derived }.
+     ------------------------------------------------------------------------ */
+  function buildData() {
+    const rows = TRI.map((row, i) => ({
+      label: String(ORIGINS[i]),
+      cells: AGES.map((_, j) => (j < row.length ? { v: row[j], t: fmtMoney(row[j]) } : { t: "" })),
+    }));
+    return {
+      head: "Accident Year",
+      labelW: 110,
+      cols: AGES.map((a) => ({ label: String(a), w: 96 })),
+      rows,
+      links: [
+        { type: "Excel", r0: 0, r1: 2, c0: 0, c1: 2 },
+        { type: "Formula", r0: 7, r1: 9, c0: 0, c1: 0 },
+      ],
+    };
+  }
+
+  function buildRatios(calc) {
+    const rows = TRI.slice(0, N - 1).map((_, i) => ({
+      label: String(ORIGINS[i]),
+      cells: calc.ratio[i].map((f, j) =>
+        f == null
+          ? { t: "" }
+          : { v: f, t: fmtFactor(f), excludable: [i, j], excluded: model.excluded.has(i + "," + j) }
+      ),
+    }));
+    const avgRow = (label, arr, extra) => ({
+      label,
+      cells: arr.map((v) => Object.assign({ v, t: fmtFactor(v), derived: true }, extra || {})),
+    });
+    rows.push(Object.assign(avgRow("Simple Average 3", calc.avg.simple3), { gapBefore: true }));
+    rows.push(avgRow("Volume Weighted 5", calc.avg.vw5));
+    rows.push(avgRow("Volume Weighted All", calc.avg.vwAll));
+    rows.push({
+      label: "Selected",
+      cells: calc.avg.selected.map((v, j) => ({
+        v,
+        t: fmtFactor(v),
+        kind: "src",
+        input: {
+          get: () => fmtFactor(v),
+          set: (text) => {
+            const n = Number(text);
+            if (!isFinite(n) || n <= 0 || n > 10) return "Enter a factor between 0 and 10.";
+            model.selectedOverride[j] = Math.round(n * 1000) / 1000;
+            return null;
+          },
+          clear: () => { delete model.selectedOverride[j]; },
+        },
+      })),
+    });
+    rows.push({
+      label: "Cumulative",
+      cells: calc.avg.cdf.map((v) => ({ v, t: fmtFactor(v), kind: "res" })),
+    });
+    return {
+      head: "Accident Year",
+      labelW: 150,
+      cols: AGES.slice(0, N - 1).map((a) => ({ label: a + "-" + (a + 12), w: 76 })),
+      rows,
+      links: [],
+    };
+  }
+
+  function buildResults(calc) {
+    const R = calc.results;
+    const rows = R.map((r, i) => ({
+      label: String(ORIGINS[i]),
+      cells: [
+        { v: r.latest, t: fmtMoney(r.latest) },
+        { v: r.cdf, t: fmtFactor(r.cdf), derived: true },
+        { v: r.pct, t: fmtPct(r.pct), kind: "pct", fmt: "pct" },
+        { v: r.prem, t: fmtMoney(r.prem) },
+        {
+          v: r.elr,
+          t: fmtPct(r.elr),
+          kind: "src",
+          fmt: "pct",
+          input: {
+            get: () => (r.elr * 100).toFixed(1),
+            set: (text) => {
+              let n = Number(String(text).replace("%", ""));
+              if (!isFinite(n)) return "Enter a loss ratio such as 65 or 65%.";
+              if (n > 3) n = n / 100;
+              if (n <= 0 || n > 3) return "Enter a loss ratio between 0% and 300%.";
+              model.elr[i] = Math.round(n * 1000) / 1000;
+              return null;
+            },
+            clear: () => { model.elr[i] = ELR_DEFAULT[i]; },
+          },
+        },
+        { v: r.ult, t: fmtMoney(r.ult), kind: "res" },
+        { v: r.ibnr, t: fmtMoney(r.ibnr), kind: "res" },
+      ],
+    }));
+    const sum = (k) => R.reduce((s, r) => s + r[k], 0);
+    rows.push({
+      label: "Total",
+      cls: "total",
+      cells: [
+        { v: sum("latest"), t: fmtMoney(sum("latest")) },
+        { t: "" },
+        { t: "", kind: "pct" },
+        { v: sum("prem"), t: fmtMoney(sum("prem")) },
+        { t: "", kind: "src" },
+        { v: sum("ult"), t: fmtMoney(sum("ult")), kind: "res" },
+        { v: sum("ibnr"), t: fmtMoney(sum("ibnr")), kind: "res" },
+      ],
+    });
+    return {
+      head: "Accident Year",
+      labelW: 110,
+      cols: [
+        { label: "Latest", w: 104 },
+        { label: "CDF", w: 72 },
+        { label: "% Developed", w: 96 },
+        { label: "Earned Premium", w: 116 },
+        { label: "Expected Loss Ratio", w: 132 },
+        { label: "Ultimate", w: 110 },
+        { label: "IBNR", w: 104 },
+      ],
+      rows,
+      links: [{ type: "Internal", r0: 0, r1: N - 1, c0: 3, c1: 3 }],
+    };
+  }
+
+  /* ------------------------------------------------------------------------
+     Grid view: render, select, move, copy, edit.
+     ------------------------------------------------------------------------ */
+  const grids = {};
+
+  function makeGrid(key) {
+    const wrap = document.getElementById("wrap-" + key);
+    const g = { key, wrap, model: null, sel: null, cells: [], rowHeads: [], colHeads: [], touched: [], dragging: false };
+    grids[key] = g;
+    bindGrid(g);
+    return g;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function renderGrid(g) {
+    const m = g.model;
+    const width = m.labelW + m.cols.reduce((s, c) => s + c.w, 0);
+    let h = '<table class="grid" style="width:' + width + 'px"><colgroup><col style="width:' + m.labelW + 'px">';
+    for (const c of m.cols) h += '<col style="width:' + c.w + 'px">';
+    h += '</colgroup><thead><tr><th class="corner" data-all="1" scope="col"><span class="v">' + esc(m.head) + "</span></th>";
+    m.cols.forEach((c, ci) => { h += '<th scope="col" data-col="' + ci + '"><span class="v">' + esc(c.label) + "</span></th>"; });
+    h += "</tr></thead><tbody>";
+    m.rows.forEach((row, ri) => {
+      if (row.gapBefore) h += '<tr class="gap" aria-hidden="true"><td class="gapCell" colspan="' + (m.cols.length + 1) + '"></td></tr>';
+      h += "<tr" + (row.cls ? ' class="' + row.cls + '"' : "") + '><th scope="row" data-row="' + ri + '"><span class="v">' + esc(row.label) + "</span></th>";
+      row.cells.forEach((cell, ci) => {
+        const cls = [];
+        if (cell.input) cls.push("isInput");
+        if (cell.excluded) cls.push("isExcluded");
+        if (cell.derived) cls.push("isDerived");
+        h += '<td data-r="' + ri + '" data-c="' + ci + '"' + (cell.kind ? ' data-kind="' + cell.kind + '"' : "") +
+          (cls.length ? ' class="' + cls.join(" ") + '"' : "") +
+          (cell.excluded ? ' title="Excluded from averages"' : "") +
+          '><span class="v">' + esc(cell.t) + "</span></td>";
+      });
+      h += "</tr>";
+    });
+    h += "</tbody></table>";
+    g.wrap.innerHTML = h;
+    g.cells = m.rows.map(() => []);
+    g.wrap.querySelectorAll("td[data-r]").forEach((td) => {
+      const r = +td.dataset.r;
+      const c = +td.dataset.c;
+      g.cells[r][c] = td;
+      if (r === 0) td.style.setProperty("--it", "0px");
+      if (c === 0) td.style.setProperty("--il", "0px");
+    });
+    g.rowHeads = Array.from(g.wrap.querySelectorAll("tbody th[data-row]"));
+    g.colHeads = Array.from(g.wrap.querySelectorAll("thead th[data-col]"));
+    g.touched = [];
+    for (const lk of m.links) {
+      for (let r = lk.r0; r <= lk.r1; r++) {
+        for (let c = lk.c0; c <= lk.c1; c++) {
+          const td = g.cells[r][c];
+          td.classList.add("isLink", "lk" + lk.type);
+          if (r === lk.r0) td.style.setProperty("--lt", "1px");
+          if (r === lk.r1) td.style.setProperty("--lb", "1px");
+          if (c === lk.c0) td.style.setProperty("--ll", "1px");
+          if (c === lk.c1) td.style.setProperty("--lr", "1px");
+        }
+      }
+    }
+    paintSel(g);
+  }
+
+  function lastRow(g) { return g.model.rows.length - 1; }
+  function lastCol(g) { return g.model.cols.length - 1; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function rangeOf(sel) {
+    return {
+      r0: Math.min(sel.a.r, sel.f.r), r1: Math.max(sel.a.r, sel.f.r),
+      c0: Math.min(sel.a.c, sel.f.c), c1: Math.max(sel.a.c, sel.f.c),
+    };
+  }
+
+  function paintSel(g) {
+    for (const el of g.touched) {
+      el.removeAttribute("aria-selected");
+      el.classList.remove("isAnchor", "isEdge", "isSelLabel");
+      el.style.removeProperty("--pt");
+      el.style.removeProperty("--pr");
+      el.style.removeProperty("--pb");
+      el.style.removeProperty("--pl");
+    }
+    g.touched = [];
+    g.wrap.removeAttribute("data-multi");
+    if (g.sel) {
+      g.sel.a.r = clamp(g.sel.a.r, 0, lastRow(g));
+      g.sel.f.r = clamp(g.sel.f.r, 0, lastRow(g));
+      g.sel.a.c = clamp(g.sel.a.c, 0, lastCol(g));
+      g.sel.f.c = clamp(g.sel.f.c, 0, lastCol(g));
+      const R = rangeOf(g.sel);
+      if (R.r1 > R.r0 || R.c1 > R.c0) g.wrap.setAttribute("data-multi", "");
+      for (let r = R.r0; r <= R.r1; r++) {
+        for (let c = R.c0; c <= R.c1; c++) {
+          const td = g.cells[r][c];
+          td.setAttribute("aria-selected", "true");
+          const edge = r === R.r0 || r === R.r1 || c === R.c0 || c === R.c1;
+          if (edge) {
+            td.classList.add("isEdge");
+            if (r === R.r0) td.style.setProperty("--pt", "1px");
+            if (r === R.r1) td.style.setProperty("--pb", "1px");
+            if (c === R.c0) td.style.setProperty("--pl", "1px");
+            if (c === R.c1) td.style.setProperty("--pr", "1px");
+          }
+          g.touched.push(td);
+        }
+        g.rowHeads[r].classList.add("isSelLabel");
+        g.touched.push(g.rowHeads[r]);
+      }
+      for (let c = R.c0; c <= R.c1; c++) {
+        g.colHeads[c].classList.add("isSelLabel");
+        g.touched.push(g.colHeads[c]);
+      }
+      const anchor = g.cells[g.sel.a.r][g.sel.a.c];
+      anchor.classList.add("isAnchor");
+    }
+    if (state.tab === g.key) updateStats();
+  }
+
+  function selectedCells(g) {
+    if (!g.sel) return [];
+    const R = rangeOf(g.sel);
+    const out = [];
+    for (let r = R.r0; r <= R.r1; r++) for (let c = R.c0; c <= R.c1; c++) out.push({ r, c, cell: g.model.rows[r].cells[c] });
+    return out;
+  }
+
+  function ensureVisible(g, r, c) {
+    const td = g.cells[r] && g.cells[r][c];
+    if (!td) return;
+    const w = g.wrap;
+    const wr = w.getBoundingClientRect();
+    const tr = td.getBoundingClientRect();
+    const head = w.querySelector("thead");
+    const headH = head ? head.getBoundingClientRect().height : 0;
+    const labelW = g.model.labelW;
+    const top = wr.top + w.clientTop + headH;
+    const bottom = wr.top + w.clientTop + w.clientHeight;
+    const left = wr.left + w.clientLeft + labelW;
+    const right = wr.left + w.clientLeft + w.clientWidth;
+    if (tr.top < top) w.scrollTop -= top - tr.top;
+    else if (tr.bottom > bottom) w.scrollTop += tr.bottom - bottom;
+    if (tr.left < left) w.scrollLeft -= left - tr.left;
+    else if (tr.right > right) w.scrollLeft += tr.right - right;
+  }
+
+  function cellFromPoint(g, x, y) {
+    const el = document.elementFromPoint(x, y);
+    const td = el && el.closest && el.closest("td[data-r]");
+    return td && g.wrap.contains(td) ? { r: +td.dataset.r, c: +td.dataset.c } : null;
+  }
+
+  function bindGrid(g) {
+    const w = g.wrap;
+    w.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest(".cellEdit")) return;
+      const td = e.target.closest("td[data-r]");
+      const rh = e.target.closest("th[data-row]");
+      const ch = e.target.closest("th[data-col]");
+      const all = e.target.closest("th[data-all]");
+      if (!td && !rh && !ch && !all) return;
+      e.preventDefault();
+      w.focus({ preventScroll: true });
+      if (td) {
+        const p = { r: +td.dataset.r, c: +td.dataset.c };
+        g.sel = e.shiftKey && g.sel ? { a: g.sel.a, f: p } : { a: p, f: { r: p.r, c: p.c } };
+        g.dragging = "cell";
+      } else if (rh) {
+        const r = +rh.dataset.row;
+        g.sel = e.shiftKey && g.sel ? { a: { r: g.sel.a.r, c: 0 }, f: { r, c: lastCol(g) } } : { a: { r, c: 0 }, f: { r, c: lastCol(g) } };
+        g.dragging = "row";
+      } else if (ch) {
+        const c = +ch.dataset.col;
+        g.sel = e.shiftKey && g.sel ? { a: { r: 0, c: g.sel.a.c }, f: { r: lastRow(g), c } } : { a: { r: 0, c }, f: { r: lastRow(g), c } };
+        g.dragging = "col";
+      } else {
+        g.sel = { a: { r: 0, c: 0 }, f: { r: lastRow(g), c: lastCol(g) } };
+        g.dragging = false;
+      }
+      if (g.dragging) w.setPointerCapture(e.pointerId);
+      paintSel(g);
+    });
+    w.addEventListener("pointermove", (e) => {
+      if (!g.dragging || !g.sel) return;
+      const p = cellFromPoint(g, e.clientX, e.clientY);
+      if (!p) return;
+      if (g.dragging === "cell") g.sel.f = p;
+      else if (g.dragging === "row") g.sel.f = { r: p.r, c: lastCol(g) };
+      else g.sel.f = { r: lastRow(g), c: p.c };
+      paintSel(g);
+    });
+    const endDrag = () => { g.dragging = false; };
+    w.addEventListener("pointerup", endDrag);
+    w.addEventListener("pointercancel", endDrag);
+    w.addEventListener("dblclick", (e) => {
+      const td = e.target.closest("td[data-r]");
+      if (!td) return;
+      const r = +td.dataset.r;
+      const c = +td.dataset.c;
+      const cell = g.model.rows[r].cells[c];
+      if (cell.input) startEdit(g, r, c);
+      else if (cell.excludable) {
+        const k = cell.excludable.join(",");
+        if (model.excluded.has(k)) model.excluded.delete(k);
+        else model.excluded.add(k);
+        markDirty();
+        refreshAll();
+        toast(model.excluded.has(k) ? ORIGINS[r] + " " + g.model.cols[c].label + " excluded" : ORIGINS[r] + " " + g.model.cols[c].label + " included");
+      }
+    });
+    w.addEventListener("keydown", (e) => onGridKey(g, e));
+  }
+
+  function onGridKey(g, e) {
+    if (e.target.closest(".cellEdit")) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (moves[e.key]) {
+      e.preventDefault();
+      const [dr, dc] = moves[e.key];
+      if (!g.sel) { g.sel = { a: { r: 0, c: 0 }, f: { r: 0, c: 0 } }; paintSel(g); return; }
+      if (e.shiftKey) {
+        g.sel.f = { r: clamp(g.sel.f.r + dr, 0, lastRow(g)), c: clamp(g.sel.f.c + dc, 0, lastCol(g)) };
+        paintSel(g);
+        ensureVisible(g, g.sel.f.r, g.sel.f.c);
+        return;
+      }
+      const R = rangeOf(g.sel);
+      const ddr = clamp(dr, -R.r0, lastRow(g) - R.r1);
+      const ddc = clamp(dc, -R.c0, lastCol(g) - R.c1);
+      g.sel = { a: { r: g.sel.a.r + ddr, c: g.sel.a.c + ddc }, f: { r: g.sel.f.r + ddr, c: g.sel.f.c + ddc } };
+      paintSel(g);
+      ensureVisible(g, g.sel.f.r, g.sel.f.c);
+      ensureVisible(g, g.sel.a.r, g.sel.a.c);
+      return;
+    }
+    if (e.key === "Escape") { g.sel = null; paintSel(g); return; }
+    if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      g.sel = { a: { r: 0, c: 0 }, f: { r: lastRow(g), c: lastCol(g) } };
+      paintSel(g);
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "c") { e.preventDefault(); copySel(g); return; }
+    if (!g.sel) return;
+    const anchorCell = g.model.rows[g.sel.a.r].cells[g.sel.a.c];
+    if ((e.key === "Enter" || e.key === "F2") && anchorCell.input) { e.preventDefault(); startEdit(g, g.sel.a.r, g.sel.a.c); return; }
+    if ((e.key === "Delete" || e.key === "Backspace")) {
+      const inputs = selectedCells(g).filter((x) => x.cell.input);
+      if (!inputs.length) return;
+      e.preventDefault();
+      inputs.forEach((x) => x.cell.input.clear());
+      markDirty();
+      refreshAll();
+      toast("Reset " + inputs.length + (inputs.length === 1 ? " input" : " inputs") + " to default");
+      return;
+    }
+    if (!mod && e.key.length === 1 && /[0-9.\-]/.test(e.key) && anchorCell.input) {
+      e.preventDefault();
+      startEdit(g, g.sel.a.r, g.sel.a.c, e.key);
+    }
+  }
+
+  function copySel(g) {
+    if (!g.sel) return;
+    const R = rangeOf(g.sel);
+    const lines = [];
+    for (let r = R.r0; r <= R.r1; r++) {
+      const vals = [];
+      for (let c = R.c0; c <= R.c1; c++) vals.push(g.model.rows[r].cells[c].t);
+      lines.push(vals.join("\t"));
+    }
+    const n = (R.r1 - R.r0 + 1) * (R.c1 - R.c0 + 1);
+    const text = lines.join("\n");
+    const done = () => toast("Copied " + n + (n === 1 ? " cell" : " cells"));
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, () => toast("This preview cannot reach the clipboard"));
+      } else toast("This preview cannot reach the clipboard");
+    } catch (err) {
+      toast("This preview cannot reach the clipboard");
+    }
+  }
+
+  function startEdit(g, r, c, seed) {
+    const cell = g.model.rows[r].cells[c];
+    if (!cell.input) return;
+    const td = g.cells[r][c];
+    const input = document.createElement("input");
+    input.className = "cellEdit";
+    input.id = "cellEdit-" + g.key;
+    input.type = "text";
+    input.setAttribute("aria-label", "Edit " + g.model.rows[r].label + " " + g.model.cols[c].label);
+    input.value = seed != null ? seed : cell.input.get();
+    td.appendChild(input);
+    input.focus();
+    if (seed == null) input.select();
+    let finished = false;
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      if (commit && input.value.trim() !== "" && input.value !== cell.input.get()) {
+        const err = cell.input.set(input.value.trim());
+        if (err) toast(err);
+        else {
+          markDirty();
+          refreshAll();
+          grids[g.key].wrap.focus({ preventScroll: true });
+          return;
+        }
+      }
+      input.remove();
+      g.wrap.focus({ preventScroll: true });
+    };
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", () => finish(true));
+  }
+
+  /* ------------------------------------------------------------------------
+     Page state: stats, dirty, save, tabs, toast.
+     ------------------------------------------------------------------------ */
+  const statsEl = document.getElementById("stats");
+  const dirtyEl = document.getElementById("dirty");
+  const saveBtn = document.getElementById("saveBtn");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const toastEl = document.getElementById("toast");
+  let toastTimer = 0;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  function updateStats() {
+    const g = grids[state.tab];
+    if (!g || !g.sel) { statsEl.textContent = g ? "Select cells to see their total" : ""; return; }
+    const cells = selectedCells(g);
+    const nums = cells.filter((x) => typeof x.cell.v === "number");
+    if (!nums.length) { statsEl.textContent = cells.length + (cells.length === 1 ? " cell" : " cells"); return; }
+    const sum = nums.reduce((s, x) => s + x.cell.v, 0);
+    const mean = sum / nums.length;
+    const first = nums[0].cell;
+    const isMoney = Math.abs(first.v) >= 1000;
+    const fmt = first.fmt === "pct" ? fmtPct : isMoney ? fmtMoney : fmtFactor;
+    statsEl.innerHTML = "Count <b>" + nums.length + "</b>" +
+      (isMoney ? " · Sum <b>" + fmt(sum) + "</b>" : "") +
+      " · Average <b>" + fmt(mean) + "</b>";
+  }
+
+  function markDirty() {
+    state.dirty = true;
+    dirtyEl.hidden = false;
+    saveBtn.disabled = false;
+    cancelBtn.disabled = false;
+  }
+
+  function clearDirty() {
+    state.dirty = false;
+    dirtyEl.hidden = true;
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+  }
+
+  saveBtn.addEventListener("click", () => { clearDirty(); toast("Saved"); });
+  cancelBtn.addEventListener("click", () => {
+    model.excluded = new Set(DEFAULT_EXCLUDED);
+    model.selectedOverride = {};
+    model.elr = ELR_DEFAULT.slice();
+    clearDirty();
+    refreshAll();
+    toast("Changes discarded");
+  });
+
+  function refreshAll() {
+    const calc = compute();
+    grids.data.model = buildData();
+    grids.ratios.model = buildRatios(calc);
+    grids.results.model = buildResults(calc);
+    for (const k in grids) renderGrid(grids[k]);
+    updateStats();
+  }
+
+  const tabs = Array.from(document.querySelectorAll(".tab"));
+  function showTab(key, focusTab) {
+    state.tab = key;
+    for (const t of tabs) {
+      const on = t.dataset.tab === key;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById("page-" + t.dataset.tab).hidden = !on;
+      if (on && focusTab) t.focus();
+    }
+    if (grids[key]) updateStats();
+    else statsEl.textContent = "";
+  }
+  tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+  document.getElementById("tabBar").addEventListener("keydown", (e) => {
+    const i = tabs.findIndex((t) => t.dataset.tab === state.tab);
+    if (e.key === "ArrowRight") { e.preventDefault(); showTab(tabs[(i + 1) % tabs.length].dataset.tab, true); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); showTab(tabs[(i - 1 + tabs.length) % tabs.length].dataset.tab, true); }
+  });
+
+  /* ------------------------------------------------------------------------
+     Controls and hand-off panel.
+     ------------------------------------------------------------------------ */
+  function setPressed(groupId, attr, value) {
+    document.querySelectorAll("#" + groupId + " button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset[attr] === String(value)));
+    });
+  }
+
+  document.getElementById("segVariant").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-variant]");
+    if (!b) return;
+    state.variant = state.shown = b.dataset.variant;
+    setPressed("segVariant", "variant", state.variant);
+    syncControls();
+  });
+  document.getElementById("segGrid").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-grid]");
+    if (!b || b.disabled) return;
+    state.grid = b.dataset.grid;
+    setPressed("segGrid", "grid", state.grid);
+    syncControls();
+  });
+  document.getElementById("segDensity").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-density]");
+    if (!b) return;
+    state.density = +b.dataset.density;
+    setPressed("segDensity", "density", state.density);
+    applyTokens();
+  });
+
+  const hold = document.getElementById("holdCompare");
+  const holdOn = () => {
+    if (state.variant === "current") return;
+    state.shown = "current";
+    hold.setAttribute("aria-pressed", "true");
+    applyTokens();
+  };
+  const holdOff = () => {
+    if (state.shown === state.variant) return;
+    state.shown = state.variant;
+    hold.setAttribute("aria-pressed", "false");
+    applyTokens();
+  };
+  hold.addEventListener("pointerdown", (e) => { hold.setPointerCapture(e.pointerId); holdOn(); });
+  hold.addEventListener("pointerup", holdOff);
+  hold.addEventListener("pointercancel", holdOff);
+  hold.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); holdOn(); } });
+  hold.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") holdOff(); });
+  hold.addEventListener("blur", holdOff);
+
+  function syncControls() {
+    const isCurrent = state.variant === "current";
+    document.querySelectorAll("#segGrid button").forEach((b) => { b.disabled = isCurrent; });
+    hold.disabled = isCurrent;
+    applyTokens();
+    renderTokenTable();
+    renderCss();
+  }
+
+  function swatch(v) {
+    return '<span class="sw" style="background:' + v + '"></span>';
+  }
+
+  function renderTokenTable() {
+    const on = V[state.variant === "current" ? "slate" : state.variant];
+    let h = "<thead><tr><th>Token</th><th>Current</th><th>Slate</th><th>Slate Dark</th></tr></thead><tbody>";
+    for (const t of TOKENS) {
+      if (t.key === "font") continue;
+      h += "<tr><td>" + esc(t.label) + "</td>";
+      for (let vi = 0; vi < 3; vi++) {
+        const v = tokenValue(t, vi);
+        h += "<td" + (vi === on ? ' class="col-on"' : "") + ">" + swatch(v) + esc(v) + "</td>";
+      }
+      h += "</tr>";
+    }
+    document.getElementById("tokenTable").innerHTML = h + "</tbody>";
+  }
+
+  let cssText = "";
+  function renderCss() {
+    const target = state.variant === "slateDark" ? "slateDark" : "slate";
+    const vi = V[target];
+    const themeId = target === "slateDark" ? "slate-dark" : "slate";
+    const gridName = state.grid.charAt(0).toUpperCase() + state.grid.slice(1);
+    const lines = [];
+    lines.push("/* " + (target === "slateDark" ? "Slate Dark" : "Slate") + " — shared spreadsheet and tabbed page tokens. Grid lines: " + gridName + ". */");
+    lines.push(':root[data-arcrho-theme="' + themeId + '"] {');
+    if (target === "slateDark") lines.push("  color-scheme: dark;");
+    lines.push("  /* Existing spreadsheet tokens, new values. */");
+    for (const t of TOKENS) if (!t.proposed) lines.push("  " + t.ar + ": " + tokenValue(t, vi) + ";");
+    lines.push("");
+    lines.push("  /* Proposed spreadsheet tokens. */");
+    for (const t of TOKENS) if (t.proposed && !t.tab) lines.push("  " + t.ar + ": " + tokenValue(t, vi) + ";");
+    lines.push("");
+    lines.push("  /* Proposed tabbed page tokens. */");
+    for (const t of TOKENS) if (t.tab) lines.push("  " + t.ar + ": " + tokenValue(t, vi) + ";");
+    lines.push("}");
+    cssText = lines.join("\n");
+    document.getElementById("cssOut").textContent = cssText;
+    document.getElementById("cssTitle").textContent = "Tokens For " + (target === "slateDark" ? "Slate Dark" : "Slate");
+  }
+
+  document.getElementById("copyCss").addEventListener("click", () => {
+    try {
+      navigator.clipboard.writeText(cssText).then(
+        () => { document.getElementById("copyCss").textContent = "Copied"; setTimeout(() => { document.getElementById("copyCss").textContent = "Copy CSS"; }, 1400); },
+        () => selectCss()
+      );
+    } catch (err) {
+      selectCss();
+    }
+  });
+  function selectCss() {
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById("cssOut"));
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(range);
+    document.getElementById("copyCss").textContent = "Selected — press Ctrl+C";
+  }
+
+  /* ------------------------------------------------------------------------
+     Boot: open on Slate (or Slate Dark for a dark viewer), Ratios tab, with a
+     range already picked so the selection style is visible at rest.
+     ------------------------------------------------------------------------ */
+  const rootTheme = document.documentElement.getAttribute("data-theme");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (rootTheme === "dark" || (rootTheme !== "light" && prefersDark)) {
+    state.variant = state.shown = "slateDark";
+    setPressed("segVariant", "variant", "slateDark");
+  }
+
+  makeGrid("data");
+  makeGrid("ratios");
+  makeGrid("results");
+  refreshAll();
+  grids.ratios.sel = { a: { r: 3, c: 1 }, f: { r: 5, c: 3 } };
+  grids.data.sel = { a: { r: 4, c: 2 }, f: { r: 4, c: 2 } };
+  grids.results.sel = { a: { r: 0, c: 5 }, f: { r: N, c: 5 } };
+  for (const k in grids) paintSel(grids[k]);
+  showTab("ratios");
+  syncControls();
+})();
+</script>

@@ -6,8 +6,8 @@
 // the dataset table renders - a colgroup carrying an explicit width per
 // column, a sticky header cell holding a sortable label, a filter button and a
 // resize grip, and body rows painted by the shared `pi-table` selection rules -
-// so shared/styles/pi_table.css dresses both, and the dark and high-contrast
-// sheets that already target those class names dress this table too.
+// so shared/styles/pi_table.css dresses both, and the dark sheet
+// that already targets those class names dresses this table too.
 //
 // What the dataset table has and this one does not: grouping. A review lists
 // the actions of one sync run, so there is nothing to group by and no

@@ -6,8 +6,8 @@
    group rows, the loading skeleton, and the column filter popover. It used to
    live in project_instance.css; it moved here when a second host - the macro
    review table behind "Sync Reserving Class with ResQ" - had to render the same
-   table, so both hosts read one copy instead of drifting apart. The dark and
-   high-contrast sheets already target these class names, so a host that loads
+   table, so both hosts read one copy instead of drifting apart. The dark sheet
+   already targets these class names, so a host that loads
    this sheet and the theme sheets is themed without rules of its own.
 
    Load this sheet BEFORE a page's own stylesheet, so page-level placement (the

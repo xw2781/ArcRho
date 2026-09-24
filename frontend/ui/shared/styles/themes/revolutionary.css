@@ -1,0 +1,132 @@
+/* Revolutionary table style.
+
+   The table style is a second choice beside Light and Dark, stamped on the root
+   as data-arcrho-table-style. Classic is the look spreadsheet_table.css and
+   tabbed_page.css draw on their own; this sheet holds everything Revolutionary
+   changes, so switching back to Classic only drops the attribute match.
+
+   Grid lines are a cool slate that stays visible on white, header and label
+   fills sit close to the page instead of carrying a heavy gray, and selections
+   keep their meanings in softer fills. Table text stays pure black in Light,
+   as spreadsheet_table.css sets it for both styles. Tabs lose their folder
+   boxes for flat text with one accent underline.
+
+   Loaded after dark.css in every themed document, so a rule here that ties a
+   Dark rule on specificity still wins. Light values are guarded with
+   :not([data-arcrho-theme="dark"]) so they never leak into Dark. */
+
+/* ---------------------------------------------------------------------------
+   Spreadsheet tokens.
+   --------------------------------------------------------------------------- */
+:root[data-arcrho-table-style="revolutionary"]:not([data-arcrho-theme="dark"]) {
+  --ar-spreadsheet-grid-border: #dde3ea;
+  --ar-spreadsheet-header-fill: #f2f4f7;
+  --ar-spreadsheet-label-fill: #f2f4f7;
+  --ar-spreadsheet-label-text: #000000;
+  --ar-spreadsheet-selection-fill: rgba(43, 109, 246, 0.16);
+  --ar-spreadsheet-selection-text: #000000;
+  --ar-spreadsheet-selected-label-fill: #dae4f5;
+  --ar-spreadsheet-weighted-selection-fill: rgba(157, 204, 0, 0.3);
+  --ar-spreadsheet-anchor-color: #2b6df6;
+  --ar-spreadsheet-percent-fill: #ecf8f8;
+  --ar-spreadsheet-percent-selection-fill: #cdeeee;
+  --ar-spreadsheet-percent-selection-text: #0d6470;
+  --ar-spreadsheet-source-selection-fill: #d6eaa6;
+  --ar-spreadsheet-source-selection-text: #000000;
+  --ar-spreadsheet-result-fill: #fdf8dc;
+  --ar-spreadsheet-result-selection-fill: #f8e59a;
+  --ar-spreadsheet-result-selection-text: #000000;
+
+  --ar-table-style-tab-bar: #eef1f5;
+  --ar-table-style-tab-seam: #d3dae3;
+  --ar-table-style-tab-text: #5b6778;
+  --ar-table-style-tab-hover: #e5eaf0;
+  --ar-table-style-tab-active-text: #111827;
+  --ar-table-style-tab-marker: #2b6df6;
+}
+
+/* Dark keeps its own surfaces; Revolutionary lifts the header and label fills
+   just above the value cells instead of sinking them below. */
+:root[data-arcrho-theme="dark"][data-arcrho-table-style="revolutionary"] {
+  --ar-spreadsheet-grid-border: #3b414d;
+  --ar-spreadsheet-header-fill: #2e333c;
+  --ar-spreadsheet-label-fill: #2e333c;
+  --ar-spreadsheet-label-text: #b8c0cc;
+  --ar-spreadsheet-selection-fill: rgba(82, 139, 255, 0.24);
+  --ar-spreadsheet-selection-text: #e3ebff;
+  --ar-spreadsheet-selected-label-fill: #3a4660;
+  --ar-spreadsheet-weighted-selection-fill: rgba(152, 195, 121, 0.28);
+  --ar-spreadsheet-anchor-color: #6ea0ff;
+  --ar-spreadsheet-percent-fill: #24393b;
+  --ar-spreadsheet-percent-selection-fill: #1d4447;
+  --ar-spreadsheet-percent-selection-text: #9ee6e6;
+  --ar-spreadsheet-source-selection-fill: #3b4a22;
+  --ar-spreadsheet-source-selection-text: #d3eaa3;
+  --ar-spreadsheet-result-fill: #38341f;
+  --ar-spreadsheet-result-selection-fill: #4a3f17;
+  --ar-spreadsheet-result-selection-text: #f3d47a;
+
+  --ar-table-style-tab-bar: var(--ar-color-surface-muted);
+  --ar-table-style-tab-seam: var(--ar-color-border-strong);
+  --ar-table-style-tab-text: var(--ar-color-text-muted);
+  --ar-table-style-tab-hover: var(--ar-color-surface-hover);
+  --ar-table-style-tab-active-text: var(--ar-color-text-strong);
+  --ar-table-style-tab-marker: var(--ar-color-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Tabbed pages: flat text tabs, one accent underline on the strip's seam.
+   --------------------------------------------------------------------------- */
+:root[data-arcrho-table-style="revolutionary"] .tabbedPageTabBar {
+  background-color: var(--ar-table-style-tab-bar);
+}
+
+:root[data-arcrho-table-style="revolutionary"] .tabbedPageTabBar::after {
+  background-color: var(--ar-table-style-tab-seam);
+}
+
+:root[data-arcrho-table-style="revolutionary"] .tabbedPageTab {
+  height: 30px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: 4px 4px 0 0;
+  background-color: transparent;
+  color: var(--ar-table-style-tab-text);
+  transform: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+:root[data-arcrho-table-style="revolutionary"] .tabbedPageTab:hover:not(:disabled) {
+  border-color: transparent;
+  background-color: var(--ar-table-style-tab-hover);
+  color: var(--ar-table-style-tab-active-text);
+}
+
+:root[data-arcrho-table-style="revolutionary"] :is(.tabbedPageTab.active, .tabbedPageTab[aria-selected="true"]) {
+  height: 30px;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ar-table-style-tab-active-text);
+  font-weight: 700;
+  transform: none;
+}
+
+:root[data-arcrho-table-style="revolutionary"] :is(.tabbedPageTab.active, .tabbedPageTab[aria-selected="true"])::after {
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--ar-table-style-tab-marker);
+}
+
+:root[data-arcrho-table-style="revolutionary"] .tabbedPageTab:disabled {
+  background-color: transparent;
+  color: var(--ar-color-text-disabled, #9ca3af);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-arcrho-table-style="revolutionary"] .tabbedPageTab {
+    transition: none;
+  }
+}

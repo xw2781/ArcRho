@@ -147,7 +147,8 @@ function resolveDfmRatioUndoDir(dirPath) {
 const PRELOAD_PATH = path.join(__dirname, "preload.js");
 const MAIN_WINDOW_PREFS_FILE = "main_window_prefs.json";
 const WINDOW_BACKGROUND_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const COLOR_THEMES = new Set(["light", "dark", "high-contrast"]);
+const COLOR_THEMES = new Set(["light", "dark"]);
+const TABLE_STYLES = new Set(["revolutionary", "classic"]);
 const HOST_WINDOW_BACKGROUND_FALLBACK_COLOR = "#ffffff";
 const ARCODE_WINDOW_BACKGROUND_COLOR = "#f7f8fa";
 
@@ -783,6 +784,24 @@ function saveColorThemePreference(value) {
   });
 }
 
+function normalizeTableStylePreference(value, fallback = "") {
+  const style = String(value || "").trim().toLowerCase();
+  return TABLE_STYLES.has(style) ? style : fallback;
+}
+
+function loadTableStylePreference() {
+  return normalizeTableStylePreference(readMainWindowPrefsData()?.table_style);
+}
+
+function saveTableStylePreference(value) {
+  const style = normalizeTableStylePreference(value);
+  if (!style) return false;
+  return writeMainWindowPrefsData({
+    ...readMainWindowPrefsData(),
+    table_style: style,
+  });
+}
+
 function createSplashWindow() {
   const startupBackgroundColor = loadCachedWindowBackgroundColor();
   const startupTheme = loadColorThemePreference()
@@ -974,6 +993,8 @@ function buildArcRhoUrl(options = {}) {
   params.set("v", String(options.uiVersion || UI_VERSION));
   const theme = loadColorThemePreference();
   if (theme) params.set("theme", theme);
+  const tableStyle = loadTableStylePreference();
+  if (tableStyle) params.set("tableStyle", tableStyle);
   return `http://${HOST}:${getBackendPort()}/ui/?${params.toString()}`;
 }
 
@@ -1939,6 +1960,8 @@ async function clearWindowCacheAndStorage(targetWindow, payload) {
     : null;
   const requestedTheme = normalizeColorThemePreference(payload?.colorTheme);
   if (requestedTheme) saveColorThemePreference(requestedTheme);
+  const requestedTableStyle = normalizeTableStylePreference(payload?.tableStyle);
+  if (requestedTableStyle) saveTableStylePreference(requestedTableStyle);
   try {
     await targetWindow.webContents.session.clearCache();
     await targetWindow.webContents.session.clearStorageData();
@@ -2086,6 +2109,19 @@ ipcMain.handle("color-theme-preference-save", (_event, payload) => {
   return saveColorThemePreference(theme)
     ? { ok: true, theme }
     : { ok: false, error: "Could not save the color theme preference." };
+});
+
+ipcMain.handle("table-style-preference-load", () => {
+  const tableStyle = loadTableStylePreference();
+  return { exists: !!tableStyle, tableStyle: tableStyle || "revolutionary" };
+});
+
+ipcMain.handle("table-style-preference-save", (_event, payload) => {
+  const tableStyle = normalizeTableStylePreference(payload?.tableStyle);
+  if (!tableStyle) return { ok: false, error: "Invalid table style." };
+  return saveTableStylePreference(tableStyle)
+    ? { ok: true, tableStyle }
+    : { ok: false, error: "Could not save the table style preference." };
 });
 
 ipcMain.handle("zoom-get", (event) => {

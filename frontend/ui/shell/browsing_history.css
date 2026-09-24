@@ -2,7 +2,7 @@
    by day, with a thin spine down the left that carries a dot per record. The page keeps the
    Project Explorer ground (white surface, one hairline under a compact bold header, rows that only
    highlight on hover) and every color reads a shared theme token, so this one stylesheet renders
-   Light, Dark, and High Contrast. Motion is short and only confirms state: a record slides in when
+   Light and Dark. Motion is short and only confirms state: a record slides in when
    it first appears, and hovering a row lights its dot, its connector, and its open arrow. */
 html, body {
   height: 100%;
