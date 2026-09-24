@@ -104,3 +104,4 @@
 - [Desktop input control works](desktop-input-control-works.md) — for GUI verification use tools/agent_screen_control (click/drag with -Window guard, agent
 - [MSForms run-time multi-column white block](msforms-runtime-multicolumn-white-block.md) — a Controls.Add list given ColumnCount > 1 draws a stray white block under RDP scaling; keep
 - [Arco is the app name](arco-is-the-app-name.md) — "Arco Workspace" is the ArcRho desktop app; reopen the window or project tab to load UI edits
+- [Scripts save through the Gateway client](scripts-save-through-gateway-client.md) — notebooks use arcrho_api.gateway, not the local app URL (another user's Arco can hold 28765); audit log must show the user
