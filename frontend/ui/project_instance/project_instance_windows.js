@@ -563,6 +563,26 @@ function setWindowDirtyState(frame, dirty) {
   notifyProjectInstanceStateChanged();
 }
 
+// A method page that runs a model reports its run state for a chip beside the
+// window title; an empty label removes the chip.
+function setWindowRunState(frame, runState, label) {
+  const title = frame?.querySelector(".pi-window-title");
+  if (!title) return;
+  let chip = frame.querySelector(".pi-window-run-state");
+  if (!label) {
+    chip?.remove();
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement("span");
+    chip.className = "pi-window-run-state";
+    chip.innerHTML = '<span class="pi-window-run-state-dot" aria-hidden="true"></span><span class="pi-window-run-state-label"></span>';
+    title.after(chip);
+  }
+  chip.dataset.state = toText(runState);
+  chip.querySelector(".pi-window-run-state-label").textContent = label;
+}
+
 function hasDirtyDfmWindow() {
   for (const frame of datasetWindows.values()) {
     if (frame?.dataset?.dirty === "1") return true;
@@ -1731,6 +1751,7 @@ async function applyProjectInstanceRestoreState(rawState) {
     resizeRectFromCorner,
     restoreDatasetWindow,
     setWindowDirtyState,
+    setWindowRunState,
     startMove,
     startResize,
     syncDfmWindowIdentity,

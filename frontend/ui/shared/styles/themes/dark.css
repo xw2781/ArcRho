@@ -2671,6 +2671,28 @@
   stroke: currentColor;
 }
 
+:root[data-arcrho-theme="dark"] .pi-window-run-state {
+  border-color: var(--ar-color-border-strong);
+  background: var(--ar-color-surface-raised);
+  color: var(--ar-color-text-muted);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-run-state[data-state="current"] {
+  color: var(--ar-color-success);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-run-state:is([data-state="changed"], [data-state="segment"]) {
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-run-state[data-state="running"] {
+  color: var(--ar-color-accent);
+}
+
+:root[data-arcrho-theme="dark"] .pi-window-run-state[data-state="current"] .pi-window-run-state-dot { background: var(--ar-color-success); }
+:root[data-arcrho-theme="dark"] .pi-window-run-state:is([data-state="changed"], [data-state="segment"]) .pi-window-run-state-dot { background: var(--ar-color-warning); }
+
 :root[data-arcrho-theme="dark"] :is(.pi-window-body, .pi-window-body iframe) {
   background: var(--ar-popout-surface);
 }

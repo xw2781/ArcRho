@@ -54,6 +54,7 @@ export function installProjectInstanceMessages(ctx) {
   const restoreDatasetWindow = (...args) => api.restoreDatasetWindow(...args);
   const setStatus = (...args) => api.setStatus(...args);
   const setWindowDirtyState = (...args) => api.setWindowDirtyState(...args);
+  const setWindowRunState = (...args) => api.setWindowRunState(...args);
   const syncDfmWindowIdentity = (...args) => api.syncDfmWindowIdentity(...args);
   const syncBerquistShermanWindowIdentity = (...args) => api.syncBerquistShermanWindowIdentity(...args);
   const toText = (...args) => api.toText(...args);
@@ -1512,6 +1513,11 @@ window.addEventListener("message", (event) => {
   if (msg.type === "arcrho:dataset-dirty") {
     const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
     if (frame) setWindowDirtyState(frame, !!msg.dirty);
+    return;
+  }
+  if (msg.type === "arcrho:window-run-state") {
+    const frame = findWindowByInstance(msg.inst) || findWindowByMessageSource(event.source);
+    if (frame) setWindowRunState(frame, msg.state, toText(msg.label));
     return;
   }
   if (msg.type === "arcrho:dataset-close-confirmed") {

@@ -1922,7 +1922,7 @@ body.win11-frame .pi-window-titlebar {
   border-top-right-radius: 8px;
 }
 .pi-window-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1934,6 +1934,7 @@ body.win11-frame .pi-window-titlebar {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
+  margin-left: auto;
   border-radius: 50%;
   background: #e11d48;
   box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.12);
@@ -1944,6 +1945,41 @@ body.win11-frame .pi-window-titlebar {
 .pi-window.dirty .pi-window-dirty {
   opacity: 1;
   transform: scale(1);
+}
+/* A method page that runs a model reports its run state beside the title. */
+.pi-window-run-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.pi-window-run-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.pi-window-run-state[data-state="current"] { border-color: #bbe5c8; color: #15803d; }
+.pi-window-run-state[data-state="current"] .pi-window-run-state-dot { background: #15803d; }
+.pi-window-run-state:is([data-state="changed"], [data-state="segment"]) { border-color: #f5d0a4; background: #fff4e5; color: #b45309; }
+.pi-window-run-state:is([data-state="changed"], [data-state="segment"]) .pi-window-run-state-dot { background: #b45309; }
+.pi-window-run-state[data-state="running"] { border-color: #bfd3fb; background: #eaf1ff; color: #1d4ed8; }
+.pi-window-run-state[data-state="running"] .pi-window-run-state-dot {
+  background: #2b6df6;
+  animation: piWindowRunPulse 900ms ease-in-out infinite alternate;
+}
+@keyframes piWindowRunPulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
 }
 .pi-window-titlebar-controls {
   flex: 0 0 auto;
