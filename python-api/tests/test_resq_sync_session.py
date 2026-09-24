@@ -632,6 +632,87 @@ class SyncSessionInventoryTests(unittest.TestCase):
         })
         self.assertEqual(target["method_names"], ["Settlement Configuration"])
 
+    def test_bootstrap_and_consolidation_outputs_are_importable(self):
+        def vector(name, code):
+            return types.SimpleNamespace(
+                Name=name,
+                MethodType=code,
+                Modified="2026-09-24T10:48:03",
+                Created="2026-09-01T10:00:00",
+                DatasetType=types.SimpleNamespace(Name=name),
+                Calculated=True,
+            )
+
+        bootstrap_output = vector("F 72B - Bootstrap Net Incurred no PV", 6)
+        consolidation_output = vector("F 72 A - Consolidation", 7)
+        bootstrap = types.SimpleNamespace(Name="F 72B  Bootstrap ")
+        consolidation = types.SimpleNamespace(Name="F 72 A Consolidation")
+
+        class Collection:
+            def __init__(self, items):
+                self.items = list(items)
+                self.Count = len(self.items)
+
+            def Item(self, index):
+                return self.items[index - 1]
+
+        empty = Collection([])
+        reserving_class = types.SimpleNamespace(
+            Triangles=lambda: empty,
+            Vectors=lambda: Collection([bootstrap_output, consolidation_output]),
+            DFMMethods=lambda: empty,
+            BFMethods=lambda: empty,
+            CapeCodMethods=lambda: empty,
+            ResultSelections=lambda: empty,
+        )
+        migration = types.SimpleNamespace(
+            _safe_attr=lambda source, name, default=None: getattr(source, name, default),
+            _iso_or_text=lambda value: str(value or ""),
+            _is_known_dataset_type=lambda _name: True,
+            _is_unreviewed_dataset=lambda _name, _type: False,
+            _find_bootstrap_for_vector=lambda _rc, name: bootstrap if name == bootstrap_output.Name else None,
+            _find_stochastic_consolidation_for_vector=(
+                lambda _rc, name: consolidation if name == consolidation_output.Name else None
+            ),
+        )
+        runtime = {
+            "migration": migration,
+            "exporter_module": types.SimpleNamespace(
+                _clean_label=lambda value: " ".join(str(value or "").split())
+            ),
+            "sync_contract": types.SimpleNamespace(
+                logical_key=lambda value: str(value or "").strip().casefold()
+            ),
+            "parse_timestamp": sync_session._parsed_timestamp,
+        }
+
+        inventory = sync_session.collect_resq_inventory(
+            runtime, types.SimpleNamespace(reserving_class=reserving_class)
+        )
+
+        by_kind = {item["kind"]: item for item in inventory}
+        cases = (
+            (sync_session.KIND_BOOTSTRAP, bootstrap, "F 72B Bootstrap", "include_bootstrap_methods", "BST@"),
+            (
+                sync_session.KIND_STOCHASTIC_CONSOLIDATION,
+                consolidation,
+                "F 72 A Consolidation",
+                "include_stochastic_consolidations",
+                "SCON@",
+            ),
+        )
+        for kind, method, method_name, flag, prefix in cases:
+            with self.subTest(kind=kind):
+                item = by_kind[kind]
+                self.assertTrue(item["can_import_to_arcrho"])
+                self.assertEqual(item["import_block_reason"], "")
+                self.assertFalse(item["can_receive_from_arcrho"])
+                self.assertIs(item["resq_method"], method)
+                target = sync_session._resq_import_target({"kind": kind, "name": item["name"], "resq": item})
+                self.assertTrue(target[flag])
+                self.assertEqual(target["method_names"], [method_name])
+                self.assertEqual(sync_session._method_file_prefix(migration, kind), prefix)
+
 
 class SyncSessionWriteRecheckTests(unittest.TestCase):
     """The write phase rechecks the plan rows it selected, not review-table echoes.

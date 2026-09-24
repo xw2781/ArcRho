@@ -192,7 +192,11 @@ them.
   here; the Export macro writes a Settlement Rate method's Notes and saves it,
   and writes a Case Reserve Adequacy method's `Avg. Selections` and Notes (see
   the export page).
-- Bootstrap synchronization is not supported.
+- Bootstrap and Stochastic Consolidation methods import from ResQ into ArcRho
+  only, through their output vectors, like Berquist-Sherman. A Bootstrap is
+  built from the ArcRho DFM it names: the Import macro needs that DFM ticked in
+  the same run, and a sync needs it in ArcRho already or ticked beside it.
+  Nothing is written back to ResQ.
 
 Unsupported actions are displayed but disabled. Duplicate normalized names are
 `Ambiguous name`. Kind, data-format, Dataset Type, or method/output identity

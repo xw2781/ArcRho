@@ -41,6 +41,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from arcrho_api.bootstrap_contract import BST_FILE_PREFIX
+from arcrho_api.stochastic_consolidation_contract import SCON_FILE_PREFIX
 from arcrho_api.timestamps import format_display_timestamp
 
 _NAME_SPACE_RE = re.compile(r"\s+")
@@ -78,7 +80,6 @@ KIND_RS = "Result Selection"
 KIND_BS_SR = "B&S Settlement Rate"
 KIND_BS_CRA = "B&S Case Reserve Adequacy"
 KIND_BOOTSTRAP = "Bootstrap"
-# ResQ method type 7. Only named here: a sync neither imports nor exports it.
 KIND_STOCHASTIC_CONSOLIDATION = "Stochastic Consolidation"
 
 _METHOD_KINDS = {
@@ -92,6 +93,18 @@ _METHOD_KINDS = {
     KIND_STOCHASTIC_CONSOLIDATION,
 }
 _EXPORTABLE_METHOD_KINDS = {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}
+# Methods the ResQ inventory meets as a triangle or vector and then resolves
+# to their method object, which a ResQ-to-ArcRho import needs.
+_OUTPUT_LOOKUP_METHOD_KINDS = {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP, KIND_STOCHASTIC_CONSOLIDATION}
+# ArcRho method file prefix per kind, so a selective import replaces only its own method file.
+_METHOD_FILE_PREFIXES = {
+    KIND_DFM: "DFM@",
+    KIND_BF: "BF@",
+    KIND_CC: "CC@",
+    KIND_RS: "RS@",
+    KIND_BOOTSTRAP: BST_FILE_PREFIX,
+    KIND_STOCHASTIC_CONSOLIDATION: SCON_FILE_PREFIX,
+}
 # Methods the export phase writes Notes for and then saves in ResQ without
 # writing another field: ResQ recalculates each from the datasets and DFMs
 # exported before it and re-stamps it. Keyed by the ResQ method-type code the
@@ -747,7 +760,7 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
             )
             kind = _kind_from_code(method_code)
             resq_method_name = raw_name
-            bs_method = None
+            resq_method = None
             if kind in {KIND_BS_SR, KIND_BS_CRA}:
                 bs_entry = migration._find_berquist_sherman_for_triangle(
                     exporter.reserving_class,
@@ -755,10 +768,17 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                     method_code,
                 )
                 if bs_entry is not None:
-                    _variant, bs_method = bs_entry
-                    resq_method_name = exporter_module._clean_label(
-                        _required_resq_attr(bs_method, "Name", f"{kind} method")
-                    )
+                    _variant, resq_method = bs_entry
+            elif kind == KIND_BOOTSTRAP:
+                resq_method = migration._find_bootstrap_for_vector(exporter.reserving_class, raw_name)
+            elif kind == KIND_STOCHASTIC_CONSOLIDATION:
+                resq_method = migration._find_stochastic_consolidation_for_vector(
+                    exporter.reserving_class, raw_name
+                )
+            if resq_method is not None:
+                resq_method_name = exporter_module._clean_label(
+                    _required_resq_attr(resq_method, "Name", f"{kind} method")
+                )
             modified_text, modified_timestamp, timestamp_source = _resq_object_timestamp(
                 runtime, migration, obj
             )
@@ -777,28 +797,28 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                 # import still carries every such dataset, ticked or not.
                 continue
             import_supported = (
-                kind in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}
+                (kind == KIND_DATASET or kind in _OUTPUT_LOOKUP_METHOD_KINDS)
                 and known_type
-                and (kind not in {KIND_BS_SR, KIND_BS_CRA} or bool(bs_method and resq_method_name))
+                and (kind not in _OUTPUT_LOOKUP_METHOD_KINDS or bool(resq_method and resq_method_name))
             )
             if kind in {KIND_DFM, KIND_BF, KIND_CC, KIND_RS}:
                 # A method-coded output with no matching method object is unsafe
                 # to import as a complete method.
                 import_supported = False
                 import_reason = f"The matching {kind} method object was not found in ResQ."
-            elif kind in {KIND_BS_SR, KIND_BS_CRA} and bs_method is None:
+            elif kind in _OUTPUT_LOOKUP_METHOD_KINDS and resq_method is None:
                 import_reason = f"The matching {kind} method object was not found in ResQ."
-            elif kind in {KIND_BS_SR, KIND_BS_CRA} and not resq_method_name:
+            elif kind in _OUTPUT_LOOKUP_METHOD_KINDS and not resq_method_name:
                 import_reason = f"The matching {kind} method has no stable name in ResQ."
             elif not known_type:
                 import_reason = f"Dataset Type {dataset_type} is not configured in Arco."
-            elif kind not in {KIND_DATASET, KIND_BS_SR, KIND_BS_CRA}:
+            elif kind != KIND_DATASET and kind not in _OUTPUT_LOOKUP_METHOD_KINDS:
                 import_reason = f"ResQ-to-Arco import is not supported for {kind}."
             else:
                 import_reason = ""
             can_receive = kind == KIND_DATASET
             receive_reason = ""
-            if kind in {KIND_BS_SR, KIND_BS_CRA, KIND_BOOTSTRAP, KIND_STOCHASTIC_CONSOLIDATION}:
+            if kind in _OUTPUT_LOOKUP_METHOD_KINDS:
                 can_receive = False
                 receive_reason = f"Arco-to-ResQ write-back is not supported for {kind}."
             elif kind == KIND_DATASET and calculated:
@@ -823,7 +843,7 @@ def collect_resq_inventory(runtime: Mapping[str, Any], exporter) -> list[dict[st
                 "dataset_type": dataset_type,
                 "calculated": calculated,
                 "resq_object": obj,
-                "resq_method": bs_method,
+                "resq_method": resq_method,
             })
     return items
 
@@ -1661,10 +1681,20 @@ def _resq_import_target(row: Mapping[str, Any]) -> dict[str, Any]:
         "include_dfm_methods": kind == KIND_DFM,
         "include_bf_methods": kind == KIND_BF,
         "include_cc_methods": kind == KIND_CC,
+        "include_bootstrap_methods": kind == KIND_BOOTSTRAP,
+        "include_stochastic_consolidations": kind == KIND_STOCHASTIC_CONSOLIDATION,
         "dfm_names": [str(item.get("resq_method_name") or "")] if kind == KIND_DFM else None,
         "method_names": [method_name] if kind != KIND_DATASET and method_name else [],
         "display_kind": kind,
     }
+
+
+def _method_file_prefix(migration, kind: str) -> str:
+    if kind == KIND_BS_SR:
+        return migration.BS_SR_FILE_PREFIX
+    if kind == KIND_BS_CRA:
+        return migration.BS_CRA_FILE_PREFIX
+    return _METHOD_FILE_PREFIXES.get(kind, "")
 
 
 def _cleanup_sync_target_artifacts(
@@ -1675,15 +1705,7 @@ def _cleanup_sync_target_artifacts(
     """Delete only the selected logical group, leaving dependents for propagation."""
 
     migration = runtime["migration"]
-    prefix_by_kind = {
-        KIND_DFM: "DFM@",
-        KIND_BF: "BF@",
-        KIND_CC: "CC@",
-        KIND_RS: "RS@",
-        KIND_BS_SR: migration.BS_SR_FILE_PREFIX,
-        KIND_BS_CRA: migration.BS_CRA_FILE_PREFIX,
-    }
-    method_prefix = prefix_by_kind.get(str(target.get("display_kind") or ""))
+    method_prefix = _method_file_prefix(migration, str(target.get("display_kind") or ""))
     return migration.cleanup_target_dataset_artifacts(
         rc_dir,
         dataset_names=list(target.get("names") or []),
@@ -1740,15 +1762,7 @@ def _preflight_import_method_filename_collision(
     method_names = [str(value).strip() for value in target.get("method_names") or [] if str(value).strip()]
     if not method_names:
         raise RuntimeError("The ResQ method has no stable method name for selective import.")
-    prefix_by_kind = {
-        KIND_DFM: "DFM@",
-        KIND_BF: "BF@",
-        KIND_CC: "CC@",
-        KIND_RS: "RS@",
-        KIND_BS_SR: runtime["migration"].BS_SR_FILE_PREFIX,
-        KIND_BS_CRA: runtime["migration"].BS_CRA_FILE_PREFIX,
-    }
-    prefix = prefix_by_kind.get(str(row.get("kind") or ""))
+    prefix = _method_file_prefix(runtime["migration"], str(row.get("kind") or ""))
     if not prefix:
         return
     method_name = method_names[0]
@@ -1818,6 +1832,8 @@ def _import_one_from_resq(
         "result_selections_written": 0,
         "bssr_written": 0,
         "bscra_written": 0,
+        "bootstraps_written": 0,
+        "scons_written": 0,
     }
     if target["export_kind"] == "triangle":
         written, errors = migration.export_triangles_for_rc(
@@ -1842,6 +1858,8 @@ def _import_one_from_resq(
             include_dfm_methods=bool(target.get("include_dfm_methods")),
             include_bf_methods=bool(target.get("include_bf_methods")),
             include_cc_methods=bool(target.get("include_cc_methods")),
+            include_bootstrap_methods=bool(target.get("include_bootstrap_methods")),
+            include_stochastic_consolidations=bool(target.get("include_stochastic_consolidations")),
             dfm_names=target.get("dfm_names"),
             method_counts=method_counts,
             preserve_local_dfm_owned_state=False,
@@ -1861,6 +1879,8 @@ def _import_one_from_resq(
         KIND_RS: "result_selections_written",
         KIND_BS_SR: "bssr_written",
         KIND_BS_CRA: "bscra_written",
+        KIND_BOOTSTRAP: "bootstraps_written",
+        KIND_STOCHASTIC_CONSOLIDATION: "scons_written",
     }.get(str(row.get("kind") or ""))
     if expected_count and int(method_counts.get(expected_count) or 0) < 1:
         return False, f"The ResQ output was read, but its {row.get('kind')} method was not imported."
