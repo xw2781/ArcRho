@@ -1,15 +1,16 @@
-// Cell selection and copy for the Berquist Sherman method grids.
+// Cell selection and copy for method-page grids (Berquist Sherman, Bootstrap,
+// Stochastic Consolidation).
 //
-// Every calculation view renders into one or two `.bsMethodTable` grids, and
-// each grid tags its value cells with `data-r`/`data-c` and the raw figure in
-// `data-copy-value`. This module gives those grids the selection UX of the
-// Dataset Viewer and Result Selection grids through the shared spreadsheet
-// controller: a click selects one cell, a drag a rectangle, Shift-click extends
-// from the anchor, Ctrl-click adds a range, a row label or column header
-// selects the line, the arrow keys move or extend the range, Ctrl+C or the
-// context menu copies the values as a tab-delimited matrix, and Escape clears
-// the highlight. The two stacked grids of the Avg. Selections view are
-// exclusive: a selection in one clears the other.
+// Each grid tags its value cells with `data-r`/`data-c` and, where the shown
+// text is formatted, the raw figure in `data-copy-value`; a grid rendered from
+// plain rows can let `tagMethodGridCells` do the tagging. This module gives
+// those grids the selection UX of the Dataset Viewer and Result Selection
+// grids through the shared spreadsheet controller: a click selects one cell, a
+// drag a rectangle, Shift-click extends from the anchor, Ctrl-click adds a
+// range, a row label or column header selects the line, the arrow keys move or
+// extend the range, Ctrl+C or the context menu copies the values as a
+// tab-delimited matrix, and Escape clears the highlight. The grids of one page
+// are exclusive: a selection in one clears the others.
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260715a";
 import { scrollSpreadsheetCellIntoView } from "/ui/shared/components/spreadsheet/table_selection.js?v=20260726a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js";
@@ -45,7 +46,40 @@ function tableBounds(table) {
   return { maxRow, maxCol };
 }
 
-export function createBerquistShermanCellSelection({
+// A tagged cell copies its raw figure when it carries one, the value of the
+// input it holds when it is an entry cell, and its shown text otherwise.
+function cellCopyValue(cell) {
+  if (cell?.dataset?.copyValue !== undefined) return cell.dataset.copyValue;
+  const input = cell?.querySelector?.("input");
+  return input ? input.value : String(cell?.textContent || "").trim();
+}
+
+// Tags a grid whose first column holds the row labels: the header cells after
+// the first become column selectors, each body row's first cell its row
+// selector, and the rest its value cells. A row spanning columns (a band title
+// or an empty-table message) is not a row of values and is skipped, so the
+// value rows number consecutively around it.
+export function tagMethodGridCells(table) {
+  if (!table) return;
+  const headerRow = table.tHead?.rows?.[0];
+  Array.from(headerRow?.cells || []).slice(1).forEach((header, c) => {
+    header.dataset.c = String(c);
+  });
+  let r = 0;
+  for (const body of table.tBodies) {
+    for (const row of body.rows) {
+      const cells = Array.from(row.cells);
+      if (!cells.length || cells.some((cell) => cell.colSpan > 1)) continue;
+      cells.forEach((cell, index) => {
+        cell.dataset.r = String(r);
+        if (index > 0) cell.dataset.c = String(index - 1);
+      });
+      r += 1;
+    }
+  }
+}
+
+export function createMethodGridSelection({
   tables = [],
   contextMenu = null,
   onContextAction = null,
@@ -149,8 +183,10 @@ export function createBerquistShermanCellSelection({
     });
   }
 
-  for (const { key, table, scrollHost = null } of tables) {
-    if (!table) continue;
+  // A grid rebuilt with a new table element is added again under its key,
+  // which replaces the old entry.
+  function addTable({ key, table, scrollHost = null }) {
+    if (!table) return;
     const selection = { ranges: [], activeCell: null, anchorCell: null };
     const controller = createSpreadsheetTableController({
       getRoot: () => table,
@@ -164,7 +200,7 @@ export function createBerquistShermanCellSelection({
       cellSelector: CELL_SELECTOR,
       rowHeaderSelector: ROW_LABEL_SELECTOR,
       columnHeaderSelector: COLUMN_HEADER_SELECTOR,
-      getCellValue: (_position, cell) => cell?.dataset?.copyValue ?? "",
+      getCellValue: (_position, cell) => cellCopyValue(cell),
       onAfterCopy: onCopied,
       scrollCellIntoView: ({ r, c }) => {
         const cell = table.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
@@ -175,6 +211,7 @@ export function createBerquistShermanCellSelection({
     entries.set(key, entry);
     wireTable(entry);
   }
+  tables.forEach(addTable);
 
   contextMenu?.addEventListener("click", (event) => {
     const item = event.target.closest(".ctx-item");
@@ -229,5 +266,5 @@ export function createBerquistShermanCellSelection({
     void copyActive();
   });
 
-  return { applyDom, clearAll, closeContextMenu, copyActive, selectCell };
+  return { addTable, applyDom, clearAll, closeContextMenu, copyActive, selectCell };
 }

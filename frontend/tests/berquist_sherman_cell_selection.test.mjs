@@ -7,7 +7,7 @@ const [html, main, css, selection] = await Promise.all([
   read("../ui/method_pages/berquist_sherman/berquist_sherman.html"),
   read("../ui/method_pages/berquist_sherman/berquist_sherman_main.js"),
   read("../ui/method_pages/berquist_sherman/berquist_sherman.css"),
-  read("../ui/method_pages/berquist_sherman/berquist_sherman_cell_selection.js"),
+  read("../ui/shared/components/spreadsheet/method_grid_selection.js"),
 ]);
 
 test("B&S grids take their selection from the shared spreadsheet controller", () => {
@@ -21,7 +21,8 @@ test("B&S grids take their selection from the shared spreadsheet controller", ()
     selection,
     /import \{ scrollSpreadsheetCellIntoView \} from "\/ui\/shared\/components\/spreadsheet\/table_selection\.js\?v=20260726a"/u,
   );
-  assert.match(selection, /getCellValue: \(_position, cell\) => cell\?\.dataset\?\.copyValue \?\? ""/u);
+  assert.match(selection, /getCellValue: \(_position, cell\) => cellCopyValue\(cell\)/u);
+  assert.match(selection, /if \(cell\?\.dataset\?\.copyValue !== undefined\) return cell\.dataset\.copyValue;/u);
   // Row labels and column headers select their line; value cells carry both
   // positions.
   assert.match(selection, /const CELL_SELECTOR = "td\[data-r\]\[data-c\]";/u);
@@ -41,7 +42,7 @@ test("B&S grids take their selection from the shared spreadsheet controller", ()
 });
 
 test("every B&S calculation grid tags its cells for selection and copy", () => {
-  assert.match(main, /import \{ createBerquistShermanCellSelection \} from "\.\/berquist_sherman_cell_selection\.js";/u);
+  assert.match(main, /import \{ createMethodGridSelection \} from "\/ui\/shared\/components\/spreadsheet\/method_grid_selection\.js";/u);
   assert.match(main, /\{ key: "primary", table: els\.methodTable, scrollHost: els\.methodTableWrap \}/u);
   assert.match(main, /\{ key: "secondary", table: els\.secondaryTable, scrollHost: els\.secondaryTableWrap \}/u);
   // The raw figure is what copies, as on the Dataset Viewer; the display text

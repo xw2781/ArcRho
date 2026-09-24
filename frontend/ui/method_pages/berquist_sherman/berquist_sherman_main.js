@@ -63,7 +63,7 @@ import {
   userValueExcelReferences,
 } from "./berquist_sherman_user_values.js";
 import { createBerquistShermanLinksTab } from "./berquist_sherman_links_tab.js";
-import { createBerquistShermanCellSelection } from "./berquist_sherman_cell_selection.js";
+import { createMethodGridSelection } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
 
 const ANNUAL_PERIOD_LENGTH = 12;
 const TABS = BERQUIST_SHERMAN_TAB_DEFS;
@@ -319,7 +319,7 @@ const auditLogView = createAuditLogView({
 // Every grid tags its value cells for the shared spreadsheet selection, so a
 // range can be picked and copied from any calculation view the way the
 // Dataset Viewer and Result Selection grids allow.
-const cellSelection = createBerquistShermanCellSelection({
+const cellSelection = createMethodGridSelection({
   tables: [
     { key: "primary", table: els.methodTable, scrollHost: els.methodTableWrap },
     { key: "secondary", table: els.secondaryTable, scrollHost: els.secondaryTableWrap },
