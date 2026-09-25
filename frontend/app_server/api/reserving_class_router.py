@@ -14,7 +14,7 @@ from app_server.schemas.reserving_class import (
     ReservingClassHiddenPathsSaveRequest,
     ReservingClassFilterSpecSaveRequest,
 )
-from app_server.services import reserving_class_service
+from app_server.services import reserving_class_service, workspace_read_client
 from app_server.services.audit_service import safe_append_project_audit_log
 
 router = APIRouter()
@@ -138,6 +138,22 @@ def get_reserving_class_path_tree_children(
         raise
     except Exception as e:
         raise HTTPException(500, f"Failed to get reserving class path children: {str(e)}")
+
+
+@router.get("/reserving_class_paths_with_data")
+def get_reserving_class_paths_with_data(project_name: str) -> Dict[str, Any]:
+    project_name_clean = str(project_name or "").strip()
+    if not project_name_clean:
+        raise HTTPException(400, "Missing project_name parameter")
+    try:
+        out = workspace_read_client.run_workspace_read(
+            "reserving_classes_with_data",
+            {"project_name": project_name_clean},
+            local=lambda: reserving_class_service.list_reserving_classes_with_data(project_name_clean),
+        )
+        return {"ok": True, **out}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 @router.get("/reserving_class_hidden_paths")

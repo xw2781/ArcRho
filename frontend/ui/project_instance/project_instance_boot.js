@@ -5,7 +5,7 @@ import {
   saveProjectUserPreferences,
   scheduleProjectUserPreferencesSave,
 } from "/ui/shared/services/project_user_preferences.js";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260920b";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260925a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260920b";
@@ -15,7 +15,7 @@ import { installProjectInstanceDatasetCache } from "./project_instance_dataset_c
 import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824g";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260919a";
 import { installProjectInstanceDependencyGraph } from "./project_instance_dependency_graph.js?v=20260920a";
-import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260920e";
+import { installProjectInstanceDatasetTable } from "./project_instance_dataset_table.js?v=20260925a";
 import { installProjectInstanceDatasetAddPicker } from "./project_instance_dataset_add_picker.js?v=20260611a";
 import { installProjectInstancePathPanel } from "./project_instance_path_panel.js?v=20260920a";
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260909a";

@@ -174,6 +174,7 @@ const MACRO_PREFS_FILE = "macro_prefs.json";
 const FLIGHT_DECK_PREFS_FILE = "flight_deck.json";
 const NOTES_PANEL_PREFS_FILE = "notes_panel_prefs.json";
 const TABLE_COLORS_PREFS_FILE = "table_colors.json";
+const RECENT_SETTINGS_FILES_PREFS_FILE = "recent_settings_files.json";
 const WORKSPACE_PATHS_FILE = "workspace_paths.json";
 const arcodeFolderWatchers = new Map();
 const arcodeFolderWatchCleanupWindowIds = new Set();
@@ -273,6 +274,10 @@ function getNotesPanelPrefsPath() {
 
 function getTableColorsPrefsPath() {
   return path.join(getPrefsDir(), TABLE_COLORS_PREFS_FILE);
+}
+
+function getRecentSettingsFilesPrefsPath() {
+  return path.join(getPrefsDir(), RECENT_SETTINGS_FILES_PREFS_FILE);
 }
 
 function normalizeRecentIpynbPaths(value, fallbackPath = "") {
@@ -1867,6 +1872,11 @@ ipcMain.handle("notes-panel-preferences-save", notesPanelPreferences.save);
 const tableColorPreferences = preferencesFileHandlers(getTableColorsPrefsPath, "table colors");
 ipcMain.handle("table-colors-preferences-load", tableColorPreferences.load);
 ipcMain.handle("table-colors-preferences-save", tableColorPreferences.save);
+
+// The paths of the settings files each panel saved or loaded last, keyed by the file's kind.
+const recentSettingsFilePreferences = preferencesFileHandlers(getRecentSettingsFilesPrefsPath, "recent settings files");
+ipcMain.handle("recent-settings-files-preferences-load", recentSettingsFilePreferences.load);
+ipcMain.handle("recent-settings-files-preferences-save", recentSettingsFilePreferences.save);
 
 ipcMain.handle("scripting-last-notebook-load", async () => {
   const filePath = getScriptingNotebookPrefsPath();

@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The Shortcut and Group And Filter config menus list the last three config files you saved or loaded, so you can switch to one in a single click.",
+  "details": [
+    "A new button to the right of Add Favorite Folder opens the Shortcut menu, as right-clicking the Shortcut header does.",
+    "The menu items are shorter: Save Shortcut, Load Shortcut, Save Group And Filter, Load Group And Filter.",
+    "Only the file paths are remembered, on this PC for your user.",
+    "Loading a config replaces settings already saved in a file without asking; unsaved settings get an offer to save them first."
+  ]
+}

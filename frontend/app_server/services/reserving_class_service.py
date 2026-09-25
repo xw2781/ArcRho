@@ -124,6 +124,33 @@ def _write_reserving_class_tree_filter_spec(project_name: str, filter_spec: Any)
     path = str(out.get("path", "") or "") if isinstance(out, dict) else ""
     return filter_spec_norm, path
 
+
+def list_reserving_classes_with_data(project_name: str) -> Dict[str, Any]:
+    """Reserving classes of *project_name* whose folder holds a dataset index.
+
+    The tree's "Hide paths with no data" filter asks this. It is one folder
+    listing plus one existence check per class, hosted on the server where
+    both are local disk.
+    """
+
+    from arcrho_api.dataset_index_contract import INDEX_FILE_NAME
+
+    data_dir = config.get_project_data_dir(project_name)
+    try:
+        entries = [entry for entry in os.scandir(data_dir) if entry.is_dir()]
+    except FileNotFoundError:
+        entries = []
+    classes = sorted(
+        (
+            config.decode_filename_segment(entry.name)
+            for entry in entries
+            if os.path.isfile(os.path.join(entry.path, INDEX_FILE_NAME))
+        ),
+        key=str.casefold,
+    )
+    return {"project_name": project_name, "reserving_classes": classes}
+
+
 def get_hidden_paths_for_project(project_name: str) -> Dict[str, Any]:
     key = _canon_project_pref_key(project_name)
     if not key:

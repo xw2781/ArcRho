@@ -27,6 +27,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /excel_links/check` | `excel_link_value_check` | `excel_link_service.check_reserving_class_excel_link_values` |
 | `POST /excel/read_cells_batch` | `excel_cell_values` | `excel_service.excel_read_cells_batch` |
 | `GET /datasets/dependency-graph` | `dataset_dependency_graph` | `dataset_dependency_graph_service.build_reserving_class_dependency_graph` |
+| `GET /reserving_class_paths_with_data` | `reserving_classes_with_data` | `reserving_class_service.list_reserving_classes_with_data` |
 | `GET /table_summary` | `table_summary` | `table_summary_service.get_table_summary` |
 | `POST /dfm/rpc-bridge/compare` | `dfm_rpc_bridge_compare` | `dfm_rpc_bridge_service.hosted_compare` |
 | (no route; the ResQ import and sync macros call `run_workspace_read` directly through `arcrho_api.bridge_liveness.observe_bridge_liveness`) | `bridge_worker_liveness` | `bridge_liveness_service.get_bridge_worker_liveness` |

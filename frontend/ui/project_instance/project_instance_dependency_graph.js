@@ -10,7 +10,7 @@
 // The window is pinned to the reserving class it was opened on, like every
 // other nested window: selecting another class in the tree leaves it alone and
 // opens a second window for that class instead.
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import { DEPENDENCY_GRAPH_ACTION_MESSAGE, DEPENDENCY_GRAPH_ACTION_RESULT_MESSAGE } from "./dependency_graph_contract.js?v=20260920a";
 
 export const DEPENDENCY_GRAPH_WINDOW_KIND = "dependency_graph";

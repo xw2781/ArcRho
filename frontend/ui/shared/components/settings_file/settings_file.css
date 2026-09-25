@@ -43,6 +43,7 @@
   position: fixed;
   z-index: 9300;
   min-width: 160px;
+  max-width: 320px;
   padding: 4px;
   border: 1px solid var(--ar-color-border, #d8dde3);
   border-radius: 7px;
@@ -52,8 +53,8 @@
 }
 .arcrho-settings-menu button {
   width: 100%;
-  display: flex;
-  align-items: center;
+  display: block;
+  overflow: hidden;
   padding: 6px 8px;
   border: none;
   border-radius: 5px;
@@ -62,7 +63,15 @@
   font-family: inherit;
   font-size: 12px;
   text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
+}
+/* Rules off the recently used files from the save and load rows above them. */
+.arcrho-settings-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--ar-color-border, #d8dde3);
 }
 .arcrho-settings-menu button:hover {
   background: var(--ar-color-surface-hover, #e8eef6);

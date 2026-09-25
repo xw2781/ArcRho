@@ -33,8 +33,8 @@ import {
   listDfmCopySources,
   projectDfmSettingsCopy,
 } from "/ui/method_pages/dfm/dfm_settings_copy.js?v=20260923b";
-import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260920b";
-import { closeFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920b";
+import { openReservingClassPicker } from "/ui/shared/components/pickers/reserving_class_picker.js?v=20260925a";
+import { closeFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260925a";
 
 const STYLE_ID = "dfmLoadSettingsDialogStyles";
 const DIALOG_TITLE = "Load Settings From Another Method";

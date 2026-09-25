@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "project instance",
+  "audience": "user",
+  "summary": "The path tree's Filter window has a new Hide paths with no data option, which leaves out reserving classes that hold no datasets yet.",
+  "details": [
+    "The choice is remembered for you in each project, and Clear turns it off.",
+    "A path that gets its first dataset shows up the next time the tree loads."
+  ]
+}

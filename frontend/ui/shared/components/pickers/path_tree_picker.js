@@ -1,6 +1,8 @@
 const STYLE_ID = "arcrho-path-tree-picker-style";
-import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
-import { attachSettingsFileDropZone } from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
+import { attachArcrhoTooltip, ensureArcrhoTooltipStyles } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
+import { attachSettingsFileDropZone } from "/ui/shared/components/settings_file/settings_file.js?v=20260925a";
+
+const SHORTCUT_CONFIG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="/ui/shared/components/pickers/shortcut-config.svg?v=20260925a#shortcut-config"></use></svg>';
 
 const SHARED_SCROLLBAR_STYLE_ID = "arcrho-shared-scrollbar-style";
 const TREE_INDENT_PX = 10;
@@ -2287,6 +2289,12 @@ export function openFloatingPathTreePicker(options = {}) {
           options.onCreateFavoriteFolder({ favoriteItems, folders });
         }
       },
+    }, {
+      title: "Shortcut Config",
+      icon: SHORTCUT_CONFIG_ICON,
+      onClick: typeof options?.onShortcutConfigMenu === "function"
+        ? (ctx) => options.onShortcutConfigMenu({ event: ctx.event, anchorElement: ctx.buttonElement, headerElement: ctx.headerElement, pickerElement: win })
+        : null,
     }]);
     if (typeof options?.onShortcutConfigMenu === "function") {
       favoriteHeader.header.addEventListener("contextmenu", (evt) => {

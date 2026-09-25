@@ -17,7 +17,7 @@
    The tab lists and the app defaults come from the catalog, which the pages
    themselves read, so the window can never offer a tab a page does not have. */
 
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import {
   DEFAULT_WINDOW_TABS_STORAGE_KEY,
   WINDOW_TAB_KINDS,

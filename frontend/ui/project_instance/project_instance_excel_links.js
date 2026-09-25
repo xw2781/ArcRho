@@ -19,7 +19,7 @@
 // which that table folds into its Status column. While a manager for the
 // selected class is open the poll stands down and the answer comes from that
 // window instead, so a class is never read twice.
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import {
   LISTING_POLL_MS,
   excelLinkChangeSentence,

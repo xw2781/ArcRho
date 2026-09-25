@@ -25,7 +25,7 @@ const summaryFormatterSource = summarySource
     JSON.stringify(formulaTextUrl),
   )
   .replace(
-    'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";',
+    'import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";',
     "const attachArcrhoTooltip = (target, text) => { target.tooltipText = text; };",
   )
   .replace(

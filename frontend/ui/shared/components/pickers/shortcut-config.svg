@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- The Shortcut section's config-file button, drawn for a 14px slot: a sheet with a folded
+       corner and two text lines on a 13 x 17-unit ink box centred in the 24-unit canvas, so it
+       sits beside the section's plus without reading as a second plus. The host stylesheet
+       owns the line width; only the colour is fixed here. -->
+  <symbol id="shortcut-config" viewBox="0 0 24 24">
+    <path d="M13.5 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8.5Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M13.5 3.5V7a1.5 1.5 0 0 0 1.5 1.5h3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M9 12.5h6M9 16h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>

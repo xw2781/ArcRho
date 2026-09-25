@@ -33,7 +33,7 @@
 // from disk, so the diagram follows a save, a delete, or an import without a
 // manual refresh.
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import {
   buildDependencyGraph,
   dependencyGraphKey,

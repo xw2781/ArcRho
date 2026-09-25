@@ -16,6 +16,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/reserving_class_filter_spec?project_name=${encodeURIComponent(projectName)}`
 - `/reserving_class_hidden_paths`
 - `/reserving_class_hidden_paths?project_name=${encodeURIComponent(projectName)}`
+- `/reserving_class_paths_with_data?project_name=${encodeURIComponent(projectName)}`
 - `/reserving_class_types?project_name=${encodeURIComponent(projectName)}`
 - `/workflow/save`
 - `/workflow/save_as`

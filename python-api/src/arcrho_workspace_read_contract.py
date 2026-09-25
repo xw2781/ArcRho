@@ -211,6 +211,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "build_reserving_class_dependency_graph",
         ("project_name", "reserving_class"),
     ),
+    # Which reserving classes hold data, for the tree's "Hide paths with no
+    # data" filter: one listing of the project's data folder plus a check per
+    # class, which from a Client PC would be one round trip each.
+    "reserving_classes_with_data": WorkspaceReadKind(
+        "reserving_class_service",
+        "list_reserving_classes_with_data",
+        ("project_name",),
+    ),
     "table_summary": WorkspaceReadKind(
         "table_summary_service",
         "get_table_summary",

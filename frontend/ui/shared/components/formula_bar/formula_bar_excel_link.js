@@ -13,7 +13,7 @@ line it reports through goes.
 */
 import { findExcelReferences } from "/ui/shared/integrations/excel_reference.js?v=20260715a";
 import { openExcelWorkbook } from "/ui/shared/integrations/excel_api.js";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 
 /**
  * Where a formula's first workbook reference points, or null when it holds

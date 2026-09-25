@@ -101,7 +101,7 @@ interactionSource = interactionSource
     JSON.stringify(datasetFormulaUrl),
   )
   .replace(
-    '"/ui/shared/components/message_box/message_box.js?v=20260916a"',
+    '"/ui/shared/components/message_box/message_box.js?v=20260925a"',
     JSON.stringify(messageBoxStubUrl),
   );
 const interactions = await import(dataUrl(interactionSource));

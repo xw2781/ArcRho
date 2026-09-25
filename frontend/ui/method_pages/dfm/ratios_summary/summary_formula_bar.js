@@ -3,7 +3,7 @@
 DFM Ratios Summary Formula Bar
 ===============================================================================
 */
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import { installDfmDatasetAutocomplete } from "/ui/method_pages/dfm/dfm_dataset_autocomplete.js?v=20260814b";
 import { wireFormulaHelper } from "/ui/shared/components/formula_bar/formula_helper.js?v=20260917a";
 import { evaluateFormulaValues } from "/ui/shared/dataset/dataset_formula_values.js?v=20260919a";

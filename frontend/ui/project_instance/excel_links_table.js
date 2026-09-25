@@ -45,7 +45,7 @@
 // module owns only the view: widths, filters, selection, rendering, and the
 // callbacks a row can raise (open the used-by object, open the row's context
 // menu, report the selection).
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { reviewStatusIconSvg } from "/ui/shared/components/status_icon/status_icon.js?v=20260911a";
 import { formatArcrhoTimestamp } from "/ui/shared/utils/timestamp.js?v=20260818a";

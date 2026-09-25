@@ -17,11 +17,14 @@ import {
 import {
   attachSettingsFileDropZone,
   buildSettingsFile,
+  confirmSaveBeforeLoad,
+  loadRecentSettingsFiles,
   openSettingsFile,
   openSettingsFileMenu,
   readSettingsFile,
+  rememberRecentSettingsFile,
   saveSettingsFile,
-} from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
+} from "/ui/shared/components/settings_file/settings_file.js?v=20260925a";
 
 import { allFilterValuesSelected as isDatasetFilterAllValuesSelected, renderValueFilterMenu } from "/ui/shared/components/value_filter_menu/value_filter_menu.js?v=20260920a";
 
@@ -42,7 +45,7 @@ export function installProjectInstanceDatasetTable(ctx) {
   const DATASET_VIEW_CONFIG_VERSION = 1;
   const DATASET_VIEW_CONFIG_LABEL = "group and filter settings";
   const DATASET_VIEW_CONFIG_FILTER_NAME = "Group And Filter Settings";
-  const DATASET_VIEW_CONFIG_MENU_LABEL = "Group And Filter Config";
+  const DATASET_VIEW_CONFIG_MENU_LABEL = "Group And Filter";
   const applyCachedDatasetSnapshot = (...args) => api.applyCachedDatasetSnapshot(...args);
   const beginPageLoading = (...args) => api.beginPageLoading(...args);
   const captureDatasetTableScroll = (...args) => api.captureDatasetTableScroll(...args);
@@ -803,12 +806,27 @@ function describeDatasetViewSettings(settings) {
   return { filterCount, groupCount, text: parts.join(" and ") || "no grouping or filters" };
 }
 
+// Two group and filter settings match when they filter the same columns to the same values
+// and group by the same columns in the same order.
+function datasetViewSettingsKey(settings) {
+  const filters = settings?.filters && typeof settings.filters === "object" && !Array.isArray(settings.filters)
+    ? settings.filters
+    : {};
+  const filterEntries = Object.keys(filters)
+    .sort()
+    .filter((key) => Array.isArray(filters[key]) && filters[key].length)
+    .map((key) => [key, filters[key].map(String).sort()]);
+  const groupBy = Array.isArray(settings?.groupBy) ? settings.groupBy.map(toText) : [];
+  return JSON.stringify([filterEntries, groupBy]);
+}
+
+// Resolves to true once the file is written.
 async function saveDatasetViewSettingsFile() {
   const settings = getDatasetViewSettingsPayload();
   const described = describeDatasetViewSettings(settings);
   if (!described.filterCount && !described.groupCount) {
     setStatus("There is no grouping or filtering to save yet.");
-    return;
+    return false;
   }
   const result = await saveSettingsFile({
     data: buildSettingsFile({
@@ -820,26 +838,42 @@ async function saveDatasetViewSettingsFile() {
     suggestedName: `${projectName} Group And Filter.json`,
     filterName: DATASET_VIEW_CONFIG_FILTER_NAME,
   });
-  if (result.reason === "canceled") return;
+  if (result.reason === "canceled") return false;
   if (result.reason === "no-host") {
     setStatus("Saving a group and filter settings file needs the desktop app.", true);
-    return;
+    return false;
   }
   if (!result.ok) {
     setStatus(`Failed to save group and filter settings: ${result.error}`, true);
-    return;
+    return false;
   }
   setStatus(`Saved group and filter settings to ${result.path || "the chosen file"}.`);
+  await rememberRecentSettingsFile(DATASET_VIEW_CONFIG_KIND, result.path);
+  return true;
 }
 
 // A file written from another project keeps only the columns this table has, and a
-// filter value the column no longer offers drops itself on the next render.
-function applyDatasetViewSettingsFile(config, fileName) {
+// filter value the column no longer offers drops itself on the next render. Resolves to
+// true once the file's settings replace the current ones.
+async function applyDatasetViewSettingsFile(config, fileName) {
+  const current = getDatasetViewSettingsPayload();
+  const described = describeDatasetViewSettings(current);
+  if ((described.filterCount || described.groupCount) && !(await confirmSaveBeforeLoad({
+    kind: DATASET_VIEW_CONFIG_KIND,
+    label: DATASET_VIEW_CONFIG_LABEL,
+    title: "Load Group And Filter Settings",
+    currentKey: datasetViewSettingsKey(current),
+    keyOf: datasetViewSettingsKey,
+    save: saveDatasetViewSettingsFile,
+  }))) {
+    return false;
+  }
   applyDatasetViewSettings(config);
   datasetTableView.collapsedGroups.clear();
   saveDatasetTablePreferences();
   renderDatasetTable();
   setStatus(`Loaded ${describeDatasetViewSettings(getDatasetViewSettingsPayload()).text} from ${fileName}.`);
+  return true;
 }
 
 async function loadDatasetViewSettingsFile(file) {
@@ -854,14 +888,18 @@ async function loadDatasetViewSettingsFile(file) {
     setStatus(toText(err?.message) || `${fileName} could not be read.`, true);
     return;
   }
-  applyDatasetViewSettingsFile(config, fileName);
+  if (await applyDatasetViewSettingsFile(config, fileName)) {
+    void rememberRecentSettingsFile(DATASET_VIEW_CONFIG_KIND, file);
+  }
 }
 
-async function pickDatasetViewSettingsFile() {
+// With no `filePath`, the user picks the file in the open dialog.
+async function pickDatasetViewSettingsFile(filePath = "") {
   const result = await openSettingsFile({
     kind: DATASET_VIEW_CONFIG_KIND,
     label: DATASET_VIEW_CONFIG_LABEL,
     filterName: DATASET_VIEW_CONFIG_FILTER_NAME,
+    filePath,
   });
   if (result.reason === "canceled") return;
   if (result.reason === "no-host") {
@@ -872,7 +910,9 @@ async function pickDatasetViewSettingsFile() {
     setStatus(result.error, true);
     return;
   }
-  applyDatasetViewSettingsFile(result.data, result.path.split(/[\\/]/).pop() || result.path);
+  if (await applyDatasetViewSettingsFile(result.data, result.path.split(/[\\/]/).pop() || result.path)) {
+    void rememberRecentSettingsFile(DATASET_VIEW_CONFIG_KIND, result.path);
+  }
 }
 
 
@@ -3546,14 +3586,17 @@ function initDatasetTableInteractions() {
     hint: "Drop a group and filter settings file to load it",
     onFile: (file) => void loadDatasetViewSettingsFile(file),
   });
-  els.datasetToolbar?.addEventListener("contextmenu", (event) => {
+  els.datasetToolbar?.addEventListener("contextmenu", async (event) => {
     event.preventDefault();
     event.stopPropagation();
+    const recentFiles = await loadRecentSettingsFiles(DATASET_VIEW_CONFIG_KIND);
     openSettingsFileMenu({
       event,
       label: DATASET_VIEW_CONFIG_MENU_LABEL,
       onSave: () => void saveDatasetViewSettingsFile(),
       onLoad: () => void pickDatasetViewSettingsFile(),
+      recentFiles,
+      onLoadRecent: (filePath) => void pickDatasetViewSettingsFile(filePath),
     });
   });
   els.datasetGroupByStatus?.addEventListener("dragover", handleDatasetGroupZoneDragOver);

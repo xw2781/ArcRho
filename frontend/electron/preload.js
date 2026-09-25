@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld("ADAHost", {
   saveNotesPanelPreferences: (preferences) => invoke("notes-panel-preferences-save", { preferences }),
   loadTableColorPreferences: () => invoke("table-colors-preferences-load"),
   saveTableColorPreferences: (preferences) => invoke("table-colors-preferences-save", { preferences }),
+  loadRecentSettingsFilePreferences: () => invoke("recent-settings-files-preferences-load"),
+  saveRecentSettingsFilePreferences: (preferences) => invoke("recent-settings-files-preferences-save", { preferences }),
   saveJsonFile: (payload) => invoke("save-json-file", payload),
   saveTextFile: (payload) => invoke("save-text-file", payload),
   readTextFile: (payload) => invoke("read-text-file", payload),

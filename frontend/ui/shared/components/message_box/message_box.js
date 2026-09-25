@@ -9,7 +9,7 @@ let messageSequence = 0;
 
 function ensureStyles(doc) {
   const sheets = [
-    [STYLE_ID, "/ui/shared/components/message_box/message_box.css?v=20260916a"],
+    [STYLE_ID, "/ui/shared/components/message_box/message_box.css?v=20260925a"],
     [FRAMED_SCROLL_STYLE_ID, "/ui/shared/styles/framed_scrollbars.css?v=20260824a"],
   ];
   for (const [id, href] of sheets) {

@@ -8,7 +8,7 @@ import {
 } from "/ui/shell/shell_activity_history.js";
 import { getWorkspaceHistoryEntries } from "/ui/shared/services/workspace_history.js?v=20260828a";
 import { localDayKey } from "/ui/shared/services/local_day.js?v=20260828a";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
 // How far back each store is read. The stores keep one record per item per day, so this is the

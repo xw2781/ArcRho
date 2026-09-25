@@ -1,13 +1,15 @@
-import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260920b";
+import { closeFloatingPathTreePicker, openFloatingPathTreePicker } from "/ui/shared/components/pickers/path_tree_picker.js?v=20260925a";
 import { buildWorkflowPathRootNode } from "/ui/shared/integrations/workflow_picker_options.js";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
 import {
   buildSettingsFile,
+  confirmSaveBeforeLoad,
+  loadRecentSettingsFiles,
   openSettingsFile,
   openSettingsFileMenu,
   readSettingsFile,
+  rememberRecentSettingsFile,
   saveSettingsFile,
-} from "/ui/shared/components/settings_file/settings_file.js?v=20260920a";
+} from "/ui/shared/components/settings_file/settings_file.js?v=20260925a";
 
 const LOOKUP_MODEL_CACHE = new Map();
 const HIDDEN_PATHS_CACHE = new Map();
@@ -16,6 +18,7 @@ const FILTER_PREFS_CACHE = new Map();
 const TREE_FILTER_PREFERENCE_DEFAULTS = Object.freeze({
   autoExpandSingleChild: true,
   hideSegmentLabels: true,
+  hidePathsWithoutData: false,
 });
 const WINDOW_FRAME_MARGIN_PX = 8;
 const COLLAPSE_DEEPEST_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="12" x2="18" y2="12"/></svg>';
@@ -25,7 +28,7 @@ const SHORTCUT_CONFIG_KIND = "arcrho.reserving_class_shortcuts";
 const SHORTCUT_CONFIG_VERSION = 1;
 const SHORTCUT_CONFIG_LABEL = "shortcut settings";
 const SHORTCUT_CONFIG_FILTER_NAME = "Shortcut Settings";
-const SHORTCUT_CONFIG_MENU_LABEL = "Shortcut Config";
+const SHORTCUT_CONFIG_MENU_LABEL = "Shortcut";
 
 function toText(value) {
   return String(value || "").trim();
@@ -1083,6 +1086,22 @@ async function fetchReservingClassHiddenPaths(projectName) {
   return normalized;
 }
 
+async function fetchReservingClassPathsWithData(projectName) {
+  const res = await fetch(`/reserving_class_paths_with_data?project_name=${encodeURIComponent(projectName)}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = toText(body?.detail);
+    } catch {
+      detail = "";
+    }
+    throw makeError(detail || `HTTP ${res.status}`, res.status);
+  }
+  const out = await res.json();
+  return Array.isArray(out?.reserving_classes) ? out.reserving_classes : [];
+}
+
 async function saveReservingClassHiddenPaths(projectName, hiddenPaths) {
   const payload = {
     project_name: toText(projectName),
@@ -1269,6 +1288,12 @@ function normalizeReservingClassFilterPreferences(rawPrefs) {
         : (typeof prefs.hideSegmentLabels === "boolean"
           ? prefs.hideSegmentLabels
           : TREE_FILTER_PREFERENCE_DEFAULTS.hideSegmentLabels),
+    hidePathsWithoutData:
+      typeof prefs.hide_paths_without_data === "boolean"
+        ? prefs.hide_paths_without_data
+        : (typeof prefs.hidePathsWithoutData === "boolean"
+          ? prefs.hidePathsWithoutData
+          : TREE_FILTER_PREFERENCE_DEFAULTS.hidePathsWithoutData),
     treeWindowWidth,
     treeWindowHeight,
     filterWindowWidth,
@@ -1284,6 +1309,7 @@ function isDefaultReservingClassFilterPreferences(rawPrefs) {
   return (
     prefs.autoExpandSingleChild === TREE_FILTER_PREFERENCE_DEFAULTS.autoExpandSingleChild
     && prefs.hideSegmentLabels === TREE_FILTER_PREFERENCE_DEFAULTS.hideSegmentLabels
+    && prefs.hidePathsWithoutData === TREE_FILTER_PREFERENCE_DEFAULTS.hidePathsWithoutData
     && !Number.isFinite(prefs.treeWindowWidth)
     && !Number.isFinite(prefs.treeWindowHeight)
     && !Number.isFinite(prefs.filterWindowWidth)
@@ -1321,6 +1347,12 @@ function readShortcutConfigPayload(parsed) {
   };
 }
 
+// Two shortcut configs match when they hold the same paths, nicknames, and folders.
+function shortcutConfigKey(config) {
+  const nicknames = Object.keys(config.favoriteNicknames).sort().map((path) => [path, config.favoriteNicknames[path]]);
+  return JSON.stringify([config.favoritePaths, nicknames, config.favoriteFolders]);
+}
+
 async function fetchReservingClassFilterSpec(projectName) {
   const res = await fetch(`/reserving_class_filter_spec?project_name=${encodeURIComponent(projectName)}`);
   if (!res.ok) {
@@ -1348,6 +1380,7 @@ async function saveReservingClassFilterSpec(projectName, filterSpec, preferences
   const outPrefs = {
     auto_expand_single_child: !!normalizedPreferences.autoExpandSingleChild,
     hide_segment_labels: !!normalizedPreferences.hideSegmentLabels,
+    hide_paths_without_data: !!normalizedPreferences.hidePathsWithoutData,
   };
   if (Number.isFinite(normalizedPreferences.treeWindowWidth)) {
     outPrefs.tree_window_width = normalizedPreferences.treeWindowWidth;
@@ -2569,6 +2602,16 @@ function openReservingClassFilterWindow(options = {}) {
   const body = doc.createElement("div");
   body.className = "rcf-body";
 
+  const hideEmptyLabel = doc.createElement("label");
+  hideEmptyLabel.className = "rcprefs-toggle";
+  const hideEmptyInput = doc.createElement("input");
+  hideEmptyInput.type = "checkbox";
+  hideEmptyInput.checked = !!options?.hidePathsWithoutData;
+  const hideEmptyText = doc.createElement("span");
+  hideEmptyText.textContent = "Hide paths with no data";
+  hideEmptyLabel.append(hideEmptyInput, hideEmptyText);
+  body.appendChild(hideEmptyLabel);
+
   const buildFilterSpec = () => {
     const out = {};
     for (const [levelNum, keys] of selectedByLevel.entries()) {
@@ -2584,7 +2627,7 @@ function openReservingClassFilterWindow(options = {}) {
     let selectedCount = 0;
     for (const set of selectedByLevel.values()) selectedCount += set.size;
     if (!selectedCount) {
-      summary.textContent = "No filters selected.";
+      summary.textContent = hideEmptyInput.checked ? "Hiding paths with no data." : "No filters selected.";
       return;
     }
     const getMatchCount = typeof options?.getMatchCount === "function" ? options.getMatchCount : null;
@@ -2598,10 +2641,11 @@ function openReservingClassFilterWindow(options = {}) {
 
   const emitApply = () => {
     if (typeof options?.onApply === "function") {
-      try { options.onApply(buildFilterSpec()); } catch {}
+      try { options.onApply(buildFilterSpec(), { hidePathsWithoutData: hideEmptyInput.checked }); } catch {}
     }
     updateSummary();
   };
+  hideEmptyInput.addEventListener("change", emitApply);
 
   const parseDragPayload = (evt, fallbackLevelNum) => {
     let raw = "";
@@ -3082,6 +3126,7 @@ function openReservingClassFilterWindow(options = {}) {
   clearBtn.className = "rcf-btn";
   clearBtn.textContent = "Clear";
   clearBtn.addEventListener("click", () => {
+    hideEmptyInput.checked = false;
     for (const row of rowStates) {
       if (!row?.selected) continue;
       row.selected.clear();
@@ -3355,6 +3400,30 @@ export async function openReservingClassPicker(options = {}) {
       ? HIDDEN_PATHS_CACHE.get(cacheKey)
       : [];
     for (const raw of hiddenCacheList) addHiddenPath(raw);
+    // Every path that holds data plus every branch above one, compared part by
+    // part; null while "Hide paths with no data" is off.
+    let pathsWithDataKeys = null;
+    const toDataPathKey = (rawPath) => splitPath(rawPath, delimiter).map((part) => canonName(part)).join(delimiter);
+    const loadPathsWithData = async () => {
+      if (!treeFilterPreferences.hidePathsWithoutData) {
+        pathsWithDataKeys = null;
+        return;
+      }
+      try {
+        const keys = new Set();
+        for (const raw of await fetchReservingClassPathsWithData(projectName)) {
+          const parts = splitPath(raw, delimiter).map((part) => canonName(part));
+          for (let i = 1; i <= parts.length; i++) keys.add(parts.slice(0, i).join(delimiter));
+        }
+        pathsWithDataKeys = keys;
+      } catch (err) {
+        console.warn("Failed to load reserving-class paths with data:", err);
+        setStatus("Could not check which paths have data, so all paths are shown.");
+        pathsWithDataKeys = null;
+      }
+    };
+    const hasActiveTreeFilters = () => model.hasActiveFilters() || !!pathsWithDataKeys;
+    const pathsWithDataRequest = loadPathsWithData();
     try {
       const loadedHiddenPaths = await fetchReservingClassHiddenPaths(projectName);
       hiddenPathMap.clear();
@@ -3364,6 +3433,7 @@ export async function openReservingClassPicker(options = {}) {
       // Hidden-path preferences are optional; continue with any cached in-memory value.
       console.warn("Failed to load reserving-class hidden paths:", err);
     }
+    await pathsWithDataRequest;
     const hasHiddenPath = (rawPath) => {
       const key = normalizeTreePathKey(rawPath, delimiter);
       if (!key) return false;
@@ -3373,8 +3443,12 @@ export async function openReservingClassPicker(options = {}) {
       }
       return false;
     };
+    // Drops hidden paths and, while that filter is on, paths with no data.
     const filterHiddenNodes = (nodes) => {
-      const arr = Array.isArray(nodes) ? nodes : [];
+      let arr = Array.isArray(nodes) ? nodes : [];
+      if (pathsWithDataKeys) {
+        arr = arr.filter((node) => pathsWithDataKeys.has(toDataPathKey(node?.path || "")));
+      }
       if (!hiddenPathMap.size) return arr;
       return arr.filter((node) => !hasHiddenPath(node?.path || ""));
     };
@@ -3637,37 +3711,43 @@ export async function openReservingClassPicker(options = {}) {
       openTreeWindow({ smoothReplaceExisting: true });
     };
 
+    const buildCurrentShortcutPayload = () => buildShortcutConfigPayload(projectName, {
+      favoritePaths: typeof model.getFavoritePaths === "function" ? model.getFavoritePaths() : [],
+      favoriteNicknames: typeof model.getFavoriteNicknames === "function" ? model.getFavoriteNicknames() : {},
+      favoriteFolders: typeof model.getFavoriteFolders === "function" ? model.getFavoriteFolders() : [],
+    });
+    // Resolves to true once the file is written.
     const exportShortcutConfig = async () => {
-      const payload = buildShortcutConfigPayload(projectName, {
-        favoritePaths: typeof model.getFavoritePaths === "function" ? model.getFavoritePaths() : [],
-        favoriteNicknames: typeof model.getFavoriteNicknames === "function" ? model.getFavoriteNicknames() : {},
-        favoriteFolders: typeof model.getFavoriteFolders === "function" ? model.getFavoriteFolders() : [],
-      });
+      const payload = buildCurrentShortcutPayload();
       if (!payload.favorite_paths.length && !payload.favorite_folders.length) {
         setStatus("There are no shortcuts to save yet.");
-        return;
+        return false;
       }
       const result = await saveSettingsFile({
         data: payload,
         suggestedName: `${projectName} Shortcuts.json`,
         filterName: SHORTCUT_CONFIG_FILTER_NAME,
       });
-      if (result.reason === "canceled") return;
+      if (result.reason === "canceled") return false;
       if (result.reason === "no-host") {
         setStatus("Saving a shortcut settings file needs the desktop app.");
-        return;
+        return false;
       }
       if (!result.ok) {
         setStatus(`Failed to save shortcut settings: ${result.error}`);
-        return;
+        return false;
       }
       setStatus(`Saved shortcut settings to ${toText(result.path) || "the chosen file"}.`);
+      await rememberRecentSettingsFile(SHORTCUT_CONFIG_KIND, toText(result.path));
+      return true;
     };
-    const pickShortcutConfig = async () => {
+    // With no `filePath`, the user picks the file in the open dialog.
+    const pickShortcutConfig = async (filePath = "") => {
       const result = await openSettingsFile({
         kind: SHORTCUT_CONFIG_KIND,
         label: SHORTCUT_CONFIG_LABEL,
         filterName: SHORTCUT_CONFIG_FILTER_NAME,
+        filePath,
       });
       if (result.reason === "canceled") return;
       if (result.reason === "no-host") {
@@ -3678,7 +3758,9 @@ export async function openReservingClassPicker(options = {}) {
         setStatus(result.error);
         return;
       }
-      await applyShortcutConfig(readShortcutConfigPayload(result.data), toText(result.path).split(/[\\/]/).pop());
+      if (await applyShortcutConfig(readShortcutConfigPayload(result.data), toText(result.path).split(/[\\/]/).pop())) {
+        void rememberRecentSettingsFile(SHORTCUT_CONFIG_KIND, result.path);
+      }
     };
     const loadShortcutConfigFile = async (file) => {
       const fileName = toText(file?.name);
@@ -3692,8 +3774,11 @@ export async function openReservingClassPicker(options = {}) {
         setStatus(toText(err?.message) || `${fileName} could not be read.`);
         return;
       }
-      await applyShortcutConfig(config, fileName);
+      if (await applyShortcutConfig(config, fileName)) {
+        void rememberRecentSettingsFile(SHORTCUT_CONFIG_KIND, file);
+      }
     };
+    // Resolves to true once the file's shortcuts replace the current ones.
     const applyShortcutConfig = async (config, rawFileName) => {
       const fileName = toText(rawFileName) || "the settings file";
 
@@ -3707,19 +3792,21 @@ export async function openReservingClassPicker(options = {}) {
       }
       if (!canonicalByConfigPath.size) {
         setStatus(`${fileName} holds no path this project has.`);
-        return;
+        return false;
       }
 
+      // Shortcuts no file holds would be lost, so offer to save them first.
       const hasCurrentShortcuts = (typeof model.getFavoritePaths === "function" && model.getFavoritePaths().length > 0)
         || (typeof model.getFavoriteFolders === "function" && model.getFavoriteFolders().length > 0);
-      if (hasCurrentShortcuts) {
-        const answer = await showPageMessageBox({
-          title: "Load Shortcut Settings",
-          message: `Replace the current shortcuts with the ${canonicalByConfigPath.size} from ${fileName}?`,
-          actions: [{ id: "replace", label: "Replace" }],
-          okLabel: "Cancel",
-        });
-        if (answer !== "replace") return;
+      if (hasCurrentShortcuts && !(await confirmSaveBeforeLoad({
+        kind: SHORTCUT_CONFIG_KIND,
+        label: SHORTCUT_CONFIG_LABEL,
+        title: "Load Shortcut Settings",
+        currentKey: shortcutConfigKey(readShortcutConfigPayload(buildCurrentShortcutPayload())),
+        keyOf: (data) => shortcutConfigKey(readShortcutConfigPayload(data)),
+        save: exportShortcutConfig,
+      }))) {
+        return false;
       }
 
       const nextNicknames = {};
@@ -3739,6 +3826,7 @@ export async function openReservingClassPicker(options = {}) {
       refreshFavoritesInTreeWindow();
       const skipped = missingCount ? ` ${missingCount} not in this project were left out.` : "";
       setStatus(`Loaded ${canonicalByConfigPath.size} shortcuts from ${fileName}.${skipped}`);
+      return true;
     };
 
     const openTreeWindow = (refreshOptions = {}) => {
@@ -3749,7 +3837,7 @@ export async function openReservingClassPicker(options = {}) {
         treeWindowElement = null;
         if (rootChildrenRaw.length && hiddenPathMap.size) {
           setStatus(hiddenAllMessage);
-        } else if (model.hasActiveFilters()) {
+        } else if (hasActiveTreeFilters()) {
           setStatus(filterEmptyMessage);
         } else {
           setStatus(noValuesMessage);
@@ -3768,15 +3856,27 @@ export async function openReservingClassPicker(options = {}) {
           anchorElement: ctx?.buttonElement || ctx?.pickerElement || null,
           initialSize: filterWindowSize,
           getMatchCount: () => model.getActiveMatchCount(),
+          hidePathsWithoutData: !!treeFilterPreferences.hidePathsWithoutData,
           getHiddenPaths: getHiddenPathsList,
           onUnhideSelected: (paths) => unhideSelectedPaths(paths),
           onUnhideAll: () => unhideAllHiddenPaths(),
-          onApply: (spec) => {
+          onApply: (spec, extra) => {
+            const hidePathsWithoutData = !!extra?.hidePathsWithoutData;
+            const dataFilterChanged = hidePathsWithoutData !== !!treeFilterPreferences.hidePathsWithoutData;
+            if (dataFilterChanged) {
+              treeFilterPreferences = normalizeReservingClassFilterPreferences({
+                ...treeFilterPreferences,
+                hidePathsWithoutData,
+              });
+            }
             const normalizedSpec = persistFilterSpec(spec);
             model.applyFilters(normalizedSpec);
-            treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
-            closeFloatingPathTreePicker(internalCloseReason);
-            openTreeWindow();
+            void (async () => {
+              if (dataFilterChanged) await loadPathsWithData();
+              treeWindowPosition = readWindowPosition(treeWindowElement) || treeWindowPosition;
+              closeFloatingPathTreePicker(internalCloseReason);
+              openTreeWindow();
+            })();
           },
           onBeforeClose: (closeCtx) => {
             const nextSize = normalizeWindowSize(
@@ -3851,7 +3951,7 @@ export async function openReservingClassPicker(options = {}) {
           {
             title: "Filter",
             className: "ptree-filter",
-            active: model.hasActiveFilters(),
+            active: hasActiveTreeFilters(),
             icon: FILTER_ICON,
             onClick: handleFilterClick,
           },
@@ -3941,18 +4041,22 @@ export async function openReservingClassPicker(options = {}) {
         },
         onDropConfigFile: (file) => { void loadShortcutConfigFile(file); },
         configDropHint: "Drop a shortcut settings file to load it",
-        onShortcutConfigMenu: (ctx) => {
+        onShortcutConfigMenu: async (ctx) => {
+          const recentFiles = await loadRecentSettingsFiles(SHORTCUT_CONFIG_KIND);
           openSettingsFileMenu({
             event: ctx?.event,
+            anchorElement: ctx?.anchorElement,
             label: SHORTCUT_CONFIG_MENU_LABEL,
             onSave: () => { void exportShortcutConfig(); },
             onLoad: () => { void pickShortcutConfig(); },
+            recentFiles,
+            onLoadRecent: (filePath) => { void pickShortcutConfig(filePath); },
           });
         },
         allowBranchSelect: !!options?.allowBranchSelect,
         showFilterButton: true,
         filterButtonTitle: "Filter",
-        filterButtonActive: model.hasActiveFilters(),
+        filterButtonActive: hasActiveTreeFilters(),
         onFilterClick: handleFilterClick,
         showPreferencesButton: true,
         preferencesButtonTitle: "Preferences",

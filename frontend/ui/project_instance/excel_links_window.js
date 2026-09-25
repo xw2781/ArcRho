@@ -47,7 +47,7 @@
 // One comes in: arcrho:excel-links-datasets-changed, sent by the host when
 // a nested window saved something in this class, which reloads the inventory.
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260916a";
+import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import { openPathThroughDesktopHost } from "/ui/shared/integrations/open_path.js?v=20260907b";
 import { createExcelLinksTable, excelLinkDetailRows } from "/ui/project_instance/excel_links_table.js?v=20260918a";

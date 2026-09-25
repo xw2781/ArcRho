@@ -30,7 +30,7 @@ import {
   setTableColors,
   subscribeTableColors,
 } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
-import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260812a";
+import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 
 const SAMPLE_VALUE = "1.052";
 const PRESET_COLUMNS = 12;

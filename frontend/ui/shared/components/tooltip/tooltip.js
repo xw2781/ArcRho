@@ -46,7 +46,9 @@ function hideTooltip(doc, target = null) {
   state.tooltip.setAttribute("aria-hidden", "true");
 }
 
-function showTooltip(doc, target, text) {
+// `placement` "right" opens beside the target, flipping left when the window runs out;
+// anything else opens below it, flipping above.
+function showTooltip(doc, target, text, placement = "") {
   if (!target?.isConnected || !text) return;
   const state = getTooltipState(doc);
   state.anchor = target;
@@ -64,8 +66,14 @@ function showTooltip(doc, target, text) {
   const viewportHeight = Number(view?.innerHeight || doc.documentElement.clientHeight || 0);
   let left = rect.left + (rect.width - tooltipRect.width) / 2;
   let top = rect.bottom + gap;
+  if (placement === "right") {
+    left = rect.right + gap;
+    top = rect.top + (rect.height - tooltipRect.height) / 2;
+    if (left + tooltipRect.width > viewportWidth - margin) left = rect.left - tooltipRect.width - gap;
+  } else if (top + tooltipRect.height > viewportHeight - margin) {
+    top = rect.top - tooltipRect.height - gap;
+  }
   left = Math.max(margin, Math.min(left, viewportWidth - tooltipRect.width - margin));
-  if (top + tooltipRect.height > viewportHeight - margin) top = rect.top - tooltipRect.height - gap;
   top = Math.max(margin, Math.min(top, viewportHeight - tooltipRect.height - margin));
   state.tooltip.style.left = `${Math.round(left)}px`;
   state.tooltip.style.top = `${Math.round(top)}px`;
@@ -98,7 +106,7 @@ export function attachArcrhoTooltip(target, rawText, options = {}) {
         || !resolvedText
       ) return;
       target.setAttribute("aria-description", resolvedText);
-      showTooltip(doc, target, resolvedText);
+      showTooltip(doc, target, resolvedText, options.placement);
     }).catch(() => {});
   };
 
